@@ -11,12 +11,12 @@ import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
-
 import {
   readableDocs,
   visibleFolders,
   visibleOwned,
 } from "../../lib/visibility.js";
+
 /**
  * Folders group documents inside a workspace, and favourites pin the few
  * things someone keeps coming back to. Folders are flat by design; personal

@@ -23,8 +23,8 @@ import {
 import { queueWebhooks } from "../lib/webhooks.js";
 import { emailEnabled } from "./channels/email.js";
 import { projectPlanning } from "../modules/projects/planning.js";
-
 import { visibleItems } from "../lib/visibility.js";
+
 /**
  * Move repeating events whose current occurrence has ended on to the next
  * one, so reminders keep coming for every occurrence. The edit version stays

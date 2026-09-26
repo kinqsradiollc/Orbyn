@@ -2,8 +2,8 @@ import { blockText, type DocBlock } from "@orbyn/core";
 import { pool, type Queryable } from "../../db/pool.js";
 import { embed } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
-
 import { readableDocs } from "../../lib/visibility.js";
+
 /**
  * Finding a page that says the thing in other words.
  *

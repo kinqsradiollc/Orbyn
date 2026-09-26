@@ -22,8 +22,8 @@ import { todaysAgenda } from "../docs/agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { linkPreview } from "./preview.js";
 import { cachedSettings } from "../../lib/settings.js";
-
 import { visibleFolders } from "../../lib/visibility.js";
+
 /**
  * Sharing into Orbyn (the phone's share sheet): a link or some text, sent
  * where the person chose — an Inbox task "Read: <title>" with the link,

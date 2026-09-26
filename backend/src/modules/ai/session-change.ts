@@ -2,8 +2,8 @@ import { fail, sessionChangeSchema, type SessionChange } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { busyIntervals } from "../planner/calendar.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /** Apply one reviewed session change after checking it is still the same session. */
 export async function applySessionChange(
   db: Db,

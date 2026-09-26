@@ -14,8 +14,8 @@ import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
-
 import { visibleRecords } from "../../lib/visibility.js";
+
 type Scope = { created_by: string; team_id: string | null };
 type RecordRow = Scope & {
   id: string;

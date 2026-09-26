@@ -12,8 +12,8 @@ import {
   type FitRow,
 } from "../planner/planned.js";
 import { dependentTargets } from "../planner/targets.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /** Only the signed-in person's work and sessions; a teammate's calendar stays private. */
 export async function projectPlanning(
   db: Queryable,

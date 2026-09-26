@@ -52,8 +52,8 @@ import {
   type SchedulerResult,
   type SchedulerTask,
 } from "./scheduler.js";
-
 import { inMyTeams, visibleItems } from "../../lib/visibility.js";
+
 export { FRAME_COLUMNS, loadFrames } from "./frames.js";
 export { freeSpans, workingSpans } from "./free.js";
 

@@ -20,8 +20,8 @@ import {
 import type { Queryable as Db } from "../../db/pool.js";
 import { frameSpans, loadFrames } from "./frames.js";
 import { externalEntries } from "./subscriptions.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /** Alerts new items get until someone chooses their own: 30 minutes before. */
 export const DEFAULT_ALERTS: DefaultAlerts = {
   event: [30],

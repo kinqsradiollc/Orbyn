@@ -20,8 +20,8 @@ import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { parseProjectDraft } from "../ai/project-draft.js";
 import { proposeProject } from "../ai/project-proposal.js";
-
 import { visibleProjects, visibleTemplates } from "../../lib/visibility.js";
+
 type TemplateRow = {
   id: string;
   user_id: string;

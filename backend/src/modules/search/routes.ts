@@ -4,8 +4,8 @@ import { reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { nearest } from "./semantic.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
-
 import { visibleItems, visibleRecords } from "../../lib/visibility.js";
+
 /**
  * One search across pages and tasks (and, within a project, its records).
  * The project page's search box and the assistant's search_docs both use it.

@@ -19,8 +19,8 @@ import { busyIntervals, loadPrefs } from "./calendar.js";
 import { FREE_LOOKAHEAD_DAYS, freeSpans, workingSpans } from "./free.js";
 import { CHILD_COLUMNS } from "./plans.js";
 import { dependentTargets } from "./targets.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /**
  * The planned feed: your planned time, task by task, with each task's one
  * "does it fit?" status, worked out the way a task's Sessions card does it

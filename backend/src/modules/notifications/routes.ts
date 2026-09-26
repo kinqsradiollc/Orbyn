@@ -3,8 +3,8 @@ import { fail } from "@orbyn/core";
 import { pool, reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /**
  * The in-app notification tray: reminders and conflicts (tied to an item the
  * person can still see) and booking notices (tied to a booking, in `ref`).

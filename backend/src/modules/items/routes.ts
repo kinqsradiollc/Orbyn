@@ -57,13 +57,13 @@ import {
   type ItemRow,
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
-
 import {
   inMyTeams,
   visibleItems,
   visibleOwned,
   visibleProjects,
 } from "../../lib/visibility.js";
+
 type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
 /** Runs queries on a transaction client. */
 const via =

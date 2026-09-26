@@ -7,8 +7,8 @@ import { loadPrefs } from "../planner/calendar.js";
 import { eventLines, FEED_COLUMNS, type FeedItem } from "../planner/ics.js";
 import { itemData } from "@orbyn/core";
 import { parseICalendar } from "./ical.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 // A CalDAV server, so Apple Calendar, Thunderbird and DAVx5 can subscribe to
 // a person's events natively (in addition to the ICS feed) and — for VEVENTs —
 // create, edit and delete them back. The protocol responses and the write

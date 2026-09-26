@@ -5,8 +5,8 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { closeLive, streamDocChanges } from "../docs/live.js";
 import { closeLiveNews, streamLive } from "../presence/live.js";
-
 import { visibleDocs } from "../../lib/visibility.js";
+
 /** Documents `$1` can see: their own, and their teams'. */
 const VISIBLE_DOC = visibleDocs("d");
 

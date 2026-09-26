@@ -32,12 +32,12 @@ import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
-
 import {
   visibleItems,
   visibleProjects,
   visibleRecords,
 } from "../../../lib/visibility.js";
+
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
  * projects, free time, and what is waiting on people. Every query is scoped

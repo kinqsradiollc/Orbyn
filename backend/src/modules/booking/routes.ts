@@ -53,8 +53,8 @@ import {
   whenLabel,
   type BookingRow,
 } from "./service.js";
-
 import { inMyTeams } from "../../lib/visibility.js";
+
 /**
  * Booking pages: people outside Orbyn pick a time when every required host is
  * free. Hosts shape each page (hours, overrides, questions, approval, look)

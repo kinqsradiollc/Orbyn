@@ -75,13 +75,13 @@ import {
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
-
 import {
   inMyTeams,
   readableDocs,
   visibleDocs,
   visibleItems,
 } from "../../lib/visibility.js";
+
 /**
  * Documents: notes, briefs and agendas. Personal documents belong to their
  * author; team documents follow the same team roles as team items (viewers

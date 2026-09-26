@@ -44,12 +44,12 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { applySessionChange } from "./session-change.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
-
 import {
   visibleItems,
   visibleProjects,
   visibleRecords,
 } from "../../lib/visibility.js";
+
 /**
  * The request that decides whether changes are allowed. A short reply to the
  * assistant's own question ("the second one") carries the request it answers.

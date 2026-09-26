@@ -1,10 +1,10 @@
 import { z } from "zod";
 import {
-  addDays,
   clockMinutes,
   dayTime,
-  localDateKey,
+  todayList,
   weekdayOf,
+  type TodayRow,
 } from "@orbyn/core";
 import type { Queryable } from "../db/pool.js";
 import {
@@ -17,14 +17,13 @@ import {
 import {
   DEFAULT_EVENT_MINUTES,
   blocksTime,
-  calendarEntries,
   derivedBlocks,
   loadPlaces,
   loadPrefs,
-  timeBlocks,
 } from "../modules/planner/calendar.js";
 import { upNext } from "../modules/planner/next.js";
 import { externalEntries } from "../modules/planner/subscriptions.js";
+import { todaySources } from "../modules/planner/today.js";
 import { READ, minutesText } from "./common.js";
 import {
   both,
@@ -46,12 +45,10 @@ import { itemSourceSql, itemSources } from "./sources.js";
  * next. It reads only: it never makes the day's agenda page and never syncs
  * study cards.
  *
- * todayForPrincipal() is the one seam: it takes the same inputs as the
- * app's Today list (the person, the spaces this principal reaches, now and
- * the time zone; plus whether outside content is hidden) and returns
- * TodayList, documented below. When the shared core todayList() lands
- * (Phase 1), point this function at it and keep the output shape; get_today
- * and the orbyn://today resource follow.
+ * todayForPrincipal() builds it on the app's own Today list: core's
+ * todayList() over the same gathered input as GET /today, narrowed to the
+ * spaces this principal reaches, so the app and agents list the same day.
+ * get_today and the orbyn://today resource both come through it.
  */
 
 const when = z
@@ -138,12 +135,8 @@ export const todayOutput = z.object({
 });
 export type TodayList = z.output<typeof todayOutput>;
 
-const LATE_SHOWN = 20;
-
-type DueRow = {
+type Extras = {
   id: string;
-  title: string;
-  due_at: Date;
   priority: string;
   status: string;
   estimate_minutes: number | null;
@@ -152,11 +145,13 @@ type DueRow = {
 };
 
 /**
- * Today for one principal: events, sessions, what's due and what's late,
- * in the person's local day, reaching only the principal's spaces. Every
- * title carries where it came from; `hideOutside` shows subscribed
- * calendars' events as busy time only, and titles from outside (a booking
- * guest's, an email's subject) only by their neutral name.
+ * Today for one principal: the app's own Today list (core's todayList()
+ * over planner/today.ts's todaySources(), the same list GET /today and
+ * the apps show), reaching only the principal's spaces, plus free time,
+ * Up next and teammates' requests. Every title carries where it came from;
+ * `hideOutside` shows subscribed calendars' events as busy time only, and
+ * titles from outside (a booking guest's, an email's subject) only by
+ * their neutral name.
  */
 export async function todayForPrincipal(
   db: Queryable,
@@ -165,46 +160,12 @@ export async function todayForPrincipal(
   timezone: string,
 ): Promise<TodayList> {
   const tz = timezone;
-  const day = localDateKey(now, tz);
-  const from = dayTime(day, 0, tz);
-  const to = dayTime(addDays(day, 1), 0, tz);
   const { userId, spaces } = who;
-
-  const dueQuery = (range: "today" | "late") => {
-    const p = new Params();
-    const scope = scopeFor(spaces, p);
-    const a = p.add(from);
-    const cond =
-      range === "today"
-        ? `i.due_at >= ${a} AND i.due_at < ${p.add(to)}`
-        : `i.due_at < ${a}`;
-    return {
-      sql: `SELECT i.id, i.title, i.due_at, i.priority, i.status, i.estimate_minutes,
-                   ${itemSourceSql("i")} AS source,
-                   coalesce((SELECT sum(extract(epoch FROM b.end_at - b.start_at) / 60)
-                               FROM time_blocks b
-                              WHERE b.item_id = i.id AND b.user_id = ${scope.user}
-                                AND b.end_at <= i.due_at), 0)::int AS planned_minutes
-              FROM items i
-             WHERE ${visibleItems("i", scope)} AND i.kind <> 'event'
-               AND i.status NOT IN ('done', 'cancelled') AND ${cond}
-             ORDER BY i.due_at ${range === "late" ? "DESC" : ""}
-             LIMIT ${range === "late" ? LATE_SHOWN : 100}`,
-      values: p.values,
-    };
-  };
-  const lateCount = (() => {
-    const p = new Params();
-    const scope = scopeFor(spaces, p);
-    return {
-      sql: `SELECT count(*)::int AS n FROM items i
-             WHERE ${visibleItems("i", scope)} AND i.kind <> 'event'
-               AND i.status NOT IN ('done', 'cancelled') AND i.due_at < ${p.add(from)}`,
-      values: p.values,
-    };
-  })();
-  const dueToday = dueQuery("today");
-  const lateQ = dueQuery("late");
+  const source = await todaySources(db, userId, now, tz, spaces);
+  const list = todayList(source.input);
+  const { day } = list;
+  const from = source.from;
+  const to = source.to;
 
   const asksQuery = (() => {
     const p = new Params();
@@ -216,57 +177,54 @@ export async function todayForPrincipal(
       values: p.values,
     };
   })();
+  const taskRows = list.rows.filter((r) => r.kind === "task" && r.item_id);
+  // What the list doesn't carry for a task: its priority and estimate, and
+  // the minutes of the person's sessions that end before its deadline.
+  const extrasQuery = (() => {
+    const p = new Params();
+    const scope = scopeFor(spaces, p);
+    return {
+      sql: `SELECT i.id, i.priority, i.status, i.estimate_minutes,
+                   ${itemSourceSql("i")} AS source,
+                   coalesce((SELECT sum(extract(epoch FROM b.end_at - b.start_at) / 60)
+                               FROM time_blocks b
+                              WHERE b.item_id = i.id AND b.user_id = ${scope.user}
+                                AND b.end_at <= i.due_at), 0)::int AS planned_minutes
+              FROM items i
+             WHERE i.id = ANY (${p.add(taskRows.map((r) => r.item_id))}::uuid[])
+               AND ${visibleItems("i", scope)}`,
+      values: p.values,
+    };
+  })();
 
-  const [
-    prefs,
-    places,
-    events,
-    subscribed,
-    subscribedBusy,
-    sessions,
-    due,
-    late,
-    lateTotal,
-    asks,
-  ] = await Promise.all([
+  const [prefs, places, subscribedBusy, extrasRows, asks] = await Promise.all([
     loadPrefs(db, userId),
     loadPlaces(db, userId),
-    calendarEntries(db, userId, from, to),
-    spaces.personal
-      ? externalEntries(db, userId, from, to, { visible: true })
-      : Promise.resolve([]),
     // Hidden calendars still make the person busy (as in the planner).
     spaces.personal
       ? externalEntries(db, userId, from, to, { busy: true })
       : Promise.resolve([]),
-    timeBlocks(db, userId, from, to),
-    db.query<DueRow>(dueToday.sql, dueToday.values),
-    db.query<DueRow>(lateQ.sql, lateQ.values),
-    db.query<{ n: number }>(lateCount.sql, lateCount.values),
+    taskRows.length
+      ? db.query<Extras>(extrasQuery.sql, extrasQuery.values)
+      : Promise.resolve({ rows: [] as Extras[] }),
     db.query<{ n: number }>(asksQuery.sql, asksQuery.values),
   ]);
+  const extras = new Map(extrasRows.rows.map((r) => [r.id, r]));
 
-  const deadlines = new Map<string, Date | null>();
-  const sessionIds = [...new Set(sessions.map((s) => s.item_id))];
-  if (sessionIds.length)
-    for (const r of (
-      await db.query<{ id: string; due_at: Date | null }>(
-        "SELECT id, due_at FROM items WHERE id = ANY ($1::uuid[])",
-        [sessionIds],
-      )
-    ).rows)
-      deadlines.set(r.id, r.due_at);
-
-  // Only what this principal reaches: events in its spaces, and the
-  // person's subscribed calendars when it reaches Personal.
-  const reach = events.filter((e) => inSpaces(spaces, e.team_id));
+  // The day's entries in reach (todaySources already left out the rest).
+  const reach = source.entries;
   // Where each event's and session's title came from: a booking guest, an
   // email, or the person.
-  const sources = await itemSources(db, [
-    ...reach.filter((e) => e.kind === "event").map((e) => e.item_id),
-    ...sessions.map((s) => s.item_id),
-  ]);
-  const sourceOf = (id: string) => sources.get(id) ?? "you";
+  const itemIds = [
+    ...new Set(
+      list.rows.flatMap((r) =>
+        r.kind !== "task" && r.item_id ? [r.item_id] : [],
+      ),
+    ),
+  ];
+  const sources = await itemSources(db, itemIds);
+  const sourceOf = (id: string) =>
+    sources.get(id) ?? extras.get(id)?.source ?? "you";
   const titled = (id: string, title: string, kind: string) =>
     titleFor(title, sourceOf(id), who.hideOutside, kind) || "Untitled";
   const subscribedTitle = (title: string) =>
@@ -274,59 +232,85 @@ export async function todayForPrincipal(
       ? "Busy (subscribed calendar)"
       : cleanTitle(title) || "Untitled";
 
-  const planned: z.output<typeof entry>[] = [
-    ...sessions
-      .filter((s) => inSpaces(spaces, s.team_id))
-      .filter((s) => s.status !== "done" && s.status !== "cancelled")
-      .map((s) => {
-        const r = refs({ type: "task", id: s.item_id });
-        const deadline = deadlines.get(s.item_id);
-        return {
-          kind: "session" as const,
+  const session = (
+    itemId: string,
+    title: string,
+    start: string,
+    end: string,
+    afterDeadline: boolean,
+  ): z.output<typeof entry> => {
+    const r = refs({ type: "task", id: itemId });
+    return {
+      kind: "session",
+      id: r.id,
+      title: titled(itemId, title, "task"),
+      url: r.url,
+      start: both(start, tz)!,
+      end: both(end, tz),
+      all_day: false,
+      after_deadline: afterDeadline,
+      provenance: sourceOf(itemId),
+    };
+  };
+  const planned: z.output<typeof entry>[] = list.rows
+    .flatMap((row): z.output<typeof entry>[] => {
+      if (row.kind === "session" && row.item_id)
+        return [
+          session(
+            row.item_id,
+            row.title,
+            row.start_at!,
+            row.end_at!,
+            row.after_deadline,
+          ),
+        ];
+      if (row.kind === "task" && row.item_id)
+        return row.sessions.map((s) =>
+          session(
+            row.item_id!,
+            row.title,
+            s.start_at,
+            s.end_at,
+            !!row.deadline_at &&
+              Date.parse(s.end_at) > Date.parse(row.deadline_at),
+          ),
+        );
+      if (row.kind !== "event") return [];
+      if (!row.item_id)
+        return [
+          {
+            kind: "calendar",
+            id: null,
+            title: subscribedTitle(row.title),
+            url: null,
+            start: both(row.start_at!, tz)!,
+            end: both(row.end_at, tz),
+            all_day: row.all_day,
+            after_deadline: false,
+            provenance: "subscribed_feed",
+          },
+        ];
+      const r = refs({
+        type: "event",
+        id: row.item_id,
+        ...(row.occurrence ? { occurrence: row.occurrence } : {}),
+      });
+      return [
+        {
+          kind: "event",
           id: r.id,
-          title: titled(s.item_id, s.title, "task"),
+          title: titled(row.item_id, row.title, "event"),
           url: r.url,
-          start: both(s.start_at, tz)!,
-          end: both(s.end_at, tz),
-          all_day: false,
-          after_deadline:
-            !!deadline && Date.parse(s.end_at) > deadline.getTime(),
-          provenance: sourceOf(s.item_id),
-        };
-      }),
-    ...reach
-      .filter((e) => e.kind === "event")
-      .filter((e) => e.status !== "done" && e.status !== "cancelled")
-      .map((e) => {
-        const r = refs({
-          type: "event",
-          id: e.item_id,
-          ...(e.occurrence ? { occurrence: e.occurrence } : {}),
-        });
-        return {
-          kind: "event" as const,
-          id: r.id,
-          title: titled(e.item_id, e.title, "event"),
-          url: r.url,
-          start: both(e.start_at, tz)!,
-          end: both(e.end_at, tz),
-          all_day: !!e.all_day,
+          start: both(row.start_at!, tz)!,
+          end: both(row.end_at, tz),
+          all_day: row.all_day,
           after_deadline: false,
-          provenance: sourceOf(e.item_id),
-        };
-      }),
-    ...subscribed.map((e) => ({
-      kind: "calendar" as const,
-      id: null,
-      title: subscribedTitle(e.title),
-      url: null,
-      start: both(e.start_at, tz)!,
-      end: both(e.end_at, tz),
-      all_day: e.all_day,
-      after_deadline: false,
-      provenance: "subscribed_feed",
-    })),
-  ].sort((a, b) => a.start.at.localeCompare(b.start.at));
+          provenance: sourceOf(row.item_id),
+        },
+      ];
+    })
+    .sort((a, b) => a.start.at.localeCompare(b.start.at));
+  const subscribed = source.subscribed;
 
   // Free time from now until the next commitment in reach, inside working
   // hours; worked out here rather than taken from Up next, which looks at
@@ -399,19 +383,21 @@ export async function todayForPrincipal(
     }
   }
 
-  const taskOf = (t: DueRow): z.output<typeof task> => {
-    const r = refs({ type: "task", id: t.id });
+  const taskOf = (row: TodayRow): z.output<typeof task> => {
+    const id = row.item_id!;
+    const r = refs({ type: "task", id });
+    const x = extras.get(id)!;
     return {
       id: r.id,
       title:
-        titleFor(t.title, t.source ?? "you", who.hideOutside) || "Untitled",
+        titleFor(row.title, x.source ?? "you", who.hideOutside) || "Untitled",
       url: r.url,
-      due: both(t.due_at, tz)!,
-      priority: t.priority,
-      status: t.status,
-      planned_minutes: Number(t.planned_minutes),
-      estimate_minutes: t.estimate_minutes,
-      provenance: t.source ?? "you",
+      due: both(row.deadline_at!, tz)!,
+      priority: x.priority,
+      status: x.status,
+      planned_minutes: Number(x.planned_minutes),
+      estimate_minutes: x.estimate_minutes,
+      provenance: x.source ?? "you",
     };
   };
 
@@ -453,9 +439,15 @@ export async function todayForPrincipal(
     url: todayUrl(),
     free,
     planned,
-    due: due.rows.map(taskOf),
-    late: late.rows.map(taskOf),
-    late_total: lateTotal.rows[0]?.n ?? 0,
+    // Tasks due today by their deadline; late ones latest first (as listed).
+    due: taskRows
+      .filter((r) => r.due === "today" && extras.has(r.item_id!))
+      .sort((a, b) => a.deadline_at!.localeCompare(b.deadline_at!))
+      .map(taskOf),
+    late: taskRows
+      .filter((r) => r.due === "late" && extras.has(r.item_id!))
+      .map(taskOf),
+    late_total: list.late_total,
     up_next: next.suggestions
       .filter((s) => allowed.has(s.item_id))
       .map((s) => {

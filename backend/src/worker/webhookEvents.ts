@@ -1,8 +1,8 @@
 import { pool } from "../db/pool.js";
 import { queueWebhookFor, queueWebhooks } from "../lib/webhooks.js";
 import { blocksTime, calendarEntries } from "../modules/planner/calendar.js";
-
 import { visibleItems } from "../lib/visibility.js";
+
 /**
  * Webhook events the notifier sends on a schedule rather than on a change:
  * `event.starting` before each busy event and `block.started` when a time

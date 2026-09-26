@@ -22,8 +22,8 @@ import {
   stateOf,
   studyOverview,
 } from "./service.js";
-
 import { readableDocs } from "../../lib/visibility.js";
+
 /**
  * Study: what's due, reviewing cards, exams and the pages revised for them,
  * and revision sessions planned into free time. Nothing is scheduled until

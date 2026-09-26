@@ -22,8 +22,8 @@ import {
   loadPrefs,
 } from "../planner/calendar.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
-
 import { visibleDocs } from "../../lib/visibility.js";
+
 /**
  * Study: cards live in pages as "Question :: Answer" lines, and each person
  * keeps their own review state for the cards on the pages they can see (a

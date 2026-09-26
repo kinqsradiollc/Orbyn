@@ -17,8 +17,8 @@ import {
   timeBlocks,
   type SeriesRow,
 } from "./calendar.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /**
  * iCalendar (RFC 5545) for other calendar apps: someone's private feed of
  * dated items (with repeats, single-occurrence changes, alerts, free time and

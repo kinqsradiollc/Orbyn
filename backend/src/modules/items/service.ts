@@ -34,8 +34,8 @@ import {
   syncAttendees,
 } from "./attendees.js";
 import { carryEventNotes } from "./notes.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 type Actor = { id: string; role: "admin" | "member" };
 
 export type ItemRow = Item & {

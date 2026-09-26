@@ -3,8 +3,8 @@ import { transaction, type Db } from "../db/pool.js";
 import { bookerReminder } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { sendPush } from "./channels/push.js";
-
 import { visibleItems } from "../lib/visibility.js";
+
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
 /** Planner notices: sent by `planner_notices`, not `email_reminders`. */

@@ -25,8 +25,8 @@ import { visibleProjectActivity } from "./activity-visibility.js";
 import { makeProjectPlan } from "../planner/plans.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { z } from "zod";
-
 import { visibleProjects } from "../../lib/visibility.js";
+
 /**
  * Projects group planner tasks into a named piece of work with ordered
  * stages. Personal projects belong to their creator; team projects follow the

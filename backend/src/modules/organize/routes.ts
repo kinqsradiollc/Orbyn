@@ -12,8 +12,8 @@ import { reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
-
 import { visibleOwned } from "../../lib/visibility.js";
+
 /**
  * Lists and tags. Personal ones belong to their creator; team ones follow
  * team roles like team items do (viewers read, members and above write).

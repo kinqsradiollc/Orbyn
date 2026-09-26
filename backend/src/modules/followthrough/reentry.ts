@@ -9,8 +9,8 @@ import {
 import { pool, reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { loadPrefs } from "../planner/calendar.js";
-
 import { inMyTeams } from "../../lib/visibility.js";
+
 /** A brief stays up for this long after coming back, unless dismissed. */
 const SHOW_DAYS = 3;
 const LIMIT = 5;

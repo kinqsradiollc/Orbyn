@@ -721,6 +721,101 @@ test("X-MCP-Readonly and X-MCP-Toolsets only ever narrow a connection", async ()
   );
 });
 
+test("get_today is the app's own Today list: the same tasks and sessions as GET /today, narrowed to the connection", async () => {
+  const hour = (h0: number) => {
+    const d = new Date();
+    d.setUTCHours(h0, 0, 0, 0);
+    return d;
+  };
+  // Due at the end of today (UTC, the owner's zone here), with a session.
+  const end = hour(23);
+  const mine = await create(owner, "/items", {
+    title: "Zebra parity report",
+    kind: "task",
+    due_at: end.toISOString(),
+  });
+  const teamDue = await create(owner, "/items", {
+    title: "Zebra crew parity",
+    kind: "task",
+    team_id: teamId,
+    assignee_id: owner.id,
+    due_at: end.toISOString(),
+  });
+  const start = new Date(Math.max(Date.now() + 60_000, hour(0).getTime()));
+  const session = await h.call(owner.token, "POST", "/blocks", {
+    item_id: teamDue.id,
+    start_at: start.toISOString(),
+    end_at: new Date(start.getTime() + 15 * 60_000).toISOString(),
+  });
+  assert.ok(session.statusCode < 300, session.body);
+  try {
+    const app = (
+      await h.call(owner.token, "GET", "/today?timezone=UTC")
+    ).json() as {
+      rows: { kind: string; item_id: string | null; due: string | null }[];
+    };
+    const appDue = app.rows
+      .filter((r) => r.kind === "task" && r.due === "today")
+      .map((r) => `task:${r.item_id}`)
+      .sort();
+    const agent = (await h.tool(keys.ownerAll, "get_today"))!.structuredContent;
+    assert.deepEqual(
+      agent.due.map((d: { id: string }) => d.id).sort(),
+      appDue,
+      "the same tasks due today",
+    );
+    assert.ok(appDue.includes(`task:${mine.id}`));
+    assert.ok(appDue.includes(`task:${teamDue.id}`));
+    assert.ok(
+      agent.planned.some(
+        (e: { kind: string; id: string }) =>
+          e.kind === "session" && e.id === `task:${teamDue.id}`,
+      ),
+      "the team task's session is planned",
+    );
+    // A connection without the team sees neither the task nor its session.
+    const personal = (await h.tool(keys.ownerPersonal, "get_today"))!
+      .structuredContent;
+    const text = JSON.stringify(personal);
+    assert.ok(!text.includes(teamDue.id), text);
+    assert.ok(
+      personal.due.some((d: { id: string }) => d.id === `task:${mine.id}`),
+    );
+  } finally {
+    await pool.query("DELETE FROM items WHERE id = ANY ($1::uuid[])", [
+      [mine.id, teamDue.id],
+    ]);
+  }
+});
+
+test("a page in the Trash is gone for agents: not found, not searched, not listed", async () => {
+  const doc = await create(owner, "/docs", {
+    title: "Zebra binned plan",
+    content: [{ id: "bbin", type: "paragraph", text: "Zebra binned words." }],
+  });
+  const before = await h.tool(keys.ownerAll, "fetch", { id: `doc:${doc.id}` });
+  assert.equal(before?.isError, undefined);
+  const del = await h.call(owner.token, "DELETE", `/docs/${doc.id}`);
+  assert.ok(del.statusCode < 300, del.body);
+  const after = await h.tool(keys.ownerAll, "fetch", { id: `doc:${doc.id}` });
+  assert.equal(after?.isError, true);
+  assert.match(after!.content[0].text, /^NOT_FOUND/);
+  assert.ok(
+    !(await searchIds(keys.ownerAll, "zebra binned")).some((i: string) =>
+      i.startsWith(`doc:${doc.id}`),
+    ),
+  );
+  const listed = await h.tool(keys.ownerAll, "query", {
+    over: "docs",
+    limit: 100,
+  });
+  assert.ok(!JSON.stringify(listed).includes(doc.id));
+  const passages = await h.tool(keys.ownerAll, "find_passages", {
+    query: "zebra binned words",
+  });
+  assert.ok(!JSON.stringify(passages).includes(doc.id));
+});
+
 // Last: everything above ran with the network and the pools watched.
 test("no tool reached the network or the pool from inside a read", () => {
   assert.deepEqual(network.calls, []);

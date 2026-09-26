@@ -10,12 +10,12 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { visibleProjectActivity } from "./activity-visibility.js";
 import { docReadableBy } from "../../lib/doc-visibility.js";
-
 import {
   visibleItems,
   visibleProjects,
   visibleRecords,
 } from "../../lib/visibility.js";
+
 const eventOrderSchema = z
   .string()
   .refine(

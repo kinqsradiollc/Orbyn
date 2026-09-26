@@ -18,8 +18,8 @@ import {
 import type { Queryable as Db } from "../../db/pool.js";
 import { FREE_LOOKAHEAD_DAYS, freeMinutesBefore } from "./free.js";
 import { dependentTargets } from "./targets.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /**
  * Sessions with what they're for: the task's deadline (or the occurrence's,
  * for a repeating task), whether the session ends after it, the project, and

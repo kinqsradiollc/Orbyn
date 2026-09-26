@@ -15,8 +15,8 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
-
 import { readableDocs } from "../../lib/visibility.js";
+
 /**
  * The assistant, inside a page.
  *

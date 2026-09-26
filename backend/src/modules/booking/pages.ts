@@ -1,8 +1,8 @@
 import { fail } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
 import type { InviteRow, PageRow } from "./availability.js";
-
 import { inMyTeams } from "../../lib/visibility.js";
+
 /**
  * Looking up what a booking was made on: a booking page, or an open invite
  * (which stands in for a page whose hours are its windows). Shared by the

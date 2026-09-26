@@ -106,8 +106,8 @@ import {
   placeHabits,
 } from "./habits.js";
 import { settings } from "../../lib/settings.js";
-
 import { inMyTeams, visibleItems } from "../../lib/visibility.js";
+
 const DAY_MS = 86_400_000;
 
 /** What someone's feed links are and include. */

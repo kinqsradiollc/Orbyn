@@ -1,7 +1,7 @@
 import { deadlineOf, planningDeadline } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /** Earliest saved deadline of an open task downstream of each prerequisite. */
 export async function dependentTargets(
   db: Queryable,

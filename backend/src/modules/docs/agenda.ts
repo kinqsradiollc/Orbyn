@@ -26,8 +26,8 @@ import { resolveAi } from "../ai/providers/resolve.js";
 import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./routes.js";
-
 import { visibleItems } from "../../lib/visibility.js";
+
 /**
  * Today's agenda, written from the calendar as it actually is: your events
  * (repeating ones on the day they fall), the calendars you subscribe to

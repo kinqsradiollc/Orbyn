@@ -14,8 +14,8 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
-
 import { readableDocs } from "../../lib/visibility.js";
+
 /** Pages `$1` can see: their own, and their teams'. */
 const VISIBLE = readableDocs("d");
 

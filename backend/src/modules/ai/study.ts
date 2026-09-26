@@ -14,8 +14,8 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { cardById } from "../study/service.js";
 import { complete, ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
-
 import { readableDocs } from "../../lib/visibility.js";
+
 /**
  * The assistant for studying, always from the person's own pages:
  *

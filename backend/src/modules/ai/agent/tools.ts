@@ -49,12 +49,12 @@ import {
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/routes.js";
-
 import {
   visibleItems,
   visibleProjects,
   visibleRecords,
 } from "../../../lib/visibility.js";
+
 export { toInstant, whenLabel };
 
 /**

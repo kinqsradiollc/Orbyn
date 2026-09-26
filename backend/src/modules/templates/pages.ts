@@ -37,12 +37,12 @@ import {
   pageTags,
   type EventRow,
 } from "../docs/routes.js";
-
 import {
   readableDocs,
   visibleItems,
   visiblePageTemplates,
 } from "../../lib/visibility.js";
+
 /**
  * Page templates (DAY-02): the starters everyone has, your own, and your
  * teams'. They work the way project templates do — starters served from
