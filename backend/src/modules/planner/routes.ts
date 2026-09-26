@@ -62,7 +62,6 @@ import { z } from "zod";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate, digest } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import {
   busyIntervals,
@@ -108,6 +107,7 @@ import {
 } from "./habits.js";
 import { settings } from "../../lib/settings.js";
 
+import { inMyTeams, visibleItems } from "../../lib/visibility.js";
 const DAY_MS = 86_400_000;
 
 /** What someone's feed links are and include. */
@@ -249,7 +249,7 @@ export async function plannerRoutes(app: FastifyInstance) {
           await db.query<{ user_id: string }>(
             `SELECT DISTINCT m.user_id FROM team_members m
              WHERE m.user_id = ANY ($2::uuid[]) AND m.user_id <> $1
-               AND m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`,
+               AND ${inMyTeams("m")}`,
             [u.id, d.pinned_user_ids],
           )
         ).rows
@@ -842,7 +842,7 @@ export async function plannerRoutes(app: FastifyInstance) {
     const matched = (
       await db.query<{ id: string; notes: string }>(
         `SELECT i.id, i.notes FROM items i
-         WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL
+         WHERE ${visibleItems()} AND i.due_at IS NOT NULL
            AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) w
              WHERE (i.title || ' ' || i.notes || ' ' || i.location) NOT ILIKE w
                AND NOT EXISTS (SELECT 1 FROM item_overrides o WHERE o.item_id = i.id
@@ -906,7 +906,7 @@ export async function plannerRoutes(app: FastifyInstance) {
     const block = await transaction(async (db) => {
       const item = (
         await db.query<{ id: string; kind: string }>(
-          `SELECT i.id, i.kind FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+          `SELECT i.id, i.kind FROM items i WHERE i.id = $2 AND ${visibleItems()}`,
           [u.id, d.item_id],
         )
       ).rows[0];
@@ -1044,7 +1044,7 @@ export async function plannerRoutes(app: FastifyInstance) {
     const block = await transaction(async (db) => {
       const b = await ownBlock(db, idParam(r), u.id);
       const open = await db.query(
-        `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
+        `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}`,
         [u.id, b.item_id],
       );
       if (!open.rowCount) fail(409, "This task is done or no longer yours.");
@@ -1214,7 +1214,7 @@ export async function plannerRoutes(app: FastifyInstance) {
       for (const b of plan.blocks) {
         const clash = clashes(b);
         const open = await db.query(
-          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}`,
+          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}`,
           [u.id, b.item_id],
         );
         if (clash || !open.rowCount) {

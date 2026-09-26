@@ -21,6 +21,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { parseProjectDraft } from "../ai/project-draft.js";
 import { proposeProject } from "../ai/project-proposal.js";
 
+import { visibleProjects, visibleTemplates } from "../../lib/visibility.js";
 type TemplateRow = {
   id: string;
   user_id: string;
@@ -40,8 +41,7 @@ const COLUMNS = `t.id, t.user_id, t.team_id, tm.name AS team_name, t.name,
   t.description, t.tasks, t.page, t.rrule, t.next_at, t.timezone, t.created_at`;
 
 /** Templates `$1` can see: their own, and their teams'. */
-const VISIBLE = `((t.team_id IS NULL AND t.user_id = $1)
-  OR t.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = visibleTemplates("t");
 
 /** A template's tasks as a draft the planner can schedule: checked, and ordered. */
 function draftOf(title: string, tasks: TemplateTask[]) {
@@ -286,8 +286,7 @@ export async function templateRoutes(app: FastifyInstance) {
         }>(
           `SELECT p.id, p.name, p.team_id, p.user_id, p.doc_id, p.created_at
              FROM projects p
-            WHERE p.id = $2 AND ((p.team_id IS NULL AND p.user_id = $1)
-              OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+            WHERE p.id = $2 AND ${visibleProjects("p")}`,
           [u.id, projectId],
         )
       ).rows[0];

@@ -57,7 +57,7 @@ import {
 } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { requireTeam } from "../../lib/teams.js";
 import {
   isOccurrence,
   loadPrefs,
@@ -76,6 +76,12 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
 
+import {
+  inMyTeams,
+  readableDocs,
+  visibleDocs,
+  visibleItems,
+} from "../../lib/visibility.js";
 /**
  * Documents: notes, briefs and agendas. Personal documents belong to their
  * author; team documents follow the same team roles as team items (viewers
@@ -119,8 +125,7 @@ const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.bo
     FROM doc_comments c JOIN users u ON u.id = c.user_id`;
 
 /** Documents `$1` could see if they weren't in Trash: their own, and their teams'. */
-const SEES = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const SEES = readableDocs("d");
 
 /**
  * Documents `$1` can see: their own, and their teams', leaving out anything
@@ -128,7 +133,7 @@ const SEES = `((d.team_id IS NULL AND d.user_id = $1)
  * is concerned: lists, search, comments, history and exports all answer
  * "not found" for it, the same as for a page that never existed.
  */
-const VISIBLE = `(${SEES} AND d.deleted_at IS NULL)`;
+const VISIBLE = visibleDocs("d");
 
 /**
  * A page may hang off a task, a project or a folder only in its own space:
@@ -149,8 +154,7 @@ async function checkLinks(
   const inSpace = (alias: string) =>
     `${alias}.team_id IS NOT DISTINCT FROM $2::uuid
        AND (${alias}.team_id IS NOT NULL OR ${alias}.user_id = $1)
-       AND (${alias}.team_id IS NULL OR ${alias}.team_id IN
-         (SELECT team_id FROM team_members WHERE user_id = $1))`;
+       AND (${alias}.team_id IS NULL OR ${inMyTeams(alias)})`;
   for (const [id, table, alias, name] of [
     [links.item_id, "items", "i", "Task"],
     [links.project_id, "projects", "p", "Project"],
@@ -1386,7 +1390,7 @@ export async function docRoutes(app: FastifyInstance) {
     const event = (
       await pool.query<EventRow>(
         `SELECT ${EVENT_COLUMNS} FROM items i
-          WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+          WHERE i.id = $2 AND ${visibleItems()}`,
         [u.id, id],
       )
     ).rows[0];

@@ -54,6 +54,7 @@ import {
   type BookingRow,
 } from "./service.js";
 
+import { inMyTeams } from "../../lib/visibility.js";
 /**
  * Booking pages: people outside Orbyn pick a time when every required host is
  * free. Hosts shape each page (hours, overrides, questions, approval, look)
@@ -390,7 +391,7 @@ export async function bookingRoutes(app: FastifyInstance) {
               WHERE user_id = $1 AND role IN ('owner', 'admin'))) AS can_edit
          FROM booking_pages p
          WHERE p.owner_id = $1 OR p.id IN (SELECT page_id FROM booking_hosts WHERE user_id = $1)
-           OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+           OR ${inMyTeams("p")}
          ORDER BY p.created_at DESC`,
         [u.id],
       )

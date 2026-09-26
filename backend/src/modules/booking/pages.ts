@@ -2,6 +2,7 @@ import { fail } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
 import type { InviteRow, PageRow } from "./availability.js";
 
+import { inMyTeams } from "../../lib/visibility.js";
 /**
  * Looking up what a booking was made on: a booking page, or an open invite
  * (which stands in for a page whose hours are its windows). Shared by the
@@ -148,7 +149,7 @@ export async function checkCoHosts(
       `SELECT count(DISTINCT m.user_id)::int AS n FROM team_members m
        WHERE m.user_id = ANY ($2::uuid[])
          AND CASE WHEN $3::uuid IS NULL
-           THEN m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+           THEN ${inMyTeams("m")}
            ELSE m.team_id = $3 END`,
       [ownerId, others, teamId],
     )

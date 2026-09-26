@@ -1,9 +1,9 @@
 import { fail, sessionChangeSchema, type SessionChange } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { busyIntervals } from "../planner/calendar.js";
 
+import { visibleItems } from "../../lib/visibility.js";
 /** Apply one reviewed session change after checking it is still the same session. */
 export async function applySessionChange(
   db: Db,
@@ -22,7 +22,7 @@ export async function applySessionChange(
     }>(
       `SELECT b.id, b.item_id, i.project_id, b.start_at, b.end_at, i.status
          FROM time_blocks b JOIN items i ON i.id = b.item_id
-        WHERE b.id = $2 AND b.user_id = $1 AND ${VISIBLE_ITEMS}
+        WHERE b.id = $2 AND b.user_id = $1 AND ${visibleItems()}
         FOR UPDATE OF b`,
       [userId, change.block_id],
     )

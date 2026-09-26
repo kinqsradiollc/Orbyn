@@ -15,6 +15,7 @@ import { cardById } from "../study/service.js";
 import { complete, ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 
+import { readableDocs } from "../../lib/visibility.js";
 /**
  * The assistant for studying, always from the person's own pages:
  *
@@ -33,8 +34,7 @@ const pageOf = async (userId: string, docId: string) => {
     await pool.query<{ id: string; title: string; content: DocBlock[] }>(
       `SELECT d.id, d.title, d.content FROM docs d WHERE d.id = $2
          AND d.deleted_at IS NULL
-         AND ((d.team_id IS NULL AND d.user_id = $1)
-           OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+         AND ${readableDocs("d")}`,
       [userId, docId],
     )
   ).rows[0];

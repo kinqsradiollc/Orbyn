@@ -7,7 +7,6 @@ import {
   type AssistantSource,
 } from "@orbyn/core";
 import { pool } from "../../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../../lib/teams.js";
 import {
   agendaEntries,
   busyIntervals,
@@ -34,6 +33,11 @@ import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 
+import {
+  visibleItems,
+  visibleProjects,
+  visibleRecords,
+} from "../../../lib/visibility.js";
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
  * projects, free time, and what is waiting on people. Every query is scoped
@@ -114,7 +118,7 @@ export async function rankTasks(
   a: { limit?: number; team_id?: string; only_undated?: boolean },
 ) {
   const values: unknown[] = [ctx.user.id];
-  const where = [VISIBLE_ITEMS, "i.kind = 'task'"];
+  const where = [visibleItems(), "i.kind = 'task'"];
   if (a.team_id === "personal") where.push("i.team_id IS NULL");
   else if (a.team_id) {
     if (!isUuid(a.team_id))
@@ -193,14 +197,9 @@ const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.doc_id, p.team_id,
     t.name AS team_name,
     ${PROJECT_COUNTS}
   FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
-const VISIBLE_PROJECTS = `((p.team_id IS NULL AND p.user_id = $1)
-  OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
-/** Pages `$1` can open (as docs/routes.ts): their own, and their teams'. */
-const VISIBLE_DOCS = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE_PROJECTS = visibleProjects("p");
 /** Work records `$1` can open (as work-records/routes.ts). */
-const VISIBLE_RECORDS = `((w.team_id IS NULL AND w.created_by = $1)
-  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE_RECORDS = visibleRecords("w");
 
 const projectView = (p: ProjectRow, timezone: string) => {
   const counts = { task_count: p.task_count, done_count: p.done_count };
@@ -308,7 +307,7 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
       stage_id: string | null;
     }>(
       `SELECT i.id, i.title, i.status, i.priority, i.due_at, i.end_at, i.stage_id
-         FROM items i WHERE i.project_id = $2 AND ${VISIBLE_ITEMS}
+         FROM items i WHERE i.project_id = $2 AND ${visibleItems()}
         ORDER BY (i.status IN ('done', 'cancelled')), i.due_at NULLS LAST
         LIMIT 200`,
       [ctx.user.id, a.project_id],
@@ -557,8 +556,7 @@ export async function followThrough(ctx: AgentContext) {
       `SELECT w.title, p.name AS project_name
          FROM work_records w LEFT JOIN projects p ON p.id = w.project_id
         WHERE w.kind = 'decision' AND w.status = 'open' AND w.linked_item_id IS NULL
-          AND ((w.team_id IS NULL AND w.created_by = $1)
-            OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND ${visibleRecords("w")}
         ORDER BY w.created_at DESC LIMIT 20`,
       [ctx.user.id],
     ),

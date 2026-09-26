@@ -16,10 +16,10 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { FREE_LOOKAHEAD_DAYS, freeMinutesBefore } from "./free.js";
 import { dependentTargets } from "./targets.js";
 
+import { visibleItems } from "../../lib/visibility.js";
 /**
  * Sessions with what they're for: the task's deadline (or the occurrence's,
  * for a repeating task), whether the session ends after it, the project, and
@@ -261,7 +261,7 @@ export async function itemSessions(
               ${CHILDREN},
               p.deadline AS project_deadline
        FROM items i LEFT JOIN projects p ON p.id = i.project_id
-       WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+       WHERE i.id = $2 AND ${visibleItems()}`,
       [userId, itemId],
     )
   ).rows[0];

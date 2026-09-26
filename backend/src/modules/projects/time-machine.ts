@@ -11,6 +11,11 @@ import { idParam } from "../../lib/params.js";
 import { visibleProjectActivity } from "./activity-visibility.js";
 import { docReadableBy } from "../../lib/doc-visibility.js";
 
+import {
+  visibleItems,
+  visibleProjects,
+  visibleRecords,
+} from "../../lib/visibility.js";
 const eventOrderSchema = z
   .string()
   .refine(
@@ -34,8 +39,7 @@ type Latest = {
 async function requireVisible(db: Queryable, id: string, u: UserRow) {
   const visible = await db.query(
     `SELECT 1 FROM projects p WHERE p.id = $2 AND
-      ((p.team_id IS NULL AND p.user_id = $1)
-        OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+      ${visibleProjects("p")}`,
     [u.id, id],
   );
   if (!visible.rowCount) fail(404, "Project not found");
@@ -115,8 +119,7 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
       await db.query<{ entity_type: "task" | "note" | "record"; id: string }>(
         `SELECT 'task' AS entity_type, i.id FROM items i WHERE (i.project_id = $1 OR EXISTS (
            SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = i.id))
-           AND ((i.team_id IS NULL AND i.user_id = $2)
-             OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+           AND ${visibleItems("i", { user: "$2" })}
          UNION ALL
          SELECT 'note', d.id FROM docs d WHERE (d.project_id = $1 OR EXISTS (
            SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = d.id))
@@ -124,8 +127,7 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
          UNION ALL
          SELECT 'record', w.id FROM work_records w WHERE (w.project_id = $1 OR EXISTS (
            SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = w.id))
-           AND ((w.team_id IS NULL AND w.created_by = $2)
-             OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+           AND ${visibleRecords("w", { user: "$2" })}
          UNION ALL
          SELECT DISTINCT a.entity_type, a.entity_id FROM project_activity a
            WHERE a.project_id = $1 AND a.entity_type IN ('task', 'note', 'record')

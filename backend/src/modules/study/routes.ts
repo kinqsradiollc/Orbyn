@@ -23,6 +23,7 @@ import {
   studyOverview,
 } from "./service.js";
 
+import { readableDocs } from "../../lib/visibility.js";
 /**
  * Study: what's due, reviewing cards, exams and the pages revised for them,
  * and revision sessions planned into free time. Nothing is scheduled until
@@ -84,8 +85,7 @@ export async function studyRoutes(app: FastifyInstance) {
       await pool.query<{ id: string }>(
         `SELECT d.id FROM docs d WHERE d.id = ANY ($2::uuid[])
            AND d.deleted_at IS NULL
-           AND ((d.team_id IS NULL AND d.user_id = $1)
-             OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+           AND ${readableDocs("d")}`,
         [u.id, d.doc_ids],
       )
     ).rows.map((x) => x.id);

@@ -24,6 +24,7 @@ import { queueWebhooks } from "../lib/webhooks.js";
 import { emailEnabled } from "./channels/email.js";
 import { projectPlanning } from "../modules/projects/planning.js";
 
+import { visibleItems } from "../lib/visibility.js";
 /**
  * Move repeating events whose current occurrence has ended on to the next
  * one, so reminders keep coming for every occurrence. The edit version stays
@@ -497,9 +498,7 @@ export async function scanProjectDeadlineMoves(now = new Date()) {
           WHERE i.project_id = $1 AND i.kind = 'task'
             AND b.end_at > $2 AND b.end_at > $3
             AND ($4::timestamptz IS NULL OR b.end_at <= $4)
-            AND (CASE WHEN i.team_id IS NULL THEN i.user_id = b.user_id
-                      ELSE EXISTS (SELECT 1 FROM team_members m
-                                   WHERE m.team_id = i.team_id AND m.user_id = b.user_id) END)
+            AND ${visibleItems("i", { user: "b.user_id" })}
           GROUP BY b.user_id`,
         [change.project_id, change.new_deadline, now, change.old_deadline],
       )
@@ -578,9 +577,7 @@ export async function scanTaskDeadlineMoves(now = new Date()) {
            FROM time_blocks b JOIN items i ON i.id = b.item_id
           WHERE b.item_id = $1 AND b.end_at > $2 AND b.end_at > $3
             AND ($4::timestamptz IS NULL OR b.end_at <= $4)
-            AND (CASE WHEN i.team_id IS NULL THEN i.user_id = b.user_id
-                      ELSE EXISTS (SELECT 1 FROM team_members m
-                                   WHERE m.team_id = i.team_id AND m.user_id = b.user_id) END)
+            AND ${visibleItems("i", { user: "b.user_id" })}
           GROUP BY b.user_id`,
         [change.item_id, change.new_deadline, now, change.old_deadline],
       )

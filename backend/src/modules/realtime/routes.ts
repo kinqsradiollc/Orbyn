@@ -6,9 +6,9 @@ import { idParam } from "../../lib/params.js";
 import { closeLive, streamDocChanges } from "../docs/live.js";
 import { closeLiveNews, streamLive } from "../presence/live.js";
 
+import { visibleDocs } from "../../lib/visibility.js";
 /** Documents `$1` can see: their own, and their teams'. */
-const VISIBLE_DOC = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE_DOC = visibleDocs("d");
 
 /**
  * The realtime service: every long-lived connection lives here, so the API
@@ -69,7 +69,7 @@ async function docStream(
     const doc = (
       await reader(r.headers).query<{ id: string }>(
         `SELECT d.id FROM docs d
-          WHERE d.id = $2 AND d.deleted_at IS NULL AND ${VISIBLE_DOC}`,
+          WHERE d.id = $2 AND ${VISIBLE_DOC}`,
         [u.id, id],
       )
     ).rows[0];

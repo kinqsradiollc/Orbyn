@@ -23,6 +23,7 @@ import {
 } from "../planner/calendar.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
 
+import { visibleDocs } from "../../lib/visibility.js";
 /**
  * Study: cards live in pages as "Question :: Answer" lines, and each person
  * keeps their own review state for the cards on the pages they can see (a
@@ -30,9 +31,7 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
  */
 
 /** Pages `$1` can see. */
-export const VISIBLE_DOC = `(((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
-  AND d.deleted_at IS NULL)`;
+export const VISIBLE_DOC = visibleDocs("d");
 
 /** An exam on the calendar: a subscribed exams calendar, or an event named like one. */
 const EXAM_WORDS =

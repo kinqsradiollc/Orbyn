@@ -13,7 +13,6 @@ import {
   type Item,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import {
   agendaEntries,
   busyIntervals,
@@ -28,6 +27,7 @@ import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./routes.js";
 
+import { visibleItems } from "../../lib/visibility.js";
 /**
  * Today's agenda, written from the calendar as it actually is: your events
  * (repeating ones on the day they fall), the calendars you subscribe to
@@ -99,7 +99,7 @@ async function readDay(
   const [items, calendar, blocks, habits, ahead, busy, open] =
     await Promise.all([
       pool.query<Item>(
-        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+        `SELECT i.* FROM items i WHERE ${visibleItems()}
          AND i.due_at IS NOT NULL AND i.kind = 'task'
        ORDER BY i.due_at LIMIT 500`,
         [userId],
@@ -111,7 +111,7 @@ async function readDay(
       busyIntervals(pool, userId, now, dayEnd, { blocks: true, derived: true }),
       // Open tasks, dated or not, for "Top priorities".
       pool.query<Item>(
-        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+        `SELECT i.* FROM items i WHERE ${visibleItems()}
          AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
        ORDER BY i.due_at NULLS LAST LIMIT 300`,
         [userId],

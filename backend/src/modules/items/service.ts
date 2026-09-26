@@ -16,7 +16,7 @@ import {
   type Status,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { requireTeam } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { followTaskState } from "../docs/task-lines.js";
 import { openAsk } from "../followthrough/asks.js";
@@ -35,6 +35,7 @@ import {
 } from "./attendees.js";
 import { carryEventNotes } from "./notes.js";
 
+import { visibleItems } from "../../lib/visibility.js";
 type Actor = { id: string; role: "admin" | "member" };
 
 export type ItemRow = Item & {
@@ -500,7 +501,7 @@ async function setPrerequisites(
     const visible = (
       await db.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM items i
-          WHERE i.id = ANY($2::uuid[]) AND i.kind = 'task' AND (${VISIBLE_ITEMS})`,
+          WHERE i.id = ANY($2::uuid[]) AND i.kind = 'task' AND (${visibleItems()})`,
         [actor.id, wanted],
       )
     ).rows[0].n;

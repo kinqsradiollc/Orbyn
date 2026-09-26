@@ -24,7 +24,6 @@ import { docVisibleTo } from "../../lib/doc-visibility.js";
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { audit } from "../../lib/audit.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { pruneActions } from "./guards.js";
 import { ProviderError } from "./providers/adapters.js";
@@ -46,6 +45,11 @@ import { requireTeam } from "../../lib/teams.js";
 import { applySessionChange } from "./session-change.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
 
+import {
+  visibleItems,
+  visibleProjects,
+  visibleRecords,
+} from "../../lib/visibility.js";
 /**
  * The request that decides whether changes are allowed. A short reply to the
  * assistant's own question ("the second one") carries the request it answers.
@@ -77,8 +81,7 @@ async function scopeOverview(
   if (scope.kind === "project") {
     const visible = await pool.query(
       `SELECT 1 FROM projects p WHERE p.id = $2
-        AND ((p.team_id IS NULL AND p.user_id = $1)
-          OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+        AND ${visibleProjects("p")}`,
       [u.id, scope.id],
     );
     if (!visible.rows.length) fail(404, "Project not found");
@@ -120,7 +123,7 @@ async function scopeOverview(
     };
   }
   const visible = await pool.query(
-    `SELECT 1 FROM items i WHERE i.id = $2 AND i.kind = 'task' AND ${VISIBLE_ITEMS}`,
+    `SELECT 1 FROM items i WHERE i.id = $2 AND i.kind = 'task' AND ${visibleItems()}`,
     [u.id, scope.id],
   );
   if (!visible.rows.length) fail(404, "Task not found");
@@ -128,7 +131,7 @@ async function scopeOverview(
   const [children, source] = await Promise.all([
     pool.query<{ id: string; title: string; status: string }>(
       `SELECT i.id, i.title, i.status FROM items i
-        WHERE i.parent_id = $2 AND ${VISIBLE_ITEMS}
+        WHERE i.parent_id = $2 AND ${visibleItems()}
         ORDER BY i.created_at LIMIT 12`,
       [u.id, scope.id],
     ),
@@ -321,7 +324,7 @@ async function answer(
     );
     const items = (
       await pool.query(
-        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+        `SELECT i.* FROM items i WHERE ${visibleItems()}
            AND (i.id = ANY($2::uuid[]) OR lower(i.title) = ANY($3))`,
         [u.id, ids, titles],
       )
@@ -647,8 +650,7 @@ export async function aiRoutes(app: FastifyInstance) {
                 updated_at = now()
               WHERE w.id = $2 AND w.kind = 'decision' AND w.status = 'open'
                 AND w.linked_item_id IS NULL AND w.project_id = $3
-                AND ((w.team_id IS NULL AND w.created_by = $4)
-                  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $4))`,
+                AND ${visibleRecords("w", { user: "$4" })}`,
             [item.id, link.decision_id, item.project_id, u.id],
           );
           if (!linked.rowCount)

@@ -24,7 +24,7 @@ import {
 } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import {
   COLUMNS as DOC_COLUMNS,
@@ -38,6 +38,11 @@ import {
   type EventRow,
 } from "../docs/routes.js";
 
+import {
+  readableDocs,
+  visibleItems,
+  visiblePageTemplates,
+} from "../../lib/visibility.js";
 /**
  * Page templates (DAY-02): the starters everyone has, your own, and your
  * teams'. They work the way project templates do — starters served from
@@ -78,8 +83,7 @@ const JOINS = `LEFT JOIN teams tm ON tm.id = t.team_id
   LEFT JOIN folders f ON f.id = t.folder_id`;
 
 /** Templates `$1` can see: their own, and their teams'. */
-const VISIBLE = `((t.team_id IS NULL AND t.user_id = $1)
-  OR t.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = visiblePageTemplates("t");
 
 function toTemplate(u: UserRow, r: Row): PageTemplate {
   return {
@@ -236,7 +240,7 @@ async function usePageTemplate(
     ? ((
         await db.query<EventRow>(
           `SELECT ${EVENT_COLUMNS} FROM items i
-            WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+            WHERE i.id = $2 AND ${visibleItems()}`,
           [u.id, input.event_id],
         )
       ).rows[0] ?? fail(404, "Event not found"))
@@ -465,9 +469,7 @@ export async function pageTemplateRoutes(app: FastifyInstance) {
           }>(
             `SELECT d.title, d.content, d.team_id, d.folder_id FROM docs d
               WHERE d.id = $2 AND d.deleted_at IS NULL
-                AND ((d.team_id IS NULL AND d.user_id = $1)
-                  OR d.team_id IN (SELECT team_id FROM team_members
-                                    WHERE user_id = $1))`,
+                AND ${readableDocs("d")}`,
             [u.id, docId],
           )
         ).rows[0];

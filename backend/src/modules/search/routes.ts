@@ -2,10 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { searchQuery, type SearchHit } from "@orbyn/core";
 import { reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { nearest } from "./semantic.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 
+import { visibleItems, visibleRecords } from "../../lib/visibility.js";
 /**
  * One search across pages and tasks (and, within a project, its records).
  * The project page's search box and the assistant's search_docs both use it.
@@ -151,7 +151,7 @@ export async function searchRoutes(app: FastifyInstance) {
                FROM items i
                LEFT JOIN projects p ON p.id = i.project_id
                CROSS JOIN q
-              WHERE ${VISIBLE_ITEMS}
+              WHERE ${visibleItems()}
                 AND (i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
                 AND ($3::uuid IS NULL OR i.project_id = $3)
                 AND ($4::uuid IS NULL OR i.team_id = $4)
@@ -179,9 +179,7 @@ export async function searchRoutes(app: FastifyInstance) {
                FROM work_records w
                LEFT JOIN projects p ON p.id = w.project_id
                CROSS JOIN q
-              WHERE ((w.team_id IS NULL AND w.created_by = $1)
-                     OR w.team_id IN (SELECT team_id FROM team_members
-                                       WHERE user_id = $1))
+              WHERE ${visibleRecords("w")}
                 AND (to_tsvector('english', w.title || ' ' || w.details) @@ q.tsq
                      OR similarity(w.title, $2) > 0.25)
                 AND ($3::uuid IS NULL OR w.project_id = $3)

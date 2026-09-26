@@ -15,9 +15,9 @@ import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 
+import { readableDocs } from "../../lib/visibility.js";
 /** Pages `$1` can see: their own, and their teams'. */
-const VISIBLE = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = readableDocs("d");
 
 /**
  * Organizational memory decay: pages nobody has changed or confirmed in

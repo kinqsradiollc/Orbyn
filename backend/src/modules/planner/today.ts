@@ -7,13 +7,13 @@ import {
   type TodayList,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { calendarEntries, loadPrefs, timeBlocks } from "./calendar.js";
 import { FIT_COLUMNS, fitsFor, sessionsFor, type FitRow } from "./planned.js";
 import { unfinishedBlocks } from "./plans.js";
 import { withSessionFacts } from "./sessions.js";
 import { externalEntries } from "./subscriptions.js";
 
+import { visibleItems } from "../../lib/visibility.js";
 /** Open tasks looked at for "due today" and "late", at most. */
 const DUE_LIMIT = 1000;
 
@@ -43,7 +43,7 @@ export async function todayFor(
     db.query<FitRow>(
       `SELECT ${FIT_COLUMNS}
        FROM items i
-       WHERE ${VISIBLE_ITEMS} AND i.kind = 'task'
+       WHERE ${visibleItems()} AND i.kind = 'task'
          AND i.status NOT IN ('done', 'cancelled') AND i.due_at IS NOT NULL
          AND i.due_at < $2
          AND ((i.team_id IS NULL AND i.user_id = $1) OR i.assignee_id = $1)

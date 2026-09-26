@@ -10,6 +10,7 @@ import { pool, reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { loadPrefs } from "../planner/calendar.js";
 
+import { inMyTeams } from "../../lib/visibility.js";
 /** A brief stays up for this long after coming back, unless dismissed. */
 const SHOW_DAYS = 3;
 const LIMIT = 5;
@@ -121,7 +122,7 @@ export async function reentryRoutes(app: FastifyInstance) {
       ),
       db.query<{ id: string; title: string; team: string }>(
         `SELECT d.id, d.title, t.name AS team FROM docs d JOIN teams t ON t.id = d.team_id
-          WHERE d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+          WHERE ${inMyTeams("d")}
             AND d.updated_at >= $2 AND d.kind = 'doc' AND d.deleted_at IS NULL
           ORDER BY d.updated_at DESC LIMIT ${LIMIT}`,
         [u.id, since],

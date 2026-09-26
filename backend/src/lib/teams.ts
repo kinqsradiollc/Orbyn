@@ -68,6 +68,3 @@ export async function requireTeam(
     );
   return { name: team.name, role, effective };
 }
-
-/** SQL predicate (on alias `i`) for items `$1` can see: their own personal items and their teams' items. */
-export const VISIBLE_ITEMS = `((i.team_id IS NULL AND i.user_id=$1) OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id=$1))`;

@@ -34,7 +34,7 @@ import type { QueryResult } from "pg";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { createHabit } from "../planner/habits.js";
 import { largestFreeMinutes } from "../planner/plans.js";
@@ -58,6 +58,12 @@ import {
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 
+import {
+  inMyTeams,
+  visibleItems,
+  visibleOwned,
+  visibleProjects,
+} from "../../lib/visibility.js";
 type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
 /** Runs queries on a transaction client. */
 const via =
@@ -208,7 +214,7 @@ export async function itemRoutes(app: FastifyInstance) {
       .filter(Boolean)
       .slice(0, 6)
       .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    const where = `${VISIBLE_ITEMS} AND ($2::uuid IS NULL OR i.team_id=$2)
+    const where = `${visibleItems()} AND ($2::uuid IS NULL OR i.team_id=$2)
            AND ($3::uuid IS NULL OR i.list_id=$3)
            AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$4))
            AND ($5::uuid IS NULL OR i.assignee_id=$5)
@@ -256,8 +262,7 @@ export async function itemRoutes(app: FastifyInstance) {
             await db.query<{ id: string; deleted_at: Date; sync_us: string }>(
               `SELECT d.item_id AS id, d.deleted_at, ${SYNC_US("d.deleted_at")}
                FROM deleted_items d
-               WHERE ((d.team_id IS NULL AND d.user_id = $1)
-                   OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+               WHERE ${visibleOwned("d", "user_id")}
                  AND ($2::uuid IS NULL OR d.team_id = $2)
                  AND ${AFTER("d.deleted_at", "d.item_id", "$3", "$4")}
                ORDER BY d.deleted_at, d.item_id LIMIT $5`,
@@ -392,8 +397,7 @@ export async function itemRoutes(app: FastifyInstance) {
       const u = await authenticate(r);
       const d = quickAddInput.parse(r.body);
       const timeZone = d.timezone ?? (await loadPrefs(pool, u.id)).timezone;
-      const mine = `(x.team_id IS NULL AND x.user_id = $1)
-        OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`;
+      const mine = visibleOwned("x", "user_id");
       const [lists, tags, members] = await Promise.all([
         pool.query<QuickAddList>(
           `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
@@ -407,7 +411,7 @@ export async function itemRoutes(app: FastifyInstance) {
         pool.query<QuickAddMember>(
           `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
            FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
-           WHERE m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+           WHERE ${inMyTeams("m")}
            GROUP BY p.id, p.name, p.email`,
           [u.id],
         ),
@@ -471,8 +475,7 @@ export async function itemRoutes(app: FastifyInstance) {
                     s.id AS stage_id, s.name AS stage_name
                FROM projects p LEFT JOIN project_stages s
                  ON s.id = $2 AND s.project_id = p.id
-              WHERE p.id = $1 AND ((p.team_id IS NULL AND p.user_id = $3)
-                OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $3))`,
+              WHERE p.id = $1 AND ${visibleProjects("p", { user: "$3" })}`,
             [item.project_id, item.stage_id, u.id],
           )
         ).rows[0] ?? null)

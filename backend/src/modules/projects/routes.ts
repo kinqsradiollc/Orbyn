@@ -26,6 +26,7 @@ import { makeProjectPlan } from "../planner/plans.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { z } from "zod";
 
+import { visibleProjects } from "../../lib/visibility.js";
 /**
  * Projects group planner tasks into a named piece of work with ordered
  * stages. Personal projects belong to their creator; team projects follow the
@@ -43,8 +44,7 @@ const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summ
   ${PROJECT_COUNTS}`;
 
 /** Projects `$1` can see: their own, and their teams'. */
-const VISIBLE = `((p.team_id IS NULL AND p.user_id = $1)
-  OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = visibleProjects("p");
 
 type Owned = { id: string; user_id: string; team_id: string | null };
 

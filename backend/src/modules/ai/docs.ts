@@ -16,6 +16,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 
+import { readableDocs } from "../../lib/visibility.js";
 /**
  * The assistant, inside a page.
  *
@@ -48,9 +49,7 @@ export async function aiDocRoutes(app: FastifyInstance) {
       }>(
         `SELECT d.id, d.title, d.content, d.team_id FROM docs d
           WHERE d.id = $2 AND d.deleted_at IS NULL
-            AND ((d.team_id IS NULL AND d.user_id = $1)
-                 OR d.team_id IN (SELECT team_id FROM team_members
-                                   WHERE user_id = $1))`,
+            AND ${readableDocs("d")}`,
         [userId, id],
       )
     ).rows[0];

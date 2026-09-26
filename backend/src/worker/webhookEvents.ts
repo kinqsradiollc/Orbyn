@@ -2,6 +2,7 @@ import { pool } from "../db/pool.js";
 import { queueWebhookFor, queueWebhooks } from "../lib/webhooks.js";
 import { blocksTime, calendarEntries } from "../modules/planner/calendar.js";
 
+import { visibleItems } from "../lib/visibility.js";
 /**
  * Webhook events the notifier sends on a schedule rather than on a change:
  * `event.starting` before each busy event and `block.started` when a time
@@ -75,8 +76,7 @@ export async function scanBlocksStarted(now = new Date()) {
       `SELECT b.id, b.user_id, b.item_id, i.title, b.start_at, b.end_at
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.start_at <= $1 AND b.start_at > $1::timestamptz - make_interval(secs => $2)
-         AND ((i.team_id IS NULL AND i.user_id = b.user_id)
-           OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id = b.user_id))
+         AND ${visibleItems("i", { user: "b.user_id" })}
          AND EXISTS (SELECT 1 FROM webhooks w WHERE w.user_id = b.user_id AND w.active
                      AND 'block.started' = ANY (w.events))
        LIMIT 2000`,

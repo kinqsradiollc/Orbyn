@@ -15,6 +15,7 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 
+import { visibleRecords } from "../../lib/visibility.js";
 type Scope = { created_by: string; team_id: string | null };
 type RecordRow = Scope & {
   id: string;
@@ -36,8 +37,7 @@ const JOINS = `LEFT JOIN docs src ON src.id = w.source_doc_id
   LEFT JOIN items linked ON linked.id = w.linked_item_id
     AND linked.team_id IS NOT DISTINCT FROM w.team_id
     AND (w.team_id IS NOT NULL OR linked.user_id = w.created_by)`;
-const VISIBLE = `((w.team_id IS NULL AND w.created_by = $1)
-  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = visibleRecords("w");
 
 const listQuery = z
   .object({

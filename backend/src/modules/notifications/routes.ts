@@ -3,8 +3,8 @@ import { fail } from "@orbyn/core";
 import { pool, reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 
+import { visibleItems } from "../../lib/visibility.js";
 /**
  * The in-app notification tray: reminders and conflicts (tied to an item the
  * person can still see) and booking notices (tied to a booking, in `ref`).
@@ -17,7 +17,7 @@ export async function notificationRoutes(app: FastifyInstance) {
         `SELECT n.id, n.title, n.body, n.read, n.created_at, n.kind, n.item_id, n.ref
          FROM notifications n LEFT JOIN items i ON i.id = n.item_id
          WHERE n.user_id = $1 AND n.channel = 'inapp'
-           AND (n.item_id IS NULL OR ${VISIBLE_ITEMS})
+           AND (n.item_id IS NULL OR ${visibleItems()})
          ORDER BY n.created_at DESC LIMIT 100`,
         [u.id],
       )
@@ -30,7 +30,7 @@ export async function notificationRoutes(app: FastifyInstance) {
       `UPDATE notifications n SET read = true
        WHERE n.id = $2 AND n.user_id = $1 AND n.channel = 'inapp'
          AND (n.item_id IS NULL
-           OR EXISTS (SELECT 1 FROM items i WHERE i.id = n.item_id AND ${VISIBLE_ITEMS}))`,
+           OR EXISTS (SELECT 1 FROM items i WHERE i.id = n.item_id AND ${visibleItems()}))`,
       [u.id, idParam(r)],
     );
     if (!result.rowCount) fail(404, "Notification not found");

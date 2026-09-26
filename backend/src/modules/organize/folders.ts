@@ -12,6 +12,11 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 
+import {
+  readableDocs,
+  visibleFolders,
+  visibleOwned,
+} from "../../lib/visibility.js";
 /**
  * Folders group documents inside a workspace, and favourites pin the few
  * things someone keeps coming back to. Folders are flat by design; personal
@@ -22,11 +27,9 @@ import { requireTeam } from "../../lib/teams.js";
 const COLUMNS = `f.id, f.user_id, f.team_id, f.name, f.position, f.created_at,
   (SELECT count(*)::int FROM docs d WHERE d.folder_id = f.id
      AND d.deleted_at IS NULL
-     AND ((d.team_id IS NULL AND d.user_id = $1)
-       OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))) AS doc_count`;
+     AND ${readableDocs("d")}) AS doc_count`;
 
-const VISIBLE = `((f.team_id IS NULL AND f.user_id = $1)
-  OR f.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = visibleFolders("f");
 
 async function requireFolder(
   db: Db,
@@ -138,8 +141,7 @@ export async function folderRoutes(app: FastifyInstance) {
         await pool.query(
           `SELECT 1 FROM ${table} x WHERE x.id = $2
              ${table === "docs" ? "AND x.deleted_at IS NULL" : ""}
-             AND ((x.team_id IS NULL AND x.user_id = $1)
-               OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+             AND ${visibleOwned("x", "user_id")}`,
           [u.id, body.target_id],
         )
       ).rowCount;

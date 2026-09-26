@@ -30,7 +30,7 @@ import { upNext } from "../../planner/next.js";
 import { loadPrefs } from "../../planner/calendar.js";
 import { planMarkdown } from "./planText.js";
 import { pool } from "../../../db/pool.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../../lib/teams.js";
+import { requireTeam } from "../../../lib/teams.js";
 import { mayChange, wantsDeletion } from "../guards.js";
 import { localIso } from "../snapshot.js";
 import type { JsonSchema, ToolCall, ToolSpec } from "./protocol.js";
@@ -50,11 +50,16 @@ import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/routes.js";
 
+import {
+  visibleItems,
+  visibleProjects,
+  visibleRecords,
+} from "../../../lib/visibility.js";
 export { toInstant, whenLabel };
 
 /**
  * The assistant's tools. Reads only ever see the signed-in user's own items
- * and their teams' items (VISIBLE_ITEMS with the session's user id; nothing
+ * and their teams' items (visibleItems() with the session's user id; nothing
  * the model sends can widen it). Proposal tools validate each item and collect
  * changes for the user to approve; nothing is written until they do.
  */
@@ -263,7 +268,7 @@ const PROPOSED =
 export async function overview(ctx: AgentContext) {
   const rows = (
     await pool.query<Row>(
-      `${ITEM_SELECT} WHERE ${VISIBLE_ITEMS}
+      `${ITEM_SELECT} WHERE ${visibleItems()}
          AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '7 days')
        ORDER BY (i.due_at IS NULL), i.due_at, i.updated_at DESC LIMIT 500`,
       [ctx.user.id],
@@ -356,7 +361,7 @@ export async function related(ctx: AgentContext, message: string) {
            (SELECT count(*) FROM unnest($2::text[]) w
             WHERE lower(i.title) LIKE '%' || w || '%') AS hits
          FROM items i LEFT JOIN teams t ON t.id = i.team_id
-         WHERE ${VISIBLE_ITEMS}
+         WHERE ${visibleItems()}
            AND ($3::uuid IS NULL OR i.project_id = $3)
            AND ($4::uuid IS NULL OR i.id = $4)
            AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '14 days')
@@ -392,7 +397,7 @@ const searchArgs = z
   .strict();
 
 async function search(ctx: AgentContext, a: z.output<typeof searchArgs>) {
-  const where = [VISIBLE_ITEMS];
+  const where = [visibleItems()];
   const values: unknown[] = [ctx.user.id];
   const add = (sql: string, value: unknown) => {
     values.push(value);
@@ -468,7 +473,7 @@ async function visibleItem(ctx: AgentContext, id: string): Promise<Row | null> {
   const row =
     (
       await pool.query<Row>(
-        `${ITEM_SELECT} WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+        `${ITEM_SELECT} WHERE i.id = $2 AND ${visibleItems()}`,
         [ctx.user.id, id],
       )
     ).rows[0] ?? null;
@@ -663,8 +668,7 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
             `SELECT w.id, w.title FROM work_records w
               WHERE w.id = $2 AND w.project_id = $3 AND w.kind = 'decision'
                 AND w.status = 'open' AND w.linked_item_id IS NULL
-                AND ((w.team_id IS NULL AND w.created_by = $1)
-                  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+                AND ${visibleRecords("w")}`,
             [ctx.user.id, d.decision_id, data.project_id],
           )
         ).rows[0];
@@ -715,7 +719,7 @@ async function proposeCreate(ctx: AgentContext, a: { items: Draft[] }) {
       if (full(ctx)) throw new Error(TOO_MANY);
       const existing = (
         await pool.query<{ id: string }>(
-          `SELECT i.id FROM items i WHERE ${VISIBLE_ITEMS} AND lower(i.title) = lower($2)
+          `SELECT i.id FROM items i WHERE ${visibleItems()} AND lower(i.title) = lower($2)
              AND i.kind = $3 AND i.due_at IS NOT DISTINCT FROM $4::timestamptz LIMIT 1`,
           [ctx.user.id, data.title, data.kind, data.due_at],
         )
@@ -798,7 +802,7 @@ async function sameTitleIds(
   const rows = (
     await pool.query<{ id: string; title: string }>(
       `SELECT i.id, lower(trim(i.title)) AS title FROM items i
-       WHERE ${VISIBLE_ITEMS} AND i.id = ANY($2::uuid[])`,
+       WHERE ${visibleItems()} AND i.id = ANY($2::uuid[])`,
       [ctx.user.id, picked],
     )
   ).rows;
@@ -2057,9 +2061,7 @@ async function draftNote(
         await pool.query<{ id: string; name: string; team_id: string | null }>(
           `SELECT p.id, p.name, p.team_id FROM projects p
             WHERE p.id = $2
-              AND ((p.team_id IS NULL AND p.user_id = $1)
-                   OR p.team_id IN (SELECT team_id FROM team_members
-                                     WHERE user_id = $1))`,
+              AND ${visibleProjects("p")}`,
           [ctx.user.id, a.project_id],
         )
       ).rows[0] ?? null;
@@ -2076,7 +2078,7 @@ async function draftNote(
           team_id: string | null;
           project_id: string | null;
         }>(
-          `SELECT i.id, i.team_id, i.project_id FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+          `SELECT i.id, i.team_id, i.project_id FROM items i WHERE i.id = $2 AND ${visibleItems()}`,
           [ctx.user.id, a.item_id],
         )
       ).rows[0] ?? null;
@@ -2085,8 +2087,7 @@ async function draftNote(
       (
         await pool.query<{ id: string; name: string; team_id: string | null }>(
           `SELECT p.id, p.name, p.team_id FROM projects p
-            WHERE p.id = $2 AND ((p.team_id IS NULL AND p.user_id = $1)
-              OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+            WHERE p.id = $2 AND ${visibleProjects("p")}`,
           [ctx.user.id, item.project_id],
         )
       ).rows[0] ?? null;

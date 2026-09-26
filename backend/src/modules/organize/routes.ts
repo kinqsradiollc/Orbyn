@@ -13,6 +13,7 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 
+import { visibleOwned } from "../../lib/visibility.js";
 /**
  * Lists and tags. Personal ones belong to their creator; team ones follow
  * team roles like team items do (viewers read, members and above write).
@@ -21,8 +22,7 @@ const LIST_COLUMNS = `l.id, l.user_id, l.team_id, t.name AS team_name, l.name, l
   (SELECT count(*)::int FROM items i WHERE i.list_id = l.id AND i.status NOT IN ('done', 'cancelled')) AS item_count`;
 
 /** Rows `$1` can see: their own personal ones and their teams' ones. */
-const VISIBLE = (alias: string) =>
-  `((${alias}.team_id IS NULL AND ${alias}.user_id = $1) OR ${alias}.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE = (alias: string) => visibleOwned(alias, "user_id");
 
 type Owned = { id: string; user_id: string; team_id: string | null };
 
