@@ -3,7 +3,9 @@ module.exports = (config) => ({
   type: "widget",
   name: "OrbynWidget",
   displayName: "Orbyn",
-  frameworks: ["SwiftUI", "WidgetKit"],
+  // AppIntents for ticking and choosing what a widget shows, ActivityKit
+  // for the focus session's Live Activity (D5: CAP-05, CAP-06).
+  frameworks: ["SwiftUI", "WidgetKit", "AppIntents", "ActivityKit"],
   // The brand accent (matches the app palette in docs/mobile.md); the widget
   // references it as Color("accent"). Not a palette change — the same value.
   colors: { $accent: "#376c51" },

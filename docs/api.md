@@ -2961,3 +2961,67 @@ would take over the budget.
 to add); `DELETE /items/:id/proofs/:proofId`.
 `GET /progress?from=&to=&team_id=` → what got done, by person, with each task's proof, and the
 same as `markdown`. Without `team_id`, your own personal tasks.
+
+## Later pages, navigation and capture (D5)
+
+### Stars (NAV-07)
+
+- `PUT /favourites` `{ kind, target_id, block_id?, starred }`: `kind` is `doc`, `project`, `view`,
+  `task` or `heading` (a heading's star is its page's id plus the line's `block_id`, and only a
+  heading's star has one). 404 for something you can't open; at most 500 stars.
+- `GET /starred` → `StarredItem[]`: every star with its live title and where it is, newest first.
+  Stars on things you can no longer open, and headings whose line is gone, are left out.
+
+### Choices that follow the account (NAV-08, NAV-09, SHR-08)
+
+- `GET /me/prefs` → `{ sidebar: { order, hidden }, shortcuts, views, updated_at }` (defaults
+  until something is chosen).
+- `PUT /me/prefs` `{ sidebar?, shortcuts?, views? }`: the sidebar's arrangement and shortcuts are
+  replaced whole; view choices are merged by place (`null` clears one). A shortcut must name a
+  command and keys can do only one thing (400). Refused for personal API keys. 30 a minute.
+- `DELETE /me/prefs`: everything back as it came.
+
+What opens at start (NAV-12), the theme and text size stay on each device.
+
+### Archiving and tidying the library (SRCH-03, ORG-03)
+
+- `PUT /docs/:id/archive` and `PUT /folders/:id/archive` `{ archived }`. Archived pages (and pages
+  in an archived folder) leave `GET /docs`, `/find`, `/search`, the link picker and "Mentioned
+  without a link"; they still open, and their links still work. `GET /docs?archived=include|only`,
+  `/find?include_archived=true` and `/search?include_archived=true` include them.
+- `POST /docs/bulk` `{ ids (≤100), folder_id?, archived?, tag_id? }` → `{ done, skipped }`: each
+  page is checked as if changed alone; one you can't change is skipped, not an error.
+
+### The Connections map (CNV-02)
+
+`GET /links/map?kind=doc|project&id=&depth=1|2` → `{ nodes, edges, truncated }`: what a page or
+project is linked to, from the link index and a project's own tasks, at most 36 things. Only what
+the reader can open is on it; people and dates are ends.
+
+### A team's switches (OTH-04)
+
+`GET /teams/:id/policies` → `{ publishing, assistant, booking, can_change }`; `PUT` (owners and
+admins) with any of the three. With `assistant` off, the page assistant, assistant chips, Study's
+suggestions and the chat's page tools refuse or leave out the team's pages, and semantic search
+doesn't measure them. With `booking` off, the team's public booking pages answer 404 until it's
+on again.
+
+### Recordings (CAP-10)
+
+Recordings are page files (`audio/webm`, `audio/mp4`, `audio/mpeg`, `audio/ogg`, `audio/wav`,
+`audio/aac`) and play in the page. `POST /ai/recordings/:fileId/summary` `{ transcript? }` →
+`{ transcript, summary, actions[] }`, only when asked: the recording is written out by the
+assistant's provider (`AI_TRANSCRIBE_MODEL`, default `whisper-1`, on its `/audio/transcriptions`;
+the ai service fetches the file from the file store at `FILES_URL` and needs `FILES_SECRET`), then
+summarised. Nothing changes on the page until the person adds the summary.
+
+### The Orbyn Clipper (CAP-02, CAP-03, CAP-04)
+
+- `GET` / `POST /me/clip-keys`, `DELETE /me/clip-keys/:id` (signed in; refused for API keys): a
+  Clipper key (`ocl_…`) is shown once.
+- `GET /clips/destinations` and `POST /clips` accept a Clipper key (or a session). A Clipper key is
+  refused everywhere else (401). `POST /clips` `{ type: article|paper|assignment|read_later|
+highlights, url, title?, html?, selection?, highlights?, highlights_as?, folder_id?, project_id?,
+team_id?, doc_id?, due_at?, time_zone?, dry_run? }`. The page's HTML is cleaned here: only its
+  readable part is kept, with web links; `orbyn://` in clipped words is written harmlessly. An
+  assignment's deadline is read only from a full date on the page. 60 a minute.

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Orbyn's palette for the widget, the same values as @orbyn/core colors. -->
+<resources>
+    <color name="orbyn_surface">#FFFFFF</color>
+    <color name="orbyn_text">#27382F</color>
+    <color name="orbyn_muted">#849089</color>
+    <color name="orbyn_accent">#376C51</color>
+    <color name="orbyn_on_accent">#FFFFFF</color>
+    <string name="orbyn_widget_description">Tick today\'s tasks and add a new one.</string>
+    <string name="orbyn_tile_label">Add to Orbyn</string>
+    <style name="OrbynWidgetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:visibility">gone</item>
+    </style>
+    <style name="OrbynWidgetTick">
+        <item name="android:layout_width">32dp</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:padding">5dp</item>
+        <item name="android:src">@drawable/orbyn_tick</item>
+    </style>
+    <style name="OrbynWidgetTitle">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/orbyn_text</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+</resources>

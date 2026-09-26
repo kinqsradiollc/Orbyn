@@ -8,6 +8,23 @@ import type { Item } from "./types.js";
 
 export type GlanceEvent = { title: string; at: string };
 
+/**
+ * A task a widget lists, to tick from the widget (CAP-06): overdue ones
+ * first, then today's, then the next few due soon. `due` is its deadline.
+ */
+export type GlanceTask = {
+  id: string;
+  title: string;
+  due: string | null;
+  overdue: boolean;
+  /** Its list's and project's names, for a widget set to one of them. */
+  list: string | null;
+  project: string | null;
+};
+
+/** How many tasks a glance lists: a large widget's worth. */
+export const GLANCE_TASKS = 6;
+
 export type Glance = {
   /** When this glance was computed (ISO instant). */
   updatedAt: string;
@@ -19,6 +36,8 @@ export type Glance = {
   overdue: number;
   /** The next event starting now or later, or null. */
   nextEvent: GlanceEvent | null;
+  /** Tasks to tick from a widget, most pressing first (CAP-06). */
+  tasks?: GlanceTask[];
 };
 
 const ACTIVE_EVENT = (s: string) => s !== "cancelled" && s !== "done";
@@ -31,6 +50,9 @@ export function buildGlance(
     timeZone: string;
     /** Timed events from subscribed calendars (a class, a shift), for "next". */
     external?: { title: string; start_at: string; all_day: boolean }[];
+    /** Names for lists and projects, so a widget can show just one. */
+    lists?: { id: string; name: string }[];
+    projects?: { id: string; name: string }[];
   },
 ): Glance {
   const now = opts.now ?? new Date();
@@ -40,12 +62,34 @@ export function buildGlance(
   let todayDone = 0;
   let overdue = 0;
   let next: { title: string; at: string; ms: number } | null = null;
+  const listed: (GlanceTask & { ms: number })[] = [];
 
+  const names = (it: Item) => ({
+    list: opts.lists?.find((l) => l.id === it.list_id)?.name ?? null,
+    project: opts.projects?.find((p) => p.id === it.project_id)?.name ?? null,
+  });
   for (const it of items) {
+    // A task with no deadline can still be ticked from a widget, after the
+    // ones with deadlines.
+    if (
+      !it.due_at &&
+      it.kind === "task" &&
+      it.status !== "done" &&
+      it.status !== "cancelled"
+    )
+      listed.push({
+        id: it.id,
+        title: it.title,
+        due: null,
+        overdue: false,
+        ...names(it),
+        ms: Number.POSITIVE_INFINITY,
+      });
     if (!it.due_at) continue;
     if (it.kind === "task") {
       // The deadline's day: an all-day task is due today until it's over.
-      const dayKey = localDateKey(dueDayAt(it)!, tz);
+      const deadline = dueDayAt(it)!;
+      const dayKey = localDateKey(deadline, tz);
       if (it.status === "done") {
         if (dayKey === todayKey) todayDone++;
       } else if (dayKey === todayKey) {
@@ -53,6 +97,15 @@ export function buildGlance(
       } else if (dayKey < todayKey) {
         overdue++;
       }
+      if (it.status !== "done" && it.status !== "cancelled")
+        listed.push({
+          id: it.id,
+          title: it.title,
+          due: deadline.toISOString(),
+          overdue: dayKey < todayKey,
+          ...names(it),
+          ms: deadline.getTime(),
+        });
     } else if (it.kind === "event" && ACTIVE_EVENT(it.status)) {
       const ms = new Date(it.due_at).getTime();
       if (ms >= now.getTime() && (!next || ms < next.ms))
@@ -73,5 +126,9 @@ export function buildGlance(
     todayDone,
     overdue,
     nextEvent: next ? { title: next.title, at: next.at } : null,
+    tasks: listed
+      .sort((a, b) => Number(b.overdue) - Number(a.overdue) || a.ms - b.ms)
+      .slice(0, GLANCE_TASKS)
+      .map(({ ms: _ms, ...t }) => t),
   };
 }

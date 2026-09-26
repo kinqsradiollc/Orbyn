@@ -4,6 +4,12 @@ import {
   arrangeEntries,
   articleBlocks,
   BUILT_IN_CLIP_RULES,
+  buildGlance,
+  NATIVE_KEYS,
+  parseAppLink,
+  readPending,
+  SIRI_ACTIONS,
+  withoutSent,
   cellText,
   clipTypeFor,
   clozeLine,
@@ -399,4 +405,171 @@ test("the Clipper extension is Manifest V3, asks for little, and shapes clips as
     "https://blog.example.com/post",
   ])
     assert.equal(shared.clipTypeFor(url), clipTypeFor(url), url);
+});
+
+// ------------------------------------------- native capture (CAP-05..09)
+
+test("ticks and captures made outside the app are read back safely and sent once", () => {
+  const raw = JSON.stringify({
+    captures: [
+      { id: "a", text: " Buy milk ", to: "inbox", at: "2026-09-27T01:00:00Z" },
+      { id: "a", text: "Buy milk again", to: "inbox" },
+      { id: "b", text: "Call Ben", to: "agenda" },
+      { id: "c", text: "   " },
+      { text: "no id" },
+    ],
+    ticks: [
+      { item: "11111111-1111-4111-8111-111111111111" },
+      { item: "11111111-1111-4111-8111-111111111111" },
+      { item: "not-a-task" },
+    ],
+  });
+  const q = readPending(raw);
+  assert.deepEqual(
+    q.captures.map((c) => [c.id, c.text, c.to]),
+    [
+      ["a", "Buy milk", "inbox"],
+      ["b", "Call Ben", "agenda"],
+    ],
+  );
+  assert.equal(q.ticks.length, 1);
+  assert.deepEqual(readPending("{nope"), { captures: [], ticks: [] });
+  assert.deepEqual(readPending(null), { captures: [], ticks: [] });
+  const left = withoutSent(q, { captures: ["a"], ticks: [] });
+  assert.deepEqual(
+    left.captures.map((c) => c.id),
+    ["b"],
+  );
+  assert.equal(left.ticks.length, 1);
+  assert.deepEqual(parseAppLink("orbyn://focus"), { kind: "focus" });
+});
+
+test("the glance lists tasks to tick, overdue first, with their list", () => {
+  const now = new Date("2026-09-27T09:00:00Z");
+  const items = [
+    {
+      id: "t1",
+      title: "Later",
+      kind: "task",
+      status: "todo",
+      due_at: "2026-09-29T09:00:00Z",
+      list_id: "l1",
+    },
+    {
+      id: "t2",
+      title: "Late",
+      kind: "task",
+      status: "todo",
+      due_at: "2026-09-25T09:00:00Z",
+    },
+    { id: "t3", title: "No date", kind: "task", status: "todo", due_at: null },
+    {
+      id: "t4",
+      title: "Done",
+      kind: "task",
+      status: "done",
+      due_at: "2026-09-27T09:00:00Z",
+    },
+  ] as unknown as Parameters<typeof buildGlance>[0];
+  const g = buildGlance(items, {
+    now,
+    timeZone: "UTC",
+    lists: [{ id: "l1", name: "Physics" }],
+  });
+  assert.deepEqual(
+    g.tasks?.map((t) => t.title),
+    ["Late", "Later", "No date"],
+  );
+  assert.equal(g.tasks?.[0].overdue, true);
+  assert.equal(g.tasks?.[1].list, "Physics");
+});
+
+test("the native pieces are all there: widget, controls, Siri, the tile and the icons", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { createRequire } = await import("node:module");
+  const at = (rel: string) =>
+    fileURLToPath(new URL(`../../mobile/${rel}`, import.meta.url));
+  const widget = [
+    "index",
+    "Glance",
+    "Intents",
+    "TodayWidget",
+    "NextUpWidget",
+    "Controls",
+    "FocusActivity",
+  ]
+    .map((f) => readFileSync(at(`targets/widget/${f}.swift`), "utf8"))
+    .join("\n");
+  for (const piece of [
+    "TickTaskIntent",
+    "AppIntentConfiguration",
+    "accessoryRectangular",
+    "ControlWidget",
+    "ActivityConfiguration",
+    "OrbynFocusAttributes",
+  ])
+    assert.ok(widget.includes(piece), piece);
+  // The Live Activity's attributes are the same type in the app's module.
+  const moduleAttrs = readFileSync(
+    at("modules/orbyn-capture/ios/OrbynFocusAttributes.swift"),
+    "utf8",
+  );
+  for (const field of [
+    "var endsAt: Date",
+    "var paused: Bool",
+    "var title: String",
+  ]) {
+    assert.ok(moduleAttrs.includes(field), field);
+    assert.ok(widget.includes(field), field);
+  }
+  // Every Siri action is in the app's intents, with its phrase.
+  const intents = readFileSync(
+    at("modules/orbyn-capture/native/ios/OrbynIntents.swift"),
+    "utf8",
+  );
+  for (const a of SIRI_ACTIONS) {
+    const phrase = a.phrase.replace("Orbyn", "\\(.applicationName)");
+    assert.ok(intents.includes(`"${phrase}"`), a.phrase);
+  }
+  // The widget and the tile read the same keys the app writes.
+  const kotlin = readFileSync(
+    at("modules/orbyn-capture/native/android/OrbynTodayWidget.kt"),
+    "utf8",
+  );
+  for (const key of Object.values(NATIVE_KEYS))
+    assert.ok(kotlin.includes(`"${key}"`), key);
+  const require = createRequire(import.meta.url);
+  const plugin = require(at("modules/orbyn-capture/app.plugin.js"));
+  const [widgetKt, tileKt] = plugin.androidSources("com.orbyn.planner");
+  assert.match(widgetKt.body, /^package com\.orbyn\.planner/);
+  assert.ok(!tileKt.body.includes("PACKAGE_NAME"));
+  const entries = plugin.androidManifestEntries();
+  assert.equal(
+    entries.service.$["android:permission"],
+    "android.permission.BIND_QUICK_SETTINGS_TILE",
+  );
+  // app.config.js adds the plugins and the icons, without touching app.json.
+  const appConfig = require(at("app.config.js"));
+  const base = JSON.parse(readFileSync(at("app.json"), "utf8")).expo;
+  const out = appConfig({ config: base });
+  const names = out.plugins.map((p: unknown) => (Array.isArray(p) ? p[0] : p));
+  for (const p of [
+    "@bacons/apple-targets",
+    "./modules/orbyn-capture/app.plugin.js",
+    "expo-audio",
+  ])
+    assert.ok(names.includes(p), p);
+  assert.equal(new Set(names).size, names.length, "no plugin twice");
+  for (const file of [
+    out.ios.icon.light,
+    out.ios.icon.dark,
+    out.ios.icon.tinted,
+    out.android.adaptiveIcon.foregroundImage,
+    out.android.adaptiveIcon.monochromeImage,
+  ])
+    assert.ok(existsSync(at(file.replace(/^\.\//, ""))), file);
+  // The icon stays in the palette's own green.
+  assert.equal(out.android.adaptiveIcon.backgroundColor, "#376c51");
+  assert.ok(out.ios.infoPlist.NSMicrophoneUsageDescription);
 });

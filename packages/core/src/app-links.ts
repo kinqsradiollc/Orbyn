@@ -27,6 +27,8 @@ export type AppLink =
   | { kind: "scan" }
   /** The assistant, ready to ask. */
   | { kind: "assistant" }
+  /** Focus on what's next (a Siri action, the Live Activity). */
+  | { kind: "focus" }
   /** "Share into Orbyn" with this text or link, to choose where it goes. */
   | { kind: "share"; text: string | null; url: string | null }
   /** The Review inbox, at one change when the link names it. */
@@ -116,6 +118,7 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   if (custom && head === "agenda") return { kind: "agenda" };
   if (custom && head === "scan") return { kind: "scan" };
   if (custom && head === "assistant") return { kind: "assistant" };
+  if (custom && head === "focus") return { kind: "focus" };
   // A share arrives as orbyn://share, or as a web share target (/share).
   if (head === "share") {
     const shared = text("url");

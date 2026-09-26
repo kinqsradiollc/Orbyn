@@ -30,6 +30,7 @@ import {
   type Status,
   type TaskList,
   type AppLink,
+  parseAppLink,
   type StarredItem,
   type CreateActionId,
   type CreateArrangement,
@@ -115,6 +116,7 @@ import { usePresence } from "../hooks/usePresence";
 import { colors, spacing, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
+import { flushPending, setGlanceNames, takeNativeOpen } from "../lib/widget";
 import {
   lastPage,
   startScreen,
@@ -228,6 +230,8 @@ export function RootScreen() {
   });
   /** Choices that follow the account, and what's starred (D5). */
   const accountPrefs = useAccountPrefs(token);
+  // A widget can be set to one list: it needs the lists' names.
+  useEffect(() => setGlanceNames(lists), [lists]);
   const starred = useStarred(token);
   useEffect(() => {
     if (token && tab === "Browse") loadPinnedViews();
@@ -397,6 +401,13 @@ export function RootScreen() {
   useEffect(() => {
     if (!token || Platform.OS === "web") return;
     const check = async () => {
+      // Ticks and captures from widgets, controls, Siri and the tile.
+      void flushPending().then((sent) => {
+        if (sent) void refresh({ silent: true }).catch(() => {});
+      });
+      const asked = takeNativeOpen();
+      const link = asked ? parseAppLink(asked) : null;
+      if (link) openLink.current?.(link);
       const { files, shared: words } = await takeShared();
       if (words) {
         if (presentRef.current) presentRef.current({ share: words });
@@ -876,6 +887,8 @@ export function RootScreen() {
         return runScan();
       case "assistant":
         return runCreate("ask");
+      case "focus":
+        return startFocus();
       case "share":
         if (link.url || link.text)
           present({ share: { url: link.url, text: link.text ?? "" } });

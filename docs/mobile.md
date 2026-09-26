@@ -273,6 +273,39 @@ and `mobile/src/lib/widget.ts` calls it after each refresh. The JS side uses
 widget needs no extra wiring once the App Group is set. Everything native (widget, Watch app, and
 this module's Swift) is compiled and verified in Xcode, not by CI.
 
+## Capture from outside the app (D5: CAP-05, CAP-06, CAP-07, CAP-09, DSN-06)
+
+All of this is written and type-checked (`xcrun swiftc -typecheck` for the Swift), and needs **the
+owner's native build** (EAS) to run; Expo Go and the web build have none of it, and the JS no-ops
+there. `mobile/app.config.js` adds everything without touching `app.json`:
+
+- **Widgets you tick tasks from** (`mobile/targets/widget/`): the Home Screen widget (small,
+  medium, large) set to Today, Up next, or one list or project, with a circle to tick each task
+  and New task; the Lock Screen's **Next up** (rectangular, inline, circular). They read the glance
+  the app keeps in the App Group (`buildGlance` in `@orbyn/core`, now with the tasks to tick).
+- **Control Center and Lock Screen capture** (iOS 18): the **Add to Orbyn** control opens quick
+  add. The focus session shows as a **Live Activity** on the Lock Screen and in the Dynamic Island
+  (`mobile/modules/orbyn-capture`, started and ended from `useFocusSession`).
+- **Siri, Shortcuts and Spotlight** (`modules/orbyn-capture/native/ios/OrbynIntents.swift`, put in
+  the app target by the module's config plugin): Add to Orbyn, Add to today's agenda, What's next
+  and Start focus. They run without opening the app (Start focus opens it).
+- **Android**: the Home Screen widget (`OrbynTodayWidget`, tick tasks and New task) and the
+  **Quick Settings tile** "Add to Orbyn" (`OrbynCaptureTile`), written into the app's package by
+  the same plugin, with their layouts and the palette's own colours (light and dark).
+- **App icon** (DSN-06): light, dark and tinted on iOS 18, and adaptive plus themed (monochrome)
+  on Android, all from `mobile/assets/icons/` in the palette's own green.
+
+The native side never holds your sign-in. A tick or a capture made in a widget, a control, Siri or
+the tile waits in shared storage (`pending`, read by `readPending` in `@orbyn/core`) and the app
+sends it the next time it comes to the front (`flushPending` in `mobile/src/lib/widget.ts`); the
+widget shows the change at once.
+
+The owner's steps: set `ios.appleTeamId` and the App Group (`group.com.orbyn.planner`) in the local
+`app.json`, turn on the App Groups and Siri capabilities for `com.orbyn.planner` and the widget's
+bundle id in the Apple Developer account, then `eas build`. Check on a device: ticking in the
+widget, the Lock Screen widget, the Control Center control, "Hey Siri, add to Orbyn", the focus
+Live Activity, the Android widget and tile, and the icon in dark and tinted modes.
+
 ## Build and release
 
 ```bash
