@@ -3900,8 +3900,23 @@ input.doc-image-caption:focus {
 /* The library's tidy-up (ORG-03): picking several pages at once. */
 .doc-pick {
   flex: none;
-  align-self: center;
-  margin: 0 4px 0 8px;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  margin: 0 0 0 4px;
+  cursor: pointer;
+}
+.doc-pick input {
+  margin: 0;
+}
+/* A finger needs a 44px target; the box itself stays the same size. */
+@media (max-width: 600px), (pointer: coarse) {
+  .doc-pick {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .docs-bulk-bar {
   position: sticky;

@@ -245,3 +245,11 @@ button.today-title:hover {
     grid-row: 1;
   }
 }
+
+/* A finger needs a 44px target; padding grows it, the layout doesn't move. */
+@media (max-width: 600px), (pointer: coarse) {
+  .today-title {
+    padding: 13px 0;
+    margin-block: -13px;
+  }
+}

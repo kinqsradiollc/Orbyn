@@ -62,3 +62,11 @@
 .footer-link:hover {
   color: var(--color-text);
 }
+
+/* A finger needs a 44px target; padding grows it, the layout doesn't move. */
+@media (max-width: 600px), (pointer: coarse) {
+  .footer-link {
+    padding: 15px 0;
+    margin-block: -15px;
+  }
+}

@@ -1387,15 +1387,18 @@ export function DocsView({
                       {group.docs.map((doc) => (
                         <li key={doc.id}>
                           {(!canWriteDoc || canWriteDoc(doc.team_id)) && (
-                            <input
-                              type="checkbox"
+                            <label
                               className="doc-pick"
-                              aria-label={`Pick ${doc.title || "Untitled"}`}
                               title="Pick (Shift-click picks a run)"
-                              checked={picked.has(doc.id)}
-                              onChange={() => {}}
-                              onClick={(e) => pick(doc, e.shiftKey)}
-                            />
+                            >
+                              <input
+                                type="checkbox"
+                                aria-label={`Pick ${doc.title || "Untitled"}`}
+                                checked={picked.has(doc.id)}
+                                onChange={() => {}}
+                                onClick={(e) => pick(doc, e.shiftKey)}
+                              />
+                            </label>
                           )}
                           <button
                             className={

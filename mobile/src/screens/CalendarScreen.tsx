@@ -1595,7 +1595,13 @@ export function CalendarScreen({
       <View
         ref={navigation}
         collapsable={false}
-        style={[shared.card, s.calendar]}
+        // In day view with the controls moved up and nothing else to show,
+        // the card has no content, so it draws no empty frame.
+        style={
+          !controlsSlot || mates.length > 0 || sets.length > 0 || mode !== "day"
+            ? [shared.card, s.calendar]
+            : undefined
+        }
       >
         {!controlsSlot && controls}
         {mates.length > 0 && (

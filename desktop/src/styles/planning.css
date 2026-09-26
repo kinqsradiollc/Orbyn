@@ -1459,3 +1459,11 @@ kbd {
 .task-group.is-folded .task-group-title {
   padding-bottom: 14px;
 }
+
+/* A finger needs a 44px target; padding grows it, the layout doesn't move. */
+@media (max-width: 600px), (pointer: coarse) {
+  .task-group-fold {
+    padding: 12px 4px;
+    margin-block: -12px;
+  }
+}
