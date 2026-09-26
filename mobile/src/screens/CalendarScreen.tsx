@@ -29,6 +29,7 @@ import {
   type CalendarSet,
   type CalendarView,
   type ExternalEntry,
+  type FieldDate,
   type Frame,
   type FrameOccurrence,
   type Item,
@@ -181,6 +182,43 @@ function inSet(
  * strips. A plan preview shows as faint blocks that can be moved (pinned),
  * unpinned or removed, with times kept free, until it's applied.
  */
+/** Where a date field's deadline comes from, kept in its entry's key. */
+const FIELD_SOURCE = "field:";
+
+/** "2026-09-18" for a local day. */
+const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+
+/**
+ * A date field's day as an all-day entry beside subscribed calendars: never
+ * busy time, drawn in the accent, and opening its page or project.
+ */
+const fieldEntry = (d: FieldDate): ExternalEntry => {
+  const [y, m, day] = d.date.split("-").map(Number);
+  return {
+    subscription_id: `${FIELD_SOURCE}${d.target}:${d.target_id}`,
+    name: d.target === "page" ? "A page's date" : "A project's date",
+    color: colors.accent,
+    title: `${d.field_name} · ${d.title || "Untitled"}`,
+    start_at: new Date(y, m - 1, day).toISOString(),
+    end_at: new Date(y, m - 1, day + 1).toISOString(),
+    all_day: true,
+    location: "",
+    busy: false,
+  };
+};
+
+/** The page or project behind a date field's entry; null for any other. */
+const fieldTarget = (
+  x: ExternalEntry,
+): { target: FieldDate["target"]; id: string } | null => {
+  if (!x.subscription_id.startsWith(FIELD_SOURCE)) return null;
+  const [target, id] = x.subscription_id.slice(FIELD_SOURCE.length).split(":");
+  return target === "page" || target === "project" ? { target, id } : null;
+};
+
 export function CalendarScreen({
   items,
   teams,
@@ -195,6 +233,7 @@ export function CalendarScreen({
   onScrollTo,
   controlsSlot,
   jump,
+  onOpenFieldTarget,
   ...handlers
 }: ListHandlers & {
   /** Show this day ("Show" on a task's session); a new key jumps again. */
@@ -224,6 +263,11 @@ export function CalendarScreen({
     view: React.ComponentRef<typeof View> | null,
     y: number,
   ) => void;
+  /**
+   * Opens the page or project a date field is on (DATA-07: date fields
+   * shown on the calendar as deadlines).
+   */
+  onOpenFieldTarget?: (target: FieldDate["target"], id: string) => void;
 }) {
   const { listById } = usePlanning();
   const [mode, setModeState] = useState<Mode>(() => {
@@ -330,6 +374,20 @@ export function CalendarScreen({
     };
   }, [fromIso, toIso, items, version]);
   const cal = view && view.key === rangeKey ? view.data : null;
+  // Date fields shown on the calendar as deadlines (DATA-07).
+  const [fieldDates, setFieldDates] = useState<FieldDate[]>([]);
+  const fromDay = dayKey(range.from);
+  const toDay = dayKey(range.to);
+  useEffect(() => {
+    let alive = true;
+    client.fieldDates(fromDay, toDay).then(
+      (dates) => alive && setFieldDates(dates),
+      () => alive && setFieldDates([]),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [fromDay, toDay, items, version]);
   // Checked when a preview arrives and after every calendar reload.
   const [stale, markStale] = usePlanStale(preview, cal);
 
@@ -428,11 +486,14 @@ export function CalendarScreen({
   const entries = (cal?.entries ?? []).filter((e) => inSet(activeSet, e));
   const blocks = (cal?.blocks ?? []).filter((b) => inSet(activeSet, b));
   // A set picks subscribed calendars too; older sets show all of them.
-  const external = (cal?.external ?? []).filter(
-    (x) =>
-      !activeSet?.subscription_ids ||
-      activeSet.subscription_ids.includes(x.subscription_id),
-  );
+  const external = [
+    ...(cal?.external ?? []).filter(
+      (x) =>
+        !activeSet?.subscription_ids ||
+        activeSet.subscription_ids.includes(x.subscription_id),
+    ),
+    ...fieldDates.map(fieldEntry),
+  ];
   const shownIds = new Set(entries.map((e) => e.item_id));
   const live = !!preview && !preview.applied;
   const allGhosts = live ? preview.blocks : [];
@@ -983,7 +1044,15 @@ export function CalendarScreen({
     });
   };
   /** An event from a subscribed calendar: details only, it can't change here. */
-  const showExternal = (x: ExternalEntry) =>
+  const showExternal = (x: ExternalEntry) => {
+    const field = fieldTarget(x);
+    if (field) {
+      onOpenFieldTarget?.(field.target, field.id);
+      return;
+    }
+    showSubscribed(x);
+  };
+  const showSubscribed = (x: ExternalEntry) =>
     Alert.alert(
       x.title,
       [
@@ -1526,7 +1595,13 @@ export function CalendarScreen({
       <View
         ref={navigation}
         collapsable={false}
-        style={[shared.card, s.calendar]}
+        // In day view with the controls moved up and nothing else to show,
+        // the card has no content, so it draws no empty frame.
+        style={
+          !controlsSlot || mates.length > 0 || sets.length > 0 || mode !== "day"
+            ? [shared.card, s.calendar]
+            : undefined
+        }
       >
         {!controlsSlot && controls}
         {mates.length > 0 && (
@@ -1695,7 +1770,11 @@ export function CalendarScreen({
           />
           {dayExternal.length > 0 && (
             <View style={[shared.card, s.external]}>
-              <Text style={shared.label}>From calendars you subscribe to</Text>
+              <Text style={shared.label}>
+                {dayExternal.every((x) => fieldTarget(x))
+                  ? "Dates on your pages and projects"
+                  : "From calendars you subscribe to"}
+              </Text>
               {dayExternal.map((x, n) => (
                 <Pressable
                   key={`${x.subscription_id}-${x.start_at}-${n}`}

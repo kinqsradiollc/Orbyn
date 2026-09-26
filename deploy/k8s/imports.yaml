@@ -2,7 +2,10 @@
 # "Importing files into Docs"):
 #   files      the file store. Uploads arrive at /files/u/<signed link>, are
 #              kept encrypted on a volume until the converter has read them,
-#              and never longer than 24 hours.
+#              and never longer than 24 hours. Pictures and files in pages
+#              arrive at /files/p/<signed link> and are kept, encrypted, on a
+#              volume of their own (page-files) for as long as their page;
+#              back it up with the database.
 #   converter  turns them into pages; no port, heartbeat in Postgres
 #              ("Document import" on the status page).
 # Both need FILES_SECRET in orbyn-secrets (files also FILES_MASTER_KEY);
@@ -25,6 +28,21 @@ spec:
     requests:
       # Uploads live a day at most: 50 MB each, two at a time per person.
       storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: page-files
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: files
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      # Pictures and files in pages are kept: size for PAGE_FILES_QUOTA_MB
+      # (1 GB by default) times the people who use them.
+      storage: 100Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -76,6 +94,8 @@ spec:
           env:
             - name: FILES_DIR
               value: /data/files
+            - name: PAGE_FILES_DIR
+              value: /data/page-files
             - name: NODE_OPTIONS
               value: "--max-old-space-size=384"
           resources:
@@ -101,12 +121,17 @@ spec:
           volumeMounts:
             - name: files
               mountPath: /data/files
+            - name: page-files
+              mountPath: /data/page-files
             - name: tmp
               mountPath: /tmp
       volumes:
         - name: files
           persistentVolumeClaim:
             claimName: import-files
+        - name: page-files
+          persistentVolumeClaim:
+            claimName: page-files
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
@@ -210,7 +235,7 @@ kind: Ingress
 metadata:
   name: orbyn-uploads
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 52m
+    nginx.ingress.kubernetes.io/proxy-body-size: 202m
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
@@ -225,6 +250,20 @@ spec:
       http:
         paths:
           - path: /files/u
+            pathType: Prefix
+            backend:
+              service:
+                name: files
+                port:
+                  name: http
+          - path: /files/p
+            pathType: Prefix
+            backend:
+              service:
+                name: files
+                port:
+                  name: http
+          - path: /files/r
             pathType: Prefix
             backend:
               service:

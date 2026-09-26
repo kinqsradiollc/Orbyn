@@ -1,13 +1,31 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
+  mentionedPerson,
+  EMBED_LANG,
+  isDiagram,
+  LIVE_LIST_LANG,
   parseDocInline,
+  parseObjectHref,
   tagRuns,
   type DocBlock,
   type DocInline,
   type TaggedRun,
 } from "@orbyn/core";
 import { Math } from "./Math";
+import { LinkPillView } from "./DocLinks";
+import { LiveList } from "../views/LiveList";
 import { cut, touches, type Mark } from "./marks";
+import {
+  CalloutView,
+  CodeView,
+  Diagram,
+  EmbedBlock,
+  FileCard,
+  FootnoteLine,
+  FootnoteRef,
+  ImageBlock,
+  TableBlock,
+} from "./RichBlocks";
 
 /**
  * The pieces of one run, each in its own span.
@@ -83,6 +101,32 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
               {shade(run.text)}
             </code>
           );
+        if (run.footnote)
+          return <FootnoteRef key={i} label={run.footnote} start={run.start} />;
+        // A mention of someone who can open the page: a quiet pill, not a
+        // link to follow.
+        if (run.link && mentionedPerson(run.link))
+          return (
+            <span
+              key={i}
+              data-src={run.start}
+              className="doc-mention"
+              title={`Mentioned: ${run.text.replace(/^@/, "")}`}
+            >
+              {shade(run.text)}
+            </span>
+          );
+        // A link made with the picker reads as a pill with the thing's
+        // live title, and opens it in the app rather than the browser.
+        if (run.link && parseObjectHref(run.link))
+          return (
+            <LinkPillView
+              key={i}
+              href={run.link}
+              label={run.text}
+              start={run.start}
+            />
+          );
         if (run.link)
           return (
             <a
@@ -107,9 +151,18 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
               <Pieces run={run} marks={marks} />
             </em>
           );
+        if (run.strike)
+          return (
+            <s key={i} className="doc-strike">
+              <Pieces run={run} marks={marks} />
+            </s>
+          );
         if (run.highlight)
           return (
-            <mark key={i} className="doc-highlight">
+            <mark
+              key={i}
+              className={"doc-highlight" + (run.tint ? ` is-${run.tint}` : "")}
+            >
               <Pieces run={run} marks={marks} />
             </mark>
           );
@@ -139,6 +192,9 @@ export function BlockView({
   number,
   depth = 0,
   isTask = false,
+  projectId = null,
+  onReplace,
+  pageBlocks = [],
 }: {
   block: DocBlock;
   /** Stretches of this line that carry remarks. */
@@ -150,6 +206,12 @@ export function BlockView({
   depth?: number;
   /** A checklist line tied to a task in the planner. */
   isTask?: boolean;
+  /** The page's project, for a live list's ready-made choices. */
+  projectId?: string | null;
+  /** Put another block in this one's place (a live list's new choice). */
+  onReplace?: (block: DocBlock) => void;
+  /** The page's lines, for an embed of the tasks the page links to. */
+  pageBlocks?: DocBlock[];
 }) {
   // A nested list line steps in from the left by its depth.
   const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
@@ -157,7 +219,7 @@ export function BlockView({
     case "heading": {
       const H = (["h2", "h3", "h4"] as const)[block.level - 1];
       return (
-        <H className="doc-heading">
+        <H className="doc-heading" dir="auto">
           {<Inline text={block.text} marks={marks} />}
         </H>
       );
@@ -168,7 +230,7 @@ export function BlockView({
           <span className="doc-marker" aria-hidden="true">
             {BULLETS[depth % BULLETS.length]}
           </span>
-          <span>
+          <span dir="auto">
             <Inline text={block.text} marks={marks} />
           </span>
         </div>
@@ -179,7 +241,7 @@ export function BlockView({
           <span className="doc-marker is-number" aria-hidden="true">
             {number ?? block.start ?? 1}.
           </span>
-          <span>
+          <span dir="auto">
             <Inline text={block.text} marks={marks} />
           </span>
         </div>
@@ -196,7 +258,7 @@ export function BlockView({
             onClick={(e) => e.stopPropagation()}
             aria-label={block.text || "Checklist item"}
           />
-          <span className={block.done ? "doc-done" : undefined}>
+          <span className={block.done ? "doc-done" : undefined} dir="auto">
             <Inline text={block.text} marks={marks} />
             {/* A line tied to a task says so, so ticking it here is clearly
                 the same as ticking it in the planner. */}
@@ -213,16 +275,42 @@ export function BlockView({
       );
     case "quote":
       return (
-        <blockquote className="doc-quote">
+        <blockquote className="doc-quote" dir="auto">
           <Inline text={block.text} marks={marks} />
         </blockquote>
       );
     case "code":
+      if (block.lang === LIVE_LIST_LANG)
+        return (
+          <LiveList
+            text={block.text}
+            projectId={projectId}
+            onChange={
+              onReplace ? (text) => onReplace({ ...block, text }) : undefined
+            }
+          />
+        );
+      if (block.lang === EMBED_LANG)
+        return <EmbedBlock text={block.text} pageBlocks={pageBlocks} />;
+      if (isDiagram(block)) return <Diagram text={block.text} />;
+      return <CodeView text={block.text} lang={block.lang} />;
+    case "callout":
+      return <CalloutView block={block} />;
+    case "table":
       return (
-        <pre className="doc-code">
-          <code>{block.text}</code>
-        </pre>
+        <TableBlock
+          text={block.text}
+          onChange={
+            onReplace ? (text) => onReplace({ ...block, text }) : undefined
+          }
+        />
       );
+    case "image":
+      return <ImageBlock block={block} onChange={onReplace} />;
+    case "file":
+      return <FileCard block={block} />;
+    case "footnote":
+      return <FootnoteLine block={block} />;
     case "math":
       return (
         <div className="doc-math">
@@ -241,7 +329,7 @@ export function BlockView({
       return <hr className="doc-divider" />;
     default:
       return (
-        <p className="doc-p">
+        <p className="doc-p" dir="auto">
           <Inline text={block.text} marks={marks} />
         </p>
       );

@@ -18,6 +18,7 @@
     "@simplewebauthn/browser": "^13.3.0",
     "katex": "^0.16.47",
     "lucide-react": "^0.577.0",
+    "mermaid": "^11.17.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -36,7 +37,16 @@
     "productName": "Orbyn",
     "files": [
       "dist/**/*",
-      "electron.cjs"
+      "electron.cjs",
+      "preload.cjs"
+    ],
+    "protocols": [
+      {
+        "name": "Orbyn link",
+        "schemes": [
+          "orbyn"
+        ]
+      }
     ],
     "directories": {
       "output": "release"
@@ -50,6 +60,32 @@
     "linux": {
       "target": "AppImage",
       "category": "Office"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown"
+        ],
+        "name": "Markdown",
+        "description": "Markdown page",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      },
+      {
+        "ext": "docx",
+        "name": "Word document",
+        "description": "Word document",
+        "role": "Viewer",
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
+      {
+        "ext": "pdf",
+        "name": "PDF",
+        "description": "PDF document",
+        "role": "Viewer",
+        "mimeType": "application/pdf"
+      }
+    ]
   }
 }

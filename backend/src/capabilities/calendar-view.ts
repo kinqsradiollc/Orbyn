@@ -1,3 +1,4 @@
+import { dropKeptOut } from "../lib/assistant-off.js";
 import { z } from "zod";
 import { addDays, dayTime, localDateKey } from "@orbyn/core";
 import { inSpaces } from "../lib/visibility.js";
@@ -12,6 +13,7 @@ import {
 } from "../modules/planner/calendar.js";
 import { freeSpans, workingSpans } from "../modules/planner/plans.js";
 import { externalEntries } from "../modules/planner/subscriptions.js";
+import { fieldDates } from "../modules/views/fields.js";
 import { READ, minutesText } from "./common.js";
 import {
   both,
@@ -28,7 +30,9 @@ import { itemSources } from "./sources.js";
 /**
  * The calendar for up to 31 days, as the person sees it: events (repeats
  * expanded), deadlines, planned sessions, habit sessions, travel and buffers,
- * and subscribed calendars (marked, and fenced as outside content). It can
+ * dates of your own fields shown on the calendar as deadlines ("Essay due",
+ * DATA-07), and subscribed calendars (marked, and fenced as outside
+ * content). It can
  * also list free stretches of a given length inside working hours, and
  * filter by words in the title (calendar search).
  */
@@ -62,7 +66,7 @@ export const getCalendar = defineCapability({
   name: "get_calendar",
   title: "Calendar",
   description:
-    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry\'s provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.',
+    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page\'s or project\'s "Essay due"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry\'s provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.',
   input: z
     .object({
       from: z
@@ -120,10 +124,16 @@ export const getCalendar = defineCapability({
       subscribed,
       subscribedBusy,
       places,
+      dated,
     ] = await Promise.all([
       loadPrefs(ctx.db, userId),
-      calendarEntries(ctx.db, userId, from, to),
-      timeBlocks(ctx.db, userId, from, to),
+      // Nothing from a project kept out of the assistant.
+      calendarEntries(ctx.db, userId, from, to).then((rows) =>
+        dropKeptOut(ctx.db, rows),
+      ),
+      timeBlocks(ctx.db, userId, from, to).then((rows) =>
+        dropKeptOut(ctx.db, rows),
+      ),
       ctx.db.query<{ start_at: Date; end_at: Date; name: string }>(
         `SELECT b.start_at, b.end_at, h.name FROM habit_blocks b
              JOIN habits h ON h.id = b.habit_id
@@ -139,6 +149,13 @@ export const getCalendar = defineCapability({
         ? externalEntries(ctx.db, userId, from, to, { busy: true })
         : Promise.resolve([]),
       loadPlaces(ctx.db, userId),
+      fieldDates(
+        ctx.db,
+        userId,
+        first,
+        addDays(first, a.days - 1),
+        ctx.spaces.teamIds,
+      ),
     ]);
     const teamName = (id: string | null) =>
       id ? (ctx.principal.teams.find((t) => t.id === id)?.name ?? null) : null;
@@ -186,6 +203,28 @@ export const getCalendar = defineCapability({
           provenance: sourceOf(e.item_id),
         };
       }),
+      // Date fields shown on the calendar: all-day deadlines on a page or
+      // project, never busy time.
+      ...dated
+        .filter((d) => inSpaces(ctx.spaces, d.team_id))
+        .map((d) => {
+          const r = refs({
+            type: d.target === "page" ? "doc" : "project",
+            id: d.target_id,
+          });
+          return {
+            kind: "deadline" as const,
+            id: r.id,
+            title: `${cleanTitle(d.field_name)} · ${cleanTitle(d.title) || "Untitled"}`,
+            url: r.url,
+            start: both(dayTime(d.date, 0, tz), tz)!,
+            end: null,
+            all_day: true,
+            busy: false,
+            team: teamName(d.team_id),
+            provenance: "you",
+          };
+        }),
       ...inReach.map((s) => {
         const r = refs({ type: "task", id: s.item_id });
         return {

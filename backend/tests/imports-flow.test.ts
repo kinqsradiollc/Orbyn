@@ -147,6 +147,85 @@ test("a project import becomes a project page with file history, and outsiders c
   assert.equal(row.object_id, null);
 });
 
+test("Keep the original: one mechanism, the account setting with a per-import override", async () => {
+  const owner = await person();
+  const outsider = await person();
+  const DOCX =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const importWord = async (name: string, keep?: boolean) => {
+    const start = await call(owner.token, "POST", "/imports", {
+      file_name: name,
+      bytes: wordFile().length,
+      mime: DOCX,
+      ...(keep === undefined ? {} : { keep_original: keep }),
+    });
+    assert.equal(start.status, 201, JSON.stringify(start.body));
+    const put = await app.inject({
+      method: "PUT",
+      url: start.body.upload_path,
+      remoteAddress: address(),
+      headers: { "content-type": DOCX },
+      payload: wordFile(),
+    });
+    assert.equal(put.statusCode, 201, put.body);
+    await convertPending();
+    const job = (
+      await call(owner.token, "GET", `/imports/${start.body.import.id}`)
+    ).body;
+    assert.equal(job.status, "ready", JSON.stringify(job));
+    return (await call(owner.token, "GET", `/docs/${job.doc_id}`)).body;
+  };
+
+  // Chosen for one import: kept as the page's original, not as a page file.
+  const doc = await importWord("week7.docx", true);
+  assert.equal(doc.original?.file_name, "week7.docx", JSON.stringify(doc));
+  assert.equal(doc.imported_from.original_file, undefined);
+  const files = await call(owner.token, "GET", `/docs/${doc.id}/files`);
+  assert.equal(files.status, 200, JSON.stringify(files.body));
+  assert.equal(files.body.length, 0);
+  const got = await app.inject({
+    method: "GET",
+    url: `/docs/${doc.id}/original`,
+    remoteAddress: address(),
+    headers: { authorization: `Bearer ${owner.token}` },
+  });
+  assert.equal(got.statusCode, 200);
+  assert.deepEqual(got.rawPayload, wordFile());
+  assert.match(String(got.headers["content-disposition"]), /^attachment;/);
+  // Someone who can't read the page can't read its original.
+  assert.equal(
+    (await call(outsider.token, "GET", `/docs/${doc.id}/original`)).status,
+    404,
+  );
+  // The second path is gone from the file store.
+  const oldRoute = await app.inject({
+    method: "POST",
+    url: `/internal/files/${randomUUID()}/keep-in-page`,
+    remoteAddress: address(),
+  });
+  assert.equal(oldRoute.statusCode, 404);
+
+  // Left unchosen with the setting off, nothing is kept.
+  assert.equal((await importWord("week8.docx")).original, null);
+
+  // With the account setting on, an import keeps its file unasked…
+  assert.equal(
+    (await call(owner.token, "PUT", "/me/originals", { keep: true })).status,
+    200,
+  );
+  assert.equal(
+    (await importWord("week9.docx")).original?.file_name,
+    "week9.docx",
+  );
+  // …unless that import says not to.
+  assert.equal((await importWord("week10.docx", false)).original, null);
+  const overview = (await call(owner.token, "GET", "/me/originals")).body;
+  assert.deepEqual(
+    overview.files.map((f: { file_name: string }) => f.file_name).sort(),
+    ["week7.docx", "week9.docx"],
+  );
+});
+
 test("conversion fails closed if the project disappears after upload", async () => {
   const owner = await person();
   const created = await call(owner.token, "POST", "/projects", {

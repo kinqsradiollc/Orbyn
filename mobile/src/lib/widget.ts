@@ -1,9 +1,22 @@
 import { Platform } from "react-native";
 import { ExtensionStorage } from "@bacons/apple-targets";
-import { buildGlance, type Item } from "@orbyn/core";
+import {
+  buildGlance,
+  NATIVE_KEYS,
+  readPending,
+  withoutSent,
+  type Item,
+  type PendingQueue,
+} from "@orbyn/core";
 import { client } from "./api";
 import { deviceTimeZone } from "./planning";
 import { sendGlanceToWatch } from "../../modules/orbyn-watch";
+import {
+  androidPending,
+  setAndroidGlance,
+  setAndroidPending,
+  takeAndroidOpen,
+} from "../../modules/orbyn-capture";
 
 // Hand the home-screen widget (and, later, the Watch) a compact "glance" of
 // today through the shared App Group container. buildGlance is in @orbyn/core
@@ -29,8 +42,26 @@ async function subscribedSoon(): Promise<Upcoming[]> {
   return upcoming.events;
 }
 
-/** Publish the current items as the widget glance. iOS only; never throws. */
+/** List names, so a widget can be set to one list (CAP-06). */
+let listNames: { id: string; name: string }[] = [];
+export function setGlanceNames(lists: { id: string; name: string }[]) {
+  listNames = lists.map(({ id, name }) => ({ id, name }));
+}
+
+/** Publish the current items as the widget glance. Never throws. */
 export function publishGlance(items: Item[]): void {
+  if (Platform.OS === "android") {
+    try {
+      setAndroidGlance(
+        JSON.stringify(
+          buildGlance(items, { timeZone: deviceTimeZone(), lists: listNames }),
+        ),
+      );
+    } catch {
+      // No widget module in this build.
+    }
+    return;
+  }
   if (Platform.OS !== "ios") return;
   // Classes and shifts from subscribed calendars count as the next event too.
   void subscribedSoon()
@@ -49,6 +80,7 @@ function write(items: Item[], external: Upcoming[]) {
     const glance = buildGlance(items, {
       timeZone: deviceTimeZone(),
       external,
+      lists: listNames,
     });
     const json = JSON.stringify(glance);
     storage.set(KEY, json);
@@ -58,4 +90,105 @@ function write(items: Item[], external: Upcoming[]) {
   } catch {
     // No shared storage available: the widget keeps whatever it last had.
   }
+}
+
+// ------------------------------------------- ticks and captures waiting ---
+
+/** The queue widgets, controls, Siri and the tile left for the app. */
+function pendingNow(): PendingQueue {
+  if (Platform.OS === "ios")
+    return readPending(storage.get(NATIVE_KEYS.pending));
+  if (Platform.OS === "android") return readPending(androidPending());
+  return { captures: [], ticks: [] };
+}
+
+function savePending(queue: PendingQueue) {
+  const json = JSON.stringify(queue);
+  if (Platform.OS === "ios") {
+    if (queue.captures.length || queue.ticks.length)
+      storage.set(NATIVE_KEYS.pending, json);
+    else storage.remove(NATIVE_KEYS.pending);
+  } else if (Platform.OS === "android") setAndroidPending(json);
+}
+
+const statusOf = (e: unknown) => (e as { status?: number }).status;
+
+/**
+ * The server will never take this one: a bad request, no longer allowed, or
+ * the task is gone. Anything else (offline, 409, 429, 5xx) is tried again.
+ */
+export const refusedForGood = (status: number | undefined) =>
+  status === 400 ||
+  status === 403 ||
+  status === 404 ||
+  status === 410 ||
+  status === 422;
+
+/**
+ * Send what was ticked in a widget or said to Siri while the app was away
+ * (CAP-05..07, CAP-09): each tick as the task done, each capture as a task
+ * (or a line on today's agenda). What can't be sent yet stays for next
+ * time; a task that's gone or no longer yours is dropped. Returns how many
+ * went, so the app can refresh when any did. Never throws.
+ */
+export async function flushPending(): Promise<number> {
+  let queue: PendingQueue;
+  try {
+    queue = pendingNow();
+  } catch {
+    return 0;
+  }
+  if (!queue.captures.length && !queue.ticks.length) return 0;
+  const sent = { captures: [] as string[], ticks: [] as string[] };
+  const zone = deviceTimeZone();
+  for (const c of queue.captures) {
+    try {
+      if (c.to === "agenda")
+        await client.capture({
+          text: c.text,
+          to: { kind: "agenda" },
+          timezone: zone,
+        });
+      else await client.quickAdd(c.text, zone);
+      sent.captures.push(c.id);
+    } catch (e) {
+      // Refused for good: drop it. Offline, busy (429) or a server fault:
+      // keep it for next time, and stop once the server says slow down.
+      const status = statusOf(e);
+      if (refusedForGood(status)) sent.captures.push(c.id);
+      else if (status === 429) break;
+    }
+  }
+  for (const t of queue.ticks) {
+    try {
+      await client.postItemUpdate(t.item, { status: "done" });
+      sent.ticks.push(t.item);
+    } catch (e) {
+      const status = statusOf(e);
+      if (refusedForGood(status)) sent.ticks.push(t.item);
+      else if (status === 429) break;
+    }
+  }
+  try {
+    // Read again: a tick made while these were sending stays.
+    savePending(withoutSent(pendingNow(), sent));
+  } catch {
+    // Nothing to write to.
+  }
+  return sent.captures.length + sent.ticks.length;
+}
+
+/** A link a Siri action or the tile asked the app to open, once. */
+export function takeNativeOpen(): string | null {
+  try {
+    if (Platform.OS === "ios") {
+      const link = storage.get("open");
+      if (link) storage.remove("open");
+      return link;
+    }
+    if (Platform.OS === "android") return takeAndroidOpen();
+  } catch {
+    // No shared storage in this build.
+  }
+  return null;
 }

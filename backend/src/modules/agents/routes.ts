@@ -24,6 +24,7 @@ import {
   AGENT_SETTING_KEYS,
   invalidateSettings,
   settings,
+  type LiveSettings,
 } from "../../lib/settings.js";
 import { requireTeam } from "../../lib/teams.js";
 import {
@@ -34,7 +35,9 @@ import {
   restoreGrant,
   revokeConnections,
   revokeGrant,
+  setGrantToolsets,
 } from "./service.js";
+import { cancelTeamProposals } from "../proposals/service.js";
 
 /**
  * Settings → Connected agents (the person's own connections), the admin's
@@ -42,6 +45,15 @@ import {
  * person reaches these: personal API keys are refused (KEY_BLOCKED) and
  * agent credentials never authenticate here.
  */
+/** Admin's view of the switches, with old API keys' last day on MCP. */
+const adminView = (s: LiveSettings): AgentSettings => ({
+  ...s.agents,
+  legacy_keys_until:
+    s.legacy_keys_until && Date.parse(s.legacy_keys_until) > Date.now()
+      ? s.legacy_keys_until
+      : null,
+});
+
 export async function agentRoutes(app: FastifyInstance) {
   app.get("/me/agents", async (r): Promise<AgentsOverview> => {
     const u = await authenticate(r);
@@ -79,6 +91,16 @@ export async function agentRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
+  // Which toolsets a connection has, besides core (Settings).
+  app.put("/me/agents/:id/toolsets", async (r) =>
+    setGrantToolsets(
+      (await authenticate(r)).id,
+      idParam(r),
+      r.body as never,
+      r.id,
+    ),
+  );
+
   app.get("/me/agents/:id/activity", async (r) => {
     const u = await authenticate(r);
     return grantActivity(reader(r.headers), u.id, idParam(r));
@@ -101,6 +123,10 @@ export async function agentRoutes(app: FastifyInstance) {
       // Every copy re-reads the team's policy on the next call anyway; this
       // clears anything held for it at once.
       await announceAuthChange(db, { teams: [teamId], reason: "team_policy" });
+      // Turned off or down to reading: what agents proposed in this team and
+      // still waits is cancelled (a team capped at suggest keeps them).
+      if (agent_access === "off" || agent_access === "read")
+        await cancelTeamProposals(db, teamId);
       await audit(
         {
           actorId: u.id,
@@ -177,7 +203,7 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get("/admin/agents", async (r): Promise<AgentSettings> => {
     await authorize(r, "system:manage");
     invalidateSettings();
-    return (await settings()).agents;
+    return adminView(await settings());
   });
 
   app.put("/admin/agents", async (r): Promise<AgentSettings> => {
@@ -239,7 +265,7 @@ export async function agentRoutes(app: FastifyInstance) {
       );
     });
     invalidateSettings();
-    return (await settings()).agents;
+    return adminView(await settings());
   });
 
   /** Admin → Agents: the apps that have signed in, and how many use each. */

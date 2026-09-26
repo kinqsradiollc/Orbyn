@@ -830,7 +830,7 @@ test("DCR: public clients only, application type checked, limited per address, s
   assert.equal(c.application_type, "native");
   assert.equal(c.client_name, "CliTool", "direction tricks are removed");
 
-  const bad: [unknown, string][] = [
+  const bad: [unknown, string | null][] = [
     [{ redirect_uris: ["http://evil.example.com/cb"] }, "invalid_redirect_uri"],
     [{ redirect_uris: ["javascript:alert(1)"] }, "invalid_redirect_uri"],
     [{ redirect_uris: ["https://a.example.com/cb#x"] }, "invalid_redirect_uri"],
@@ -842,6 +842,35 @@ test("DCR: public clients only, application type checked, limited per address, s
     [
       { redirect_uris: ["http://localhost/cb"], application_type: "web" },
       "invalid_client_metadata",
+    ],
+    // One website per app: a second site beside the first could be sent
+    // the code, and so could a second app scheme.
+    [
+      {
+        redirect_uris: [
+          "https://claude.ai/api/mcp/auth_callback",
+          "https://evil.example.com/cb",
+        ],
+      },
+      "invalid_redirect_uri",
+    ],
+    [
+      {
+        redirect_uris: ["https://a.example.com/cb", "https://A.example.com/x"],
+      },
+      null,
+    ],
+    [
+      { redirect_uris: ["com.one.app:/cb", "com.other.app:/cb"] },
+      "invalid_redirect_uri",
+    ],
+    [
+      { redirect_uris: ["http://127.0.0.1:3000/cb", "com.one.app:/cb"] },
+      "invalid_redirect_uri",
+    ],
+    [
+      { redirect_uris: ["http://127.0.0.1:3000/cb", "http://localhost/cb"] },
+      null,
     ],
     [
       {
@@ -860,6 +889,10 @@ test("DCR: public clients only, application type checked, limited per address, s
   ];
   for (const [body, error] of bad) {
     const r = await reg(body, address());
+    if (error === null) {
+      assert.equal(r.statusCode, 201, `${JSON.stringify(body)}: ${r.body}`);
+      continue;
+    }
     assert.equal(r.statusCode, 400, JSON.stringify(body));
     assert.equal(r.json().error, error);
   }
@@ -1030,11 +1063,22 @@ test("allowed websites: a self-registered app must be allowed for every address 
     inject("POST", "/oauth/register", {
       json: { client_name: "Claude", redirect_uris },
     });
-  const sneaky = await reg([
+  // Registering one now is refused (one website per app)...
+  const refused = await reg([
     "https://claude.ai/cb",
     "https://evil.example.com/cb",
   ]);
-  assert.equal(sneaky.statusCode, 201, sneaky.body);
+  assert.equal(refused.statusCode, 400, refused.body);
+  assert.equal(refused.json().error, "invalid_redirect_uri");
+  // ...but an app registered before that rule keeps its addresses, so the
+  // allowed-websites check still covers every one of them.
+  const sneakyId = `dcr_${randomBytes(24).toString("base64url")}`;
+  await pool.query(
+    `INSERT INTO oauth_clients (id, kind, name, host, redirect_uris, metadata)
+     VALUES ($1, 'dcr', 'Claude', 'claude.ai', $2, '{"application_type":"web"}')`,
+    [sneakyId, ["https://claude.ai/cb", "https://evil.example.com/cb"]],
+  );
+  const sneaky = { json: () => ({ client_id: sneakyId }) };
   const honest = await reg(["https://claude.ai/cb"]);
   assert.equal(honest.statusCode, 201, honest.body);
   const ask = (clientId: string, redirect: string) => {
@@ -1577,6 +1621,48 @@ test("sign-ins never finished don't count towards the limit, and allowing again 
     client_id: GPT,
   });
   assert.equal(t.statusCode, 200, t.body);
+});
+
+test("the limit is checked again when a sign-in finishes: two consents at once can't both pass it", async () => {
+  const { MAX_GRANTS } = await import("../src/modules/agents/service.js");
+  const who = await h.register("oauth-limit-race", "Lim");
+  // One short of the limit, all finished.
+  await pool.query(
+    `INSERT INTO agent_grants (user_id, kind, client_id, client_name, name, access, authorized_at)
+     SELECT $1, 'oauth', 'https://full.example.com/' || g, 'Full', 'Full', 'read', now()
+       FROM generate_series(1, $2::int) g`,
+    [who.id, MAX_GRANTS - 1],
+  );
+  const session = await login(who);
+  // Two apps are allowed, each under the limit on its own.
+  const a = request();
+  const b = request({ client_id: GPT, redirect_uri: GPT_CALLBACK });
+  const allowedA = await consent(session, a.req);
+  const allowedB = await consent(session, b.req);
+  assert.equal(allowedA.statusCode, 200, allowedA.body);
+  assert.equal(allowedB.statusCode, 200, allowedB.body);
+  // The first to finish takes the last place; the second is refused.
+  const first = await exchange(codeOf(allowedA.json().redirect_to), a.verifier);
+  assert.equal(first.statusCode, 200, first.body);
+  const second = await exchange(
+    codeOf(allowedB.json().redirect_to),
+    b.verifier,
+    { redirect_uri: GPT_CALLBACK, client_id: GPT },
+  );
+  assert.equal(second.statusCode, 400, second.body);
+  assert.equal(second.json().error, "invalid_grant");
+  assert.match(second.json().error_description, /connected agents/);
+  const live = (
+    await pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM agent_grants
+        WHERE user_id = $1 AND revoked_at IS NULL AND authorized_at IS NOT NULL`,
+      [who.id],
+    )
+  ).rows[0].n;
+  assert.equal(live, MAX_GRANTS);
+  // Refreshing a connection that already finished still works at the limit.
+  const again = await refresh(first.json().refresh_token);
+  assert.equal(again.statusCode, 200, again.body);
 });
 
 test("maintenance: confirming it's you stays open, so the consent page can grant write access", async () => {

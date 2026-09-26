@@ -16,6 +16,7 @@ import {
   type ShareChoice,
   type SharedContent,
 } from "@orbyn/core";
+import { AssistChips } from "../components/AssistChips";
 import { BottomSheet } from "../components/BottomSheet";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
@@ -69,10 +70,14 @@ export function ShareIntoSheet({
   const [error, setError] = useState("");
   /** The lists that couldn't be fetched, each offered again. */
   const [failed, setFailed] = useState<Partial<Record<Kind, boolean>>>({});
-  /** Pages found on the server for the words typed (older ones too). */
-  const [found, setFound] = useState<{ id: string; title: string }[] | null>(
-    null,
-  );
+  /**
+   * Pages found on the server for the words typed (older ones too), as
+   * found: which of them can be written to is decided when they're shown,
+   * with the teams as they are then.
+   */
+  const [found, setFound] = useState<
+    { id: string; title: string; team_id: string | null }[] | null
+  >(null);
 
   // A new share starts from the place used last, with its title looked up.
   useEffect(() => {
@@ -129,8 +134,8 @@ export function ShareIntoSheet({
           if (current)
             setFound(
               hits
-                .filter((h) => h.kind !== "agenda" && canWriteIn(h.team_id))
-                .map((h) => ({ id: h.id, title: h.title })),
+                .filter((h) => h.kind !== "agenda")
+                .map((h) => ({ id: h.id, title: h.title, team_id: h.team_id })),
             );
         },
         () => {
@@ -142,7 +147,10 @@ export function ShareIntoSheet({
       current = false;
       clearTimeout(wait);
     };
-  }, [kind, query, canWriteIn]);
+    // canWriteIn is left out on purpose: it is a new function on every
+    // parent render, and a search needn't run again for that. The hits are
+    // filtered below, where the current teams are used.
+  }, [kind, query]);
 
   /** Offer a list that couldn't be fetched again. */
   const retry = (k: Kind) => {
@@ -169,10 +177,10 @@ export function ShareIntoSheet({
       .map((d) => ({ id: d.id, title: d.title }));
     // The newest that match first, then older ones the server found.
     const seen = new Set(listed.map((d) => d.id));
-    return [...listed, ...(found ?? []).filter((d) => !seen.has(d.id))].slice(
-      0,
-      6,
-    );
+    const writable = (found ?? [])
+      .filter((d) => !seen.has(d.id) && canWriteIn(d.team_id))
+      .map((d) => ({ id: d.id, title: d.title }));
+    return [...listed, ...writable].slice(0, 6);
   }, [pages, query, found, canWriteIn]);
 
   const ready = kind === "inbox" || kind === "agenda" || !!picked;
@@ -329,6 +337,14 @@ export function ShareIntoSheet({
               </Text>
             )}
           </View>
+
+          {/* Optional: the assistant reads the words shared in (AI-01). */}
+          {(shared.text ?? "").trim().length >= 80 && (
+            <AssistChips
+              text={shared.text}
+              title={title || site || "What you shared"}
+            />
+          )}
 
           {kept.length > 0 && (
             <ChipRow label="Places used last">

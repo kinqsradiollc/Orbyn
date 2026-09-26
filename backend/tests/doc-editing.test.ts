@@ -452,7 +452,7 @@ npm run build</code></pre>
     { type: "todo", text: "Done thing", done: true },
     { type: "quote", text: "Said once" },
     { type: "code", text: "npm test\nnpm run build", lang: "" },
-    { type: "bullet", text: "Name: Ann · Role: Lead" },
+    { type: "table", text: "| Name | Role |\n| --- | --- |\n| Ann | Lead |" },
     { type: "paragraph", text: "Line one" },
     { type: "paragraph", text: "Line two" },
     { type: "divider" },
@@ -1250,13 +1250,13 @@ test("a page in Trash can't be shown as open", async () => {
 });
 
 test("today's agenda brought back from Trash replaces an untouched copy", async () => {
-  const first = (await call("GET", "/agenda/today")).json() as {
+  const first = (await call("POST", "/agenda/today")).json() as {
     id: string;
     title: string;
   };
   await call("DELETE", `/docs/${first.id}`);
   // Opening Agenda while it is in Trash writes a fresh copy.
-  const copy = (await call("GET", "/agenda/today")).json() as { id: string };
+  const copy = (await call("POST", "/agenda/today")).json() as { id: string };
   assert.notEqual(copy.id, first.id);
   assert.equal(
     (await call("POST", `/docs/${first.id}/restore`)).statusCode,
@@ -1264,11 +1264,11 @@ test("today's agenda brought back from Trash replaces an untouched copy", async 
   );
   // The untouched copy is let go; Agenda opens the one that came back.
   assert.equal((await call("GET", `/docs/${copy.id}`)).statusCode, 404);
-  assert.equal((await call("GET", "/agenda/today")).json().id, first.id);
+  assert.equal((await call("POST", "/agenda/today")).json().id, first.id);
 
   // A copy someone wrote in is kept.
   await call("DELETE", `/docs/${first.id}`);
-  const written = (await call("GET", "/agenda/today")).json() as {
+  const written = (await call("POST", "/agenda/today")).json() as {
     id: string;
     version: number;
   };

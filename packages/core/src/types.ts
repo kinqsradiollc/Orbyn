@@ -81,6 +81,8 @@ export type Item = ItemInput & {
   /** The project this task belongs to, and which of its stages. */
   project_id?: string | null;
   stage_id?: string | null;
+  /** The milestone of its project it belongs to, if any. */
+  milestone_id?: string | null;
   /**
    * Its project's deadline: a latest date for the task, never its own
    * deadline (see `latestDates`). Null outside a project or without one.
@@ -211,6 +213,13 @@ export type User = {
   terms_version?: string | null;
   /** Whether you turned usage analytics off (Settings → Privacy). */
   analytics_opt_out?: boolean;
+  /**
+   * Whether the guided first run is done (or skipped). False only for a new
+   * account that has not been through it; older servers leave it out.
+   */
+  first_run_done?: boolean;
+  /** What you said Orbyn is for, in the first run. */
+  purpose?: "study" | "team" | "personal" | null;
 };
 
 /** Your public profile, as you edit it. */
@@ -359,7 +368,13 @@ export type Notice = {
      * Outside agents: a new connection, one paused or cut off for safety,
      * or a team's first use (`ref` = "grant:<id>" or "team:<id>").
      */
-    | "agent";
+    | "agent"
+    /** Someone named you in a page or a remark (`ref` = "doc:<page id>:…"). */
+    | "mention"
+    /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */
+    | "session"
+    /** A change waits for your approval in the Review inbox (`ref` = "proposal:<id>"). */
+    | "review";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;
@@ -522,6 +537,12 @@ export type AiSettings = {
    * pgvector, where the setting is there but has nothing to turn on.
    */
   semantic_possible: boolean;
+  /** The model that measures text for search by meaning ("" until chosen). */
+  embedding_model?: string;
+  /** When an admin accepted that every page is sent to be measured. */
+  semantic_accepted_at?: string | null;
+  /** Whether the measuring service has reported in lately. */
+  measure_running?: boolean;
   updated_at: string | null;
 };
 
@@ -638,6 +659,10 @@ export type TimeBlock = {
   end_at: string;
   source: "manual" | "planner";
   plan_id: string | null;
+  /** When its person started working on it (focus mode, or "Start"). */
+  started_at?: string | null;
+  /** The check-in answer, once given (see session-check-in.ts). */
+  outcome?: "done" | "more" | "skipped" | null;
   /** From the task, for drawing the block. */
   title: string;
   status: Status;
@@ -860,6 +885,8 @@ export type PlannerPrefs = {
   learn_rhythm?: boolean;
   /** Spread work so no day asks for much more than you usually get through. */
   balance_load?: boolean;
+  /** A reminder this many minutes before each session starts; null or missing: off. */
+  session_reminder_minutes?: number | null;
 };
 
 /** What the planner has learned about how long tasks really take. */

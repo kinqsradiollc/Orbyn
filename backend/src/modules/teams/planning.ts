@@ -20,7 +20,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { busyIntervals, loadPrefs } from "../planner/calendar.js";
 import { CHILD_COLUMNS, freeSpans, workingSpans } from "../planner/plans.js";
 import { remainingOf } from "../planner/scheduler.js";
-import { teamMembers } from "./routes.js";
+import { teamMembers } from "./service.js";
 
 /**
  * Team time: who is busy when, who is overloaded, and when everyone can
@@ -40,14 +40,14 @@ const TEAM_BUSY = {
 } as const;
 
 /** Free working time for one person in [from, to). */
-async function memberFree(db: Db, userId: string, from: Date, to: Date) {
+export async function memberFree(db: Db, userId: string, from: Date, to: Date) {
   const prefs = await loadPrefs(db, userId);
   const busy = await busyIntervals(db, userId, from, to, TEAM_BUSY);
   return freeSpans(workingSpans(prefs, from, to), busy);
 }
 
 /** Spans free for everyone. */
-function intersect(a: Span[], b: Span[]): Span[] {
+export function intersect(a: Span[], b: Span[]): Span[] {
   const out: Span[] = [];
   let i = 0;
   let j = 0;
@@ -86,33 +86,7 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
       fail(422, `Ask for ${MAX_OVERLAY} people or fewer at a time.`);
     if (ids.some((id) => !z.uuid().safeParse(id).success))
       fail(422, "Those aren't user ids.");
-    const db = reader(r.headers);
-    const people = (
-      await db.query<{ id: string; name: string }>(
-        `SELECT x.id, x.name FROM users x
-         WHERE x.id = ANY ($2::uuid[]) AND NOT x.disabled
-           AND (x.id = $1 OR EXISTS (
-             SELECT 1 FROM team_members a JOIN team_members b ON b.team_id = a.team_id
-             WHERE a.user_id = $1 AND b.user_id = x.id))`,
-        [u.id, ids],
-      )
-    ).rows;
-    const from = new Date(q.from);
-    const to = new Date(q.to);
-    return Promise.all(
-      ids
-        .flatMap((id) => people.filter((p) => p.id === id))
-        .map(async (p) => ({
-          user_id: p.id,
-          name: p.name,
-          timezone: (await loadPrefs(db, p.id)).timezone,
-          // Your own view includes calendars you keep from teammates.
-          busy: await busyIntervals(db, p.id, from, to, {
-            ...TEAM_BUSY,
-            audience: p.id === u.id ? "self" : "others",
-          }),
-        })),
-    );
+    return availabilityOf(reader(r.headers), u.id, ids, q.from, q.to);
   });
 
   app.get(
@@ -125,7 +99,10 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
       await requireTeam(teamId, u, "items:read");
       const from = new Date(q.from);
       const to = new Date(q.to);
-      const members = (await teamMembers(teamId)).slice(0, MAX_MEMBERS);
+      const members = (await teamMembers(teamId, db as never)).slice(
+        0,
+        MAX_MEMBERS,
+      );
       return Promise.all(
         members.map(async (m) => {
           const prefs = await loadPrefs(db, m.user_id);
@@ -148,149 +125,20 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
   app.get("/teams/:id/analytics", async (r): Promise<TeamAnalytics> => {
     const u = await authenticate(r);
     const teamId = idParam(r);
-    const db = reader(r.headers);
     await requireTeam(teamId, u, "members:manage");
     const days = Math.min(
       365,
       Math.max(1, Number((r.query as { days?: string }).days) || 30),
     );
-    const from = new Date(Date.now() - days * 86_400_000);
-    const members = (await teamMembers(teamId)).slice(0, MAX_MEMBERS);
-    const mins = `sum(extract(epoch FROM (b.end_at - b.start_at)) / 60)::int`;
-    const planned = new Map<string, number>();
-    for (const row of (
-      await db.query<{ user_id: string; minutes: number }>(
-        `SELECT b.user_id, ${mins} AS minutes
-           FROM time_blocks b JOIN items i ON i.id = b.item_id
-          WHERE i.team_id = $1 AND b.start_at >= $2
-          GROUP BY b.user_id`,
-        [teamId, from.toISOString()],
-      )
-    ).rows)
-      planned.set(row.user_id, row.minutes);
-    const done = new Map<string, number>();
-    for (const row of (
-      await db.query<{ assignee_id: string | null; n: number }>(
-        `SELECT assignee_id, count(*)::int AS n FROM items
-          WHERE team_id = $1 AND status = 'done' AND updated_at >= $2
-          GROUP BY assignee_id`,
-        [teamId, from.toISOString()],
-      )
-    ).rows)
-      if (row.assignee_id) done.set(row.assignee_id, row.n);
-    const rows = members.map((m) => ({
-      user_id: m.user_id,
-      name: m.name,
-      planned_minutes: planned.get(m.user_id) ?? 0,
-      completed: done.get(m.user_id) ?? 0,
-    }));
-    return {
-      from: from.toISOString(),
-      to: new Date().toISOString(),
-      days,
-      total_planned_minutes: rows.reduce((s, m) => s + m.planned_minutes, 0),
-      members: rows.sort((a, b) => b.planned_minutes - a.planned_minutes),
-    };
+    return teamAnalytics(reader(r.headers), teamId, days);
   });
 
   app.get("/teams/:id/workload", async (r): Promise<MemberWorkload[]> => {
     const u = await authenticate(r);
     const teamId = idParam(r);
     const q = rangeQuery.parse(r.query);
-    const db = reader(r.headers);
     await requireTeam(teamId, u, "items:read");
-    const from = new Date(q.from);
-    const to = new Date(q.to);
-    const members = (await teamMembers(teamId)).slice(0, MAX_MEMBERS);
-    return Promise.all(
-      members.map(async (m) => {
-        const prefs = await loadPrefs(db, m.user_id);
-        // Capacity leaves out their time blocks: those are for the work counted here.
-        const busy = await busyIntervals(db, m.user_id, from, to, {
-          blocks: false,
-          derived: true,
-          audience: "others",
-        });
-        const free = freeSpans(workingSpans(prefs, from, to), busy);
-        const capacity = Math.round(
-          free.reduce((sum, s) => sum + (s.end - s.start) / 60_000, 0),
-        );
-        const tasks = (
-          await db.query<{
-            id: string;
-            title: string;
-            due_at: Date | null;
-            end_at: Date | null;
-            all_day: boolean;
-            timezone: string;
-            estimate_minutes: number | null;
-            spent_minutes: number;
-            open_children: number;
-            children_remaining: number;
-          }>(
-            `SELECT i.id, i.title, i.due_at, i.end_at, i.all_day, i.timezone,
-                    i.estimate_minutes, i.spent_minutes, ${CHILD_COLUMNS}
-             FROM items i
-             WHERE i.team_id = $1 AND i.assignee_id = $2 AND i.kind = 'task'
-               AND i.status NOT IN ('done', 'cancelled')
-               AND (i.due_at IS NULL OR i.due_at < $3)`,
-            [teamId, m.user_id, to],
-          )
-        ).rows.map((t) => ({
-          ...t,
-          // "Due" is the deadline: the end of an all-day task's day, or when
-          // a task with an end time ends. Free time before it counts.
-          deadline: t.due_at ? Date.parse(deadlineOf(t)!) : null,
-        }));
-        let assigned = 0;
-        let atRisk = 0;
-        // Tasks due soonest take the free time first.
-        const sorted = [...tasks].sort(
-          (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity),
-        );
-        let used = 0;
-        const atRiskItems: TeamAtRiskItem[] = [];
-        for (const t of sorted) {
-          const remaining = remainingOf(t);
-          assigned += remaining;
-          if (!t.due_at || t.deadline === null) continue;
-          const due = t.deadline;
-          const before = free.reduce(
-            (sum, s) =>
-              sum + Math.max(0, Math.min(s.end, due) - s.start) / 60_000,
-            0,
-          );
-          used += remaining;
-          if (used > before && remaining > 0) {
-            atRisk++;
-            atRiskItems.push({
-              id: t.id,
-              title: t.title,
-              assignee_id: m.user_id,
-              assignee_name: m.name,
-              due_at: t.due_at.toISOString(),
-              deadline_at: new Date(due).toISOString(),
-              due_all_day: t.all_day,
-              remaining_minutes: Math.round(remaining),
-            });
-          }
-        }
-        const load = capacity ? assigned / capacity : assigned ? 9.99 : 0;
-        return {
-          user_id: m.user_id,
-          name: m.name,
-          capacity_minutes: capacity,
-          assigned_minutes: Math.round(assigned),
-          open_tasks: tasks.length,
-          unestimated_tasks: tasks.filter((t) => t.estimate_minutes == null)
-            .length,
-          load: Math.round(load * 100) / 100,
-          overloaded: load > 1,
-          at_risk: atRisk,
-          at_risk_items: atRiskItems,
-        };
-      }),
-    );
+    return teamWorkload(reader(r.headers), teamId, q.from, q.to);
   });
 
   // Times everyone chosen is free, least disruptive first.
@@ -298,52 +146,253 @@ export async function teamPlanningRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const teamId = idParam(r);
     const q = suggestQuery.parse(r.query);
-    const db = reader(r.headers);
     await requireTeam(teamId, u, "items:read");
-    const members = await teamMembers(teamId);
-    const wanted = q.user_ids
-      ? q.user_ids.split(",").map((id) => id.trim())
-      : members.map((m) => m.user_id);
-    const people = members
-      .filter((m) => wanted.includes(m.user_id))
-      .slice(0, MAX_MEMBERS);
-    if (!people.length) return [];
-    const from = new Date(
-      Math.max(Date.parse(q.from), Math.ceil(Date.now() / STEP_MS) * STEP_MS),
-    );
-    const to = new Date(q.to);
-    const perPerson = await Promise.all(
-      people.map((p) => memberFree(db, p.user_id, from, to)),
-    );
-    const common = perPerson.reduce((acc, spans) => intersect(acc, spans));
-    const need = q.duration * 60_000;
-    const slots: MeetingSlot[] = [];
-    for (const span of common) {
-      for (
-        let start = Math.ceil(span.start / STEP_MS) * STEP_MS;
-        start + need <= span.end;
-        start += STEP_MS
-      ) {
-        const end = start + need;
-        // A meeting that leaves someone a short stub of free time on each
-        // side breaks up their focus; one next to other commitments doesn't.
-        const disruption = perPerson.filter((spans) => {
-          const s = spans.find((x) => x.start <= start && x.end >= end);
-          return s && start - s.start >= FOCUS_MS && s.end - end >= FOCUS_MS;
-        }).length;
-        slots.push({
-          start_at: new Date(start).toISOString(),
-          end_at: new Date(end).toISOString(),
-          disruption,
-        });
-      }
-    }
-    return slots
-      .sort(
-        (a, b) =>
-          a.disruption - b.disruption || a.start_at.localeCompare(b.start_at),
-      )
-      .slice(0, 20)
-      .sort((a, b) => a.start_at.localeCompare(b.start_at));
+    return suggestTimes(reader(r.headers), teamId, q);
   });
+}
+
+/**
+ * Busy times of people `userId` shares a team with (and their own), to lay
+ * over a calendar. Anyone else is simply left out.
+ */
+export async function availabilityOf(
+  db: Db,
+  userId: string,
+  ids: string[],
+  fromIso: string,
+  toIso: string,
+): Promise<UserAvailability[]> {
+  const people = (
+    await db.query<{ id: string; name: string }>(
+      `SELECT x.id, x.name FROM users x
+     WHERE x.id = ANY ($2::uuid[]) AND NOT x.disabled
+       AND (x.id = $1 OR EXISTS (
+         SELECT 1 FROM team_members a JOIN team_members b ON b.team_id = a.team_id
+         WHERE a.user_id = $1 AND b.user_id = x.id))`,
+      [userId, ids],
+    )
+  ).rows;
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  return Promise.all(
+    ids
+      .flatMap((id) => people.filter((p) => p.id === id))
+      .map(async (p) => ({
+        user_id: p.id,
+        name: p.name,
+        timezone: (await loadPrefs(db, p.id)).timezone,
+        // Your own view includes calendars you keep from teammates.
+        busy: await busyIntervals(db, p.id, from, to, {
+          ...TEAM_BUSY,
+          audience: p.id === userId ? "self" : "others",
+        }),
+      })),
+  );
+}
+
+/** Set-aside time on a team's items, per member (aggregates only). */
+export async function teamAnalytics(
+  db: Db,
+  teamId: string,
+  days: number,
+  now = new Date(),
+): Promise<TeamAnalytics> {
+  const from = new Date(now.getTime() - days * 86_400_000);
+  const members = (await teamMembers(teamId, db as never)).slice(
+    0,
+    MAX_MEMBERS,
+  );
+  const mins = `sum(extract(epoch FROM (b.end_at - b.start_at)) / 60)::int`;
+  const planned = new Map<string, number>();
+  for (const row of (
+    await db.query<{ user_id: string; minutes: number }>(
+      `SELECT b.user_id, ${mins} AS minutes
+       FROM time_blocks b JOIN items i ON i.id = b.item_id
+      WHERE i.team_id = $1 AND b.start_at >= $2
+      GROUP BY b.user_id`,
+      [teamId, from.toISOString()],
+    )
+  ).rows)
+    planned.set(row.user_id, row.minutes);
+  const done = new Map<string, number>();
+  for (const row of (
+    await db.query<{ assignee_id: string | null; n: number }>(
+      `SELECT assignee_id, count(*)::int AS n FROM items
+      WHERE team_id = $1 AND status = 'done' AND updated_at >= $2
+      GROUP BY assignee_id`,
+      [teamId, from.toISOString()],
+    )
+  ).rows)
+    if (row.assignee_id) done.set(row.assignee_id, row.n);
+  const rows = members.map((m) => ({
+    user_id: m.user_id,
+    name: m.name,
+    planned_minutes: planned.get(m.user_id) ?? 0,
+    completed: done.get(m.user_id) ?? 0,
+  }));
+  return {
+    from: from.toISOString(),
+    to: now.toISOString(),
+    days,
+    total_planned_minutes: rows.reduce((s, m) => s + m.planned_minutes, 0),
+    members: rows.sort((a, b) => b.planned_minutes - a.planned_minutes),
+  };
+}
+
+/** Each member's capacity and assigned work in a window, with what's at risk. */
+export async function teamWorkload(
+  db: Db,
+  teamId: string,
+  fromIso: string,
+  toIso: string,
+): Promise<MemberWorkload[]> {
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  const members = (await teamMembers(teamId, db as never)).slice(
+    0,
+    MAX_MEMBERS,
+  );
+  return Promise.all(
+    members.map(async (m) => {
+      const prefs = await loadPrefs(db, m.user_id);
+      // Capacity leaves out their time blocks: those are for the work counted here.
+      const busy = await busyIntervals(db, m.user_id, from, to, {
+        blocks: false,
+        derived: true,
+        audience: "others",
+      });
+      const free = freeSpans(workingSpans(prefs, from, to), busy);
+      const capacity = Math.round(
+        free.reduce((sum, s) => sum + (s.end - s.start) / 60_000, 0),
+      );
+      const tasks = (
+        await db.query<{
+          id: string;
+          title: string;
+          due_at: Date | null;
+          end_at: Date | null;
+          all_day: boolean;
+          timezone: string;
+          estimate_minutes: number | null;
+          spent_minutes: number;
+          open_children: number;
+          children_remaining: number;
+        }>(
+          `SELECT i.id, i.title, i.due_at, i.end_at, i.all_day, i.timezone,
+                i.estimate_minutes, i.spent_minutes, ${CHILD_COLUMNS}
+         FROM items i
+         WHERE i.team_id = $1 AND i.assignee_id = $2 AND i.kind = 'task'
+           AND i.status NOT IN ('done', 'cancelled')
+           AND (i.due_at IS NULL OR i.due_at < $3)`,
+          [teamId, m.user_id, to],
+        )
+      ).rows.map((t) => ({
+        ...t,
+        // "Due" is the deadline: the end of an all-day task's day, or when
+        // a task with an end time ends. Free time before it counts.
+        deadline: t.due_at ? Date.parse(deadlineOf(t)!) : null,
+      }));
+      let assigned = 0;
+      let atRisk = 0;
+      // Tasks due soonest take the free time first.
+      const sorted = [...tasks].sort(
+        (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity),
+      );
+      let used = 0;
+      const atRiskItems: TeamAtRiskItem[] = [];
+      for (const t of sorted) {
+        const remaining = remainingOf(t);
+        assigned += remaining;
+        if (!t.due_at || t.deadline === null) continue;
+        const due = t.deadline;
+        const before = free.reduce(
+          (sum, s) =>
+            sum + Math.max(0, Math.min(s.end, due) - s.start) / 60_000,
+          0,
+        );
+        used += remaining;
+        if (used > before && remaining > 0) {
+          atRisk++;
+          atRiskItems.push({
+            id: t.id,
+            title: t.title,
+            assignee_id: m.user_id,
+            assignee_name: m.name,
+            due_at: t.due_at.toISOString(),
+            deadline_at: new Date(due).toISOString(),
+            due_all_day: t.all_day,
+            remaining_minutes: Math.round(remaining),
+          });
+        }
+      }
+      const load = capacity ? assigned / capacity : assigned ? 9.99 : 0;
+      return {
+        user_id: m.user_id,
+        name: m.name,
+        capacity_minutes: capacity,
+        assigned_minutes: Math.round(assigned),
+        open_tasks: tasks.length,
+        unestimated_tasks: tasks.filter((t) => t.estimate_minutes == null)
+          .length,
+        load: Math.round(load * 100) / 100,
+        overloaded: load > 1,
+        at_risk: atRisk,
+        at_risk_items: atRiskItems,
+      };
+    }),
+  );
+}
+
+/** Times everyone chosen is free, least disruptive first (20 at most). */
+export async function suggestTimes(
+  db: Db,
+  teamId: string,
+  q: { from: string; to: string; duration: number; user_ids?: string },
+  now = new Date(),
+): Promise<MeetingSlot[]> {
+  const members = await teamMembers(teamId, db as never);
+  const wanted = q.user_ids
+    ? q.user_ids.split(",").map((id) => id.trim())
+    : members.map((m) => m.user_id);
+  const people = members
+    .filter((m) => wanted.includes(m.user_id))
+    .slice(0, MAX_MEMBERS);
+  if (!people.length) return [];
+  const from = new Date(
+    Math.max(Date.parse(q.from), Math.ceil(now.getTime() / STEP_MS) * STEP_MS),
+  );
+  const to = new Date(q.to);
+  const perPerson = await Promise.all(
+    people.map((p) => memberFree(db, p.user_id, from, to)),
+  );
+  const common = perPerson.reduce((acc, spans) => intersect(acc, spans));
+  const need = q.duration * 60_000;
+  const slots: MeetingSlot[] = [];
+  for (const span of common) {
+    for (
+      let start = Math.ceil(span.start / STEP_MS) * STEP_MS;
+      start + need <= span.end;
+      start += STEP_MS
+    ) {
+      const end = start + need;
+      // A meeting that leaves someone a short stub of free time on each
+      // side breaks up their focus; one next to other commitments doesn't.
+      const disruption = perPerson.filter((spans) => {
+        const s = spans.find((x) => x.start <= start && x.end >= end);
+        return s && start - s.start >= FOCUS_MS && s.end - end >= FOCUS_MS;
+      }).length;
+      slots.push({
+        start_at: new Date(start).toISOString(),
+        end_at: new Date(end).toISOString(),
+        disruption,
+      });
+    }
+  }
+  return slots
+    .sort(
+      (a, b) =>
+        a.disruption - b.disruption || a.start_at.localeCompare(b.start_at),
+    )
+    .slice(0, 20)
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
 }

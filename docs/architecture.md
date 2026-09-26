@@ -16,19 +16,19 @@ database or to AI providers directly; everything goes through the gateway.
 One backend image runs each service with a different command. They scale independently and can
 live on different machines; see [scalability.md](scalability.md).
 
-| Service     | Entry point             | Owns                                                                                                                                            |
-| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                                                          |
-| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                                                                       |
-| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                    |
-| `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                     |
-| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                      |
-| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page                                                                                 |
-| `files`     | `services/files.ts`     | File store for imports: signed one-time uploads, encrypted, deleted within 24 h                                                                 |
-| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                     |
-| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                  |
-| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                          |
-| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/u/*` to files, `/mcp` to mcp, rest to api; port 8082 is the MCP host |
+| Service     | Entry point             | Owns                                                                                                                                                  |
+| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                                                                |
+| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                                                                             |
+| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                          |
+| `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                           |
+| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                            |
+| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page                                                                                       |
+| `files`     | `services/files.ts`     | File store: imports (signed one-time uploads, encrypted, deleted within 24 h) and pictures and files in pages (encrypted, kept with the page)         |
+| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                           |
+| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                        |
+| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                                |
+| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/{u,p,r}/*` to files, `/mcp` to mcp, rest to api; port 8082 is the MCP host |
 
 `server.ts` runs every module in one process for local development and tests.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
@@ -36,19 +36,21 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
 ## Backend (`backend/src`)
 
-| Path                  | Responsibility                                                                  |
-| --------------------- | ------------------------------------------------------------------------------- |
-| `config/env.ts`       | Loads `.env` and validates configuration with zod                               |
-| `db/pool.ts`          | Primary and optional read-replica pools, `reader()`, `transaction()`            |
-| `modules/<name>/`     | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
-| `modules/items/`      | `mutate()`, the single write path with optimistic locking, plus progress        |
-| `modules/ai/`         | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
-| `capabilities/`       | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
-| `modules/mcp-server/` | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
-| `modules/agents/`     | Agent keys, Connected agents, activity, admin switches, team agent policy       |
-| `lib/visibility.ts`   | The one rule for what a person (or a narrowed connection) can see               |
-| `worker/`             | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
-| `app.ts`              | Which modules each service mounts (`serviceModules`)                            |
+| Path                       | Responsibility                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `config/env.ts`            | Loads `.env` and validates configuration with zod                               |
+| `db/pool.ts`               | Primary and optional read-replica pools, `reader()`, `transaction()`            |
+| `modules/<name>/`          | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
+| `modules/items/`           | `mutate()`, the single write path with optimistic locking, plus progress        |
+| `modules/ai/`              | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
+| `capabilities/`            | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
+| `modules/mcp-server/`      | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
+| `modules/agents/`          | Agent keys, Connected agents, activity, admin switches, team agent policy       |
+| `modules/developers/`      | The public MCP developer page data and `/.well-known/security.txt`              |
+| `lib/visibility.ts`        | The one rule for what a person (or a narrowed connection) can see               |
+| `modules/links/privacy.ts` | Link words a reader may see: hides the titles of links they can't open (D3aF)   |
+| `worker/`                  | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
+| `app.ts`                   | Which modules each service mounts (`serviceModules`)                            |
 
 ### Outside agents (MCP)
 
@@ -77,7 +79,12 @@ no sessions, JSON answers.
   booking's events stay the guest's words after the booking or its page is deleted. A project's
   change rows keep their task's source themselves (`project_activity.source`), so a deleted
   task's title stays fenced. Images that would load from another host are removed. No MCP path
-  calls an AI provider or semantic search.
+  calls an AI provider or semantic search. A project **kept out of the assistant**
+  (`projects.assistant_off`) is left out of every agent query (`scopeFor` adds it to the
+  `lib/visibility.ts` builders, and calendar entries and sessions drop its items), as it is from
+  Orbyn's own assistant (`lib/assistant-off.ts`: every tool result is scrubbed, plans leave its
+  tasks out, a chat can't be scoped to it), page help, Study, the agenda's summary and search by
+  meaning.
 - **Rate limits by credential.** The general limit counts an agent's requests against its
   connection only at the MCP address and only once the credential is a live connection's; a
   made-up one counts per address, like any other request, so it can't skip sign-in limits.
@@ -94,7 +101,9 @@ no sessions, JSON answers.
   credentials.
 - **Ratchet.** `backend/tests/route-inventory.test.ts` classifies every route. A signed-in route
   must be covered by a tool, excluded with a reason, or pending (`capabilities/exclusions.ts`),
-  and pending may only shrink. `docs/mcp-catalog.json` and `docs/mcp.md` are generated from the
+  and pending may only shrink (it is now empty). Tools beyond core come in toolsets (workspace,
+  planner, study, follow-through, teams, booking, files) chosen at consent or in Settings, and
+  narrowed per request with `X-MCP-Toolsets` and `X-MCP-Readonly`. `docs/mcp-catalog.json` and `docs/mcp.md` are generated from the
   registry and checked in CI.
 
 ### Importing files into Docs
@@ -111,6 +120,22 @@ like this:
   delete it. The gateway exposes only the upload route.
 - A sweep every 10 minutes deletes files whose import has ended or vanished, uploads that stalled,
   and anything older than 24 hours.
+
+### Pictures and files in pages
+
+Pages hold pictures and files (EDT-01) as lines pointing at `orbyn://file/<id>`. The API keeps a
+`page_files` row (owner, page, name, type, size) and signs a one-time upload link (`/files/p/…`,
+its own HMAC purpose, so an import's link can't be used); the file store checks the first bytes
+against the type, encrypts the file the same way as an upload and keeps it in `PAGE_FILES_DIR`
+(the `page_files` volume, backed up by `scripts/deploy.sh` with the database). Showing or
+downloading one takes a link the API signs for an hour for someone who can read its page
+(`/files/r/…`, `Content-Security-Policy: sandbox`, `nosniff`). Each person has `PAGE_FILES_QUOTA_MB`
+of space, checked under a per-person lock. A trigger keeps `page_file_refs` (every page whose lines
+or kept original point at a file), so a picture moved, merged or pasted into another page shows
+there too (a save links only files its saver can read, listed by the API in the transaction-local
+`orbyn.page_files_ok`; leaving a team unlinks its files from your own pages), and marks a file no page shows any more (`unused_since`): the sweep lets it go 30 days
+later, or at once when its page was deleted for good. The file store deletes the bytes of rows that
+are gone. "Keep the original" moves an import's file here instead of deleting it.
 
 The **converter** reads each page the cheapest way that works. It has one reading lane, plus one
 scan lane per worker: `TESSERACT_WORKERS` lanes (2 by default) with the built-in Tesseract, or
@@ -171,27 +196,33 @@ rate limited separately from the rest of the API.
 
 ### Data model
 
-| Table                                                          | Purpose                                                                                         |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                    |
-| `sessions`                                                     | Hashed bearer tokens with expiry.                                                               |
-| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe.     |
-| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                                 |
-| `notifications`                                                | Reminder and notice outbox, one row per channel and destination; also the in-app tray.          |
-| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                    |
-| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                       |
-| `time_blocks`                                                  | Time each person set aside to work on a task.                                                   |
-| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, notices, frames, places.        |
-| `plans`                                                        | Generated plans waiting to be applied, with their inputs. Expire after an hour.                 |
-| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.      |
-| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                        |
-| `item_overrides`                                               | One occurrence of a repeating item changed on its own, keyed by its original start.             |
-| `item_attendees`                                               | People invited to an event by email, their answer, and their RSVP token (hashed and encrypted). |
-| `calendar_subscriptions`, `external_events`                    | Calendars read by ICS link, and their events as last fetched (read-only).                       |
-| `item_links`                                                   | Web links on a task, in order.                                                                  |
-| `deleted_items`                                                | Items deleted in the last 90 days and who could see them, for incremental sync.                 |
-| `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.      |
-| `migrations`                                                   | Applied migration file names.                                                                   |
+| Table                                                          | Purpose                                                                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                                                        | Account, argon2 password hash, `email_reminders` preference.                                                                    |
+| `sessions`                                                     | Hashed bearer tokens with expiry.                                                                                               |
+| `items`                                                        | Tasks and events. `version` for optimistic locking, `reminder_version` for reminder dedupe.                                     |
+| `devices`                                                      | Expo push tokens per user. A token belongs to exactly one user.                                                                 |
+| `notifications`                                                | Reminder and notice outbox, one row per channel and destination; also the in-app tray.                                          |
+| `proposals`                                                    | AI-suggested action batches awaiting user approval. Expire after 15 minutes.                                                    |
+| `lists`, `tags`, `item_tags`                                   | Personal or team lists and tags on items.                                                                                       |
+| `time_blocks`                                                  | Time each person set aside to work on a task.                                                                                   |
+| `planner_prefs`, `frames`, `places`                            | How each person works: hours, padding, breaks, buffers, travel, notices, frames, places.                                        |
+| `plans`                                                        | Generated plans waiting to be applied, with their inputs. Expire after an hour.                                                 |
+| `booking_pages`, `booking_hosts`, `bookings`, `booking_events` | Public booking pages, their hosts, the bookings made on them, and each booking's timeline.                                      |
+| `api_keys`, `webhooks`, `webhook_deliveries`                   | Personal API keys (hashed), outgoing webhooks, and their delivery queue.                                                        |
+| `item_overrides`                                               | One occurrence of a repeating item changed on its own, keyed by its original start.                                             |
+| `item_attendees`                                               | People invited to an event by email, their answer, and their RSVP token (hashed and encrypted).                                 |
+| `calendar_subscriptions`, `external_events`                    | Calendars read by ICS link, and their events as last fetched (read-only).                                                       |
+| `item_links`                                                   | Web links on a task, in order.                                                                                                  |
+| `deleted_items`                                                | Items deleted in the last 90 days and who could see them, for incremental sync.                                                 |
+| `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.                                      |
+| `object_links`                                                 | Links between things, for "Linked here": picker links (a link to one line counts for its page), mentions and fixed connections. |
+| `page_files`                                                   | Pictures and files in pages, and kept import originals: owner, page, name, type, size, status.                                  |
+| `page_file_refs`                                               | Which pages show each picture or file (kept by a trigger on `docs`), for reading and for freeing unused files.                  |
+| `doc_folds`                                                    | The headings each person folded on a page.                                                                                      |
+| `saved_views`, `saved_view_pins`                               | Saved views (one shared definition), yours or a team's, and each person's sidebar pins.                                         |
+| `custom_fields`, `custom_field_values`                         | Your own typed fields on pages and projects in a space, and their values.                                                       |
+| `migrations`                                                   | Applied migration file names.                                                                                                   |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns
 HTTP 409 so two clients cannot silently overwrite each other. Ownership is enforced in every SQL

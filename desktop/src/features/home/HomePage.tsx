@@ -692,6 +692,16 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             Privacy Policy
           </a>
           <a
+            href="/security"
+            className="text-button"
+            onClick={(e) => {
+              e.preventDefault();
+              onNavigate("/security");
+            }}
+          >
+            Security and data
+          </a>
+          <a
             href="/terms"
             className="text-button"
             onClick={(e) => {

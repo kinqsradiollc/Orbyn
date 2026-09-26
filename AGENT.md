@@ -74,10 +74,11 @@ npm run dev:web
 | `notifier`  | Reminder scheduling & delivery                                                    |
 | `realtime`  | Live streams (`/events`, doc presence), fanned out through Postgres LISTEN/NOTIFY |
 | `mcp`       | Outside AI agents over MCP (`/mcp`): stateless, limits per connection             |
-| `files`     | File store for imports: one-time signed uploads, encrypted, deleted within a day  |
+| `files`     | File store for imports: signed uploads, encrypted, gone in a day unless kept      |
 | `converter` | Turns imported PDFs/Word/photos into pages in Docs → Uploads                      |
 | `formula`   | pix2tex for equations on scans (`formula/`), Compose profile `formula`, optional  |
 | `ocr`       | Unlimited-OCR on CPU (`ocr/`), profile `ocr`, OFF by default (too heavy)          |
+| `measure`   | Search by meaning (profile `semantic`, off by default): measures changed pages    |
 | `migrate`   | Applies migrations under advisory lock                                            |
 
 ## Operations

@@ -15,9 +15,15 @@ import { errorText } from "../../lib/errors";
 export function PageFreshness({
   doc,
   canWrite,
+  always = false,
 }: {
   doc: Pick<Doc, "id" | "updated_at" | "reviewed_at">;
   canWrite: boolean;
+  /**
+   * In Info: say how fresh it is even when it's fresh, and let anyone who
+   * can edit it confirm it at any time.
+   */
+  always?: boolean;
 }) {
   const [reviewed, setReviewed] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
@@ -31,7 +37,7 @@ export function PageFreshness({
         <Text style={[s.text, s.doneText]}>{done}</Text>
       </View>
     );
-  if (fresh.state === "fresh") return null;
+  if (fresh.state === "fresh" && !always) return null;
   const review = async (
     input:
       { verdict: "still_true" } | { verdict: "needs_update"; note: string },
@@ -55,8 +61,11 @@ export function PageFreshness({
   return (
     <View style={[s.bar, fresh.state === "stale" && s.stale]}>
       <Text style={[s.text, fresh.state === "stale" && s.staleText]}>
-        Not changed or confirmed in {ageLabel(fresh.days)}.
-        {canWrite ? " Is it still true?" : " It may be out of date."}
+        {fresh.state === "fresh"
+          ? `Changed or confirmed ${fresh.days < 1 ? "today" : `${ageLabel(fresh.days)} ago`}.`
+          : `Not changed or confirmed in ${ageLabel(fresh.days)}.${
+              canWrite ? " Is it still true?" : " It may be out of date."
+            }`}
       </Text>
       {canWrite && !asking && (
         <View style={s.actions}>

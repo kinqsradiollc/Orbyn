@@ -54,6 +54,8 @@ export function TodayScreen({
   userId,
   onQuickAdded,
   onAsk,
+  quickAddPrefill,
+  onQuickAddPrefillUsed,
   onShowAll,
   onFocus,
   onOpenById,
@@ -78,6 +80,10 @@ export function TodayScreen({
   userId?: string;
   /** After quick add created something, so the planner reloads. */
   onQuickAdded: (item: Item | null) => void;
+  /** Words from an add link, put in quick add to confirm. */
+  quickAddPrefill?: { text: string; key: number } | null;
+  /** Quick add took the link's words: they are let go. */
+  onQuickAddPrefillUsed?: () => void;
   /** Hand quick-add text to the assistant instead. */
   onAsk: (text: string) => void;
   /** Jumps to the assistant and asks it to plan the day. */
@@ -144,7 +150,13 @@ export function TodayScreen({
 
   return (
     <>
-      <QuickAdd userId={userId} onCreated={onQuickAdded} onAsk={onAsk} />
+      <QuickAdd
+        userId={userId}
+        onCreated={onQuickAdded}
+        onAsk={onAsk}
+        prefill={quickAddPrefill}
+        onPrefillUsed={onQuickAddPrefillUsed}
+      />
       <View style={s.stats}>
         {stats.map((stat, n) => (
           <FadeIn
@@ -181,6 +193,7 @@ export function TodayScreen({
           onPlanIt={onPlanTask}
           onPlanAgain={onPlanAgain}
           onOpenCalendar={onOpenCalendar}
+          onCheckedIn={() => onQuickAdded(null)}
         />
       )}
       {open.some((i) => i.kind === "task") && (

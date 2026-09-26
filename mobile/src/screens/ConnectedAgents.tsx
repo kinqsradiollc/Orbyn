@@ -5,15 +5,19 @@ import {
   AGENT_ACCESS_LABELS,
   AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
+  AGENT_TOOLSETS,
+  AGENT_TOOLSET_LABELS,
   AGENT_SETUP_LABELS,
   AGENT_SIGN_IN_STEPS,
   agentExpiryText,
+  agentInstallLinks,
   agentSetup,
   isSignInClient,
   type AgentAccess,
   type AgentActivity,
   type AgentGrant,
   type AgentSetupClient,
+  type AgentToolset,
   type AgentsOverview,
   type Team,
 } from "@orbyn/core";
@@ -24,6 +28,7 @@ import { Pill } from "../components/Pill";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
+import { openReview } from "../lib/review";
 import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
@@ -36,6 +41,61 @@ const ACCESS_TAG: Record<AgentAccess, string> = {
   write: "Change",
 };
 const EXPIRY_CHOICES = [7, 30, 90, 365];
+
+/** Toolsets besides core (which every connection has). */
+const OPTIONAL_TOOLSETS = AGENT_TOOLSETS.filter(
+  (t) => t !== "core",
+) as AgentToolset[];
+
+/** "Planner, Study", or core only. */
+const toolsetsText = (g: AgentGrant) => {
+  const extra = g.toolsets.filter((t) => t !== "core");
+  return extra.length
+    ? extra.map((t) => AGENT_TOOLSET_LABELS[t].name).join(", ")
+    : "Core tools only";
+};
+
+/** Chips to choose toolsets, each with what it adds below. */
+function ToolsetChips({
+  value,
+  onChange,
+  bookings,
+}: {
+  value: AgentToolset[];
+  onChange: (next: AgentToolset[]) => void;
+  bookings: boolean;
+}) {
+  const shown = OPTIONAL_TOOLSETS.filter((t) => bookings || t !== "booking");
+  return (
+    <Field
+      label="Tools"
+      hint={`${AGENT_TOOLSET_LABELS.core.name} are always on. ${shown
+        .filter((t) => value.includes(t))
+        .map(
+          (t) =>
+            `${AGENT_TOOLSET_LABELS[t].name}: ${AGENT_TOOLSET_LABELS[t].blurb}`,
+        )
+        .join(" ")}`}
+    >
+      <ChipRow label="Tools" multi>
+        {shown.map((t) => {
+          const on = value.includes(t);
+          return (
+            <Chip
+              key={t}
+              multi
+              label={AGENT_TOOLSET_LABELS[t].name}
+              selected={on}
+              onPress={() =>
+                onChange(on ? value.filter((x) => x !== t) : [...value, t])
+              }
+            />
+          );
+        })}
+      </ChipRow>
+    </Field>
+  );
+}
 
 /** "Personal, Design team"; old API keys reach every team, now and later. */
 const spacesText = (g: AgentGrant) =>
@@ -63,9 +123,12 @@ const grantTitle = (g: AgentGrant) =>
 export function ConnectedAgentsCard({
   busy,
   run,
+  onOpenReview = openReview,
 }: {
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<unknown>;
+  /** Opens a proposal an agent made in Review. */
+  onOpenReview?: (proposalId: string) => void;
 }) {
   const [overview, setOverview] = useState<AgentsOverview | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -80,7 +143,13 @@ export function ConnectedAgentsCard({
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [days, setDays] = useState(30);
   const [hideOutside, setHideOutside] = useState(false);
+  const [toolsets, setToolsets] = useState<AgentToolset[]>([]);
   const [fresh, setFresh] = useState<string | null>(null);
+  /** The connection whose tools are being changed, and the choice so far. */
+  const [editing, setEditing] = useState<{
+    id: string;
+    toolsets: AgentToolset[];
+  } | null>(null);
 
   const reload = async () => setOverview(await client.agents());
   useEffect(() => {
@@ -107,6 +176,23 @@ export function ConnectedAgentsCard({
     });
   };
 
+  // Take back one change an agent made directly (kept 30 days; refused if
+  // the thing changed since).
+  const undo = (g: AgentGrant, a: AgentActivity) =>
+    confirmAction(
+      `Undo “${a.summary}”?`,
+      "Orbyn puts things back as they were before this change. If something changed since, it stays as it is.",
+      "Undo",
+      () =>
+        void run(async () => {
+          await client.undoAgentChange(a.id);
+          const list = await client.agentActivity(g.id);
+          animateLayout();
+          setActivity((all) => ({ ...all, [g.id]: list }));
+        }),
+      false,
+    );
+
   const revoke = (g: AgentGrant) => {
     const legacy = g.kind === "legacy";
     const app = g.kind === "oauth";
@@ -132,6 +218,15 @@ export function ConnectedAgentsCard({
     );
   };
 
+  const saveTools = () =>
+    void run(async () => {
+      if (!editing) return;
+      await client.setAgentToolsets(editing.id, editing.toolsets);
+      animateLayout();
+      setEditing(null);
+      await reload();
+    });
+
   const restore = (g: AgentGrant) =>
     void run(async () => {
       await client.restoreAgent(g.id);
@@ -150,6 +245,7 @@ export function ConnectedAgentsCard({
         team_ids: teamIds,
         expires_in_days: days,
         hide_outside_content: hideOutside,
+        toolsets: ["core", ...toolsets],
       });
       animateLayout();
       setFresh(made.key);
@@ -187,6 +283,7 @@ export function ConnectedAgentsCard({
                     <Pill label={ACCESS_TAG[g.access]} tone="accent" />
                   )}
                   <Pill label={spacesText(g)} />
+                  {g.kind !== "legacy" && <Pill label={toolsetsText(g)} />}
                   {g.hide_outside_content && (
                     <Pill label="Outside content hidden" />
                   )}
@@ -227,6 +324,25 @@ export function ConnectedAgentsCard({
                     disabled={busy}
                     onPress={() => toggleActivity(g)}
                   />
+                  {g.kind !== "legacy" && (
+                    <SmallAction
+                      label={editing?.id === g.id ? "Close tools" : "Tools"}
+                      disabled={busy}
+                      onPress={() => {
+                        animateLayout();
+                        setEditing(
+                          editing?.id === g.id
+                            ? null
+                            : {
+                                id: g.id,
+                                toolsets: g.toolsets.filter(
+                                  (t) => t !== "core",
+                                ),
+                              },
+                        );
+                      }}
+                    />
+                  )}
                   {g.suspended_at && (
                     <SmallAction
                       label="Restore"
@@ -241,6 +357,39 @@ export function ConnectedAgentsCard({
                     onPress={() => revoke(g)}
                   />
                 </View>
+                {editing?.id === g.id && (
+                  <FadeIn style={s.activity}>
+                    <ToolsetChips
+                      value={editing.toolsets}
+                      bookings={
+                        g.kind === "key" || g.toolsets.includes("booking")
+                      }
+                      onChange={(next) =>
+                        setEditing({ id: g.id, toolsets: next })
+                      }
+                    />
+                    {g.kind === "oauth" && !g.toolsets.includes("booking") && (
+                      <Text style={shared.small}>
+                        Bookings need {g.client_name || "the app"} to ask for
+                        them when it signs in again.
+                      </Text>
+                    )}
+                    <View style={s.actions}>
+                      <Button
+                        title="Save"
+                        style={s.flexButton}
+                        disabled={busy}
+                        onPress={saveTools}
+                      />
+                      <Button
+                        secondary
+                        title="Cancel"
+                        style={s.flexButton}
+                        onPress={() => setEditing(null)}
+                      />
+                    </View>
+                  </FadeIn>
+                )}
                 {open !== undefined && (
                   <FadeIn style={s.activity}>
                     {open === null ? (
@@ -258,7 +407,22 @@ export function ConnectedAgentsCard({
                               : a.outcome === "denied"
                                 ? " · refused"
                                 : ` · ${a.outcome}`}
+                            {a.undone_at ? " · undone" : ""}
                           </Text>
+                          {a.proposal_id && onOpenReview && (
+                            <SmallAction
+                              label="Review"
+                              disabled={busy}
+                              onPress={() => onOpenReview(a.proposal_id!)}
+                            />
+                          )}
+                          {a.undoable && (
+                            <SmallAction
+                              label="Undo"
+                              disabled={busy}
+                              onPress={() => undo(g, a)}
+                            />
+                          )}
                         </View>
                       ))
                     ) : (
@@ -355,7 +519,7 @@ export function ConnectedAgentsCard({
                     AGENT_ACCESS_LABELS[access].blurb +
                     (access === "read"
                       ? ""
-                      : " For now agents can only read; changes arrive soon.")
+                      : " Risky changes wait for you in Review; you can undo the rest from its activity.")
                   }
                 >
                   <ChipRow label="What it may do">
@@ -409,6 +573,11 @@ export function ConnectedAgentsCard({
                     ))}
                   </ChipRow>
                 </Field>
+                <ToolsetChips
+                  value={toolsets}
+                  bookings
+                  onChange={setToolsets}
+                />
                 <View style={s.switchRow}>
                   <View style={s.flex}>
                     <Text style={shared.label}>Hide outside content</Text>
@@ -450,6 +619,23 @@ export function ConnectedAgentsCard({
             />
           </>
         )}
+
+        <Text style={[shared.label, s.step]}>Or add Orbyn in one click</Text>
+        <Text style={[shared.small, s.gap]}>
+          These apps run on a computer: send yourself the link and open it
+          there. The app then signs in with Orbyn, or asks for an agent key. No
+          key is ever part of the link.
+        </Text>
+        {agentInstallLinks(url).map((l) => (
+          <View key={l.app} style={s.installRow}>
+            <Text style={[shared.label, s.flex]}>{l.label}</Text>
+            <SmallAction
+              label="Share link"
+              disabled={false}
+              onPress={() => void shareText(l.href)}
+            />
+          </View>
+        ))}
       </View>
     </>
   );
@@ -478,7 +664,7 @@ const s = themed(() =>
       padding: 10,
       gap: 6,
     },
-    activityRow: { flexDirection: "row", gap: 10 },
+    activityRow: { flexDirection: "row", gap: 10, alignItems: "center" },
     activityTime: { width: 64, color: colors.muted },
     flex: { flex: 1 },
     switchRow: {
@@ -505,5 +691,13 @@ const s = themed(() =>
       marginBottom: 10,
     },
     last: { marginBottom: 0 },
+    installRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
   }),
 );

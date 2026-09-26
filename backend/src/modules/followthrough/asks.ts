@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { z } from "zod";
 import {
   actionSchema,
   askReplyInput,
@@ -149,6 +150,210 @@ async function changeItem(
   );
 }
 
+/** Asks waiting on `userId`, waiting on others, and lately settled. */
+export async function listAsks(db: Queryable, userId: string) {
+  const rows = (
+    await db.query<AskRow>(
+      `SELECT ${COLUMNS} FROM ${FROM}
+        WHERE (a.asked_of = $1 OR a.asked_by = $1)
+          AND (a.status IN ('open', 'countered')
+               OR a.updated_at > now() - interval '7 days')
+        ORDER BY a.updated_at DESC LIMIT 100`,
+      [userId],
+    )
+  ).rows.map(toAsk);
+  return {
+    /** Waiting for your answer. */
+    to_me: rows.filter(
+      (a) =>
+        (a.asked_of === userId && a.status === "open") ||
+        (a.asked_by === userId && a.status === "countered"),
+    ),
+    /** Waiting for someone else's. */
+    from_me: rows.filter(
+      (a) =>
+        (a.asked_by === userId && a.status === "open") ||
+        (a.asked_of === userId && a.status === "countered"),
+    ),
+    recent: rows.filter((a) => a.status !== "open" && a.status !== "countered"),
+  };
+}
+
+/** The ask on a task, for its detail: the one in play, else the last one. */
+export async function askOnItem(
+  db: Queryable,
+  userId: string,
+  itemId: string,
+): Promise<TaskAsk | null> {
+  const row = (
+    await db.query<AskRow>(
+      `SELECT ${COLUMNS} FROM ${FROM}
+        WHERE a.item_id = $1 AND (a.asked_by = $2 OR a.asked_of = $2)
+        ORDER BY (a.status IN ('open', 'countered')) DESC, a.updated_at DESC
+        LIMIT 1`,
+      [itemId, userId],
+    )
+  ).rows[0];
+  return row ? toAsk(row) : null;
+}
+
+/** One ask `userId` is part of (404 otherwise), for checks before a change. */
+export async function askFor(db: Queryable, userId: string, askId: string) {
+  const row = (
+    await db.query<AskRow>(
+      `SELECT ${COLUMNS} FROM ${FROM}
+        WHERE a.id = $1 AND (a.asked_by = $2 OR a.asked_of = $2)`,
+      [askId, userId],
+    )
+  ).rows[0];
+  if (!row) fail(404, "Ask not found");
+  return toAsk(row);
+}
+
+/** The person asked answers: take it on, suggest another plan, or decline. */
+export async function replyToAsk(
+  db: Db,
+  u: { id: string; name: string; role: "admin" | "member" },
+  askId: string,
+  input: z.input<typeof askReplyInput>,
+): Promise<TaskAsk> {
+  const d = askReplyInput.parse(input);
+  const ask = await lockAsk(db, askId);
+  if (ask.asked_of !== u.id) fail(404, "Ask not found");
+  if (ask.status !== "open") fail(409, "This ask has already been answered.");
+  if (d.action === "accept") {
+    await db.query(
+      `UPDATE task_asks SET status = 'accepted', reply = $2, updated_at = now()
+        WHERE id = $1`,
+      [ask.id, d.message],
+    );
+    await notify(
+      db,
+      ask.asked_by,
+      ask.item_id,
+      ask.id,
+      `${ask.asked_of_name} took on ${ask.item_title}`,
+      d.message || `By ${when(ask.due_at)}.`,
+    );
+  } else if (d.action === "counter") {
+    await db.query(
+      `UPDATE task_asks SET status = 'countered', counter_due_at = $2,
+         counter_estimate_minutes = $3, reply = $4, updated_at = now()
+        WHERE id = $1`,
+      [
+        ask.id,
+        d.due_at === undefined ? ask.due_at : d.due_at,
+        d.estimate_minutes === undefined
+          ? ask.estimate_minutes
+          : d.estimate_minutes,
+        d.message,
+      ],
+    );
+    await notify(
+      db,
+      ask.asked_by,
+      ask.item_id,
+      ask.id,
+      `${ask.asked_of_name} suggests another plan for ${ask.item_title}`,
+      [
+        d.due_at !== undefined ? `By ${when(d.due_at)} instead.` : "",
+        d.estimate_minutes ? `About ${d.estimate_minutes} min.` : "",
+        d.message,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  } else {
+    await db.query(
+      `UPDATE task_asks SET status = 'declined', reply = $2, updated_at = now()
+        WHERE id = $1`,
+      [ask.id, d.message],
+    );
+    // Not theirs any more: it goes back unassigned.
+    await changeItem(db, u, ask.item_id, { assignee_id: null });
+    await notify(
+      db,
+      ask.asked_by,
+      ask.item_id,
+      ask.id,
+      `${ask.asked_of_name} can't take on ${ask.item_title}`,
+      d.message,
+    );
+  }
+  return toAsk(await lockAsk(db, ask.id));
+}
+
+/** The asker settles: agree to a suggestion, keep their date, or withdraw. */
+export async function settleAsk(
+  db: Db,
+  u: { id: string; name: string; role: "admin" | "member" },
+  askId: string,
+  input: z.input<typeof askSettleInput>,
+): Promise<TaskAsk> {
+  const d = askSettleInput.parse(input);
+  const ask = await lockAsk(db, askId);
+  if (ask.asked_by !== u.id) fail(404, "Ask not found");
+  if (d.action === "withdraw") {
+    if (ask.status !== "open" && ask.status !== "countered")
+      fail(409, "This ask is already settled.");
+    await db.query(
+      `UPDATE task_asks SET status = 'withdrawn', updated_at = now() WHERE id = $1`,
+      [ask.id],
+    );
+    await changeItem(db, u, ask.item_id, { assignee_id: null });
+    await notify(
+      db,
+      ask.asked_of,
+      ask.item_id,
+      ask.id,
+      `${ask.asked_by_name} no longer needs you for ${ask.item_title}`,
+      d.message,
+    );
+    return toAsk(await lockAsk(db, ask.id));
+  }
+  if (ask.status !== "countered") fail(409, "There's no suggestion to answer.");
+  if (d.action === "agree") {
+    await changeItem(db, u, ask.item_id, {
+      due_at: ask.counter_due_at?.toISOString() ?? null,
+      ...(ask.counter_estimate_minutes
+        ? { estimate_minutes: ask.counter_estimate_minutes }
+        : {}),
+    });
+    await db.query(
+      `UPDATE task_asks SET status = 'accepted', due_at = counter_due_at,
+         estimate_minutes = coalesce(counter_estimate_minutes, estimate_minutes),
+         updated_at = now()
+        WHERE id = $1`,
+      [ask.id],
+    );
+    await notify(
+      db,
+      ask.asked_of,
+      ask.item_id,
+      ask.id,
+      `${ask.asked_by_name} agreed: ${ask.item_title}`,
+      `By ${when(ask.counter_due_at)}.`,
+    );
+  } else {
+    // Keep the original: it goes back to them as asked, with a word.
+    await db.query(
+      `UPDATE task_asks SET status = 'open', counter_due_at = NULL,
+         counter_estimate_minutes = NULL, message = $2, updated_at = now()
+        WHERE id = $1`,
+      [ask.id, d.message],
+    );
+    await notify(
+      db,
+      ask.asked_of,
+      ask.item_id,
+      ask.id,
+      `${ask.asked_by_name} still needs ${ask.item_title} by ${when(ask.due_at)}`,
+      d.message || "Take it on, or say you can't.",
+    );
+  }
+  return toAsk(await lockAsk(db, ask.id));
+}
+
 /**
  * Negotiated plans. A task handed to someone is a question, not an order:
  * "can you do this by Friday?" The answer is yes, "Tuesday would work", or
@@ -158,190 +363,26 @@ async function changeItem(
 export async function askRoutes(app: FastifyInstance) {
   app.get("/asks", async (r) => {
     const u = await authenticate(r);
-    const rows = (
-      await reader(r.headers).query<AskRow>(
-        `SELECT ${COLUMNS} FROM ${FROM}
-          WHERE (a.asked_of = $1 OR a.asked_by = $1)
-            AND (a.status IN ('open', 'countered')
-                 OR a.updated_at > now() - interval '7 days')
-          ORDER BY a.updated_at DESC LIMIT 100`,
-        [u.id],
-      )
-    ).rows.map(toAsk);
-    return {
-      /** Waiting for your answer. */
-      to_me: rows.filter(
-        (a) =>
-          (a.asked_of === u.id && a.status === "open") ||
-          (a.asked_by === u.id && a.status === "countered"),
-      ),
-      /** Waiting for someone else's. */
-      from_me: rows.filter(
-        (a) =>
-          (a.asked_by === u.id && a.status === "open") ||
-          (a.asked_of === u.id && a.status === "countered"),
-      ),
-      recent: rows.filter(
-        (a) => a.status !== "open" && a.status !== "countered",
-      ),
-    };
+    return listAsks(reader(r.headers), u.id);
   });
 
   // The ask on a task, for its detail: the one in play, else the last one.
   app.get("/items/:id/ask", async (r): Promise<TaskAsk | null> => {
     const u = await authenticate(r);
-    const id = idParam(r);
-    const row = (
-      await reader(r.headers).query<AskRow>(
-        `SELECT ${COLUMNS} FROM ${FROM}
-          WHERE a.item_id = $1 AND (a.asked_by = $2 OR a.asked_of = $2)
-          ORDER BY (a.status IN ('open', 'countered')) DESC, a.updated_at DESC
-          LIMIT 1`,
-        [id, u.id],
-      )
-    ).rows[0];
-    return row ? toAsk(row) : null;
+    return askOnItem(reader(r.headers), u.id, idParam(r));
   });
 
   // The person asked answers.
   app.post("/asks/:id/reply", async (r) => {
     const u = await authenticate(r);
     const d = askReplyInput.parse(r.body);
-    return transaction(async (db) => {
-      const ask = await lockAsk(db, idParam(r));
-      if (ask.asked_of !== u.id) fail(404, "Ask not found");
-      if (ask.status !== "open")
-        fail(409, "This ask has already been answered.");
-      if (d.action === "accept") {
-        await db.query(
-          `UPDATE task_asks SET status = 'accepted', reply = $2, updated_at = now()
-            WHERE id = $1`,
-          [ask.id, d.message],
-        );
-        await notify(
-          db,
-          ask.asked_by,
-          ask.item_id,
-          ask.id,
-          `${ask.asked_of_name} took on ${ask.item_title}`,
-          d.message || `By ${when(ask.due_at)}.`,
-        );
-      } else if (d.action === "counter") {
-        await db.query(
-          `UPDATE task_asks SET status = 'countered', counter_due_at = $2,
-             counter_estimate_minutes = $3, reply = $4, updated_at = now()
-            WHERE id = $1`,
-          [
-            ask.id,
-            d.due_at === undefined ? ask.due_at : d.due_at,
-            d.estimate_minutes === undefined
-              ? ask.estimate_minutes
-              : d.estimate_minutes,
-            d.message,
-          ],
-        );
-        await notify(
-          db,
-          ask.asked_by,
-          ask.item_id,
-          ask.id,
-          `${ask.asked_of_name} suggests another plan for ${ask.item_title}`,
-          [
-            d.due_at !== undefined ? `By ${when(d.due_at)} instead.` : "",
-            d.estimate_minutes ? `About ${d.estimate_minutes} min.` : "",
-            d.message,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
-      } else {
-        await db.query(
-          `UPDATE task_asks SET status = 'declined', reply = $2, updated_at = now()
-            WHERE id = $1`,
-          [ask.id, d.message],
-        );
-        // Not theirs any more: it goes back unassigned.
-        await changeItem(db, u, ask.item_id, { assignee_id: null });
-        await notify(
-          db,
-          ask.asked_by,
-          ask.item_id,
-          ask.id,
-          `${ask.asked_of_name} can't take on ${ask.item_title}`,
-          d.message,
-        );
-      }
-      return toAsk(await lockAsk(db, ask.id));
-    });
+    return transaction((db) => replyToAsk(db, u, idParam(r), d));
   });
 
   // The asker settles a suggestion.
   app.post("/asks/:id/settle", async (r) => {
     const u = await authenticate(r);
     const d = askSettleInput.parse(r.body);
-    return transaction(async (db) => {
-      const ask = await lockAsk(db, idParam(r));
-      if (ask.asked_by !== u.id) fail(404, "Ask not found");
-      if (d.action === "withdraw") {
-        if (ask.status !== "open" && ask.status !== "countered")
-          fail(409, "This ask is already settled.");
-        await db.query(
-          `UPDATE task_asks SET status = 'withdrawn', updated_at = now() WHERE id = $1`,
-          [ask.id],
-        );
-        await changeItem(db, u, ask.item_id, { assignee_id: null });
-        await notify(
-          db,
-          ask.asked_of,
-          ask.item_id,
-          ask.id,
-          `${ask.asked_by_name} no longer needs you for ${ask.item_title}`,
-          d.message,
-        );
-        return toAsk(await lockAsk(db, ask.id));
-      }
-      if (ask.status !== "countered")
-        fail(409, "There's no suggestion to answer.");
-      if (d.action === "agree") {
-        await changeItem(db, u, ask.item_id, {
-          due_at: ask.counter_due_at?.toISOString() ?? null,
-          ...(ask.counter_estimate_minutes
-            ? { estimate_minutes: ask.counter_estimate_minutes }
-            : {}),
-        });
-        await db.query(
-          `UPDATE task_asks SET status = 'accepted', due_at = counter_due_at,
-             estimate_minutes = coalesce(counter_estimate_minutes, estimate_minutes),
-             updated_at = now()
-            WHERE id = $1`,
-          [ask.id],
-        );
-        await notify(
-          db,
-          ask.asked_of,
-          ask.item_id,
-          ask.id,
-          `${ask.asked_by_name} agreed: ${ask.item_title}`,
-          `By ${when(ask.counter_due_at)}.`,
-        );
-      } else {
-        // Keep the original: it goes back to them as asked, with a word.
-        await db.query(
-          `UPDATE task_asks SET status = 'open', counter_due_at = NULL,
-             counter_estimate_minutes = NULL, message = $2, updated_at = now()
-            WHERE id = $1`,
-          [ask.id, d.message],
-        );
-        await notify(
-          db,
-          ask.asked_of,
-          ask.item_id,
-          ask.id,
-          `${ask.asked_by_name} still needs ${ask.item_title} by ${when(ask.due_at)}`,
-          d.message || "Take it on, or say you can't.",
-        );
-      }
-      return toAsk(await lockAsk(db, ask.id));
-    });
+    return transaction((db) => settleAsk(db, u, idParam(r), d));
   });
 }

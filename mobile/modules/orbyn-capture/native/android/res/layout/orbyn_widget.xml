@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@drawable/orbyn_widget_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/orbyn_heading"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Today"
+            android:textColor="@color/orbyn_muted"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/orbyn_add"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:background="@drawable/orbyn_widget_button"
+            android:contentDescription="New task"
+            android:text="+ New task"
+            android:textColor="@color/orbyn_on_accent"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/orbyn_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/orbyn_accent"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/orbyn_empty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="@color/orbyn_muted"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <LinearLayout android:id="@+id/orbyn_row_0" style="@style/OrbynWidgetRow">
+        <ImageView android:id="@+id/orbyn_tick_0" style="@style/OrbynWidgetTick" />
+        <TextView android:id="@+id/orbyn_title_0" style="@style/OrbynWidgetTitle" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/orbyn_row_1" style="@style/OrbynWidgetRow">
+        <ImageView android:id="@+id/orbyn_tick_1" style="@style/OrbynWidgetTick" />
+        <TextView android:id="@+id/orbyn_title_1" style="@style/OrbynWidgetTitle" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/orbyn_row_2" style="@style/OrbynWidgetRow">
+        <ImageView android:id="@+id/orbyn_tick_2" style="@style/OrbynWidgetTick" />
+        <TextView android:id="@+id/orbyn_title_2" style="@style/OrbynWidgetTitle" />
+    </LinearLayout>
+</LinearLayout>

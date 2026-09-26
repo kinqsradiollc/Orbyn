@@ -1,11 +1,22 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { onLive } from "../../lib/live";
+import { headerHiddenAfter, hidesHeaderWhileReading } from "../../lib/reading";
+import {
+  forgetIfGone,
+  forgetPage,
+  keptPage,
+  keptPages,
+} from "../../lib/pageCache";
+import { waitingSave } from "../../lib/outbox";
 import {
   AppState,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  RefreshControl,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -15,6 +26,9 @@ import {
   agendaMonthKey,
   agendaTitleOn,
   agendaWeekOf,
+  docPreview,
+  isOfflineError,
+  withPendingSave,
   localDateKey,
   favouriteKey,
   favouriteSet,
@@ -35,16 +49,23 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
+import { tap } from "../../lib/haptics";
 import { confirmAction } from "../../lib/confirm";
 import { deviceTimeZone } from "../../lib/planning";
 import { shared } from "../../styles";
 import { useRun } from "../../hooks/useRun";
-import { colors, fonts, radii, themed } from "../../theme";
+import { colors, controls, fonts, radii, themed } from "../../theme";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { UploadsList, useImports } from "./Uploads";
 import { SmallAction } from "../../components/SmallAction";
-import { MoreMenu } from "../../components/MoreMenu";
+import {
+  ActionSheet,
+  MoreMenu,
+  type MoreAction,
+} from "../../components/MoreMenu";
+import { copyLink, shareLink } from "../../lib/share";
+import { PublishSheet } from "./PublishSheet";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
@@ -85,7 +106,10 @@ export function DocsSheet({
   startNew,
   onStarted,
   onOpenProject,
+  onSearch,
 }: {
+  /** Pull down on the library or a page: "Search & do" (MOB-09). */
+  onSearch?: () => void;
   /** Open on Uploads (after files were shared to Orbyn). */
   startInUploads?: boolean;
   /** Open on "New page from a template" (the + sheet's From template). */
@@ -95,7 +119,7 @@ export function DocsSheet({
   onStarted?: () => void;
   onOpenProject?: (projectId: string) => void;
   /** Suggest study cards from a page (opens Study). */
-  onMakeCards?: (docId: string, title: string) => void;
+  onMakeCards?: (docId: string, title: string, max?: number) => void;
   visible: boolean;
   /** Opens straight onto today's agenda instead of the list. */
   agenda?: boolean;
@@ -139,6 +163,17 @@ export function DocsSheet({
   /** Trash: deleted pages, kept for `TRASH_DAYS` days. */
   const [trashOnly, setTrashOnly] = useState(false);
   const [trash, setTrash] = useState<TrashedDoc[] | null>(null);
+  /** Archived pages (SRCH-03), out of every other list. */
+  const [archivedOnly, setArchivedOnly] = useState(false);
+  const [archivedDocs, setArchivedDocs] = useState<DocSummary[] | null>(null);
+  /** Pages picked to move or archive together (ORG-03). */
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  /** A page "Show in library" points at, marked for a moment. */
+  const [flash, setFlash] = useState<string | null>(null);
+  const [moveQuery, setMoveQuery] = useState("");
+  /** An iPad or wide window: the library stays beside the page (MOB-12). */
+  const wideScreen = useWindowDimensions().width >= 1000;
   /** What has been typed into the search box, and what came back for it. */
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -150,6 +185,14 @@ export function DocsSheet({
   const [stars, setStars] = useState<Favourite[]>([]);
   /** A page whose folder is being chosen. */
   const [filing, setFiling] = useState<DocSummary | null>(null);
+  /** A page row held down: its menu (MOB-07). */
+  const [held, setHeld] = useState<DocSummary | null>(null);
+  /** A page or folder being put on the web (SHR-05). */
+  const [publishing, setPublishing] = useState<{
+    kind: "doc" | "folder";
+    id: string;
+    name: string;
+  } | null>(null);
   const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
   /** Whether a new folder is being named, and what it will be called. */
   const [naming, setNaming] = useState(false);
@@ -174,6 +217,12 @@ export function DocsSheet({
   const toolbarSlot = useSlot();
   /** Scrolled past the page's own title: the header shows it instead. */
   const [scrolledPast, setScrolledPast] = useState(false);
+  /** Reading a long page: the header steps aside (MOB-03). */
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const lastY = useRef(0);
+  const hideChrome = useMemo(() => hidesHeaderWhileReading(), [visible]);
+  // A different page, or none, starts with the header in place.
+  useEffect(() => setChromeHidden(false), [open?.id, navigationOpen]);
   /** Bumped to open the page's history from its ⋯ or Info. */
   const [historyKey, setHistoryKey] = useState(0);
   const scroller = useRef<ScrollView>(null);
@@ -221,7 +270,16 @@ export function DocsSheet({
           setOpen(doc);
           if (doc.agenda_date) setAgendaToday(doc.agenda_date);
         },
-        () => setOpen(null),
+        async (e: unknown) => {
+          // No signal: today's agenda as this phone last saw it (SHR-03).
+          const today = localDateKey(new Date(), deviceTimeZone());
+          const kept = isOfflineError(e)
+            ? (await keptPages()).find(
+                (d) => d.kind === "agenda" && d.agenda_date === today,
+              )
+            : undefined;
+          setOpen(kept ? withPendingSave(kept, waitingSave(kept.id)) : null);
+        },
       );
       return;
     }
@@ -258,18 +316,57 @@ export function DocsSheet({
       setError(errorText(e));
     });
 
+  /** No signal: the list is the pages kept on this phone (SHR-03). */
+  const [offlineList, setOfflineList] = useState(false);
   const loadList = () =>
     client.listDocs().then(
       (list) => {
         setDocs(list);
         setFailed(false);
+        setOfflineList(false);
       },
-      (e: Error) => {
+      async (e: Error) => {
+        if (isOfflineError(e)) {
+          const kept = await keptPages();
+          if (kept.length) {
+            setDocs(
+              kept.map(({ content, ...rest }) => ({
+                ...withPendingSave({ ...rest, content }, waitingSave(rest.id)),
+                preview: docPreview(content),
+              })),
+            );
+            setFailed(false);
+            setOfflineList(true);
+            return;
+          }
+        }
         setDocs(null);
         setFailed(true);
         setError(errorText(e));
       },
     );
+
+  // Pages changed elsewhere (another device, a teammate, a connected agent)
+  // while the list is open: read it again, once for a burst of changes.
+  const listRef = useRef(loadList);
+  listRef.current = loadList;
+  useEffect(() => {
+    if (!visible) return;
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area && news.area !== "docs" && news.area !== "organize")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void listRef.current(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
+  }, [visible]);
 
   const imports = useImports(
     (m) => setError(m),
@@ -412,6 +509,7 @@ export function DocsSheet({
       () =>
         void run(async () => {
           await client.deleteDocForever(page.id);
+          void forgetPage(page.id);
           setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
         }),
     );
@@ -543,23 +641,28 @@ export function DocsSheet({
           a.id.localeCompare(b.id)
         : b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
   );
-  const location = trashOnly
-    ? "Trash"
-    : uploadsOnly
-      ? "Uploads"
-      : favoritesOnly
-        ? "Favorites"
-        : folderFilter === "none"
-          ? "Unfiled"
-          : folderFilter
-            ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-            : kindFilter === "agenda"
-              ? "Agendas"
-              : kindFilter === "doc"
-                ? "Pages"
-                : kindFilter === "note"
-                  ? "Notes"
-                  : "All documents";
+  /** The library beside an open page, on an iPad or wide window. */
+  const besideList =
+    wideScreen && !!open && !navigationOpen && !agenda && shown.length > 1;
+  const location = archivedOnly
+    ? "Archived"
+    : trashOnly
+      ? "Trash"
+      : uploadsOnly
+        ? "Uploads"
+        : favoritesOnly
+          ? "Favorites"
+          : folderFilter === "none"
+            ? "Unfiled"
+            : folderFilter
+              ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
+              : kindFilter === "agenda"
+                ? "Agendas"
+                : kindFilter === "doc"
+                  ? "Pages"
+                  : kindFilter === "note"
+                    ? "Notes"
+                    : "All documents";
   const selectCollection = (
     folder: string | null,
     kind: DocKind | null = null,
@@ -567,9 +670,17 @@ export function DocsSheet({
     month: string | null = null,
     uploads = false,
     trashed = false,
+    archived = false,
   ) => {
     setTrashOnly(trashed);
     if (trashed) void loadTrash();
+    setArchivedOnly(archived);
+    if (archived)
+      void client
+        .listDocs({ archived: "only" })
+        .then(setArchivedDocs, () => setArchivedDocs([]));
+    setPicking(false);
+    setPicked(new Set());
     setUploadsOnly(uploads);
     setFolderFilter(folder);
     setKindFilter(kind);
@@ -614,10 +725,159 @@ export function DocsSheet({
       id === null ? !d.folder_id && d.kind !== "agenda" : d.folder_id === id,
     ).length;
 
+  /**
+   * A page row's long-press menu (MOB-07): the same things, in the same
+   * order, wherever a page is listed.
+   */
+  const rowActions = (doc: DocSummary): MoreAction[] => {
+    const isStarred = starred.has(favouriteKey("doc", doc.id));
+    const name = doc.title || "Untitled";
+    return [
+      { label: "Open", icon: "fileText", onPress: () => openHit(doc.id) },
+      {
+        label: isStarred ? "Unstar" : "Star",
+        icon: isStarred ? "starFilled" : "star",
+        onPress: () => toggleStar(doc, !isStarred),
+      },
+      {
+        label: "Move to folder…",
+        icon: "folder",
+        onPress: () => {
+          setMoveQuery("");
+          setFiling(doc);
+        },
+      },
+      {
+        label: "Select",
+        icon: "squareCheck",
+        onPress: () => {
+          setPicking(true);
+          setPicked(new Set([doc.id]));
+        },
+      },
+      ...(doc.kind !== "agenda"
+        ? [
+            {
+              label: "Archive",
+              icon: "folder" as const,
+              onPress: () =>
+                void run(async () => {
+                  await client.archiveDoc(doc.id, true);
+                  setDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
+                  showToast({
+                    text: "Archived. It's out of the library and search.",
+                    action: {
+                      label: "Undo",
+                      run: () =>
+                        void client
+                          .archiveDoc(doc.id, false)
+                          .then(() => loadList(), report),
+                    },
+                  });
+                }),
+            },
+          ]
+        : []),
+      {
+        label: "Copy link",
+        icon: "link",
+        onPress: () => void copyLink({ kind: "doc", id: doc.id }, name),
+      },
+      {
+        label: "Share…",
+        icon: "share",
+        onPress: () => void shareLink({ kind: "doc", id: doc.id }, name),
+      },
+      ...(doc.kind !== "agenda"
+        ? [
+            {
+              label: "Publish to web…",
+              icon: "arrowUp" as const,
+              onPress: () => setPublishing({ kind: "doc", id: doc.id, name }),
+            },
+          ]
+        : []),
+      {
+        label: "Move to Trash",
+        icon: "trash",
+        destructive: true,
+        onPress: () =>
+          void run(async () => {
+            await client.deleteDoc(doc.id);
+            // In Trash: no longer kept to open offline (SHR-03).
+            void forgetPage(doc.id);
+            setDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
+            showToast({
+              text: "Moved to Trash",
+              action: {
+                label: "Undo",
+                run: () =>
+                  void client.restoreDoc(doc.id).then(() => loadList(), report),
+              },
+            });
+          }),
+      },
+    ];
+  };
+
+  /** Move or archive the picked pages at once (ORG-03). */
+  const bulk = (change: { folder_id?: string | null; archived?: boolean }) =>
+    void run(async () => {
+      const ids = [...picked];
+      if (!ids.length) return;
+      const done = await client.bulkDocs({ ids, ...change });
+      setPicked(new Set());
+      setPicking(false);
+      setFiling(null);
+      await loadList();
+      const n = done.done.length;
+      showToast({
+        text:
+          `${change.archived ? "Archived" : "Moved"} ${n} page${n === 1 ? "" : "s"}` +
+          (done.skipped.length
+            ? `. ${done.skipped.length} couldn't be changed by you.`
+            : ""),
+        action:
+          change.archived && n
+            ? {
+                label: "Undo",
+                run: () =>
+                  void client
+                    .bulkDocs({ ids: done.done, archived: false })
+                    .then(() => loadList(), report),
+              }
+            : undefined,
+      });
+    });
+  const togglePick = (id: string) =>
+    setPicked((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  /** Bring an archived page back into the library. */
+  const unarchive = (doc: DocSummary) =>
+    void run(async () => {
+      await client.archiveDoc(doc.id, false);
+      setArchivedDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
+      await loadList();
+      showToast({ text: "Back in the library" });
+    });
+
   /** Open a page from the list, which for a search hit means fetching it. */
   const openHit = (id: string) =>
     void run(async () => {
-      setOpen(await client.getDoc(id));
+      try {
+        setOpen(await client.getDoc(id));
+      } catch (e) {
+        // Deleted for good or no longer shared: stop keeping it.
+        await forgetIfGone(id, e);
+        // No signal: the copy kept on this phone, with any edit waiting.
+        const kept = isOfflineError(e) ? await keptPage(id) : null;
+        if (!kept) throw e;
+        setOpen(withPendingSave(kept, waitingSave(id)));
+      }
       setNavigationOpen(false);
     });
 
@@ -652,735 +912,1009 @@ export function DocsSheet({
         open && !navigationOpen ? <SlotHost slot={headerSlot} /> : undefined
       }
       onDismiss={onDismiss}
+      collapsed={chromeHidden}
+      onExpand={() => setChromeHidden(false)}
     >
-      <ScrollView
-        ref={scroller}
-        contentContainerStyle={sheetStyles.body}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        scrollEventThrottle={32}
-        onScroll={(e) => {
-          const past = e.nativeEvent.contentOffset.y > 56;
-          if (past !== scrolledPast) setScrolledPast(past);
-        }}
-      >
-        <View style={sheetStyles.column}>
-          <ErrorBanner error={error} onDismiss={() => setError("")} />
-
-          {navigationOpen ? (
-            <View style={styles.list}>
-              <Text style={styles.navHeading}>WORKSPACE</Text>
-              {navRow(
-                "All documents",
-                () => selectCollection(null),
-                !favoritesOnly && !uploadsOnly && !folderFilter && !kindFilter,
-                "fileText",
-                docs?.filter((d) => d.kind !== "agenda").length,
-              )}
-              {navRow(
-                "Pages",
-                () => selectCollection(null, "doc"),
-                !favoritesOnly && !folderFilter && kindFilter === "doc",
-              )}
-              {navRow(
-                "Notes",
-                () => selectCollection(null, "note"),
-                !favoritesOnly && !folderFilter && kindFilter === "note",
-              )}
-              {navRow(
-                "Favorites",
-                () => selectCollection(null, null, true),
-                favoritesOnly,
-                "star",
-              )}
-              {navRow(
-                "Uploads",
-                () => selectCollection(null, null, false, null, true),
-                uploadsOnly,
-                "fileText",
-                uploadCount || undefined,
-              )}
-              {navRow(
-                "Trash",
-                () => selectCollection(null, null, false, null, false, true),
-                trashOnly,
-                "trash",
-              )}
-              {agendas.length > 0 && (
-                <>
-                  {navRow(
-                    "Agendas",
-                    () => selectCollection(null, "agenda"),
-                    !favoritesOnly && kindFilter === "agenda" && !agendaMonth,
-                  )}
-                  <View style={styles.navChildren}>
-                    {agendas.flatMap((y) =>
-                      y.months.map((m) => (
-                        <View key={m.key}>
-                          {navRow(
-                            `${m.label} ${y.year}`,
-                            () =>
-                              selectCollection(null, "agenda", false, m.key),
-                            kindFilter === "agenda" && agendaMonth === m.key,
-                          )}
-                        </View>
-                      )),
-                    )}
-                  </View>
-                </>
-              )}
-              <View style={styles.navChildren}>
-                {(docs ?? [])
-                  .filter((d) => starred.has(favouriteKey("doc", d.id)))
-                  .map((d) => (
-                    <View key={d.id}>
-                      {navRow(d.title || "Untitled", () => openHit(d.id))}
-                    </View>
-                  ))}
-              </View>
-              <Text style={styles.navHeading}>FOLDERS</Text>
-              {[
-                ...folders
-                  .map((f) => ({ id: f.id, name: f.name }))
-                  .sort((a, b) => a.name.localeCompare(b.name)),
-                { id: "none", name: "Unfiled" },
-              ].map((f) => (
-                <View key={f.id}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: expandedFolder === f.id }}
-                    style={styles.navRow}
-                    onPress={() =>
-                      setExpandedFolder(expandedFolder === f.id ? null : f.id)
-                    }
-                  >
-                    <Icon name="folder" size={18} color={colors.muted} />
-                    <Text style={styles.navTitle} numberOfLines={2}>
-                      {f.name}
-                    </Text>
-                    <Text style={styles.found}>
-                      {countIn(f.id === "none" ? null : f.id)}{" "}
-                      {expandedFolder === f.id ? "−" : "+"}
-                    </Text>
-                  </Pressable>
-                  {expandedFolder === f.id && (
-                    <View style={styles.navChildren}>
-                      {navRow(
-                        "View folder",
-                        () => selectCollection(f.id),
-                        folderFilter === f.id,
-                      )}
-                      {(docs ?? [])
-                        .filter((d) =>
-                          f.id === "none"
-                            ? !d.folder_id && d.kind !== "agenda"
-                            : d.folder_id === f.id,
-                        )
-                        .sort((a, b) => a.title.localeCompare(b.title))
-                        .map((d) => (
-                          <View key={d.id}>
-                            {navRow(d.title || "Untitled", () => openHit(d.id))}
-                          </View>
-                        ))}
-                    </View>
-                  )}
-                </View>
-              ))}
-              <Button
-                title="New folder"
-                secondary
-                onPress={() => setNaming(!naming)}
-              />
-              {naming && (
-                <View style={styles.newFolder}>
-                  <TextInput
-                    style={[styles.search, { flex: 1, minWidth: 0 }]}
-                    value={folderName}
-                    placeholder="Folder name"
-                    placeholderTextColor={colors.faint}
-                    maxLength={60}
-                    onChangeText={setFolderName}
-                    onSubmitEditing={newFolder}
-                    accessibilityLabel="New folder name"
-                  />
-                  <Button
-                    title="Add"
-                    disabled={busy || !folderName.trim()}
-                    onPress={newFolder}
-                  />
-                </View>
-              )}
-            </View>
-          ) : open || agendaGap ? (
-            <>
-              {(agendaGap || open?.kind === "agenda") && (
-                <AgendaNav
-                  date={agendaGap ?? open?.agenda_date ?? agendaToday}
-                  today={agendaToday}
-                  busy={busy}
-                  onGo={goAgenda}
-                />
-              )}
-              {agendaGap ? (
-                <View style={styles.agendaGap}>
-                  <Icon name="calendar" size={22} color={colors.muted} />
-                  <Text style={styles.empty}>
-                    {agendaGap < agendaToday
-                      ? `Nothing was written for ${agendaTitleOn(agendaGap)}.`
-                      : `${agendaTitleOn(agendaGap)} isn’t written yet.`}
-                  </Text>
-                  <Button
-                    title={busy ? "Writing…" : "Write it from my calendar"}
-                    disabled={busy}
-                    onPress={() => writeAgenda(agendaGap)}
-                  />
-                </View>
-              ) : (
-                <OpenDoc
-                  key={open!.id}
-                  doc={open!}
-                  onOpenProject={onOpenProject}
-                  initialBlockId={
-                    initialDoc?.id === open!.id ? initialBlockId : null
-                  }
-                  onTargetOffset={(y) =>
-                    requestAnimationFrame(() =>
-                      scroller.current?.scrollTo({
-                        y: Math.max(0, y - 80),
-                        animated: true,
-                      }),
-                    )
-                  }
-                  isToday={
-                    !open!.agenda_date || open!.agenda_date === agendaToday
-                  }
-                  userId={userId}
-                  canWriteDoc={canWriteDoc}
-                  onChanged={(saved) => {
-                    setOpen((current) =>
-                      current?.id === saved.id ? saved : current,
-                    );
-                    setDocs(
-                      (current) =>
-                        current?.map((d) =>
-                          d.id === saved.id
-                            ? {
-                                ...d,
-                                title: saved.title,
-                                updated_at: saved.updated_at,
-                              }
-                            : d,
-                        ) ?? current,
-                    );
-                  }}
-                  onItemsChanged={onItemsChanged}
-                  onDeleted={backToList}
-                  onUndoDelete={(back) => {
-                    // Undo from the toast: the page comes back open.
-                    setOpen(back);
-                    void loadList();
-                  }}
-                  headerSlot={headerSlot}
-                  toolbarSlot={toolbarSlot}
-                  historyKey={historyKey}
-                  onShowHistory={showHistory}
-                  report={report}
-                />
-              )}
-            </>
-          ) : templating ? (
-            <PageTemplatesPanel
-              folders={folders}
-              folderId={
-                folderFilter && folderFilter !== "none" ? folderFilter : null
-              }
-              onCancel={() => setTemplating(false)}
-              onCreated={(doc, note, tasks) => {
-                setTemplating(false);
-                setOpen(doc);
-                showToast({ text: note });
-                if (tasks) onItemsChanged?.();
-                void loadList();
-              }}
-            />
-          ) : failed ? (
-            <View style={styles.list}>
-              <Text style={styles.empty}>
-                Your documents could not be reached. They are still there.
-              </Text>
-              <Button
-                title="Try again"
-                secondary
-                disabled={busy}
-                onPress={() => void loadList()}
-              />
-            </View>
-          ) : docs === null ? (
-            <Text style={styles.empty}>Loading…</Text>
-          ) : (
-            <View style={styles.list}>
-              <View style={styles.libraryToolbar}>
-                <SmallAction
-                  label="All folders"
-                  disabled={false}
-                  onPress={() => setNavigationOpen(true)}
-                />
-                <SmallAction
-                  label={
-                    sort === "recent" ? "Sort: last edited" : "Sort: title A–Z"
-                  }
-                  disabled={false}
-                  onPress={() =>
-                    setSort(sort === "recent" ? "title" : "recent")
-                  }
-                />
-              </View>
-              <Text style={styles.collectionTitle}>{location}</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.collections}
-                accessibilityLabel="Document collections"
+      <View style={besideList ? styles.split : styles.fill}>
+        {besideList && (
+          <ScrollView
+            style={styles.sideList}
+            contentContainerStyle={styles.sideListBody}
+            accessibilityLabel="Library"
+          >
+            <Text style={styles.navHeading}>{location.toUpperCase()}</Text>
+            {shown.map((d) => (
+              <Pressable
+                key={d.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: open?.id === d.id }}
+                onPress={() => openHit(d.id)}
+                style={({ pressed }) => [
+                  styles.sideRow,
+                  (pressed || open?.id === d.id) && styles.rowPressed,
+                ]}
               >
-                {(
-                  [
-                    ["All", null, null, false],
-                    ["Pages", null, "doc", false],
-                    ["Notes", null, "note", false],
-                    ...(agendas.length
-                      ? [["Agendas", null, "agenda", false]]
-                      : []),
-                    ["Favorites", null, null, true],
-                    ["Uploads", null, null, false, true],
-                    ...folders.map((folder) => [
-                      folder.name,
-                      folder.id,
+                <Icon name="fileText" size={15} color={colors.muted} />
+                <Text style={styles.sideTitle} numberOfLines={1}>
+                  {d.title || "Untitled"}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        <ScrollView
+          ref={scroller}
+          // Pull down on the library or a page for "Search & do" (MOB-09):
+          // there is nothing here to refresh, so the pull does that instead.
+          refreshControl={
+            onSearch && !navigationOpen ? (
+              <RefreshControl
+                refreshing={false}
+                onRefresh={() => {
+                  tap();
+                  onSearch();
+                }}
+                title="Search & do"
+                titleColor={colors.muted}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            ) : undefined
+          }
+          contentContainerStyle={sheetStyles.body}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          scrollEventThrottle={32}
+          onScroll={(e) => {
+            const { contentOffset, contentSize, layoutMeasurement } =
+              e.nativeEvent;
+            const past = contentOffset.y > 56;
+            if (past !== scrolledPast) setScrolledPast(past);
+            if (open && !navigationOpen && hideChrome) {
+              const hidden = headerHiddenAfter(chromeHidden, {
+                y: contentOffset.y,
+                lastY: lastY.current,
+                content: contentSize.height,
+                frame: layoutMeasurement.height,
+              });
+              if (hidden !== chromeHidden) setChromeHidden(hidden);
+            }
+            lastY.current = contentOffset.y;
+          }}
+        >
+          <View style={sheetStyles.column}>
+            <ErrorBanner error={error} onDismiss={() => setError("")} />
+            {offlineList && !open && (
+              <Text style={styles.offline} accessibilityRole="alert">
+                No connection. These are the pages kept on this phone; changes
+                are sent when you're back online.
+              </Text>
+            )}
+
+            {navigationOpen ? (
+              <View style={styles.list}>
+                <Text style={styles.navHeading}>WORKSPACE</Text>
+                {navRow(
+                  "All documents",
+                  () => selectCollection(null),
+                  !favoritesOnly &&
+                    !uploadsOnly &&
+                    !folderFilter &&
+                    !kindFilter,
+                  "fileText",
+                  docs?.filter((d) => d.kind !== "agenda").length,
+                )}
+                {navRow(
+                  "Pages",
+                  () => selectCollection(null, "doc"),
+                  !favoritesOnly && !folderFilter && kindFilter === "doc",
+                )}
+                {navRow(
+                  "Notes",
+                  () => selectCollection(null, "note"),
+                  !favoritesOnly && !folderFilter && kindFilter === "note",
+                )}
+                {navRow(
+                  "Favorites",
+                  () => selectCollection(null, null, true),
+                  favoritesOnly,
+                  "star",
+                )}
+                {navRow(
+                  "Uploads",
+                  () => selectCollection(null, null, false, null, true),
+                  uploadsOnly,
+                  "fileText",
+                  uploadCount || undefined,
+                )}
+                {navRow(
+                  "Archived",
+                  () =>
+                    selectCollection(
+                      null,
                       null,
                       false,
-                    ]),
-                    ["Unfiled", "none", null, false],
-                    ["Trash", null, null, false, false, true],
-                  ] as [
-                    string,
-                    string | null,
-                    DocKind | null,
-                    boolean,
-                    boolean?,
-                    boolean?,
-                  ][]
-                ).map(
-                  ([
-                    label,
-                    folder,
-                    kind,
-                    favorites,
-                    uploads = false,
-                    trashed = false,
-                  ]) => {
-                    const selected =
-                      trashOnly === trashed &&
-                      uploadsOnly === uploads &&
-                      favoritesOnly === favorites &&
-                      folderFilter === folder &&
-                      kindFilter === kind;
-                    return (
-                      <Pressable
-                        key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}-${trashed}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        onPress={() =>
-                          selectCollection(
-                            folder,
-                            kind,
-                            favorites,
-                            null,
-                            uploads,
-                            trashed,
-                          )
-                        }
-                        style={[
-                          styles.collectionChip,
-                          selected && styles.collectionChipActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.collectionChipText,
-                            selected && styles.collectionChipTextActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {label}
-                        </Text>
-                      </Pressable>
-                    );
-                  },
+                      null,
+                      false,
+                      false,
+                      true,
+                    ),
+                  archivedOnly,
+                  "folder",
                 )}
-              </ScrollView>
-              <TextInput
-                style={styles.search}
-                value={query}
-                placeholder="Search all pages and notes…"
-                placeholderTextColor={colors.faint}
-                autoCorrect={false}
-                returnKeyType="search"
-                onChangeText={setQuery}
-                accessibilityLabel="Search pages and notes"
-              />
-              {hits !== null && (
-                <Text style={styles.found}>
-                  {hits.length === 0
-                    ? "Nothing found."
-                    : `${hits.length} found`}
-                </Text>
-              )}
-              {!hits &&
-                !trashOnly &&
-                !uploadsOnly &&
-                (tagsHere.length > 0 || !!tagFilter) && (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.collections}
-                    accessibilityLabel="Show pages with a tag"
-                  >
-                    <Chip
-                      compact
-                      label="All tags"
-                      selected={!tagFilter}
-                      onPress={() => setTagFilter("")}
-                    />
-                    {tagsHere.map((t) => (
-                      <Chip
-                        key={t.id}
-                        compact
-                        label={`#${t.name}`}
-                        selected={tagFilter === t.id}
-                        onPress={() =>
-                          setTagFilter(tagFilter === t.id ? "" : t.id)
-                        }
-                      />
-                    ))}
-                  </ScrollView>
+                {navRow(
+                  "Trash",
+                  () => selectCollection(null, null, false, null, false, true),
+                  trashOnly,
+                  "trash",
                 )}
-              {/* The main way in full width, the other two side by side, as
-              on Projects. */}
-              <View style={styles.newActions}>
-                <View style={styles.newRow}>
-                  <Button
-                    title="New document"
-                    icon="plus"
-                    disabled={busy}
-                    style={styles.newHalf}
-                    onPress={() => create("doc")}
-                  />
-                  <Button
-                    title="From template"
-                    secondary
-                    disabled={busy}
-                    style={styles.newHalf}
-                    onPress={() => setTemplating(true)}
-                  />
-                </View>
-                <View style={styles.newRow}>
-                  <Button
-                    title="New note"
-                    secondary
-                    disabled={busy}
-                    style={styles.newHalf}
-                    onPress={() => create("note")}
-                  />
-                  <Button
-                    title={imports.busy ? "Uploading…" : "Import file"}
-                    secondary
-                    disabled={imports.busy}
-                    style={styles.newHalf}
-                    onPress={importFile}
-                  />
-                </View>
-              </View>
-              {!!filing && (
-                <View style={styles.filing}>
-                  <Text style={styles.filingTitle}>
-                    File “{filing.title || "Untitled"}”
-                  </Text>
-                  <ChipRow label="Folder">
-                    <Chip
-                      label="Unfiled"
-                      selected={!filing.folder_id}
-                      onPress={() => fileIn(filing, null)}
-                    />
-                    {folders.map((f) => (
-                      <Chip
-                        key={f.id}
-                        label={f.name}
-                        selected={filing.folder_id === f.id}
-                        onPress={() => fileIn(filing, f.id)}
-                      />
-                    ))}
-                  </ChipRow>
-                  {filing.in_uploads &&
-                    !filing.team_id &&
-                    personalProjects.length > 0 && (
-                      <ChipRow label="Personal project">
-                        {personalProjects.map((project) => (
-                          <Chip
-                            key={project.id}
-                            label={project.name}
-                            selected={false}
-                            onPress={() => fileInProject(filing, project.id)}
-                          />
-                        ))}
-                      </ChipRow>
+                {agendas.length > 0 && (
+                  <>
+                    {navRow(
+                      "Agendas",
+                      () => selectCollection(null, "agenda"),
+                      !favoritesOnly && kindFilter === "agenda" && !agendaMonth,
                     )}
-                  <SmallAction
-                    label="Cancel"
-                    disabled={false}
-                    onPress={() => setFiling(null)}
-                  />
-                </View>
-              )}
-              {fading.size > 0 && !hits && !trashOnly && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: fadingOnly }}
-                  onPress={() => setFadingOnly(!fadingOnly)}
-                  style={[styles.fadingBar, fadingOnly && styles.fadingBarOn]}
-                >
-                  <Icon name="clock" size={15} color={colors.textSoft} />
-                  <Text style={styles.fadingText}>
-                    {fadingOnly
-                      ? "Showing pages that might be out of date · Show all"
-                      : `${fading.size} ${fading.size === 1 ? "page" : "pages"} might be out of date`}
-                  </Text>
-                </Pressable>
-              )}
-              {trashOnly && !hits && (
-                <View style={styles.list}>
-                  <Text style={styles.trashNote}>
-                    Pages you delete wait here for {TRASH_DAYS} days, then
-                    they’re deleted for good.
-                  </Text>
-                  {trash === null ? (
-                    <Text style={styles.empty}>Loading…</Text>
-                  ) : trash.length === 0 ? (
-                    <View style={styles.emptyLibrary}>
-                      <Icon name="trash" size={22} color={colors.muted} />
-                      <Text style={styles.empty}>Trash is empty.</Text>
-                    </View>
-                  ) : (
-                    trash.map((page) => (
-                      <View key={page.id} style={styles.row}>
-                        <View style={styles.rowTop}>
-                          <Icon
-                            name="fileText"
-                            size={16}
-                            color={colors.muted}
-                          />
-                          <Text style={styles.rowTitle} numberOfLines={2}>
-                            {page.title || "Untitled"}
-                          </Text>
-                          {page.can_restore && (
-                            // Deleting for good is rare and can't be undone,
-                            // so it waits behind ⋯ rather than on the row.
-                            <MoreMenu
-                              label={`Options for ${page.title || "Untitled"}`}
-                              disabled={busy}
-                              actions={[
-                                {
-                                  label: "Delete for good",
-                                  destructive: true,
-                                  onPress: () => destroy(page),
-                                },
-                              ]}
-                            />
-                          )}
-                        </View>
-                        <Text style={styles.rowPreview} numberOfLines={2}>
-                          Deleted {savedAgo(page.deleted_at)}
-                          {page.deleted_by ? ` by ${page.deleted_by}` : ""}
-                          {page.team_name ? ` · ${page.team_name}` : ""} ·{" "}
-                          {trashLeft(page.purge_at)}
-                        </Text>
-                        {page.can_restore && (
-                          <View style={styles.trashActions}>
-                            <SmallAction
-                              label="Restore"
-                              disabled={busy}
-                              onPress={() => restoreFromTrash(page)}
-                            />
+                    <View style={styles.navChildren}>
+                      {agendas.flatMap((y) =>
+                        y.months.map((m) => (
+                          <View key={m.key}>
+                            {navRow(
+                              `${m.label} ${y.year}`,
+                              () =>
+                                selectCollection(null, "agenda", false, m.key),
+                              kindFilter === "agenda" && agendaMonth === m.key,
+                            )}
                           </View>
-                        )}
-                      </View>
-                    ))
-                  )}
-                </View>
-              )}
-              {uploadsOnly && !hits && (
-                <UploadsList
-                  jobs={imports.jobs}
-                  docs={docs}
-                  busy={imports.busy}
-                  onOpen={openHit}
-                  onFile={setFiling}
-                  onRemove={(job) => void imports.remove(job)}
-                  onImport={importFile}
-                  onScan={() =>
-                    void imports
-                      .scanNotes()
-                      .catch((e: Error) => setError(errorText(e)))
-                  }
-                  onMakeCards={onMakeCards}
-                  caps={imports.caps}
-                />
-              )}
-              {!((uploadsOnly || trashOnly) && !hits) &&
-                shown.length === 0 &&
-                (docs.length === 0 && !query ? (
-                  <View style={styles.emptyLibrary}>
-                    <View style={styles.emptyLibraryIcon}>
-                      <Icon name="fileText" size={22} color={colors.accent} />
+                        )),
+                      )}
                     </View>
-                    <Text style={styles.emptyLibraryTitle}>
-                      A home for every idea.
+                  </>
+                )}
+                <View style={styles.navChildren}>
+                  {(docs ?? [])
+                    .filter((d) => starred.has(favouriteKey("doc", d.id)))
+                    .map((d) => (
+                      <View key={d.id}>
+                        {navRow(d.title || "Untitled", () => openHit(d.id))}
+                      </View>
+                    ))}
+                </View>
+                <Text style={styles.navHeading}>FOLDERS</Text>
+                {[
+                  ...folders
+                    .map((f) => ({ id: f.id, name: f.name }))
+                    .sort((a, b) => a.name.localeCompare(b.name)),
+                  { id: "none", name: "Unfiled" },
+                ].map((f) => (
+                  <View key={f.id}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: expandedFolder === f.id }}
+                      style={styles.navRow}
+                      onPress={() =>
+                        setExpandedFolder(expandedFolder === f.id ? null : f.id)
+                      }
+                    >
+                      <Icon name="folder" size={18} color={colors.muted} />
+                      <Text style={styles.navTitle} numberOfLines={2}>
+                        {f.name}
+                      </Text>
+                      <Text style={styles.found}>
+                        {countIn(f.id === "none" ? null : f.id)}{" "}
+                        {expandedFolder === f.id ? "−" : "+"}
+                      </Text>
+                    </Pressable>
+                    {expandedFolder === f.id && (
+                      <View style={styles.navChildren}>
+                        {navRow(
+                          "View folder",
+                          () => selectCollection(f.id),
+                          folderFilter === f.id,
+                        )}
+                        {(docs ?? [])
+                          .filter((d) =>
+                            f.id === "none"
+                              ? !d.folder_id && d.kind !== "agenda"
+                              : d.folder_id === f.id,
+                          )
+                          .sort((a, b) => a.title.localeCompare(b.title))
+                          .map((d) => (
+                            <View key={d.id}>
+                              {navRow(d.title || "Untitled", () =>
+                                openHit(d.id),
+                              )}
+                            </View>
+                          ))}
+                      </View>
+                    )}
+                  </View>
+                ))}
+                <Button
+                  title="New folder"
+                  secondary
+                  onPress={() => setNaming(!naming)}
+                />
+                {naming && (
+                  <View style={styles.newFolder}>
+                    <TextInput
+                      style={[styles.search, { flex: 1, minWidth: 0 }]}
+                      value={folderName}
+                      placeholder="Folder name"
+                      placeholderTextColor={colors.faint}
+                      maxLength={60}
+                      onChangeText={setFolderName}
+                      onSubmitEditing={newFolder}
+                      accessibilityLabel="New folder name"
+                    />
+                    <Button
+                      title="Add"
+                      disabled={busy || !folderName.trim()}
+                      onPress={newFolder}
+                    />
+                  </View>
+                )}
+              </View>
+            ) : open || agendaGap ? (
+              <>
+                {(agendaGap || open?.kind === "agenda") && (
+                  <AgendaNav
+                    date={agendaGap ?? open?.agenda_date ?? agendaToday}
+                    today={agendaToday}
+                    busy={busy}
+                    onGo={goAgenda}
+                  />
+                )}
+                {agendaGap ? (
+                  <View style={styles.agendaGap}>
+                    <Icon name="calendar" size={22} color={colors.muted} />
+                    <Text style={styles.empty}>
+                      {agendaGap < agendaToday
+                        ? `Nothing was written for ${agendaTitleOn(agendaGap)}.`
+                        : `${agendaTitleOn(agendaGap)} isn’t written yet.`}
                     </Text>
-                    <Text style={styles.emptyLibraryBody}>
-                      Create a page or a quick note. Folders will keep them easy
-                      to find as your library grows.
-                    </Text>
+                    <Button
+                      title={busy ? "Writing…" : "Write it from my calendar"}
+                      disabled={busy}
+                      onPress={() => writeAgenda(agendaGap)}
+                    />
                   </View>
                 ) : (
-                  <Text style={styles.empty}>
-                    Nothing here yet. Try another collection or search.
+                  <OpenDoc
+                    key={open!.id}
+                    doc={open!}
+                    onOpenProject={onOpenProject}
+                    initialBlockId={
+                      initialDoc?.id === open!.id ? initialBlockId : null
+                    }
+                    onTargetOffset={(y) =>
+                      requestAnimationFrame(() =>
+                        scroller.current?.scrollTo({
+                          y: Math.max(0, y - 80),
+                          animated: true,
+                        }),
+                      )
+                    }
+                    isToday={
+                      !open!.agenda_date || open!.agenda_date === agendaToday
+                    }
+                    userId={userId}
+                    canWriteDoc={canWriteDoc}
+                    onChanged={(saved) => {
+                      setOpen((current) =>
+                        current?.id === saved.id ? saved : current,
+                      );
+                      setDocs(
+                        (current) =>
+                          current?.map((d) =>
+                            d.id === saved.id
+                              ? {
+                                  ...d,
+                                  title: saved.title,
+                                  updated_at: saved.updated_at,
+                                }
+                              : d,
+                          ) ?? current,
+                      );
+                    }}
+                    onItemsChanged={onItemsChanged}
+                    onDeleted={backToList}
+                    onUndoDelete={(back) => {
+                      // Undo from the toast: the page comes back open.
+                      setOpen(back);
+                      void loadList();
+                    }}
+                    headerSlot={headerSlot}
+                    toolbarSlot={toolbarSlot}
+                    historyKey={historyKey}
+                    onShowHistory={showHistory}
+                    onShowInLibrary={() => {
+                      const here = open!;
+                      backToList();
+                      if (here.archived)
+                        selectCollection(
+                          null,
+                          null,
+                          false,
+                          null,
+                          false,
+                          false,
+                          true,
+                        );
+                      else selectCollection(here.folder_id ?? "none");
+                      setFlash(here.id);
+                      setTimeout(() => setFlash(null), 2000);
+                    }}
+                    report={report}
+                  />
+                )}
+              </>
+            ) : templating ? (
+              <PageTemplatesPanel
+                folders={folders}
+                folderId={
+                  folderFilter && folderFilter !== "none" ? folderFilter : null
+                }
+                onCancel={() => setTemplating(false)}
+                onCreated={(doc, note, tasks) => {
+                  setTemplating(false);
+                  setOpen(doc);
+                  showToast({ text: note });
+                  if (tasks) onItemsChanged?.();
+                  void loadList();
+                }}
+              />
+            ) : failed ? (
+              <View style={styles.list}>
+                <Text style={styles.empty}>
+                  Your documents could not be reached. They are still there.
+                </Text>
+                <Button
+                  title="Try again"
+                  secondary
+                  disabled={busy}
+                  onPress={() => void loadList()}
+                />
+              </View>
+            ) : docs === null ? (
+              <Text style={styles.empty}>Loading…</Text>
+            ) : (
+              <View style={styles.list}>
+                <View style={styles.libraryToolbar}>
+                  <SmallAction
+                    label="All folders"
+                    disabled={false}
+                    onPress={() => setNavigationOpen(true)}
+                  />
+                  <SmallAction
+                    label={
+                      sort === "recent"
+                        ? "Sort: last edited"
+                        : "Sort: title A–Z"
+                    }
+                    disabled={false}
+                    onPress={() =>
+                      setSort(sort === "recent" ? "title" : "recent")
+                    }
+                  />
+                </View>
+                <Text style={styles.collectionTitle}>{location}</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.collections}
+                  accessibilityLabel="Document collections"
+                >
+                  {(
+                    [
+                      ["All", null, null, false],
+                      ["Pages", null, "doc", false],
+                      ["Notes", null, "note", false],
+                      ...(agendas.length
+                        ? [["Agendas", null, "agenda", false]]
+                        : []),
+                      ["Favorites", null, null, true],
+                      ["Uploads", null, null, false, true],
+                      ...folders.map((folder) => [
+                        folder.name,
+                        folder.id,
+                        null,
+                        false,
+                      ]),
+                      ["Unfiled", "none", null, false],
+                      ["Trash", null, null, false, false, true],
+                    ] as [
+                      string,
+                      string | null,
+                      DocKind | null,
+                      boolean,
+                      boolean?,
+                      boolean?,
+                    ][]
+                  ).map(
+                    ([
+                      label,
+                      folder,
+                      kind,
+                      favorites,
+                      uploads = false,
+                      trashed = false,
+                    ]) => {
+                      const selected =
+                        trashOnly === trashed &&
+                        uploadsOnly === uploads &&
+                        favoritesOnly === favorites &&
+                        folderFilter === folder &&
+                        kindFilter === kind;
+                      return (
+                        <Pressable
+                          key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}-${trashed}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          onPress={() =>
+                            selectCollection(
+                              folder,
+                              kind,
+                              favorites,
+                              null,
+                              uploads,
+                              trashed,
+                            )
+                          }
+                          style={[
+                            styles.collectionChip,
+                            selected && styles.collectionChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.collectionChipText,
+                              selected && styles.collectionChipTextActive,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    },
+                  )}
+                </ScrollView>
+                <TextInput
+                  style={styles.search}
+                  value={query}
+                  placeholder="Search all pages and notes…"
+                  placeholderTextColor={colors.faint}
+                  autoCorrect={false}
+                  returnKeyType="search"
+                  onChangeText={setQuery}
+                  accessibilityLabel="Search pages and notes"
+                />
+                {hits !== null && (
+                  <Text style={styles.found}>
+                    {hits.length === 0
+                      ? "Nothing found."
+                      : `${hits.length} found`}
                   </Text>
-                ))}
-              {!((uploadsOnly || trashOnly) && !hits) &&
-                shown.map((doc, n) => (
-                  <View key={doc.id}>
-                    {kindFilter === "agenda" && !hits && doc.created_at && (
-                      <>
-                        {(n === 0 ||
-                          agendaMonthKey(dayOf(doc)) !==
-                            agendaMonthKey(dayOf(shown[n - 1]))) && (
-                          <Text style={styles.monthHeading}>
-                            {new Date(dayOf(doc)).toLocaleDateString("en-GB", {
-                              month: "long",
-                              year: "numeric",
-                            })}
-                          </Text>
-                        )}
-                        {(n === 0 ||
-                          agendaWeekOf(dayOf(doc)).key !==
-                            agendaWeekOf(dayOf(shown[n - 1])).key) && (
-                          <Text style={styles.weekHeading}>
-                            {agendaWeekOf(dayOf(doc)).label}
-                          </Text>
-                        )}
-                      </>
+                )}
+                {!hits &&
+                  !trashOnly &&
+                  !uploadsOnly &&
+                  (tagsHere.length > 0 || !!tagFilter) && (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.collections}
+                      accessibilityLabel="Show pages with a tag"
+                    >
+                      <Chip
+                        compact
+                        label="All tags"
+                        selected={!tagFilter}
+                        onPress={() => setTagFilter("")}
+                      />
+                      {tagsHere.map((t) => (
+                        <Chip
+                          key={t.id}
+                          compact
+                          label={`#${t.name}`}
+                          selected={tagFilter === t.id}
+                          onPress={() =>
+                            setTagFilter(tagFilter === t.id ? "" : t.id)
+                          }
+                        />
+                      ))}
+                    </ScrollView>
+                  )}
+                {/* The main way in full width, the other two side by side, as
+              on Projects. */}
+                <View style={styles.newActions}>
+                  <View style={styles.newRow}>
+                    <Button
+                      title="New document"
+                      icon="plus"
+                      disabled={busy}
+                      style={styles.newHalf}
+                      onPress={() => create("doc")}
+                    />
+                    <Button
+                      title="From template"
+                      secondary
+                      disabled={busy}
+                      style={styles.newHalf}
+                      onPress={() => setTemplating(true)}
+                    />
+                  </View>
+                  <View style={styles.newRow}>
+                    <Button
+                      title="New note"
+                      secondary
+                      disabled={busy}
+                      style={styles.newHalf}
+                      onPress={() => create("note")}
+                    />
+                    <Button
+                      title={imports.busy ? "Uploading…" : "Import file"}
+                      secondary
+                      disabled={imports.busy}
+                      style={styles.newHalf}
+                      onPress={importFile}
+                    />
+                  </View>
+                </View>
+                {/* A folder can go on the web as a whole (SHR-05). */}
+                {!!folderFilter &&
+                  folderFilter !== "none" &&
+                  folders.some((f) => f.id === folderFilter) && (
+                    <SmallAction
+                      label="Publish this folder to the web…"
+                      disabled={busy}
+                      onPress={() => {
+                        const f = folders.find((x) => x.id === folderFilter)!;
+                        setPublishing({
+                          kind: "folder",
+                          id: f.id,
+                          name: f.name,
+                        });
+                      }}
+                    />
+                  )}
+                {picking && (
+                  <View style={styles.filing} accessibilityRole="toolbar">
+                    <Text style={styles.filingTitle}>
+                      {picked.size} picked · tap pages to pick them
+                    </Text>
+                    <View style={styles.bulkRow}>
+                      <SmallAction
+                        label="Move to…"
+                        disabled={!picked.size || busy}
+                        onPress={() => {
+                          const first = (docs ?? []).find((d) =>
+                            picked.has(d.id),
+                          );
+                          if (first) {
+                            setMoveQuery("");
+                            setFiling({
+                              ...first,
+                              folder_id: "",
+                            } as DocSummary);
+                          }
+                        }}
+                      />
+                      <SmallAction
+                        label="Archive"
+                        disabled={!picked.size || busy}
+                        onPress={() => bulk({ archived: true })}
+                      />
+                      <SmallAction
+                        label="Done"
+                        disabled={false}
+                        onPress={() => {
+                          setPicking(false);
+                          setPicked(new Set());
+                        }}
+                      />
+                    </View>
+                  </View>
+                )}
+                {!!filing && (
+                  <View style={styles.filing}>
+                    <Text style={styles.filingTitle}>
+                      {picking
+                        ? `Move ${picked.size} page${picked.size === 1 ? "" : "s"}`
+                        : `File “${filing.title || "Untitled"}”`}
+                    </Text>
+                    {folders.length > 5 && (
+                      <TextInput
+                        value={moveQuery}
+                        onChangeText={setMoveQuery}
+                        placeholder="Find a folder"
+                        placeholderTextColor={colors.faint}
+                        accessibilityLabel="Find a folder"
+                        style={styles.moveSearch}
+                      />
                     )}
-                    {/* The whole card opens the page, as project cards do; the
+                    <ChipRow label="Folder">
+                      <Chip
+                        label="Unfiled"
+                        selected={!picking && !filing.folder_id}
+                        onPress={() =>
+                          picking
+                            ? bulk({ folder_id: null })
+                            : fileIn(filing, null)
+                        }
+                      />
+                      {folders
+                        .filter((f) => !f.archived_at)
+                        .filter((f) =>
+                          f.name
+                            .toLocaleLowerCase()
+                            .includes(moveQuery.trim().toLocaleLowerCase()),
+                        )
+                        .map((f) => (
+                          <Chip
+                            key={f.id}
+                            label={f.name}
+                            selected={!picking && filing.folder_id === f.id}
+                            onPress={() =>
+                              picking
+                                ? bulk({ folder_id: f.id })
+                                : fileIn(filing, f.id)
+                            }
+                          />
+                        ))}
+                    </ChipRow>
+                    {filing.in_uploads &&
+                      !filing.team_id &&
+                      personalProjects.length > 0 && (
+                        <ChipRow label="Personal project">
+                          {personalProjects.map((project) => (
+                            <Chip
+                              key={project.id}
+                              label={project.name}
+                              selected={false}
+                              onPress={() => fileInProject(filing, project.id)}
+                            />
+                          ))}
+                        </ChipRow>
+                      )}
+                    <SmallAction
+                      label="Cancel"
+                      disabled={false}
+                      onPress={() => setFiling(null)}
+                    />
+                  </View>
+                )}
+                {fading.size > 0 && !hits && !trashOnly && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: fadingOnly }}
+                    onPress={() => setFadingOnly(!fadingOnly)}
+                    style={[styles.fadingBar, fadingOnly && styles.fadingBarOn]}
+                  >
+                    <Icon name="clock" size={15} color={colors.textSoft} />
+                    <Text style={styles.fadingText}>
+                      {fadingOnly
+                        ? "Showing pages that might be out of date · Show all"
+                        : `${fading.size} ${fading.size === 1 ? "page" : "pages"} might be out of date`}
+                    </Text>
+                  </Pressable>
+                )}
+                {archivedOnly && !hits && (
+                  <View style={styles.list}>
+                    <Text style={styles.empty}>
+                      Archived pages stay whole and their links still open.
+                      They're left out of the library and search until you bring
+                      them back.
+                    </Text>
+                    {(archivedDocs ?? []).map((doc) => (
+                      <View key={doc.id} style={styles.row}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                          onPress={() => openHit(doc.id)}
+                        >
+                          <Text style={styles.rowTitle} numberOfLines={2}>
+                            {doc.title || "Untitled"}
+                          </Text>
+                        </Pressable>
+                        {doc.archived_at &&
+                        (!canWriteDoc || canWriteDoc(doc.team_id)) ? (
+                          <SmallAction
+                            label="Bring back"
+                            disabled={busy}
+                            onPress={() => unarchive(doc)}
+                          />
+                        ) : (
+                          <Text style={styles.empty}>
+                            In an archived folder
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                    {archivedDocs?.length === 0 && (
+                      <Text style={styles.empty}>Nothing archived.</Text>
+                    )}
+                  </View>
+                )}
+                {trashOnly && !hits && (
+                  <View style={styles.list}>
+                    <Text style={styles.trashNote}>
+                      Pages you delete wait here for {TRASH_DAYS} days, then
+                      they’re deleted for good.
+                    </Text>
+                    {trash === null ? (
+                      <Text style={styles.empty}>Loading…</Text>
+                    ) : trash.length === 0 ? (
+                      <View style={styles.emptyLibrary}>
+                        <Icon name="trash" size={22} color={colors.muted} />
+                        <Text style={styles.empty}>Trash is empty.</Text>
+                      </View>
+                    ) : (
+                      trash.map((page) => (
+                        <View key={page.id} style={styles.row}>
+                          <View style={styles.rowTop}>
+                            <Icon
+                              name="fileText"
+                              size={16}
+                              color={colors.muted}
+                            />
+                            <Text style={styles.rowTitle} numberOfLines={2}>
+                              {page.title || "Untitled"}
+                            </Text>
+                            {page.can_restore && (
+                              // Deleting for good is rare and can't be undone,
+                              // so it waits behind ⋯ rather than on the row.
+                              <MoreMenu
+                                label={`Options for ${page.title || "Untitled"}`}
+                                disabled={busy}
+                                actions={[
+                                  {
+                                    label: "Delete for good",
+                                    destructive: true,
+                                    onPress: () => destroy(page),
+                                  },
+                                ]}
+                              />
+                            )}
+                          </View>
+                          <Text style={styles.rowPreview} numberOfLines={2}>
+                            Deleted {savedAgo(page.deleted_at)}
+                            {page.deleted_by ? ` by ${page.deleted_by}` : ""}
+                            {page.team_name
+                              ? ` · ${page.team_name}`
+                              : ""} · {trashLeft(page.purge_at)}
+                          </Text>
+                          {page.can_restore && (
+                            <View style={styles.trashActions}>
+                              <SmallAction
+                                label="Restore"
+                                disabled={busy}
+                                onPress={() => restoreFromTrash(page)}
+                              />
+                            </View>
+                          )}
+                        </View>
+                      ))
+                    )}
+                  </View>
+                )}
+                {uploadsOnly && !hits && (
+                  <UploadsList
+                    report={(e) => setError(errorText(e))}
+                    jobs={imports.jobs}
+                    docs={docs}
+                    busy={imports.busy}
+                    onOpen={openHit}
+                    onFile={setFiling}
+                    onRemove={(job) => void imports.remove(job)}
+                    onImport={importFile}
+                    onScan={() =>
+                      void imports
+                        .scanNotes()
+                        .catch((e: Error) => setError(errorText(e)))
+                    }
+                    onMakeCards={onMakeCards}
+                    onChanged={() => void loadList()}
+                    caps={imports.caps}
+                  />
+                )}
+                {!((uploadsOnly || trashOnly || archivedOnly) && !hits) &&
+                  shown.length === 0 &&
+                  (docs.length === 0 && !query ? (
+                    <View style={styles.emptyLibrary}>
+                      <View style={styles.emptyLibraryIcon}>
+                        <Icon name="fileText" size={22} color={colors.accent} />
+                      </View>
+                      <Text style={styles.emptyLibraryTitle}>
+                        A home for every idea.
+                      </Text>
+                      <Text style={styles.emptyLibraryBody}>
+                        Create a page or a quick note. Folders will keep them
+                        easy to find as your library grows.
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.empty}>
+                      Nothing here yet. Try another collection or search.
+                    </Text>
+                  ))}
+                {!((uploadsOnly || trashOnly || archivedOnly) && !hits) &&
+                  shown.map((doc, n) => (
+                    <View key={doc.id}>
+                      {kindFilter === "agenda" && !hits && doc.created_at && (
+                        <>
+                          {(n === 0 ||
+                            agendaMonthKey(dayOf(doc)) !==
+                              agendaMonthKey(dayOf(shown[n - 1]))) && (
+                            <Text style={styles.monthHeading}>
+                              {new Date(dayOf(doc)).toLocaleDateString(
+                                "en-GB",
+                                {
+                                  month: "long",
+                                  year: "numeric",
+                                },
+                              )}
+                            </Text>
+                          )}
+                          {(n === 0 ||
+                            agendaWeekOf(dayOf(doc)).key !==
+                              agendaWeekOf(dayOf(shown[n - 1])).key) && (
+                            <Text style={styles.weekHeading}>
+                              {agendaWeekOf(dayOf(doc)).label}
+                            </Text>
+                          )}
+                        </>
+                      )}
+                      {/* The whole card opens the page, as project cards do; the
                     star and the folder are buttons of their own inside it. A
                     short delay keeps a scroll from flashing the card. */}
-                    <PressableScale
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${doc.title || "Untitled"}`}
-                      disabled={busy}
-                      unstable_pressDelay={90}
-                      scaleTo={0.985}
-                      style={({ pressed }) => [
-                        styles.row,
-                        pressed && styles.rowPressed,
-                      ]}
-                      onPress={() => openHit(doc.id)}
-                    >
-                      <View style={styles.rowTop}>
-                        <Icon name="fileText" size={16} color={colors.muted} />
-                        <Text style={styles.rowTitle} numberOfLines={2}>
-                          {doc.title || "Untitled"}
-                        </Text>
-                      </View>
-                      {/* The time leads the preview rather than sitting up on
-                      the title's line, where it cost the title the 20pt that
-                      turned "Monday 21 September" into "Monday 21 Septe…". */}
-                      <Text style={styles.rowPreview} numberOfLines={2}>
-                        <Text style={styles.rowWhen}>
-                          {when(doc.updated_at)}
-                        </Text>
-                        {"  ·  " + (doc.preview || "Empty document")}
-                      </Text>
-                      <View style={styles.rowActions}>
-                        <Text style={styles.rowKind} numberOfLines={1}>
-                          {doc.kind === "note"
-                            ? "Note"
-                            : doc.kind === "agenda"
-                              ? "Agenda"
-                              : "Document"}
-                          {doc.tags?.length ? (
-                            <Text style={styles.rowTags}>
-                              {"  " +
-                                doc.tags.map((t) => `#${t.name}`).join(" ")}
-                            </Text>
-                          ) : null}
-                        </Text>
-                        <Pressable
-                          onPress={(event) => {
-                            event.stopPropagation();
-                            toggleStar(
-                              doc as DocSummary,
-                              !starred.has(favouriteKey("doc", doc.id)),
-                            );
-                          }}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            starred.has(favouriteKey("doc", doc.id))
-                              ? `Unstar ${doc.title || "Untitled"}`
-                              : `Star ${doc.title || "Untitled"}`
-                          }
-                          style={styles.rowIcon}
-                        >
+                      <PressableScale
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${doc.title || "Untitled"}`}
+                        disabled={busy}
+                        unstable_pressDelay={90}
+                        scaleTo={0.985}
+                        style={({ pressed }) => [
+                          styles.row,
+                          (pressed || flash === doc.id || picked.has(doc.id)) &&
+                            styles.rowPressed,
+                        ]}
+                        onPress={() =>
+                          picking ? togglePick(doc.id) : openHit(doc.id)
+                        }
+                        delayLongPress={380}
+                        onLongPress={() =>
+                          picking
+                            ? togglePick(doc.id)
+                            : setHeld(doc as DocSummary)
+                        }
+                        accessibilityHint="Touch and hold for more"
+                        accessibilityActions={[
+                          { name: "longpress", label: "More for this page" },
+                        ]}
+                        onAccessibilityAction={(e) => {
+                          if (e.nativeEvent.actionName === "longpress")
+                            setHeld(doc as DocSummary);
+                        }}
+                      >
+                        <View style={styles.rowTop}>
                           <Icon
                             name={
-                              starred.has(favouriteKey("doc", doc.id))
-                                ? "starFilled"
-                                : "star"
+                              picking
+                                ? picked.has(doc.id)
+                                  ? "squareCheck"
+                                  : "square"
+                                : "fileText"
                             }
                             size={16}
                             color={
-                              starred.has(favouriteKey("doc", doc.id))
-                                ? colors.accent
-                                : colors.faint
+                              picked.has(doc.id) ? colors.accent : colors.muted
                             }
                           />
-                        </Pressable>
-                        {!hits && (
+                          <Text style={styles.rowTitle} numberOfLines={2}>
+                            {doc.title || "Untitled"}
+                          </Text>
+                        </View>
+                        {/* The time leads the preview rather than sitting up on
+                      the title's line, where it cost the title the 20pt that
+                      turned "Monday 21 September" into "Monday 21 Septe…". */}
+                        <Text style={styles.rowPreview} numberOfLines={2}>
+                          <Text style={styles.rowWhen}>
+                            {when(doc.updated_at)}
+                          </Text>
+                          {"  ·  " + (doc.preview || "Empty document")}
+                        </Text>
+                        <View style={styles.rowActions}>
+                          <Text style={styles.rowKind} numberOfLines={1}>
+                            {doc.kind === "note"
+                              ? "Note"
+                              : doc.kind === "agenda"
+                                ? "Agenda"
+                                : "Document"}
+                            {doc.tags?.length ? (
+                              <Text style={styles.rowTags}>
+                                {"  " +
+                                  doc.tags.map((t) => `#${t.name}`).join(" ")}
+                              </Text>
+                            ) : null}
+                          </Text>
                           <Pressable
                             onPress={(event) => {
                               event.stopPropagation();
-                              setFiling(doc as DocSummary);
+                              toggleStar(
+                                doc as DocSummary,
+                                !starred.has(favouriteKey("doc", doc.id)),
+                              );
                             }}
                             hitSlop={8}
                             accessibilityRole="button"
-                            accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                            accessibilityLabel={
+                              starred.has(favouriteKey("doc", doc.id))
+                                ? `Unstar ${doc.title || "Untitled"}`
+                                : `Star ${doc.title || "Untitled"}`
+                            }
                             style={styles.rowIcon}
                           >
                             <Icon
-                              name="folder"
+                              name={
+                                starred.has(favouriteKey("doc", doc.id))
+                                  ? "starFilled"
+                                  : "star"
+                              }
                               size={16}
-                              color={colors.faint}
+                              color={
+                                starred.has(favouriteKey("doc", doc.id))
+                                  ? colors.accent
+                                  : colors.faint
+                              }
                             />
                           </Pressable>
-                        )}
-                      </View>
-                    </PressableScale>
-                  </View>
-                ))}
-            </View>
-          )}
-        </View>
-      </ScrollView>
+                          {!hits && (
+                            <Pressable
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                setFiling(doc as DocSummary);
+                              }}
+                              hitSlop={8}
+                              accessibilityRole="button"
+                              accessibilityLabel={`File ${doc.title || "Untitled"}`}
+                              style={styles.rowIcon}
+                            >
+                              <Icon
+                                name="folder"
+                                size={16}
+                                color={colors.faint}
+                              />
+                            </Pressable>
+                          )}
+                        </View>
+                      </PressableScale>
+                    </View>
+                  ))}
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </View>
       {/* The line being typed gets its toolbar here, on the keyboard. */}
       {open && !navigationOpen && <SlotHost slot={toolbarSlot} />}
+      <ActionSheet
+        visible={!!held}
+        label="Page menu"
+        title={held?.title || "Untitled"}
+        actions={held ? rowActions(held) : []}
+        onClose={() => setHeld(null)}
+      />
+      {publishing && (
+        <PublishSheet
+          visible
+          kind={publishing.kind}
+          id={publishing.id}
+          name={publishing.name}
+          onClose={() => setPublishing(null)}
+        />
+      )}
     </Sheet>
   );
 }
@@ -1406,9 +1940,11 @@ function OpenDoc({
   toolbarSlot,
   historyKey,
   onShowHistory,
+  onShowInLibrary,
   report,
 }: {
   doc: Doc;
+  onShowInLibrary?: () => void;
   headerSlot?: SlotHandle;
   toolbarSlot?: SlotHandle;
   /** Bumped to open the history below the page. */
@@ -1496,6 +2032,7 @@ function OpenDoc({
         headerSlot={headerSlot}
         toolbarSlot={toolbarSlot}
         onShowHistory={onShowHistory}
+        onShowInLibrary={onShowInLibrary}
         report={report}
       />
       <DocComments state={comments} userId={userId} />
@@ -1580,6 +2117,12 @@ function AgendaNav({
 
 const styles = themed(() =>
   StyleSheet.create({
+    offline: {
+      marginBottom: 10,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.muted,
+    },
     agendaNav: {
       flexDirection: "row",
       alignItems: "center",
@@ -1732,6 +2275,41 @@ const styles = themed(() =>
       minHeight: 44,
       alignItems: "center",
       justifyContent: "center",
+    },
+    bulkRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    fill: { flex: 1 },
+    split: { flex: 1, flexDirection: "row" },
+    sideList: {
+      width: 300,
+      maxWidth: "35%",
+      borderRightWidth: StyleSheet.hairlineWidth,
+      borderRightColor: colors.border,
+    },
+    sideListBody: { padding: 12, gap: 2 },
+    sideRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      minHeight: 40,
+      paddingHorizontal: 10,
+      borderRadius: radii.input,
+    },
+    sideTitle: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.text,
+    },
+    moveSearch: {
+      fontFamily: fonts.regular,
+      minHeight: controls.tap,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      borderRadius: radii.input,
+      fontSize: 15,
+      color: colors.text,
     },
     filing: {
       gap: 8,

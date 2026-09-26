@@ -67,7 +67,18 @@ export type Caller = {
   lastWriteAt: Date | null;
   /** For old API keys: when they stop working here. */
   sunset: Date | null;
+  /**
+   * When the credential stops working (the token's or the connection's
+   * end, whichever is first), so a long stream closes then.
+   */
+  expiresAt: Date | null;
 };
+
+/** The earliest of some optional dates. */
+const earliest = (...dates: (Date | null | undefined)[]) =>
+  dates
+    .filter((d): d is Date => !!d)
+    .reduce<Date | null>((a, d) => (!a || d < a ? d : a), null);
 
 type GrantRow = {
   grant_id: string;
@@ -256,6 +267,7 @@ export async function resolveCaller(
       kind: row.kind,
       lastWriteAt: row.last_write_at,
       sunset: null,
+      expiresAt: earliest(row.expires_at, row.token_expires_at),
     };
   }
 
@@ -314,6 +326,7 @@ export async function resolveCaller(
       kind: "legacy",
       lastWriteAt: row.last_write_at,
       sunset: until,
+      expiresAt: earliest(row.expires_at, until),
     };
   }
 

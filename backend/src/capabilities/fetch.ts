@@ -8,7 +8,12 @@ import {
   visibleProjects,
   visibleRecords,
   visibleTemplates,
+  visibleViews,
 } from "../lib/visibility.js";
+import { describeSavedView, fromSavedView } from "./query-def.js";
+import { findView } from "./view-store.js";
+import { jobs } from "../modules/imports/service.js";
+import { runView } from "./query.js";
 import { READ, minutesText, spaceName } from "./common.js";
 import {
   MAX_RESULT_CHARS,
@@ -32,6 +37,8 @@ import {
   defineCapability,
   type CapabilityContext,
 } from "./registry.js";
+import { proposalOutcome } from "../modules/proposals/service.js";
+import { readableLinks } from "../modules/links/privacy.js";
 
 /**
  * Opening one thing by id. Follows OpenAI's fetch contract: the input is
@@ -47,6 +54,9 @@ const FETCH_TYPES = [
   "project",
   "record",
   "template",
+  "proposal",
+  "view",
+  "import",
 ] as const;
 
 const output = z.object({
@@ -304,7 +314,12 @@ async function fetchDoc(
     ref.id,
   );
   if (!d) throw notFound();
-  const blocks = Array.isArray(d.content) ? d.content : [];
+  // Links to what this connection can't open keep no title (D3aF).
+  const blocks = await readableLinks(
+    ctx.db,
+    ctx.spaces,
+    Array.isArray(d.content) ? d.content : [],
+  );
   const indexOf = (anchor: string | undefined) => {
     if (!anchor) return -1;
     const at = /^@(\d{1,6})$/.exec(anchor);
@@ -528,27 +543,24 @@ async function fetchTemplate(
 }
 
 /** An id that names no type: try each kind of thing in turn. */
-async function whichType(
-  ctx: CapabilityContext,
-  id: string,
-): Promise<"task" | "doc" | "project" | "record" | "template"> {
-  const tries: ["task" | "doc" | "project" | "record" | "template", string][] =
-    [
-      ["task", "SELECT 1 FROM items i WHERE i.id = $ID AND VIS"],
-      ["doc", "SELECT 1 FROM docs d WHERE d.id = $ID AND VIS"],
-      ["project", "SELECT 1 FROM projects p WHERE p.id = $ID AND VIS"],
-      ["record", "SELECT 1 FROM work_records w WHERE w.id = $ID AND VIS"],
-      [
-        "template",
-        "SELECT 1 FROM project_templates t WHERE t.id = $ID AND VIS",
-      ],
-    ];
+type Plain = "task" | "doc" | "project" | "record" | "template" | "view";
+
+async function whichType(ctx: CapabilityContext, id: string): Promise<Plain> {
+  const tries: [Plain, string][] = [
+    ["task", "SELECT 1 FROM items i WHERE i.id = $ID AND VIS"],
+    ["doc", "SELECT 1 FROM docs d WHERE d.id = $ID AND VIS"],
+    ["project", "SELECT 1 FROM projects p WHERE p.id = $ID AND VIS"],
+    ["record", "SELECT 1 FROM work_records w WHERE w.id = $ID AND VIS"],
+    ["template", "SELECT 1 FROM project_templates t WHERE t.id = $ID AND VIS"],
+    ["view", "SELECT 1 FROM saved_views v WHERE v.id = $ID AND VIS"],
+  ];
   const vis = {
     task: visibleItems,
     doc: visibleDocs,
     project: visibleProjects,
     record: visibleRecords,
     template: visibleTemplates,
+    view: visibleViews,
   };
   const alias = {
     task: "i",
@@ -556,6 +568,7 @@ async function whichType(
     project: "p",
     record: "w",
     template: "t",
+    view: "v",
   };
   for (const [type, sql] of tries) {
     const p = new Params();
@@ -613,6 +626,137 @@ async function byTitle(ctx: CapabilityContext, title: string): Promise<Ref> {
 }
 
 /** Opens `input` (any form of id) for the principal. */
+/**
+ * What became of a proposal this connection made: waiting, applied,
+ * declined, cancelled or expired. Only its own connection's proposals (the
+ * person's own session sees all of theirs).
+ */
+async function fetchProposal(
+  ctx: CapabilityContext,
+  ref: Ref,
+): Promise<Fetched> {
+  const p = ctx.principal;
+  const found = await proposalOutcome(ctx.db, p.user.id, p.grant_id, ref.id);
+  if (!found) throw notFound();
+  const r = refs({ type: "proposal", id: found.id });
+  const status: Record<string, string> = {
+    pending: "Waiting for the person's approval in Orbyn's Review inbox.",
+    applied: "Approved: the changes were made.",
+    declined: "Declined: nothing changed.",
+    cancelled:
+      "Cancelled (the connection or the team's agent access changed): nothing changed.",
+    expired: "Expired before anyone decided: nothing changed.",
+  };
+  return {
+    id: r.id,
+    title: cleanTitle(found.summary) || "Proposal",
+    text: [
+      `# Proposal: ${cleanTitle(found.summary) || "changes"}`,
+      `- ${status[found.status] ?? found.status}`,
+      `- ${found.changes} change${found.changes === 1 ? "" : "s"}${found.decided_at ? ` · decided ${both(new Date(found.decided_at), ctx.timezone)!.local}` : ""}`,
+      `- Review: ${found.review_url}`,
+    ].join("\n"),
+    url: found.review_url,
+    metadata: {
+      type: "proposal",
+      uri: r.uri,
+      team: "Personal",
+      team_id: null,
+      project_id: null,
+      status: found.status,
+      version: null,
+      updated_at: found.decided_at,
+      provenance: "you",
+      truncated: false,
+      next_block: null,
+    },
+  };
+}
+
+/**
+ * A saved view, run: its definition in words and its first 50 rows as a
+ * Markdown table (query with the view pages through the rest).
+ */
+async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
+  const view = await findView(ctx.db, ctx.spaces, ref.id);
+  if (!view) throw notFound();
+  const { query, notes } = fromSavedView(view.definition);
+  const { rows, more } = await runView(ctx, query, 50, 0);
+  const r = refs({ type: "view", id: view.id });
+  const name = cleanTitle(view.name) || "Untitled view";
+  const cell = (t: string) => t.replace(/\|/g, "/").replace(/\n/g, " ");
+  const text = [
+    `# ${name}`,
+    `${describeSavedView(view.definition)} · ${spaceName(view.team_id, ctx.principal.teams)}`,
+    ...(notes.length ? [`In the app, also: ${notes.join("; ")}.`] : []),
+    "",
+    ...(rows.length
+      ? [
+          `| ${query.group_by ? "Group | " : ""}Title | Status | Due | Id |`,
+          `|${query.group_by ? " --- |" : ""} --- | --- | --- | --- |`,
+          ...rows.map(
+            (row) =>
+              `| ${row.group !== null ? `${cell(row.group)} | ` : ""}${cell(lineTitle(row.title, row.url, row.provenance, row.type))} | ${row.status ?? ""} | ${row.due?.local ?? ""} | ${row.id} |`,
+          ),
+        ]
+      : ["Nothing matches right now."]),
+    ...(more ? ["", `More rows: query with view "${r.id}".`] : []),
+  ].join("\n");
+  return {
+    id: r.id,
+    title: name,
+    text,
+    url: r.url,
+    metadata: {
+      type: "view",
+      uri: r.uri,
+      team: spaceName(view.team_id, ctx.principal.teams),
+      team_id: view.team_id,
+      project_id: view.definition.filters.project ?? null,
+      status: view.definition.layout,
+      version: view.version,
+      updated_at: view.updated_at,
+      provenance:
+        view.user_id === ctx.principal.user.id ? "you" : "teammate:a teammate",
+      truncated: more,
+      next_block: null,
+    },
+  };
+}
+
+/** An import into Docs: its status, and the page it became once ready. */
+async function fetchImport(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
+  if (!ctx.principal.personal) throw notFound();
+  const job = (await jobs(ctx.db, ctx.principal.user.id, ref.id))[0];
+  if (!job) throw notFound();
+  const page = job.doc_id ? refs({ type: "doc", id: job.doc_id }) : null;
+  const r = refs({ type: "import", id: job.id });
+  return {
+    id: r.id,
+    title: cleanTitle(job.file_name),
+    text: [
+      `# Import: ${cleanTitle(job.file_name)}`,
+      `- ${job.status}${job.pages ? `, ${job.pages} pages` : ""}`,
+      ...(job.error ? [`- ${clean(job.error, 500)}`] : []),
+      ...(page ? [`- Page: ${page.id} · ${page.url}`] : []),
+    ].join("\n"),
+    url: page?.url ?? r.url,
+    metadata: {
+      type: "import",
+      uri: r.uri,
+      team: "Personal",
+      team_id: null,
+      project_id: null,
+      status: job.status,
+      version: null,
+      updated_at: job.finished_at,
+      provenance: "import",
+      truncated: false,
+      next_block: null,
+    },
+  };
+}
+
 export async function fetchAny(
   ctx: CapabilityContext,
   input: string,
@@ -640,6 +784,12 @@ export async function fetchAny(
       return fetchRecord(ctx, ref);
     case "template":
       return fetchTemplate(ctx, ref);
+    case "proposal":
+      return fetchProposal(ctx, ref);
+    case "view":
+      return fetchView(ctx, ref);
+    case "import":
+      return fetchImport(ctx, ref);
     default:
       throw new CapabilityError(
         "UNAVAILABLE",
@@ -653,7 +803,7 @@ export const fetchCapability = defineCapability({
   name: "fetch",
   title: "Open by id",
   description:
-    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record: or template:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
+    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table), proposal: or import:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
   input: z
     .object({
       id: z.string().trim().min(1).max(500).describe("What to open."),

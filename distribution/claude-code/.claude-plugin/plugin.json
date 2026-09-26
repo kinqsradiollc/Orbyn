@@ -1,0 +1,11 @@
+{
+  "name": "orbyn",
+  "version": "2026.9.26",
+  "description": "Your Orbyn planner in AI agents: today, deadlines, planned sessions, projects and pages.",
+  "author": {
+    "name": "Orbyn",
+    "url": "https://orbyn.dev"
+  },
+  "homepage": "https://orbyn.dev/developers/mcp",
+  "keywords": ["planner", "tasks", "calendar", "study", "projects"]
+}

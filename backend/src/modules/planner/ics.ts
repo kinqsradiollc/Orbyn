@@ -8,7 +8,6 @@ import {
   type OccurrenceChanges,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { withSessionFacts } from "./sessions.js";
 import {
   busyIntervals,
@@ -18,6 +17,7 @@ import {
   timeBlocks,
   type SeriesRow,
 } from "./calendar.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /**
  * iCalendar (RFC 5545) for other calendar apps: someone's private feed of
@@ -262,10 +262,13 @@ export function inviteCalendar(
   );
 }
 
+/** How a session is named in the feed: "Session: {task}". */
+export const SESSION_PREFIX = "Session: ";
+
 export type FeedOptions = {
   /** Only when you're busy, as "Busy", with nothing else. */
   busyOnly?: boolean;
-  /** Add your time blocks as "Focus: {task}". */
+  /** Add your sessions as "Session: {task}". */
   includeBlocks?: boolean;
   /** The organizer shown on events with invitees. */
   organizer?: CalendarPerson;
@@ -339,7 +342,7 @@ export async function icsFeed(
   const rows = (
     await db.query<FeedItem>(
       `SELECT ${FEED_COLUMNS} FROM items i
-       WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL
+       WHERE ${visibleItems()} AND i.due_at IS NOT NULL
          AND (i.rrule IS NOT NULL OR i.due_at > now() - interval '60 days')
        ORDER BY i.due_at LIMIT 2000`,
       [userId],
@@ -385,21 +388,23 @@ export async function icsFeed(
     );
     for (const b of blocks) {
       // Where the session's task is due: the deadline planning works to
-      // (its own, or its project's when that comes first).
+      // (its own, or its project's when that comes first). A whole-day
+      // deadline is named by its day alone, never as a midnight time.
       const due = b.planning_deadline_at ?? b.deadline_at;
+      const wholeDay =
+        !!b.due_all_day &&
+        !!b.deadline_at &&
+        (!b.planning_deadline_at ||
+          Date.parse(b.planning_deadline_at) === Date.parse(b.deadline_at));
       body.push(
         "BEGIN:VEVENT",
         `UID:block-${b.id}@orbyn`,
         `DTSTAMP:${stamp}`,
         `DTSTART:${utc(new Date(b.start_at))}`,
         `DTEND:${utc(new Date(b.end_at))}`,
-        `SUMMARY:${text(`Focus: ${b.title}`)}`,
+        `SUMMARY:${text(`${SESSION_PREFIX}${b.title}`)}`,
         ...(due
-          ? [
-              `DESCRIPTION:${text(
-                `Due ${dueLabel(due, zone, !b.planning_deadline_at && !!b.due_all_day)}`,
-              )}`,
-            ]
+          ? [`DESCRIPTION:${text(`Due ${dueLabel(due, zone, wholeDay)}`)}`]
           : []),
         "TRANSP:OPAQUE",
         "END:VEVENT",

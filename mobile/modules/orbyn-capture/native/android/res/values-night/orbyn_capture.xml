@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The opt-in dark values, the same as the app's dark theme. -->
+<resources>
+    <color name="orbyn_surface">#1A1F1C</color>
+    <color name="orbyn_text">#E2E8E3</color>
+    <color name="orbyn_muted">#8E9A92</color>
+    <color name="orbyn_accent">#7CC49A</color>
+    <color name="orbyn_on_accent">#0E1712</color>
+</resources>

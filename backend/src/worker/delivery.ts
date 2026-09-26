@@ -3,6 +3,7 @@ import { transaction, type Db } from "../db/pool.js";
 import { bookerReminder } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { sendPush } from "./channels/push.js";
+import { visibleItems } from "../lib/visibility.js";
 
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
@@ -13,6 +14,7 @@ const PLANNER_KINDS = [
   "at_risk",
   "deadline",
   "project",
+  "session",
 ];
 
 /**
@@ -36,8 +38,7 @@ export async function deliverOne(): Promise<boolean> {
       ? (
           await db.query(
             `SELECT i.status, i.reminder_version, u.email_reminders, u.disabled,
-              ((i.team_id IS NULL AND i.user_id=u.id) OR EXISTS (
-                SELECT 1 FROM team_members m WHERE m.team_id=i.team_id AND m.user_id=u.id)) AS can_see
+              ${visibleItems("i", { user: "u.id" })} AS can_see
              FROM items i JOIN users u ON u.id=$2 WHERE i.id=$1`,
             [n.item_id, n.user_id],
           )
@@ -203,7 +204,9 @@ async function plannerNoticeStale(
   ).rows[0];
   if (!who || who.disabled || n.read) return true;
   if (n.channel === "email" && !who.email) return true;
-  if (n.channel === "push" && !who.push) return true;
+  // A session reminder is asked for on its own, so it goes to the phone
+  // whatever the other planner notices do.
+  if (n.channel === "push" && !who.push && n.kind !== "session") return true;
   if (n.item_id && (!item || !item.can_see || isClosed(item.status)))
     return true;
   if (n.kind === "project") {
@@ -219,6 +222,18 @@ async function plannerNoticeStale(
       [projectId, n.user_id],
     );
     if (!visible.rowCount) return true;
+  }
+  if (n.kind === "session") {
+    // Only for the session as it is now: still there, at the same start,
+    // and not started yet.
+    const [blockId, epoch] = n.ref.split(":");
+    const block = await db.query(
+      `SELECT 1 FROM time_blocks WHERE id::text = $1 AND user_id = $2
+         AND round(extract(epoch FROM start_at))::bigint::text = $3
+         AND started_at IS NULL`,
+      [blockId, n.user_id, epoch ?? ""],
+    );
+    if (!block.rowCount) return true;
   }
   if (n.kind === "conflict") {
     const block = await db.query(

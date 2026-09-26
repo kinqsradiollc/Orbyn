@@ -151,6 +151,25 @@ export async function createService(
     exposedHeaders: ["WWW-Authenticate", "Retry-After"],
     maxAge: 600,
   };
+  // The Orbyn Clipper (CAP-02) calls /clips from its own extension origin,
+  // with a Clipper key that works nowhere else.
+  const clipCors = {
+    origin: (
+      origin: string | undefined,
+      cb: (err: Error | null, allow: boolean) => void,
+    ) =>
+      cb(
+        null,
+        !origin ||
+          /^(?:chrome|moz|safari-web)-extension:\/\/[a-z0-9.@{}-]+$/i.test(
+            origin,
+          ) ||
+          cachedSettings().cors_origins.includes(origin),
+      ),
+    methods: ["GET", "POST"],
+    exposedHeaders: ["Retry-After"],
+    maxAge: 600,
+  };
   await app.register(cors, {
     delegator: (req, cb) => {
       cb(
@@ -159,7 +178,9 @@ export async function createService(
           ? mcpCors
           : isOAuthOpenPath(req.url)
             ? oauthCors
-            : appCors,
+            : /^\/clips(?:\/|\?|$)/.test(req.url ?? "")
+              ? clipCors
+              : appCors,
       );
     },
   });
@@ -340,9 +361,18 @@ export async function createService(
     };
   });
 
+  // Which service this is, for modules that behave differently when they
+  // share a process with the others (see serviceOf).
+  app.decorate(SERVICE, name);
   for (const module of modules) await app.register(module);
   return app;
 }
+
+const SERVICE = "orbynService";
+
+/** The service an app (or a module's scope in it) was built as. */
+export const serviceOf = (app: FastifyInstance): ServiceName =>
+  (app as unknown as Record<typeof SERVICE, ServiceName>)[SERVICE];
 
 /** Listen on `port` and shut down cleanly on SIGINT/SIGTERM. */
 export async function startService(

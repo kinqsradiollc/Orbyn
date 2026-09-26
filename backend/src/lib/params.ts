@@ -9,3 +9,8 @@ export const idParam = (r: FastifyRequest, key = "id") =>
 export const strictRateLimit = {
   config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
 };
+
+/** Writes a person makes by hand, a few a second at most (D5). */
+export const writeRateLimit = {
+  config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+};

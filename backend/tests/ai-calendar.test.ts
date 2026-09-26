@@ -277,8 +277,8 @@ test("today's agenda is written from the calendar, without waiting on the AI", a
   await useProvider(plain);
   const me = await student();
   reset();
-  const r = await call(me.token, "GET", "/agenda/today");
-  assert.equal(r.status, 200, r.raw.body);
+  const r = await call(me.token, "POST", "/agenda/today");
+  assert.equal(r.status, 201, r.raw.body);
   const lines = texts(r.body);
   assert.ok(lines.includes("Schedule"));
   assert.ok(lines.includes("Afternoon"), "grouped by part of the day");
@@ -301,14 +301,14 @@ test("today's agenda is written from the calendar, without waiting on the AI", a
   assert.ok(lines.includes("End of day"));
   assert.equal(sent.length, 0, "opening the agenda asks no provider");
   // Asking again the same day keeps the same page.
-  const again = await call(me.token, "GET", "/agenda/today");
+  const again = await call(me.token, "POST", "/agenda/today");
   assert.equal(again.body.id, r.body.id);
 });
 
 test("rewriting the agenda opens with the assistant's summary of the day", async () => {
   await useProvider(plain);
   const me = await student();
-  const first = (await call(me.token, "GET", "/agenda/today")).body;
+  const first = (await call(me.token, "POST", "/agenda/today")).body;
   const summary =
     "Your standup is at 9, then an hour on the essay at 11 and the Algorithms lecture at 2. Your final exam is on the way.";
   reset(summary);
@@ -346,7 +346,7 @@ test("the morning agenda is written by the worker, with the summary", async () =
   );
   const written = await scanMorningAgendas(morning, { only: [me.id] });
   assert.equal(written, 1);
-  const doc = (await call(me.token, "GET", "/agenda/today")).body;
+  const doc = (await call(me.token, "POST", "/agenda/today")).body;
   assert.equal(
     texts(doc)[0],
     "A full day: standup, essay time and your lecture, with the exam ahead.",

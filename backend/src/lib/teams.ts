@@ -5,6 +5,7 @@ import {
   type SystemRole,
   type TeamPermission,
   type TeamRole,
+  ASSISTANT_OFF_MESSAGE,
 } from "@orbyn/core";
 import { query, type Db } from "../db/pool.js";
 import { isSessionPrincipal } from "./auth.js";
@@ -69,5 +70,21 @@ export async function requireTeam(
   return { name: team.name, role, effective };
 }
 
-/** SQL predicate (on alias `i`) for items `$1` can see: their own personal items and their teams' items. */
-export const VISIBLE_ITEMS = `((i.team_id IS NULL AND i.user_id=$1) OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id=$1))`;
+/**
+ * Refuse the assistant on a team's pages when the team has kept them out of
+ * it (OTH-04). Personal pages (no team) are always fine.
+ */
+export async function requireAssistantAllowed(
+  teamId: string | null,
+  db?: Db,
+): Promise<void> {
+  if (!teamId) return;
+  const row = (
+    await query<{ allowed: boolean }>(
+      "SELECT assistant_allowed AS allowed FROM teams WHERE id = $1",
+      [teamId],
+      db,
+    )
+  ).rows[0];
+  if (row && !row.allowed) fail(403, ASSISTANT_OFF_MESSAGE);
+}

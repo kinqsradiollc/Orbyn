@@ -11,12 +11,17 @@ import {
   nextOccurrence,
   type Action,
   type Item,
+  type ItemDetail,
   type ItemInput,
+  type OccurrenceChanges,
   type Kind,
   type Status,
+  type QuickAddList,
+  type QuickAddMember,
 } from "@orbyn/core";
-import type { Db } from "../../db/pool.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import type { QueryResult } from "pg";
+import { pool, type Db, type Queryable } from "../../db/pool.js";
+import { requireTeam } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { followTaskState } from "../docs/task-lines.js";
 import { openAsk } from "../followthrough/asks.js";
@@ -34,6 +39,8 @@ import {
   syncAttendees,
 } from "./attendees.js";
 import { carryEventNotes } from "./notes.js";
+import { inMyTeams, visibleItems, visibleOwned } from "../../lib/visibility.js";
+import { actAs } from "../../lib/actor.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -428,6 +435,7 @@ export async function countBlocksAsSpent(
     `WITH counted AS (
        UPDATE time_blocks SET counted = true
        WHERE item_id = $1 AND NOT counted AND start_at < now()
+         AND outcome IS DISTINCT FROM 'skipped'
        RETURNING extract(epoch FROM (least(end_at, now()) - start_at)) / 60 AS minutes)
      UPDATE items SET spent_minutes = spent_minutes
        + coalesce((SELECT round(sum(minutes))::int FROM counted), 0)
@@ -500,7 +508,7 @@ async function setPrerequisites(
     const visible = (
       await db.query<{ n: number }>(
         `SELECT count(*)::int AS n FROM items i
-          WHERE i.id = ANY($2::uuid[]) AND i.kind = 'task' AND (${VISIBLE_ITEMS})`,
+          WHERE i.id = ANY($2::uuid[]) AND i.kind = 'task' AND (${visibleItems()})`,
         [actor.id, wanted],
       )
     ).rows[0].n;
@@ -634,7 +642,7 @@ export async function mutate(
   options: MutateOptions = {},
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
-  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
+  await actAs(db, actor.id);
   let item: ItemRow | undefined;
   if (operation !== "create") {
     item = await lockItem(db, item_id!);
@@ -1191,4 +1199,99 @@ export async function setItemStatus(
     undefined,
     options,
   ))!;
+}
+
+export type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
+/** Runs queries on a transaction client. */
+export const via =
+  (db: Db): Run =>
+  (text, values) =>
+    db.query(text, values);
+
+/**
+ * A task with its checklist and its 100 most recent updates, newest first;
+ * an event with the people invited and their answers; a repeating item with
+ * the occurrences changed on their own.
+ */
+export async function itemDetail(
+  id: string,
+  run: Run = (text, values) => pool.query(text, values),
+): Promise<ItemDetail> {
+  const item = (
+    await run(`SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id = $1`, [id])
+  ).rows[0];
+  if (!item) fail(404, "Item not found");
+  const steps = (
+    await run(
+      "SELECT id, item_id, title, done, position, created_at FROM item_steps WHERE item_id=$1 ORDER BY position, created_at, id",
+      [id],
+    )
+  ).rows;
+  const updates = (
+    await run(
+      `SELECT u.id, u.item_id, u.user_id, coalesce(a.name, 'Former member') AS author_name,
+              u.body, u.status, u.progress, u.created_at
+       FROM item_updates u LEFT JOIN users a ON a.id = u.user_id
+       WHERE u.item_id = $1 ORDER BY u.created_at DESC, u.id DESC LIMIT 100`,
+      [id],
+    )
+  ).rows;
+  const attendees = (
+    await run(
+      `SELECT id, email, name, status, responded_at FROM item_attendees
+       WHERE item_id = $1 ORDER BY created_at, email`,
+      [id],
+    )
+  ).rows;
+  const overrides = (
+    await run(
+      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1 ORDER BY occurrence",
+      [id],
+    )
+  ).rows.map((o: { occurrence: Date; data: OccurrenceChanges }) => ({
+    ...o.data,
+    occurrence: o.occurrence.toISOString(),
+  }));
+  const links = (
+    await run(
+      "SELECT id, url, title, position FROM item_links WHERE item_id = $1 ORDER BY position, id",
+      [id],
+    )
+  ).rows;
+  return { ...item, steps, updates, attendees, overrides, links };
+}
+
+/**
+ * What quick add reads a line against: the person's lists and tags (their
+ * own and their teams'), and everyone who shares a team with them.
+ * POST /items/quick and an agent's create_tasks both use it.
+ */
+export async function quickAddContext(
+  db: Queryable,
+  userId: string,
+): Promise<{
+  lists: QuickAddList[];
+  tags: QuickAddList[];
+  members: QuickAddMember[];
+}> {
+  const mine = visibleOwned("x", "user_id");
+  const [lists, tags, members] = await Promise.all([
+    db.query<QuickAddList>(
+      `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
+      [userId],
+    ),
+    db.query<QuickAddList>(
+      `SELECT x.id, x.name, x.team_id FROM tags x WHERE ${mine}`,
+      [userId],
+    ),
+    // Everyone who shares a team with you, and which of your teams.
+    db.query<QuickAddMember>(
+      `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
+       FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
+       WHERE ${inMyTeams("m")}
+       GROUP BY p.id, p.name, p.email`,
+      [userId],
+    ),
+  ]);
+  return { lists: lists.rows, tags: tags.rows, members: members.rows };
 }

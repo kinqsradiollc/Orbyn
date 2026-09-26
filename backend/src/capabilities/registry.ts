@@ -5,6 +5,7 @@ import type { Queryable } from "../db/pool.js";
 import { derivedKey } from "../lib/secrets.js";
 import type { Spaces } from "../lib/visibility.js";
 import { policy, type Principal } from "./policy.js";
+import type { WriteMeta } from "./write.js";
 
 /**
  * The capability registry: every tool an outside agent can call, declared
@@ -43,6 +44,8 @@ export type ErrorCode =
   | "AMBIGUOUS"
   | "FORBIDDEN"
   | "READ_ONLY"
+  | "VERSION_CONFLICT"
+  | "STALE"
   | "MAINTENANCE"
   | "UNAVAILABLE"
   | "INTERNAL";
@@ -75,7 +78,15 @@ export type CapabilityContext = {
   /** The spaces reads may reach (for lib/visibility.ts). */
   spaces: Spaces;
   cursor: CursorCodec;
+  /**
+   * Reports how far a long call has got (MCP progress notifications, or a
+   * long job's status), when the caller asked to hear it. Never required.
+   */
+  progress?: Progress;
 };
+
+/** How far a call has got: steps done, of how many, and what it's doing. */
+export type Progress = (done: number, total: number, message: string) => void;
 
 export type ResultLink = {
   uri: string;
@@ -92,6 +103,8 @@ export type CapabilityResult<T> = {
   links?: ResultLink[];
   /** Typed ids it touched, for the activity log (never content). */
   targets?: string[];
+  /** For changes: the outcome, proposal, undo steps and after-commit work. */
+  write?: WriteMeta;
 };
 
 export type Capability<
@@ -117,8 +130,8 @@ export type Capability<
   jsonText?: boolean;
   /** Only for old personal API keys on the legacy address (aliases). */
   legacyOnly?: boolean;
-  /** Counted against the lower search limit. */
-  limitGroup?: "search";
+  /** Counted against the lower search limit, or the CPU-heavy one. */
+  limitGroup?: "search" | "heavy";
   run(
     ctx: CapabilityContext,
     input: z.output<I>,

@@ -18,9 +18,9 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { frameSpans, loadFrames } from "./frames.js";
 import { externalEntries } from "./subscriptions.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /** Alerts new items get until someone chooses their own: 30 minutes before. */
 export const DEFAULT_ALERTS: DefaultAlerts = {
@@ -80,6 +80,7 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   learn_estimates: false,
   learn_rhythm: true,
   balance_load: true,
+  session_reminder_minutes: null,
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -125,6 +126,7 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
     learn_estimates: row.learn_estimates ?? false,
     learn_rhythm: row.learn_rhythm ?? true,
     balance_load: row.balance_load ?? true,
+    session_reminder_minutes: row.session_reminder_minutes ?? null,
   };
 }
 
@@ -309,7 +311,7 @@ export async function calendarEntries(
               i.all_day, i.busy, i.color, i.alerts,
               (SELECT count(*)::int FROM item_attendees x WHERE x.item_id = i.id) AS attendee_count
        FROM items i LEFT JOIN teams t ON t.id = i.team_id
-       WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL AND (
+       WHERE ${visibleItems()} AND i.due_at IS NOT NULL AND (
          (i.rrule IS NULL AND i.due_at < $3 AND coalesce(i.end_at, i.due_at) >= $2)
          OR (i.rrule IS NOT NULL AND coalesce(i.series_start, i.due_at) < $3)
        ) AND ($4::uuid[] IS NULL OR i.id = ANY ($4::uuid[]))
@@ -388,9 +390,10 @@ export async function timeBlocks(
   return (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
+              b.started_at, b.outcome,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
-       WHERE b.user_id = $1 AND b.start_at < $3 AND b.end_at > $2 AND ${VISIBLE_ITEMS}
+       WHERE b.user_id = $1 AND b.start_at < $3 AND b.end_at > $2 AND ${visibleItems()}
        ORDER BY b.start_at`,
       [userId, from, to],
     )

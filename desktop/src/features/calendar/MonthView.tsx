@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Lock, Users } from "lucide-react";
 import {
   monthGrid,
@@ -12,6 +12,7 @@ import {
 import { usePlanning } from "../../app/planning";
 import { isAllDay, itemsForDay, timeLabel } from "./dates";
 import { layoutWeek } from "./layout";
+import { dayDropTarget } from "../../lib/drag";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 /** Bars shown per week row before "+N more". */
@@ -28,6 +29,8 @@ type Props = {
   frames?: FrameOccurrence[];
   /** Saved work sessions; counted separately from deadlines and events. */
   blocks?: TimeBlock[];
+  /** A task dropped on a day: plan a session there (ORG-06). */
+  onDropTask?: (itemId: string, day: Date) => void;
 };
 
 /** Colors and markers for an item in any calendar view. */
@@ -83,8 +86,11 @@ export function MonthView({
   onOpen,
   frames = [],
   blocks = [],
+  onDropTask,
 }: Props) {
   const { listById } = usePlanning();
+  /** The day a dragged task is held over. */
+  const [dropDay, setDropDay] = useState<string | null>(null);
   const today = new Date();
   const month = selected.getMonth();
   return (
@@ -128,9 +134,23 @@ export function MonthView({
                     "month-cell " +
                     (d.getMonth() !== month ? "outside " : "") +
                     (sameDay(d, today) ? "is-today " : "") +
-                    (isSelected ? "is-selected" : "")
+                    (isSelected ? "is-selected " : "") +
+                    (dropDay === d.toDateString() ? "is-drop" : "")
                   }
                   onClick={() => onSelect(d)}
+                  {...(onDropTask
+                    ? dayDropTarget(
+                        (id) => onDropTask(id, d),
+                        (over) =>
+                          setDropDay((was) =>
+                            over
+                              ? d.toDateString()
+                              : was === d.toDateString()
+                                ? null
+                                : was,
+                          ),
+                      )
+                    : {})}
                 >
                   <span className="month-date">{d.getDate()}</span>
                   {sessions > 0 && (

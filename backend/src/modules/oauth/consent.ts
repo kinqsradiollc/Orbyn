@@ -17,7 +17,12 @@ import { pool, transaction, type Queryable } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import type { UserRow } from "../../lib/auth.js";
 import type { LiveSettings } from "../../lib/settings.js";
-import { MAX_GRANTS, grantView, noticeAgentEvent } from "../agents/service.js";
+import {
+  MAX_GRANTS,
+  grantView,
+  liveGrantCount,
+  noticeAgentEvent,
+} from "../agents/service.js";
 import {
   OAuthError,
   redirectAllowed,
@@ -289,16 +294,9 @@ export async function allowRequest(
         ],
       );
     } else {
-      const live = (
-        await db.query<{ n: number }>(
-          // Sign-ins that were allowed but never finished don't count.
-          `SELECT count(*)::int AS n FROM agent_grants WHERE user_id = $1
-              AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
-              AND (kind <> 'oauth' OR authorized_at IS NOT NULL)`,
-          [user.id],
-        )
-      ).rows[0].n;
-      if (live >= MAX_GRANTS)
+      // Sign-ins that were allowed but never finished don't count (the
+      // limit is checked again when this one finishes, in exchangeCode).
+      if ((await liveGrantCount(db, user.id)) >= MAX_GRANTS)
         fail(
           409,
           `You can have up to ${MAX_GRANTS} connected agents. Disconnect one first.`,

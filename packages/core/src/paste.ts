@@ -12,7 +12,7 @@
  * so the same code runs on the web, on a phone and in tests.
  */
 import { MAX_DEPTH, parseDoc, withDepth, type DocBlock } from "./docs.js";
-import { rowsToBullets } from "./imports.js";
+import { rowsToTable } from "./imports.js";
 
 type HtmlNode =
   | { text: string }
@@ -495,7 +495,9 @@ export function htmlToBlocks(html: string): DocBlock[] {
       case "table": {
         flush();
         const rows = rowsOf(el);
-        for (const line of rowsToBullets(rows)) out.push(...parseDoc(line));
+        // A table stays a table (EDT-02).
+        const table = rowsToTable(rows);
+        if (table.length) out.push({ type: "table", text: table.join("\n") });
         return;
       }
       case "p":

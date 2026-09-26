@@ -23,6 +23,7 @@ import {
   type CalendarSet,
   type EditScope,
   type ExternalEntry,
+  type FieldDate,
   type FrameOccurrence,
   type HttpError,
   type Item,
@@ -35,8 +36,10 @@ import { client } from "../../lib/api";
 import { celebrate } from "../../lib/celebrate";
 import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
+import { usePrefs } from "../../app/prefs";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { errorText, fromDayKey } from "../../lib/planning";
+import { localDay } from "../../lib/drag";
 import {
   addDays,
   itemsForDay,
@@ -121,6 +124,38 @@ type Props = {
   onNewEvent: (draft: Partial<ItemInput>) => void;
   /** You, left out of "Show teammates". */
   userId?: string;
+  /**
+   * Opens the page or project a date field is on (DATA-07: date fields
+   * shown on the calendar as deadlines).
+   */
+  onOpenFieldTarget?: (target: FieldDate["target"], id: string) => void;
+};
+
+/** Where a date field's deadline comes from, kept in its entry's key. */
+const FIELD_SOURCE = "field:";
+
+const dayKeyOf = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+
+/**
+ * A date field's day as an all-day entry beside subscribed calendars: never
+ * busy time, drawn in the accent, and opening its page or project.
+ */
+const fieldEntry = (d: FieldDate): ExternalEntry => {
+  const [y, m, day] = d.date.split("-").map(Number);
+  return {
+    subscription_id: `${FIELD_SOURCE}${d.target}:${d.target_id}`,
+    name: d.target === "page" ? "A page's date" : "A project's date",
+    color: "var(--color-accent)",
+    title: `${d.field_name} · ${d.title || "Untitled"}`,
+    start_at: new Date(y, m - 1, day).toISOString(),
+    end_at: new Date(y, m - 1, day + 1).toISOString(),
+    all_day: true,
+    location: "",
+    busy: false,
+  };
 };
 
 const savedSet = () => {
@@ -192,6 +227,7 @@ export function CalendarView({
   report,
   onChanged,
   planRequest,
+  onOpenFieldTarget,
   onNewEvent,
   userId,
 }: Props) {
@@ -229,10 +265,18 @@ export function CalendarView({
   // ---- calendar sets ----
   const sets = prefs?.calendar_sets ?? [];
   const [setId, setSetIdState] = useState(savedSet);
+  // The set shown follows the account (SHR-08); this browser keeps a copy.
+  const { viewChoice, setViewChoice } = usePrefs();
+  const accountSet = viewChoice("calendar")?.set;
+  useEffect(() => {
+    if (accountSet !== undefined)
+      setSetIdState(accountSet === "all" ? "" : accountSet);
+  }, [accountSet]);
   const activeSet: CalendarSet | null =
     sets.find((s) => s.id === setId) ?? null;
   const chooseSet = (id: string) => {
     setSetIdState(id);
+    setViewChoice("calendar", { set: id || "all" });
     try {
       localStorage.setItem(SET_KEY, id);
     } catch {
@@ -245,12 +289,40 @@ export function CalendarView({
   const blocks = (data?.blocks ?? []).filter((b) => inSet(activeSet, b));
   const derived = (data?.derived ?? []).filter((d) => shownIds.has(d.item_id));
   const frames = data?.frames ?? [];
+  // Date fields shown on the calendar as deadlines (DATA-07).
+  const [fieldDates, setFieldDates] = useState<FieldDate[]>([]);
+  const fromKey = dayKeyOf(range.from);
+  const toKey = dayKeyOf(range.to);
+  useEffect(() => {
+    let live = true;
+    client.fieldDates(fromKey, toKey).then(
+      (dates) => live && setFieldDates(dates),
+      () => live && setFieldDates([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [fromKey, toKey, revision]);
   // A set picks subscribed calendars too; older sets show all of them.
-  const external = (data?.external ?? []).filter(
-    (e) =>
-      !activeSet?.subscription_ids ||
-      activeSet.subscription_ids.includes(e.subscription_id),
-  );
+  const external = [
+    ...(data?.external ?? []).filter(
+      (e) =>
+        !activeSet?.subscription_ids ||
+        activeSet.subscription_ids.includes(e.subscription_id),
+    ),
+    ...fieldDates.map(fieldEntry),
+  ];
+  /** An entry from a date field opens its page or project; others their details. */
+  const showExternal = (event: ExternalEntry, anchor: DOMRect) => {
+    if (event.subscription_id.startsWith(FIELD_SOURCE)) {
+      const [target, id] = event.subscription_id
+        .slice(FIELD_SOURCE.length)
+        .split(":");
+      onOpenFieldTarget?.(target as FieldDate["target"], id);
+      return;
+    }
+    setMenu({ kind: "external", event, anchor });
+  };
   const gridMode = mode === "week" || mode === "day";
 
   // ---- teammates' busy times ----
@@ -399,6 +471,31 @@ export function CalendarView({
         }),
       ),
     );
+  };
+
+  /**
+   * A task dropped on a whole day (ORG-06): a session at that day's first
+   * free working time. A day with none says so, and the task stays put.
+   */
+  const planOnDay = (itemId: string, day: Date) => {
+    const item = itemMap.get(itemId);
+    if (!item || item.kind !== "task") return;
+    void (async () => {
+      try {
+        const block = await client.createBlockOnDay({
+          item_id: item.id,
+          day: localDay(day),
+        });
+        if (lateSessionWarning(block)) warnIfLate(block);
+        else
+          setNote({
+            text: `Planned “${item.title}” for ${movedTo(block.start_at)}.`,
+          });
+      } catch (e) {
+        setNote({ tone: "warn", text: errorText(e) });
+      }
+      await reload();
+    })();
   };
 
   const changeBlock = (block: TimeBlock, start: Date, end: Date) => {
@@ -776,11 +873,10 @@ export function CalendarView({
         onOpen(item, entry && occurrenceOf(entry)),
       );
     }
-    setMenu({
-      kind: "external",
-      event: x,
-      anchor: anchor ?? new DOMRect(window.innerWidth / 2 - 150, 160, 300, 0),
-    });
+    showExternal(
+      x,
+      anchor ?? new DOMRect(window.innerWidth / 2 - 150, 160, 300, 0),
+    );
   };
   const zones = (prefs?.extra_timezones ?? []).slice(0, 3);
   const showSide = mode !== "month";
@@ -955,12 +1051,20 @@ export function CalendarView({
               onSelect={onDateChange}
               onOpenDay={openDay}
               onOpen={openKey}
+              onDropTask={planOnDay}
             />
-            <DayAgenda
-              day={date}
-              items={itemsForDay(monthItems, date)}
-              onOpen={openKey}
-            />
+            <div className="month-side">
+              <DayAgenda
+                day={date}
+                items={itemsForDay(monthItems, date)}
+                onOpen={openKey}
+              />
+              {/* Tasks to drag onto a day, as beside the week. */}
+              <SchedulePanel
+                items={items}
+                onSchedule={(item) => setDialog({ kind: "schedule", item })}
+              />
+            </div>
           </div>
         )}
 
@@ -999,6 +1103,7 @@ export function CalendarView({
               const item = itemMap.get(id);
               if (item) createBlock(item, start);
             }}
+            onDropTaskOnDay={planOnDay}
             onChangeBlock={changeBlock}
             onDuplicateBlock={(block, start) => void duplicate(block, start)}
             canDragEntry={canDragEntry}
@@ -1015,9 +1120,7 @@ export function CalendarView({
             }
             teammates={mates.shown}
             external={external}
-            onExternal={(event, anchor) =>
-              setMenu({ kind: "external", event, anchor })
-            }
+            onExternal={showExternal}
             slot={slot}
             onSelectSlot={setSlot}
           />
@@ -1027,9 +1130,7 @@ export function CalendarView({
           <AgendaList
             days={agendaDays}
             external={external}
-            onExternal={(event, anchor) =>
-              setMenu({ kind: "external", event, anchor })
-            }
+            onExternal={showExternal}
             entries={entries}
             blocks={blocks}
             onEntry={(entry, anchor) =>

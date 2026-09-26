@@ -6,6 +6,8 @@ import {
   viewTitle,
   type View,
 } from "../app/views";
+import { commandById, keysFor } from "../app/commands";
+import { usePrefs } from "../app/prefs";
 
 type TopbarProps = {
   view: View;
@@ -16,7 +18,10 @@ type TopbarProps = {
 };
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-export const COMMAND_SHORTCUT = isMac ? "⌘K" : "Ctrl+K";
+/** ⌘K's keys, as the command list has them. */
+export const COMMAND_SHORTCUT = keysFor(commandById("app.search"), isMac).join(
+  isMac ? "" : "+",
+);
 
 /** Sticky header: mobile menu toggle, breadcrumb, search, today's date, and the bell. */
 export function Topbar({
@@ -26,6 +31,13 @@ export function Topbar({
   onOpenCommand,
 }: TopbarProps) {
   const today = new Date();
+  const { prefs } = usePrefs();
+  // ⌘K's keys, as changed (NAV-09); none shown when taken away.
+  const shortcut = keysFor(
+    commandById("app.search"),
+    isMac,
+    prefs.shortcuts,
+  ).join(isMac ? "" : "+");
   return (
     <header className="topbar">
       <button
@@ -47,7 +59,7 @@ export function Topbar({
         >
           <Search size={14} aria-hidden="true" />
           <span>Search or ask</span>
-          <kbd>{COMMAND_SHORTCUT}</kbd>
+          {shortcut && <kbd>{shortcut}</kbd>}
         </button>
         <span className="today-label">
           {today.toLocaleDateString([], {

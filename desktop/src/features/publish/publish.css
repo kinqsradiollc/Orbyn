@@ -1,0 +1,95 @@
+/* Publish to web (SHR-05, SHR-06). */
+.publish-dialog {
+  width: 560px;
+}
+.publish-dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.publish-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px 23px 8px;
+}
+.publish-body p {
+  margin: 0;
+}
+.publish-via,
+.publish-reason {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surfaceMuted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.publish-link {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.publish-link input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.publish-fields {
+  display: grid;
+  gap: 4px;
+}
+.publish-fields > label:not(.switch-line) {
+  margin-bottom: 10px;
+}
+.publish-slug {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.publish-slug .muted {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.publish-slug input {
+  flex: 1;
+  min-width: 0;
+}
+.publish-error {
+  color: var(--color-danger);
+  font-size: 13px;
+}
+.publish-views {
+  font-size: 13px;
+}
+.publish-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 23px 20px;
+}
+.team-publishing h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+.publish-open {
+  color: var(--color-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.team-policies {
+  display: grid;
+  gap: 12px;
+}
+.team-policies h3 {
+  margin: 0;
+}

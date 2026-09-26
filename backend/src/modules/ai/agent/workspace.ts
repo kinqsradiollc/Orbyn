@@ -7,7 +7,6 @@ import {
   type AssistantSource,
 } from "@orbyn/core";
 import { pool } from "../../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../../lib/teams.js";
 import {
   agendaEntries,
   busyIntervals,
@@ -18,7 +17,6 @@ import { externalEntries } from "../../planner/subscriptions.js";
 import {
   LIVE_CARDS,
   studyOverview,
-  syncCards,
   upcomingExams,
 } from "../../study/service.js";
 import {
@@ -27,12 +25,17 @@ import {
   workingSpans,
 } from "../../planner/plans.js";
 import { planReality } from "../../followthrough/reality.js";
-import { PROJECT_COUNTS } from "../../projects/counts.js";
 import { projectPlanning } from "../../projects/planning.js";
 import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
-import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { assistantMayRead, docVisibleTo } from "../../../lib/doc-visibility.js";
+import { visibleItems, visibleRecords } from "../../../lib/visibility.js";
+import {
+  findProject,
+  listProjects as listVisibleProjects,
+} from "../../projects/service.js";
+import { readableLinks } from "../../links/privacy.js";
 
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
@@ -114,7 +117,7 @@ export async function rankTasks(
   a: { limit?: number; team_id?: string; only_undated?: boolean },
 ) {
   const values: unknown[] = [ctx.user.id];
-  const where = [VISIBLE_ITEMS, "i.kind = 'task'"];
+  const where = [visibleItems(), "i.kind = 'task'"];
   if (a.team_id === "personal") where.push("i.team_id IS NULL");
   else if (a.team_id) {
     if (!isUuid(a.team_id))
@@ -188,19 +191,8 @@ type ProjectRow = {
   updated_at: Date;
 };
 
-const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.doc_id, p.team_id,
-    p.status, p.deadline, p.updated_at,
-    t.name AS team_name,
-    ${PROJECT_COUNTS}
-  FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
-const VISIBLE_PROJECTS = `((p.team_id IS NULL AND p.user_id = $1)
-  OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
-/** Pages `$1` can open (as docs/routes.ts): their own, and their teams'. */
-const VISIBLE_DOCS = `((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
 /** Work records `$1` can open (as work-records/routes.ts). */
-const VISIBLE_RECORDS = `((w.team_id IS NULL AND w.created_by = $1)
-  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`;
+const VISIBLE_RECORDS = visibleRecords("w");
 
 const projectView = (p: ProjectRow, timezone: string) => {
   const counts = { task_count: p.task_count, done_count: p.done_count };
@@ -239,15 +231,12 @@ export async function listProjects(
   ctx: AgentContext,
   a: { include_archived?: boolean },
 ) {
-  const rows = (
-    await pool.query<ProjectRow>(
-      `${PROJECT_SELECT} WHERE ${VISIBLE_PROJECTS}
-         ${a.include_archived ? "" : "AND p.status <> 'archived'"}
-       ORDER BY p.status = 'archived', p.deadline NULLS LAST, p.updated_at DESC
-       LIMIT 50`,
-      [ctx.user.id],
-    )
-  ).rows;
+  // The same list the app's Projects shows (the projects service).
+  const rows = await listVisibleProjects<ProjectRow>(pool, ctx.user.id, {
+    includeArchived: !!a.include_archived,
+    order: "deadline",
+    limit: 50,
+  });
   const checked = new Set(
     rows
       .filter((p) => p.status === "active" && p.deadline)
@@ -285,12 +274,11 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     throw new Error("This conversation is scoped to a different project.");
   if (!isUuid(a.project_id))
     throw new Error("Use a project id from list_projects.");
-  const project = (
-    await pool.query<ProjectRow>(
-      `${PROJECT_SELECT} WHERE p.id = $2 AND ${VISIBLE_PROJECTS}`,
-      [ctx.user.id, a.project_id],
-    )
-  ).rows[0];
+  const project = await findProject<ProjectRow>(
+    pool,
+    ctx.user.id,
+    a.project_id,
+  );
   if (!project) throw new Error("No project with that id in this workspace.");
   const now = new Date();
   const [stages, tasks, notes, records, plan, upcoming] = await Promise.all([
@@ -308,7 +296,7 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
       stage_id: string | null;
     }>(
       `SELECT i.id, i.title, i.status, i.priority, i.due_at, i.end_at, i.stage_id
-         FROM items i WHERE i.project_id = $2 AND ${VISIBLE_ITEMS}
+         FROM items i WHERE i.project_id = $2 AND ${visibleItems()}
         ORDER BY (i.status IN ('done', 'cancelled')), i.due_at NULLS LAST
         LIMIT 200`,
       [ctx.user.id, a.project_id],
@@ -327,7 +315,7 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
                   ORDER BY b.pos LIMIT 4) x), '[]'::jsonb) AS lines
          FROM docs d
         WHERE d.project_id = $2
-          AND ${docVisibleTo("$1")}
+          AND ${docVisibleTo("$1")} AND ${assistantMayRead("d")}
         ORDER BY (d.id = $3) DESC, d.updated_at DESC LIMIT 20`,
       [ctx.user.id, a.project_id, project.doc_id],
     ),
@@ -359,6 +347,9 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
       tasks.rows.some((task) => task.id === session.item_id),
     ),
   );
+  // The first lines of the project's pages, with the words of links this
+  // person can't open read "Private page" (D3aF).
+  const pages = await readableLinks(pool, ctx.user.id, notes.rows);
   const cite = (key: string, source: AssistantSource) => {
     if (!ctx.cited) return null;
     const number = ctx.cited.get(key)?.number ?? ctx.cited.size + 1;
@@ -393,10 +384,10 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     ],
     finished_tasks: tasks.rows.filter((t) => isClosed(t.status)).length,
     brief:
-      notes.rows
+      pages
         .find((d) => d.id === project.doc_id)
         ?.lines.map((line) => clean(line.text, 200)) ?? [],
-    notes: notes.rows.map((d) => ({
+    notes: pages.map((d) => ({
       id: d.id,
       title: clean(d.title, 120),
       first_lines: d.lines.slice(0, 2).map((line) => ({
@@ -557,8 +548,7 @@ export async function followThrough(ctx: AgentContext) {
       `SELECT w.title, p.name AS project_name
          FROM work_records w LEFT JOIN projects p ON p.id = w.project_id
         WHERE w.kind = 'decision' AND w.status = 'open' AND w.linked_item_id IS NULL
-          AND ((w.team_id IS NULL AND w.created_by = $1)
-            OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+          AND ${visibleRecords("w")}
         ORDER BY w.created_at DESC LIMIT 20`,
       [ctx.user.id],
     ),
@@ -740,7 +730,6 @@ export async function calendarMatches(ctx: AgentContext, words: string[]) {
  * overview stays small for everyone else.
  */
 export async function studyGlance(ctx: AgentContext) {
-  await syncCards(pool, ctx.user.id);
   const counts = (
     await pool.query<{ cards: number; due: number }>(
       `SELECT count(*)::int AS cards,

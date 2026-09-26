@@ -26,6 +26,7 @@ import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { ItemCard } from "../components/ItemCard";
 import type { Editing } from "../components/ItemEditor";
+import { RecentChangesList } from "./RecentChanges";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { sheetStyles } from "../components/Sheet";
@@ -36,6 +37,7 @@ import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TeamAgents } from "./TeamAgents";
+import { TeamPolicies } from "./TeamPolicies";
 import { TeamTime } from "./TeamTime";
 import { MoreMenu } from "../components/MoreMenu";
 
@@ -58,6 +60,7 @@ export function TeamDetailPage({
   onGone,
   onChanged,
   onOpenItem,
+  onOpenChange,
 }: {
   teamId: string;
   user: User | null;
@@ -70,6 +73,8 @@ export function TeamDetailPage({
   /** Refresh planner data (teams, items) after a mutation. */
   onChanged: () => Promise<void>;
   onOpenItem: (editing: Editing) => void;
+  /** Open a page or task from the team's recent changes (SHR-02). */
+  onOpenChange?: (kind: "doc" | "task", id: string) => void;
 }) {
   const [detail, setDetail] = useState<TeamDetail | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -265,6 +270,18 @@ export function TeamDetailPage({
           </View>
         )}
 
+        {/* Who changed which of the team's pages and tasks (SHR-02). */}
+        {canRead && onOpenChange && (
+          <>
+            <Text style={[shared.eyebrow, s.eyebrow]}>RECENT CHANGES</Text>
+            <RecentChangesList
+              teamId={teamId}
+              limit={10}
+              onOpen={onOpenChange}
+            />
+          </>
+        )}
+
         <Text style={[shared.eyebrow, s.eyebrow]}>MEMBERS</Text>
         <View style={s.list}>
           {detail.members.map((m, n) => {
@@ -411,6 +428,8 @@ export function TeamDetailPage({
             }
           />
         )}
+
+        {detail.role && <TeamPolicies teamId={teamId} />}
 
         {detail.role && (
           <TeamAgents

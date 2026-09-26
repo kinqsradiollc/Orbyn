@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { onLive } from "../../lib/live";
 import {
   Pressable,
   Linking,
@@ -9,6 +10,7 @@ import {
   View,
 } from "react-native";
 import {
+  activityOriginLabel,
   changeProjectDeadline,
   projectDeadlineAt,
   projectDeadlineParts,
@@ -38,8 +40,10 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { Pill } from "../../components/Pill";
 import { ClockField, DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import { MoreMenu } from "../../components/MoreMenu";
-import { shareLink } from "../../lib/share";
+import { ActionSheet, MoreMenu } from "../../components/MoreMenu";
+import { showToast } from "../../components/Toast";
+import { ProjectMilestones } from "./ProjectMilestones";
+import { copyLink, shareLink } from "../../lib/share";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
 import { Icon } from "../../components/Icon";
@@ -56,6 +60,10 @@ import { useImports } from "./Uploads";
 import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { LinkedHere } from "./links";
+import { ConnectionsMap } from "./ConnectionsMap";
+import { FieldsSection } from "../views/FieldsSection";
+import { AliasesField } from "./AliasesField";
 import { deviceTimeZone } from "../../lib/planning";
 
 /** "Fri 16 Oct, 5 pm", or just the day. */
@@ -139,6 +147,12 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
+  /** A project card held down: its menu (MOB-07). */
+  const [heldProject, setHeldProject] = useState<Project | null>(null);
+  // Opened: it leads the search's recent list, and ⌘K's on the web.
+  useEffect(() => {
+    if (open?.id) void client.recordRecent("project", open.id).catch(() => {});
+  }, [open?.id]);
   const [newSummary, setNewSummary] = useState("");
   const [newTeam, setNewTeam] = useState<string | null>(null);
   const [newDue, setNewDue] = useState<string | null>(null);
@@ -601,6 +615,31 @@ export function ProjectsSheet({
       },
     );
 
+  // Projects changed elsewhere (another device, a teammate, a connected
+  // agent) while this is open: read them again, once for a burst.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    if (!visible) return;
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area &&
+          news.area !== "projects" &&
+          news.area !== "templates" &&
+          news.area !== "records")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void reloadRef.current(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
+  }, [visible]);
+
   const create = () => {
     const name = (draft ?? "").trim();
     if (!name) return;
@@ -741,6 +780,31 @@ export function ProjectsSheet({
       setDraft(null);
       await reload();
     });
+  };
+
+  /** Owners and admins (the owner, for a personal project) decide what AI may read. */
+  const canManageAi = (p: Project) =>
+    p.team_id
+      ? ["owner", "admin"].includes(
+          teams.find((t) => t.id === p.team_id)?.role ?? "",
+        )
+      : p.user_id === userId;
+
+  const keepOut = (off: boolean) => {
+    if (!open) return;
+    const go = () =>
+      void run(async () => {
+        setOpen(await client.setProjectAssistant(open.id, off));
+        await reload();
+      });
+    if (!off) return go();
+    confirmAction(
+      `Keep “${open.name}” out of the assistant?`,
+      "No AI will read this project or anything in it: not the assistant, Study, the morning agenda, search by meaning or connected agents.",
+      "Keep it out",
+      go,
+      false,
+    );
   };
 
   const remove = () => {
@@ -959,6 +1023,14 @@ export function ProjectsSheet({
                     disabled={busy}
                     actions={[
                       {
+                        label: "Copy link",
+                        onPress: () =>
+                          void copyLink(
+                            { kind: "project", id: open.id },
+                            open.name,
+                          ),
+                      },
+                      {
                         label: "Share link…",
                         onPress: () =>
                           void shareLink(
@@ -966,6 +1038,16 @@ export function ProjectsSheet({
                             open.name,
                           ),
                       },
+                      ...(canManageAi(open)
+                        ? [
+                            {
+                              label: open.assistant_off
+                                ? "Let the assistant read it"
+                                : "Keep out of the assistant",
+                              onPress: () => keepOut(!open.assistant_off),
+                            },
+                          ]
+                        : []),
                       ...(canWriteIn(open.team_id)
                         ? [
                             {
@@ -1356,15 +1438,27 @@ export function ProjectsSheet({
                   />
                 </ChipRow>
               )}
-              {onAskProject && (
+              {onAskProject && !open.assistant_off && (
                 <SmallAction
                   label={`Ask about ${open.name}`}
                   disabled={busy}
                   onPress={() => onAskProject(open)}
                 />
               )}
+              {open.assistant_off && (
+                <Text style={styles.meta}>
+                  Kept out of the assistant: no AI reads this project.
+                </Text>
+              )}
               {section === "home" && (
                 <View style={styles.home}>
+                  <ProjectMilestones
+                    projectId={open.id}
+                    items={items.filter((i) => i.project_id === open.id)}
+                    canWrite={canWriteIn(open.team_id)}
+                    onChanged={onItemsChanged}
+                    onError={(e) => setError(errorText(e))}
+                  />
                   {homeTasks.length > 0 && (
                     <View style={styles.homeSection}>
                       <Text style={styles.reentryTitle}>Coming due</Text>
@@ -1569,6 +1663,56 @@ export function ProjectsSheet({
                       />
                     </View>
                   )}
+                  {/* Other names, such as a course code (LNK-03). */}
+                  {(canWriteIn(open.team_id) ||
+                    (open.aliases ?? []).length > 0) && (
+                    <View style={styles.homeSection}>
+                      <Text style={styles.reentryTitle}>Also called</Text>
+                      <AliasesField
+                        aliases={open.aliases ?? []}
+                        canWrite={canWriteIn(open.team_id)}
+                        placeholder="Add another name, like COMP3100"
+                        onSave={(aliases) =>
+                          client.updateProject(open.id, { aliases }).then(
+                            (next) => {
+                              setOpen(next);
+                              return next.aliases ?? aliases;
+                            },
+                            (e) => {
+                              setError(errorText(e as Error));
+                              return open.aliases ?? [];
+                            },
+                          )
+                        }
+                      />
+                    </View>
+                  )}
+                  {/* Your own fields on the project (ORG-02). */}
+                  <FieldsSection
+                    target="project"
+                    targetId={open.id}
+                    revision={open.updated_at}
+                    report={(e) => setError(errorText(e as Error))}
+                    frame={(content) => (
+                      <View style={styles.homeSection}>
+                        <Text style={styles.reentryTitle}>Fields</Text>
+                        {content}
+                      </View>
+                    )}
+                  />
+                  {/* Pages in the project and pages that link to it. */}
+                  <LinkedHere
+                    kind="project"
+                    id={open.id}
+                    report={(e) => setError(errorText(e as Error))}
+                  />
+                  {/* What the project is linked to, one or two steps out. */}
+                  <ConnectionsMap
+                    kind="project"
+                    id={open.id}
+                    revision={open.updated_at}
+                    report={(e) => setError(errorText(e as Error))}
+                  />
                 </View>
               )}
               {section === "timeline" && (
@@ -1638,12 +1782,31 @@ export function ProjectsSheet({
                               {event.summary}
                             </Text>
                             <Text style={styles.historyMeta}>
-                              {event.actor_name ?? "Workspace activity"} ·{" "}
+                              {event.actor_name ?? "Workspace activity"}
+                              {activityOriginLabel(event)
+                                ? ` · ${activityOriginLabel(event)}`
+                                : ""}{" "}
+                              ·{" "}
                               {new Date(event.created_at).toLocaleString([], {
                                 dateStyle: "medium",
                                 timeStyle: "short",
                               })}
                             </Text>
+                            {event.entity_type === "session" && (
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={() => {
+                                  const item = items.find(
+                                    (i) => i.id === event.entity_id,
+                                  );
+                                  if (item) onOpenItem?.(item);
+                                }}
+                              >
+                                <Text style={styles.historyMeta}>
+                                  Only you see your sessions · Open task
+                                </Text>
+                              </Pressable>
+                            )}
                           </View>
                         ))}
                     </>
@@ -1922,6 +2085,16 @@ export function ProjectsSheet({
                       setSection("tasks");
                     })
                   }
+                  delayLongPress={380}
+                  onLongPress={() => setHeldProject(p)}
+                  accessibilityHint="Touch and hold for more"
+                  accessibilityActions={[
+                    { name: "longpress", label: "More for this project" },
+                  ]}
+                  onAccessibilityAction={(e) => {
+                    if (e.nativeEvent.actionName === "longpress")
+                      setHeldProject(p);
+                  }}
                 >
                   <View style={styles.cardTop}>
                     <Icon name="boxes" size={16} color={colors.muted} />
@@ -1945,6 +2118,57 @@ export function ProjectsSheet({
           )}
         </View>
       </ScrollView>
+      {/* A project card held down (MOB-07). */}
+      <ActionSheet
+        visible={!!heldProject}
+        label="Project menu"
+        title={heldProject?.name}
+        actions={
+          heldProject
+            ? [
+                {
+                  label: "Open",
+                  icon: "boxes",
+                  onPress: () =>
+                    void run(async () => {
+                      setOpen(await client.getProject(heldProject.id));
+                      setSection("tasks");
+                    }),
+                },
+                {
+                  label: "Star",
+                  icon: "star",
+                  onPress: () =>
+                    void client
+                      .setFavourite("project", heldProject.id, true)
+                      .then(
+                        () => showToast({ text: "Starred" }),
+                        (e: Error) => setError(errorText(e)),
+                      ),
+                },
+                {
+                  label: "Copy link",
+                  icon: "link",
+                  onPress: () =>
+                    void copyLink(
+                      { kind: "project", id: heldProject.id },
+                      heldProject.name,
+                    ),
+                },
+                {
+                  label: "Share…",
+                  icon: "share",
+                  onPress: () =>
+                    void shareLink(
+                      { kind: "project", id: heldProject.id },
+                      heldProject.name,
+                    ),
+                },
+              ]
+            : []
+        }
+        onClose={() => setHeldProject(null)}
+      />
     </Sheet>
   );
 }

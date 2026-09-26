@@ -1,7 +1,10 @@
-import { SettingsSection } from "./SettingsSection";
-import { useState } from "react";
+import { SettingsFocus, SettingsSection } from "./SettingsSection";
+import { useEffect, useState } from "react";
 import {
   Activity,
+  BookOpen,
+  Newspaper,
+  Search,
   CalendarCog,
   Monitor,
   Moon,
@@ -11,7 +14,16 @@ import {
   Tags,
   UserRound,
 } from "lucide-react";
-import type { Team, User } from "@orbyn/core";
+import {
+  searchSettings,
+  sectionKey,
+  securityPageDate,
+  settingById,
+  type SettingEntry,
+  type Team,
+  type User,
+} from "@orbyn/core";
+import { readsFirst, setReadsFirst } from "../docs/reading";
 import { useTheme, type ThemeChoice } from "../../lib/theme";
 import { PlanningSettings } from "./PlanningSettings";
 import { TagSettings } from "./TagSettings";
@@ -21,6 +33,12 @@ import { DevicesSettings } from "./DevicesSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { PasskeysSettings } from "./PasskeysSettings";
 import { PrivacySettings } from "./PrivacySettings";
+import {
+  ArrangeSettings,
+  ShortcutSettings,
+  StartSettings,
+} from "./LayoutSettings";
+import { ClipperSettings } from "./ClipperSettings";
 import "./settings.css";
 
 export type SettingsTab =
@@ -47,8 +65,14 @@ type Props = {
   onEmailReminders: (checked: boolean) => void;
   /** Opens the public status page. */
   onOpenStatus?: () => void;
+  /** Opens the public Security and data page. */
+  onOpenSecurity?: () => void;
   report: (e: unknown) => void;
   initialTab?: SettingsTab;
+  /** A setting to open and scroll to (⌘K's "Settings: …", NAV-10). */
+  initialSetting?: { id: string; seq: number } | null;
+  /** Opens "What's new" (DSN-03). */
+  onOpenWhatsNew?: () => void;
   /** After deleting your own account. */
   onAccountDeleted: () => void;
 };
@@ -59,14 +83,81 @@ export function SettingsView({
   busy,
   onEmailReminders,
   onOpenStatus,
+  onOpenSecurity,
   report,
   initialTab = "account",
+  initialSetting = null,
+  onOpenWhatsNew,
   onAccountDeleted,
 }: Props) {
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [theme, setTheme] = useTheme();
+  const [query, setQuery] = useState("");
+  const [focus, setFocus] = useState<{ key: string; seq: number } | null>(null);
+  const [reading, setReading] = useState(readsFirst);
+  const found = searchSettings(query);
+  const choose = (entry: SettingEntry) => {
+    setTab(entry.tab);
+    setQuery("");
+    setFocus((f) => ({
+      key: sectionKey(entry.section),
+      seq: (f?.seq ?? 0) + 1,
+    }));
+  };
+  // ⌘K chose a setting: open its tab and section.
+  useEffect(() => {
+    const entry = initialSetting && settingById(initialSetting.id);
+    if (entry) choose(entry);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSetting?.seq]);
   return (
-    <>
+    <SettingsFocus.Provider value={focus}>
+      <div className="settings-search" role="search">
+        <label className="settings-search-field">
+          <Search size={15} aria-hidden="true" />
+          <span className="sr-only">Search settings</span>
+          <input
+            type="search"
+            value={query}
+            placeholder="Search settings"
+            aria-controls="settings-found"
+            aria-expanded={!!query.trim()}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && found[0]) {
+                e.preventDefault();
+                choose(found[0]);
+              }
+              if (e.key === "Escape") setQuery("");
+            }}
+          />
+        </label>
+        {!!query.trim() && (
+          <ul
+            id="settings-found"
+            className="settings-found"
+            aria-label="Settings found"
+          >
+            {found.length ? (
+              found.slice(0, 8).map((entry) => (
+                <li key={entry.id}>
+                  <button type="button" onClick={() => choose(entry)}>
+                    <strong>{entry.label}</strong>
+                    <small>
+                      {TABS.find((t) => t.id === entry.tab)?.label} ·{" "}
+                      {entry.hint}
+                    </small>
+                  </button>
+                </li>
+              ))
+            ) : (
+              <li className="settings-found-none">
+                No setting is called that. Try other words.
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
       <div className="tabs" role="tablist" aria-label="Settings">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -122,6 +213,34 @@ export function SettingsView({
         )}
         {tab === "account" && (
           <SettingsSection className="card settings-card">
+            <h2>Reading</h2>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={reading}
+                onChange={(e) => {
+                  setReadsFirst(e.target.checked);
+                  setReading(e.target.checked);
+                }}
+              />
+              <span>
+                <BookOpen size={14} aria-hidden="true" /> Open pages for reading
+                <small>
+                  Pages open without editing handles; press Edit, or ⌘⇧R, to
+                  change one. Saved on this device only, so a phone and a
+                  computer can differ.
+                </small>
+              </span>
+            </label>
+          </SettingsSection>
+        )}
+        {tab === "account" && <StartSettings />}
+        {tab === "account" && <ArrangeSettings user={user} />}
+        {tab === "account" && <ShortcutSettings />}
+        {tab === "account" && (
+          <SettingsSection className="card settings-card">
             <h2>Stay in the loop</h2>
             <label className="switch-line settings-field">
               <input
@@ -162,6 +281,17 @@ export function SettingsView({
             </p>
           </SettingsSection>
         )}
+        {tab === "account" && onOpenWhatsNew && (
+          <SettingsSection className="card settings-card">
+            <h2>What's new</h2>
+            <p className="muted">
+              What changed in Orbyn lately: New, Better and No longer broken.
+            </p>
+            <button className="secondary" onClick={onOpenWhatsNew}>
+              <Newspaper size={14} /> What's new
+            </button>
+          </SettingsSection>
+        )}
         {tab === "account" && onOpenStatus && (
           <SettingsSection className="card settings-card">
             <h2>Service status</h2>
@@ -178,6 +308,19 @@ export function SettingsView({
         )}
         {tab === "tags" && <TagSettings teams={teams} report={report} />}
         {tab === "connections" && <ConnectionsSettings report={report} />}
+        {tab === "connections" && <ClipperSettings report={report} />}
+        {tab === "privacy" && onOpenSecurity && (
+          <SettingsSection className="card settings-card">
+            <h2>Security and data</h2>
+            <p className="muted">
+              How Orbyn keeps your account safe and how to take your data with
+              you. Last checked {securityPageDate()}.
+            </p>
+            <button className="secondary" onClick={onOpenSecurity}>
+              <ShieldCheck size={14} /> Security and data
+            </button>
+          </SettingsSection>
+        )}
         {tab === "privacy" && (
           <PrivacySettings
             user={user}
@@ -186,6 +329,6 @@ export function SettingsView({
           />
         )}
       </div>
-    </>
+    </SettingsFocus.Provider>
   );
 }

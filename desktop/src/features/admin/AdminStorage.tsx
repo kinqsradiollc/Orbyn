@@ -148,6 +148,19 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
             <small>Oldest {ago(data.files.oldest_at)}</small>
           )}
         </div>
+        {data.originals && (
+          <div className="card storage-stat">
+            <small>Kept originals</small>
+            <strong>{bytes(data.originals.bytes)}</strong>
+            <small>
+              {data.originals.count} file
+              {data.originals.count === 1 ? "" : "s"} for{" "}
+              {data.originals.people}{" "}
+              {data.originals.people === 1 ? "person" : "people"} · in kept/,
+              back it up
+            </small>
+          </div>
+        )}
         <div className="card storage-stat">
           <small>Reading scans</small>
           <strong>{SCANS[data.reading.scans]}</strong>

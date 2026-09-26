@@ -23,6 +23,15 @@ const ICONS = {
     ["rect", { x: "14", y: "14", width: "7", height: "7", rx: "1" }],
     ["rect", { x: "3", y: "14", width: "7", height: "7", rx: "1" }],
   ],
+  // lucide "table-2": saved views.
+  table: [
+    [
+      "path",
+      {
+        d: "M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18",
+      },
+    ],
+  ],
   orbit: [
     ["path", { d: "M20.341 6.484A10 10 0 0 1 10.266 21.85" }],
     ["path", { d: "M3.659 17.516A10 10 0 0 1 13.74 2.152" }],
@@ -544,9 +553,113 @@ const ICONS = {
     ["circle", { cx: "12", cy: "12", r: "10" }],
     ["path", { d: "M8 12h8" }],
   ],
+  atSign: [
+    ["circle", { cx: "12", cy: "12", r: "4" }],
+    ["path", { d: "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" }],
+  ],
+  flag: [
+    [
+      "path",
+      { d: "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" },
+    ],
+    ["path", { d: "M4 22v-7" }],
+  ],
   copy: [
     ["rect", { x: "8", y: "8", width: "14", height: "14", rx: "2" }],
     ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }],
+  ],
+  // lucide "strikethrough": ~~words~~ (EDT-05)
+  strikethrough: [
+    ["path", { d: "M16 4H9a3 3 0 0 0-2.83 4" }],
+    ["path", { d: "M14 12a4 4 0 0 1 0 8H6" }],
+    ["path", { d: "M4 12h16" }],
+  ],
+  // lucide "image": a picture in a page (EDT-01)
+  image: [
+    ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2" }],
+    ["circle", { cx: "9", cy: "9", r: "2" }],
+    ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" }],
+  ],
+  // lucide "paperclip": a file in a page
+  paperclip: [
+    [
+      "path",
+      {
+        d: "m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551",
+      },
+    ],
+  ],
+  // lucide "lightbulb": a Tip callout (EDT-04)
+  lightbulb: [
+    [
+      "path",
+      {
+        d: "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5",
+      },
+    ],
+    ["path", { d: "M9 18h6" }],
+    ["path", { d: "M10 22h4" }],
+  ],
+  // lucide "circle-help": a Question callout
+  circleHelp: [
+    ["circle", { cx: "12", cy: "12", r: "10" }],
+    ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }],
+    ["path", { d: "M12 17h.01" }],
+  ],
+  // lucide "clipboard-list": a Summary callout, tasks linked here
+  clipboardList: [
+    ["rect", { x: "8", y: "2", width: "8", height: "4", rx: "1" }],
+    [
+      "path",
+      {
+        d: "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2",
+      },
+    ],
+    ["path", { d: "M12 11h4" }],
+    ["path", { d: "M12 16h4" }],
+    ["path", { d: "M8 11h.01" }],
+    ["path", { d: "M8 16h.01" }],
+  ],
+  // lucide "hash": a link to one heading or line (LNK-04)
+  hash: [
+    ["path", { d: "M4 9h16" }],
+    ["path", { d: "M4 15h16" }],
+    ["path", { d: "M10 3 8 21" }],
+    ["path", { d: "M16 3l-2 18" }],
+  ],
+  // lucide "mic": recording into a page (CAP-10).
+  mic: [
+    ["path", { d: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" }],
+    ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
+    ["path", { d: "M12 19v3" }],
+  ],
+  // lucide "square": stop.
+  square: [["rect", { x: "6", y: "6", width: "12", height: "12", rx: "2" }]],
+  // lucide "archive": archived pages (SRCH-03).
+  archive: [
+    ["rect", { x: "2", y: "3", width: "20", height: "5", rx: "1" }],
+    ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" }],
+    ["path", { d: "M10 12h4" }],
+  ],
+  // lucide "presentation": present a page as slides (CNV-03).
+  presentation: [
+    ["path", { d: "M2 3h20" }],
+    ["path", { d: "M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" }],
+    ["path", { d: "m7 21 5-5 5 5" }],
+  ],
+  // lucide "git-fork", drawn as a small map of connections (CNV-02).
+  network: [
+    ["circle", { cx: "12", cy: "18", r: "3" }],
+    ["circle", { cx: "6", cy: "6", r: "3" }],
+    ["circle", { cx: "18", cy: "6", r: "3" }],
+    ["path", { d: "M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" }],
+    ["path", { d: "M12 12v3" }],
+  ],
+  // lucide "download"
+  download: [
+    ["path", { d: "M12 15V3" }],
+    ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }],
+    ["path", { d: "m7 10 5 5 5-5" }],
   ],
 } satisfies Record<string, Shape[]>;
 

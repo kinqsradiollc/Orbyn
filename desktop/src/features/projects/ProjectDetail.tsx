@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  activityOriginLabel,
   changeProjectDeadline,
   projectDeadlineParts,
   projectPlanStatus,
@@ -40,10 +41,18 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
+import { ProjectMilestones } from "./ProjectMilestones";
 import { DateField } from "../../components/DateField";
 import { ShareLinkButton } from "../../components/ShareButton";
+import { useToast } from "../../components/Toast";
+import { copyLink } from "../../lib/links";
 import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
+import { FieldsPanel } from "../views/FieldsPanel";
+import { ConnectionsMap } from "../connections/ConnectionsMap";
+import { StarButton } from "../../components/StarButton";
+import { LinkedHere } from "../docs/DocLinks";
+import { AliasesField } from "../docs/AliasesField";
 
 /** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
 function dayLabel(iso: string, withTime = false) {
@@ -74,12 +83,22 @@ const HISTORY_FIELDS: Record<string, string> = {
   stage_id: "Stage",
   version: "Document version",
   position: "Order",
+  start_at: "Starts",
+  due_on: "Date",
+  done: "Done",
+  assistant_off: "Assistant",
 };
 
 function historyValue(key: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "Not set";
   if (key === "progress") return `${value}%`;
-  if (key === "deadline" || key === "due_at") {
+  if (key === "assistant_off") return value ? "Kept out" : "Can read it";
+  if (key === "done") return value ? "Yes" : "No";
+  if (key === "due_on")
+    return new Date(`${String(value)}T12:00:00`).toLocaleDateString([], {
+      dateStyle: "medium",
+    });
+  if (key === "deadline" || key === "due_at" || key === "start_at") {
     const date = new Date(String(value));
     if (!Number.isNaN(date.getTime()))
       return date.toLocaleString([], {
@@ -138,6 +157,7 @@ export function ProjectDetail({
   onAskProject,
   userId,
   canWrite,
+  canManageAi = false,
 }: {
   project: Project;
   initialSection?: "home" | "decisions" | "history";
@@ -155,8 +175,15 @@ export function ProjectDetail({
   onAskProject?: (project: Project, question?: string) => void;
   userId: string;
   canWrite: boolean;
+  /** Owners and admins (the owner, for a personal project): keep it out of the assistant. */
+  canManageAi?: boolean;
 }) {
   const { ask, tell } = useConfirm();
+  const toast = useToast();
+  // Opened: it leads the quick switcher's recent list, on every device.
+  useEffect(() => {
+    void client.recordRecent("project", project.id).catch(() => {});
+  }, [project.id]);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   /** Unassigned team tasks ticked to claim with "Plan this project". */
@@ -611,6 +638,24 @@ export function ProjectDetail({
       .finally(() => setBusy(false));
   };
 
+  /** Keep the project out of the assistant, or let it back in. */
+  const keepOut = async (off: boolean) => {
+    if (
+      off &&
+      !(await ask({
+        title: `Keep “${project.name}” out of the assistant?`,
+        body: "No AI will read this project or anything in it: not the assistant, Study, the morning agenda, search by meaning or connected agents. Everyone in it keeps working as before.",
+        confirmLabel: "Keep it out",
+      }))
+    )
+      return;
+    try {
+      onChanged(await client.setProjectAssistant(project.id, off));
+    } catch (e) {
+      report(e);
+    }
+  };
+
   const remove = async () => {
     if (
       !(await ask({
@@ -699,67 +744,105 @@ export function ProjectDetail({
           title={project.name}
           onError={report}
         />
-        {onAskProject && (
+        {onAskProject && !project.assistant_off && (
           <button className="text-button" onClick={() => onAskProject(project)}>
             <Sparkles size={15} aria-hidden="true" /> Ask
           </button>
         )}
-        {canWrite && (
-          <div className="project-manage">
-            <button
-              className="icon-button"
-              aria-label="Project options"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((value) => !value)}
-            >
-              <Ellipsis size={18} />
-            </button>
-            {menuOpen && (
-              <div className="project-manage-menu">
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setEditing({ kind: "rename", text: project.name });
-                  }}
-                >
-                  Rename
-                </button>
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setEditing({ kind: "summary", text: project.summary });
-                  }}
-                >
-                  Summary & brief
-                </button>
-                {(["active", "done", "archived"] as const).map((status) => (
+        {project.assistant_off && (
+          <span
+            className="plan-chip project-ai-off"
+            title="No AI reads this project: not the assistant, Study, the agenda, search by meaning or connected agents."
+          >
+            Kept out of the assistant
+          </span>
+        )}
+        <div className="project-manage">
+          <StarButton kind="project" id={project.id} name={project.name} />
+          <button
+            className="icon-button"
+            aria-label="Project options"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            <Ellipsis size={18} />
+          </button>
+          {menuOpen && (
+            <div className="project-manage-menu">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  void copyLink({ kind: "project", id: project.id }).then(
+                    (ok) =>
+                      toast({
+                        text: ok ? "Link copied" : "Couldn't copy the link",
+                      }),
+                  );
+                }}
+              >
+                Copy link
+              </button>
+              {canWrite && (
+                <>
                   <button
-                    key={status}
-                    disabled={status === project.status}
                     onClick={() => {
                       setMenuOpen(false);
-                      save({ status });
+                      setEditing({ kind: "rename", text: project.name });
                     }}
                   >
-                    Mark {status}
+                    Rename
                   </button>
-                ))}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setEditing({ kind: "summary", text: project.summary });
+                    }}
+                  >
+                    Summary & brief
+                  </button>
+                  {(["active", "done", "archived"] as const).map((status) => (
+                    <button
+                      key={status}
+                      disabled={status === project.status}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        save({ status });
+                      }}
+                    >
+                      Mark {status}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void client
+                        .templateFromProject(project.id)
+                        .then((template) =>
+                          tell({
+                            title: `Saved “${template.name}” as a template.`,
+                            body: "Start a project from it with Templates, on the projects page.",
+                          }),
+                        )
+                        .catch(report);
+                    }}
+                  >
+                    Save as template
+                  </button>
+                </>
+              )}
+              {canManageAi && (
                 <button
                   onClick={() => {
                     setMenuOpen(false);
-                    void client
-                      .templateFromProject(project.id)
-                      .then((template) =>
-                        tell({
-                          title: `Saved “${template.name}” as a template.`,
-                          body: "Start a project from it with Templates, on the projects page.",
-                        }),
-                      )
-                      .catch(report);
+                    void keepOut(!project.assistant_off);
                   }}
                 >
-                  Save as template
+                  {project.assistant_off
+                    ? "Let the assistant read it"
+                    : "Keep out of the assistant"}
                 </button>
+              )}
+              {canWrite && (
                 <button
                   className="is-destructive"
                   onClick={() => {
@@ -769,10 +852,10 @@ export function ProjectDetail({
                 >
                   Delete project
                 </button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {editing && (
@@ -1146,6 +1229,14 @@ export function ProjectDetail({
 
       {mode === "home" ? (
         <div className="project-home">
+          <ProjectMilestones
+            projectId={project.id}
+            items={items.filter((i) => i.project_id === project.id)}
+            canWrite={canWrite}
+            onChanged={onItemsChanged}
+            report={report}
+            refreshKey={sessions}
+          />
           {homeTasks.length > 0 && (
             <section className="project-home-section">
               <h3>Coming due</h3>
@@ -1363,6 +1454,47 @@ export function ProjectDetail({
               </button>
             </section>
           )}
+          {/* Other names, such as a course code (LNK-03). */}
+          {(canWrite || (project.aliases ?? []).length > 0) && (
+            <section className="project-home-section">
+              <h3>Also called</h3>
+              <AliasesField
+                aliases={project.aliases ?? []}
+                canWrite={canWrite}
+                placeholder="Add another name, like COMP3100"
+                onSave={(aliases) =>
+                  client.updateProject(project.id, { aliases }).then(
+                    (next) => {
+                      onChanged(next);
+                      return next.aliases ?? aliases;
+                    },
+                    (e) => {
+                      report(e);
+                      return project.aliases ?? [];
+                    },
+                  )
+                }
+              />
+            </section>
+          )}
+          {/* Your own fields on the project (ORG-02). */}
+          <FieldsPanel
+            target="project"
+            targetId={project.id}
+            revision={project.updated_at}
+            report={report}
+            className="project-home-section"
+          />
+          {/* Pages in the project and pages that link to it. */}
+          <LinkedHere kind="project" id={project.id} report={report} compact />
+          {/* What the project is linked to, one or two steps out (CNV-02). */}
+          <ConnectionsMap
+            kind="project"
+            id={project.id}
+            revision={project.updated_at}
+            report={report}
+            className="project-home-section"
+          />
         </div>
       ) : mode === "notes" && onOpenNote ? (
         <ProjectNotes
@@ -1433,9 +1565,11 @@ export function ProjectDetail({
                 {activity.map((event) => {
                   const changes = historyDiff(event);
                   const relatedItem =
-                    event.entity_type === "task"
+                    event.entity_type === "task" ||
+                    event.entity_type === "session"
                       ? items.find((item) => item.id === event.entity_id)
                       : undefined;
+                  const origin = activityOriginLabel(event);
                   return (
                     <li
                       key={event.id}
@@ -1467,6 +1601,10 @@ export function ProjectDetail({
                         </div>
                         <small className="muted">
                           {event.actor_name ?? "Workspace activity"}
+                          {origin ? ` · ${origin}` : ""}
+                          {event.entity_type === "session"
+                            ? " · only you see your sessions"
+                            : ""}
                         </small>
                         {!!changes.length && (
                           <ul className="project-history-diff">

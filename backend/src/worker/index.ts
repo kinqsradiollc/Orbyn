@@ -1,11 +1,10 @@
-import { runDueTemplates } from "../modules/templates/routes.js";
+import { runDueTemplates } from "../modules/templates/service.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
 import { runSweep } from "../lib/sweep.js";
 import { closeEmail } from "./channels/email.js";
 import { deliverOne } from "./delivery.js";
 import { enqueue } from "./scheduler.js";
-import { measureQueued } from "../modules/search/semantic.js";
 import {
   advanceRepeating,
   remindSubscribed,
@@ -20,6 +19,7 @@ import { scanDigests } from "./digest.js";
 import { scanBlocksStarted, scanEventStarting } from "./webhookEvents.js";
 import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
 import { scanMorningAgendas } from "./agenda.js";
+import { drainStudyQueue } from "../modules/study/service.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -43,8 +43,6 @@ async function heartbeat() {
  * backlog remains, the loop runs again at once instead of sleeping; scheduling
  * still happens at most every 10 seconds. Stops cleanly on SIGINT/SIGTERM.
  */
-/** How often pages waiting to be measured are looked at. */
-const MEASURE_MS = 60_000;
 /** How often the sweeper clears expired and outdated records (lib/sweep.ts). */
 const SWEEP_MS = 3_600_000;
 
@@ -57,7 +55,6 @@ export async function runWorker() {
   let lastSchedule = 0;
   let lastPlanning = 0;
   let lastNotices = 0;
-  let lastMeasured = 0;
   let lastSwept = 0;
   while (!stopping) {
     let backlog = false;
@@ -85,17 +82,8 @@ export async function runWorker() {
           await runDueTemplates();
           lastNotices = Date.now();
         }
-        // Pages waiting to be measured for semantic search. Does nothing at
-        // all where the extension is missing or the setting is off, which is
-        // the usual case, so this costs a single cheap query.
-        if (Date.now() - lastMeasured >= MEASURE_MS) {
-          try {
-            await measureQueued();
-          } catch {
-            // Measuring is a bonus; failing it must not stall reminders.
-          }
-          lastMeasured = Date.now();
-        }
+        // Pages for search by meaning are measured by their own service
+        // (services/measure.ts), never in this loop.
         if (Date.now() - lastSwept >= SWEEP_MS) {
           try {
             await runSweep();
@@ -103,6 +91,14 @@ export async function runWorker() {
             // Housekeeping: a failed sweep waits for the next hour.
           }
           lastSwept = Date.now();
+        }
+        // Study cards for pages changed outside the API's own saves (imports,
+        // templates, the assistant, team changes): the API syncs what it
+        // saves at once, and this takes whatever is left.
+        try {
+          await drainStudyQueue();
+        } catch {
+          // Left in the queue for the next cycle.
         }
         // Subscribed calendars: new ones within a cycle, the rest hourly,
         // and reminders for the ones that ask for them.

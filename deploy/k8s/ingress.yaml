@@ -5,7 +5,8 @@
 #                      /mcp      -> mcp     (older agent setups; orbyn-api-mcp)
 #                      /*        -> api     (everything else)
 #   app.orbyn.example  /*        -> web     (static app; its nginx proxies /api/*)
-#   mcp.orbyn.example  /mcp and /.well-known/oauth-protected-resource[/mcp]
+#   mcp.orbyn.example  /mcp, /.well-known/oauth-protected-resource[/mcp] and
+#                      /.well-known/openai-apps-challenge
 #                                -> mcp     (outside AI agents; nothing else)
 #
 # Keep the path split in step with serviceModules in backend/src/app.ts and
@@ -193,6 +194,14 @@ spec:
                 name: mcp
                 port:
                   name: http
+          # OpenAI's apps directory domain check (OPENAI_APPS_CHALLENGE).
+          - path: /.well-known/openai-apps-challenge
+            pathType: Exact
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
 ---
 # The MCP address on the API host, for older agent setups that were given
 # api.orbyn.example/mcp: the mcp service, as on the MCP host (the api service
@@ -235,5 +244,129 @@ spec:
             backend:
               service:
                 name: mcp
+                port:
+                  name: http
+---
+# Agents following Orbyn (MCP subscriptions/listen) hold a stream open, so
+# those requests go to the realtime service, never the stateless mcp pods:
+# a canary Ingress on the same host and path, chosen by the Mcp-Method
+# header (the gateway's `map $http_mcp_method` in Compose). The service
+# closes each stream within 15 minutes and sends keep-alives every 25 s.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-mcp-listen
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: realtime
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "Mcp-Method"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "subscriptions/listen"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mcp.orbyn.example
+      secretName: orbyn-mcp-tls
+  rules:
+    - host: mcp.orbyn.example
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: realtime
+                port:
+                  name: http
+---
+# The same for api.orbyn.example/mcp (older setups).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-api-mcp-listen
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: realtime
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: "Mcp-Method"
+    nginx.ingress.kubernetes.io/canary-by-header-value: "subscriptions/listen"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    nginx.ingress.kubernetes.io/proxy-body-size: "64k"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.orbyn.example
+      secretName: orbyn-api-tls
+  rules:
+    - host: api.orbyn.example
+      http:
+        paths:
+          - path: /mcp
+            pathType: Exact
+            backend:
+              service:
+                name: realtime
+                port:
+                  name: http
+---
+# Markdown and Notion exports into pages (DATA-08): one JSON request up to
+# 28 MB (a 20 MB zip as base64), on both hosts. Its own Ingress so the larger
+# body size applies to this path only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orbyn-page-imports
+  labels:
+    app.kubernetes.io/name: orbyn
+    app.kubernetes.io/component: api
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod # placeholder
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "5"
+    nginx.ingress.kubernetes.io/proxy-body-size: "28m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "125"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "125"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.orbyn.example
+      secretName: orbyn-api-tls
+    - hosts:
+        - app.orbyn.example
+      secretName: orbyn-web-tls
+  rules:
+    - host: api.orbyn.example
+      http:
+        paths:
+          - path: /imports/pages
+            pathType: Exact
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
+    - host: app.orbyn.example
+      http:
+        paths:
+          - path: /api/imports/pages
+            pathType: Exact
+            backend:
+              service:
+                name: web
                 port:
                   name: http

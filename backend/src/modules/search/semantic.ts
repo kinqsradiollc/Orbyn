@@ -1,7 +1,10 @@
 import { blockText, type DocBlock } from "@orbyn/core";
+import { assistantMayRead } from "../../lib/doc-visibility.js";
 import { pool, type Queryable } from "../../db/pool.js";
 import { embed } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
+import { notKeptOut } from "../../lib/assistant-off.js";
+import { readableDocs } from "../../lib/visibility.js";
 
 /**
  * Finding a page that says the thing in other words.
@@ -26,7 +29,9 @@ export async function hasVectors(db: Queryable = pool): Promise<boolean> {
   if (present !== null) return present;
   const row = (
     await db.query<{ ok: boolean }>(
-      "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS ok",
+      `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')
+              AND to_regclass('doc_embeddings') IS NOT NULL
+              AND to_regclass('doc_embedding_queue') IS NOT NULL AS ok`,
     )
   ).rows[0];
   present = !!row?.ok;
@@ -38,15 +43,32 @@ export const forgetVectors = () => {
   present = null;
 };
 
-/** Whether semantic search is both possible here and wanted. */
-export async function semanticOn(db: Queryable = pool): Promise<boolean> {
-  if (!(await hasVectors(db))) return false;
+/**
+ * The model that measures text, when search by meaning is possible here,
+ * turned on, and set up (a model chosen and the sending accepted); null
+ * otherwise. Words alone carry the search whenever this is null.
+ */
+export async function semanticModel(
+  db: Queryable = pool,
+): Promise<string | null> {
+  if (!(await hasVectors(db))) return null;
   const row = (
-    await db.query<{ on: boolean }>(
-      "SELECT semantic_search AS on FROM ai_settings WHERE id",
+    await db.query<{
+      on: boolean;
+      model: string;
+      accepted: Date | null;
+    }>(
+      `SELECT semantic_search AS on, embedding_model AS model,
+              semantic_accepted_at AS accepted
+         FROM ai_settings WHERE id`,
     )
   ).rows[0];
-  return !!row?.on;
+  return row?.on && row.model && row.accepted ? row.model : null;
+}
+
+/** Whether semantic search is both possible here and wanted. */
+export async function semanticOn(db: Queryable = pool): Promise<boolean> {
+  return !!(await semanticModel(db));
 }
 
 /** The lines of a page worth measuring: the ones that say something. */
@@ -71,7 +93,8 @@ const asVector = (v: number[]) => `[${v.join(",")}]`;
  * so an ordinary edit to one paragraph costs one line, not a page.
  */
 export async function measureQueued(limit = 5): Promise<number> {
-  if (!(await semanticOn())) return 0;
+  const model = await semanticModel();
+  if (!model) return 0;
   const ai = await resolveAi();
   if (!ai) return 0;
   const waiting = (
@@ -80,7 +103,11 @@ export async function measureQueued(limit = 5): Promise<number> {
          JOIN docs d ON d.id = q.doc_id
         -- A page in Trash can't be searched: measuring it would be a call
         -- to the provider for nothing. It is queued again when restored.
-        WHERE d.deleted_at IS NULL
+        -- A page in a project kept out of the assistant is never sent.
+        WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
+          -- A team that keeps its pages out of the assistant (OTH-04)
+          -- keeps them from its provider too.
+          AND ${assistantMayRead("d")}
         ORDER BY q.queued_at LIMIT $1`,
       [limit],
     )
@@ -107,6 +134,7 @@ export async function measureQueued(limit = 5): Promise<number> {
       const vectors = await embed(
         ai,
         batch.map((p) => p.quote),
+        { model },
       );
       for (const [i, p] of batch.entries())
         await pool.query(
@@ -115,7 +143,7 @@ export async function measureQueued(limit = 5): Promise<number> {
            ON CONFLICT (doc_id, block_id)
              DO UPDATE SET quote = $3, embedding = $4::vector, model = $5,
                            created_at = now()`,
-          [page.doc_id, p.block_id, p.quote, asVector(vectors[i]), ai.model],
+          [page.doc_id, p.block_id, p.quote, asVector(vectors[i]), model],
         );
     }
     await pool.query("DELETE FROM doc_embedding_queue WHERE doc_id = $1", [
@@ -146,20 +174,20 @@ export async function nearest(
   projectId?: string,
 ): Promise<NearHit[]> {
   try {
-    if (!(await semanticOn())) return [];
+    const model = await semanticModel();
+    if (!model) return [];
     const ai = await resolveAi();
     if (!ai) return [];
-    const [vector] = await embed(ai, [query], { timeoutMs: 15_000 });
+    const [vector] = await embed(ai, [query], { model, timeoutMs: 15_000 });
     if (!vector?.length) return [];
     return (
       await pool.query<NearHit>(
         `SELECT e.doc_id AS id, e.block_id, e.quote,
                 1 - (e.embedding <=> $2::vector) AS nearness
            FROM doc_embeddings e JOIN docs d ON d.id = e.doc_id
-          WHERE d.deleted_at IS NULL
-            AND ((d.team_id IS NULL AND d.user_id = $1)
-                 OR d.team_id IN (SELECT team_id FROM team_members
-                                   WHERE user_id = $1))
+          WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
+            AND ${assistantMayRead("d")}
+            AND ${readableDocs("d")}
             AND ($4::uuid IS NULL OR d.project_id = $4)
           ORDER BY e.embedding <=> $2::vector
           LIMIT $3`,
@@ -169,5 +197,43 @@ export async function nearest(
   } catch {
     // Meaning is a bonus on top of words; losing it is not losing the search.
     return [];
+  }
+}
+
+/** How often the measuring service looks for pages to measure. */
+const MEASURE_MS = 60_000;
+
+/**
+ * The measuring service's loop (services/measure.ts): measure what's
+ * queued, a few pages at a time, until stopped. Its own process, apart from
+ * reminders, so a slow provider can't delay them.
+ */
+export async function runMeasurer() {
+  let stopping = false;
+  for (const signal of ["SIGINT", "SIGTERM"])
+    process.on(signal, () => {
+      stopping = true;
+    });
+  while (!stopping) {
+    let more = false;
+    try {
+      await pool.query(
+        `INSERT INTO service_heartbeats(service, last_seen_at) VALUES('measure', now())
+         ON CONFLICT (service) DO UPDATE SET last_seen_at = now()`,
+      );
+      more = (await measureQueued()) > 0;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          service: "measure",
+          message: "measuring failed",
+          error: error instanceof Error ? error.message : "unknown",
+        }),
+      );
+    }
+    if (!stopping)
+      await new Promise((resolve) =>
+        setTimeout(resolve, more ? 1_000 : MEASURE_MS),
+      );
   }
 }

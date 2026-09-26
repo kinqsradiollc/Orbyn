@@ -124,8 +124,13 @@ test("budgets: the tool list stays small, and the instructions short", () => {
     (c) => c.toolset === "core" && !c.legacyOnly,
   );
   const size = JSON.stringify(core.map((c) => describe(c))).length;
-  // About 12k tokens for the core tools (roughly four characters a token).
-  assert.ok(size < 48_000, `tools/list for core is ${size} characters`);
+  // About 17k tokens for the 21 core tools, reads and changes together
+  // (roughly four characters a token): A3's twelve write tools share one
+  // compact answer shape and pattern-free id and time fields to fit, A4's
+  // get_links keeps its answer flat, and A5 adds only a few fields (starting
+  // from a template, skipping an occurrence, starred, pinned links). The
+  // optional toolsets have their own budgets (mcp-toolsets.test.ts).
+  assert.ok(size < 68_000, `tools/list for core is ${size} characters`);
   assert.ok(
     INSTRUCTIONS.length <= 2048,
     `instructions are ${INSTRUCTIONS.length} characters`,

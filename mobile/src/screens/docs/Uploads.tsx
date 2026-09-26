@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { KeepOriginals } from "./OriginalFile";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -21,6 +22,7 @@ import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { AssistChips } from "../../components/AssistChips";
 
 type LocalFile = {
   name: string;
@@ -320,11 +322,17 @@ export function UploadsList({
   onImport,
   onScan,
   onMakeCards,
+  onChanged,
   caps,
+  report,
 }: {
   caps: ImportCapabilities | null;
+  /** Shows errors ("Keep the original", your account's setting, and more). */
+  report?: (e: unknown) => void;
   onScan?: () => void;
-  onMakeCards?: (docId: string, title: string) => void;
+  onMakeCards?: (docId: string, title: string, max?: number) => void;
+  /** The assistant's chips added tasks or changed a page (AI-01). */
+  onChanged?: () => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -341,8 +349,10 @@ export function UploadsList({
     <View style={s.list}>
       <Text style={s.intro}>
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays.
+        file, then deletes it, unless you keep the original.
       </Text>
+      {/* "Keep the original" is your account's setting, on every device. */}
+      <KeepOriginals report={report ?? (() => {})} />
       <Text style={s.hint}>{importHint(caps)}</Text>
       {!waiting.length && !shownJobs.length && (
         <View style={s.empty}>
@@ -469,13 +479,15 @@ export function UploadsList({
                 disabled={false}
                 onPress={() => onFile(doc)}
               />
-              {onMakeCards && (
-                <SmallAction
-                  label="Make cards"
-                  disabled={false}
-                  onPress={() => onMakeCards(doc.id, doc.title || "Untitled")}
-                />
-              )}
+            </View>
+            {/* The assistant's chips, as suggestions (AI-01). */}
+            <View style={s.assist}>
+              <AssistChips
+                docId={doc.id}
+                title={doc.title || "Untitled"}
+                onMakeCards={onMakeCards}
+                onChanged={onChanged}
+              />
             </View>
           </View>
         </View>
@@ -585,5 +597,6 @@ const s = themed(() =>
       backgroundColor: colors.accent,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+    assist: { marginTop: 10 },
   }),
 );

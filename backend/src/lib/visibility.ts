@@ -3,8 +3,9 @@
  * things, and everything in the teams they belong to. Every query that
  * lists or opens tasks, pages, projects, work records, folders or templates
  * on someone's behalf filters with one of these builders, so the rule lives
- * in one place (the copies in older modules move here after the current
- * round of work merges; see VISIBLE_ITEMS in lib/teams.ts).
+ * in one place: the app's routes, the assistant and agents (MCP) all use
+ * them, and tests/visibility.test.ts fails if a copy of the rule appears
+ * anywhere else in the code.
  *
  * A builder returns a SQL condition on a table alias. `scope` names the
  * query parameters to use:
@@ -24,7 +25,16 @@ export type Scope = {
   user: string;
   teams?: string;
   personal?: string | boolean;
+  /**
+   * The rows are read for an AI (an outside agent): leave out projects kept
+   * out of the assistant, and everything in them.
+   */
+  ai?: boolean;
 };
+
+/** SQL: not in a project kept out of the assistant (for rows with project_id). */
+const notKeptOut = (alias: string) =>
+  ` AND NOT EXISTS (SELECT 1 FROM projects ko WHERE ko.id = ${alias}.project_id AND ko.assistant_off)`;
 
 const DEFAULT_SCOPE: Scope = { user: "$1" };
 
@@ -52,25 +62,36 @@ export function visibleOwned(
     : "";
   return (
     `((${alias}.team_id IS NULL AND ${alias}.${owner} = ${scope.user}${personal})` +
-    ` OR (${alias}.team_id IN (SELECT team_id FROM team_members WHERE user_id = ${scope.user})${teams}))`
+    ` OR (${inMyTeams(alias, scope)}${teams}))`
   );
 }
 
 /** Tasks, events and reminders (items) `scope.user` can see. */
 export const visibleItems = (alias = "i", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "user_id", scope);
+  `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
-/** Pages (docs) `scope.user` can see. */
+/**
+ * Pages (docs) `scope.user` can see: readable (see {@link readableDocs})
+ * and not in the Trash. Lists, search, links, the assistant and agents use
+ * this; a page in the Trash is found only through the Trash itself.
+ */
 export const visibleDocs = (alias = "d", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "user_id", scope);
+  `(${readableDocs(alias, scope)} AND ${alias}.deleted_at IS NULL${scope.ai ? notKeptOut(alias) : ""})`;
+
+/**
+ * Pages `scope.user` may read, whether or not they are in the Trash: for
+ * the Trash itself, restoring, and history (a trashed page's history stays).
+ */
+export const readableDocs = (alias = "d", scope: Scope = DEFAULT_SCOPE) =>
+  `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
 /** Projects `scope.user` can see. */
 export const visibleProjects = (alias = "p", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "user_id", scope);
+  `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? ` AND NOT ${alias}.assistant_off` : ""})`;
 
 /** Promises, decisions and experiments (work_records) `scope.user` can see. */
 export const visibleRecords = (alias = "w", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "created_by", scope);
+  `(${visibleOwned(alias, "created_by", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
 /** Folders `scope.user` can see. */
 export const visibleFolders = (alias = "f", scope: Scope = DEFAULT_SCOPE) =>
@@ -79,6 +100,45 @@ export const visibleFolders = (alias = "f", scope: Scope = DEFAULT_SCOPE) =>
 /** Project templates `scope.user` can see. */
 export const visibleTemplates = (alias = "t", scope: Scope = DEFAULT_SCOPE) =>
   visibleOwned(alias, "user_id", scope);
+
+/** Saved views `scope.user` can see: their own, and their teams'. */
+export const visibleViews = (alias = "v", scope: Scope = DEFAULT_SCOPE) =>
+  visibleOwned(alias, "user_id", scope);
+
+/** Page templates `scope.user` can see. */
+export const visiblePageTemplates = (
+  alias = "t",
+  scope: Scope = DEFAULT_SCOPE,
+) => visibleOwned(alias, "user_id", scope);
+
+/**
+ * Rows `scope.user` may change (not only see) in a table owned by one
+ * person or a team: their own personal rows, and rows in teams where they
+ * are more than a viewer. `scope.teams` and `scope.personal` are not
+ * applied; this is a write check on rows already found.
+ */
+export function writableOwned(
+  alias: string,
+  owner: string,
+  scope: Scope = DEFAULT_SCOPE,
+): string {
+  if (!ALIAS.test(alias) || !ALIAS.test(owner))
+    throw new Error(`Not a safe SQL name: ${alias}.${owner}`);
+  return (
+    `((${alias}.team_id IS NULL AND ${alias}.${owner} = ${scope.user})` +
+    ` OR ${alias}.team_id IN (SELECT team_id FROM team_members` +
+    ` WHERE user_id = ${scope.user} AND role IN ('owner', 'admin', 'member')))`
+  );
+}
+
+/**
+ * Rows in a team `scope.user` belongs to (a team-only table, or the team
+ * half of a rule written some other way).
+ */
+export function inMyTeams(alias: string, scope: Scope = DEFAULT_SCOPE) {
+  if (!ALIAS.test(alias)) throw new Error(`Not a safe SQL name: ${alias}`);
+  return `${alias}.team_id IN (SELECT team_id FROM team_members WHERE user_id = ${scope.user})`;
+}
 
 /**
  * Collects query values and hands back their placeholders, so a query built
@@ -104,13 +164,18 @@ export type Spaces = {
   personal: boolean;
 };
 
-/** A Scope for `spaces`, adding its values to `params`. */
+/**
+ * A Scope for `spaces`, adding its values to `params`. Spaces are what an
+ * agent connection reaches, so projects kept out of the assistant (and
+ * everything in them) are always left out.
+ */
 export function scopeFor(spaces: Spaces, params: Params): Scope {
   const user = params.add(spaces.userId);
   return {
     user,
     teams: spaces.teamIds === null ? undefined : params.add(spaces.teamIds),
     personal: spaces.personal ? undefined : false,
+    ai: true,
   };
 }
 

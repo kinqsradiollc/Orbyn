@@ -5,6 +5,7 @@ import {
   aiProviderUpdate,
   aiSettingsInput,
   aiTestInput,
+  semanticSetupInput,
   fail,
   type AiProvider,
   type AiProviderKind,
@@ -44,8 +45,14 @@ async function currentSettings(): Promise<AiSettings> {
       updated_at: Date | null;
       enabled: boolean | null;
       semantic_search: boolean;
+      embedding_model: string;
+      semantic_accepted_at: Date | null;
+      measure_running: boolean;
     }>(
-      `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled
+      `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled,
+              s.embedding_model, s.semantic_accepted_at,
+              EXISTS (SELECT 1 FROM service_heartbeats h WHERE h.service = 'measure'
+                        AND h.last_seen_at > now() - interval '3 minutes') AS measure_running
        FROM ai_settings s LEFT JOIN ai_providers p ON p.id = s.provider_id WHERE s.id`,
     )
   ).rows[0];
@@ -57,6 +64,11 @@ async function currentSettings(): Promise<AiSettings> {
     semantic_search: !!row?.semantic_search,
     /** Whether this database could do it at all, so the console can say so. */
     semantic_possible: await hasVectors(),
+    embedding_model: row?.embedding_model ?? "",
+    semantic_accepted_at: row?.semantic_accepted_at
+      ? iso(row.semantic_accepted_at)
+      : null,
+    measure_running: !!row?.measure_running,
     updated_at: row?.updated_at ? iso(row.updated_at) : null,
   };
 }
@@ -292,9 +304,94 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * Search by meaning: its own setup. On needs pgvector, a connected
+   * provider, a model that measures text and the admin's agreement that
+   * every page is sent to be measured. Off forgets every measurement.
+   */
+  app.put("/ai/settings/semantic", async (r) => {
+    const actor = await authorize(r, "ai:manage");
+    const d = semanticSetupInput.parse(r.body);
+    if (d.on) {
+      if (!(await hasVectors()))
+        fail(
+          409,
+          "This database can't search by meaning: it needs the pgvector image (see the setup guide).",
+        );
+      const current = await currentSettings();
+      if (current.source === "none")
+        fail(409, "Connect an AI provider for the assistant first.");
+      const model = d.embedding_model ?? current.embedding_model ?? "";
+      if (!model) fail(422, "Choose the model that measures text.");
+      if (!d.accept)
+        fail(
+          422,
+          "Agree that every page is sent to the provider to be measured.",
+        );
+      await transaction(async (db) => {
+        await db.query(
+          `UPDATE ai_settings SET semantic_search = true, embedding_model = $1,
+             semantic_accepted_at = now(), semantic_accepted_by = $2,
+             updated_by = $2, updated_at = now() WHERE id`,
+          [model, actor.id],
+        );
+        // Everything written so far is measured once, by the measuring
+        // service (pages kept out of the assistant never are).
+        await db.query(
+          `INSERT INTO doc_embedding_queue (doc_id)
+           SELECT d.id FROM docs d
+            WHERE d.deleted_at IS NULL AND NOT EXISTS (
+              SELECT 1 FROM projects p WHERE p.id = d.project_id AND p.assistant_off)
+           ON CONFLICT DO NOTHING`,
+        );
+        await audit(
+          {
+            actorId: actor.id,
+            action: "ai.semantic_on",
+            targetType: "system",
+            targetId: null,
+            details: { model },
+          },
+          db,
+        );
+      });
+    } else
+      await transaction(async (db) => {
+        await db.query(
+          `UPDATE ai_settings SET semantic_search = false,
+             embedding_model = coalesce($1, embedding_model),
+             semantic_accepted_at = NULL, semantic_accepted_by = NULL,
+             updated_by = $2, updated_at = now() WHERE id`,
+          [d.embedding_model ?? null, actor.id],
+        );
+        // Measurements are the pages' words in another form: off forgets them.
+        if (await hasVectors()) {
+          await db.query("DELETE FROM doc_embeddings");
+          await db.query("DELETE FROM doc_embedding_queue");
+        }
+        await audit(
+          {
+            actorId: actor.id,
+            action: "ai.semantic_off",
+            targetType: "system",
+            targetId: null,
+            details: {},
+          },
+          db,
+        );
+      });
+    return currentSettings();
+  });
+
   app.put("/ai/settings", async (r) => {
     const actor = await authorize(r, "ai:manage");
     const d = aiSettingsInput.parse(r.body);
+    // Search by meaning is turned on only through its own setup, below.
+    if (d.semantic_search === true)
+      fail(
+        422,
+        "Turn on search by meaning in its own setup: it needs a model and your agreement.",
+      );
     let providerName: string | null = null;
     if (d.provider_id) {
       const row = await providerRow(d.provider_id);

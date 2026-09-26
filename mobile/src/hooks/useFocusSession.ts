@@ -21,6 +21,10 @@ import {
   type ItemDetail,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import {
+  endFocusActivity,
+  startFocusActivity,
+} from "../../modules/orbyn-capture";
 import { onLive } from "../lib/live";
 import { deviceId, deviceLabel } from "../lib/device";
 import { readLocal, saveLocal } from "../lib/localPrefs";
@@ -172,6 +176,13 @@ export function useFocusSession({
       void remindAt(next, r, task.title).then((id) => {
         reminder.current = id;
       });
+    // The session on the Lock Screen and in the Dynamic Island (CAP-05).
+    if (next.ends_at)
+      startFocusActivity(
+        next.phase === "work" ? task.title : "Break",
+        new Date(next.ends_at),
+      );
+    else endFocusActivity();
     void client
       .setCurrentFocus(
         { ...next, item_title: task.title.slice(0, 200) },

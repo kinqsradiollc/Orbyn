@@ -83,6 +83,14 @@ const schema = z.object({
    */
   APP_URL: z.string().default("http://localhost:8080"),
   /**
+   * Opening the web app's links in the phone app: the Apple developer team
+   * that signs the iOS app, and the SHA-256 fingerprints (comma separated) of
+   * the certificates that sign the Android app. Blank serves empty
+   * association files, so links stay in the browser.
+   */
+  APPLE_TEAM_ID: z.string().default(""),
+  ANDROID_CERT_FINGERPRINTS: z.string().default(""),
+  /**
    * "true" lets webhooks call private network addresses (local development
    * and tests only). Otherwise they must reach a public address.
    */
@@ -107,6 +115,28 @@ const schema = z.object({
   FILES_DIR: z.string().default(""),
   /** The file store refuses uploads when less disk than this (MB) would be left. */
   FILES_MIN_FREE_MB: z.coerce.number().int().min(0).default(1024),
+  /**
+   * "Keep the original": how much each person may keep of the files they
+   * imported (MB), stored in FILES_DIR/kept, which must be backed up.
+   */
+  FILES_KEEP_QUOTA_MB: z.coerce.number().int().min(0).default(500),
+  /**
+   * Pictures and files in pages (EDT-01): kept by the file store on a volume
+   * of their own (PAGE_FILES_DIR; blank keeps them under FILES_DIR/pages),
+   * encrypted like uploads, for as long as their page. Each person has
+   * PAGE_FILES_QUOTA_MB of space, and one file is at most PAGE_FILES_MAX_MB.
+   * Off, like importing, while FILES_SECRET is blank.
+   */
+  PAGE_FILES_DIR: z.string().default(""),
+  PAGE_FILES_QUOTA_MB: z.coerce.number().int().min(1).default(1024),
+  PAGE_FILES_MAX_MB: z.coerce.number().int().min(1).max(200).default(25),
+  /**
+   * The model that writes out recordings made in pages (CAP-10), on the
+   * assistant's own provider (its /audio/transcriptions). The ai service
+   * fetches a recording from the file store at FILES_URL with a read link
+   * it signs, so it needs FILES_SECRET too.
+   */
+  AI_TRANSCRIBE_MODEL: z.string().default("whisper-1"),
   /**
    * The OCR service (Compose profile `ocr`) for scanned pages and photos.
    * Blank: Word files and PDFs with real text still import; scanned pages
@@ -140,6 +170,20 @@ const schema = z.object({
   OAUTH_ACCESS_TTL: z.coerce.number().int().min(60).max(86_400).default(3600),
   /** Days an unused agent refresh token (ort_) lasts; 90 at most in all. */
   OAUTH_REFRESH_TTL: z.coerce.number().int().min(1).max(90).default(30),
+  /**
+   * Where security problems are reported: the Contact line of
+   * /.well-known/security.txt (a mailto: or https: address).
+   */
+  SECURITY_CONTACT: z.string().default("mailto:hello@orbyn.dev"),
+  /**
+   * The token the OpenAI apps directory gives to prove Orbyn owns the MCP
+   * address, answered at /.well-known/openai-apps-challenge (404 when
+   * empty). Set only while a directory submission asks for it.
+   */
+  OPENAI_APPS_CHALLENGE: z
+    .string()
+    .regex(/^[\w.-]{0,256}$/)
+    .default(""),
 });
 
 export type Env = z.infer<typeof schema>;

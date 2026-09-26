@@ -283,6 +283,12 @@ without a name is matched by its question. Removing the line removes the card. S
 v4.5 with the standard parameters, aiming for 90% recall: Again brings a card back in 10 minutes,
 and the others in days. At most 20 new cards are introduced a day.
 
+Cards follow their pages, not the reading of Study: saving a page (and restoring a version or a
+page from Trash, taking a proposal or adding tasks from its lines) updates its cards for everyone
+who can read it before the answer comes back, and joining or leaving a team does the same for the
+team's pages. Pages written any other way (imports, templates, the assistant) are synced by the
+notifier within a few seconds. `GET /study` and `GET /study/queue` only read.
+
 | Method and path                           | Body / result                                                                                                  |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `GET /study`                              | `{ due_today, new_cards, reviewed_today, streak, decks[], exams[], weak[], forecast[] }`                       |
@@ -314,6 +320,14 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
 **Uploads** section of Docs, and the file itself is deleted
 (`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Import is free.
 
+**Keep the original** (off by default): with the person's setting on (`PUT /me/originals { keep }`, which a personal API key may read but not change), or `keep_original: true` on `POST /imports` for one file (`false` overrides the setting), the file is kept after it becomes a page, encrypted in
+the file store's `kept/` folder, within `FILES_KEEP_QUOTA_MB` per person (over it, the page is still
+made and its notes say the original wasn't kept). `GET /me/originals` → `{ keep, used_bytes,
+quota_bytes, files }`. A page's `original` field names it; `GET /docs/:id/original` downloads it for
+anyone who can open the page, `DELETE /docs/:id/original` deletes it (the importer, or an editor of a
+team page). Originals come with `/me/export.zip` (`originals/`), and go when their page is deleted for
+good or the account is deleted.
+
 1. `POST /imports` gives an upload link for one file.
 2. The app `PUT`s the file's bytes to that link. The link goes to the **file store**, not the API.
    It works once and for ten minutes.
@@ -337,14 +351,14 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
    be the same; otherwise conversion
    fails without sharing the page. The source file is deleted in either case.
 
-| Method and path             | Body / result                                                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
-| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                    |
-| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                              |
-| `GET /imports/:id`          | → `ImportJob`                                                                                                                               |
-| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                             |
-| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                  |
+| Method and path             | Body / result                                                                                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id?, keep_original? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
+| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                                    |
+| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                                              |
+| `GET /imports/:id`          | → `ImportJob`                                                                                                                                               |
+| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                                             |
+| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                                  |
 
 `scans` is how pages without their own text are read:
 
@@ -362,7 +376,12 @@ An `ImportJob` has these fields:
 - `queue_ahead` and `estimate_seconds`: set while `ocr`, from measured seconds per page.
 - `doc_id`: set once `ready`.
 - `error`: why it failed, in words for the person.
-- `notes`: what changed on the way in, such as "2 tables kept as lists" or "1 figure left out".
+- `notes`: what changed on the way in, such as "2 tables kept as tables" or "1 figure left out".
+
+**Keep the original**: the person's setting (`PUT /me/originals { keep }`) decides, unless the
+import says otherwise (`keep_original: true` or `false` on `POST /imports`, as an agent's
+`start_import` can). A kept file is the page's `original` (see above), not one of its pictures and
+files. Tables in Word files, PDFs and OCR output are kept as tables.
 
 **Maths.** An equation read from a PDF's fonts, or from a scan, whose layout was a guess (a stacked
 fraction, a matrix, limits above and below) is a math block with `check: true`. The apps show a
@@ -429,17 +448,22 @@ Two kinds of document Orbyn writes for you. Both are ordinary documents once cre
 be edited like any other page. The agenda is built from the calendar; with an AI provider connected
 it also opens with a few sentences the assistant writes about the day.
 
-### `GET /agenda/today` (auth)
+### `POST /agenda/today` (auth)
 
+`{ "timezone"?: "Australia/Melbourne" }` (the device's zone, adopted like `POST /me/timezone`).
 Today's agenda, in the person's planner time zone, written from the calendar as it actually is. Its
 sections: a summary line (the assistant's, when connected), Top priorities, Schedule (Morning,
 Afternoon, Evening; all-day first; no calendar names), Focus time (time set aside and free
 stretches), Due today, Carried over, Coming up, Notes and End of day. It reads
 (`packages/core/src/agenda.ts`, `backend/src/modules/docs/agenda.ts`) your events with repeats on
 the day they fall and the calendars you subscribe to, time set aside for tasks and habits, what's
-due, what slipped, exams and all-day events in the coming week, and how much working time is free. Written the first time it's asked for each day, never waiting on the AI
-provider, and returned unchanged after that, so edits are never overwritten. → a document with
-`kind` `agenda`, titled like "Sunday 20 September".
+due, what slipped, exams and all-day events in the coming week, and how much working time is free. Written the first time it's asked for each day (`201`), never waiting on the AI
+provider, and returned unchanged after that (`200`), so edits are never overwritten. → a document
+with `kind` `agenda`, titled like "Sunday 20 September".
+
+`GET /agenda/today?timezone=` does the same for app builds from before 26 September 2026. Because
+it writes, it answers with `Deprecation` (RFC 9745) and a `Link` to the POST, and goes once those
+builds are gone.
 
 The worker writes each active person's page between 5 and 11 in their own zone (at most 25 per
 15-minute pass, five at a time), opening with the assistant's summary of the day when a provider is
@@ -451,8 +475,8 @@ connected.
 when they start. It becomes the planner zone unless the person picked one in Planning settings
 (`planner_prefs.timezone_chosen`); before this, anyone who never did was treated as UTC for
 everything the server writes. On a change, subscribed calendars are read again and today's agenda,
-if untouched, is written again. `GET /agenda/today?timezone=` and `POST /ai/agenda/today`
-`{ timezone }` do the same first.
+if untouched, is written again. `POST /agenda/today`, `POST /agenda/:date` and
+`POST /ai/agenda/today` `{ timezone }` do the same first.
 
 In the library, agendas have their own **Agendas** section, filed by year, month and week (Monday
 first), and are left out of "All documents" and "Unfiled".
@@ -460,13 +484,14 @@ first), and are left out of "All documents" and "Unfiled".
 ### `GET /agenda/:date` (auth)
 
 One day's agenda, for stepping back and forward (`date` like `2026-09-24`, at most a year back and
-two months ahead, else `422`). → `{ date, title, today, doc }`: today's page is written on the
-spot as `/agenda/today` does; any other day's `doc` is `null` until it is written. Every agenda
-carries `agenda_date`, the day it is for, and the library files it under that day.
+two months ahead, else `422`). → `{ date, title, today, doc }`. It only reads: a day's `doc`,
+today's included, is `null` until it is written with the POST below (the apps write today's at
+once, as `POST /agenda/today` does, and offer to write any other day's). Every agenda carries
+`agenda_date`, the day it is for, and the library files it under that day.
 
 ### `POST /agenda/:date` (auth)
 
-Writes that day's agenda from the calendar if it isn't there yet (`201`), or returns the one there
+`{ "timezone"? }`, adopted as above. Writes that day's agenda from the calendar if it isn't there yet (`201`), or returns the one there
 (`200`). A past day reads as the calendar has it now, with no free time; a day ahead shows what's
 planned so far. A page written ahead that nobody changes is written again on its day.
 
@@ -559,7 +584,7 @@ it up as above. `to` is one of:
 - `{ "kind": "project", "project_id": "…" }`: the same task in the project's first stage (a team
   project's task is the team's).
 - `{ "kind": "agenda" }`: list lines (the link, then the text) at the end of today's agenda's
-  Notes, before the end-of-day questions; `timezone` is adopted like `GET /agenda/today`'s.
+  Notes, before the end-of-day questions; `timezone` is adopted like `POST /agenda/today`'s.
 - `{ "kind": "page", "doc_id": "…" }`: the lines at the end of a page (a page that is one empty
   line takes them in its place). Saved as any edit is: a new version, kept in history, and open
   editors are told.
@@ -670,6 +695,12 @@ sessions after the task changes hands.
 titles and planning fields only; task notes and document bodies are never included. Access follows
 the same personal-project or team membership rules as `GET /projects/:id`.
 
+Rows now say how a change was made (`origin`: `app`, `planner`, `assistant`, `agent`, `reminder`)
+and name a connected agent (`via_agent`). Sessions are listed too (`entity_type: "session"`,
+`entity_id` = the task; kinds `session_planned`, `session_moved`, `session_started`,
+`session_removed`), one row per task per change ("3 sessions planned: …"), and only to the person
+whose sessions they are — teammates, owners and admins included never see them.
+
 ### `GET /projects/:id/time-machine/checkpoints?before=&limit=100` (auth)
 
 Lists changes newest first with a stable decimal `event_order`, timestamp, summary and actor name.
@@ -686,6 +717,36 @@ status and deadline, plus its stages, tasks, linked note titles and work-record 
 point. Task notes and document bodies are omitted. A change outside the visible project returns
 `404`; invalid event orders return `422`. Historical planning state cannot be edited through
 this endpoint.
+
+### Milestones (auth)
+
+A project's own dated list of checkpoints (never dates on stages; a milestone never writes a task's
+deadline). `GET /projects/:id/milestones` lists them soonest first, each rolled up for the viewer:
+`task_count`, `done_count` (everyone's tasks), and for your part only `needed_minutes`,
+`planned_minutes`, `planned_finish_at` and `unestimated_count`, plus a `status` (`done`, `on_track`,
+`not_planned`, `late`, `passed`, `empty`). `POST` `{ name, due_on: "YYYY-MM-DD", item_ids? }` (edit
+rights, at most 50), `PUT /projects/:id/milestones/:milestoneId` `{ name?, due_on?, done? }`,
+`DELETE` (its tasks stay). `PUT /items/:id/milestone` `{ milestone_id | null }` puts one task in a
+milestone of its own project (`422` for another project's). A task that leaves its project leaves the
+milestone. Changes show in the project's History.
+
+### `PUT /projects/:id/assistant` (auth) → the project
+
+`{ "off": true }` keeps the project out of the assistant: nothing in it (tasks, pages, records, its
+title) reaches any AI — the assistant's tools and preload, a chat scope (`422`), page help and Study
+(`422` for its pages), the morning agenda's summary, search by meaning (its measurements are
+forgotten) and connected agents (every agent query leaves it out). Only the owner of a personal
+project, or a team's owners and admins, may change it (`403`), and only signed in: a personal API
+key is refused (`403`). Projects carry `assistant_off`.
+
+### Saved project chats (auth, ai service)
+
+Each person's own conversations with the assistant about a project. `GET /ai/projects/:id/chats`
+lists yours (newest 50), `GET /ai/chats/:id` reads one with its `turns` (`{ role, text, sources? }`),
+`PUT /ai/chats/:id` `{ project_id, title?, turns }` saves after each reply (the app makes the id;
+`422` for a project kept out of the assistant; `404` for a chat or project that isn't yours),
+`DELETE /ai/chats/:id`. Pending changes are never saved. The sweeper removes chats a year after they
+were last used.
 
 ### `PUT /projects/:id` (auth)
 
@@ -822,6 +883,59 @@ true }`, the same note `POST /items/:id/note` opens. For a repeating event, `occ
   neither, it is the series' note. `422` for a time the event doesn't have. A line that only labels blanks left empty
   (`Course: {project}` with no project) is left off the page.
 
+### Richer pages (D4b)
+
+Besides headings, lists, to-dos, quotes, code, maths and dividers, a page's lines can be:
+
+| Line                                       | Markdown                                                                                        |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `{ type: "callout", kind, text, folded? }` | `> [!tip] words` (`note`, `tip`, `warning`, `question`, `summary`; `-` after the kind folds it) |
+| `{ type: "table", text }`                  | a pipe table; `text` is its Markdown                                                            |
+| `{ type: "image", file, text, width? }`    | `![caption](orbyn://file/<id>?w=60)`                                                            |
+| `{ type: "file", file, text }`             | `[name](orbyn://file/<id>)`                                                                     |
+| `{ type: "footnote", label, text }`        | `[^1]: words`; the marker `[^1]` sits in a line                                                 |
+
+A code block marked `mermaid` is drawn as a diagram; `orbyn-embed` shows another page's section
+(`orbyn://doc/<id>#<line>`) or the tasks the page links to (`tasks: linked`), read-only and live.
+Inline, `~~words~~` is struck through and `=={green}words==` / `=={rose}words==` are the other
+highlighter colours.
+
+| Method and path                | Body / result                                                                                                                                                                                                                                                                            |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks }`                                                                                                                                                            |
+| `POST /docs/:id/anchor`        | `{ index, text }` names that line (when it still says `text`) → `{ block_id }`; `409` when the page moved on; anyone who can read the page may                                                                                                                                           |
+| `POST /docs/:id/extract`       | "Move to new page": `{ block_ids, title?, version }` → `201 { doc, source }`; comments, suggestions, task lines and pictures go with the lines, and a link takes their place                                                                                                             |
+| `POST /docs/:id/merge`         | "Merge into…": `{ into, version }` → `{ doc, relinked }`; same space only (`422`); this page goes to Trash with `merged_into`, its pictures belong to `into`, and links in pages you can change are pointed at `into` (a renamed line under its new name, each page keeping its history) |
+| `GET` / `PUT /docs/:id/folds`  | The headings you folded (`{ block_ids }`, at most 200), yours on every device                                                                                                                                                                                                            |
+| `PUT /docs/:id/aliases`        | `{ aliases }` (at most 8, each once): other names, such as a course code; the version stays                                                                                                                                                                                              |
+
+`PUT /projects/:id` takes `aliases` too. Every write but `anchor` needs `items:write` on the page
+(`403` for a viewer, `404` for a page you can't open) and goes through its history, as a save does.
+
+### Pictures and files in pages
+
+Kept in Orbyn's own file store (the `files` service, on its own `page_files` volume), encrypted,
+for as long as a page shows them; never a third-party store. Each person has `PAGE_FILES_QUOTA_MB` of space
+and a file is at most `PAGE_FILES_MAX_MB`. Pictures are PNG, JPEG, GIF and WebP; files are PDF,
+Word, Excel, PowerPoint, text, CSV and Markdown, checked by their first bytes.
+
+| Method and path          | Body / result                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /docs/:id/files`   | `{ name, bytes, mime?, width?, height? }` → `201 { file, upload_path, expires_at }` (`413` over the limit or your space, `415` for another kind of file)                                 |
+| `PUT {upload_path}`      | The bytes (`/files/p/…` through the gateway), once, within ten minutes → `201 { id, bytes }`                                                                                             |
+| `GET /docs/files/:id`    | → `{ file, url_path, expires_at }`: `GET {url_path}` (`/files/r/…`) shows or (`?download=1`) downloads it for an hour, for its uploader or anyone who can read a live page that shows it |
+| `GET /docs/:id/files`    | The pictures and files added to the page or shown on it → `[PageFile]`                                                                                                                   |
+| `DELETE /docs/files/:id` | Deletes one for good, freeing its space (its uploader, or `items:write` on the page it was added to; `403` from a page it was only pasted into) → `204`                                  |
+| `GET /files/usage`       | → `{ used_bytes, quota_bytes }`                                                                                                                                                          |
+
+Which pages show a file is kept by a trigger (`page_file_refs`, migrations 114 and 115), so a
+picture moved, merged or pasted into another page keeps working there. A save links a page to a
+file only when the person saving can already read it (the uploader, or a reader of a live page it
+is on); an id copied from anywhere else stays unlinked and shows as gone, and leaving a team unlinks
+that team's files from your own pages. A file no page shows any more goes at the
+sweep 30 days after its last line was removed (time for undo and history), or at the next sweep
+when its page is deleted for good. Parallel uploads are counted one at a time against the space.
+
 ### `GET /docs/:id/export?format=` (auth)
 
 `format` is `md` (the default), `txt`, `html`, `docx` or `pdf`; anything else is `422`. The reply
@@ -837,6 +951,14 @@ none) and writes a formula as the symbols it reads as, the same as everywhere ou
 ### `GET /docs/:id/markdown` (auth)
 
 Kept for anything already pointing at it; `export?format=md` is the same bytes.
+
+### `GET /docs/:id/info` (auth)
+
+A page's Info panel in one request (NAV-04):
+`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write }`.
+`team`, `project`, `event` (`{ id, title, due_at }`) and `folder` are `null` when the page has none;
+`recent` is the latest three versions as `GET /docs/:id/versions` lists them. `linked_here` counts only
+places the reader can open. `404` for a page the reader can't open or one in the Trash.
 
 ### `GET /docs/:id/versions` (auth)
 
@@ -1025,10 +1147,15 @@ as it stands; anything that does not match comes back in `not_found` rather than
 → `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
 "snippet", "block_id", "rank" } ]`, best first.
 
-`type` is `doc`, `task` or `record`; leave it out for pages and tasks, ranked together on one
-scale. `project` limits results to that project's pages and tasks, and adds its work records
+`type` is `doc`, `task`, `project` or `record`; leave it out for pages, tasks and projects, ranked
+together on one scale (projects match on their name and summary, and aren't included when `tag`,
+`kind` or `project` narrows the search). `q` may be left out when another filter is set: the search
+then lists what fits, newest first (the filter chips use this: "Pages and tasks tagged physics");
+with nothing at all to go on it answers 422. `tag` narrows pages (`doc_tags`) and tasks (`item_tags`),
+and leaves projects out. `team` is a team's id, or `personal` for what belongs to no team (the
+`team:personal` operator). `project` limits results to that project's pages and tasks, and adds its work records
 (decisions, promises…) as `record` hits, ranked on the same scale; records are otherwise only
-searched with `type=record`. Every hit still passes the caller's normal visibility check, and
+searched with `type=record`. ⌘K and the phone's Search open a record hit's project. Every hit still passes the caller's normal visibility check, and
 pages in the Trash are never found. The assistant's `search_docs` uses the same page search.
 Renaming a project reindexes its pages, which are found by their project's name. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
 body D — and on the **letters**
@@ -1041,6 +1168,127 @@ the database as HTML.
 
 A search only ever returns what the searcher can already see.
 
+### `GET /find?q=&type=&limit=` (auth)
+
+The quick switcher (⌘K on the web, Search on the phone). → `[ { "id", "type", "title", "hint",
+"team_id", "updated_at", "recent" } ]`. `type` (`doc`, `task` or `project`) narrows it; a hit's
+`type` is `doc`, `task`, `event` or `project`. `q` (up to 200 characters) matches **names** from the
+first letter: the whole name, its start, anywhere in it (`%` and `_` are letters), then names that
+look alike, lifted for what you opened lately (`recent: true`) and for what changed lately; done
+tasks and archived projects sink. With no `q` it lists what you opened last, newest first, topped up
+with your latest pages, open tasks and active projects. `limit` 1–30 (default 12). Only what you can
+see, never a page in the Trash.
+
+### `POST /recents` (auth)
+
+`{ "kind": "doc" | "task" | "project", "id" }` → 204. Something was opened: it goes to the top of
+your recent list. The apps call it when a page, task or project opens. Only the newest 50 are kept
+per person, and the sweeper clears entries untouched for 90 days (`recent_opens`). An id you can't see
+is never listed.
+
+## Links between things
+
+A link made with the link picker (`[[` in a page, "Link" in the `/` menu and on the phone's
+toolbar) is kept in the page as an ordinary Markdown link to `orbyn://<kind>/<id>` — `doc`, `task`,
+`event`, `project`, `person` or `date` (`orbyn://date/2026-09-26`). The words in the brackets are
+only what it said when it was made: the apps show the thing's live title, so renaming never breaks a
+link. Exports (`/docs/:id/export`, `/docs/:id/markdown`) turn pages, tasks and projects into web app
+links (`APP_URL/app/<kind>/<id>`) and people and dates into their words.
+
+Saving a page (any way: the editor, a restore, a suggestion, an import) fills the `object_links`
+index, beside the fixed connections: a checklist line that became a task, a meeting note, a page in
+a project, a task that waits for another and a person mentioned in a comment. Nothing is shown to
+someone who can't open both ends.
+
+**Link words are private to who can open the target (D3aF).** A reader who can't open what a link
+points to (someone's personal page, another team's task or project, a page deleted for good — the
+same things `/links/resolve` calls `missing`) never gets its bracket words: every answer that
+carries a page's words shows them as `Private page`, `Private task`, `Private event`,
+`Private project` or `Someone` instead — `GET /docs/:id` and its list previews, saves, versions,
+comments and suggestions, exports, `/links/here` lines, hover cards, headings, search hits, the
+assistant and agent `fetch`/`search` (an agent connection also can't read what lies outside its
+spaces) and published pages (a visitor can open only published pages). The stored page keeps the
+words: a save that hands back `Private …` for a link the page has keeps the page's own words, and
+comment and suggestion ranges are counted in the words the reader was shown and carried to the
+stored line (and back). Pages are found by search on their own words only, never by a link's.
+
+### `GET /links/here?kind=&id=` (auth)
+
+"Linked here" for a page, task, event, project or person (`kind` `doc`, `task`, `event`, `project`
+or `person`). → `{ "count", "items": [ { "kind": "doc" | "task", "id", "title", "hint", "source",
+"block_id", "context": { "before", "linked", "after" } } ] }`, one entry per place, newest first (at
+most 100). `source` is `link`, `mention`, `task_line`, `dependency`, `project` or `meeting`;
+`block_id` opens a page at the line. Places you can't open are neither listed nor counted. 404 when
+the thing itself isn't yours to open.
+
+### `GET /links/resolve?refs=` (auth)
+
+Link pills as they stand now. `refs` is up to 60 `kind:id` pairs, comma separated. → one
+`{ "kind", "id", "state", "title", "done"?, "due_at"?, "can_restore"? }` per ref, in order.
+`state` is `ok`; `deleted` for a page in the Trash you could open (`can_restore` when you may restore
+it); or `missing`, with no title, for anything gone for good or not yours to see (the two look
+alike). Tasks carry their tick and deadline.
+
+### `GET /links/pick?q=&limit=` (auth)
+
+What the link picker offers for the words typed: pages, tasks, events and projects by name (the
+quick switcher's ranking; with no `q`, what you opened last) with each task's `done` and `due_at`,
+then teammates by name. → `[ { "kind", "id", "title", "hint", "done"?, "due_at"? } ]`. `limit`
+1–30 (default 12). Dates are the app's own. Pages and projects are found by their other names too
+(`aliases`), with the hint "Also called …".
+
+### Links to one line (D4b)
+
+A link can point at one heading or line of a page: `orbyn://doc/<id>#<line>` (and
+`APP_URL/app/doc/<id>#<line>` on the web). It opens the page there, lit for a moment; `/links/here`
+lists it on the page. In `/links/resolve`, `refs` may name a line (`doc:<id>#<line>`), and its pill
+carries `block` and `block_title` (null once the line has gone). A page merged into another (below)
+resolves as `ok` with `moved_to`, the page it went into.
+
+### `GET /links/headings?doc=&q=` (auth)
+
+A page's headings, for `[[Page#`; with `q`, the headings and then the other lines that say it (at
+most 30). → `[ { "block_id", "index", "level", "text" } ]`. `block_id` is null for a line with no name
+yet: `POST /docs/:id/anchor` names it.
+
+### `GET /links/card?kind=&id=&block=` (auth)
+
+A link's hover card (`kind` `doc`, `task`, `event` or `project`) → `LinkCard`: `state`, `title`,
+`can_write`, and by kind: a page's `kind_label`, `folder`, `project`, `preview` and (with `block`)
+`section`; a page merged into another answers with the page it went into and `moved_from`; a task's
+`done`, `due_at`, `all_day`, `estimate_minutes`, `repeats`, `project`, `planned` (your next session
+only) and `time_zone` (your account's, which "Reschedule" moves the deadline in); an event's `start_at`, `end_at` and `note_id`; a project's
+`progress`, `next` and `deadline`. Something you can't open is `{ "state": "missing" }` and nothing
+else.
+
+### `GET /links/mentions?kind=&id=` (auth)
+
+"Mentioned without a link": pages that say a page's or project's name, or one of its other names, as
+words of their own (not in code, maths or links) without linking to it. → `[ { "doc_id", "title",
+"hint", "block_id", "matched", "context", "can_link" } ]`, at most 20.
+
+### `POST /links/mentions/link` (auth)
+
+`{ doc_id, block_id, matched, target: { kind: "doc" | "project", id } }` makes the first such mention
+in that line a link (a new version of that page) → `{ doc_id, version }`. `403` for a page you may
+only read, `404` for a target you can't open, `409` when the words aren't there any more.
+
+### `GET /links/related?kind=doc&id=` (auth)
+
+"Related": pages that read like this one and aren't linked either way — by meaning when the
+workspace measures pages (from the page's stored measurements; no provider is asked), then the same
+tags, links to the same things, and similar titles. → `[ { "doc_id", "title", "hint", "reason" } ]`,
+at most 6.
+
+## Links into the apps
+
+### `GET /.well-known/apple-app-site-association`, `GET /.well-known/assetlinks.json` (public)
+
+The files iOS and Android check before opening the web app's `/app/…` links in the Orbyn app
+(universal links and verified app links), served from the web host through the gateway. Built from
+`APPLE_TEAM_ID` (`<team>.com.orbyn.planner`, paths `/app/*`) and `ANDROID_CERT_FINGERPRINTS` (the
+signing certificates' SHA-256, comma separated). Unset, they are empty and links stay in the browser.
+
 ### Finding a page by meaning
 
 Off by default, and impossible at all on a Postgres without `pgvector` — which the stock
@@ -1049,16 +1297,33 @@ creates nothing; the word search above carries on alone, which is how the worksp
 Swapping the image to `pgvector/pgvector:pg17` and re-running migrations creates the tables; nothing
 else changes.
 
-Turning it on is `PUT /ai/settings` with `semantic_search: true`, and `GET /ai/settings` reports both
-`semantic_search` (whether it is wanted) and `semantic_possible` (whether this database could).
+Turning it on is its own setup, `PUT /ai/settings/semantic` (`ai:manage`) with
+`{ "on": true, "embedding_model": "…", "accept": true }`: it needs `pgvector` (`409` without it), a
+connected provider (`409`), a model that measures text (`422`) and the admin's agreement that every
+page is sent to the provider to be measured (`422` without `accept`). `{ "on": false }` turns it off
+and **forgets every measurement**. `PUT /ai/settings` no longer turns it on (`422`). `GET /ai/settings`
+reports `semantic_search`, `semantic_possible` (whether this database could), `embedding_model`,
+`semantic_accepted_at` and `measure_running` (whether the measuring service reported in lately).
 It stays off until asked for because measuring a page means **sending its words to whichever AI
 provider is configured**, which is a decision for whoever runs the workspace rather than a default.
+Pages in projects kept out of the assistant are never measured.
 
-Once on, editing a page queues it; the worker measures its lines a minute at a time, and only the
-lines whose words actually changed. Meaning is then **added to** the word search, never used instead
+Once on, editing a page queues it; the **measuring service** (`node dist/services/measure.js`,
+Compose `measure`, profile `semantic`, never the reminder loop) measures its lines a minute at a time,
+and only the lines whose words actually changed. Meaning is then **added to** the word search, never used instead
 of it: a page the words already found is lifted a little, and a page only meaning found joins the end
 rather than displacing a plain match. If the provider is unreachable the search still returns its word
 results — losing meaning is not losing the search.
+
+### @mentions in a page, and `GET /me/mentions` (auth)
+
+Typing `@` in a line offers the people who can already open the page; picking one writes an ordinary
+Markdown link, `[@Anna Lee](/app/person/<id>)` (a relative path, never an `orbyn:` address). On every
+save, from any write path, who a page names is read again: a person named for the first time is told
+once in Notifications (`kind: "mention"`, `ref: "doc:<page>:<line>"`), and someone who can't open the
+page is never recorded or told. `GET /me/mentions?limit=50` → `[{ doc_id, title, block_id, quote,
+mentioned_by, project_id, created_at }]`, newest first: "Mentioned in". A page you can no longer
+open drops out, so its title never shows.
 
 ### `PUT /docs/:id/comments/:commentId` (auth)
 
@@ -1092,7 +1357,7 @@ coming back to, and are private to whoever starred them.
 
 ### `GET /favourites` (auth)
 
-→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc` or `project`.
+→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc`, `project` or `view` (a saved view).
 
 ### `PUT /favourites` (auth)
 
@@ -1100,6 +1365,117 @@ coming back to, and are private to whoever starred them.
 
 A document is filed by sending `folder_id` to `POST /docs` or `PUT /docs/:id`; `null` unfiles it,
 and leaving the field out keeps it where it is.
+
+## Saved views and your own fields
+
+A saved view (DATA-01) is a named filter, sort, grouping and layout over tasks, pages or projects.
+Its `definition` is the one language the apps, the live list block in a page and the agents' `query`
+and `save_view` share (`viewDefinition` in `packages/core/src/views.ts`):
+
+```json
+{
+  "source": "tasks",
+  "filters": {
+    "due_within_days": 7,
+    "project": "<id>",
+    "fields": [{ "field": "<id>", "op": "is", "value": "Final" }]
+  },
+  "sort": { "by": "due", "dir": "asc" },
+  "group_by": "project",
+  "layout": "table",
+  "columns": ["done", "title", "due", "estimate", "spent", "tags", "days_left"],
+  "date_by": "due"
+}
+```
+
+- `filters`: `text`, `status` (`open` by default for tasks and projects, `done`, `any`), `team`
+  (`"personal"` or a team id), `project`, `list`, `tag`, `assignee` (`"me"` or an id),
+  `due_after` / `due_before` (days), `due_within_days`, `overdue`, `no_due`, `folder`, `kind`,
+  `updated_within_days`, and up to ten `fields` filters (`is`, `is_not`, `empty`, `not_empty`,
+  `before`, `after`, `contains`).
+- `sort.by`: `due`, `updated`, `created`, `priority`, `title`, `estimate`, `days_left` or
+  `field:<id>`. Things without a value sort last either way.
+- `group_by`: tasks group as the task list does (`status`, `list`, `tag`, `size`, `priority`,
+  `project`, `due_week`, `assignee`); pages by `kind`, `folder`, `project`, `team`, `tag`; projects
+  by `status`, `team`; pages and projects also by `field:<id>`.
+- `layout`: `list`, `board`, `table`, `calendar`, or `gallery` (pages only). `columns` include the
+  ready-made computed columns `days_left`, `overdue` and `spent_vs_estimate` (no formula language).
+- A definition that doesn't fit its source is refused with `422`.
+
+A view is yours (`team_id` null) or shared with a team. It always runs as the person looking: a shared
+view shares its definition, never anyone's rows.
+
+### `GET /views` (auth)
+
+→ `[ SavedView ]`: yours and your teams', each with `pinned` (your own sidebar) and `can_edit`.
+
+### `POST /views` (auth)
+
+`{ "name", "team_id"?, "definition" }` → `201` the view. Sharing with a team needs permission to
+change the team's things (`403` for a viewer, `404` outside the team). At most 200 views per person
+(`409`).
+
+### `PUT /views/:id` (auth)
+
+`{ "name"?, "team_id"?, "definition"? }` → the view. Its maker, or the team's owners and admins
+(`403` otherwise). Only its maker shares it or takes it back; a view keeps its `source` (`400`).
+
+### `DELETE /views/:id` (auth)
+
+→ `204`, with everyone's stars and pins of it.
+
+### `PUT /views/:id/pin` (auth)
+
+`{ "pinned": bool }` → `204`. Pins are each person's own.
+
+### `POST /views/run` (auth)
+
+`{ "id", "limit"? }` or `{ "definition", "limit"? }` → `{ source, rows, truncated, fields, people,
+time_zone, view? }`. Rows are tasks, pages or projects in one shape (`ViewRow`); a task's row carries
+the task and its `end_at`, `all_day` and `timezone`, so "due" and "overdue" follow the task list's
+rule (an all-day task is due by the end of its day, a task with an end time when it ends, and a task
+due earlier today isn't overdue yet). Days are read in the account's time zone, returned as
+`time_zone` so the apps draw and edit in the same one. A page's `cover` is its first image only when
+it is in Orbyn's own file store (`/files/…`). At most 500 rows. Nothing is written.
+
+### `GET /views/:id/export.csv` (auth)
+
+The view as CSV with the columns it shows. Text that would start a spreadsheet formula is kept as
+text.
+
+### `GET /fields` (auth) · `POST /fields` · `PUT /fields/:id` · `DELETE /fields/:id`
+
+Your own typed fields (ORG-02) for pages or projects in a space (yours, or a team's):
+`{ "name", "type": "text"|"number"|"date"|"select"|"person"|"checkbox", "applies_to": "page"|"project",
+"team_id"?, "options"? (choices), "on_calendar"? (date fields) }`. One name per space and kind
+(`409`), 40 per space. Anyone who can change the team's things adds one; renaming, changing choices
+and removing it is for its maker and the team's owners and admins. A choice taken away is cleared
+where it was picked; removing a field clears every value.
+
+### `GET /fields/values?target=page|project&id=` (auth)
+
+A page's or project's fields and values, for its Info panel: `{ fields, values, can_write, people }`.
+Only the fields of its own space count.
+
+### `PUT /fields/:id/value` (auth)
+
+`{ "target", "target_id", "value" }` → `{ field_id, value }`. Checked by type (`400`): a choice must
+be one of the field's, a person someone in the team. `null` or empty text clears it. Needs
+permission to change the page or project (`403`). It counts as a change: the page's or project's
+`updated_at` moves (a page's `version` stays, so an open editor saves on), and open pages hear of it
+on their live stream as `{ fields: true }`.
+
+### `GET /fields/dates?from=YYYY-MM-DD&to=YYYY-MM-DD` (auth)
+
+Date fields shown on the calendar as deadlines (DATA-07), on the pages and projects you can open:
+`[ { field_id, field_name, target, target_id, title, date, team_id } ]`. The agents' `get_calendar`
+lists them as `deadline` entries.
+
+### A live list in a page (SRCH-02)
+
+A fenced block with the language `orbyn-list` whose text is `view:<id>` or a definition (with an
+optional `title` and `limit`). The apps draw it as live rows with working ticks; everything else
+keeps it as a code block.
 
 ## Documents
 
@@ -1602,7 +1978,8 @@ Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp s
 - Sign in with an **agent key** (`Authorization: Bearer oak_…`) made in Settings → Connected agents ([below](#connected-agents)). Old personal API keys (`ok_`) still work here for 90 days as a legacy connection, with `Deprecation` and `Sunset` headers, and keep the first endpoint's `search_items`, `add_task` and `get_agenda`. After that they work only with the REST API and CalDAV. App session tokens are refused (`401`). Signing in from claude.ai and ChatGPT (OAuth) comes in phase A2.
 - Agent credentials (`oak_`, `oat_`, `ort_`) are refused (`401`) by every REST route and by CalDAV: they work only at the MCP address.
 - The protocol is `2026-07-28`, served statelessly, plus `initialize` and `ping` for the 2025-11-25, 2025-06-18 and 2025-03-26 revisions. There are no sessions. `GET`/`DELETE` get `405`, batches get `400`, and a page not on the Origin list gets `403`. A missing or wrong credential gets `401` with `WWW-Authenticate: Bearer resource_metadata=…`.
-- Read tools: `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`. Every result carries typed ids, `orbyn://` URIs and links to `/app/task/<id>`, `/app/doc/<id>#<line>`, `/app/project/<id>` and `/app/today`. Text written by someone else arrives fenced as untrusted content.
+- 51 tools: 21 core ones every connection has (reads, changes, planning sessions and `propose_changes`), and 30 in toolsets (workspace, planner, study, follow-through, teams, bookings, files) chosen when an app signs in or in Settings. `X-MCP-Toolsets` and `X-MCP-Readonly` narrow a call. Resources (the Today list, the guides at `orbyn://spec/markdown`, `orbyn://spec/views` and `orbyn://guide/planning`, pages, tasks, projects, views, days, templates, records), completions from titles the connection can see, and eleven prompts. Every result carries typed ids, `orbyn://` URIs and links to `/app/task/<id>`, `/app/doc/<id>#<line>`, `/app/project/<id>` and `/app/today`. Text written by someone else arrives fenced as untrusted content.
+- The public developer page is `<APP_URL>/developers/mcp`, read from `GET /developers/mcp` (no sign-in: the catalog, this server's address and live limits, the versioning policy and the changelog). `GET /.well-known/security.txt` says where to report a security problem (`SECURITY_CONTACT`).
 - Limits are per connection, never per address. A `429` carries `Retry-After` and a JSON-RPC body.
 - `GET /.well-known/oauth-protected-resource[/mcp]` is the protected-resource metadata (RFC 9728). Other `/.well-known/*` paths are `404`.
 
@@ -1614,6 +1991,7 @@ Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp s
 | `POST /me/agent-keys`         | `{ "name", "access"?: "read"\|"suggest"\|"write", "personal"?, "team_ids"?, "toolsets"?, "expires_in_days"?, "hide_outside_content"? }` → `201` `{ grant, key }` (the key is shown once). 30 days by default, never past the admin's limit. `hide_outside_content` leaves out the text of subscribed calendar events, imported files, emailed tasks and booking answers (imported pages keep their titles). |
 | `DELETE /me/agents/:id`       | Revokes it: `204`. It stops working on its next call. For an old API key, this removes only its MCP access.                                                                                                                                                                                                                                                                                                 |
 | `POST /me/agents/:id/restore` | Restores a connection Orbyn paused (`suspended_at`) after it kept going over its limits or being refused: `204`. Audited.                                                                                                                                                                                                                                                                                   |
+| `PUT /me/agents/:id/toolsets` | `{ "toolsets": [...] }` → the connection, with `core` always on. Bookings can be added to an agent key; a connection that signed in gets them only by signing in again (`422`). Every copy of the service hears of it at once; agents see it the next time they list their tools. Audited.                                                                                                                  |
 | `GET /me/agents/:id/activity` | What it did, newest first. Each change is one line, and reads are counted per minute: `[{ at, tool, outcome, summary, calls, target_ids }]`                                                                                                                                                                                                                                                                 |
 | `PUT /teams/:id/agent-access` | Owners and admins: `{ "agent_access": "role"\|"suggest"\|"read"\|"off" }`. This caps every agent in the team. `off` hides the team from agents.                                                                                                                                                                                                                                                             |
 | `GET` / `PUT /admin/agents`   | Admins: `agents_enabled`, `agents_writes_enabled`, `blocked_client_ids`, `allowed_client_hosts`, `dcr_enabled`, `max_grant_days` and `agent_limits`. They apply within 10 s, with no deploy. Changes are audited.                                                                                                                                                                                           |
@@ -1623,11 +2001,11 @@ Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp s
 Apps can also connect by signing in with Orbyn (OAuth 2.1, public clients with PKCE S256, no client secrets). The metadata is at `<APP_URL>/.well-known/oauth-authorization-server`; everything below is also in docs/openapi.yaml.
 
 - `GET /oauth/authorize/check?…` — what the consent page shows: the app (verified for a client ID metadata document, unverified for a registered one), `requested_access`, `requested_bookings`, and with a session your spaces and any earlier connection. 30 a minute.
-- `POST /oauth/authorize` `{ request, access, personal?, team_ids?, toolsets?, bookings?, notify_teammates?, hide_outside_content?, expires_in_days? }` → `{ redirect_to }` with a 60-second code. Needs a session; write access or bookings need `POST /me/reauth` in the last 10 minutes (`403 reauth_required`). Sign-ins allowed but never finished don't count towards the 50 connections and are cleared after a day.
+- `POST /oauth/authorize` `{ request, access, personal?, team_ids?, toolsets?, bookings?, notify_teammates?, hide_outside_content?, expires_in_days? }` → `{ redirect_to }` with a 60-second code. Needs a session; write access or bookings need `POST /me/reauth` in the last 10 minutes (`403 reauth_required`). Sign-ins allowed but never finished don't count towards the 50 connections and are cleared after a day; the limit is checked again when the code is exchanged, so consents given at once can't all finish past it (`invalid_grant`).
 - `POST /oauth/authorize/deny` `{ request }` → `{ redirect_to }` with `error=access_denied`.
 - `POST /oauth/token` (form): `grant_type=authorization_code` (code, redirect_uri, client_id, code_verifier, resource) or `refresh_token`. Access tokens (`oat_`) last an hour and work only at the MCP address; refresh tokens (`ort_`) rotate. A spent refresh token presented again within 60 seconds (twice at most, for retries) gets another pair; after that it counts as copied: the family is revoked, the connection paused and its owner told.
 - `POST /oauth/revoke` (form, RFC 7009): a refresh token takes its family; unknown tokens answer `200`.
-- `POST /oauth/register` (RFC 7591), when `dcr_enabled`: public clients only, 10 an hour per address and 20 a day.
+- `POST /oauth/register` (RFC 7591), when `dcr_enabled`: public clients only, 10 an hour per address and 20 a day. Every redirect address must be on one website (or all back to this computer, or all to one app scheme); a list that mixes them is refused with `invalid_redirect_uri`.
 - `POST /me/reauth` `{ password, code? }` or `{ handle, response }` (after `POST /me/reauth/options`) → `{ reauth_until }`. Open during maintenance.
 
 `allowed_client_hosts` applies to every website an app could send a code to: a registered app must be allowed for each https address it declared. Narrowing the list stops refreshes and MCP calls from apps no longer allowed.
@@ -1869,6 +2247,14 @@ last day, a span under the day it ends. A task is overdue once that day is befor
 Fri 2 Oct, 5 pm" (`dueLine`); list lines (Tasks to place, plans, the team's at-risk list) say
 "due Fri 2 Oct, 5 pm", or "due Fri 2 Oct" for a whole day (`dueDateOf`).
 
+#### `POST /blocks` with a day (auth)
+
+`{ "item_id", "day": "2026-10-02", "minutes"? }` instead of `start_at`/`end_at`: a task dropped on a
+calendar day (ORG-06). The session goes in the first free working time that day in the person's zone
+(from now on for today), `minutes` long (default: the task's estimate, or 30). `201` with the session;
+`409` when the day is over or has no free working time for it. The task's deadline is never written;
+a session after it is kept and flagged late like any other.
+
 Sessions from `GET /blocks`, `GET /calendar`, `GET /items/:id/sessions`, the answers of the
 routes below and the `block.*` webhooks carry, besides the session and its task's `title`,
 `status`, `kind`, `priority`, `team_id`, `list_id` and `estimate_minutes`:
@@ -1882,15 +2268,18 @@ routes below and the `block.*` webhooks carry, besides the session and its task'
 | `part`, `parts`  | "Session 2 of 3": its number among all of your sessions for the task (past ones too; for a repeating task, those for the same occurrence), in time order                                                              |
 | `project_id`     | The task's project, or null                                                                                                                                                                                           |
 
-| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                    |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                                       |
-| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                                           |
-| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                                     |
-| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                                               |
-| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                                        |
-| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by the earlier task or project deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days |
-| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                                       |
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                                                             |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                                                       |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                                                                 |
+| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                                                          |
+| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by the earlier task or project deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days                   |
+| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                                                         |
+| `GET /blocks/check-ins`       | Sessions that ended in the last 3 days, not answered yet, whose task is open → `[SessionCheckIn]`                                                                                                                                                                                                                                                                                  |
+| `POST /blocks/:id/check-in`   | `{ "outcome": "done" \| "more" \| "skipped", "more_minutes"? }` → `{ id, outcome, counted_minutes, remaining_minutes }`. Done and more count the session's time into the task once (less focus time already logged inside it); more also sets what is still needed; skip counts nothing. Answering again takes back what the first answer counted. `409` before the session starts |
+| `POST /blocks/:id/start`      | `{ "from"?: "app" \| "reminder" }` → marks the session started (from 15 minutes before it until it ends; `409` otherwise). Focus mode started on its task while it runs does the same                                                                                                                                                                                              |
 
 `GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
 dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
@@ -2341,7 +2730,7 @@ Other tools reach your Orbyn account through these. Nothing here sends your data
 | `DELETE /me/webhooks/:id`                     | `204`                                                                                                     |
 | `POST /me/webhooks/:id/test`                  | Sends a `ping` now → `{ ok, status, error }`                                                              |
 | `GET /me/calendar-feed`                       | `{ enabled, busy_enabled, include_blocks }`                                                               |
-| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your sessions as "Focus: {task}"                                              |
+| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your sessions as "Session: {task}"                                            |
 | `POST /me/calendar-feed`                      | Creates or replaces your private feed link → `{ url, busy }`; `{ "busy": true }` makes the busy-only link |
 | `DELETE /me/calendar-feed`                    | Turns the feed off; `?busy=1` turns the busy-only link off                                                |
 | `GET /calendar/feed/:token.ics`               | The feed, as iCalendar, for other calendar apps to subscribe to (`?busy=1` for busy only)                 |
@@ -2650,3 +3039,67 @@ would take over the budget.
 to add); `DELETE /items/:id/proofs/:proofId`.
 `GET /progress?from=&to=&team_id=` → what got done, by person, with each task's proof, and the
 same as `markdown`. Without `team_id`, your own personal tasks.
+
+## Later pages, navigation and capture (D5)
+
+### Stars (NAV-07)
+
+- `PUT /favourites` `{ kind, target_id, block_id?, starred }`: `kind` is `doc`, `project`, `view`,
+  `task` or `heading` (a heading's star is its page's id plus the line's `block_id`, and only a
+  heading's star has one). 404 for something you can't open; at most 500 stars.
+- `GET /starred` → `StarredItem[]`: every star with its live title and where it is, newest first.
+  Stars on things you can no longer open, and headings whose line is gone, are left out.
+
+### Choices that follow the account (NAV-08, NAV-09, SHR-08)
+
+- `GET /me/prefs` → `{ sidebar: { order, hidden }, shortcuts, views, updated_at }` (defaults
+  until something is chosen).
+- `PUT /me/prefs` `{ sidebar?, shortcuts?, views? }`: the sidebar's arrangement and shortcuts are
+  replaced whole; view choices are merged by place (`null` clears one). A shortcut must name a
+  command and keys can do only one thing (400). Refused for personal API keys. 30 a minute.
+- `DELETE /me/prefs`: everything back as it came.
+
+What opens at start (NAV-12), the theme and text size stay on each device.
+
+### Archiving and tidying the library (SRCH-03, ORG-03)
+
+- `PUT /docs/:id/archive` and `PUT /folders/:id/archive` `{ archived }`. Archived pages (and pages
+  in an archived folder) leave `GET /docs`, `/find`, `/search`, the link picker and "Mentioned
+  without a link"; they still open, and their links still work. `GET /docs?archived=include|only`,
+  `/find?include_archived=true` and `/search?include_archived=true` include them.
+- `POST /docs/bulk` `{ ids (≤100), folder_id?, archived?, tag_id? }` → `{ done, skipped }`: each
+  page is checked as if changed alone; one you can't change is skipped, not an error.
+
+### The Connections map (CNV-02)
+
+`GET /links/map?kind=doc|project&id=&depth=1|2` → `{ nodes, edges, truncated }`: what a page or
+project is linked to, from the link index and a project's own tasks, at most 36 things. Only what
+the reader can open is on it; people and dates are ends.
+
+### A team's switches (OTH-04)
+
+`GET /teams/:id/policies` → `{ publishing, assistant, booking, can_change }`; `PUT` (owners and
+admins) with any of the three. With `assistant` off, the page assistant, assistant chips, Study's
+suggestions and the chat's page tools refuse or leave out the team's pages, and semantic search
+doesn't measure them. With `booking` off, the team's public booking pages answer 404 until it's
+on again.
+
+### Recordings (CAP-10)
+
+Recordings are page files (`audio/webm`, `audio/mp4`, `audio/mpeg`, `audio/ogg`, `audio/wav`,
+`audio/aac`) and play in the page. `POST /ai/recordings/:fileId/summary` `{ transcript? }` →
+`{ transcript, summary, actions[] }`, only when asked: the recording is written out by the
+assistant's provider (`AI_TRANSCRIBE_MODEL`, default `whisper-1`, on its `/audio/transcriptions`;
+the ai service fetches the file from the file store at `FILES_URL` and needs `FILES_SECRET`), then
+summarised. Nothing changes on the page until the person adds the summary.
+
+### The Orbyn Clipper (CAP-02, CAP-03, CAP-04)
+
+- `GET` / `POST /me/clip-keys`, `DELETE /me/clip-keys/:id` (signed in; refused for API keys): a
+  Clipper key (`ocl_…`) is shown once.
+- `GET /clips/destinations` and `POST /clips` accept a Clipper key (or a session). A Clipper key is
+  refused everywhere else (401). `POST /clips` `{ type: article|paper|assignment|read_later|
+highlights, url, title?, html?, selection?, highlights?, highlights_as?, folder_id?, project_id?,
+team_id?, doc_id?, due_at?, time_zone?, dry_run? }`. The page's HTML is cleaned here: only its
+  readable part is kept, with web links; `orbyn://` in clipped words is written harmlessly. An
+  assignment's deadline is read only from a full date on the page. 60 a minute.

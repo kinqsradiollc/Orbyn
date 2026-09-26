@@ -5,16 +5,21 @@ import {
   DOC_AI_LABELS,
   blockText,
   fail,
+  keepLinkLabels,
   type DocAnswer,
   type DocBlock,
-  type DocSuggestion,
 } from "@orbyn/core";
-import { reader, transaction } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { requireTeam } from "../../lib/teams.js";
+import { requireAssistantAllowed, requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
+import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
+import { readableDocs } from "../../lib/visibility.js";
+import { proposeChanges } from "../docs/service.js";
+import { linkPrivacy, readableLinks } from "../links/privacy.js";
+import { carryRanges } from "../docs/ranges.js";
 
 /**
  * The assistant, inside a page.
@@ -48,14 +53,23 @@ export async function aiDocRoutes(app: FastifyInstance) {
       }>(
         `SELECT d.id, d.title, d.content, d.team_id FROM docs d
           WHERE d.id = $2 AND d.deleted_at IS NULL
-            AND ((d.team_id IS NULL AND d.user_id = $1)
-                 OR d.team_id IN (SELECT team_id FROM team_members
-                                   WHERE user_id = $1))`,
+            AND ${readableDocs("d")}`,
         [userId, id],
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    return doc;
+    if (await docKeptOut(db, id)) fail(422, PAGE_KEPT_OUT);
+    // A team can keep its pages out of the assistant (OTH-04).
+    await requireAssistantAllowed(doc.team_id);
+    // The words of links to what this reader can't open are not theirs to
+    // send anywhere (D3aF); `links` carries places back to the stored lines.
+    const links = await linkPrivacy(db, userId, doc.content);
+    return {
+      ...doc,
+      stored: doc.content,
+      content: links.value(doc.content),
+      links,
+    };
   }
 
   /** The provider, or a message saying who can turn one on. */
@@ -123,44 +137,45 @@ passage should be removed entirely, reply with an empty line.`;
     if (answer === quote)
       fail(409, "The assistant had nothing to change there.");
 
+    // Places and words as the page keeps them, not as they were shown.
+    const kept = blockText(doc.stored[at]);
+    const line = doc.links.line(kept);
+    const stored = line.changed
+      ? (() => {
+          const start = line.toStored(d.range_start);
+          const end = Math.max(start, line.toStored(d.range_end, true));
+          return { start, end, quote: kept.slice(start, end) };
+        })()
+      : { start: d.range_start, end: d.range_end, quote };
     const made = await transaction(async (db) => {
       if (doc.team_id) await requireTeam(doc.team_id, u, "items:read");
-      const row = (
-        await db.query<{ id: string }>(
-          `INSERT INTO doc_suggestions
-             (doc_id, user_id, block_id, kind, range_start, range_end,
-              text, quote, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-          [
-            id,
-            u.id,
-            d.block_id,
-            answer ? "replace" : "delete",
-            d.range_start,
-            d.range_end,
-            answer,
-            quote,
-            `Assistant · ${
-              d.action === "custom"
-                ? d.instruction.slice(0, 120)
-                : DOC_AI_LABELS[d.action].name
-            }`,
-          ],
-        )
-      ).rows[0].id;
-      return (
-        await db.query<DocSuggestion>(
-          `SELECT s.id, s.doc_id, s.block_id, s.user_id, u.name AS author,
-                  s.kind, s.range_start, s.range_end, s.text, s.quote, s.note,
-                  s.status, s.detached, s.created_at
-             FROM doc_suggestions s JOIN users u ON u.id = s.user_id
-            WHERE s.id = $1`,
-          [row],
-        )
-      ).rows[0];
+      const [made] = await proposeChanges(
+        db,
+        id,
+        u.id,
+        [
+          {
+            block_id: d.block_id,
+            kind: answer ? "replace" : "delete",
+            range_start: stored.start,
+            range_end: stored.end,
+            text: keepLinkLabels(answer, doc.stored, doc.links.hidden),
+            quote: stored.quote,
+          },
+        ],
+        `Assistant · ${
+          d.action === "custom"
+            ? d.instruction.slice(0, 120)
+            : DOC_AI_LABELS[d.action].name
+        }`,
+      );
+      return made;
     });
     reply.code(201);
-    return made;
+    // Places, quoted words and the offered words as this reader is shown
+    // them (D3aF): the stored text keeps hidden titles, the reply must not.
+    const [shown] = await carryRanges(pool, u.id, id, [made], "shown");
+    return readableLinks(pool, u.id, shown);
   });
 
   /**

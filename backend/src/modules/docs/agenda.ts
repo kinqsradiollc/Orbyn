@@ -13,7 +13,6 @@ import {
   type Item,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import {
   agendaEntries,
   busyIntervals,
@@ -24,9 +23,11 @@ import { habitBlocksIn } from "../planner/habits.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
 import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
+import { keptOutFor } from "../../lib/assistant-off.js";
 import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
-import { COLUMNS, JOINS } from "./routes.js";
+import { COLUMNS, JOINS } from "./service.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /**
  * Today's agenda, written from the calendar as it actually is: your events
@@ -41,12 +42,21 @@ type Day = {
   tz: string;
   items: Item[];
   calendar: AgendaEntry[];
-  setAside: { title: string; start_at: string; end_at: string }[];
+  setAside: {
+    title: string;
+    start_at: string;
+    end_at: string;
+    item_id?: string;
+  }[];
   comingEvents: AgendaEntry[];
   /** Free working time left; null for a day that has already gone. */
   freeMinutes: number | null;
   freeStretches: { start_at: string; end_at: string }[];
   priorities: string[];
+  /** Tasks and events in projects kept out of the assistant. */
+  keptOut: Set<string>;
+  /** Top priorities without those, for the assistant's summary. */
+  aiPriorities: string[];
   study: {
     due: number;
     newCards: number;
@@ -96,10 +106,10 @@ async function readDay(
   const dayStart = dayTime(today, 0, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
   const weekEnd = dayTime(addDays(today, 8), 0, tz);
-  const [items, calendar, blocks, habits, ahead, busy, open] =
+  const [items, calendar, blocks, habits, ahead, busy, open, keptOut] =
     await Promise.all([
       pool.query<Item>(
-        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+        `SELECT i.* FROM items i WHERE ${visibleItems()}
          AND i.due_at IS NOT NULL AND i.kind = 'task'
        ORDER BY i.due_at LIMIT 500`,
         [userId],
@@ -111,12 +121,16 @@ async function readDay(
       busyIntervals(pool, userId, now, dayEnd, { blocks: true, derived: true }),
       // Open tasks, dated or not, for "Top priorities".
       pool.query<Item>(
-        `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
+        `SELECT i.* FROM items i WHERE ${visibleItems()}
          AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
        ORDER BY i.due_at NULLS LAST LIMIT 300`,
         [userId],
       ),
+      keptOutFor(pool, userId),
     ]);
+  const ranked = open.rows
+    .map((i) => ({ id: i.id, title: i.title, score: priorityScore(i, now) }))
+    .sort((a, b) => b.score - a.score);
   const free =
     now < dayEnd && !past
       ? freeSpans(workingSpans(prefs, now, dayEnd), busy)
@@ -130,6 +144,7 @@ async function readDay(
         title: b.title,
         start_at: b.start_at,
         end_at: b.end_at,
+        item_id: b.item_id,
       })),
       ...habits.map((h) => ({
         title: h.name,
@@ -153,9 +168,10 @@ async function readDay(
       })),
     study: extras ? await studyFor(userId) : null,
     // The app's own order (the same score the assistant ranks by).
-    priorities: open.rows
-      .map((i) => ({ title: i.title, score: priorityScore(i, now) }))
-      .sort((a, b) => b.score - a.score)
+    priorities: ranked.slice(0, 3).map((i) => i.title),
+    keptOut: keptOut.items,
+    aiPriorities: ranked
+      .filter((i) => !keptOut.items.has(i.id))
       .slice(0, 3)
       .map((i) => i.title),
   };
@@ -172,7 +188,17 @@ const clock = (iso: string, tz: string) =>
   });
 
 /** The day as plain facts for the assistant: times already in the person's zone. */
-function factsOf(day: Day, now: Date) {
+function factsOf(full: Day, now: Date) {
+  // Nothing from a project kept out of the assistant is sent to it.
+  const out = (id: string | null | undefined) => !!id && full.keptOut.has(id);
+  const day: Day = {
+    ...full,
+    items: full.items.filter((i) => !out(i.id)),
+    calendar: full.calendar.filter((e) => !out(e.item_id)),
+    setAside: full.setAside.filter((b) => !out(b.item_id)),
+    comingEvents: full.comingEvents.filter((e) => !out(e.item_id)),
+    priorities: full.aiPriorities,
+  };
   const today = localDateKey(now, day.tz);
   // The day each task is due by (`dueDayAt`): an all-day task is due today
   // until the day is over.
@@ -319,7 +345,7 @@ async function writeDay(
   userId: string,
   date: string,
   content: DocBlock[],
-): Promise<string> {
+): Promise<{ id: string; created: boolean }> {
   return transaction(async (db) => {
     await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `agenda:${userId}`,
@@ -332,14 +358,15 @@ async function writeDay(
         [userId, date],
       )
     ).rows[0]?.id;
-    if (again) return again;
-    return (
+    if (again) return { id: again, created: false };
+    const id = (
       await db.query<{ id: string }>(
         `INSERT INTO docs (user_id, title, kind, content, agenda_date)
            VALUES ($1,$2,'agenda',$3::jsonb,$4::date) RETURNING id`,
         [userId, agendaTitleOn(date), JSON.stringify(content), date],
       )
     ).rows[0].id;
+    return { id, created: true };
   });
 }
 
@@ -357,12 +384,20 @@ export async function todaysAgenda(
   userId: string,
   options: { withBrief?: boolean; now?: Date } = {},
 ): Promise<Doc> {
+  return (await writeTodaysAgenda(userId, options)).doc;
+}
+
+/** {@link todaysAgenda}, saying whether the page was written just now. */
+export async function writeTodaysAgenda(
+  userId: string,
+  options: { withBrief?: boolean; now?: Date } = {},
+): Promise<{ doc: Doc; created: boolean }> {
   const now = options.now ?? new Date();
   const tz = await zoneOf(userId);
   const date = localDateKey(now, tz);
   const found = await findAgenda(userId, date, tz);
   if (found && !(found.written_early && found.version === 1))
-    return readDoc(found.id);
+    return { doc: await readDoc(found.id), created: false };
   const { content } = await contentFor(userId, now, !!options.withBrief);
   if (found) {
     const version = (
@@ -377,9 +412,25 @@ export async function todaysAgenda(
       await announceDocChange(pool, found.id, version, "agenda").catch(
         () => {},
       );
-    return readDoc(found.id);
+    return { doc: await readDoc(found.id), created: false };
   }
-  return readDoc(await writeDay(userId, date, content));
+  const made = await writeDay(userId, date, content);
+  return { doc: await readDoc(made.id), created: made.created };
+}
+
+/**
+ * Today's agenda as it stands, without writing anything: null until today's
+ * page is written (or while a page written ahead waits to be brought up to
+ * date on its day, which {@link writeTodaysAgenda} does).
+ */
+export async function todaysAgendaIfWritten(
+  userId: string,
+  now = new Date(),
+): Promise<Doc | null> {
+  const tz = await zoneOf(userId);
+  const found = await findAgenda(userId, localDateKey(now, tz), tz);
+  if (!found || (found.written_early && found.version === 1)) return null;
+  return readDoc(found.id);
 }
 
 /** How far back and ahead the agenda steps: a year back, two months ahead. */
@@ -408,8 +459,9 @@ export async function agendaDayOf(
 }
 
 /**
- * One day's agenda, if it has been written: today's is written on the spot
- * as ever; any other day's only when someone asks for it (`writeAgendaOn`).
+ * One day's agenda, if it has been written. It only reads: any day's page,
+ * today's included, is written when someone asks for it (`writeAgendaOn`,
+ * or `writeTodaysAgenda`).
  */
 export async function agendaOn(
   userId: string,
@@ -418,7 +470,7 @@ export async function agendaOn(
 ): Promise<Doc | null> {
   const day = await agendaDayOf(userId, date, now);
   if (!day) return null;
-  if (day.when === "today") return todaysAgenda(userId, { now });
+  if (day.when === "today") return todaysAgendaIfWritten(userId, now);
   const found = await findAgenda(userId, date, day.tz);
   return found ? readDoc(found.id) : null;
 }
@@ -435,8 +487,7 @@ export async function writeAgendaOn(
 ): Promise<{ doc: Doc; created: boolean } | null> {
   const day = await agendaDayOf(userId, date, now);
   if (!day) return null;
-  if (day.when === "today")
-    return { doc: await todaysAgenda(userId, { now }), created: false };
+  if (day.when === "today") return writeTodaysAgenda(userId, { now });
   const found = await findAgenda(userId, date, day.tz);
   if (found) return { doc: await readDoc(found.id), created: false };
   const start = dayStartOf(date, day.tz);
@@ -447,10 +498,8 @@ export async function writeAgendaOn(
     }),
     past: day.when === "past",
   });
-  return {
-    doc: await readDoc(await writeDay(userId, date, content)),
-    created: true,
-  };
+  const made = await writeDay(userId, date, content);
+  return { doc: await readDoc(made.id), created: made.created };
 }
 
 /**

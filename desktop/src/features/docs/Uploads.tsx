@@ -1,3 +1,4 @@
+import { AssistChips } from "../assist/AssistChips";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, FileUp, FolderInput, GraduationCap, X } from "lucide-react";
 import {
@@ -12,6 +13,7 @@ import {
   type DocSummary,
   type ImportJob,
 } from "@orbyn/core";
+import { KeepOriginalsSwitch } from "./OriginalFile";
 import { client } from "../../lib/api";
 
 /**
@@ -186,8 +188,17 @@ export function UploadsPanel({
   onMakeCards,
   onFiles,
   caps,
+  report,
+  onChanged,
 }: {
   caps: ImportCapabilities | null;
+  /**
+   * Shows errors; with it, the assistant's chips on each page (AI-01)
+   * show too.
+   */
+  report?: (e: unknown) => void;
+  /** The assistant's suggestion was taken: read the pages again. */
+  onChanged?: () => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -205,9 +216,11 @@ export function UploadsPanel({
     <div className="uploads">
       <p className="uploads-intro muted">
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays. Move a page to a folder when
-        you&apos;re ready.
+        file, then deletes it; only the page stays, unless you keep the
+        original. Move a page to a folder when you&apos;re ready.
       </p>
+      {/* "Keep the original" is your account's setting, on every device. */}
+      <KeepOriginalsSwitch report={report ?? (() => {})} />
       <p className="uploads-hint">{importHint(caps)}</p>
       {!waiting.length && !shownJobs.length && (
         <div className="uploads-empty">
@@ -307,16 +320,26 @@ export function UploadsPanel({
                   {job
                     ? importStatusLine(job)
                     : `Ready · from ${doc.imported_from?.file_name ?? "an upload"}`}
+                  {doc.original ? " · original kept" : ""}
                 </small>
               </button>
               <span className="upload-actions">
-                <button
-                  className="text-button"
-                  title="Suggest study cards from this page"
-                  onClick={() => onMakeCards(doc)}
-                >
-                  <GraduationCap size={15} /> Make cards
-                </button>
+                {report ? (
+                  <AssistChips
+                    docId={doc.id}
+                    title={doc.title || "Untitled"}
+                    report={report}
+                    onChanged={onChanged}
+                  />
+                ) : (
+                  <button
+                    className="text-button"
+                    title="Suggest study cards from this page"
+                    onClick={() => onMakeCards(doc)}
+                  >
+                    <GraduationCap size={15} /> Make cards
+                  </button>
+                )}
                 <button
                   className="primary"
                   aria-haspopup="dialog"

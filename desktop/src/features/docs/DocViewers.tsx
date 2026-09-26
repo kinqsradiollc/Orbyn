@@ -12,10 +12,11 @@ const initials = (name: string) =>
     .join("");
 
 /**
- * Who else has this page open right now, as small initials beside the save
- * state. Opening the page also tells the server this device is on it.
+ * Who else has this page open right now. Using it also tells the server
+ * this device is on the page, so the page keeps it for as long as it's open
+ * (the faces themselves show in the Info panel).
  */
-export function DocViewers({ docId }: { docId: string }) {
+export function useDocViewers(docId: string): DocViewer[] {
   const [viewers, setViewers] = useState<DocViewer[]>([]);
   const load = useCallback(() => {
     client.docViewers(docId).then(setViewers, () => setViewers([]));
@@ -37,7 +38,11 @@ export function DocViewers({ docId }: { docId: string }) {
       setOpenDoc(null);
     };
   }, [docId, load]);
+  return viewers;
+}
 
+/** Small initials for the people here, with the rest counted. */
+export function DocViewers({ viewers }: { viewers: DocViewer[] }) {
   if (!viewers.length) return null;
   const names = viewers.map((v) => v.name);
   return (

@@ -1,6 +1,7 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import {
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -11,7 +12,8 @@ import {
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
 import { ToastHost } from "./Toast";
-import { controls, colors, fonts, spacing, themed } from "../theme";
+import { useSwipeDown } from "../hooks/useSwipeDown";
+import { controls, colors, fonts, radii, spacing, themed } from "../theme";
 
 /**
  * Page sheet shared by Teams and the Admin console: the same Modal pattern as
@@ -24,10 +26,12 @@ export function Sheet({
   onClose,
   onBack,
   onDismiss,
+  onExpand,
   avoidKeyboard = true,
   actions,
   hideClose = false,
   centerTitle = false,
+  collapsed = false,
   children,
 }: {
   visible: boolean;
@@ -45,10 +49,28 @@ export function Sheet({
   onDismiss?: () => void;
   /** Disable when the content already handles keyboard overlap. */
   avoidKeyboard?: boolean;
+  /**
+   * The header steps aside while a long page is read (MOB-03); a strip at
+   * the top brings it back when tapped.
+   */
+  collapsed?: boolean;
+  onExpand?: () => void;
   children: React.ReactNode;
 }) {
   const area = useRef<View>(null);
   const keyboard = useKeyboardInset(area, visible && avoidKeyboard);
+  // iOS's page sheet is pulled down by the system; elsewhere the header is.
+  const swipe = useSwipeDown(visible, onBack ?? onClose);
+  const headerSwipe = Platform.OS === "ios" ? {} : swipe.handlers;
+  const shown = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.timing(shown, {
+      toValue: collapsed ? 0 : 1,
+      duration: 180,
+      useNativeDriver: false,
+    }).start();
+  }, [collapsed, shown]);
+  const [headerHeight, setHeaderHeight] = useState(72);
   return (
     <Modal
       visible={visible}
@@ -64,7 +86,32 @@ export function Sheet({
           edges={["top", "bottom", "left", "right"]}
           style={s.sheet}
         >
-          <View style={s.header}>
+          <Animated.View
+            {...headerSwipe}
+            onLayout={(e) => {
+              const h = e.nativeEvent.layout.height;
+              if (!collapsed && h > 0) setHeaderHeight(h);
+            }}
+            style={[
+              s.header,
+              {
+                opacity: shown,
+                height: collapsed
+                  ? shown.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, headerHeight],
+                    })
+                  : undefined,
+                overflow: collapsed ? "hidden" : "visible",
+                borderBottomWidth: collapsed ? 0 : StyleSheet.hairlineWidth,
+                paddingVertical: collapsed ? 0 : 14,
+              },
+              Platform.OS !== "ios" && {
+                transform: [{ translateY: swipe.offset }],
+              },
+            ]}
+            pointerEvents={collapsed ? "none" : "auto"}
+          >
             {onBack && (
               <Pressable
                 accessibilityRole="button"
@@ -109,7 +156,17 @@ export function Sheet({
                 <Icon name="x" size={18} color={colors.textSoft} />
               </Pressable>
             )}
-          </View>
+          </Animated.View>
+          {collapsed && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Show the header"
+              onPress={onExpand}
+              style={s.peekStrip}
+            >
+              <View style={s.peekHandle} />
+            </Pressable>
+          )}
           <View
             ref={area}
             collapsable={false}
@@ -178,6 +235,17 @@ const s = themed(() =>
       borderBottomColor: colors.border,
     },
     spacer: { flex: 1 },
+    peekStrip: {
+      height: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    peekHandle: {
+      width: 36,
+      height: 4,
+      borderRadius: radii.pill,
+      backgroundColor: colors.border,
+    },
     centered: {
       alignItems: "center",
       justifyContent: "center",

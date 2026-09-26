@@ -17,6 +17,7 @@ import { digest } from "../../lib/auth.js";
 import type { LiveSettings } from "../../lib/settings.js";
 import { announceAuthChange, noticeAgentEvent } from "../agents/service.js";
 import { disallowedHost, OAuthError } from "./clients.js";
+import { MAX_GRANTS, liveGrantCount } from "../agents/service.js";
 
 /**
  * Codes and tokens for agents that signed in with Orbyn. Everything is
@@ -105,6 +106,7 @@ export type TokenResponse = {
 type GrantState = {
   id: string;
   user_id: string;
+  authorized_at: Date | null;
   client_id: string | null;
   client_name: string;
   access: AgentAccess;
@@ -119,7 +121,7 @@ type GrantState = {
   client_redirect_uris: string[] | null;
 };
 
-const GRANT_STATE = `SELECT g.id, g.user_id, g.client_id, g.client_name, g.access, g.toolsets,
+const GRANT_STATE = `SELECT g.id, g.user_id, g.authorized_at, g.client_id, g.client_name, g.access, g.toolsets,
     g.expires_at, g.suspended_at, g.revoked_at, u.disabled, c.blocked AS client_blocked,
     c.kind AS client_kind, c.host AS client_host, c.redirect_uris AS client_redirect_uris
   FROM agent_grants g JOIN users u ON u.id = g.user_id
@@ -285,6 +287,17 @@ export async function exchangeCode(
     ).rows[0];
     const why = unusable(g, s);
     if (why) throw new OAuthError("invalid_grant", why);
+    // A connection counts against the limit once its sign-in finishes, so
+    // the limit is checked again here: several consents given at once (each
+    // under the limit on its own) can't all finish past it.
+    if (
+      !g.authorized_at &&
+      (await liveGrantCount(db, g.user_id, g.id)) >= MAX_GRANTS
+    )
+      throw new OAuthError(
+        "invalid_grant",
+        `This person already has ${MAX_GRANTS} connected agents. They can disconnect one in Orbyn (Settings → Connected agents) and sign in again.`,
+      );
     const familyEnd = new Date(
       Math.min(
         Date.now() + FAMILY_MAX_DAYS * 86_400_000,

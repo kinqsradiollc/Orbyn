@@ -1,6 +1,6 @@
 import { deadlineOf, planningDeadline } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /** Earliest saved deadline of an open task downstream of each prerequisite. */
 export async function dependentTargets(
@@ -21,12 +21,12 @@ export async function dependentTargets(
     }>(
       `WITH RECURSIVE waiting_on(root_id, item_id) AS (
          SELECT d.prerequisite_id, d.item_id FROM item_dependencies d
-           JOIN items i ON i.id = d.item_id AND ${VISIBLE_ITEMS}
+           JOIN items i ON i.id = d.item_id AND ${visibleItems()}
           WHERE d.prerequisite_id = ANY($2::uuid[])
          UNION
          SELECT w.root_id, d.item_id FROM waiting_on w
            JOIN item_dependencies d ON d.prerequisite_id = w.item_id
-           JOIN items i ON i.id = d.item_id AND ${VISIBLE_ITEMS}
+           JOIN items i ON i.id = d.item_id AND ${visibleItems()}
        )
        SELECT w.root_id, i.due_at, i.end_at, i.all_day, i.timezone,
               p.deadline AS project_deadline

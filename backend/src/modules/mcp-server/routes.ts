@@ -8,6 +8,7 @@ import { isLegacyRequest } from "@modelcontextprotocol/server";
 import { env, oauthIssuer } from "../../config/env.js";
 import { transaction } from "../../db/pool.js";
 import { mcpOriginAllowed } from "../../lib/mcp-origins.js";
+import { actAs } from "../../lib/actor.js";
 import {
   agentRequests,
   requestUser,
@@ -34,6 +35,11 @@ import { listenAuthChanges } from "../../lib/auth-events.js";
 import type { Principal } from "../../capabilities/policy.js";
 import { ActivityRecorder } from "./recorder.js";
 import { serve, type CallContext } from "./server.js";
+import { checkListen, closeAllListens, openListen } from "./listen.js";
+import { answerTaskMethod, startTask } from "./task-calls.js";
+import { declaresTasks, taskKind, TASK_METHODS } from "./tasks.js";
+import { Readable } from "node:stream";
+import { serviceOf } from "../../services/http.js";
 
 /**
  * The MCP address (https://mcp.orbyn.dev/mcp, and /api/mcp on the web app
@@ -79,8 +85,8 @@ const rpcError = (
   error: { code, message, ...(data ? { data } : {}) },
 });
 
-/** Methods served here; anything else is -32601 before the SDK. */
-const NO_SUBSCRIPTIONS = new Set(["subscriptions/listen"]);
+/** The long-lived stream: the realtime service's (see listen.ts). */
+const LISTEN_METHOD = "subscriptions/listen";
 
 /** Methods named in the request log; any other method is logged as mcp:other. */
 const LOGGED_METHODS = new Set([
@@ -97,6 +103,9 @@ const LOGGED_METHODS = new Set([
   "completion/complete",
   "logging/setLevel",
   "subscriptions/listen",
+  "tasks/get",
+  "tasks/cancel",
+  "tasks/update",
   "notifications/initialized",
   "notifications/cancelled",
 ]);
@@ -257,6 +266,10 @@ export async function noteTeamUse(p: Principal): Promise<void> {
 }
 
 export async function mcpServerRoutes(app: FastifyInstance) {
+  // The dedicated mcp service never holds a stream (the gateway sends
+  // listen requests to realtime); in one process (development, tests) the
+  // stream is served here.
+  const holdsStreams = serviceOf(app) !== "mcp";
   /** Pauses a misbehaving connection (off the request path; audited). */
   const suspend = (grantId: string, reason: SuspendReason) =>
     void suspendGrant(grantId, reason).then(
@@ -273,6 +286,9 @@ export async function mcpServerRoutes(app: FastifyInstance) {
     stopListening = await listenAuthChanges((err) =>
       app.log.warn({ err }, "Listening for agent access changes failed"),
     );
+  });
+  app.addHook("preClose", async () => {
+    if (holdsStreams) closeAllListens();
   });
   app.addHook("onClose", async () => {
     recorder.stop();
@@ -383,10 +399,20 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         );
       const method = body.method;
       const params = (body.params ?? {}) as Record<string, unknown>;
-      if (NO_SUBSCRIPTIONS.has(method))
-        return reply.send(
-          rpcError(id, ERR.methodNotFound, `Method not found: ${method}`),
-        );
+      if (method === LISTEN_METHOD) {
+        if (!holdsStreams)
+          return reply.send(
+            rpcError(
+              id,
+              ERR.methodNotFound,
+              "subscriptions/listen is served by Orbyn's realtime service; send it to the MCP address with the Mcp-Method header.",
+            ),
+          );
+        const refused = checkListen(r.headers, body);
+        if (refused) return reply.code(refused.status).send(refused.body);
+        routeLabels.set(r, `mcp:${LISTEN_METHOD}`);
+        return openListen(r, reply, caller, body);
+      }
 
       const toolName =
         method === "tools/call" && typeof params.name === "string"
@@ -451,12 +477,15 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         );
 
       const grantId = p.grant_id!;
+      // Completions run as the person types, so they count as searches.
       const kind: LimitKind =
         cap?.mode && cap.mode !== "read"
           ? "write"
-          : cap?.limitGroup === "search"
+          : cap?.limitGroup === "search" || method === "completion/complete"
             ? "search"
-            : "call";
+            : cap?.limitGroup === "heavy"
+              ? "heavy"
+              : "call";
       const slot = await limiter.take(
         grantId,
         p.user.id,
@@ -491,10 +520,7 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         primary: Date.now() - since < READ_OWN_WRITES_MS,
         write: (fn) =>
           transaction(async (db) => {
-            await db.query(
-              "SELECT set_config('orbyn.user_id', $1, true), set_config('orbyn.agent_grant', $2, true)",
-              [p.user.id, grantId],
-            );
+            await actAs(db, p.user.id, grantId);
             const result = await fn(db);
             await db.query(
               "UPDATE agent_grants SET last_write_at = now() WHERE id = $1",
@@ -524,15 +550,64 @@ export async function mcpServerRoutes(app: FastifyInstance) {
             requestId: String(r.id),
             latencyMs: ms,
             write: !!c && c.mode !== "read",
+            recorded: !!exec.recorded,
           });
         },
         log: (err) => r.log.error({ err }, "MCP tool failed"),
+        requestId: String(r.id),
       };
 
+      let streaming = false;
       try {
+        // Long jobs (the Tasks extension): the task methods, and a long
+        // call from a client that declared the extension.
+        const modern = r.headers["mcp-protocol-version"] === "2026-07-28";
+        if (
+          TASK_METHODS.has(method) ||
+          (modern && declaresTasks(params) && cap)
+        ) {
+          const mismatch =
+            (r.headers["mcp-method"] !== undefined &&
+              r.headers["mcp-method"] !== method) ||
+            (toolName !== null &&
+              r.headers["mcp-name"] !== undefined &&
+              r.headers["mcp-name"] !== toolName);
+          if (modern && mismatch)
+            return reply
+              .code(400)
+              .send(
+                rpcError(
+                  id,
+                  -32020,
+                  "The Mcp-Method or Mcp-Name header doesn't match the request.",
+                ),
+              );
+        }
+        if (TASK_METHODS.has(method)) {
+          if (!modern)
+            return reply.send(
+              rpcError(id, ERR.methodNotFound, `Method not found: ${method}`),
+            );
+          return reply.send(await answerTaskMethod(p, id, method, params));
+        }
+        if (
+          modern &&
+          cap &&
+          toolName &&
+          declaresTasks(params) &&
+          !scope &&
+          (cap.mode === "read" || s.agents.agents_writes_enabled)
+        ) {
+          const args = (params.arguments ?? {}) as Record<string, unknown>;
+          const kind = taskKind(cap.name, args);
+          const answer = kind
+            ? await startTask(call, cap, kind, id, args)
+            : null;
+          if (answer) return reply.send(answer);
+        }
+
         const legacy = await isLegacyRequest(webRequest(r, body), body);
         const response = await serve(call, webRequest(r, body), body, legacy);
-        const text = await response.text();
         reply.code(response.status);
         for (const [name, value] of response.headers)
           if (
@@ -541,9 +616,24 @@ export async function mcpServerRoutes(app: FastifyInstance) {
             )
           )
             reply.header(name, value);
+        // Progress notifications: the answer is a stream of events, sent
+        // as it's written (nothing buffered on the way).
+        if (
+          response.body &&
+          /text\/event-stream/.test(response.headers.get("content-type") ?? "")
+        ) {
+          streaming = true;
+          reply.header("X-Accel-Buffering", "no");
+          const out = Readable.fromWeb(
+            response.body as import("node:stream/web").ReadableStream,
+          );
+          out.once("close", () => slot.release());
+          return reply.send(out);
+        }
+        const text = await response.text();
         return reply.send(text || undefined);
       } finally {
-        slot.release();
+        if (!streaming) slot.release();
       }
     },
   );
@@ -561,6 +651,17 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         .header("Cache-Control", "public, max-age=3600")
         .send(protectedResource()),
     );
+
+  // The OpenAI apps directory's check that Orbyn owns this address: the
+  // token it gave, as plain text, only while a submission asks for it.
+  app.get("/.well-known/openai-apps-challenge", async (r, reply) =>
+    env.OPENAI_APPS_CHALLENGE
+      ? reply
+          .header("Cache-Control", "no-store")
+          .type("text/plain; charset=utf-8")
+          .send(env.OPENAI_APPS_CHALLENGE)
+      : reply.code(404).send({ message: "That isn't here.", request_id: r.id }),
+  );
 
   // Any other well-known path is not here (not the web app's page).
   app.get("/.well-known/*", async (r, reply) =>

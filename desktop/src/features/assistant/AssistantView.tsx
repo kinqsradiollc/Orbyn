@@ -3,11 +3,13 @@ import {
   ArrowUp,
   CalendarDays,
   Flag,
+  History,
   PenLine,
   Lightbulb,
   Sparkles,
   SquarePen,
   Sunrise,
+  Trash2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -64,6 +66,9 @@ export function AssistantView({
     reset,
     scope,
     setScope,
+    savedChats,
+    openChat,
+    deleteChat,
   } = assistant;
   const suggestions = scope
     ? scope.kind === "project"
@@ -296,6 +301,45 @@ export function AssistantView({
           </button>
         </form>
 
+        {empty && scope?.kind === "project" && !!savedChats?.length && (
+          <div className="ai-saved" aria-labelledby="ai-saved-title">
+            <h3 id="ai-saved-title">
+              <History size={14} aria-hidden="true" /> Saved chats about{" "}
+              {scope.name}
+            </h3>
+            <ul>
+              {savedChats.slice(0, 5).map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className="ai-saved-open"
+                    disabled={locked}
+                    onClick={() => void openChat(c.id).catch(() => undefined)}
+                  >
+                    <span>{c.title}</span>
+                    <small>
+                      {new Date(c.updated_at).toLocaleDateString([], {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </small>
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button ai-saved-delete"
+                    aria-label={`Delete the chat “${c.title}”`}
+                    onClick={() => void deleteChat(c.id).catch(() => undefined)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <small className="muted">
+              Only you see these. They go after a year unused.
+            </small>
+          </div>
+        )}
         {empty && (
           <div className="ai-suggestions" aria-label="Suggestions">
             {suggestions.map((s, n) => {

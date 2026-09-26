@@ -7,7 +7,7 @@ import {
 } from "@orbyn/core";
 
 /** Drag data type for a task dragged onto the calendar. */
-export const TASK_MIME = "application/x-orbyn-task";
+export { TASK_MIME } from "../../lib/drag";
 
 /** Unique per occurrence: repeating items share an item id. */
 export const entryKey = (e: CalendarEntry) => `${e.item_id}@${e.start_at}`;

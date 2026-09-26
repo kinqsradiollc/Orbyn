@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { onLive } from "../../lib/live";
 import { Boxes, LayoutTemplate, Plus } from "lucide-react";
 import {
   projectProgress,
@@ -39,6 +40,7 @@ export function ProjectsView({
   onOpenPlan,
   onAskProject,
   userId,
+  startNew,
 }: {
   items: Item[];
   /** For starting a template's project in a team. */
@@ -62,6 +64,8 @@ export function ProjectsView({
   onOpenPlan: (plan: Plan) => void;
   onAskProject?: (project: Project, question?: string) => void;
   userId: string;
+  /** Changes to start a new project (from ⌘K). */
+  startNew?: number;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
@@ -79,6 +83,13 @@ export function ProjectsView({
     onTemplateOpened?.();
   }, [openTemplate, onTemplateOpened]);
 
+  useEffect(() => {
+    if (startNew) {
+      setOpen(null);
+      setCreating(true);
+    }
+  }, [startNew]);
+
   const load = () =>
     client.listProjects().then(setProjects, (e) => {
       setProjects([]);
@@ -87,6 +98,25 @@ export function ProjectsView({
 
   useEffect(() => {
     void load();
+    // Projects changed elsewhere (another device, a teammate, or a
+    // connected agent): read them again, once for a burst of changes.
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area &&
+          news.area !== "projects" &&
+          news.area !== "templates" &&
+          news.area !== "records")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void load(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!initialProjectId) return;
@@ -129,6 +159,13 @@ export function ProjectsView({
             teams.find((team) => team.id === open.team_id)?.role,
             "items:write",
           )
+        }
+        canManageAi={
+          open.team_id
+            ? ["owner", "admin"].includes(
+                teams.find((team) => team.id === open.team_id)?.role ?? "",
+              )
+            : open.user_id === userId
         }
         items={items}
         report={report}

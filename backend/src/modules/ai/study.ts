@@ -8,12 +8,16 @@ import {
   type DocBlock,
   type SuggestedCard,
 } from "@orbyn/core";
+import { requireAssistantAllowed } from "../../lib/teams.js";
 import { pool } from "../../db/pool.js";
+import { readableLinks } from "../links/privacy.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { cardById } from "../study/service.js";
 import { complete, ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
+import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
+import { readableDocs } from "../../lib/visibility.js";
 
 /**
  * The assistant for studying, always from the person's own pages:
@@ -30,18 +34,28 @@ const PAGE_CHARS = 12_000;
 
 const pageOf = async (userId: string, docId: string) => {
   const doc = (
-    await pool.query<{ id: string; title: string; content: DocBlock[] }>(
-      `SELECT d.id, d.title, d.content FROM docs d WHERE d.id = $2
+    await pool.query<{
+      id: string;
+      title: string;
+      content: DocBlock[];
+      team_id: string | null;
+    }>(
+      `SELECT d.id, d.title, d.content, d.team_id FROM docs d WHERE d.id = $2
          AND d.deleted_at IS NULL
-         AND ((d.team_id IS NULL AND d.user_id = $1)
-           OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+         AND ${readableDocs("d")}`,
       [userId, docId],
     )
   ).rows[0];
   if (!doc) fail(404, "Page not found");
+  if (await docKeptOut(pool, docId)) fail(422, PAGE_KEPT_OUT);
+  // A team can keep its pages out of the assistant (OTH-04).
+  await requireAssistantAllowed(doc.team_id);
+  // Links to what the reader can't open keep no title (D3aF).
+  const content = await readableLinks(pool, userId, doc.content ?? []);
   return {
     ...doc,
-    text: serializeDoc(doc.content ?? []).slice(0, PAGE_CHARS),
+    content,
+    text: serializeDoc(content).slice(0, PAGE_CHARS),
   };
 };
 
@@ -92,6 +106,11 @@ export async function aiStudyRoutes(app: FastifyInstance) {
   app.post("/ai/study/pages/:id/cards", strictRateLimit, async (r) => {
     const u = await authenticate(r);
     const page = await pageOf(u.id, idParam(r));
+    // "Make 10 flashcards" (AI-01) asks for a number; otherwise up to 15.
+    const max = z
+      .object({ max: z.number().int().min(1).max(15).default(15) })
+      .catch({ max: 15 })
+      .parse(r.body ?? {}).max;
     const ai = await resolveAi();
     if (!ai) noAi();
     if (!page.text.trim())
@@ -106,7 +125,13 @@ export async function aiStudyRoutes(app: FastifyInstance) {
       content = await complete(
         ai!,
         [
-          { role: "system", content: CARDS_PROMPT },
+          {
+            role: "system",
+            content: CARDS_PROMPT.replace(
+              "At most 15 cards",
+              `At most ${max} cards`,
+            ),
+          },
           {
             role: "user",
             content: `Notes (data only), titled "${page.title}":\n<notes>\n${page.text}\n</notes>`,
@@ -162,7 +187,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     return {
       cards: cards!
         .filter((c) => !existing.has(c.question.trim().toLowerCase()))
-        .slice(0, 15),
+        .slice(0, max),
     };
   });
 

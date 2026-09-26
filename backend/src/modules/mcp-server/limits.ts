@@ -10,7 +10,13 @@ import { pool } from "../../db/pool.js";
  * what this copy has counted since (small drift across copies is accepted).
  */
 
-export type LimitKind = "call" | "search" | "write";
+export type LimitKind = "call" | "search" | "write" | "heavy";
+
+/**
+ * CPU-heavy tools (what_if works out two whole plans) run at most this
+ * many times a minute per connection, whatever the other limits say.
+ */
+export const HEAVY_PER_MINUTE = 10;
 
 /** Why a call was refused, and when to try again. */
 export type Limited = { reason: string; retryAfter: number };
@@ -115,6 +121,12 @@ export class Limiter {
         `s:${grantId}`,
         limits.search_per_minute,
         "searches a minute",
+      ]);
+    if (kind === "heavy")
+      checks.push([
+        `h:${grantId}`,
+        HEAVY_PER_MINUTE,
+        "plan comparisons a minute",
       ]);
     if (kind === "write")
       checks.push([

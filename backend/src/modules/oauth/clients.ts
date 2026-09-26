@@ -211,6 +211,19 @@ export function redirectHost(uri: string): { host: string; local: boolean } {
   }
 }
 
+/**
+ * Where a redirect address sends people, for telling whether a registration
+ * mixes places: an https website's host, "this computer" for any loopback
+ * address (RFC 8252 lets its port vary), or an app's own scheme.
+ */
+function redirectPlace(uri: string): string {
+  if (isLoopback(uri)) return "loopback";
+  const u = new URL(uri);
+  return u.protocol === "https:"
+    ? `https://${u.hostname.toLowerCase()}`
+    : u.protocol;
+}
+
 /** How long a fetched document is trusted: its max-age within 10 min – 24 h. */
 function cacheSeconds(header: string | null): number {
   const m = header?.match(/max-age=(\d+)/i);
@@ -506,6 +519,15 @@ export async function registerClient(
     throw new OAuthError(
       "invalid_client_metadata",
       "A web app sends people back over https; a native app to this computer or its own scheme. Register one kind per app.",
+    );
+  // One app, one place to send people back to: every address on the same
+  // website (or all back to this computer, or all to one app's scheme). An
+  // app that lists another site beside its own could have a code sent there,
+  // and Admin → Agents' allowed websites would name only one of them.
+  if (new Set(redirects.map(redirectPlace)).size > 1)
+    throw new OAuthError(
+      "invalid_redirect_uri",
+      "Every redirect address must be on the same website (or all back to this computer, or all to the app's own scheme). Register one app per website.",
     );
   const grants = b.grant_types ?? ["authorization_code"];
   if (

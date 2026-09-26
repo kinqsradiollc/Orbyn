@@ -16,9 +16,9 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { FREE_LOOKAHEAD_DAYS, freeMinutesBefore } from "./free.js";
 import { dependentTargets } from "./targets.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /**
  * Sessions with what they're for: the task's deadline (or the occurrence's,
@@ -261,7 +261,7 @@ export async function itemSessions(
               ${CHILDREN},
               p.deadline AS project_deadline
        FROM items i LEFT JOIN projects p ON p.id = i.project_id
-       WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+       WHERE i.id = $2 AND ${visibleItems()}`,
       [userId, itemId],
     )
   ).rows[0];
@@ -277,6 +277,7 @@ export async function itemSessions(
   const rows = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
+              b.started_at, b.outcome,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.item_id = $2

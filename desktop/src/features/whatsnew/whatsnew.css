@@ -1,0 +1,72 @@
+/* What's new (DSN-03): the in-app sheet and the public changelog. */
+.releases {
+  display: grid;
+  gap: 28px;
+}
+.release h2,
+.release h3 {
+  margin: 2px 0 10px;
+}
+.release-date {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.release-part h3,
+.release-part h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-textSoft);
+}
+.release-part ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.release-part li {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-text);
+}
+.whats-new {
+  width: 600px;
+}
+.whats-new-body {
+  padding: 8px 23px 12px;
+}
+.whats-new-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 23px 18px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
+}
+/* "What's new" in the app's footer line. */
+.footer-link {
+  margin-left: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.footer-link:hover {
+  color: var(--color-text);
+}
+
+/* A finger needs a 44px target; padding grows it, the layout doesn't move. */
+@media (max-width: 600px), (pointer: coarse) {
+  .footer-link {
+    padding: 15px 0;
+    margin-block: -15px;
+  }
+}

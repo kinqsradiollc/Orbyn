@@ -67,3 +67,45 @@ export function isService(header: string | string[] | undefined): boolean {
   const given = Buffer.from(header);
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
+
+// ------------------------------------------------ pictures and files ---
+
+/**
+ * A signed claim for one purpose: pictures and files in pages use their
+ * own purposes, so an import's upload link can't be used for a page's file
+ * (or a link to read a file for anything else), and the other way round.
+ */
+function signFor(purpose: string, payload: string) {
+  return createHmac("sha256", key(purpose)).update(payload).digest("base64url");
+}
+
+export function claimToken<T extends { e: number }>(
+  purpose: "page-upload" | "page-read",
+  claim: T,
+): string {
+  const payload = Buffer.from(JSON.stringify(claim)).toString("base64url");
+  return `${payload}.${signFor(purpose, payload)}`;
+}
+
+/** The claim in a signed link for `purpose`, or null when forged or expired. */
+export function readClaimToken<T extends { e: number }>(
+  purpose: "page-upload" | "page-read",
+  token: string,
+  now = Date.now(),
+): T | null {
+  if (!importsEnabled()) return null;
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return null;
+  const expected = Buffer.from(signFor(purpose, payload));
+  const given = Buffer.from(signature);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given))
+    return null;
+  try {
+    const claim = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as T;
+    return claim.e * 1000 > now ? claim : null;
+  } catch {
+    return null;
+  }
+}

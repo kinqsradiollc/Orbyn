@@ -174,7 +174,8 @@ export function DocHistory({
                   <span className="doc-initials" aria-hidden="true">
                     {initials(v.author)}
                   </span>{" "}
-                  {v.author ?? "Someone"} · {v.blocks}{" "}
+                  {v.author ?? "Someone"}
+                  {v.via_agent ? ` via ${v.via_agent}` : ""} · {v.blocks}{" "}
                   {v.blocks === 1 ? "block" : "blocks"}
                   {v.title !== doc.title && v.title ? ` · “${v.title}”` : ""}
                 </small>

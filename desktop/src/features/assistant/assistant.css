@@ -837,3 +837,62 @@
     font-size: 16px;
   }
 }
+
+/* Saved chats about the scoped project, under the composer. */
+.ai-saved {
+  width: 100%;
+  max-width: 640px;
+  margin: 14px auto 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.ai-saved h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ai-saved ul {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+.ai-saved li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-saved-open {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font-size: 13px;
+}
+.ai-saved-open span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-saved-open small {
+  flex-shrink: 0;
+  color: var(--color-textMuted);
+}
+.ai-saved-open:hover:not(:disabled) {
+  background: var(--color-sunken);
+}
+.ai-saved > small {
+  font-size: 11px;
+}

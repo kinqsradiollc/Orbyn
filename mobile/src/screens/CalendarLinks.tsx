@@ -114,7 +114,10 @@ export function CalendarFeedCard() {
         <View style={s.switchRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Include sessions</Text>
-            <Text style={shared.small}>Sessions show as “Focus: task”.</Text>
+            <Text style={shared.small}>
+              Sessions show as “Session: task” with its deadline. All-day tasks
+              and events show as all-day, with no time.
+            </Text>
           </View>
           <Switch
             value={!!settings?.include_blocks}

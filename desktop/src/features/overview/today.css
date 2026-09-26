@@ -126,6 +126,38 @@ button.today-title:hover {
 .today-list.is-unfinished .today-buttons {
   grid-column: 2;
 }
+/* Session check-in: the same rows, three answers, and what an answer did. */
+.today-checkin .today-buttons {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.today-more-time {
+  align-items: center;
+  gap: 6px;
+}
+.today-more-chip {
+  border: 0;
+  cursor: pointer;
+}
+.today-more-chip:hover {
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+}
+.today-checkin-said {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 0 18px 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  font-size: 13px;
+}
+.today-checkin-said .text-button {
+  padding: 0;
+  font-size: 13px;
+}
 /* Over already: quieter, still readable. */
 .today-row.is-past {
   background: var(--color-sunken);
@@ -211,5 +243,13 @@ button.today-title:hover {
   .today-list.is-unfinished .today-main,
   .today-list.is-unfinished .today-buttons {
     grid-row: 1;
+  }
+}
+
+/* A finger needs a 44px target; padding grows it, the layout doesn't move. */
+@media (max-width: 600px), (pointer: coarse) {
+  .today-title {
+    padding: 13px 0;
+    margin-block: -13px;
   }
 }
