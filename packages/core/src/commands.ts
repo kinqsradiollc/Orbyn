@@ -795,7 +795,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Remove your account and everything in it",
     "privacy",
     "Delete my account",
-    { section: "Privacy" },
+    { section: "Delete my account" },
     "close remove erase",
   ),
 ];

@@ -23,6 +23,7 @@ import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { Switch } from "../../components/Switch";
+import { AssistChips } from "../../components/AssistChips";
 
 const KEEP_KEY = "orbyn-keep-originals";
 
@@ -331,11 +332,14 @@ export function UploadsList({
   onImport,
   onScan,
   onMakeCards,
+  onChanged,
   caps,
 }: {
   caps: ImportCapabilities | null;
   onScan?: () => void;
-  onMakeCards?: (docId: string, title: string) => void;
+  onMakeCards?: (docId: string, title: string, max?: number) => void;
+  /** The assistant's chips added tasks or changed a page (AI-01). */
+  onChanged?: () => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -499,13 +503,15 @@ export function UploadsList({
                 disabled={false}
                 onPress={() => onFile(doc)}
               />
-              {onMakeCards && (
-                <SmallAction
-                  label="Make cards"
-                  disabled={false}
-                  onPress={() => onMakeCards(doc.id, doc.title || "Untitled")}
-                />
-              )}
+            </View>
+            {/* The assistant's chips, as suggestions (AI-01). */}
+            <View style={s.assist}>
+              <AssistChips
+                docId={doc.id}
+                title={doc.title || "Untitled"}
+                onMakeCards={onMakeCards}
+                onChanged={onChanged}
+              />
             </View>
           </View>
         </View>
@@ -622,5 +628,6 @@ const s = themed(() =>
       backgroundColor: colors.accent,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+    assist: { marginTop: 10 },
   }),
 );

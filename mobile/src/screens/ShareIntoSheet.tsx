@@ -16,6 +16,7 @@ import {
   type ShareChoice,
   type SharedContent,
 } from "@orbyn/core";
+import { AssistChips } from "../components/AssistChips";
 import { BottomSheet } from "../components/BottomSheet";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
@@ -336,6 +337,14 @@ export function ShareIntoSheet({
               </Text>
             )}
           </View>
+
+          {/* Optional: the assistant reads the words shared in (AI-01). */}
+          {(shared.text ?? "").trim().length >= 80 && (
+            <AssistChips
+              text={shared.text}
+              title={title || site || "What you shared"}
+            />
+          )}
 
           {kept.length > 0 && (
             <ChipRow label="Places used last">

@@ -211,6 +211,43 @@ export function linkQueryAt(
 }
 
 /**
+ * "/" typed at the start of a line or after a space, and the letters after
+ * it up to the caret (MOB-13): the phone offers the kinds of line under the
+ * line being edited. Null once anything but letters, digits or a space
+ * follows, or past 24 characters, so a slash in "and/or" or a web address
+ * stays plain text.
+ */
+export function slashQueryAt(
+  text: string,
+  caret: number,
+): { start: number; query: string } | null {
+  const upTo = text.slice(0, caret);
+  const m = /(^|\s)\/([a-z0-9 ]{0,24})$/i.exec(upTo);
+  if (!m) return null;
+  const query = m[2];
+  // Two spaces in a row, or a trailing space before any letter, ends it.
+  if (/^\s|\s\s/.test(query)) return null;
+  return { start: upTo.length - query.length - 1, query };
+}
+
+/**
+ * Whether a choice in the "/" list answers what was typed: every word is at
+ * the start of a word in its label, or in its other words.
+ */
+export function slashMatches(
+  query: string,
+  choice: { label: string; keywords?: string },
+): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = `${choice.label} ${choice.keywords ?? ""}`
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return words.every((w) => hay.some((h) => h.startsWith(w)));
+}
+
+/**
  * Put a link where `[[words` was typed (from `start` to `caret`), with a
  * space after it. Returns the new line and where the caret goes.
  */

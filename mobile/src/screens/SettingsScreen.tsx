@@ -1,6 +1,10 @@
-import { SettingsSection } from "./settings/SettingsSection";
+import {
+  SettingsAnchor,
+  SettingsFocus,
+  SettingsSection,
+} from "./settings/SettingsSection";
 import { PrivacySection } from "./settings/PrivacySection";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -23,7 +27,20 @@ import {
   type PlannerAnalytics,
   type ChatChannel,
   type Passkey,
+  csvFormat,
+  searchSettings,
+  sectionKey,
+  type PagesImportSummary,
+  type SettingEntry,
+  type TaskImportFormat,
 } from "@orbyn/core";
+import {
+  hidesHeaderWhileReading,
+  readsFirst,
+  setHidesHeaderWhileReading,
+  setReadsFirst,
+} from "../lib/reading";
+import { pickFileBase64, pickFileText } from "../lib/pickFile";
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
 import { Chip, ChipRow } from "../components/Chip";
@@ -107,6 +124,9 @@ export function SettingsScreen({
   onOpenTags,
   onOpenHabits,
   onOpenSync,
+  onOpenWhatsNew,
+  openAt,
+  scrollTo,
   onAccountDeleted,
 }: {
   user: User | null;
@@ -121,6 +141,12 @@ export function SettingsScreen({
   onOpenHabits: () => void;
   /** Sync and devices: what's waiting on this phone, and where Orbyn is open. */
   onOpenSync: () => void;
+  /** What's new in Orbyn (DSN-03). */
+  onOpenWhatsNew?: () => void;
+  /** A section to open at and scroll to, chosen from a search (NAV-10). */
+  openAt?: { section: string; seq: number } | null;
+  /** Scroll Settings to a place in it. */
+  scrollTo?: (y: number) => void;
   /** After deleting your own account: leave the app. */
   onAccountDeleted: () => void;
 }) {
@@ -139,13 +165,55 @@ export function SettingsScreen({
   const [disabling, setDisabling] = useState(false);
   const [exported, setExported] = useState("");
   const [importText, setImportText] = useState("");
-  const [importFormat, setImportFormat] = useState<"csv" | "orbyn">("csv");
+  const [importFormat, setImportFormat] = useState<TaskImportFormat>("csv");
   const [importPreview, setImportPreview] = useState<ImportSummary | null>(
     null,
   );
   const [inbox, setInbox] = useState<InboxInfo | null>(null);
   const [analytics, setAnalytics] = useState<PlannerAnalytics | null>(null);
   const [chat, setChat] = useState<ChatChannel | null>(null);
+  // Search in Settings (NAV-10): the same index as the web's and ⌘K's.
+  const [query, setQuery] = useState("");
+  const [focus, setFocus] = useState<{ key: string; seq: number } | null>(null);
+  useEffect(() => {
+    if (openAt) setFocus({ key: sectionKey(openAt.section), seq: openAt.seq });
+  }, [openAt?.seq]);
+  const found = query.trim() ? searchSettings(query, "phone").slice(0, 8) : [];
+  const sheets: Record<string, () => void> = {
+    status: onOpenStatus,
+    planning: onOpenPlanning,
+    tags: onOpenTags,
+    habits: onOpenHabits,
+    connections: onOpenConnections,
+    sync: onOpenSync,
+  };
+  const goTo = (entry: SettingEntry) => {
+    const place = entry.phone;
+    if (!place) return;
+    setQuery("");
+    if ("sheet" in place) return sheets[place.sheet]?.();
+    setFocus({ key: sectionKey(place.section), seq: Date.now() });
+  };
+  const focusValue = useMemo(
+    () => (focus ? { ...focus, scrollTo: (y: number) => scrollTo?.(y) } : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focus?.key, focus?.seq],
+  );
+  // Reading on this phone (EDT-10, MOB-03).
+  const [readFirst, setReadFirst] = useState(readsFirst);
+  const [hideHeader, setHideHeader] = useState(hidesHeaderWhileReading);
+  // Pages from Markdown or Notion (DATA-08).
+  const [pageFormat, setPageFormat] = useState<"markdown" | "notion">(
+    "markdown",
+  );
+  const [pageFile, setPageFile] = useState<{
+    name: string;
+    data: string;
+  } | null>(null);
+  const [pagePreview, setPagePreview] = useState<PagesImportSummary | null>(
+    null,
+  );
+  const [pagesDone, setPagesDone] = useState("");
   const [chatKind, setChatKind] = useState<"slack" | "discord">("slack");
   const [chatUrl, setChatUrl] = useState("");
   const takePrefs = (p: PlannerPrefs) => {
@@ -193,7 +261,7 @@ export function SettingsScreen({
     };
   }, []);
   return (
-    <>
+    <SettingsFocus.Provider value={focusValue}>
       <View style={[shared.card, s.account]}>
         <View style={s.avatar}>
           <Text style={s.avatarText}>
@@ -216,6 +284,53 @@ export function SettingsScreen({
         </View>
       </View>
 
+      {/* Search in Settings (NAV-10): a setting by name, opened in place. */}
+      <View style={[shared.card, s.searchBox]}>
+        <Icon name="search" size={16} color={colors.muted} />
+        <TextInput
+          style={s.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search settings"
+          placeholderTextColor={colors.faint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel="Search settings"
+          onSubmitEditing={() => found[0] && goTo(found[0])}
+        />
+        {!!query && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear the search"
+            hitSlop={10}
+            onPress={() => setQuery("")}
+          >
+            <Icon name="x" size={16} color={colors.muted} />
+          </Pressable>
+        )}
+      </View>
+      {!!query.trim() && (
+        <View style={[shared.card, s.rows]}>
+          {found.length ? (
+            found.map((e, n) => (
+              <LinkRow
+                key={e.id}
+                divider={n > 0}
+                icon="settings"
+                title={e.label}
+                detail={e.hint}
+                onPress={() => goTo(e)}
+              />
+            ))
+          ) : (
+            <Text style={[shared.small, s.noMatch]}>
+              No setting matches “{query.trim()}”.
+            </Text>
+          )}
+        </View>
+      )}
+
       {/* Teams, Documents, Booking and the admin console are destinations on
           the desktop's sidebar, not settings; they live on Browse now, where
           the sidebar's other sections are. What is left here is what the
@@ -235,6 +350,17 @@ export function SettingsScreen({
           detail="What's waiting on this phone, and where Orbyn is open"
           onPress={onOpenSync}
         />
+        {onOpenWhatsNew && (
+          <SettingsAnchor name="What's new">
+            <LinkRow
+              divider
+              icon="sparkles"
+              title="What's new"
+              detail="What changed in Orbyn lately"
+              onPress={onOpenWhatsNew}
+            />
+          </SettingsAnchor>
+        )}
       </View>
 
       <Text style={[shared.eyebrow, s.section]}>PLANNING</Text>
@@ -269,7 +395,7 @@ export function SettingsScreen({
       </View>
 
       {analytics && analytics.planned_minutes > 0 && (
-        <>
+        <SettingsAnchor name="Where your time goes">
           <Text style={[shared.eyebrow, s.section]}>WHERE YOUR TIME GOES</Text>
           <View style={shared.card}>
             <Text style={shared.body}>
@@ -294,7 +420,7 @@ export function SettingsScreen({
               </View>
             ))}
           </View>
-        </>
+        </SettingsAnchor>
       )}
 
       {countBlocks !== null && (
@@ -325,7 +451,9 @@ export function SettingsScreen({
         </>
       )}
 
-      <Text style={[shared.eyebrow, s.section]}>APPEARANCE</Text>
+      <SettingsAnchor name="Appearance">
+        <Text style={[shared.eyebrow, s.section]}>APPEARANCE</Text>
+      </SettingsAnchor>
       <View style={shared.card}>
         <Text style={s.prefTitle}>Theme</Text>
         <Text style={[shared.small, s.prefText]}>
@@ -339,6 +467,45 @@ export function SettingsScreen({
           onChange={theme.setPreference}
         />
       </View>
+
+      <SettingsSection title="Reading">
+        <View style={s.preference}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.prefTitle}>Open pages for reading</Text>
+            <Text style={shared.small}>
+              No handles or keyboard until you want them. Double-tap a line, or
+              choose Edit this page, to change it.
+            </Text>
+          </View>
+          <Switch
+            value={readFirst}
+            trackColor={{ true: colors.accent }}
+            accessibilityLabel="Open pages for reading"
+            onValueChange={(on) => {
+              setReadFirst(on);
+              setReadsFirst(on);
+            }}
+          />
+        </View>
+        <View style={[s.preference, { marginTop: 16 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.prefTitle}>Hide the header while reading</Text>
+            <Text style={shared.small}>
+              On a long page the header steps aside as you read down, and comes
+              back when you scroll up.
+            </Text>
+          </View>
+          <Switch
+            value={hideHeader}
+            trackColor={{ true: colors.accent }}
+            accessibilityLabel="Hide the header while reading"
+            onValueChange={(on) => {
+              setHideHeader(on);
+              setHidesHeaderWhileReading(on);
+            }}
+          />
+        </View>
+      </SettingsSection>
 
       <SettingsSection title="Stay in the loop">
         <View style={s.preference}>
@@ -727,7 +894,7 @@ export function SettingsScreen({
       <SettingsSection title="Import & export">
         <Text style={shared.body}>
           Take everything with you — every page as Markdown in its folders — or
-          bring tasks in from another app.
+          bring tasks and pages in from another app.
         </Text>
         <Button
           secondary
@@ -763,12 +930,21 @@ export function SettingsScreen({
             accessibilityLabel="Your export — long-press to copy"
           />
         )}
-        <Text style={[shared.label, { marginTop: 16 }]}>Import</Text>
+        <Text style={[shared.label, { marginTop: 16 }]}>Tasks</Text>
+        <Text style={[shared.small, { marginTop: 4 }]}>
+          An Orbyn export, a Todoist or TickTick CSV, or any CSV with a title
+          column. Nothing is written until you confirm.
+        </Text>
         <View style={{ marginTop: 8 }}>
           <Segmented
             accessibilityLabel="Import format"
-            options={["csv", "orbyn"] as const}
-            labels={{ csv: "CSV", orbyn: "Orbyn JSON" }}
+            options={["csv", "todoist", "ticktick", "orbyn"] as const}
+            labels={{
+              csv: "CSV",
+              todoist: "Todoist",
+              ticktick: "TickTick",
+              orbyn: "Orbyn",
+            }}
             value={importFormat}
             onChange={(f) => {
               setImportFormat(f);
@@ -788,6 +964,26 @@ export function SettingsScreen({
           }}
         />
         <View style={s.importRow}>
+          <SmallAction
+            label="Choose a file…"
+            disabled={busy}
+            onPress={() =>
+              void act(async () => {
+                const file = await pickFileText([
+                  "text/csv",
+                  "text/comma-separated-values",
+                  "application/json",
+                  "text/plain",
+                ]);
+                if (!file) return;
+                setImportText(file.text);
+                setImportFormat(
+                  /\.csv$/i.test(file.name) ? csvFormat(file.text) : "orbyn",
+                );
+                setImportPreview(null);
+              })
+            }
+          />
           <SmallAction
             label="Preview"
             disabled={busy || !importText.trim()}
@@ -832,6 +1028,113 @@ export function SettingsScreen({
             {importPreview.skipped ? `, ${importPreview.skipped} skipped` : ""}.
           </Text>
         )}
+
+        <Text style={[shared.label, { marginTop: 20 }]}>
+          Pages from Markdown or Notion
+        </Text>
+        <Text style={[shared.small, { marginTop: 4 }]}>
+          A folder of Markdown notes as a .zip (or one .md file), or a Notion
+          export (Markdown & CSV). Pages keep their folders, [[links]] between
+          them work, and Notion databases become projects with their rows as
+          tasks.
+        </Text>
+        <View style={{ marginTop: 8 }}>
+          <Segmented
+            accessibilityLabel="Pages from"
+            options={["markdown", "notion"] as const}
+            labels={{ markdown: "Markdown", notion: "Notion" }}
+            value={pageFormat}
+            onChange={(f) => {
+              setPageFormat(f);
+              setPagePreview(null);
+            }}
+          />
+        </View>
+        <View style={s.importRow}>
+          <SmallAction
+            label={pageFile ? pageFile.name : "Choose a file…"}
+            disabled={busy}
+            onPress={() =>
+              void act(async () => {
+                const file = await pickFileBase64([
+                  "application/zip",
+                  "application/x-zip-compressed",
+                  "text/markdown",
+                  "text/plain",
+                  "*/*",
+                ]);
+                if (!file) return;
+                setPageFile({ name: file.name, data: file.data });
+                setPagePreview(null);
+                setPagesDone("");
+              })
+            }
+          />
+          <SmallAction
+            label="Preview"
+            disabled={busy || !pageFile}
+            onPress={() =>
+              void act(async () => {
+                setPagePreview(
+                  await client.importPages({
+                    format: pageFormat,
+                    file_name: pageFile!.name,
+                    data: pageFile!.data,
+                    dry_run: true,
+                  }),
+                );
+              })
+            }
+          />
+          {pagePreview &&
+            !pagePreview.errors.length &&
+            (pagePreview.pages > 0 || pagePreview.projects > 0) && (
+              <SmallAction
+                label={`Import ${pagesText(pagePreview.pages, "page")}`}
+                disabled={busy}
+                onPress={() =>
+                  void act(async () => {
+                    const done = await client.importPages({
+                      format: pageFormat,
+                      file_name: pageFile!.name,
+                      data: pageFile!.data,
+                      dry_run: false,
+                    });
+                    setPagePreview(null);
+                    setPageFile(null);
+                    setPagesDone(
+                      `Imported ${describePages(done)}. They're in Documents.`,
+                    );
+                  })
+                }
+              />
+            )}
+        </View>
+        {pagePreview && (
+          <View style={{ marginTop: 8, gap: 4 }}>
+            {!pagePreview.errors.length && (
+              <Text style={shared.small}>{describePages(pagePreview)}.</Text>
+            )}
+            {pagePreview.sample.length > 0 && (
+              <Text style={shared.small}>
+                e.g. {pagePreview.sample.join(", ")}
+              </Text>
+            )}
+            {pagePreview.left_out.length > 0 && (
+              <Text style={shared.small}>
+                Left out: {pagePreview.left_out.join(", ")}.
+              </Text>
+            )}
+            {pagePreview.errors.map((e, i) => (
+              <Text key={i} style={[shared.small, { color: colors.danger }]}>
+                {e}
+              </Text>
+            ))}
+          </View>
+        )}
+        {!!pagesDone && (
+          <Text style={[shared.small, { marginTop: 8 }]}>{pagesDone}</Text>
+        )}
       </SettingsSection>
 
       <PrivacySection
@@ -855,9 +1158,25 @@ export function SettingsScreen({
         onPress={onSignOut}
         style={s.signOut}
       />
-    </>
+    </SettingsFocus.Provider>
   );
 }
+
+const pagesText = (n: number, word: string) =>
+  `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** What a page import brings in, in a few words. */
+const describePages = (s: PagesImportSummary) =>
+  [
+    pagesText(s.pages, "page"),
+    s.folders ? pagesText(s.folders, "folder") : "",
+    s.projects
+      ? `${pagesText(s.projects, "project")} with ${pagesText(s.tasks, "task")}`
+      : "",
+    s.links ? `${pagesText(s.links, "link")} between them` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
 
 /** Tappable settings row: icon, title, detail, chevron. */
 function LinkRow({
@@ -960,7 +1279,28 @@ const s = themed(() =>
       fontFamily: fonts.regular,
       fontSize: 12,
     },
-    importRow: { flexDirection: "row", gap: 12, marginTop: 10 },
+    importRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 12,
+      marginTop: 10,
+    },
+    searchBox: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
+      marginTop: 12,
+    },
+    searchInput: {
+      flex: 1,
+      minHeight: 32,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      color: colors.text,
+      padding: 0,
+    },
+    noMatch: { padding: 18 },
     recoveryCode: {
       fontFamily: fonts.semibold,
       fontSize: 15,

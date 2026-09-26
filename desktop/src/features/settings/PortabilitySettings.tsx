@@ -3,20 +3,16 @@ import { FilePicker } from "../../components/FilePicker";
 import { Select } from "../../components/Select";
 import { useState } from "react";
 import { Archive, Download, Upload } from "lucide-react";
-import type { ImportSummary, PagesImportSummary } from "@orbyn/core";
+import {
+  csvFormat,
+  type ImportSummary,
+  type PagesImportSummary,
+  type TaskImportFormat,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 
-type TaskFormat = "orbyn" | "csv" | "todoist" | "ticktick";
-
-/** Which app a CSV came from, by its header (DATA-08). */
-export function csvFormat(text: string): TaskFormat {
-  const head = text.slice(0, 2000).toLowerCase();
-  if (/^\ufeff?"?type"?,"?content"?/.test(head)) return "todoist";
-  if (head.includes('"list name"') || head.includes("list name,"))
-    return "ticktick";
-  return "csv";
-}
+type TaskFormat = TaskImportFormat;
 
 /** A file as base64, for sending in one request. */
 const base64Of = (file: File) =>

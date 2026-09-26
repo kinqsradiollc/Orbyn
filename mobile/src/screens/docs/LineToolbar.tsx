@@ -39,7 +39,7 @@ export type LineInsert =
   | "tasks"
   | "diagram";
 
-const INSERTS: { key: LineInsert; label: string; hint: string }[] = [
+export const INSERTS: { key: LineInsert; label: string; hint: string }[] = [
   { key: "table", label: "Table", hint: "Rows and columns" },
   { key: "photo", label: "Take a photo", hint: "A picture from the camera" },
   { key: "picture", label: "Picture", hint: "From your photos" },

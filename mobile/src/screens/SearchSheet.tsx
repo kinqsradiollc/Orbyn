@@ -8,6 +8,13 @@ import {
   View,
 } from "react-native";
 import {
+  commandsOn,
+  EMPTY_MEMORY,
+  orderCommands,
+  readMemory,
+  recordCommand,
+  type CommandDef,
+  type CommandIcon,
   editedSince,
   findNamed,
   findSearchTeam,
@@ -31,6 +38,7 @@ import { Icon, type IconName } from "../components/Icon";
 import { ActionSheet, type MoreAction } from "../components/MoreMenu";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
+import { readLocal, saveLocal } from "../lib/localPrefs";
 import { errorText } from "../lib/errors";
 import { usePlanning } from "../lib/planningContext";
 import { shared } from "../styles";
@@ -57,6 +65,51 @@ const ICONS: Record<string, IconName> = {
   record: "check",
 };
 
+/** The command list's icons, drawn with the phone's own set. */
+const COMMAND_ICONS: Record<CommandIcon, IconName> = {
+  view: "arrowRight",
+  plus: "plus",
+  calendarPlus: "calendar",
+  filePlus: "filePlus",
+  template: "layoutTemplate",
+  boxes: "boxes",
+  wand: "sparkles",
+  focus: "target",
+  calendar: "calendar",
+  keyboard: "keyboardDown",
+  panel: "layoutGrid",
+  search: "search",
+  link: "link",
+  copy: "copy",
+  download: "download",
+  history: "clock",
+  sparkles: "sparkles",
+  shield: "shieldCheck",
+  eye: "info",
+  news: "sparkles",
+  upload: "download",
+  activity: "activity",
+  settings: "settings",
+};
+
+const MEMORY_KEY = "orbyn-phone-commands";
+
+/** What someone did from here lately, kept on this phone. */
+const memoryNow = () => {
+  const raw = readLocal(MEMORY_KEY);
+  return raw ? readMemory(raw) : EMPTY_MEMORY;
+};
+
+/** With nothing typed, the commands offered after what was opened. */
+const STARTERS = [
+  "new.task",
+  "new.page",
+  "plan.day",
+  "plan.focus",
+  "app.changes",
+  "app.whats-new",
+];
+
 const plain = (snippet: string | null | undefined) =>
   snippetRuns(snippet ?? "")
     .map((r) => r.text)
@@ -65,10 +118,11 @@ const plain = (snippet: string | null | undefined) =>
     .trim();
 
 /**
- * Search everything (SRCH-01): pages, tasks and projects, with the same
+ * Search & do (SRCH-01, MOB-10): pages, tasks and projects, with the same
  * filters and operators as the web's ⌘K (tag:, project:, team:, is:,
- * edited:) and one line saying what is being searched. Nothing typed lists
- * what was opened last, on any device.
+ * edited:), and below them the commands from the same list ⌘K reads, the
+ * settings among them. Nothing typed lists what was opened last, on any
+ * device, then a few things to do.
  */
 export function SearchSheet({
   visible,
@@ -77,6 +131,8 @@ export function SearchSheet({
   onClose,
   onDismiss,
   onOpen,
+  canRun,
+  onCommand,
 }: {
   visible: boolean;
   /** Words to start with (orbyn://search?q=…). */
@@ -86,16 +142,26 @@ export function SearchSheet({
   onDismiss?: () => void;
   /** Open what was chosen: a page (at a line), a task or event, a project. */
   onOpen: (type: string, id: string, blockId: string | null) => void;
+  /** Whether the phone can run a command from the list (MOB-10). */
+  canRun?: (command: CommandDef) => boolean;
+  /** Run a command: what it opens comes over the search. */
+  onCommand?: (command: CommandDef) => void;
 }) {
   return (
     <Sheet
       visible={visible}
-      title="Search"
+      title="Search & do"
       onClose={onClose}
       onDismiss={onDismiss}
     >
       {visible && (
-        <Body initialQuery={initialQuery} teams={teams} onOpen={onOpen} />
+        <Body
+          initialQuery={initialQuery}
+          teams={teams}
+          onOpen={onOpen}
+          canRun={canRun}
+          onCommand={onCommand}
+        />
       )}
     </Sheet>
   );
@@ -105,10 +171,14 @@ function Body({
   initialQuery,
   teams,
   onOpen,
+  canRun,
+  onCommand,
 }: {
   initialQuery: string;
   teams: Team[];
   onOpen: (type: string, id: string, blockId: string | null) => void;
+  canRun?: (command: CommandDef) => boolean;
+  onCommand?: (command: CommandDef) => void;
 }) {
   const { tags } = usePlanning();
   const [query, setQuery] = useState(initialQuery);
@@ -277,6 +347,32 @@ function Body({
               }))
             : [];
 
+  // The commands, from the one list ⌘K reads: what matches the words, or a
+  // few to start with; filters mean a search, so none then.
+  const [memory, setMemory] = useState(memoryNow);
+  const phone = new Set(commandsOn("phone").map((c) => c.id));
+  const commands =
+    !onCommand || filtering
+      ? []
+      : orderCommands(
+          words,
+          memory,
+          (c) =>
+            (phone.has(c.id) || (!!c.setting && c.on !== "web")) &&
+            c.needs !== "page" &&
+            (canRun?.(c) ?? true) &&
+            (!!words.trim() ||
+              STARTERS.includes(c.id) ||
+              memory.recent.includes(c.id) ||
+              memory.pinned.includes(c.id)),
+        ).slice(0, words.trim() ? 8 : 6);
+  const runCommand = (c: CommandDef) => {
+    const next = recordCommand(memory, c.id);
+    setMemory(next);
+    saveLocal(MEMORY_KEY, JSON.stringify(next));
+    onCommand?.(c);
+  };
+
   const summary = filtering
     ? unknown || searchSummary(filters)
     : words
@@ -295,7 +391,7 @@ function Body({
             style={s.input}
             value={query}
             onChangeText={setQuery}
-            placeholder="Search pages, tasks and projects"
+            placeholder="Search, or type what to do"
             placeholderTextColor={colors.faint}
             autoFocus
             autoCapitalize="none"
@@ -407,6 +503,39 @@ function Body({
             ))
           )}
         </View>
+        {commands.length > 0 && (
+          <>
+            <Text style={s.heading} accessibilityRole="header">
+              Do
+            </Text>
+            <View style={[shared.card, s.results]}>
+              {commands.map((c, n) => (
+                <Pressable
+                  key={c.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={c.label}
+                  onPress={() => runCommand(c)}
+                  style={({ pressed }) => [
+                    s.row,
+                    n > 0 && s.divider,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Icon
+                    name={COMMAND_ICONS[c.icon]}
+                    size={16}
+                    color={colors.textSoft}
+                  />
+                  <View style={s.rowText}>
+                    <Text style={s.title} numberOfLines={1}>
+                      {c.label}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
       </View>
       <ActionSheet
         visible={!!picking}
@@ -442,6 +571,12 @@ const s = themed(() =>
     },
     chips: { flexDirection: "row", gap: 8, paddingVertical: 2 },
     summary: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
+    heading: {
+      marginTop: 4,
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
     error: { fontFamily: fonts.regular, fontSize: 13, color: colors.danger },
     results: { paddingVertical: 4 },
     empty: {

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import {
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -8,12 +9,15 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
+import { useSwipeDown } from "../hooks/useSwipeDown";
 import { colors, controls, fonts, radii, themed, tint } from "../theme";
 
 export type MoreAction = {
   label: string;
   onPress: () => void;
+  /** A line icon before the verb (the + sheet, a row's long-press menu). */
+  icon?: IconName;
   /** Red, and listed last: delete, leave, remove. */
   destructive?: boolean;
   disabled?: boolean;
@@ -67,7 +71,9 @@ export function MoreMenu({
 }
 
 /**
- * A menu that rises from the bottom: a list of actions and Cancel. The
+ * A menu that rises from the bottom (MOB-04): a grab handle, the thing it is
+ * for, its actions as rows of one height with no lines between them, and
+ * Cancel. Pulled down by the handle, or a tap above it, it closes. The
  * chosen action runs once the menu has gone (on iOS a new sheet, or the
  * share sheet, can't open while this one is still leaving).
  */
@@ -97,75 +103,87 @@ export function ActionSheet({
     chosen.current = null;
     next?.();
   };
+  const swipe = useSwipeDown(visible, onClose);
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="slide"
       onRequestClose={onClose}
       onDismiss={Platform.OS === "ios" ? run : undefined}
     >
-      <Pressable
-        style={s.backdrop}
-        accessibilityRole="button"
-        accessibilityLabel="Close menu"
-        onPress={onClose}
-      >
-        <View
-          style={[s.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}
+      <View style={s.fill}>
+        <Pressable
+          style={s.backdrop}
+          accessibilityRole="button"
+          accessibilityLabel="Close menu"
+          onPress={onClose}
+        />
+        <Animated.View
+          style={[
+            s.sheet,
+            { paddingBottom: Math.max(insets.bottom, 12) },
+            { transform: [{ translateY: swipe.offset }] },
+          ]}
           accessibilityRole="menu"
           accessibilityLabel={label}
+          accessibilityViewIsModal
         >
-          <View style={s.group}>
+          <View {...swipe.handlers} style={s.grab}>
+            <View style={s.handle} />
             {!!title && (
               <Text style={s.title} numberOfLines={2}>
                 {title}
               </Text>
             )}
-            {shown.map((a, n) => (
-              <Pressable
-                key={a.label}
-                accessibilityRole="menuitem"
-                disabled={a.disabled}
-                onPress={() => {
-                  chosen.current = a.onPress;
-                  onClose();
-                  // Only iOS waits for the menu to go before the next thing,
-                  // and not for ever should the dismissal go unreported.
-                  if (Platform.OS !== "ios") run();
-                  else setTimeout(run, 600);
-                }}
-                style={({ pressed }) => [
-                  s.item,
-                  (n > 0 || !!title) && s.divided,
-                  pressed && { backgroundColor: colors.surfaceMuted },
-                  a.disabled && { opacity: 0.45 },
-                ]}
-              >
-                <Text
-                  style={[
-                    s.itemText,
-                    a.destructive && { color: colors.danger },
-                  ]}
-                >
-                  {a.label}
-                </Text>
-              </Pressable>
-            ))}
           </View>
+          {shown.map((a) => (
+            <Pressable
+              key={a.label}
+              accessibilityRole="menuitem"
+              disabled={a.disabled}
+              onPress={() => {
+                chosen.current = a.onPress;
+                onClose();
+                // Only iOS waits for the menu to go before the next thing,
+                // and not for ever should the dismissal go unreported.
+                if (Platform.OS !== "ios") run();
+                else setTimeout(run, 600);
+              }}
+              style={({ pressed }) => [
+                s.item,
+                pressed && { backgroundColor: colors.surfaceMuted },
+                a.disabled && { opacity: 0.45 },
+              ]}
+            >
+              {a.icon && (
+                <Icon
+                  name={a.icon}
+                  size={18}
+                  color={a.destructive ? colors.danger : colors.textSoft}
+                />
+              )}
+              <Text
+                style={[s.itemText, a.destructive && { color: colors.danger }]}
+                numberOfLines={1}
+              >
+                {a.label}
+              </Text>
+            </Pressable>
+          ))}
           <Pressable
             accessibilityRole="button"
             onPress={onClose}
             style={({ pressed }) => [
-              s.group,
               s.item,
+              s.cancelRow,
               pressed && { backgroundColor: colors.surfaceMuted },
             ]}
           >
             <Text style={[s.itemText, s.cancel]}>Cancel</Text>
           </Pressable>
-        </View>
-      </Pressable>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
@@ -179,33 +197,59 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "center",
     },
+    fill: { flex: 1, justifyContent: "flex-end" },
     backdrop: {
-      flex: 1,
-      justifyContent: "flex-end",
+      position: "absolute",
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
       backgroundColor: tint(colors.shadow, 0.35),
     },
-    sheet: { gap: 8, paddingHorizontal: 12, paddingTop: 12 },
-    group: {
-      overflow: "hidden",
-      borderRadius: radii.card,
+    sheet: {
+      width: "100%",
+      maxWidth: 640,
+      maxHeight: "88%",
+      alignSelf: "center",
+      paddingTop: 8,
+      paddingHorizontal: 8,
+      borderTopLeftRadius: radii.card,
+      borderTopRightRadius: radii.card,
       backgroundColor: colors.surface,
+    },
+    grab: { paddingBottom: 4 },
+    handle: {
+      alignSelf: "center",
+      width: 36,
+      height: 5,
+      borderRadius: radii.pill,
+      marginBottom: 6,
+      backgroundColor: colors.border,
     },
     title: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingBottom: 6,
       textAlign: "center",
       fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.muted,
     },
+    // Every row the same height, a line icon and a verb, no lines between.
     item: {
       minHeight: controls.tap + 8,
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
+      gap: 14,
       paddingHorizontal: 16,
+      borderRadius: radii.input,
     },
-    divided: { borderTopWidth: 1, borderTopColor: colors.divider },
-    itemText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
-    cancel: { fontFamily: fonts.semibold, color: colors.textSoft },
+    itemText: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      color: colors.text,
+    },
+    cancelRow: { marginTop: 4 },
+    cancel: { textAlign: "center", color: colors.textSoft },
   }),
 );

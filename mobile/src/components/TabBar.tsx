@@ -111,6 +111,9 @@ function TabButton({
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.8}
+        // Text follows the phone's text size (MOB-11); a tab label grows
+        // only so far, so five still fit across.
+        maxFontSizeMultiplier={1.4}
         style={[s.label, active && s.labelActive]}
       >
         {label}

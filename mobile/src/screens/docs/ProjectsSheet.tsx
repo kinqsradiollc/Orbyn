@@ -38,7 +38,8 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { Pill } from "../../components/Pill";
 import { ClockField, DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import { MoreMenu } from "../../components/MoreMenu";
+import { ActionSheet, MoreMenu } from "../../components/MoreMenu";
+import { showToast } from "../../components/Toast";
 import { copyLink, shareLink } from "../../lib/share";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
@@ -142,6 +143,8 @@ export function ProjectsSheet({
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
+  /** A project card held down: its menu (MOB-07). */
+  const [heldProject, setHeldProject] = useState<Project | null>(null);
   // Opened: it leads the search's recent list, and ⌘K's on the web.
   useEffect(() => {
     if (open?.id) void client.recordRecent("project", open.id).catch(() => {});
@@ -1980,6 +1983,16 @@ export function ProjectsSheet({
                       setSection("tasks");
                     })
                   }
+                  delayLongPress={380}
+                  onLongPress={() => setHeldProject(p)}
+                  accessibilityHint="Touch and hold for more"
+                  accessibilityActions={[
+                    { name: "longpress", label: "More for this project" },
+                  ]}
+                  onAccessibilityAction={(e) => {
+                    if (e.nativeEvent.actionName === "longpress")
+                      setHeldProject(p);
+                  }}
                 >
                   <View style={styles.cardTop}>
                     <Icon name="boxes" size={16} color={colors.muted} />
@@ -2003,6 +2016,57 @@ export function ProjectsSheet({
           )}
         </View>
       </ScrollView>
+      {/* A project card held down (MOB-07). */}
+      <ActionSheet
+        visible={!!heldProject}
+        label="Project menu"
+        title={heldProject?.name}
+        actions={
+          heldProject
+            ? [
+                {
+                  label: "Open",
+                  icon: "boxes",
+                  onPress: () =>
+                    void run(async () => {
+                      setOpen(await client.getProject(heldProject.id));
+                      setSection("tasks");
+                    }),
+                },
+                {
+                  label: "Star",
+                  icon: "star",
+                  onPress: () =>
+                    void client
+                      .setFavourite("project", heldProject.id, true)
+                      .then(
+                        () => showToast({ text: "Starred" }),
+                        (e: Error) => setError(errorText(e)),
+                      ),
+                },
+                {
+                  label: "Copy link",
+                  icon: "link",
+                  onPress: () =>
+                    void copyLink(
+                      { kind: "project", id: heldProject.id },
+                      heldProject.name,
+                    ),
+                },
+                {
+                  label: "Share…",
+                  icon: "share",
+                  onPress: () =>
+                    void shareLink(
+                      { kind: "project", id: heldProject.id },
+                      heldProject.name,
+                    ),
+                },
+              ]
+            : []
+        }
+        onClose={() => setHeldProject(null)}
+      />
     </Sheet>
   );
 }

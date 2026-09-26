@@ -53,6 +53,7 @@ import {
   keepStart,
   listLayout,
   pageFooter,
+  isOfflineError,
   pastedLines,
   recordUndo,
   redoStep,
@@ -62,6 +63,8 @@ import {
   insertLink,
   linkMarkdown,
   linkQueryAt,
+  slashMatches,
+  slashQueryAt,
   type ObjectRef,
   toolbarStyle,
   undoStep,
@@ -92,6 +95,10 @@ import { DocAsk } from "./DocAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import type { DocCommentsState } from "./useDocComments";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
+import { readsFirst } from "../../lib/reading";
+import { rememberPage } from "../../lib/pageCache";
+import { savePageOffline } from "../../lib/outbox";
+import { PublishSheet } from "./PublishSheet";
 import { downloadDoc, formatsHere } from "../../lib/download";
 import { copyLink, shareLink, sharePageFile } from "../../lib/share";
 import { setOpenDoc } from "../../lib/live";
@@ -105,6 +112,7 @@ import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
 import {
+  INSERTS,
   LineToolbar,
   kindKey,
   type LineInsert,
@@ -114,6 +122,7 @@ import { PageInfo } from "./PageInfo";
 import { ContentsSheet } from "./ContentsSheet";
 import {
   LinkedHere,
+  LinkPickerPanel,
   LinkPillProvider,
   openObject,
   useLinkPills,
@@ -206,6 +215,9 @@ export function DocEditor({
   // Opened: it leads the search's recent list, and ⌘K's on the web.
   useEffect(() => {
     void client.recordRecent("doc", doc.id).catch(() => {});
+    // Kept on the phone, to open with no signal (SHR-03).
+    void rememberPage(doc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.id]);
   /**
    * A page opens the way it was last worked on, and always read-only for
@@ -214,9 +226,10 @@ export function DocEditor({
    */
   const [mode, setMode] = useState<DocMode>(() =>
     canWrite
-      ? // The agenda is read more than written, so it opens for reading.
+      ? // The agenda is read more than written, so it opens for reading;
+        // so does every page on a phone set to read first (EDT-10).
         (readLocal(MODE_KEY + doc.id) ??
-          (doc.kind === "agenda" ? "read" : "edit")) === "read"
+          (doc.kind === "agenda" || readsFirst() ? "read" : "edit")) === "read"
         ? "read"
         : "edit"
       : "read",
@@ -324,6 +337,8 @@ export function DocEditor({
   const tagBase = useRef<DocBlock[]>(doc.content);
   /** Whether "Save as template" is open. */
   const [savingTemplate, setSavingTemplate] = useState(false);
+  /** Whether "Publish to web" is open (SHR-05). */
+  const [publishing, setPublishing] = useState(false);
   /** Headings folded on this page (EDT-14), yours on every device. */
   const [folds, setFolds] = useState<Set<string>>(() => new Set());
   const foldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -380,6 +395,10 @@ export function DocEditor({
   /** Which line is open, readable from the live subscription. */
   const focusedRef = useRef<number | null>(null);
   const base = useRef<DocBlock[]>(doc.content);
+  /** The title as last saved: what an offline edit's title is measured from. */
+  const baseTitle = useRef(doc.title);
+  /** An edit is kept on this phone, waiting for a connection (SHR-03). */
+  const [keptOffline, setKeptOffline] = useState(false);
   const live = useRef({ title: doc.title, blocks: doc.content });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -603,14 +622,38 @@ export function DocEditor({
           );
           version.current = saved.version;
           base.current = saved.content;
+          baseTitle.current = saved.title;
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
           setSavedAt(saved.updated_at);
           setNow(new Date());
+          setKeptOffline(false);
+          void rememberPage(saved);
           settle(nextBlocks, saved);
           onChanged(saved);
         } catch (e) {
+          // No signal: the edit is kept on the phone and sent when it's back,
+          // merged into whatever the page became meanwhile (SHR-03).
+          if (isOfflineError(e)) {
+            await savePageOffline({
+              id: doc.id,
+              title: nextTitle,
+              content: nextBlocks,
+              base: {
+                version: version.current,
+                title: baseTitle.current,
+                content: base.current,
+              },
+            });
+            void rememberPage({
+              ...doc,
+              title: nextTitle,
+              content: nextBlocks,
+            });
+            setKeptOffline(true);
+            return;
+          }
           // Someone saved first: take their copy, fold this edit into it and
           // save again rather than making the writer sort it out by hand.
           if ((e as { statusCode?: number }).statusCode === 409) {
@@ -875,6 +918,42 @@ export function DocEditor({
     focused !== null && openKind !== "code" && openKind !== "math"
       ? linkQueryAt(draft, selection.start)
       : null;
+  /**
+   * "/" typed at the start of the line or after a space (MOB-13): the kinds
+   * of line, and what can be put in, listed under the line.
+   */
+  const slash =
+    focused !== null &&
+    !bracket &&
+    !reading &&
+    !suggesting &&
+    openKind !== "code" &&
+    openKind !== "math"
+      ? slashQueryAt(draft, selection.start)
+      : null;
+  /** The suggestions under the line were closed where they started. */
+  const [shutAt, setShutAt] = useState<string | null>(null);
+  const suggestKey = (kind: string, start: number) =>
+    `${focused}:${kind}:${start}`;
+  /** An insert chosen from "/", run once the "/words" are gone. */
+  const [slashInsert, setSlashInsert] = useState<LineInsert | "live" | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!slashInsert) return;
+    setSlashInsert(null);
+    if (slashInsert === "live") liveListLine();
+    else insertLine(slashInsert);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slashInsert]);
+  /** The line without the "/words" typed, and the caret where they were. */
+  const withoutSlash = () => {
+    if (!slash) return { text: draft, caret: selection.start };
+    return {
+      text: draft.slice(0, slash.start) + draft.slice(selection.start),
+      caret: slash.start,
+    };
+  };
 
   /**
    * Put a link in the open line: where "[[words" was typed, or at the caret
@@ -1020,10 +1099,10 @@ export function DocEditor({
   };
 
   /** The open line as another kind of block, keeping its words. */
-  const turnInto = (kind: (typeof BLOCK_KINDS)[number]) => {
+  const turnInto = (kind: (typeof BLOCK_KINDS)[number], from = draft) => {
     if (focused === null) return;
     remember();
-    const current = parseDoc(draft)[0] ?? EMPTY;
+    const current = parseDoc(from)[0] ?? EMPTY;
     const text = serializeBlock(blockToType(current, kind.type, kind.level));
     setDraft(text);
     setCaret({ start: text.length, end: text.length });
@@ -1860,6 +1939,94 @@ export function DocEditor({
   /** The line being typed, as the keyboard toolbar shows it. */
   const current = focused !== null ? (parseDoc(draft)[0] ?? EMPTY) : null;
   const saved = focused !== null ? blocks[focused] : undefined;
+  // Under the line being edited (MOB-13): what "[[" or "/" offers.
+  const bracketOpen = !!bracket && shutAt !== suggestKey("link", bracket.start);
+  const slashOpen = !!slash && shutAt !== suggestKey("slash", slash.start);
+  const slashChoices: {
+    key: string;
+    label: string;
+    hint: string;
+    keywords?: string;
+    run: () => void;
+  }[] = slashOpen
+    ? [
+        ...BLOCK_KINDS.map((kind) => ({
+          key: kindKey(kind),
+          label: kind.label,
+          hint: kind.hint,
+          keywords: `${kindKey(kind)} ${kind.shorthand}`,
+          run: () => turnInto(kind, withoutSlash().text),
+        })),
+        ...(structural
+          ? [
+              {
+                key: "live",
+                label: "Live list",
+                hint: "Tasks or pages that match, kept up to date",
+                keywords: "query filter",
+                run: () => {
+                  const { text, caret } = withoutSlash();
+                  applyEdit({ text, start: caret, end: caret });
+                  setSlashInsert("live");
+                },
+              },
+              ...INSERTS.map((item) => ({
+                key: item.key,
+                label: item.label,
+                hint: item.hint,
+                run: () => {
+                  const { text, caret } = withoutSlash();
+                  applyEdit({ text, start: caret, end: caret });
+                  setSlashInsert(item.key);
+                },
+              })),
+            ]
+          : []),
+      ]
+        .filter((c) => slashMatches(slash!.query, c))
+        .slice(0, 8)
+    : [];
+  const underLine =
+    bracketOpen && bracket ? (
+      <LinkPickerPanel
+        query={bracket.query}
+        projectName={doc.project_name}
+        onPick={insertPicked}
+        onCreate={(kind, name) => void createAndLink(kind, name)}
+        onClose={() => setShutAt(suggestKey("link", bracket.start))}
+        report={report}
+      />
+    ) : slashChoices.length && slash ? (
+      <View style={styles.slash} accessibilityLabel="Kinds of line">
+        {slashChoices.map((c, n) => (
+          <Pressable
+            key={c.key}
+            accessibilityRole="button"
+            accessibilityLabel={c.label}
+            accessibilityHint={c.hint}
+            onPress={c.run}
+            style={({ pressed }) => [
+              styles.slashRow,
+              n > 0 && styles.slashDivider,
+              pressed && { backgroundColor: colors.surfaceMuted },
+            ]}
+          >
+            <Text style={styles.slashLabel}>{c.label}</Text>
+            <Text style={styles.slashHint} numberOfLines={1}>
+              {c.hint}
+            </Text>
+          </Pressable>
+        ))}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setShutAt(suggestKey("slash", slash.start))}
+          style={[styles.slashRow, styles.slashDivider]}
+        >
+          <Text style={styles.slashHint}>Keep “/” as it is</Text>
+        </Pressable>
+      </View>
+    ) : null;
+
   const toolbar =
     focused !== null && current && (!reading || suggesting) ? (
       <LineToolbar
@@ -1887,7 +2054,8 @@ export function DocEditor({
         onKind={(kind: LineKind) => turnInto(kind)}
         onStyle={styleLine}
         onLink={linkLine}
-        linkQuery={bracket ? bracket.query : null}
+        // Link suggestions show under the line itself (MOB-13).
+        linkQuery={null}
         projectName={doc.project_name}
         onPickLink={insertPicked}
         onCreateLink={(kind, name) => void createAndLink(kind, name)}
@@ -1910,6 +2078,15 @@ export function DocEditor({
 
   /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
+    // Reading and editing (EDT-10): the same switch as Info's, a tap away.
+    ...(canWrite && !suggesting
+      ? [
+          {
+            label: reading ? "Edit this page" : "Read",
+            onPress: () => chooseMode(reading ? "edit" : "read"),
+          },
+        ]
+      : []),
     { label: "Ask about this page", onPress: () => setTalking(true) },
     // A page with headings has its contents a tap away (NAV-03).
     ...(docOutline(blocks).length
@@ -1926,6 +2103,9 @@ export function DocEditor({
     { label: "Export…", onPress: () => setMenu("export") },
     { label: "History", onPress: () => onShowHistory?.() },
     { label: "Save as template", onPress: () => setSavingTemplate(true) },
+    ...(doc.kind !== "agenda"
+      ? [{ label: "Publish to web…", onPress: () => setPublishing(true) }]
+      : []),
     ...(foldableHeadings(blocks).length
       ? [
           {
@@ -1989,13 +2169,15 @@ export function DocEditor({
     if (bodyOffset.current === null || y === undefined) return;
     onTargetOffset?.(bodyOffset.current + y);
   };
-  const facts = pageFooter({
-    ...docStats(blocks),
-    savedAt,
-    saving,
-    now,
-    linked: linkedCount,
-  });
+  const facts = keptOffline
+    ? "Offline, saved on this phone. It's sent when you're back online."
+    : pageFooter({
+        ...docStats(blocks),
+        savedAt,
+        saving,
+        now,
+        linked: linkedCount,
+      });
 
   /** Footnote numbers and words; a marker's words show when tapped. */
   const footnotes = useMemo(
@@ -2223,7 +2405,18 @@ export function DocEditor({
               }}
               onLineLayout={(index, y) => lineYs.current.set(index, y)}
               onEditBlock={reading && !suggesting ? undefined : openLine}
+              // Reading, and allowed to edit: a double tap edits that line.
+              onDoubleTapBlock={
+                reading && canWrite && !suggesting
+                  ? (index) => {
+                      setMode("edit");
+                      saveLocal(MODE_KEY + doc.id, "edit");
+                      openLine(index);
+                    }
+                  : undefined
+              }
               onToggleTodo={reading || !structural ? undefined : toggle}
+              underEditing={underLine}
             />
           </FootnoteContext.Provider>
         </LinkPillProvider>
@@ -2273,6 +2466,13 @@ export function DocEditor({
         onLinkRelated={
           canWrite && structural && !reading ? linkRelated : undefined
         }
+      />
+      <PublishSheet
+        visible={publishing}
+        kind="doc"
+        id={doc.id}
+        name={title || "Untitled"}
+        onClose={() => setPublishing(false)}
       />
       <LinkCardSheet
         target={card}
@@ -2437,6 +2637,27 @@ export function DocEditor({
 
 const styles = themed(() =>
   StyleSheet.create({
+    slash: {
+      marginTop: 4,
+      borderRadius: radii.card,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      overflow: "hidden",
+    },
+    slashRow: {
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      gap: 2,
+    },
+    slashDivider: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    slashLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    slashHint: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     page: { gap: 16 },
     titleEditor: { minHeight: 44 },
     title: {

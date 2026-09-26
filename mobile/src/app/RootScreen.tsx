@@ -33,6 +33,9 @@ import {
   type CreateArrangement,
   type DocKind,
   type SharedContent,
+  hasUnseenRelease,
+  settingById,
+  type CommandDef,
 } from "@orbyn/core";
 import { tabSubtitle, tabTitle, type Tab } from "./tabs";
 import { Brand } from "../components/Brand";
@@ -95,6 +98,13 @@ import { TodayScreen } from "../screens/TodayScreen";
 import { SyncSheet } from "../screens/SyncSheet";
 import { ProgressSheet } from "../screens/ProgressSheet";
 import { SearchSheet } from "../screens/SearchSheet";
+import { RecentChangesSheet } from "../screens/RecentChanges";
+import {
+  markReleaseSeen,
+  seenRelease,
+  WhatsNewSheet,
+} from "../screens/WhatsNewSheet";
+import { FirstRunSheet } from "../screens/FirstRunSheet";
 import { SyncBar } from "../components/SyncBar";
 import { WelcomeBack } from "../components/followthrough/WelcomeBack";
 import { FocusElsewhere } from "../components/FocusElsewhere";
@@ -126,7 +136,9 @@ type SheetName =
   | "sync"
   | "progress"
   | "views"
-  | "search";
+  | "search"
+  | "changes"
+  | "whatsnew";
 /** What to present next: a sheet, the item editor, or "Save to Orbyn". */
 type Next = { sheet: SheetName } | { edit: Editing } | { share: SharedContent };
 
@@ -232,6 +244,7 @@ export function RootScreen() {
   const [studySuggest, setStudySuggest] = useState<{
     docId: string;
     title: string;
+    max?: number;
   } | null>(null);
   // Study opened any other way starts on its home page.
   useEffect(() => {
@@ -317,6 +330,12 @@ export function RootScreen() {
     new?: boolean;
     open?: string;
   } | null>(null);
+  /** A section of Settings to open at, from a search (NAV-10). */
+  const [settingsAt, setSettingsAt] = useState<{
+    section: string;
+    seq: number;
+  } | null>(null);
+  const settingsScroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
   /** Words the search sheet opens with (orbyn://search?q=). */
   const [searchStart, setSearchStart] = useState("");
   /** Words from an add link, waiting in Today's quick add to be confirmed. */
@@ -372,6 +391,16 @@ export function RootScreen() {
       .catch(() => {});
     return () => sub.remove();
   }, [token]);
+
+  // After a release, "What's new" opens once by itself (DSN-03). A phone
+  // that has never shown one (a new account, a new install) is not shown it.
+  useEffect(() => {
+    if (!inApp || !user || user.first_run_done === false) return;
+    const seen = seenRelease();
+    if (!seen) markReleaseSeen();
+    else if (hasUnseenRelease(seen))
+      presentRef.current?.({ sheet: "whatsnew" });
+  }, [inApp, user?.id, user?.first_run_done]);
 
   if (!ready)
     return (
@@ -676,6 +705,84 @@ export function RootScreen() {
         setSearch("");
         return;
     }
+  };
+
+  /** A page or task from recent changes (SHR-02). */
+  const openChange = (kind: "doc" | "task", id: string) =>
+    kind === "doc"
+      ? void act(async () => {
+          setNote(await client.getDoc(id));
+          setNoteBlockId(null);
+          present({ sheet: "note" });
+        })
+      : void act(async () => openTask(await client.getItem(id)));
+
+  /** Open Settings, at a section when a search chose one (NAV-10). */
+  const openSettingsAt = (section: string | null) => {
+    setSettingsAt(section ? { section, seq: Date.now() } : null);
+    present({ sheet: "settings" });
+  };
+
+  /**
+   * What a command from Search & do does on the phone (MOB-10): the same
+   * list as the web's ⌘K. One this phone has no way to do isn't offered.
+   */
+  const tabTo = (to: Tab) => () => {
+    // A screen, not a sheet: the search goes away rather than waiting behind.
+    setSheet(null);
+    back.current = [];
+    setTab(to);
+  };
+  const commandRun: Record<string, () => void> = {
+    "go.overview": tabTo("Today"),
+    "go.my-tasks": tabTo("Tasks"),
+    "go.calendar": tabTo("Calendar"),
+    "go.ai-assistant": () => {
+      tabTo("AI")();
+      setSearch("");
+    },
+    "go.notifications": tabTo("Inbox"),
+    "go.agenda": () => present({ sheet: "agenda" }),
+    "go.projects": () => present({ sheet: "projects" }),
+    "go.docs": () => present({ sheet: "docs" }),
+    "go.views": () => present({ sheet: "views" }),
+    "go.study": () => present({ sheet: "study" }),
+    "go.lists": () => present({ sheet: "lists" }),
+    "go.teams": () => present({ sheet: "teams" }),
+    "go.booking": () => {
+      setBookingId(null);
+      present({ sheet: "booking" });
+    },
+    "go.admin": () => present({ sheet: "admin" }),
+    "go.settings": () => openSettingsAt(null),
+    "new.task": () => runCreate("task"),
+    "new.event": () => {
+      setEditRepeat(null);
+      present({ edit: { ...freshItem(), kind: "event" } });
+    },
+    "new.page": () => runCreate("page"),
+    "new.from-template": () => runCreate("template"),
+    "new.project": () => runCreate("project"),
+    "new.import": () => openSettingsAt("Import & export"),
+    "plan.day": () => runCreate("plan"),
+    "plan.focus": () => runCreate("focus"),
+    "plan.today": tabTo("Calendar"),
+    "app.changes": () => present({ sheet: "changes" }),
+    "app.whats-new": () => present({ sheet: "whatsnew" }),
+    "app.security": () => openSettingsAt("Privacy"),
+  };
+  const canRunCommand = (c: CommandDef) =>
+    c.setting
+      ? !!settingById(c.setting)?.phone
+      : !!commandRun[c.id] &&
+        (c.needs !== "admin" ||
+          hasSystemPermission(user?.role, "admin:access"));
+  const runCommand = (c: CommandDef) => {
+    const entry = c.setting ? settingById(c.setting) : undefined;
+    const place = entry?.phone;
+    if (place && "sheet" in place) return present({ sheet: place.sheet });
+    if (place) return openSettingsAt(place.section);
+    commandRun[c.id]?.();
   };
 
   /** A link into the app (orbyn://, a quick action, a shared link) opens its thing. */
@@ -1200,7 +1307,9 @@ export function RootScreen() {
                         ? openBookings()
                         : to === "search"
                           ? (setSearchStart(""), setSheet("search"))
-                          : setSheet(to)
+                          : to === "settings"
+                            ? (setSettingsAt(null), setSheet("settings"))
+                            : setSheet(to)
                     }
                   />
                 )}
@@ -1435,6 +1544,7 @@ export function RootScreen() {
         >
           {/* Scrolls, with the page's padding, like every other sheet. */}
           <ScrollView
+            ref={settingsScroller}
             contentContainerStyle={sheetStyles.body}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
@@ -1456,6 +1566,11 @@ export function RootScreen() {
                 onOpenTags={() => setSheet("tags")}
                 onOpenHabits={() => setSheet("habits")}
                 onOpenSync={() => setSheet("sync")}
+                onOpenWhatsNew={() => setSheet("whatsnew")}
+                openAt={settingsAt}
+                scrollTo={(y) =>
+                  settingsScroller.current?.scrollTo({ y, animated: true })
+                }
                 onAccountDeleted={() => {
                   setSheet(null);
                   setPreview(null);
@@ -1484,7 +1599,38 @@ export function RootScreen() {
             } else if (type === "task" || type === "event")
               void act(async () => openTask(await client.getItem(id)));
           }}
+          canRun={canRunCommand}
+          // What a command opens comes over the search, as a result does.
+          onCommand={runCommand}
         />
+        <RecentChangesSheet
+          visible={sheet === "changes"}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onOpen={openChange}
+        />
+        <WhatsNewSheet
+          visible={sheet === "whatsnew"}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+        />
+        {user && user.first_run_done === false && (
+          <FirstRunSheet
+            visible={!sheet && !editing}
+            user={user}
+            onDone={(next, made) => {
+              markReleaseSeen();
+              setUser(next);
+              void refresh();
+              if (made?.brief_id)
+                void act(async () => {
+                  setNote(await client.getDoc(made.brief_id!));
+                  setNoteBlockId(null);
+                  present({ sheet: "note" });
+                });
+            }}
+          />
+        )}
         <ProgressSheet
           visible={sheet === "progress"}
           teams={teams}
@@ -1519,8 +1665,8 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onItemsChanged={() => void refresh()}
-          onMakeCards={(docId, title) => {
-            setStudySuggest({ docId, title });
+          onMakeCards={(docId, title, max) => {
+            setStudySuggest({ docId, title, max });
             present({ sheet: "study" });
           }}
           startInUploads={docsInUploads}
@@ -1643,6 +1789,7 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenItem={openFromSheet}
+          onOpenChange={openChange}
         />
         <StatusSheet
           visible={sheet === "status"}

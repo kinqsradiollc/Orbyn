@@ -82,6 +82,27 @@ export async function copyLink(target: LinkTarget, title: string) {
   }
 }
 
+/** Copy any words (a published page's address), and say so. */
+export async function copyText(text: string, done = "Copied") {
+  try {
+    if (Platform.OS === "web") {
+      await (
+        globalThis.navigator as Navigator | undefined
+      )?.clipboard?.writeText(text);
+    } else {
+      const clipboard = nativeClipboard();
+      if (!clipboard) {
+        await Share.share({ message: text });
+        return;
+      }
+      await clipboard.setStringAsync(text);
+    }
+    showToast({ text: done });
+  } catch {
+    showToast({ text: "Couldn't copy it" });
+  }
+}
+
 /** A page as a Markdown or PDF file, handed to the share sheet. */
 export const sharePageFile = (docId: string, format: "md" | "pdf") =>
   downloadDoc(docId, format);

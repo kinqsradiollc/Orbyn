@@ -1,4 +1,6 @@
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import {
   cachedPage,
@@ -38,6 +40,10 @@ import {
   waitingPageSave,
   withPendingSave,
   withSummary,
+  slashQueryAt,
+  slashMatches,
+  csvFormat,
+  BLOCK_KINDS,
   describeOp,
   parseObjectHref,
   cardDescription,
@@ -279,6 +285,59 @@ test("settings are found by name, by what they do, and from ⌘K once words are 
   assert.equal(sectionKey(" Import & export "), "import export");
 });
 
+test("every setting the phone lists names a section or sheet its Settings has", () => {
+  const read = (rel: string) =>
+    readFileSync(
+      fileURLToPath(
+        new URL(`../../mobile/src/screens/${rel}`, import.meta.url),
+      ),
+      "utf8",
+    );
+  const source =
+    read("SettingsScreen.tsx") + read("settings/PrivacySection.tsx");
+  const places = new Set(
+    [...source.matchAll(/(?:title|name)="([^"]+)"/g)].map((m) =>
+      sectionKey(m[1]),
+    ),
+  );
+  for (const e of SETTINGS_INDEX) {
+    if (!e.phone || !("section" in e.phone)) continue;
+    assert.ok(
+      places.has(sectionKey(e.phone.section)),
+      `${e.id}: no "${e.phone.section}" in the phone's Settings`,
+    );
+  }
+});
+
+// ------------------------------------------------------ MOB-13 "/" on phones
+
+test('"/" at the start of a line or after a space offers kinds; "and/or" and addresses don\'t', () => {
+  assert.deepEqual(slashQueryAt("/", 1), { start: 0, query: "" });
+  assert.deepEqual(slashQueryAt("Notes /head", 11), {
+    start: 6,
+    query: "head",
+  });
+  assert.deepEqual(slashQueryAt("/to do", 6), { start: 0, query: "to do" });
+  assert.equal(slashQueryAt("and/or", 6), null);
+  assert.equal(slashQueryAt("see https://x.org/a", 19), null);
+  assert.equal(slashQueryAt("/ list", 6), null);
+  assert.equal(slashQueryAt("/a  b", 5), null);
+  assert.equal(slashQueryAt("/" + "a".repeat(30), 31), null);
+  // Only up to the caret.
+  assert.deepEqual(slashQueryAt("/quote more", 6), {
+    start: 0,
+    query: "quote",
+  });
+  // Matching: the start of a word in the label or its other words.
+  const h1 = BLOCK_KINDS.find((k) => k.label === "Heading 1")!;
+  assert.ok(slashMatches("head", h1));
+  assert.ok(slashMatches("", h1));
+  assert.ok(slashMatches("h 1", h1));
+  assert.ok(!slashMatches("ead", h1));
+  assert.ok(slashMatches("tab", { label: "Table", keywords: "" }));
+  assert.ok(slashMatches("query", { label: "Live list", keywords: "query" }));
+});
+
 // ------------------------------------------------------ SHR-02 recent changes
 
 test("recent changes read as sentences and group by day in the reader's zone", () => {
@@ -389,6 +448,21 @@ test("a published page's address comes from its title", () => {
 });
 
 // ------------------------------------------------------------ DATA-08 imports
+
+test("a CSV's app is told by its header: Todoist, TickTick or a plain CSV", () => {
+  assert.equal(
+    csvFormat("TYPE,CONTENT,DESCRIPTION,PRIORITY\ntask,Buy milk,,1"),
+    "todoist",
+  );
+  assert.equal(csvFormat('\ufeff"TYPE","CONTENT"\n'), "todoist");
+  assert.equal(
+    csvFormat(
+      'Date: 2026-09-01\n"Folder Name","List Name","Title"\n"","Inbox","Call"',
+    ),
+    "ticktick",
+  );
+  assert.equal(csvFormat("title,notes,due\nCall,,2026-10-01"), "csv");
+});
 
 test("Todoist's CSV: sections become lists, notes join their task, priority 1 is high", () => {
   const csv = [

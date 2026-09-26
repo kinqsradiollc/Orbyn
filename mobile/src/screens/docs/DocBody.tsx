@@ -9,10 +9,10 @@ import {
   isDiagram,
   LIVE_LIST_LANG,
   listLayout,
-  mathToText,
   type DocBlock,
 } from "@orbyn/core";
 import { Inline } from "./Inline";
+import { MathView } from "./MathView";
 import {
   CalloutView,
   CodeView,
@@ -29,10 +29,8 @@ import type { Mark } from "./marks";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /**
- * A document as it reads on a phone. Formulas are shown as their symbols —
- * "0 < η < 1/μ" rather than the LaTeX behind them — because the phone has no
- * typesetting engine; the source is kept untouched and the desktop app
- * renders it properly.
+ * A document as it reads on a phone. Formulas are typeset on the phone
+ * itself (EDT-12, MathView), from the same LaTeX the desktop draws.
  */
 export function DocBody({
   content,
@@ -49,8 +47,10 @@ export function DocBody({
   counts,
   marks = {},
   renderUnder,
+  underEditing,
   onOpenComments,
   onEditBlock,
+  onDoubleTapBlock,
   targetBlockId,
   onTargetLayout,
   onLineLayout,
@@ -92,8 +92,18 @@ export function DocBody({
   counts?: Record<string, number>;
   /** What to show under a line — its remarks, when they are open. */
   renderUnder?: (blockId: string) => React.ReactNode;
+  /**
+   * Shown right under the line being edited (MOB-13): the link and "/"
+   * suggestions, where the eye already is rather than over the keyboard.
+   */
+  underEditing?: React.ReactNode;
   onOpenComments?: (blockId: string) => void;
   onEditBlock?: (index: number) => void;
+  /**
+   * Reading (EDT-10): a double tap on a line starts editing it there. A
+   * single tap stays a reader's (links, ticks, scrolling).
+   */
+  onDoubleTapBlock?: (index: number) => void;
   /** A line opened from a task or citation. */
   targetBlockId?: string | null;
   onTargetLayout?: (y: number) => void;
@@ -170,6 +180,33 @@ export function DocBody({
     );
   };
 
+  /** The last tap on a line while reading, to tell a double tap. */
+  const lastTap = React.useRef<{ index: number; at: number } | null>(null);
+  const readerTap = (index: number) => {
+    const now = Date.now();
+    const was = lastTap.current;
+    if (was && was.index === index && now - was.at < 320) {
+      lastTap.current = null;
+      onDoubleTapBlock?.(index);
+    } else lastTap.current = { index, at: now };
+  };
+  /** A line being read: a double tap edits it (EDT-10). */
+  const readable = (index: number, node: React.ReactNode) =>
+    onDoubleTapBlock ? (
+      <Pressable
+        onPress={() => readerTap(index)}
+        accessibilityActions={[{ name: "activate", label: "Edit this line" }]}
+        onAccessibilityAction={(e) => {
+          if (e.nativeEvent.actionName === "activate") onDoubleTapBlock(index);
+        }}
+        accessibilityHint="Double-tap to edit this line"
+      >
+        {node}
+      </Pressable>
+    ) : (
+      node
+    );
+
   /** Wrap a line so tapping it opens it, when the page can be edited. */
   const line = (index: number, node: React.ReactNode) =>
     decorate(
@@ -193,7 +230,7 @@ export function DocBody({
           {node}
         </Pressable>
       ) : (
-        node
+        readable(index, node)
       ),
     );
 
@@ -253,6 +290,9 @@ export function DocBody({
                 }
                 accessibilityLabel="Line being edited"
               />
+              {underEditing ? (
+                <View style={styles.underEditing}>{underEditing}</View>
+              ) : null}
             </View>
           );
         switch (block.type) {
@@ -390,8 +430,14 @@ export function DocBody({
                     styles.todoText,
                     pressed && onEditBlock ? styles.linePressed : null,
                   ]}
-                  onPress={onEditBlock ? () => onEditBlock(index) : undefined}
-                  disabled={!onEditBlock}
+                  onPress={
+                    onEditBlock
+                      ? () => onEditBlock(index)
+                      : onDoubleTapBlock
+                        ? () => readerTap(index)
+                        : undefined
+                  }
+                  disabled={!onEditBlock && !onDoubleTapBlock}
                   accessibilityRole={onEditBlock ? "button" : undefined}
                   accessibilityLabel={
                     onEditBlock ? "Edit this line" : undefined
@@ -435,7 +481,7 @@ export function DocBody({
             return line(
               index,
               <View style={styles.block}>
-                <Text style={styles.math}>{mathToText(block.text)}</Text>
+                <MathView tex={block.text} display />
                 {block.check && (
                   <Text
                     style={styles.mathCheck}
@@ -506,6 +552,7 @@ const styles = themed(() =>
       fontFamily: fonts.semibold,
     },
     editing: { gap: 6, alignItems: "flex-start" },
+    underEditing: { alignSelf: "stretch" },
     input: {
       alignSelf: "stretch",
       color: colors.text,
@@ -562,7 +609,6 @@ const styles = themed(() =>
       padding: 12,
     },
     code: { color: colors.text, fontSize: 13, fontFamily: "monospace" },
-    math: { color: colors.text, fontSize: 16, textAlign: "center" },
     mathCheck: {
       alignSelf: "flex-end",
       marginTop: 4,

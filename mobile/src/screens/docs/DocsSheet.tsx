@@ -1,4 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { headerHiddenAfter, hidesHeaderWhileReading } from "../../lib/reading";
+import { keptPage, keptPages } from "../../lib/pageCache";
+import { waitingSave } from "../../lib/outbox";
 import {
   AppState,
   Pressable,
@@ -15,6 +18,9 @@ import {
   agendaMonthKey,
   agendaTitleOn,
   agendaWeekOf,
+  docPreview,
+  isOfflineError,
+  withPendingSave,
   localDateKey,
   favouriteKey,
   favouriteSet,
@@ -44,7 +50,13 @@ import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { UploadsList, useImports } from "./Uploads";
 import { SmallAction } from "../../components/SmallAction";
-import { MoreMenu } from "../../components/MoreMenu";
+import {
+  ActionSheet,
+  MoreMenu,
+  type MoreAction,
+} from "../../components/MoreMenu";
+import { copyLink, shareLink } from "../../lib/share";
+import { PublishSheet } from "./PublishSheet";
 import { DocComments } from "./DocComments";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
@@ -95,7 +107,7 @@ export function DocsSheet({
   onStarted?: () => void;
   onOpenProject?: (projectId: string) => void;
   /** Suggest study cards from a page (opens Study). */
-  onMakeCards?: (docId: string, title: string) => void;
+  onMakeCards?: (docId: string, title: string, max?: number) => void;
   visible: boolean;
   /** Opens straight onto today's agenda instead of the list. */
   agenda?: boolean;
@@ -150,6 +162,14 @@ export function DocsSheet({
   const [stars, setStars] = useState<Favourite[]>([]);
   /** A page whose folder is being chosen. */
   const [filing, setFiling] = useState<DocSummary | null>(null);
+  /** A page row held down: its menu (MOB-07). */
+  const [held, setHeld] = useState<DocSummary | null>(null);
+  /** A page or folder being put on the web (SHR-05). */
+  const [publishing, setPublishing] = useState<{
+    kind: "doc" | "folder";
+    id: string;
+    name: string;
+  } | null>(null);
   const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
   /** Whether a new folder is being named, and what it will be called. */
   const [naming, setNaming] = useState(false);
@@ -174,6 +194,12 @@ export function DocsSheet({
   const toolbarSlot = useSlot();
   /** Scrolled past the page's own title: the header shows it instead. */
   const [scrolledPast, setScrolledPast] = useState(false);
+  /** Reading a long page: the header steps aside (MOB-03). */
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const lastY = useRef(0);
+  const hideChrome = useMemo(() => hidesHeaderWhileReading(), [visible]);
+  // A different page, or none, starts with the header in place.
+  useEffect(() => setChromeHidden(false), [open?.id, navigationOpen]);
   /** Bumped to open the page's history from its ⋯ or Info. */
   const [historyKey, setHistoryKey] = useState(0);
   const scroller = useRef<ScrollView>(null);
@@ -221,7 +247,16 @@ export function DocsSheet({
           setOpen(doc);
           if (doc.agenda_date) setAgendaToday(doc.agenda_date);
         },
-        () => setOpen(null),
+        async (e: unknown) => {
+          // No signal: today's agenda as this phone last saw it (SHR-03).
+          const today = localDateKey(new Date(), deviceTimeZone());
+          const kept = isOfflineError(e)
+            ? (await keptPages()).find(
+                (d) => d.kind === "agenda" && d.agenda_date === today,
+              )
+            : undefined;
+          setOpen(kept ? withPendingSave(kept, waitingSave(kept.id)) : null);
+        },
       );
       return;
     }
@@ -258,13 +293,30 @@ export function DocsSheet({
       setError(errorText(e));
     });
 
+  /** No signal: the list is the pages kept on this phone (SHR-03). */
+  const [offlineList, setOfflineList] = useState(false);
   const loadList = () =>
     client.listDocs().then(
       (list) => {
         setDocs(list);
         setFailed(false);
+        setOfflineList(false);
       },
-      (e: Error) => {
+      async (e: Error) => {
+        if (isOfflineError(e)) {
+          const kept = await keptPages();
+          if (kept.length) {
+            setDocs(
+              kept.map(({ content, ...rest }) => ({
+                ...withPendingSave({ ...rest, content }, waitingSave(rest.id)),
+                preview: docPreview(content),
+              })),
+            );
+            setFailed(false);
+            setOfflineList(true);
+            return;
+          }
+        }
         setDocs(null);
         setFailed(true);
         setError(errorText(e));
@@ -614,10 +666,76 @@ export function DocsSheet({
       id === null ? !d.folder_id && d.kind !== "agenda" : d.folder_id === id,
     ).length;
 
+  /**
+   * A page row's long-press menu (MOB-07): the same things, in the same
+   * order, wherever a page is listed.
+   */
+  const rowActions = (doc: DocSummary): MoreAction[] => {
+    const isStarred = starred.has(favouriteKey("doc", doc.id));
+    const name = doc.title || "Untitled";
+    return [
+      { label: "Open", icon: "fileText", onPress: () => openHit(doc.id) },
+      {
+        label: isStarred ? "Unstar" : "Star",
+        icon: isStarred ? "starFilled" : "star",
+        onPress: () => toggleStar(doc, !isStarred),
+      },
+      {
+        label: "Move to folder…",
+        icon: "folder",
+        onPress: () => setFiling(doc),
+      },
+      {
+        label: "Copy link",
+        icon: "link",
+        onPress: () => void copyLink({ kind: "doc", id: doc.id }, name),
+      },
+      {
+        label: "Share…",
+        icon: "share",
+        onPress: () => void shareLink({ kind: "doc", id: doc.id }, name),
+      },
+      ...(doc.kind !== "agenda"
+        ? [
+            {
+              label: "Publish to web…",
+              icon: "arrowUp" as const,
+              onPress: () => setPublishing({ kind: "doc", id: doc.id, name }),
+            },
+          ]
+        : []),
+      {
+        label: "Move to Trash",
+        icon: "trash",
+        destructive: true,
+        onPress: () =>
+          void run(async () => {
+            await client.deleteDoc(doc.id);
+            setDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
+            showToast({
+              text: "Moved to Trash",
+              action: {
+                label: "Undo",
+                run: () =>
+                  void client.restoreDoc(doc.id).then(() => loadList(), report),
+              },
+            });
+          }),
+      },
+    ];
+  };
+
   /** Open a page from the list, which for a search hit means fetching it. */
   const openHit = (id: string) =>
     void run(async () => {
-      setOpen(await client.getDoc(id));
+      try {
+        setOpen(await client.getDoc(id));
+      } catch (e) {
+        // No signal: the copy kept on this phone, with any edit waiting.
+        const kept = isOfflineError(e) ? await keptPage(id) : null;
+        if (!kept) throw e;
+        setOpen(withPendingSave(kept, waitingSave(id)));
+      }
       setNavigationOpen(false);
     });
 
@@ -652,6 +770,8 @@ export function DocsSheet({
         open && !navigationOpen ? <SlotHost slot={headerSlot} /> : undefined
       }
       onDismiss={onDismiss}
+      collapsed={chromeHidden}
+      onExpand={() => setChromeHidden(false)}
     >
       <ScrollView
         ref={scroller}
@@ -660,12 +780,30 @@ export function DocsSheet({
         keyboardDismissMode="interactive"
         scrollEventThrottle={32}
         onScroll={(e) => {
-          const past = e.nativeEvent.contentOffset.y > 56;
+          const { contentOffset, contentSize, layoutMeasurement } =
+            e.nativeEvent;
+          const past = contentOffset.y > 56;
           if (past !== scrolledPast) setScrolledPast(past);
+          if (open && !navigationOpen && hideChrome) {
+            const hidden = headerHiddenAfter(chromeHidden, {
+              y: contentOffset.y,
+              lastY: lastY.current,
+              content: contentSize.height,
+              frame: layoutMeasurement.height,
+            });
+            if (hidden !== chromeHidden) setChromeHidden(hidden);
+          }
+          lastY.current = contentOffset.y;
         }}
       >
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {offlineList && !open && (
+            <Text style={styles.offline} accessibilityRole="alert">
+              No connection. These are the pages kept on this phone; changes are
+              sent when you're back online.
+            </Text>
+          )}
 
           {navigationOpen ? (
             <View style={styles.list}>
@@ -1099,6 +1237,19 @@ export function DocsSheet({
                   />
                 </View>
               </View>
+              {/* A folder can go on the web as a whole (SHR-05). */}
+              {!!folderFilter &&
+                folderFilter !== "none" &&
+                folders.some((f) => f.id === folderFilter) && (
+                  <SmallAction
+                    label="Publish this folder to the web…"
+                    disabled={busy}
+                    onPress={() => {
+                      const f = folders.find((x) => x.id === folderFilter)!;
+                      setPublishing({ kind: "folder", id: f.id, name: f.name });
+                    }}
+                  />
+                )}
               {!!filing && (
                 <View style={styles.filing}>
                   <Text style={styles.filingTitle}>
@@ -1231,6 +1382,7 @@ export function DocsSheet({
                       .catch((e: Error) => setError(errorText(e)))
                   }
                   onMakeCards={onMakeCards}
+                  onChanged={() => void loadList()}
                   caps={imports.caps}
                 />
               )}
@@ -1292,6 +1444,16 @@ export function DocsSheet({
                         pressed && styles.rowPressed,
                       ]}
                       onPress={() => openHit(doc.id)}
+                      delayLongPress={380}
+                      onLongPress={() => setHeld(doc as DocSummary)}
+                      accessibilityHint="Touch and hold for more"
+                      accessibilityActions={[
+                        { name: "longpress", label: "More for this page" },
+                      ]}
+                      onAccessibilityAction={(e) => {
+                        if (e.nativeEvent.actionName === "longpress")
+                          setHeld(doc as DocSummary);
+                      }}
                     >
                       <View style={styles.rowTop}>
                         <Icon name="fileText" size={16} color={colors.muted} />
@@ -1381,6 +1543,22 @@ export function DocsSheet({
       </ScrollView>
       {/* The line being typed gets its toolbar here, on the keyboard. */}
       {open && !navigationOpen && <SlotHost slot={toolbarSlot} />}
+      <ActionSheet
+        visible={!!held}
+        label="Page menu"
+        title={held?.title || "Untitled"}
+        actions={held ? rowActions(held) : []}
+        onClose={() => setHeld(null)}
+      />
+      {publishing && (
+        <PublishSheet
+          visible
+          kind={publishing.kind}
+          id={publishing.id}
+          name={publishing.name}
+          onClose={() => setPublishing(null)}
+        />
+      )}
     </Sheet>
   );
 }
@@ -1580,6 +1758,12 @@ function AgendaNav({
 
 const styles = themed(() =>
   StyleSheet.create({
+    offline: {
+      marginBottom: 10,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.muted,
+    },
     agendaNav: {
       flexDirection: "row",
       alignItems: "center",

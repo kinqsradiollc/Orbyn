@@ -176,6 +176,18 @@ export function tickTickTasks(text: string): ImportedTask[] {
 
 // ----------------------------------------------------------------- pages
 
+/** A task file's format, as the import's Format choice names it. */
+export type TaskImportFormat = "orbyn" | "csv" | "todoist" | "ticktick";
+
+/** Which app a CSV came from, by its header (DATA-08). */
+export function csvFormat(text: string): TaskImportFormat {
+  const head = text.slice(0, 2000).toLowerCase();
+  if (/^\ufeff?"?type"?,"?content"?/.test(head)) return "todoist";
+  if (head.includes('"list name"') || head.includes("list name,"))
+    return "ticktick";
+  return "csv";
+}
+
 export const PAGE_IMPORT_FORMATS = ["markdown", "notion"] as const;
 export type PageImportFormat = (typeof PAGE_IMPORT_FORMATS)[number];
 

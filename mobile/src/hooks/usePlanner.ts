@@ -17,6 +17,7 @@ import { client } from "../lib/api";
 import { disablePush } from "../lib/push";
 import { clearSession, loadSession, saveSession } from "../lib/session";
 import { clearCache, loadCache, saveCache } from "../lib/offlineCache";
+import { clearPageCache } from "../lib/pageCache";
 import {
   clearOutbox,
   flush,
@@ -99,6 +100,7 @@ export function usePlanner() {
 
   const resetSession = () => {
     void clearCache();
+    void clearPageCache();
     clearGlance();
     setToken("");
     setItems([]);

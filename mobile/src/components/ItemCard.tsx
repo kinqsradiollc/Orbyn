@@ -1,13 +1,5 @@
-import React, { useEffect, useRef } from "react";
-import {
-  Alert,
-  Animated,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  type AlertButton,
-} from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import {
   dateLabel,
   isClosed,
@@ -36,6 +28,8 @@ import {
 import { pop, usePressScale, useReducedMotion } from "../motion";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { tap } from "../lib/haptics";
+import { copyLink } from "../lib/share";
+import { ActionSheet, type MoreAction } from "./MoreMenu";
 
 /** Every status a task can move to, closed ones last. */
 const MOVE_STATUSES: Status[] = [...statusOrder, "cancelled"];
@@ -130,37 +124,64 @@ export function ItemCard({
     .join(" · ");
   const canMove = !!onSetStatus && !readOnly && item.kind === "task";
   const canReorder = !!onMoveBy && !readOnly;
-  /** Status changes and, in manual order, moving up or down. */
+  /**
+   * The row's long-press menu (MOB-07), titled with the task: done or not,
+   * open, its status and, in manual order, moving up or down, and its link.
+   * Holding and moving still picks the row up to drag.
+   */
+  const [menuOpen, setMenuOpen] = useState(false);
   const menu = () => {
     tap();
-    const buttons: AlertButton[] = [];
-    if (canReorder && onMoveBy.up)
-      buttons.push({ text: "Move up", onPress: () => onMoveBy.move(-1) });
-    if (canReorder && onMoveBy.down)
-      buttons.push({ text: "Move down", onPress: () => onMoveBy.move(1) });
-    if (canMove)
-      for (const st of MOVE_STATUSES)
-        if (st !== item.status)
-          buttons.push({
-            text:
-              st === "cancelled"
-                ? "Cancel task"
-                : `Move to ${statusLabels[st]}`,
-            style: st === "cancelled" ? "destructive" : "default",
-            onPress: () => onSetStatus?.(item, st),
-          });
-    if (!buttons.length) return;
-    Alert.alert(item.title, `Now ${statusLabels[item.status]}`, [
-      ...buttons,
-      { text: "Close", style: "cancel" },
-    ]);
+    setMenuOpen(true);
   };
+  const menuActions: MoreAction[] = [
+    ...(!readOnly
+      ? [
+          {
+            label: done ? "Reopen" : "Mark done",
+            icon: "check" as const,
+            onPress: () => onToggle(item),
+          },
+        ]
+      : []),
+    { label: "Open", icon: "arrowRight", onPress: () => onOpen(item) },
+    ...(canReorder && onMoveBy.up
+      ? [
+          {
+            label: "Move up",
+            icon: "arrowUp" as const,
+            onPress: () => onMoveBy.move(-1),
+          },
+        ]
+      : []),
+    ...(canReorder && onMoveBy.down
+      ? [
+          {
+            label: "Move down",
+            icon: "arrowDown" as const,
+            onPress: () => onMoveBy.move(1),
+          },
+        ]
+      : []),
+    ...(canMove
+      ? MOVE_STATUSES.filter((st) => st !== item.status).map((st) => ({
+          label:
+            st === "cancelled" ? "Cancel task" : `Move to ${statusLabels[st]}`,
+          icon: "list" as const,
+          destructive: st === "cancelled",
+          onPress: () => onSetStatus?.(item, st),
+        }))
+      : []),
+    {
+      label: "Copy link",
+      icon: "link",
+      onPress: () => void copyLink({ kind: "task", id: item.id }, item.title),
+    },
+  ];
   const actions = [
     ...(onPickUp
       ? [{ name: "longpress", label: "Move to another column" }]
-      : canMove
-        ? [{ name: "longpress", label: "Change status" }]
-        : []),
+      : [{ name: "longpress", label: "More for this task" }]),
     ...(canReorder && onMoveBy.up
       ? [{ name: "moveUp", label: "Move up" }]
       : []),
@@ -234,15 +255,13 @@ export function ItemCard({
                   tap();
                   onPickUp(item);
                 }
-              : canMove || canReorder
-                ? menu
-                : undefined
+              : menu
         }
-        accessibilityActions={actions.length ? actions : undefined}
+        accessibilityActions={actions}
         onAccessibilityAction={(e) => {
           const name = e.nativeEvent.actionName;
           if (name === "longpress" && onPickUp) onPickUp(item);
-          else if (name === "longpress" && canMove) menu();
+          else if (name === "longpress") menu();
           else if (name === "moveUp") onMoveBy?.move(-1);
           else if (name === "moveDown") onMoveBy?.move(1);
         }}
@@ -347,6 +366,13 @@ export function ItemCard({
           </View>
         )}
       </Pressable>
+      <ActionSheet
+        visible={menuOpen}
+        label="Task menu"
+        title={item.title}
+        actions={menuActions}
+        onClose={() => setMenuOpen(false)}
+      />
     </Animated.View>
   );
 }

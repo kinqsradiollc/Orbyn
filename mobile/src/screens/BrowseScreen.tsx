@@ -25,6 +25,8 @@ export type Destination =
   | "teams"
   | "booking"
   | "admin"
+  | "changes"
+  | "whatsnew"
   | "settings";
 
 type Row = {
@@ -45,8 +47,8 @@ const GROUPS: { label: string; rows: Row[] }[] = [
       {
         to: "search",
         icon: "search",
-        title: "Search",
-        detail: "Pages, tasks and projects, with filters",
+        title: "Search & do",
+        detail: "Pages, tasks and projects, and anything Orbyn can do",
       },
       {
         to: "projects",
@@ -113,6 +115,12 @@ const GROUPS: { label: string; rows: Row[] }[] = [
         detail: "The people you plan with",
       },
       {
+        to: "changes",
+        icon: "activity",
+        title: "Recent changes",
+        detail: "Who changed which team page or task",
+      },
+      {
         to: "booking",
         icon: "calendar",
         title: "Booking",
@@ -135,6 +143,12 @@ const GROUPS: { label: string; rows: Row[] }[] = [
         icon: "settings",
         title: "Settings",
         detail: "Your space, just the way you like it",
+      },
+      {
+        to: "whatsnew",
+        icon: "sparkles",
+        title: "What's new",
+        detail: "What changed in Orbyn lately",
       },
     ],
   },

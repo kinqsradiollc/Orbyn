@@ -29,6 +29,7 @@ export function TeamsSheet({
   onClose,
   onDismiss,
   onOpenItem,
+  onOpenChange,
 }: {
   visible: boolean;
   user: User | null;
@@ -41,6 +42,8 @@ export function TeamsSheet({
   onClose: () => void;
   onDismiss?: () => void;
   onOpenItem: (editing: Editing) => void;
+  /** Open a page or task from the team's recent changes (SHR-02). */
+  onOpenChange?: (kind: "doc" | "task", id: string) => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -70,6 +73,7 @@ export function TeamsSheet({
           onGone={() => setSelected(null)}
           onChanged={refresh}
           onOpenItem={onOpenItem}
+          onOpenChange={onOpenChange}
         />
       ) : (
         <ScrollView

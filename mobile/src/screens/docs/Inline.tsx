@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
 import { Linking, StyleSheet, Text } from "react-native";
 import {
+  layoutMath,
   mathToText,
   parseDocInline,
   parseObjectHref,
@@ -11,6 +12,17 @@ import { colors, fonts, themed } from "../../theme";
 import type { Mark } from "./marks";
 import { LinkPillText } from "./links";
 import { FootnoteContext } from "./footnotes";
+import { MathView } from "./MathView";
+
+/** Maths that is more than a row of symbols: it is typeset, not spelled out. */
+const typeset = (tex: string) => {
+  const node = layoutMath(tex);
+  return (
+    node.k !== "sym" &&
+    (node.k !== "row" ||
+      node.items.some((n) => n.k !== "sym" && n.k !== "space"))
+  );
+};
 
 /**
  * One line of text with its inline styling applied.
@@ -63,6 +75,14 @@ export function Inline({
               {` ${n}`}
             </Text>
           );
+        }
+        // Maths with a fraction, a script or a root is set as maths
+        // (EDT-12); a plain run of symbols reads fine as text.
+        if (run.math && typeset(run.text)) {
+          const size =
+            (StyleSheet.flatten(style as object) as { fontSize?: number })
+              ?.fontSize ?? 16;
+          return <MathView key={i} tex={run.text} size={size} />;
         }
         if (run.link && parseObjectHref(run.link))
           return (
