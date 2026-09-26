@@ -90,6 +90,12 @@ const COMMAND_ICONS: Record<CommandIcon, IconName> = {
   upload: "download",
   activity: "activity",
   settings: "settings",
+  present: "presentation",
+  window: "layoutGrid",
+  archive: "archive",
+  folder: "folder",
+  star: "star",
+  mic: "mic",
 };
 
 const MEMORY_KEY = "orbyn-phone-commands";

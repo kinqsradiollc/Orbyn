@@ -37,6 +37,7 @@ import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TeamAgents } from "./TeamAgents";
+import { TeamPolicies } from "./TeamPolicies";
 import { TeamTime } from "./TeamTime";
 import { MoreMenu } from "../components/MoreMenu";
 
@@ -427,6 +428,8 @@ export function TeamDetailPage({
             }
           />
         )}
+
+        {detail.role && <TeamPolicies teamId={teamId} />}
 
         {detail.role && (
           <TeamAgents

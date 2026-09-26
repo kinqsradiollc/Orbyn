@@ -25,6 +25,7 @@ import { PageTags } from "./PageTags";
 import { FieldsSection } from "../views/FieldsSection";
 import { AliasesField } from "./AliasesField";
 import { downloadFile } from "./RichBlocks";
+import { ConnectionsMap } from "./ConnectionsMap";
 
 const KIND_NAMES: Record<Doc["kind"], string> = {
   doc: "Page",
@@ -58,7 +59,12 @@ export function PageInfo({
   onJump,
   onShowLinked,
   fieldsStamp,
+  starredHeadings,
+  onStarHeading,
 }: {
+  /** Starred headings by block id, and starring one (NAV-07). */
+  starredHeadings?: Set<string>;
+  onStarHeading?: (entry: OutlineEntry) => void;
   visible: boolean;
   doc: Doc;
   tags: DocTag[];
@@ -206,9 +212,23 @@ export function PageInfo({
             </Pressable>
           </Section>
         )}
+        {visible && (
+          <ConnectionsMap
+            kind="doc"
+            id={doc.id}
+            revision={doc.version}
+            report={report}
+          />
+        )}
         {outline.length > 0 && onJump && (
           <Section label="Contents">
-            <ContentsList outline={outline} current={current} onJump={onJump} />
+            <ContentsList
+              outline={outline}
+              current={current}
+              onJump={onJump}
+              starred={starredHeadings}
+              onStar={onStarHeading}
+            />
           </Section>
         )}
         <Section label="This page">

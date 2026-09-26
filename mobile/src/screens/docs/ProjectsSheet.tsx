@@ -58,6 +58,7 @@ import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
 import { LinkedHere } from "./links";
+import { ConnectionsMap } from "./ConnectionsMap";
 import { FieldsSection } from "../views/FieldsSection";
 import { AliasesField } from "./AliasesField";
 import { deviceTimeZone } from "../../lib/planning";
@@ -1628,6 +1629,13 @@ export function ProjectsSheet({
                   <LinkedHere
                     kind="project"
                     id={open.id}
+                    report={(e) => setError(errorText(e as Error))}
+                  />
+                  {/* What the project is linked to, one or two steps out. */}
+                  <ConnectionsMap
+                    kind="project"
+                    id={open.id}
+                    revision={open.updated_at}
                     report={(e) => setError(errorText(e as Error))}
                   />
                 </View>

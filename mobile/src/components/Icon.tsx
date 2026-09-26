@@ -616,6 +616,34 @@ const ICONS = {
     ["path", { d: "M10 3 8 21" }],
     ["path", { d: "M16 3l-2 18" }],
   ],
+  // lucide "mic": recording into a page (CAP-10).
+  mic: [
+    ["path", { d: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" }],
+    ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
+    ["path", { d: "M12 19v3" }],
+  ],
+  // lucide "square": stop.
+  square: [["rect", { x: "6", y: "6", width: "12", height: "12", rx: "2" }]],
+  // lucide "archive": archived pages (SRCH-03).
+  archive: [
+    ["rect", { x: "2", y: "3", width: "20", height: "5", rx: "1" }],
+    ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" }],
+    ["path", { d: "M10 12h4" }],
+  ],
+  // lucide "presentation": present a page as slides (CNV-03).
+  presentation: [
+    ["path", { d: "M2 3h20" }],
+    ["path", { d: "M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" }],
+    ["path", { d: "m7 21 5-5 5 5" }],
+  ],
+  // lucide "git-fork", drawn as a small map of connections (CNV-02).
+  network: [
+    ["circle", { cx: "12", cy: "18", r: "3" }],
+    ["circle", { cx: "6", cy: "6", r: "3" }],
+    ["circle", { cx: "18", cy: "6", r: "3" }],
+    ["path", { d: "M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9" }],
+    ["path", { d: "M12 12v3" }],
+  ],
   // lucide "download"
   download: [
     ["path", { d: "M12 15V3" }],

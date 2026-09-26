@@ -80,6 +80,7 @@ import {
   proposeEdit,
   type Doc,
   type DocBlock,
+  type Favourite,
   type DocMode,
   type DocAiAction,
   type DocSuggestion,
@@ -129,7 +130,15 @@ import {
 } from "./links";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import { FootnoteContext, TableEditor, fileLink } from "./RichBlocks";
+import {
+  FootnoteContext,
+  RecordingContext,
+  TableEditor,
+  fileLink,
+} from "./RichBlocks";
+import { PresentSheet } from "./PresentSheet";
+import { announceStars, rememberLastPage } from "../../lib/accountPrefs";
+import { RecordSheet, RecordingSummarySheet } from "./RecordSheet";
 import { LinkCardSheet } from "./LinkCardSheet";
 import { EmbedSheet, MergeSheet, TemplateSheet } from "./PageActions";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -183,9 +192,12 @@ export function DocEditor({
   headerSlot,
   toolbarSlot,
   onShowHistory,
+  onShowInLibrary,
   report,
 }: {
   doc: Doc;
+  /** Close the page and show where it is in the library (ORG-03). */
+  onShowInLibrary?: () => void;
   /** A line to bring into view when the page opens (a source, a link). */
   initialBlockId?: string | null;
   /** Where that line sits, for the sheet to scroll to. */
@@ -217,6 +229,8 @@ export function DocEditor({
     void client.recordRecent("doc", doc.id).catch(() => {});
     // Kept on the phone, to open with no signal (SHR-03).
     void rememberPage(doc);
+    // "Open to: the last page" (NAV-12) opens this one next time.
+    rememberLastPage(doc.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc.id]);
   /**
@@ -362,6 +376,50 @@ export function DocEditor({
   const [templateAt, setTemplateAt] = useState<number | null>(null);
   const [embedAt, setEmbedAt] = useState<number | null>(null);
   const [merging, setMerging] = useState(false);
+  /** Presenting as slides (CNV-03); recording into the page (CAP-10). */
+  const [presenting, setPresenting] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [summarising, setSummarising] = useState<{
+    fileId: string;
+    name: string;
+  } | null>(null);
+  const recordingActions = useMemo(
+    () => ({
+      summarise: (fileId: string, name: string) =>
+        setSummarising({ fileId, name }),
+    }),
+    [],
+  );
+  /** This page's star and its starred headings (NAV-07). */
+  const [stars, setStars] = useState<Favourite[]>([]);
+  useEffect(() => {
+    let live = true;
+    client.listFavourites().then(
+      (all) =>
+        live &&
+        setStars(
+          all.filter(
+            (f) =>
+              (f.kind === "doc" || f.kind === "heading") &&
+              f.target_id === doc.id,
+          ),
+        ),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id]);
+  const pageStarred = stars.some((f) => f.kind === "doc");
+  const starredHeadings = useMemo(
+    () =>
+      new Set(
+        stars.filter((f) => f.kind === "heading").map((f) => f.block_id ?? ""),
+      ),
+    [stars],
+  );
+  /** Archived (SRCH-03): out of the library and search until brought back. */
+  const [archived, setArchived] = useState(!!doc.archived);
   /** The page's Info, its ⋯ menu, and the two menus ⋯ leads to. */
   const [infoOpen, setInfoOpen] = useState(false);
   const [menu, setMenu] = useState<"page" | "share" | "export" | null>(null);
@@ -2077,6 +2135,88 @@ export function DocEditor({
       />
     ) : null;
 
+  /** Star or unstar the page itself (NAV-07). */
+  const toggleStar = () => {
+    const on = !pageStarred;
+    setStars((all) =>
+      on
+        ? [...all, { kind: "doc", target_id: doc.id, created_at: "" }]
+        : all.filter((f) => f.kind !== "doc"),
+    );
+    client.setFavourite("doc", doc.id, on).then(() => {
+      announceStars();
+      showToast({ text: on ? "Starred" : "Unstarred" });
+    }, report);
+  };
+  /** Star or unstar one heading (named first, if it has no name). */
+  const starHeading = (entry: OutlineEntry) => {
+    const block = blocks[entry.index];
+    const named = block?.id ?? null;
+    const blockId = named ?? nameBlockAt(entry.index);
+    const on = !starredHeadings.has(blockId);
+    void (async () => {
+      try {
+        // A heading named just now is saved first, so the star can find it.
+        if (!named) await flush();
+        await client.setFavourite("heading", doc.id, on, blockId);
+        announceStars();
+        setStars((all) =>
+          on
+            ? [
+                ...all,
+                {
+                  kind: "heading",
+                  target_id: doc.id,
+                  block_id: blockId,
+                  created_at: "",
+                },
+              ]
+            : all.filter(
+                (f) => !(f.kind === "heading" && f.block_id === blockId),
+              ),
+        );
+        showToast({ text: on ? `Starred “${entry.text}”` : "Unstarred" });
+      } catch (e) {
+        report(e);
+      }
+    })();
+  };
+  /** Archive the page (out of the library and search), or bring it back. */
+  const toggleArchive = async () => {
+    const next = !archived;
+    try {
+      const saved = await client.archiveDoc(doc.id, next);
+      setArchived(!!saved.archived);
+      onChanged(saved);
+      showToast({
+        text: next
+          ? "Archived. It's out of the library and search."
+          : "Back in the library",
+        action: next
+          ? {
+              label: "Undo",
+              run: () =>
+                void client.archiveDoc(doc.id, false).then((back) => {
+                  setArchived(false);
+                  onChanged(back);
+                }, report),
+            }
+          : undefined,
+      });
+    } catch (e) {
+      report(e);
+    }
+  };
+  /** A recording's summary goes under the recording (CAP-10). */
+  const addSummary = (fileId: string, lines: DocBlock[]) => {
+    const at = blocks.findIndex((b) => b.type === "file" && b.file === fileId);
+    placeLines(
+      lines.map((b) => ({ ...b, id: newBlockId() })),
+      at === -1 ? null : at,
+    );
+    showToast({ text: "Added the summary under the recording" });
+  };
+
   /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
     // Reading and editing (EDT-10): the same switch as Info's, a tap away.
@@ -2089,6 +2229,14 @@ export function DocEditor({
         ]
       : []),
     { label: "Ask about this page", onPress: () => setTalking(true) },
+    { label: "Present", onPress: () => setPresenting(true) },
+    {
+      label: pageStarred ? "Unstar" : "Star",
+      onPress: () => toggleStar(),
+    },
+    ...(onShowInLibrary
+      ? [{ label: "Show in library", onPress: () => onShowInLibrary() }]
+      : []),
     // A page with headings has its contents a tap away (NAV-03).
     ...(docOutline(blocks).length
       ? [{ label: "Contents", onPress: () => setContentsOpen(true) }]
@@ -2130,7 +2278,16 @@ export function DocEditor({
             label: "Add a photo or file…",
             onPress: () => void pickFiles(null).catch(report),
           },
+          { label: "Record audio…", onPress: () => setRecording(true) },
           { label: "Merge into…", onPress: () => setMerging(true) },
+        ]
+      : []),
+    ...(canWrite && doc.kind !== "agenda"
+      ? [
+          {
+            label: archived ? "Bring back from archive" : "Archive",
+            onPress: () => void toggleArchive(),
+          },
         ]
       : []),
     ...(canWrite
@@ -2197,442 +2354,471 @@ export function DocEditor({
   }, [flash]);
 
   return (
-    <View style={styles.page}>
-      {/* The page's header holds only Back, its title, Info and ⋯. */}
-      {headerSlot && (
-        <SlotFill slot={headerSlot}>
-          <HeaderButton
-            icon="info"
-            label="Info"
-            on={infoOpen}
-            onPress={() => setInfoOpen(true)}
-          />
-          <HeaderButton
-            icon="more"
-            label="Page options"
-            on={menu !== null}
-            onPress={() => setMenu("page")}
-          />
-        </SlotFill>
-      )}
-      {reading ? (
-        <Text style={styles.title} accessibilityRole="header">
-          {title || "Untitled"}
-        </Text>
-      ) : (
-        // A hidden text mirror supplies the full wrapping height. Native
-        // multiline inputs can retain a one-line height after editing.
-        <View style={styles.titleEditor}>
-          <Text
-            style={[styles.title, { opacity: 0 }]}
-            accessible={false}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          >
-            {(title || "Untitled") + "\u200b"}
+    <RecordingContext.Provider value={recordingActions}>
+      <View style={styles.page}>
+        {/* The page's header holds only Back, its title, Info and ⋯. */}
+        {headerSlot && (
+          <SlotFill slot={headerSlot}>
+            <HeaderButton
+              icon="info"
+              label="Info"
+              on={infoOpen}
+              onPress={() => setInfoOpen(true)}
+            />
+            <HeaderButton
+              icon="more"
+              label="Page options"
+              on={menu !== null}
+              onPress={() => setMenu("page")}
+            />
+          </SlotFill>
+        )}
+        {reading ? (
+          <Text style={styles.title} accessibilityRole="header">
+            {title || "Untitled"}
           </Text>
-          <TextInput
-            style={[styles.title, StyleSheet.absoluteFill]}
-            scrollEnabled={false}
-            multiline
-            textAlignVertical="top"
-            value={title}
-            placeholder="Untitled"
-            placeholderTextColor={colors.faint}
-            maxLength={200}
-            accessibilityLabel="Document title"
-            onChangeText={(text) => {
-              remember("title");
-              setTitle(text);
-              queueSave(text, blocks);
-            }}
-          />
-        </View>
-      )}
-
-      {/* The page's tags, quietly under its title; Info changes them. */}
-      {tags.length > 0 && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Tags: ${tags.map((t) => t.name).join(", ")}. Open Info to change them.`}
-          onPress={() => setInfoOpen(true)}
-          style={styles.tags}
-        >
-          {tags.map((t) => (
-            <View key={t.id} style={styles.tag}>
-              <View style={[styles.tagDot, { backgroundColor: t.color }]} />
-              <Text style={styles.tagText} numberOfLines={1}>
-                {t.name}
-              </Text>
-            </View>
-          ))}
-        </Pressable>
-      )}
-
-      {!!note && (
-        <Text style={styles.note} onPress={() => setNote("")}>
-          {note}
-        </Text>
-      )}
-
-      <DocSuggestions
-        suggestions={suggestions}
-        canDecide={canWrite}
-        userId={userId}
-        busy={deciding}
-        onDecide={decide}
-        onWithdraw={withdraw}
-      />
-
-      {savingTemplate && (
-        <SaveTemplatePanel
-          doc={doc}
-          canShare={canWrite}
-          onClose={() => setSavingTemplate(false)}
-          onSaved={(t) =>
-            showToast({
-              text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
-            })
-          }
-        />
-      )}
-
-      <View
-        onLayout={(event) => {
-          bodyOffset.current = event.nativeEvent.layout.y;
-          sendTarget();
-        }}
-      >
-        <LinkPillProvider value={pillActions}>
-          <FootnoteContext.Provider value={footnotes}>
-            <DocBody
-              content={blocks}
-              targetBlockId={initialBlockId}
-              onTargetLayout={(y) => {
-                targetOffset.current = y;
-                sendTarget();
-                if (initialBlockId) setFlash(initialBlockId);
+        ) : (
+          // A hidden text mirror supplies the full wrapping height. Native
+          // multiline inputs can retain a one-line height after editing.
+          <View style={styles.titleEditor}>
+            <Text
+              style={[styles.title, { opacity: 0 }]}
+              accessible={false}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {(title || "Untitled") + "\u200b"}
+            </Text>
+            <TextInput
+              style={[styles.title, StyleSheet.absoluteFill]}
+              scrollEnabled={false}
+              multiline
+              textAlignVertical="top"
+              value={title}
+              placeholder="Untitled"
+              placeholderTextColor={colors.faint}
+              maxLength={200}
+              accessibilityLabel="Document title"
+              onChangeText={(text) => {
+                remember("title");
+                setTitle(text);
+                queueSave(text, blocks);
               }}
-              folds={folds}
-              onToggleFold={toggleFold}
-              flash={flash}
-              onReplace={
-                structural && !reading
-                  ? (index, block) => {
-                      remember();
-                      const next = blocks.slice();
-                      next[index] = block;
-                      update(next);
-                    }
-                  : undefined
-              }
-              onEditTable={
-                structural && !reading
-                  ? (index) => setTableAt(index)
-                  : undefined
-              }
-              tasks={linked}
-              editing={focused}
-              draft={draft}
-              onDraftChange={changeDraft}
-              onCommit={commit}
-              onBlurLine={syncDraft}
-              selection={caret}
-              onSelectionChange={onSelect}
-              inputRef={lineInput}
-              counts={comments.counts}
-              marks={markRanges(comments.anchored)}
-              onOpenComments={(blockId) =>
-                setOpenThread((open) => (open === blockId ? null : blockId))
-              }
-              renderUnder={(blockId) => {
-                const list = comments.anchored.get(blockId) ?? [];
-                const waiting = pending?.blockId === blockId;
-                if (picking?.blockId === blockId)
+            />
+          </View>
+        )}
+
+        {/* The page's tags, quietly under its title; Info changes them. */}
+        {tags.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Tags: ${tags.map((t) => t.name).join(", ")}. Open Info to change them.`}
+            onPress={() => setInfoOpen(true)}
+            style={styles.tags}
+          >
+            {tags.map((t) => (
+              <View key={t.id} style={styles.tag}>
+                <View style={[styles.tagDot, { backgroundColor: t.color }]} />
+                <Text style={styles.tagText} numberOfLines={1}>
+                  {t.name}
+                </Text>
+              </View>
+            ))}
+          </Pressable>
+        )}
+
+        {!!note && (
+          <Text style={styles.note} onPress={() => setNote("")}>
+            {note}
+          </Text>
+        )}
+
+        <DocSuggestions
+          suggestions={suggestions}
+          canDecide={canWrite}
+          userId={userId}
+          busy={deciding}
+          onDecide={decide}
+          onWithdraw={withdraw}
+        />
+
+        {savingTemplate && (
+          <SaveTemplatePanel
+            doc={doc}
+            canShare={canWrite}
+            onClose={() => setSavingTemplate(false)}
+            onSaved={(t) =>
+              showToast({
+                text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+              })
+            }
+          />
+        )}
+
+        <View
+          onLayout={(event) => {
+            bodyOffset.current = event.nativeEvent.layout.y;
+            sendTarget();
+          }}
+        >
+          <LinkPillProvider value={pillActions}>
+            <FootnoteContext.Provider value={footnotes}>
+              <DocBody
+                content={blocks}
+                targetBlockId={initialBlockId}
+                onTargetLayout={(y) => {
+                  targetOffset.current = y;
+                  sendTarget();
+                  if (initialBlockId) setFlash(initialBlockId);
+                }}
+                folds={folds}
+                onToggleFold={toggleFold}
+                flash={flash}
+                onReplace={
+                  structural && !reading
+                    ? (index, block) => {
+                        remember();
+                        const next = blocks.slice();
+                        next[index] = block;
+                        update(next);
+                      }
+                    : undefined
+                }
+                onEditTable={
+                  structural && !reading
+                    ? (index) => setTableAt(index)
+                    : undefined
+                }
+                tasks={linked}
+                editing={focused}
+                draft={draft}
+                onDraftChange={changeDraft}
+                onCommit={commit}
+                onBlurLine={syncDraft}
+                selection={caret}
+                onSelectionChange={onSelect}
+                inputRef={lineInput}
+                counts={comments.counts}
+                marks={markRanges(comments.anchored)}
+                onOpenComments={(blockId) =>
+                  setOpenThread((open) => (open === blockId ? null : blockId))
+                }
+                renderUnder={(blockId) => {
+                  const list = comments.anchored.get(blockId) ?? [];
+                  const waiting = pending?.blockId === blockId;
+                  if (picking?.blockId === blockId)
+                    return (
+                      <WordPicker
+                        source={picking.source}
+                        onCancel={() => setPicking(null)}
+                        onAsk={(range) => {
+                          setPicking(null);
+                          setAsking({ blockId, ...range });
+                        }}
+                        onPick={(range) => {
+                          setPicking(null);
+                          setPending({
+                            blockId,
+                            quote: range.quote.slice(0, 400),
+                            range_start: range.start,
+                            range_end: range.end,
+                          });
+                          setOpenThread(blockId);
+                        }}
+                      />
+                    );
+                  if (asking?.blockId === blockId)
+                    return (
+                      <AskSheet
+                        quote={asking.quote}
+                        busy={deciding}
+                        onCancel={() => setAsking(null)}
+                        onAsk={(action, instruction) =>
+                          void assist(action, instruction)
+                        }
+                      />
+                    );
+                  if (openThread !== blockId && !waiting) return null;
                   return (
-                    <WordPicker
-                      source={picking.source}
-                      onCancel={() => setPicking(null)}
-                      onAsk={(range) => {
-                        setPicking(null);
-                        setAsking({ blockId, ...range });
+                    <DocThread
+                      comments={list}
+                      state={comments}
+                      userId={userId}
+                      quote={list[0]?.quote ?? pending?.quote}
+                      placeholder="Comment on this line…"
+                      autoFocus={waiting}
+                      anchor={{
+                        block_id: blockId,
+                        quote: pending?.quote ?? list[0]?.quote ?? "",
+                        range_start: pending?.range_start,
+                        range_end: pending?.range_end,
                       }}
-                      onPick={(range) => {
-                        setPicking(null);
-                        setPending({
-                          blockId,
-                          quote: range.quote.slice(0, 400),
-                          range_start: range.start,
-                          range_end: range.end,
-                        });
+                      // Stay open on the line just commented on, so the remark
+                      // that was written is there to read rather than folding away.
+                      onDone={() => {
+                        setPending(null);
                         setOpenThread(blockId);
                       }}
                     />
                   );
-                if (asking?.blockId === blockId)
-                  return (
-                    <AskSheet
-                      quote={asking.quote}
-                      busy={deciding}
-                      onCancel={() => setAsking(null)}
-                      onAsk={(action, instruction) =>
-                        void assist(action, instruction)
+                }}
+                onLineLayout={(index, y) => lineYs.current.set(index, y)}
+                onEditBlock={reading && !suggesting ? undefined : openLine}
+                // Reading, and allowed to edit: a double tap edits that line.
+                onDoubleTapBlock={
+                  reading && canWrite && !suggesting
+                    ? (index) => {
+                        setMode("edit");
+                        saveLocal(MODE_KEY + doc.id, "edit");
+                        openLine(index);
                       }
-                    />
-                  );
-                if (openThread !== blockId && !waiting) return null;
-                return (
-                  <DocThread
-                    comments={list}
-                    state={comments}
-                    userId={userId}
-                    quote={list[0]?.quote ?? pending?.quote}
-                    placeholder="Comment on this line…"
-                    autoFocus={waiting}
-                    anchor={{
-                      block_id: blockId,
-                      quote: pending?.quote ?? list[0]?.quote ?? "",
-                      range_start: pending?.range_start,
-                      range_end: pending?.range_end,
-                    }}
-                    // Stay open on the line just commented on, so the remark
-                    // that was written is there to read rather than folding away.
-                    onDone={() => {
-                      setPending(null);
-                      setOpenThread(blockId);
-                    }}
-                  />
-                );
-              }}
-              onLineLayout={(index, y) => lineYs.current.set(index, y)}
-              onEditBlock={reading && !suggesting ? undefined : openLine}
-              // Reading, and allowed to edit: a double tap edits that line.
-              onDoubleTapBlock={
-                reading && canWrite && !suggesting
-                  ? (index) => {
-                      setMode("edit");
-                      saveLocal(MODE_KEY + doc.id, "edit");
-                      openLine(index);
-                    }
-                  : undefined
-              }
-              onToggleTodo={reading || !structural ? undefined : toggle}
-              underEditing={underLine}
-            />
-          </FootnoteContext.Provider>
-        </LinkPillProvider>
-      </View>
+                    : undefined
+                }
+                onToggleTodo={reading || !structural ? undefined : toggle}
+                underEditing={underLine}
+              />
+            </FootnoteContext.Provider>
+          </LinkPillProvider>
+        </View>
 
-      {/* The toolbar rides on the keyboard (the sheet docks it there); a
+        {/* The toolbar rides on the keyboard (the sheet docks it there); a
           page shown anywhere else keeps it under the line. */}
-      {toolbar &&
-        (toolbarSlot ? (
-          <SlotFill slot={toolbarSlot}>{toolbar}</SlotFill>
-        ) : (
-          toolbar
-        ))}
-      {focused === null && structural && (
-        <Pressable
-          onPress={addLine}
-          accessibilityRole="button"
-          style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
-        >
-          <Text style={styles.addText}>+ Add a block</Text>
-        </Pressable>
-      )}
+        {toolbar &&
+          (toolbarSlot ? (
+            <SlotFill slot={toolbarSlot}>{toolbar}</SlotFill>
+          ) : (
+            toolbar
+          ))}
+        {focused === null && structural && (
+          <Pressable
+            onPress={addLine}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.add, pressed && styles.addPressed]}
+          >
+            <Text style={styles.addText}>+ Add a block</Text>
+          </Pressable>
+        )}
 
-      {/* Four lines of instructions sat under every page, every time it was
+        {/* Four lines of instructions sat under every page, every time it was
           opened. It says the one thing that is not obvious, and only while
           there is a toolbar for it to be about. */}
-      {focused !== null && structural && (
-        <Text style={styles.hint}>
-          Return starts a new line; on an empty list item it ends the list.
-        </Text>
-      )}
+        {focused !== null && structural && (
+          <Text style={styles.hint}>
+            Return starts a new line; on an empty list item it ends the list.
+          </Text>
+        )}
 
-      {/* One quiet line at the end of the page. */}
-      <Text style={styles.footer} onPress={() => setInfoOpen(true)}>
-        {facts}
-      </Text>
-      <View
-        onLayout={(event) => {
-          linkedY.current = event.nativeEvent.layout.y;
-        }}
-      />
-      <LinkedHere
-        kind="doc"
-        id={doc.id}
-        onCount={setLinkedCount}
-        report={report}
-        onLinkRelated={
-          canWrite && structural && !reading ? linkRelated : undefined
-        }
-      />
-      <PublishSheet
-        visible={publishing}
-        kind="doc"
-        id={doc.id}
-        name={title || "Untitled"}
-        onClose={() => setPublishing(false)}
-      />
-      <LinkCardSheet
-        target={card}
-        onClose={() => setCard(null)}
-        onChanged={() => {
-          reloadPills();
-          onItemsChanged?.();
-        }}
-        report={report}
-      />
-      {tableAt !== null && blocks[tableAt]?.type === "table" && (
-        <TableEditor
-          visible
-          text={(blocks[tableAt] as { text: string }).text}
-          onSave={(text) => {
-            const at = tableAt;
-            remember();
-            const next = blocks.slice();
-            next[at] = { ...(blocks[at] as DocBlock), text } as DocBlock;
-            update(next);
+        {/* One quiet line at the end of the page. */}
+        <Text style={styles.footer} onPress={() => setInfoOpen(true)}>
+          {facts}
+        </Text>
+        <View
+          onLayout={(event) => {
+            linkedY.current = event.nativeEvent.layout.y;
           }}
-          onClose={() => setTableAt(null)}
         />
-      )}
-      <TemplateSheet
-        visible={templateAt !== null}
-        doc={{ title, project_name: doc.project_name }}
-        onPick={(lines) => placeLines(lines, templateAt)}
-        onClose={() => setTemplateAt(null)}
-        report={report}
-      />
-      <EmbedSheet
-        visible={embedAt !== null}
-        onPick={(ref) => {
-          if (ref.kind !== "doc" || ref.id === doc.id) {
+        <LinkedHere
+          kind="doc"
+          id={doc.id}
+          onCount={setLinkedCount}
+          report={report}
+          onLinkRelated={
+            canWrite && structural && !reading ? linkRelated : undefined
+          }
+        />
+        <PublishSheet
+          visible={publishing}
+          kind="doc"
+          id={doc.id}
+          name={title || "Untitled"}
+          onClose={() => setPublishing(false)}
+        />
+        <LinkCardSheet
+          target={card}
+          onClose={() => setCard(null)}
+          onChanged={() => {
+            reloadPills();
+            onItemsChanged?.();
+          }}
+          report={report}
+        />
+        {tableAt !== null && blocks[tableAt]?.type === "table" && (
+          <TableEditor
+            visible
+            text={(blocks[tableAt] as { text: string }).text}
+            onSave={(text) => {
+              const at = tableAt;
+              remember();
+              const next = blocks.slice();
+              next[at] = { ...(blocks[at] as DocBlock), text } as DocBlock;
+              update(next);
+            }}
+            onClose={() => setTableAt(null)}
+          />
+        )}
+        <TemplateSheet
+          visible={templateAt !== null}
+          doc={{ title, project_name: doc.project_name }}
+          onPick={(lines) => placeLines(lines, templateAt)}
+          onClose={() => setTemplateAt(null)}
+          report={report}
+        />
+        <EmbedSheet
+          visible={embedAt !== null}
+          onPick={(ref) => {
+            if (ref.kind !== "doc" || ref.id === doc.id) {
+              showToast({
+                text:
+                  ref.id === doc.id
+                    ? "That's this page."
+                    : "Only a page can be embedded.",
+              });
+              return;
+            }
+            placeLines(
+              [
+                {
+                  type: "code",
+                  lang: EMBED_LANG,
+                  text: embedText({
+                    kind: "section",
+                    doc: ref.id,
+                    block: ref.block ?? null,
+                  }),
+                  id: newBlockId(),
+                },
+              ],
+              embedAt,
+            );
+          }}
+          onClose={() => setEmbedAt(null)}
+          report={report}
+        />
+        <MergeSheet
+          visible={merging}
+          doc={{ id: doc.id, title }}
+          version={async () => {
+            await flush();
+            return version.current;
+          }}
+          onClose={() => setMerging(false)}
+          onMerged={(into, relinked) => {
+            setMerging(false);
+            dirty.current = false;
+            flushOnClose.current = () => {};
+            gone.current = true;
+            onDeleted?.();
+            openObject({ kind: "doc", id: into.id });
             showToast({
               text:
-                ref.id === doc.id
-                  ? "That's this page."
-                  : "Only a page can be embedded.",
+                relinked > 0
+                  ? `Merged into “${into.title}”. ${relinked} page${relinked === 1 ? "" : "s"} now link there.`
+                  : `Merged into “${into.title}”.`,
             });
-            return;
+          }}
+        />
+
+        {openTodos > 0 && (
+          <View style={styles.pageActions}>
+            <SmallAction
+              label={`Add ${openTodos} to my tasks`}
+              disabled={false}
+              onPress={() => makeTasks()}
+            />
+          </View>
+        )}
+
+        <DocAsk
+          visible={talking}
+          docId={doc.id}
+          blocks={blocks}
+          canWrite={canWrite || suggesting}
+          onClose={() => setTalking(false)}
+          onGoToBlock={(blockId) => setOpenThread(blockId)}
+          onNameBlock={nameBlockAt}
+          onSuggested={(made) => setSuggestions((list) => [...list, made])}
+        />
+        <PageInfo
+          visible={infoOpen}
+          doc={doc}
+          fieldsStamp={fieldsStamp}
+          tags={tags}
+          mode={mode}
+          canWrite={canWrite}
+          reading={reading}
+          facts={facts}
+          onMode={chooseMode}
+          onTags={setTags}
+          onShowHistory={() => {
+            setInfoOpen(false);
+            onShowHistory?.();
+          }}
+          onClose={() => setInfoOpen(false)}
+          report={report}
+          outline={outline}
+          onJump={jumpTo}
+          starredHeadings={starredHeadings}
+          onStarHeading={starHeading}
+          onShowLinked={() => {
+            setInfoOpen(false);
+            if (linkedY.current !== null) onTargetOffset?.(linkedY.current);
+          }}
+        />
+        <ContentsSheet
+          visible={contentsOpen}
+          outline={outline}
+          current={-1}
+          onJump={jumpTo}
+          onClose={() => setContentsOpen(false)}
+          starred={starredHeadings}
+          onStar={starHeading}
+        />
+        <PresentSheet
+          visible={presenting}
+          title={title}
+          blocks={blocks}
+          onClose={() => setPresenting(false)}
+        />
+        <RecordSheet
+          visible={recording}
+          onClose={() => setRecording(false)}
+          onDone={(r) => {
+            setRecording(false);
+            void addFiles([{ name: r.name, uri: r.uri, mime: r.mime }], null);
+          }}
+        />
+        <RecordingSummarySheet
+          target={summarising}
+          onAddToPage={
+            canWrite && !reading && summarising
+              ? (lines) => addSummary(summarising.fileId, lines)
+              : undefined
           }
-          placeLines(
-            [
-              {
-                type: "code",
-                lang: EMBED_LANG,
-                text: embedText({
-                  kind: "section",
-                  doc: ref.id,
-                  block: ref.block ?? null,
-                }),
-                id: newBlockId(),
-              },
-            ],
-            embedAt,
-          );
-        }}
-        onClose={() => setEmbedAt(null)}
-        report={report}
-      />
-      <MergeSheet
-        visible={merging}
-        doc={{ id: doc.id, title }}
-        version={async () => {
-          await flush();
-          return version.current;
-        }}
-        onClose={() => setMerging(false)}
-        onMerged={(into, relinked) => {
-          setMerging(false);
-          dirty.current = false;
-          flushOnClose.current = () => {};
-          gone.current = true;
-          onDeleted?.();
-          openObject({ kind: "doc", id: into.id });
-          showToast({
-            text:
-              relinked > 0
-                ? `Merged into “${into.title}”. ${relinked} page${relinked === 1 ? "" : "s"} now link there.`
-                : `Merged into “${into.title}”.`,
-          });
-        }}
-      />
-
-      {openTodos > 0 && (
-        <View style={styles.pageActions}>
-          <SmallAction
-            label={`Add ${openTodos} to my tasks`}
-            disabled={false}
-            onPress={() => makeTasks()}
-          />
-        </View>
-      )}
-
-      <DocAsk
-        visible={talking}
-        docId={doc.id}
-        blocks={blocks}
-        canWrite={canWrite || suggesting}
-        onClose={() => setTalking(false)}
-        onGoToBlock={(blockId) => setOpenThread(blockId)}
-        onNameBlock={nameBlockAt}
-        onSuggested={(made) => setSuggestions((list) => [...list, made])}
-      />
-      <PageInfo
-        visible={infoOpen}
-        doc={doc}
-        fieldsStamp={fieldsStamp}
-        tags={tags}
-        mode={mode}
-        canWrite={canWrite}
-        reading={reading}
-        facts={facts}
-        onMode={chooseMode}
-        onTags={setTags}
-        onShowHistory={() => {
-          setInfoOpen(false);
-          onShowHistory?.();
-        }}
-        onClose={() => setInfoOpen(false)}
-        report={report}
-        outline={outline}
-        onJump={jumpTo}
-        onShowLinked={() => {
-          setInfoOpen(false);
-          if (linkedY.current !== null) onTargetOffset?.(linkedY.current);
-        }}
-      />
-      <ContentsSheet
-        visible={contentsOpen}
-        outline={outline}
-        current={-1}
-        onJump={jumpTo}
-        onClose={() => setContentsOpen(false)}
-      />
-      <ActionSheet
-        visible={menu === "page"}
-        label="Page options"
-        title={title || "Untitled"}
-        actions={pageActions}
-        onClose={() => setMenu((m) => (m === "page" ? null : m))}
-      />
-      <ActionSheet
-        visible={menu === "share"}
-        label="Share this page"
-        title="Share as"
-        actions={shareActions}
-        onClose={() => setMenu((m) => (m === "share" ? null : m))}
-      />
-      <ActionSheet
-        visible={menu === "export"}
-        label="Export this page"
-        title="Export as"
-        actions={exportActions}
-        onClose={() => setMenu((m) => (m === "export" ? null : m))}
-      />
-    </View>
+          onClose={() => setSummarising(null)}
+        />
+        <ActionSheet
+          visible={menu === "page"}
+          label="Page options"
+          title={title || "Untitled"}
+          actions={pageActions}
+          onClose={() => setMenu((m) => (m === "page" ? null : m))}
+        />
+        <ActionSheet
+          visible={menu === "share"}
+          label="Share this page"
+          title="Share as"
+          actions={shareActions}
+          onClose={() => setMenu((m) => (m === "share" ? null : m))}
+        />
+        <ActionSheet
+          visible={menu === "export"}
+          label="Export this page"
+          title="Export as"
+          actions={exportActions}
+          onClose={() => setMenu((m) => (m === "export" ? null : m))}
+        />
+      </View>
+    </RecordingContext.Provider>
   );
 }
 

@@ -52,6 +52,8 @@ import { copyLink, shareLink } from "../lib/share";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
+import { showToast } from "../components/Toast";
+import { announceStars } from "../lib/accountPrefs";
 import * as outbox from "../lib/outbox";
 import { canJoin } from "../lib/planning";
 import {
@@ -124,7 +126,13 @@ export function TaskDetail({
   onOpenProject,
   onAskTask,
   onOpenPage,
+  inline = false,
 }: {
+  /**
+   * Beside the list rather than over it (MOB-12): on an iPad or a wide
+   * window the task sits in a panel next to Tasks.
+   */
+  inline?: boolean;
   visible: boolean;
   /** The row that was tapped; shown straight away while the detail loads. */
   item: Item | null;
@@ -157,29 +165,38 @@ export function TaskDetail({
 }) {
   /** The ⋯ in the header: sharing the task's link. */
   const [menu, setMenu] = useState(false);
+  /** Whether this task is starred (NAV-07), read when its menu opens. */
+  const [starred, setStarred] = useState(false);
+  useEffect(() => {
+    if (!menu || !item) return;
+    let live = true;
+    client.listFavourites().then(
+      (all) =>
+        live &&
+        setStarred(
+          all.some((f) => f.kind === "task" && f.target_id === item.id),
+        ),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [menu, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Opened: it leads the search's recent list, and ⌘K's on the web.
   const openedId = visible ? item?.id : undefined;
   useEffect(() => {
     if (openedId) void client.recordRecent("task", openedId).catch(() => {});
   }, [openedId]);
-  return (
-    <Sheet
-      avoidKeyboard={false}
-      visible={visible}
-      title={item?.kind === "event" ? "Event" : "Task"}
-      onClose={onClose}
-      onDismiss={onDismiss}
-      actions={
-        item ? (
-          <HeaderButton
-            icon="more"
-            label={item.kind === "event" ? "Event options" : "Task options"}
-            on={menu}
-            onPress={() => setMenu(true)}
-          />
-        ) : undefined
-      }
-    >
+  const options = item ? (
+    <HeaderButton
+      icon="more"
+      label={item.kind === "event" ? "Event options" : "Task options"}
+      on={menu}
+      onPress={() => setMenu(true)}
+    />
+  ) : undefined;
+  const body = (
+    <>
       {item && (
         <Body
           key={item.id}
@@ -215,13 +232,85 @@ export function TaskDetail({
               onPress: () =>
                 void shareLink({ kind: "task", id: item.id }, item.title),
             },
+            {
+              label: starred ? "Unstar" : "Star",
+              onPress: () => {
+                const on = !starred;
+                setStarred(on);
+                client.setFavourite("task", item.id, on).then(
+                  () => {
+                    announceStars();
+                    showToast({ text: on ? "Starred" : "Unstarred" });
+                  },
+                  () => setStarred(!on),
+                );
+              },
+            },
           ]}
           onClose={() => setMenu(false)}
         />
       )}
+    </>
+  );
+  if (inline)
+    return visible && item ? (
+      <View style={panel.box} accessibilityLabel="Task beside the list">
+        <View style={panel.head}>
+          <Text style={panel.kind}>
+            {item.kind === "event" ? "Event" : "Task"}
+          </Text>
+          {options}
+          <HeaderButton icon="x" label="Close" on={false} onPress={onClose} />
+        </View>
+        <ScrollView
+          contentContainerStyle={panel.body}
+          keyboardShouldPersistTaps="handled"
+        >
+          {body}
+        </ScrollView>
+      </View>
+    ) : null;
+  return (
+    <Sheet
+      avoidKeyboard={false}
+      visible={visible}
+      title={item?.kind === "event" ? "Event" : "Task"}
+      onClose={onClose}
+      onDismiss={onDismiss}
+      actions={options}
+    >
+      {body}
     </Sheet>
   );
 }
+
+/** The panel a task sits in beside the list (MOB-12). */
+const panel = themed(() =>
+  StyleSheet.create({
+    box: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderLeftWidth: StyleSheet.hairlineWidth,
+      borderLeftColor: colors.border,
+    },
+    head: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.divider,
+    },
+    kind: {
+      flex: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    body: { padding: spacing.page, gap: 12 },
+  }),
+);
 
 function Body({
   seed,

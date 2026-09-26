@@ -35,6 +35,7 @@ import {
   type Status,
   type TaskGroupBy,
   type User,
+  type ViewChoice,
 } from "@orbyn/core";
 import { Chip, ChipRow } from "../components/Chip";
 import { Icon } from "../components/Icon";
@@ -278,8 +279,16 @@ export function TasksScreen({
   onDragging,
   onAddWith,
   onChangeItem,
+  viewChoice,
+  onViewChoice,
   ...handlers
 }: ListHandlers & {
+  /**
+   * How the list was left, following the account (SHR-08): layout,
+   * grouping, order and pinned sections, and saving a change to them.
+   */
+  viewChoice?: ViewChoice;
+  onViewChoice?: (choice: ViewChoice) => void;
   items: Item[];
   search: string;
   onSearch: (search: string) => void;
@@ -310,6 +319,23 @@ export function TasksScreen({
   const [sort, setSort] = useState<ItemSort>(savedSort);
   const [layout, setLayout] = useState<Layout>(savedLayout);
   const [boardGroup, setBoardGroup] = useState<BoardGroupBy>(savedBoardGroup);
+  // The account's choices, when they arrive, win over this phone's copy.
+  useEffect(() => {
+    if (!viewChoice) return;
+    if (viewChoice.layout === "list" || viewChoice.layout === "board")
+      setLayout(viewChoice.layout);
+    if (viewChoice.sort && ITEM_SORTS.includes(viewChoice.sort as ItemSort))
+      setSort(viewChoice.sort as ItemSort);
+    if (viewChoice.group && (GROUPS as string[]).includes(viewChoice.group))
+      setFilters((f) => ({ ...f, group: viewChoice.group as never }));
+    if (viewChoice.pins)
+      setPins(PINS.filter((p) => viewChoice.pins!.includes(p)));
+  }, [
+    viewChoice?.layout,
+    viewChoice?.sort,
+    viewChoice?.group,
+    viewChoice?.pins?.join(),
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
   const shownGroup: Group = layout === "board" ? boardGroup : filters.group;
   const [folds, setFolds] = useState(() =>
     savedFolds(foldKey(layout, shownGroup)),
@@ -418,12 +444,23 @@ export function TasksScreen({
     setSort(next);
     setOpen(null);
     saveLocal(SORT_KEY, next);
+    keep({ sort: next });
   };
   const chooseLayout = (next: Layout) => {
     animateLayout();
     setLayout(next);
     saveLocal(LAYOUT_KEY, next);
+    keep({ layout: next });
   };
+  /** Save a change to how the list is shown, for every device. */
+  const keep = (change: ViewChoice) =>
+    onViewChoice?.({
+      layout,
+      sort,
+      group: filters.group,
+      pins,
+      ...change,
+    });
 
   const options: Record<
     Key,
@@ -482,7 +519,10 @@ export function TasksScreen({
       return;
     }
     setFilters((f) => ({ ...f, [key]: value }));
-    if (key === "group") saveLocal(GROUP_KEY, value);
+    if (key === "group") {
+      saveLocal(GROUP_KEY, value);
+      keep({ group: value });
+    }
   };
 
   // Pinned sections: open tasks by when they're due, each in one section only.
@@ -517,6 +557,7 @@ export function TasksScreen({
     setPins(next);
     // SecureStore can't keep an empty value.
     saveLocal(PIN_KEY, next.join(",") || "none");
+    keep({ pins: next });
   };
 
   const names: GroupNames = {

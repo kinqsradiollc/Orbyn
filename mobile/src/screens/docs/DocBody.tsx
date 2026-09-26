@@ -8,6 +8,7 @@ import {
   footnoteNumbers,
   isDiagram,
   LIVE_LIST_LANG,
+  lineDirection,
   listLayout,
   type DocBlock,
 } from "@orbyn/core";
@@ -276,7 +277,7 @@ export function DocBody({
             <View key={index} style={[styles.editing, inset(index)]}>
               <TextInput
                 ref={inputRef}
-                style={styles.input}
+                style={[styles.input, dir(draft ?? "")]}
                 value={draft}
                 multiline
                 autoFocus
@@ -308,6 +309,7 @@ export function DocBody({
                 style={[
                   styles.heading,
                   block.level === 1 ? styles.h1 : styles.h2,
+                  dir(block.text),
                 ]}
               >
                 <Inline text={block.text} marks={marks[block.id ?? ""]} />
@@ -378,7 +380,7 @@ export function DocBody({
           case "numbered":
             return line(
               index,
-              <View style={[styles.row, inset(index)]}>
+              <View style={[styles.row, inset(index), rowDir(block.text)]}>
                 <Text
                   style={[
                     styles.marker,
@@ -389,7 +391,7 @@ export function DocBody({
                     ? BULLETS[layout[index].depth % BULLETS.length]
                     : `${layout[index].number ?? 1}.`}
                 </Text>
-                <Text style={styles.text}>
+                <Text style={[styles.text, dir(block.text)]}>
                   <Inline text={block.text} marks={marks[block.id ?? ""]} />
                 </Text>
               </View>,
@@ -400,7 +402,14 @@ export function DocBody({
             // instead.
             return decorate(
               index,
-              <View style={[styles.row, styles.line, inset(index)]}>
+              <View
+                style={[
+                  styles.row,
+                  styles.line,
+                  inset(index),
+                  rowDir(block.text),
+                ]}
+              >
                 {/* A checkbox, as on task rows and on the web: a switch reads
                     as a setting, and is twice the size of a line. */}
                 <Pressable
@@ -443,7 +452,13 @@ export function DocBody({
                     onEditBlock ? "Edit this line" : undefined
                   }
                 >
-                  <Text style={[styles.text, block.done && styles.done]}>
+                  <Text
+                    style={[
+                      styles.text,
+                      block.done && styles.done,
+                      dir(block.text),
+                    ]}
+                  >
                     <Inline text={block.text} marks={marks[block.id ?? ""]} />
                   </Text>
                   {block.id && tasks?.has(block.id) ? (
@@ -456,7 +471,7 @@ export function DocBody({
             return line(
               index,
               <View style={styles.quote}>
-                <Text style={styles.quoteText}>
+                <Text style={[styles.quoteText, dir(block.text)]}>
                   <Inline text={block.text} marks={marks[block.id ?? ""]} />
                 </Text>
               </View>,
@@ -497,7 +512,7 @@ export function DocBody({
           default:
             return line(
               index,
-              <Text style={styles.text}>
+              <Text style={[styles.text, dir(block.text)]}>
                 <Inline text={block.text} marks={marks[block.id ?? ""]} />
               </Text>,
             );
@@ -506,6 +521,20 @@ export function DocBody({
     </View>
   );
 }
+
+/**
+ * A line that starts in Arabic or Hebrew reads right to left (DSN-04), as
+ * dir="auto" does on the web; the rest of the app stays as it is.
+ */
+const dir = (text: string) =>
+  lineDirection(text) === "rtl"
+    ? ({ writingDirection: "rtl", textAlign: "right" } as const)
+    : null;
+/** A list row whose words read right to left has its marker on the right. */
+const rowDir = (text: string) =>
+  lineDirection(text) === "rtl"
+    ? ({ flexDirection: "row-reverse" } as const)
+    : null;
 
 /** How far each level of a nested list steps in. */
 const NEST = 20;

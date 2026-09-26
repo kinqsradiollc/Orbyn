@@ -4,6 +4,7 @@ import {
   SettingsSection,
 } from "./settings/SettingsSection";
 import { PrivacySection } from "./settings/PrivacySection";
+import { ArrangeList, StartChoice } from "./settings/LayoutSection";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
@@ -33,6 +34,7 @@ import {
   type PagesImportSummary,
   type SettingEntry,
   type TaskImportFormat,
+  type SidebarArrangement,
 } from "@orbyn/core";
 import {
   hidesHeaderWhileReading,
@@ -128,7 +130,12 @@ export function SettingsScreen({
   openAt,
   scrollTo,
   onAccountDeleted,
+  arrangement,
+  onArrange,
 }: {
+  /** The one Arrange list (NAV-08), and saving it. */
+  arrangement?: SidebarArrangement;
+  onArrange?: (next: SidebarArrangement) => void;
   user: User | null;
   busy: boolean;
   act: (fn: () => Promise<void>) => Promise<void>;
@@ -506,6 +513,20 @@ export function SettingsScreen({
           />
         </View>
       </SettingsSection>
+
+      <SettingsSection title="Start">
+        <StartChoice />
+      </SettingsSection>
+
+      {arrangement && onArrange && (
+        <SettingsSection title="Arrange">
+          <ArrangeList
+            arrangement={arrangement}
+            onChange={onArrange}
+            isAdmin={isAdmin}
+          />
+        </SettingsSection>
+      )}
 
       <SettingsSection title="Stay in the loop">
         <View style={s.preference}>

@@ -33,7 +33,9 @@ import {
   docObjectLinks,
   fileSize,
   layoutFlowchart,
+  isAudio,
   PAGE_FILE_TYPES,
+  recordingClock,
   parseEmbed,
   parseFlowchart,
   parseTable,
@@ -43,6 +45,7 @@ import {
   type PageFile,
   type TableCells,
 } from "@orbyn/core";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { client } from "../../lib/api";
 import { saveFile } from "../../lib/download";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -677,6 +680,76 @@ function ImageViewer({
 }
 
 /** A file on a page: its name, kind and size, and Download. */
+/**
+ * What a page offers for its recordings (CAP-10): a summary from the
+ * assistant. The editor provides it; a page shown elsewhere has none.
+ */
+export const RecordingContext = React.createContext<{
+  summarise?: (fileId: string, name: string) => void;
+}>({});
+
+/** A recording on a page: play it here, and ask for its summary. */
+function AudioCard({
+  block,
+  url,
+  file,
+}: {
+  block: Extract<DocBlock, { type: "file" }>;
+  url: string;
+  file: PageFile;
+}) {
+  const player = useAudioPlayer(url);
+  const status = useAudioPlayerStatus(player);
+  const recording = React.useContext(RecordingContext);
+  const name = block.text || file.name;
+  return (
+    <View style={s.file}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={status.playing ? `Pause ${name}` : `Play ${name}`}
+        hitSlop={8}
+        onPress={() => (status.playing ? player.pause() : player.play())}
+        style={({ pressed }) => [s.fileButton, pressed && s.pressed]}
+      >
+        <Icon
+          name={status.playing ? "pause" : "play"}
+          size={16}
+          color={colors.accent}
+        />
+      </Pressable>
+      <View style={s.fileText}>
+        <Text style={s.fileName} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={s.fileMeta}>
+          {[
+            "Recording",
+            status.duration
+              ? recordingClock(status.duration)
+              : fileSize(file.bytes),
+            status.currentTime && status.playing
+              ? recordingClock(status.currentTime)
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </Text>
+      </View>
+      {recording.summarise && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Summarise ${name}`}
+          hitSlop={8}
+          onPress={() => recording.summarise?.(block.file, name)}
+          style={({ pressed }) => [s.fileButton, pressed && s.pressed]}
+        >
+          <Icon name="sparkles" size={16} color={colors.accent} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 export function FileCard({
   block,
 }: {
@@ -685,6 +758,8 @@ export function FileCard({
   const link = useFileLink(block.file);
   const file = link && link !== "gone" ? link.file : null;
   const [busy, setBusy] = useState(false);
+  if (link && link !== "gone" && file && isAudio(file.mime))
+    return <AudioCard block={block} url={link.url} file={file} />;
   return (
     <View style={s.file}>
       <Icon name="paperclip" size={18} color={colors.muted} />
