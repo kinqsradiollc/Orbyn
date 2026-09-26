@@ -2,7 +2,6 @@ import { parseProjectDraft } from "../project-draft.js";
 import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
-  blockText,
   dueDayAt,
   estimateModelOf,
   isClosed,
@@ -36,7 +35,6 @@ import { localIso } from "../snapshot.js";
 import type { JsonSchema, ToolCall, ToolSpec } from "./protocol.js";
 import {
   calendarGlance,
-  calendarMatches,
   findFreeTime,
   getCalendar,
   getStudy,
@@ -48,12 +46,17 @@ import {
 } from "./workspace.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
-import { searchPages } from "../../search/routes.js";
+import { searchPages } from "../../search/service.js";
 import {
   visibleItems,
   visibleProjects,
   visibleRecords,
 } from "../../../lib/visibility.js";
+import {
+  changeFor,
+  proposeChanges,
+  type ProposedChange,
+} from "../../docs/service.js";
 
 export { toInstant, whenLabel };
 
@@ -2143,39 +2146,28 @@ async function proposeDocEdit(
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
 
+  // The words to change are looked for in the page as it stands; a
+  // proposal against words that are not there would have nothing to apply.
   const made: string[] = [];
   const missed: string[] = [];
+  const changes: ProposedChange[] = [];
   for (const change of a.changes.slice(0, 10)) {
-    // The words to change are looked for in the page as it stands; a
-    // proposal against words that are not there would have nothing to apply.
-    const block = doc.content.find(
-      (b) => b.id && blockText(b).includes(change.find),
-    );
-    if (!block?.id) {
+    const found = changeFor(doc.content, change.find, change.replace);
+    if (!found) {
       missed.push(change.find);
       continue;
     }
-    const source = blockText(block);
-    const at = source.indexOf(change.find);
-    await pool.query(
-      `INSERT INTO doc_suggestions
-         (doc_id, user_id, block_id, kind, range_start, range_end,
-          text, quote, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [
-        doc.id,
-        ctx.user.id,
-        block.id,
-        change.replace ? "replace" : "delete",
-        at,
-        at + change.find.length,
-        change.replace,
-        change.find,
-        `Assistant${a.why ? ` · ${a.why.slice(0, 120)}` : ""}`,
-      ],
-    );
+    changes.push(found);
     made.push(change.find);
   }
+  // Through the docs service, as a person's proposals are.
+  await proposeChanges(
+    pool,
+    doc.id,
+    ctx.user.id,
+    changes,
+    `Assistant${a.why ? ` · ${a.why.slice(0, 120)}` : ""}`,
+  );
   return {
     proposed: made.length,
     on: doc.title,

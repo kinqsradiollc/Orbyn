@@ -25,7 +25,7 @@ import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
 import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
-import { COLUMNS, JOINS } from "./routes.js";
+import { COLUMNS, JOINS } from "./service.js";
 import { visibleItems } from "../../lib/visibility.js";
 
 /**

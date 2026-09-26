@@ -36,7 +36,7 @@ import {
   makeLineTasks,
   pageTags,
   type EventRow,
-} from "../docs/routes.js";
+} from "../docs/service.js";
 import {
   readableDocs,
   visibleItems,

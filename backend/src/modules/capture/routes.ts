@@ -17,7 +17,7 @@ import { transaction, type Db } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
-import { addToPage } from "../docs/routes.js";
+import { addToPage } from "../docs/service.js";
 import { todaysAgenda } from "../docs/agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { linkPreview } from "./preview.js";

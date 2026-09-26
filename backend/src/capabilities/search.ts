@@ -29,6 +29,7 @@ import {
   type Provenance,
 } from "./format.js";
 import { refs, type RefType } from "./refs.js";
+import { searchRank } from "../modules/search/rank.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
 import { defineCapability, type CapabilityContext } from "./registry.js";
 
@@ -47,11 +48,12 @@ import { defineCapability, type CapabilityContext } from "./registry.js";
 const MARKS =
   "StartSel=**, StopSel=**, MaxWords=26, MinWords=10, MaxFragments=1";
 
-/** Word match, lifted for recent changes, plus a little for a title that looks right. */
-const rank = (vector: string, title: string, updated: string, q: string) => `
-  ts_rank_cd(${vector}, q.tsq)
-    * (1 + 0.5 * exp(-(extract(epoch FROM now() - ${updated}) / 2592000)))
-  + greatest(similarity(${title}, ${q}) - 0.2, 0) * 0.5`;
+/**
+ * Word match, lifted for recent changes, plus a little for a title that
+ * looks right: the app's own ranking (the search service's), so an agent
+ * and the search box put things in the same order.
+ */
+const rank = searchRank;
 
 const SEARCH_TYPES = ["task", "event", "doc", "project", "record"] as const;
 
