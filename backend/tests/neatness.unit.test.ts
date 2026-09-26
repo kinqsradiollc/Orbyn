@@ -222,6 +222,27 @@ test("each settings card opens with a bold lead-in and one sentence", () => {
   assert.deepEqual(long, []);
 });
 
+test("each phone settings section opens with one sentence", () => {
+  const files = [
+    "mobile/src/screens/SettingsScreen.tsx",
+    ...walk("mobile/src/screens/settings", /\.tsx$/),
+  ];
+  const long: string[] = [];
+  let seen = 0;
+  for (const file of files) {
+    const src = read(file);
+    for (const m of src.matchAll(
+      /<SettingsSection\b[^>]*>\s*<Text\b[^>]*>([\s\S]*?)<\/Text>/g,
+    )) {
+      seen++;
+      if (sentences(plain(m[1])) > 1)
+        long.push(`${file}:${lineOf(src, m.index!)} ${plain(m[1])}`);
+    }
+  }
+  assert.ok(seen >= 5, `only ${seen} phone settings intros found`);
+  assert.deepEqual(long, []);
+});
+
 // ------------------------------------------------------------- editor ---
 
 test("the page editor keeps handles out of sight and lines readable", () => {
@@ -237,8 +258,15 @@ test("the page editor keeps handles out of sight and lines readable", () => {
     css,
     /\.doc-block-row:hover \.doc-handle,\n\.doc-handle:focus-visible,\n\.doc-block-row:focus-within \.doc-handle \{\n {2}opacity: 1;/,
   );
-  // Text is capped at about 680px.
-  assert.match(rule(".doc-body"), /max-width: 680px;/);
+  // Lines of text are capped at about 680px; tables, code (live lists and
+  // embeds), maths and images keep the whole column.
+  assert.doesNotMatch(rule(".doc-body"), /max-width/);
+  assert.match(rule(".doc-body > :not(.is-wide)"), /max-width: 680px;/);
+  const editor = read("desktop/src/features/docs/DocEditor.tsx");
+  const wide = editor.match(/const WIDE_BLOCKS = [^;]*;/)?.[0] ?? "";
+  for (const type of ["table", "code", "math", "image"])
+    assert.match(wide, new RegExp(`"${type}"`), type);
+  assert.match(editor, /WIDE_BLOCKS\.has\(block\.type\) \? " is-wide"/);
 });
 
 // -------------------------------------------------------------- toast ---

@@ -508,9 +508,6 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                 <option value="known">Least known first</option>
                 <option value="title">Title A–Z</option>
               </Select>
-              <button className="secondary" onClick={() => setPicking(true)}>
-                <Plus size={15} /> Add cards
-              </button>
             </div>
           </div>
           <ul className="card study-deck-list">
@@ -857,6 +854,11 @@ function PagePicker({
               ))}
             </ul>
           )}
+          <p className="muted study-syntax">
+            Writing your own: <code>Question :: Answer</code> makes a card,{" "}
+            <code>A ::: B</code> asks both ways, and <code>{"{{word}}"}</code>{" "}
+            hides a word.
+          </p>
         </div>
       </section>
     </div>

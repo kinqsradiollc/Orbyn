@@ -1716,15 +1716,25 @@ footer svg {
   min-width: 0;
   display: grid;
 }
-.member-main strong,
+.member-main .member-name,
 .member-main small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The name gives way before the You tag does. */
 .member-main strong {
+  display: flex;
+  align-items: center;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
+}
+.member-main .member-name {
+  min-width: 0;
+}
+.member-main .you-tag {
+  flex: none;
 }
 .member-main small {
   color: var(--color-muted);
@@ -1738,9 +1748,51 @@ footer svg {
   flex: none;
   width: 32px;
 }
+/* Touch screens: Remove and Leave are full 44px targets. */
+@media (pointer: coarse) {
+  .member-list .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .member-action-space {
+    width: 44px;
+  }
+}
+/* Phones: the name and email keep the whole first line; the role and the
+   action sit under them. The email field gets its own line above the role
+   and Add. */
 @media (max-width: 520px) {
+  .member-list li {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "initials main main"
+      ". role action";
+    column-gap: 12px;
+    row-gap: 8px;
+    align-items: center;
+    padding: 10px 0;
+  }
+  .member-initials {
+    grid-area: initials;
+  }
+  .member-main {
+    grid-area: main;
+  }
   .member-list .role-select {
-    width: 112px;
+    grid-area: role;
+    width: auto;
+    max-width: 160px;
+  }
+  .member-list li > .icon-button,
+  .member-action-space {
+    grid-area: action;
+  }
+  .add-member input {
+    flex-basis: 100%;
+  }
+  .add-member .select {
+    flex: 1 1 0;
   }
 }
 

@@ -759,6 +759,10 @@ function Picker({
           ))
         )}
       </View>
+      <Text style={[shared.small, s.gapTop]}>
+        Writing your own: {"“Question\u00a0::\u00a0Answer”"} makes a card,{" "}
+        {"“A\u00a0:::\u00a0B”"} asks both ways, and {"“{{word}}”"} hides a word.
+      </Text>
     </>
   );
 }

@@ -219,6 +219,14 @@ function typeInto(el: HTMLTextAreaElement, made: Restyled): boolean {
 
 /** Kinds that carry on when you press Enter at the end of a line. */
 const LISTS = new Set<DocBlock["type"]>(["bullet", "numbered", "todo"]);
+/** Blocks that aren't lines of text, so they aren't held to the 680px text
+ *  column: tables, code (live lists and embeds too), maths and images. */
+const WIDE_BLOCKS = new Set<DocBlock["type"]>([
+  "table",
+  "code",
+  "math",
+  "image",
+]);
 
 /** How long to wait after typing stops before saving. */
 const SAVE_AFTER_MS = 800;
@@ -3438,6 +3446,7 @@ export function DocEditor({
                           data-block-source={blockText(block)}
                           className={
                             "doc-block-row" +
+                            (WIDE_BLOCKS.has(block.type) ? " is-wide" : "") +
                             (block.id && block.id === flash
                               ? " is-flash"
                               : "") +

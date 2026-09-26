@@ -832,6 +832,15 @@
 .study-picker .modal-body p {
   margin: 0;
 }
+/* The quiet reminder of how cards are written by hand. */
+.study-picker .study-syntax {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.study-syntax code {
+  font-size: 13px;
+  white-space: nowrap;
+}
 .study-picker-list {
   list-style: none;
   margin: 0;

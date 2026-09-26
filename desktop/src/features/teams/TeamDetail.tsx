@@ -337,7 +337,7 @@ export function TeamDetail({
               </span>
               <span className="member-main">
                 <strong>
-                  {m.name}
+                  <span className="member-name">{m.name}</span>
                   {self && <span className="you-tag">You</span>}
                 </strong>
                 <small>{m.email}</small>

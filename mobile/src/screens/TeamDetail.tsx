@@ -500,7 +500,7 @@ const s = themed(() =>
   StyleSheet.create({
     titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
     gap: { marginBottom: 14 },
-    eyebrow: { marginTop: 8 },
+    eyebrow: { marginTop: 16 },
     addCard: { marginBottom: 12 },
     list: {
       backgroundColor: colors.surface,

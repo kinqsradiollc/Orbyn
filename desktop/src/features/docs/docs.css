@@ -170,8 +170,12 @@
   display: grid;
   gap: 2px;
   min-width: 0;
-  /* Lines longer than about 680px are hard to follow; the rest of the
-     column is left for the handles and comments. */
+}
+/* Lines of text longer than about 680px are hard to follow, so text is
+   capped there; the rest of the column is left for the handles and
+   comments. Tables, code, live lists, embeds, maths and images are not
+   lines of text and keep the whole column. */
+.doc-body > :not(.is-wide) {
   max-width: 680px;
 }
 /* Grid items default to min-width:auto, which lets a long formula or code

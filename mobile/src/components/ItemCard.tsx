@@ -104,8 +104,11 @@ export function ItemCard({
   const reduced = useReducedMotion();
   const press = usePressScale();
   const tick = useRef(new Animated.Value(1)).current;
-  // The tick box grows with the phone's text size, as the title does.
-  const box = Math.round(22 * Math.min(2, useWindowDimensions().fontScale));
+  // The tick box grows with the phone's text size, as the title does, but
+  // never shrinks below 22 so its touch area stays full size.
+  const box = Math.round(
+    22 * Math.max(1, Math.min(2, useWindowDimensions().fontScale)),
+  );
   const wasDone = useRef(done);
   const longPressed = useRef(false);
   useEffect(() => {
