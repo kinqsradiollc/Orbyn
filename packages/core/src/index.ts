@@ -58,3 +58,5 @@ export * from "./security-page.js";
 export * from "./links.js";
 export * from "./task-groups.js";
 export * from "./doc-outline.js";
+export * from "./fields.js";
+export * from "./views.js";

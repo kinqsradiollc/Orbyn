@@ -25,11 +25,13 @@ const { keyBlockedRoute } = await import("../src/lib/auth.js");
 /**
  * The most routes that may wait for a capability. Lower it when a phase
  * covers routes; never raise it (a new signed-in route is covered or
- * excluded with a reason instead). 178 holds one exception: D3a's
+ * excluded with a reason instead). 190 holds two exceptions: D3a's
  * GET /links/here reads the index the agents' get_links is built on, and
- * A4 covers it with that tool and lowers this again.
+ * D4a's saved views and fields (12 routes) are the definition the agents'
+ * save_view and query run. A4 covers them with those tools and lowers this
+ * again.
  */
-const MAX_PENDING = 178;
+const MAX_PENDING = 190;
 
 /** Routes between services, never for people or agents. */
 const INTERNAL = /^\/internal\//;

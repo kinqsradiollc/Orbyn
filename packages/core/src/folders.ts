@@ -4,7 +4,7 @@
  * cabinet — and favourites pin the few things someone keeps coming back to.
  */
 
-export const FAVOURITE_KINDS = ["doc", "project"] as const;
+export const FAVOURITE_KINDS = ["doc", "project", "view"] as const;
 export type FavouriteKind = (typeof FAVOURITE_KINDS)[number];
 
 export type Folder = {

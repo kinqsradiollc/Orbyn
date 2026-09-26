@@ -149,7 +149,7 @@ No arguments.
 
 ### `get_calendar`
 
-The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.
+The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page's or project's "Essay due"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.
 
 | Argument       | Type    | Notes                                                            |
 | -------------- | ------- | ---------------------------------------------------------------- |
@@ -216,4 +216,4 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 
 Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.
 
-Routes: 23 of the app's signed-in routes are covered by tools, 150 are never for agents, and 178 are still to come.
+Routes: 24 of the app's signed-in routes are covered by tools, 151 are never for agents, and 190 are still to come.

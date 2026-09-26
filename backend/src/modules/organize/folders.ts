@@ -133,7 +133,9 @@ export async function folderRoutes(app: FastifyInstance) {
     const body = favouriteInput.parse(r.body);
     // Only what this person can see can be starred.
     if (body.starred) {
-      const table = body.kind === "doc" ? "docs" : "projects";
+      const table = { doc: "docs", project: "projects", view: "saved_views" }[
+        body.kind
+      ];
       const visible = (
         await pool.query(
           `SELECT 1 FROM ${table} x WHERE x.id = $2

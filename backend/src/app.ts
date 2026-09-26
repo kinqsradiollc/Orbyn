@@ -19,6 +19,7 @@ import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
 import { docRoutes } from "./modules/docs/routes.js";
 import { docInfoRoutes } from "./modules/docs/info.js";
+import { viewRoutes } from "./modules/views/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
 import { linkRoutes } from "./modules/links/routes.js";
 import { appLinkRoutes } from "./modules/app-links/routes.js";
@@ -84,6 +85,8 @@ export const serviceModules: Record<
     docRoutes,
     // A page's Info panel in one request.
     docInfoRoutes,
+    // Saved views and your own fields on pages and projects.
+    viewRoutes,
     captureRoutes,
     searchRoutes,
     // Links between things: the link picker, pills and "Linked here".

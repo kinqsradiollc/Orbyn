@@ -66,6 +66,8 @@ export const COVERED: Record<string, string[]> = {
   "GET /me": ["get_context"],
   "GET /planner/prefs": ["get_context"],
   "GET /today": ["get_today"],
+  // Date fields shown on the calendar (DATA-07) are deadlines get_calendar lists.
+  "GET /fields/dates": ["get_calendar"],
 };
 
 /** Routes agents never reach, with the reason. */
@@ -129,6 +131,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /auth/logout": "sign_in",
   "POST /auth/resend-verification": "sign_in",
   "GET /bookings/export.csv": "export_file",
+  "GET /views/:id/export.csv": "export_file",
   "PROPFIND /dav/*": "caldav",
   "REPORT /dav/cal/default/*": "caldav",
   "DELETE /dav/cal/default/:file": "caldav",
@@ -231,6 +234,20 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
 export const PENDING: string[] = [
   // "Linked here" (D3a) waits for the agents' get_links (A4, M4.md).
   "GET /links/here",
+  // Saved views and your own fields (D4a). The agents' save_view and query
+  // (A4) run the same definition (@orbyn/core views.ts) and cover these.
+  "GET /views",
+  "POST /views",
+  "PUT /views/:id",
+  "DELETE /views/:id",
+  "PUT /views/:id/pin",
+  "POST /views/run",
+  "GET /fields",
+  "POST /fields",
+  "PUT /fields/:id",
+  "DELETE /fields/:id",
+  "GET /fields/values",
+  "PUT /fields/:id/value",
   // Built alongside A1–A2 on the planning and pages tracks (merged in the
   // M1–M4 integration); agents reach them in A3–A5.
   "GET /items/:id/context",
