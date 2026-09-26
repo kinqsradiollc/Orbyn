@@ -105,6 +105,29 @@ const LISTED = `g.revoked_at IS NULL
 const LIVE = `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
   AND (kind <> 'oauth' OR authorized_at IS NOT NULL)`;
 
+/**
+ * How many connections `userId` has that count against MAX_GRANTS, leaving
+ * out `except` (a connection finishing its sign-in). Takes a per-person
+ * lock first, held to the end of the caller's transaction, so two
+ * connections made at once can't both slip under the limit.
+ */
+export async function liveGrantCount(
+  db: Queryable,
+  userId: string,
+  except: string | null = null,
+): Promise<number> {
+  await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+    `agent_grants:${userId}`,
+  ]);
+  return (
+    await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM agent_grants
+        WHERE user_id = $1 AND ${LIVE} AND ($2::uuid IS NULL OR id <> $2)`,
+      [userId, except],
+    )
+  ).rows[0].n;
+}
+
 /** The person's connections that haven't ended, newest first. */
 export async function listGrants(
   db: Queryable,
@@ -285,13 +308,7 @@ export async function createAgentKey(
   const key = `${AGENT_KEY_PREFIX}${randomBytes(32).toString("base64url")}`;
   const prefix = key.slice(0, 12);
   const grant = await transaction(async (db) => {
-    const live = (
-      await db.query<{ n: number }>(
-        `SELECT count(*)::int AS n FROM agent_grants WHERE user_id = $1 AND ${LIVE}`,
-        [userId],
-      )
-    ).rows[0].n;
-    if (live >= MAX_GRANTS)
+    if ((await liveGrantCount(db, userId)) >= MAX_GRANTS)
       fail(
         409,
         `You can have up to ${MAX_GRANTS} connected agents. Revoke one first.`,
