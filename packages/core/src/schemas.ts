@@ -884,6 +884,19 @@ export const aiSettingsInput = z
   })
   .strict();
 
+/**
+ * Search by meaning's own setup (`PUT /ai/settings/semantic`). Turning it
+ * on needs a model that measures text and an admin accepting, each time,
+ * that every page is sent to the provider to be measured.
+ */
+export const semanticSetupInput = z
+  .object({
+    on: z.boolean(),
+    embedding_model: z.string().trim().max(200).optional(),
+    accept: z.boolean().optional(),
+  })
+  .strict();
+
 export const aiTestInput = z
   .object({ model: z.string().trim().max(200).optional() })
   .strict();
@@ -1323,6 +1336,11 @@ export const plannerPrefsInput = z
     learn_estimates: z.boolean().optional(),
     learn_rhythm: z.boolean().optional(),
     balance_load: z.boolean().optional(),
+    /** A reminder this many minutes before each session starts (0: as it starts); null: off. */
+    session_reminder_minutes: z
+      .union([z.literal(0), z.literal(5), z.literal(10), z.literal(15)])
+      .nullable()
+      .optional(),
     /** Morning agenda and evening review emails; send the keys you change. */
     digest: z
       .object({

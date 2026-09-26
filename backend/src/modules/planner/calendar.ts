@@ -80,6 +80,7 @@ export const DEFAULT_PREFS: PlannerPrefs = {
   learn_estimates: false,
   learn_rhythm: true,
   balance_load: true,
+  session_reminder_minutes: null,
 };
 
 type PrefsRow = Omit<PlannerPrefs, "work_start" | "work_end"> & {
@@ -125,6 +126,7 @@ export async function loadPrefs(db: Db, userId: string): Promise<PlannerPrefs> {
     learn_estimates: row.learn_estimates ?? false,
     learn_rhythm: row.learn_rhythm ?? true,
     balance_load: row.balance_load ?? true,
+    session_reminder_minutes: row.session_reminder_minutes ?? null,
   };
 }
 
@@ -388,6 +390,7 @@ export async function timeBlocks(
   return (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
+              b.started_at, b.outcome,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.start_at < $3 AND b.end_at > $2 AND ${VISIBLE_ITEMS}

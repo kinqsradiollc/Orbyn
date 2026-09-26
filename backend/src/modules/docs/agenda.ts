@@ -24,6 +24,7 @@ import { habitBlocksIn } from "../planner/habits.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
 import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
+import { keptOutFor } from "../../lib/assistant-off.js";
 import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./routes.js";
@@ -41,12 +42,21 @@ type Day = {
   tz: string;
   items: Item[];
   calendar: AgendaEntry[];
-  setAside: { title: string; start_at: string; end_at: string }[];
+  setAside: {
+    title: string;
+    start_at: string;
+    end_at: string;
+    item_id?: string;
+  }[];
   comingEvents: AgendaEntry[];
   /** Free working time left; null for a day that has already gone. */
   freeMinutes: number | null;
   freeStretches: { start_at: string; end_at: string }[];
   priorities: string[];
+  /** Tasks and events in projects kept out of the assistant. */
+  keptOut: Set<string>;
+  /** Top priorities without those, for the assistant's summary. */
+  aiPriorities: string[];
   study: {
     due: number;
     newCards: number;
@@ -96,7 +106,7 @@ async function readDay(
   const dayStart = dayTime(today, 0, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
   const weekEnd = dayTime(addDays(today, 8), 0, tz);
-  const [items, calendar, blocks, habits, ahead, busy, open] =
+  const [items, calendar, blocks, habits, ahead, busy, open, keptOut] =
     await Promise.all([
       pool.query<Item>(
         `SELECT i.* FROM items i WHERE ${VISIBLE_ITEMS}
@@ -116,7 +126,11 @@ async function readDay(
        ORDER BY i.due_at NULLS LAST LIMIT 300`,
         [userId],
       ),
+      keptOutFor(pool, userId),
     ]);
+  const ranked = open.rows
+    .map((i) => ({ id: i.id, title: i.title, score: priorityScore(i, now) }))
+    .sort((a, b) => b.score - a.score);
   const free =
     now < dayEnd && !past
       ? freeSpans(workingSpans(prefs, now, dayEnd), busy)
@@ -130,6 +144,7 @@ async function readDay(
         title: b.title,
         start_at: b.start_at,
         end_at: b.end_at,
+        item_id: b.item_id,
       })),
       ...habits.map((h) => ({
         title: h.name,
@@ -153,9 +168,10 @@ async function readDay(
       })),
     study: extras ? await studyFor(userId) : null,
     // The app's own order (the same score the assistant ranks by).
-    priorities: open.rows
-      .map((i) => ({ title: i.title, score: priorityScore(i, now) }))
-      .sort((a, b) => b.score - a.score)
+    priorities: ranked.slice(0, 3).map((i) => i.title),
+    keptOut: keptOut.items,
+    aiPriorities: ranked
+      .filter((i) => !keptOut.items.has(i.id))
       .slice(0, 3)
       .map((i) => i.title),
   };
@@ -172,7 +188,17 @@ const clock = (iso: string, tz: string) =>
   });
 
 /** The day as plain facts for the assistant: times already in the person's zone. */
-function factsOf(day: Day, now: Date) {
+function factsOf(full: Day, now: Date) {
+  // Nothing from a project kept out of the assistant is sent to it.
+  const out = (id: string | null | undefined) => !!id && full.keptOut.has(id);
+  const day: Day = {
+    ...full,
+    items: full.items.filter((i) => !out(i.id)),
+    calendar: full.calendar.filter((e) => !out(e.item_id)),
+    setAside: full.setAside.filter((b) => !out(b.item_id)),
+    comingEvents: full.comingEvents.filter((e) => !out(e.item_id)),
+    priorities: full.aiPriorities,
+  };
   const today = localDateKey(now, day.tz);
   // The day each task is due by (`dueDayAt`): an all-day task is due today
   // until the day is over.

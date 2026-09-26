@@ -19,6 +19,7 @@ import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { PROJECT_COUNTS } from "./counts.js";
 import { projectTimeMachineRoutes } from "./time-machine.js";
+import { milestoneRoutes } from "./milestones.js";
 import { loadItem } from "../items/service.js";
 import { projectPlanning } from "./planning.js";
 import { visibleProjectActivity } from "./activity-visibility.js";
@@ -37,7 +38,7 @@ import { z } from "zod";
 // A brief page in Trash is no brief: the project reads as having none until
 // the page is restored (the link itself is kept for that).
 const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summary,
-  p.status, p.deadline,
+  p.status, p.deadline, p.assistant_off,
   (SELECT b.id FROM docs b WHERE b.id = p.doc_id AND b.deleted_at IS NULL) AS doc_id,
   p.created_at, p.updated_at,
   ${PROJECT_COUNTS}`;
@@ -48,7 +49,7 @@ const VISIBLE = `((p.team_id IS NULL AND p.user_id = $1)
 
 type Owned = { id: string; user_id: string; team_id: string | null };
 
-async function requireProject(
+export async function requireProject(
   db: Db,
   id: string,
   u: UserRow,
@@ -95,8 +96,38 @@ async function loadProject(db: Queryable, id: string): Promise<Project> {
   return { ...row, stages: stages.get(id) ?? [] };
 }
 
+/**
+ * Search by meaning: a project kept out loses its pages' measurements (and
+ * nothing of it is queued); let back in, its pages are measured again.
+ * Nothing to do where the extension isn't installed.
+ */
+async function forgetMeasured(db: Db, projectId: string, off: boolean) {
+  const vectors = await db.query(
+    "SELECT 1 FROM pg_extension WHERE extname = 'vector'",
+  );
+  if (!vectors.rowCount) return;
+  if (off) {
+    await db.query(
+      `DELETE FROM doc_embeddings e USING docs d
+        WHERE d.id = e.doc_id AND d.project_id = $1`,
+      [projectId],
+    );
+    await db.query(
+      `DELETE FROM doc_embedding_queue q USING docs d
+        WHERE d.id = q.doc_id AND d.project_id = $1`,
+      [projectId],
+    );
+  } else
+    await db.query(
+      `INSERT INTO doc_embedding_queue (doc_id)
+       SELECT id FROM docs WHERE project_id = $1 ON CONFLICT DO NOTHING`,
+      [projectId],
+    );
+}
+
 export async function projectRoutes(app: FastifyInstance) {
   await projectTimeMachineRoutes(app);
+  await milestoneRoutes(app);
   app.get("/projects", async (r) => {
     const u = await authenticate(r);
     const db = reader(r.headers);
@@ -154,6 +185,60 @@ export async function projectRoutes(app: FastifyInstance) {
     if (!row) fail(404, "Project not found");
     const stages = await stagesFor(db, [id]);
     return { ...row, stages: stages.get(id) ?? [] };
+  });
+
+  /**
+   * Keep the project out of the assistant, or let it back in. Only the
+   * owner of a personal project, or a team's owners and admins, decide.
+   */
+  app.put("/projects/:id/assistant", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { off } = z.object({ off: z.boolean() }).strict().parse(r.body);
+    return transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      const project = await requireProject(db, id, u, "items:read");
+      if (project.team_id) {
+        const { effective } = await requireTeam(
+          project.team_id,
+          u,
+          "items:read",
+          db,
+        );
+        if (!["owner", "admin"].includes(effective))
+          fail(403, "Only the team's owners and admins can change this.");
+      } else if (project.user_id !== u.id) fail(404, "Project not found");
+      const changed = (
+        await db.query(
+          `UPDATE projects SET assistant_off = $2, updated_at = now()
+            WHERE id = $1 AND assistant_off <> $2 RETURNING id`,
+          [id, off],
+        )
+      ).rowCount;
+      if (changed) {
+        await db.query(
+          // The full project state, as the time machine reads the latest
+          // project row for a point in its history.
+          `INSERT INTO project_activity (project_id, actor_id, kind, entity_type,
+             entity_id, summary, before_state, after_state)
+           SELECT p.id, $2, 'project_changed', 'project', p.id, $3,
+             x.state || jsonb_build_object('assistant_off', NOT $4::boolean),
+             x.state || jsonb_build_object('assistant_off', $4::boolean)
+             FROM projects p CROSS JOIN LATERAL (SELECT jsonb_build_object(
+               'name', p.name, 'status', p.status,
+               'deadline', to_jsonb(p)->>'deadline', 'summary', p.summary) AS state) x
+            WHERE p.id = $1`,
+          [
+            id,
+            u.id,
+            off ? "Kept out of the assistant" : "Back in the assistant",
+            off,
+          ],
+        );
+        await forgetMeasured(db, id, off);
+      }
+      return loadProject(db, id);
+    });
   });
 
   app.get("/projects/:id/links", async (r): Promise<ProjectLink[]> => {
@@ -414,8 +499,12 @@ export async function projectRoutes(app: FastifyInstance) {
                   a.before_state,
                   (a.after_state - 'baseline_tasks' - 'baseline_notes'
                     - 'baseline_records' - 'baseline_stages') AS after_state,
+                  a.origin,
+                  CASE WHEN g.id IS NOT NULL THEN coalesce(nullif(g.client_name, ''),
+                    nullif(g.name, ''), 'an agent') END AS via_agent,
                   a.created_at
              FROM project_activity a LEFT JOIN users u ON u.id = a.actor_id
+             LEFT JOIN agent_grants g ON g.id = a.via_grant_id
             WHERE a.project_id = $1 AND ${visibleProjectActivity("$3")}
             ORDER BY a.event_order DESC LIMIT $2`,
           [id, requested, u.id],

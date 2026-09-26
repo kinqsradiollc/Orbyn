@@ -503,16 +503,19 @@ async function finish(importId: string) {
         notes: string[];
         project_id: string | null;
         project_team_id: string | null;
+        keep_original: boolean;
+        bytes: number;
       }
     >(
       `UPDATE imports SET finished_at = now()
         WHERE id = $1 AND status IN ('reading','ocr') AND finished_at IS NULL
         RETURNING id, user_id, file_name, file_type, object_id, attempts,
-          notes, project_id, project_team_id`,
+          notes, project_id, project_team_id, keep_original, bytes`,
       [importId],
     )
   ).rows[0];
   if (!row) return;
+  let madeDoc: string | null = null;
   try {
     const pages = (
       await pool.query<{
@@ -587,6 +590,7 @@ async function finish(importId: string) {
           ],
         )
       ).rows[0].id;
+      madeDoc = docId;
       if (row.project_id) {
         await db.query(
           `UPDATE project_activity SET summary = 'File added: ' || $2
@@ -632,8 +636,70 @@ async function finish(importId: string) {
     );
   }
   if (cached?.id === row.id) cached = null;
-  await deleteFile(row.id, row.object_id);
+  // "Keep the original": the file stays, beside its page, within the
+  // person's quota. Otherwise (or when it can't be kept) it is deleted now.
+  const kept =
+    madeDoc && row.keep_original && row.object_id
+      ? await keepOriginal(row, madeDoc)
+      : false;
+  if (!kept) await deleteFile(row.id, row.object_id);
   await changed(row.user_id);
+}
+
+/** Keep an import's file as its page's original; false when it can't be. */
+async function keepOriginal(
+  row: ImportRow & { bytes: number },
+  docId: string,
+): Promise<boolean> {
+  const quota = env.FILES_KEEP_QUOTA_MB * 1024 * 1024;
+  const used = Number(
+    (
+      await pool.query<{ used: string | null }>(
+        "SELECT sum(bytes) AS used FROM kept_files WHERE user_id = $1 AND doc_id IS NOT NULL",
+        [row.user_id],
+      )
+    ).rows[0].used ?? 0,
+  );
+  const note = async (text: string) =>
+    pool.query(
+      "UPDATE imports SET notes = notes || to_jsonb($2::text) WHERE id = $1",
+      [row.id, text],
+    );
+  if (used + Number(row.bytes) > quota) {
+    await note(
+      "The original wasn't kept: your space for originals is full. Delete some in Settings to keep more.",
+    );
+    return false;
+  }
+  try {
+    const res = await fetch(
+      `${env.FILES_URL}/internal/files/${row.object_id}/keep`,
+      {
+        method: "POST",
+        headers: { "x-orbyn-service": serviceKey() },
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+    if (!res.ok) throw new Error(`keep ${res.status}`);
+  } catch (error) {
+    log("keep failed", { import: row.id, error: (error as Error).message });
+    await note("The original couldn't be kept this time; the page is ready.");
+    return false;
+  }
+  await pool.query(
+    `INSERT INTO kept_files (id, user_id, doc_id, import_id, file_name, file_type, bytes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
+    [
+      row.object_id,
+      row.user_id,
+      docId,
+      row.id,
+      row.file_name,
+      row.file_type,
+      row.bytes,
+    ],
+  );
+  return true;
 }
 
 // ------------------------------------------------------------- upkeep ---

@@ -2341,7 +2341,7 @@ Other tools reach your Orbyn account through these. Nothing here sends your data
 | `DELETE /me/webhooks/:id`                     | `204`                                                                                                     |
 | `POST /me/webhooks/:id/test`                  | Sends a `ping` now → `{ ok, status, error }`                                                              |
 | `GET /me/calendar-feed`                       | `{ enabled, busy_enabled, include_blocks }`                                                               |
-| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your sessions as "Focus: {task}"                                              |
+| `PUT /me/calendar-feed`                       | `{ "include_blocks" }`: add your sessions as "Session: {task}"                                            |
 | `POST /me/calendar-feed`                      | Creates or replaces your private feed link → `{ url, busy }`; `{ "busy": true }` makes the busy-only link |
 | `DELETE /me/calendar-feed`                    | Turns the feed off; `?busy=1` turns the busy-only link off                                                |
 | `GET /calendar/feed/:token.ics`               | The feed, as iCalendar, for other calendar apps to subscribe to (`?busy=1` for busy only)                 |

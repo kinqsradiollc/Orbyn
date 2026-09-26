@@ -285,6 +285,16 @@ If you connect an outside AI agent or app to Orbyn (for example Claude, ChatGPT 
 
 When you import a PDF, Word document or photo into Docs, the file is stored encrypted on Orbyn's own servers only while it's turned into a page, then deleted. Scanned pages and photos are read by a text-recognition model that runs on our servers; the file is never sent to the AI service or anyone else. The file is deleted as soon as the import finishes, fails or is cancelled, and in any case within 24 hours. Only the page it became stays, like any page you write, with a note of the file's name.
 
+If you turn on "Keep the original" (off unless you choose it), the file itself is kept too, encrypted on Orbyn's own servers and included in our backups, for as long as the page it became exists. It is never sent to the AI service or anyone else. Whoever can open the page can download it. It comes with your full export, and it is deleted when you delete it, when its page is deleted for good, or when you delete your account.
+
+## Search by meaning
+
+Search by meaning is off unless your workspace's administrator turns it on. When it's on, the words of every page (except pages in projects kept out of the assistant) are sent to the AI service to be measured, so a search can find a page that says the same thing in other words. The measurements are kept in Orbyn's database, and deleted when the page is, or when search by meaning is turned off.
+
+## Keeping a project out of the assistant
+
+The owner of a project (or a team's owners and admins) can keep it out of the assistant. Nothing in it — its tasks, pages, records or title — is then sent to the AI service or to connected agents, by the assistant, Study, the morning agenda or search by meaning.
+
 ## Who we share it with
 
 We share data only with services that process it for us under contract, only as needed:

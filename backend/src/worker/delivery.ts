@@ -13,6 +13,7 @@ const PLANNER_KINDS = [
   "at_risk",
   "deadline",
   "project",
+  "session",
 ];
 
 /**
@@ -203,7 +204,9 @@ async function plannerNoticeStale(
   ).rows[0];
   if (!who || who.disabled || n.read) return true;
   if (n.channel === "email" && !who.email) return true;
-  if (n.channel === "push" && !who.push) return true;
+  // A session reminder is asked for on its own, so it goes to the phone
+  // whatever the other planner notices do.
+  if (n.channel === "push" && !who.push && n.kind !== "session") return true;
   if (n.item_id && (!item || !item.can_see || isClosed(item.status)))
     return true;
   if (n.kind === "project") {
@@ -219,6 +222,18 @@ async function plannerNoticeStale(
       [projectId, n.user_id],
     );
     if (!visible.rowCount) return true;
+  }
+  if (n.kind === "session") {
+    // Only for the session as it is now: still there, at the same start,
+    // and not started yet.
+    const [blockId, epoch] = n.ref.split(":");
+    const block = await db.query(
+      `SELECT 1 FROM time_blocks WHERE id::text = $1 AND user_id = $2
+         AND round(extract(epoch FROM start_at))::bigint::text = $3
+         AND started_at IS NULL`,
+      [blockId, n.user_id, epoch ?? ""],
+    );
+    if (!block.rowCount) return true;
   }
   if (n.kind === "conflict") {
     const block = await db.query(

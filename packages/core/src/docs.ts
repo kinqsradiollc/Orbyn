@@ -269,6 +269,15 @@ export type Doc = {
   reviewed_at?: string | null;
   /** The file this page was imported from, for an imported page. */
   imported_from?: DocImportSource | null;
+  /** That file itself, when it was kept ("Keep the original"). */
+  original?: {
+    id: string;
+    doc_id: string | null;
+    file_name: string;
+    file_type: string;
+    bytes: number;
+    created_at: string;
+  } | null;
   /** Imported and not filed yet: it shows in Uploads until it's moved. */
   in_uploads?: boolean;
   /** For a daily agenda, the day it is for ("2026-09-24"). */

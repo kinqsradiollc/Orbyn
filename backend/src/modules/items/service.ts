@@ -428,6 +428,7 @@ export async function countBlocksAsSpent(
     `WITH counted AS (
        UPDATE time_blocks SET counted = true
        WHERE item_id = $1 AND NOT counted AND start_at < now()
+         AND outcome IS DISTINCT FROM 'skipped'
        RETURNING extract(epoch FROM (least(end_at, now()) - start_at)) / 60 AS minutes)
      UPDATE items SET spent_minutes = spent_minutes
        + coalesce((SELECT round(sum(minutes))::int FROM counted), 0)

@@ -113,6 +113,8 @@ export const importCreateInput = z
     mime: z.string().max(200).optional(),
     project_id: z.uuid().optional(),
     project_team_id: z.uuid().nullable().optional(),
+    /** Keep the file itself after it becomes a page; the person's setting when left out. */
+    keep_original: z.boolean().optional(),
   })
   .strict();
 export type ImportCreateInput = z.infer<typeof importCreateInput>;
@@ -641,6 +643,8 @@ export type AdminStorage = {
     disk_total: number | null;
     disk_free: number | null;
   };
+  /** Originals people chose to keep ("Keep the original"), long term. */
+  originals?: { count: number; bytes: number; people: number };
   reading: {
     scans: ImportCapabilities["scans"];
     formulas: boolean;

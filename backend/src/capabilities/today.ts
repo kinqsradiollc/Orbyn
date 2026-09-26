@@ -1,3 +1,4 @@
+import { dropKeptOut } from "../lib/assistant-off.js";
 import { z } from "zod";
 import {
   addDays,
@@ -231,7 +232,8 @@ export async function todayForPrincipal(
   ] = await Promise.all([
     loadPrefs(db, userId),
     loadPlaces(db, userId),
-    calendarEntries(db, userId, from, to),
+    // Nothing from a project kept out of the assistant.
+    calendarEntries(db, userId, from, to).then((rows) => dropKeptOut(db, rows)),
     spaces.personal
       ? externalEntries(db, userId, from, to, { visible: true })
       : Promise.resolve([]),
@@ -239,7 +241,7 @@ export async function todayForPrincipal(
     spaces.personal
       ? externalEntries(db, userId, from, to, { busy: true })
       : Promise.resolve([]),
-    timeBlocks(db, userId, from, to),
+    timeBlocks(db, userId, from, to).then((rows) => dropKeptOut(db, rows)),
     db.query<DueRow>(dueToday.sql, dueToday.values),
     db.query<DueRow>(lateQ.sql, lateQ.values),
     db.query<{ n: number }>(lateCount.sql, lateCount.values),

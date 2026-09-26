@@ -1,9 +1,14 @@
 import { docReadableBy } from "../../lib/doc-visibility.js";
-/** Visibility of an activity entry's current target, using `a` as its alias. */
+/**
+ * Visibility of an activity entry's current target, using `a` as its alias.
+ * A session row is one person's planned time: only that person sees it,
+ * whatever their role in the team.
+ */
 export function visibleProjectActivity(userParameter: string) {
   const member = `SELECT team_id FROM team_members WHERE user_id = ${userParameter}`;
   return `(
-    a.entity_type IN ('project', 'stage')
+    a.entity_type IN ('project', 'stage', 'milestone')
+    OR (a.entity_type = 'session' AND a.session_user_id = ${userParameter})
     OR (a.entity_type = 'task' AND EXISTS (
       SELECT 1 FROM items i WHERE i.id = a.entity_id
         AND ((i.team_id IS NULL AND i.user_id = ${userParameter})

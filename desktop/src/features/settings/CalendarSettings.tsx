@@ -177,7 +177,10 @@ export function CalendarFeedCard({ report }: Props) {
             />
             <span>
               Include sessions
-              <small>Shown as “Focus: task name” in the full feed.</small>
+              <small>
+                Shown as “Session: task name” with its deadline in the full
+                feed. All-day tasks and events show as all-day, with no time.
+              </small>
             </span>
           </label>
         </>

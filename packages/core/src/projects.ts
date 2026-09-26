@@ -36,6 +36,8 @@ export type Project = {
   status: ProjectStatus;
   deadline: string | null;
   doc_id: string | null;
+  /** Kept out of the assistant: no AI reads the project or anything in it. */
+  assistant_off?: boolean;
   created_at: string;
   updated_at: string;
   stages: ProjectStage[];
@@ -89,14 +91,55 @@ export type ProjectActivity = {
     | "stage_changed"
     | "stage_removed"
     | "record_added"
-    | "record_changed";
-  entity_type: "project" | "task" | "note" | "stage" | "record";
+    | "record_changed"
+    | "session_planned"
+    | "session_moved"
+    | "session_started"
+    | "session_removed"
+    | "milestone_added"
+    | "milestone_changed"
+    | "milestone_removed";
+  /**
+   * A session row is the viewer's own planned time for the task in
+   * `entity_id` (teammates never see each other's).
+   */
+  entity_type:
+    "project" | "task" | "note" | "stage" | "record" | "session" | "milestone";
   entity_id: string | null;
   summary: string;
   before_state: Record<string, unknown> | null;
   after_state: Record<string, unknown> | null;
+  /** How the change was made, when known. */
+  origin?: ActivityOrigin | null;
+  /** The connected agent that made it, by its app's name. */
+  via_agent?: string | null;
   created_at: string;
 };
+
+export type ActivityOrigin =
+  "app" | "planner" | "assistant" | "agent" | "reminder";
+
+/**
+ * Where a History entry came from, in a few words ("by the planner", "via
+ * Claude"), or null when it was made in the app by hand.
+ */
+export function activityOriginLabel(
+  a: Pick<ProjectActivity, "origin" | "via_agent">,
+): string | null {
+  if (a.via_agent) return `via ${a.via_agent}`;
+  switch (a.origin) {
+    case "planner":
+      return "by the planner";
+    case "assistant":
+      return "via the assistant";
+    case "agent":
+      return "via an agent";
+    case "reminder":
+      return "from a reminder";
+    default:
+      return null;
+  }
+}
 
 /** Progress as a whole percentage; an empty project reads as 0. */
 export const projectProgress = (p: {
