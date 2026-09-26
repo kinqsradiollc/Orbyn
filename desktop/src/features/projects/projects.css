@@ -4,6 +4,7 @@
 .projects-view,
 .project-detail {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   min-width: 0;
 }
@@ -538,8 +539,19 @@
   border-radius: var(--radius-md);
   background: var(--color-sunken);
   margin-left: auto;
+  /* Seven views do not fit on a phone; the strip scrolls sideways rather
+     than widening the page. */
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pboard-toggle::-webkit-scrollbar {
+  display: none;
 }
 .pboard-toggle button {
+  flex: none;
+  white-space: nowrap;
   font: inherit;
   font-size: 0.82rem;
   display: inline-flex;
