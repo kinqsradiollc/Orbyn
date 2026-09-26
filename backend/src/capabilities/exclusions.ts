@@ -34,6 +34,12 @@ export const EXCLUSION_REASONS = {
   team_admin:
     "Making, renaming and deleting teams, members, roles and team policies: people only.",
   sends_outside: "Sends an email to test delivery.",
+  self_report:
+    "Checking in a session or starting it: the person's own account of their time, which an agent can't give.",
+  project_setup:
+    "A project's milestones, and whether AI may read the project at all: set up by people in the apps.",
+  kept_files:
+    "Originals kept in Orbyn's file store (downloading or deleting one): people only, in the apps.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
@@ -114,6 +120,25 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/providers/:id/models": "admin",
   "POST /ai/providers/:id/test": "admin",
   "PUT /ai/settings": "admin",
+  "PUT /ai/settings/semantic": "admin",
+  "GET /ai/projects/:id/chats": "hosted_ai",
+  "GET /ai/chats/:id": "hosted_ai",
+  "PUT /ai/chats/:id": "hosted_ai",
+  "DELETE /ai/chats/:id": "hosted_ai",
+  "GET /me/originals": "account",
+  "PUT /me/originals": "account",
+  "GET /docs/:id/original": "kept_files",
+  "DELETE /docs/:id/original": "kept_files",
+  "GET /me/mentions": "device",
+  "GET /projects/:id/milestones": "project_setup",
+  "POST /projects/:id/milestones": "project_setup",
+  "PUT /projects/:id/milestones/:milestoneId": "project_setup",
+  "DELETE /projects/:id/milestones/:milestoneId": "project_setup",
+  "PUT /items/:id/milestone": "project_setup",
+  "PUT /projects/:id/assistant": "project_setup",
+  "GET /blocks/check-ins": "self_report",
+  "POST /blocks/:id/check-in": "self_report",
+  "POST /blocks/:id/start": "self_report",
   "POST /ai/study/cards/:id/explain": "hosted_ai",
   "POST /ai/study/grade": "hosted_ai",
   "POST /ai/study/pages/:id/cards": "hosted_ai",

@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import {
+  activityOriginLabel,
   changeProjectDeadline,
   projectDeadlineAt,
   projectDeadlineParts,
@@ -39,6 +40,7 @@ import { Pill } from "../../components/Pill";
 import { ClockField, DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { MoreMenu } from "../../components/MoreMenu";
+import { ProjectMilestones } from "./ProjectMilestones";
 import { shareLink } from "../../lib/share";
 import { SmallAction } from "../../components/SmallAction";
 import { confirmAction } from "../../lib/confirm";
@@ -743,6 +745,31 @@ export function ProjectsSheet({
     });
   };
 
+  /** Owners and admins (the owner, for a personal project) decide what AI may read. */
+  const canManageAi = (p: Project) =>
+    p.team_id
+      ? ["owner", "admin"].includes(
+          teams.find((t) => t.id === p.team_id)?.role ?? "",
+        )
+      : p.user_id === userId;
+
+  const keepOut = (off: boolean) => {
+    if (!open) return;
+    const go = () =>
+      void run(async () => {
+        setOpen(await client.setProjectAssistant(open.id, off));
+        await reload();
+      });
+    if (!off) return go();
+    confirmAction(
+      `Keep “${open.name}” out of the assistant?`,
+      "No AI will read this project or anything in it: not the assistant, Study, the morning agenda, search by meaning or connected agents.",
+      "Keep it out",
+      go,
+      false,
+    );
+  };
+
   const remove = () => {
     if (!open || !canWriteIn(open.team_id)) return;
     confirmAction(
@@ -966,6 +993,16 @@ export function ProjectsSheet({
                             open.name,
                           ),
                       },
+                      ...(canManageAi(open)
+                        ? [
+                            {
+                              label: open.assistant_off
+                                ? "Let the assistant read it"
+                                : "Keep out of the assistant",
+                              onPress: () => keepOut(!open.assistant_off),
+                            },
+                          ]
+                        : []),
                       ...(canWriteIn(open.team_id)
                         ? [
                             {
@@ -1356,15 +1393,27 @@ export function ProjectsSheet({
                   />
                 </ChipRow>
               )}
-              {onAskProject && (
+              {onAskProject && !open.assistant_off && (
                 <SmallAction
                   label={`Ask about ${open.name}`}
                   disabled={busy}
                   onPress={() => onAskProject(open)}
                 />
               )}
+              {open.assistant_off && (
+                <Text style={styles.meta}>
+                  Kept out of the assistant: no AI reads this project.
+                </Text>
+              )}
               {section === "home" && (
                 <View style={styles.home}>
+                  <ProjectMilestones
+                    projectId={open.id}
+                    items={items.filter((i) => i.project_id === open.id)}
+                    canWrite={canWriteIn(open.team_id)}
+                    onChanged={onItemsChanged}
+                    onError={(e) => setError(errorText(e))}
+                  />
                   {homeTasks.length > 0 && (
                     <View style={styles.homeSection}>
                       <Text style={styles.reentryTitle}>Coming due</Text>
@@ -1638,12 +1687,31 @@ export function ProjectsSheet({
                               {event.summary}
                             </Text>
                             <Text style={styles.historyMeta}>
-                              {event.actor_name ?? "Workspace activity"} ·{" "}
+                              {event.actor_name ?? "Workspace activity"}
+                              {activityOriginLabel(event)
+                                ? ` · ${activityOriginLabel(event)}`
+                                : ""}{" "}
+                              ·{" "}
                               {new Date(event.created_at).toLocaleString([], {
                                 dateStyle: "medium",
                                 timeStyle: "short",
                               })}
                             </Text>
+                            {event.entity_type === "session" && (
+                              <Pressable
+                                accessibilityRole="button"
+                                onPress={() => {
+                                  const item = items.find(
+                                    (i) => i.id === event.entity_id,
+                                  );
+                                  if (item) onOpenItem?.(item);
+                                }}
+                              >
+                                <Text style={styles.historyMeta}>
+                                  Only you see your sessions · Open task
+                                </Text>
+                              </Pressable>
+                            )}
                           </View>
                         ))}
                     </>

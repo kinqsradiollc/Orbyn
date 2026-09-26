@@ -49,6 +49,12 @@ import {
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/routes.js";
+import {
+  keptOutFor,
+  NOTHING_KEPT_OUT,
+  scrubKeptOut,
+  type KeptOut,
+} from "../../../lib/assistant-off.js";
 
 export { toInstant, whenLabel };
 
@@ -86,6 +92,8 @@ export type AgentContext = {
   cited?: Map<string, AssistantSource>;
   /** Notes drafted this turn, for the user to keep or discard. */
   notes?: DraftNote[];
+  /** What sits in projects kept out of the assistant (loaded on first use). */
+  keptOut?: KeptOut;
 };
 
 export const MAX_ACTIONS = 20;
@@ -1018,7 +1026,8 @@ async function planSchedule(
         : a.item_ids
           ? a.item_ids.filter(isUuid)
           : undefined,
-    exclude_item_ids: [],
+    // Tasks in projects kept out of the assistant stay out of its plans.
+    exclude_item_ids: [...(ctx.keptOut?.items ?? [])].slice(0, 200),
     timezone: ctx.timezone,
   };
   let plan;
@@ -2250,14 +2259,27 @@ export async function runTool(
       `Invalid arguments for ${name}: ${problem(parsed.error)}. Fix them and call it again.`,
     );
   try {
+    // Projects kept out of the assistant: whatever a tool read, nothing of
+    // them reaches the model.
+    // (Drafting a project or asking a question reads nothing of the workspace.)
+    if (!NO_READS.has(name))
+      ctx.keptOut ??= await keptOutFor(pool, ctx.user.id);
     return {
-      content: cap(await found.run(ctx, parsed.data as never)),
+      content: cap(
+        scrubKeptOut(
+          await found.run(ctx, parsed.data as never),
+          ctx.keptOut ?? NOTHING_KEPT_OUT,
+        ),
+      ),
       isError: false,
     };
   } catch (error) {
     return errorResult(problem(error));
   }
 }
+
+/** Tools that read nothing of the workspace. */
+const NO_READS = new Set(["propose_project", "ask_clarification"]);
 
 /** Tool results stay under a size budget; long lists lose items and say so. */
 function cap(result: unknown): string {

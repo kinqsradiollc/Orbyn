@@ -24,7 +24,16 @@ export type Scope = {
   user: string;
   teams?: string;
   personal?: string | boolean;
+  /**
+   * The rows are read for an AI (an outside agent): leave out projects kept
+   * out of the assistant, and everything in them.
+   */
+  ai?: boolean;
 };
+
+/** SQL: not in a project kept out of the assistant (for rows with project_id). */
+const notKeptOut = (alias: string) =>
+  ` AND NOT EXISTS (SELECT 1 FROM projects ko WHERE ko.id = ${alias}.project_id AND ko.assistant_off)`;
 
 const DEFAULT_SCOPE: Scope = { user: "$1" };
 
@@ -58,19 +67,19 @@ export function visibleOwned(
 
 /** Tasks, events and reminders (items) `scope.user` can see. */
 export const visibleItems = (alias = "i", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "user_id", scope);
+  `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
 /** Pages (docs) `scope.user` can see. */
 export const visibleDocs = (alias = "d", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "user_id", scope);
+  `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
 /** Projects `scope.user` can see. */
 export const visibleProjects = (alias = "p", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "user_id", scope);
+  `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? ` AND NOT ${alias}.assistant_off` : ""})`;
 
 /** Promises, decisions and experiments (work_records) `scope.user` can see. */
 export const visibleRecords = (alias = "w", scope: Scope = DEFAULT_SCOPE) =>
-  visibleOwned(alias, "created_by", scope);
+  `(${visibleOwned(alias, "created_by", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
 /** Folders `scope.user` can see. */
 export const visibleFolders = (alias = "f", scope: Scope = DEFAULT_SCOPE) =>
@@ -104,13 +113,18 @@ export type Spaces = {
   personal: boolean;
 };
 
-/** A Scope for `spaces`, adding its values to `params`. */
+/**
+ * A Scope for `spaces`, adding its values to `params`. Spaces are what an
+ * agent connection reaches, so projects kept out of the assistant (and
+ * everything in them) are always left out.
+ */
 export function scopeFor(spaces: Spaces, params: Params): Scope {
   const user = params.add(spaces.userId);
   return {
     user,
     teams: spaces.teamIds === null ? undefined : params.add(spaces.teamIds),
     personal: spaces.personal ? undefined : false,
+    ai: true,
   };
 }
 

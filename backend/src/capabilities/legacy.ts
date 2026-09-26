@@ -1,3 +1,4 @@
+import { dropKeptOut } from "../lib/assistant-off.js";
 import { z } from "zod";
 import { addDays, dayTime, fail, itemData, localDateKey } from "@orbyn/core";
 import type { Db } from "../db/pool.js";
@@ -200,7 +201,9 @@ export const getAgenda = defineCapability({
     const p = new Params();
     const scope = scopeFor(ctx.spaces, p);
     const [entries, subscribed, tasks] = await Promise.all([
-      calendarEntries(ctx.db, ctx.principal.user.id, from, to),
+      calendarEntries(ctx.db, ctx.principal.user.id, from, to).then((rows) =>
+        dropKeptOut(ctx.db, rows),
+      ),
       ctx.spaces.personal
         ? externalEntries(ctx.db, ctx.principal.user.id, from, to, {
             visible: true,

@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  activityOriginLabel,
   changeProjectDeadline,
   projectDeadlineParts,
   projectPlanStatus,
@@ -40,6 +41,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
+import { ProjectMilestones } from "./ProjectMilestones";
 import { DateField } from "../../components/DateField";
 import { ShareLinkButton } from "../../components/ShareButton";
 import { deviceTimeZone } from "../../lib/planning";
@@ -74,12 +76,22 @@ const HISTORY_FIELDS: Record<string, string> = {
   stage_id: "Stage",
   version: "Document version",
   position: "Order",
+  start_at: "Starts",
+  due_on: "Date",
+  done: "Done",
+  assistant_off: "Assistant",
 };
 
 function historyValue(key: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "Not set";
   if (key === "progress") return `${value}%`;
-  if (key === "deadline" || key === "due_at") {
+  if (key === "assistant_off") return value ? "Kept out" : "Can read it";
+  if (key === "done") return value ? "Yes" : "No";
+  if (key === "due_on")
+    return new Date(`${String(value)}T12:00:00`).toLocaleDateString([], {
+      dateStyle: "medium",
+    });
+  if (key === "deadline" || key === "due_at" || key === "start_at") {
     const date = new Date(String(value));
     if (!Number.isNaN(date.getTime()))
       return date.toLocaleString([], {
@@ -138,6 +150,7 @@ export function ProjectDetail({
   onAskProject,
   userId,
   canWrite,
+  canManageAi = false,
 }: {
   project: Project;
   initialSection?: "home" | "decisions" | "history";
@@ -155,6 +168,8 @@ export function ProjectDetail({
   onAskProject?: (project: Project, question?: string) => void;
   userId: string;
   canWrite: boolean;
+  /** Owners and admins (the owner, for a personal project): keep it out of the assistant. */
+  canManageAi?: boolean;
 }) {
   const { ask, tell } = useConfirm();
   const [busy, setBusy] = useState(false);
@@ -611,6 +626,24 @@ export function ProjectDetail({
       .finally(() => setBusy(false));
   };
 
+  /** Keep the project out of the assistant, or let it back in. */
+  const keepOut = async (off: boolean) => {
+    if (
+      off &&
+      !(await ask({
+        title: `Keep “${project.name}” out of the assistant?`,
+        body: "No AI will read this project or anything in it: not the assistant, Study, the morning agenda, search by meaning or connected agents. Everyone in it keeps working as before.",
+        confirmLabel: "Keep it out",
+      }))
+    )
+      return;
+    try {
+      onChanged(await client.setProjectAssistant(project.id, off));
+    } catch (e) {
+      report(e);
+    }
+  };
+
   const remove = async () => {
     if (
       !(await ask({
@@ -699,12 +732,20 @@ export function ProjectDetail({
           title={project.name}
           onError={report}
         />
-        {onAskProject && (
+        {onAskProject && !project.assistant_off && (
           <button className="text-button" onClick={() => onAskProject(project)}>
             <Sparkles size={15} aria-hidden="true" /> Ask
           </button>
         )}
-        {canWrite && (
+        {project.assistant_off && (
+          <span
+            className="plan-chip project-ai-off"
+            title="No AI reads this project: not the assistant, Study, the agenda, search by meaning or connected agents."
+          >
+            Kept out of the assistant
+          </span>
+        )}
+        {(canWrite || canManageAi) && (
           <div className="project-manage">
             <button
               className="icon-button"
@@ -760,15 +801,29 @@ export function ProjectDetail({
                 >
                   Save as template
                 </button>
-                <button
-                  className="is-destructive"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void remove();
-                  }}
-                >
-                  Delete project
-                </button>
+                {canManageAi && (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void keepOut(!project.assistant_off);
+                    }}
+                  >
+                    {project.assistant_off
+                      ? "Let the assistant read it"
+                      : "Keep out of the assistant"}
+                  </button>
+                )}
+                {canWrite && (
+                  <button
+                    className="is-destructive"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void remove();
+                    }}
+                  >
+                    Delete project
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1146,6 +1201,14 @@ export function ProjectDetail({
 
       {mode === "home" ? (
         <div className="project-home">
+          <ProjectMilestones
+            projectId={project.id}
+            items={items.filter((i) => i.project_id === project.id)}
+            canWrite={canWrite}
+            onChanged={onItemsChanged}
+            report={report}
+            refreshKey={sessions}
+          />
           {homeTasks.length > 0 && (
             <section className="project-home-section">
               <h3>Coming due</h3>
@@ -1433,9 +1496,11 @@ export function ProjectDetail({
                 {activity.map((event) => {
                   const changes = historyDiff(event);
                   const relatedItem =
-                    event.entity_type === "task"
+                    event.entity_type === "task" ||
+                    event.entity_type === "session"
                       ? items.find((item) => item.id === event.entity_id)
                       : undefined;
+                  const origin = activityOriginLabel(event);
                   return (
                     <li
                       key={event.id}
@@ -1467,6 +1532,10 @@ export function ProjectDetail({
                         </div>
                         <small className="muted">
                           {event.actor_name ?? "Workspace activity"}
+                          {origin ? ` · ${origin}` : ""}
+                          {event.entity_type === "session"
+                            ? " · only you see your sessions"
+                            : ""}
                         </small>
                         {!!changes.length && (
                           <ul className="project-history-diff">

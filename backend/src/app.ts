@@ -44,6 +44,9 @@ import { presenceRoutes } from "./modules/presence/routes.js";
 import { legalRoutes } from "./modules/legal/routes.js";
 import { studyRoutes } from "./modules/study/routes.js";
 import { aiStudyRoutes } from "./modules/ai/study.js";
+import { projectChatRoutes } from "./modules/ai/chats.js";
+import { mentionRoutes } from "./modules/docs/mentions.js";
+import { originalRoutes } from "./modules/imports/originals.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
 import { captureRoutes } from "./modules/capture/routes.js";
@@ -64,6 +67,7 @@ export const serviceModules: Record<
     legalRoutes,
     studyRoutes,
     importRoutes,
+    originalRoutes,
     inboundRoutes,
     agentRoutes,
     // Signing in with Orbyn for outside agents (OAuth): the authorization
@@ -77,6 +81,7 @@ export const serviceModules: Record<
     adminRoutes,
     organizeRoutes,
     docRoutes,
+    mentionRoutes,
     captureRoutes,
     searchRoutes,
     aiDocRoutes,
@@ -102,7 +107,7 @@ export const serviceModules: Record<
     legacyDocStreamRoutes,
   ],
   /** The assistant (chat, applying proposals) and admin provider settings. */
-  ai: [aiRoutes, aiAdminRoutes, aiStudyRoutes],
+  ai: [aiRoutes, aiAdminRoutes, aiStudyRoutes, projectChatRoutes],
   /** The public status report. */
   status: [statusRoutes],
   /**

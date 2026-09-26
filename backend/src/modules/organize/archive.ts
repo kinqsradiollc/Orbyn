@@ -3,6 +3,7 @@ import { pageFile, safeFileName, type DocBlock } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
 import { zipStream, type ZipEntry } from "../docs/zip.js";
 import { exportData } from "./portability.js";
+import { fetchOriginal } from "../imports/originals.js";
 
 /**
  * Everything a person can take with them, in one .zip (DATA-09).
@@ -76,8 +77,9 @@ bring somewhere else.
 - \`projects.json\`: your ${counts.projects} project${counts.projects === 1 ? "" : "s"}, with their stages and deadlines.
 - \`folders.json\`: your ${counts.folders} folder${counts.folders === 1 ? "" : "s"}.
 - \`attachments.json\`: the files you imported and the page each one became.
-  Orbyn doesn't keep the files themselves: each is deleted as soon as it
-  becomes a page, and always within a day.
+  Orbyn deletes a file as soon as it becomes a page, and always within a
+  day, unless you chose "Keep the original".
+- \`originals/\`: the ${counts.originals} original${counts.originals === 1 ? "" : "s"} you chose to keep, as you uploaded them.
 - \`consent.json\`: each time you agreed to the terms, or turned usage
   analytics on or off.
 
@@ -196,12 +198,22 @@ export async function exportArchive(
     )
   ).rows[0];
 
+  // Originals kept with pages ("Keep the original"), theirs to take along.
+  const originals = (
+    await db.query<{ id: string; file_name: string }>(
+      `SELECT id, file_name FROM kept_files
+        WHERE user_id = $1 AND doc_id IS NOT NULL ORDER BY created_at, id`,
+      [userId],
+    )
+  ).rows;
+
   const json = (value: unknown) => JSON.stringify(value, null, 2) + "\n";
   const iso = (d: Date | null) => (d ? d.toISOString() : null);
   const counts = {
     pages: pageCount,
     projects: projects.length,
     folders: folders.length,
+    originals: originals.length,
   };
 
   // The page an import became is named in attachments.json, which is
@@ -337,10 +349,23 @@ export async function exportArchive(
       }),
     };
     yield* pages();
+    // Originals kept with their pages, one file at a time.
+    const taken = new Set<string>();
+    for (const o of originals) {
+      const body = await fetchOriginal(o.id);
+      if (!body) continue;
+      const dot = o.file_name.lastIndexOf(".");
+      const base = dot > 0 ? o.file_name.slice(0, dot) : o.file_name;
+      const ext = dot > 0 ? o.file_name.slice(dot) : "";
+      yield {
+        name: `${root}/${claim(taken, "originals", safeFileName(base), ext.replace(/[^.\w]/g, ""))}`,
+        body,
+      };
+    }
     yield {
       name: `${root}/attachments.json`,
       body: json({
-        note: "Orbyn doesn't keep the files you import. Each one is deleted as soon as it becomes a page, and always within a day. This is what was imported and where it went.",
+        note: "Orbyn doesn't keep the files you import unless you chose to keep the original (those are in originals/): every other one is deleted as soon as it becomes a page, and always within a day. This is what was imported and where it went.",
         imports: imports.map((i) => ({
           file_name: i.file_name,
           file_type: i.file_type,

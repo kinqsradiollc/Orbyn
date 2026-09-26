@@ -817,7 +817,7 @@ test("the calendar feed has all-day dates, free time, alerts and changed occurre
   assert.match(ics, /RRULE:FREQ=DAILY;COUNT=3/);
   assert.ok(ics.includes(`RECURRENCE-ID;TZID=${TZ}:${stamp(2, 9)}`));
   assert.ok(ics.includes(`EXDATE;TZID=${TZ}:${stamp(3, 9)}`));
-  assert.doesNotMatch(ics, /Focus: Write report/);
+  assert.doesNotMatch(ics, /Session: Write report/);
 
   // Time blocks are an option of the feed.
   const settings = await call(me.token, "PUT", "/me/calendar-feed", {
@@ -829,12 +829,12 @@ test("the calendar feed has all-day dates, free time, alerts and changed occurre
     include_blocks: true,
   });
   ics = await read(path);
-  assert.match(ics, /SUMMARY:Focus: Write report/);
+  assert.match(ics, /SUMMARY:Session: Write report/);
   // A session says when its task is due; one with no deadline says nothing.
   const session = (title: string) =>
     ics
       .split("BEGIN:VEVENT")
-      .find((event) => event.includes(`SUMMARY:Focus: ${title}`))!;
+      .find((event) => event.includes(`SUMMARY:Session: ${title}`))!;
   assert.match(
     session("Draft slides"),
     /DESCRIPTION:Due \w{3} \d{1,2} \w{3}\\, \d{1,2}:\d{2} [ap]m/,
@@ -863,7 +863,7 @@ test("the calendar feed has all-day dates, free time, alerts and changed occurre
   const changed = one("Standup (moved)");
   assert.equal(changed.recurrence_id, iso(local(2, 9)));
   assert.equal(changed.starts_at, iso(local(2, 11)));
-  assert.equal(one("Focus: Write report").ends_at, iso(local(1, 16)));
+  assert.equal(one("Session: Write report").ends_at, iso(local(1, 16)));
 
   // The busy-only link shows when, never what.
   const busyPath = await feedPath(me.token, true);

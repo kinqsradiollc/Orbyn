@@ -95,7 +95,30 @@ type Form = {
   learn_estimates: boolean;
   learn_rhythm: boolean;
   balance_load: boolean;
+  /** A reminder before each session: off, or minutes before it starts. */
+  sessionReminder: (typeof SESSION_REMINDERS)[number];
 };
+
+/** When a session's reminder can go, as the picker offers it. */
+const SESSION_REMINDERS = [
+  "Off",
+  "At start",
+  "5 min",
+  "10 min",
+  "15 min",
+] as const;
+const REMINDER_MINUTES: Record<
+  (typeof SESSION_REMINDERS)[number],
+  number | null
+> = {
+  Off: null,
+  "At start": 0,
+  "5 min": 5,
+  "10 min": 10,
+  "15 min": 15,
+};
+const reminderOf = (m: number | null | undefined) =>
+  SESSION_REMINDERS.find((k) => REMINDER_MINUTES[k] === (m ?? null)) ?? "Off";
 
 /** Most minutes added to every travel time. */
 const MAX_TRAVEL_PAD = 30;
@@ -130,6 +153,7 @@ const toForm = (p: PlannerPrefs): Form => ({
   learn_estimates: p.learn_estimates ?? false,
   learn_rhythm: p.learn_rhythm ?? true,
   balance_load: p.balance_load ?? true,
+  sessionReminder: reminderOf(p.session_reminder_minutes),
   timezone: p.timezone,
   work_days: p.work_days,
   work_start: p.work_start,
@@ -341,6 +365,7 @@ function Body({ teams }: { teams: Team[] }) {
         learn_estimates: form.learn_estimates,
         learn_rhythm: form.learn_rhythm,
         balance_load: form.balance_load,
+        session_reminder_minutes: REMINDER_MINUTES[form.sessionReminder],
       });
       setForm(toForm(p));
       setSaved(true);
@@ -504,6 +529,18 @@ function Body({ teams }: { teams: Team[] }) {
                 detail="Sessions, breaks and planning horizon"
               >
                 <View style={s.preferenceCard}>
+                  <Field
+                    label="Remind me when a session starts"
+                    hint="On this phone and in Notifications, with Start to begin it."
+                  >
+                    <Segmented
+                      wrap
+                      accessibilityLabel="Session reminders"
+                      options={SESSION_REMINDERS}
+                      value={form.sessionReminder}
+                      onChange={(sessionReminder) => patch({ sessionReminder })}
+                    />
+                  </Field>
                   <Field
                     label="Days to plan"
                     hint="How many days Plan my day covers unless you pick another number."

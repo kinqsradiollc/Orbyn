@@ -924,6 +924,7 @@ export function DocsView({
                 onMakeCards={setMaking}
                 onFiles={importFiles}
                 caps={imports.caps}
+                report={report}
               />
             ) : failed ? (
               <div>

@@ -229,6 +229,17 @@ import {
   type WhatIfInput,
   type WhatIfResult,
   type ExperimentEvidence,
+  type SessionCheckIn,
+  type SessionCheckInInput,
+  type SessionCheckedIn,
+  type ProjectMilestone,
+  type MilestoneInput,
+  type MilestoneUpdate,
+  type PageMention,
+  type OriginalsOverview,
+  type ProjectChat,
+  type ProjectChatInput,
+  type ProjectChatSummary,
 } from "@orbyn/core";
 
 /** News from `GET /events`: re-read what it names. */
@@ -942,6 +953,63 @@ export class OrbynClient {
       `/projects/${id}/activity?limit=${Math.max(1, Math.min(200, limit))}`,
     );
   }
+  /**
+   * Keep a project out of the assistant (or let it back in). Owners and
+   * admins of a team project, or the owner of a personal one.
+   */
+  setProjectAssistant(id: string, off: boolean) {
+    return this.request<Project>(`/projects/${id}/assistant`, {
+      method: "PUT",
+      body: { off },
+    });
+  }
+  /** A project's milestones, soonest first, rolled up for you. */
+  projectMilestones(id: string) {
+    return this.request<ProjectMilestone[]>(`/projects/${id}/milestones`);
+  }
+  createMilestone(projectId: string, input: MilestoneInput) {
+    return this.request<ProjectMilestone>(`/projects/${projectId}/milestones`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateMilestone(projectId: string, id: string, input: MilestoneUpdate) {
+    return this.request<ProjectMilestone>(
+      `/projects/${projectId}/milestones/${id}`,
+      { method: "PUT", body: input },
+    );
+  }
+  deleteMilestone(projectId: string, id: string) {
+    return this.request<void>(`/projects/${projectId}/milestones/${id}`, {
+      method: "DELETE",
+    });
+  }
+  /** Put a task in a milestone of its project, or take it out (null). */
+  setItemMilestone(itemId: string, milestoneId: string | null) {
+    return this.request<Item>(`/items/${itemId}/milestone`, {
+      method: "PUT",
+      body: { milestone_id: milestoneId },
+    });
+  }
+  /** Your saved chats with the assistant about a project, newest first. */
+  projectChats(projectId: string) {
+    return this.request<ProjectChatSummary[]>(
+      `/ai/projects/${projectId}/chats`,
+    );
+  }
+  projectChat(id: string) {
+    return this.request<ProjectChat>(`/ai/chats/${id}`);
+  }
+  /** Save a project chat after a reply; the same id updates the same chat. */
+  saveProjectChat(id: string, input: ProjectChatInput) {
+    return this.request<ProjectChatSummary>(`/ai/chats/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteProjectChat(id: string) {
+    return this.request<void>(`/ai/chats/${id}`, { method: "DELETE" });
+  }
   /** Checkpoints for the read-only project time machine, newest first. */
   projectCheckpoints(id: string, before?: string) {
     const cursor = before ? `?before=${before}` : "";
@@ -1122,6 +1190,34 @@ export class OrbynClient {
   }
 
   /** People who can be named in a comment on this document. */
+  /** "Mentioned in": the pages that name you, newest first. */
+  mentions(limit = 50) {
+    return this.request<PageMention[]>(`/me/mentions?limit=${limit}`);
+  }
+  /** "Keep the original": the setting, the space used, and the files. */
+  originals() {
+    return this.request<OriginalsOverview>("/me/originals");
+  }
+  setKeepOriginals(keep: boolean) {
+    return this.request<{ keep: boolean }>("/me/originals", {
+      method: "PUT",
+      body: { keep },
+    });
+  }
+  /** A page's kept original, as a file to save. */
+  async downloadOriginal(docId: string) {
+    const response = await this.raw(`/docs/${docId}/original`);
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const star = /filename\*=UTF-8''([^;]+)/.exec(disposition)?.[1];
+    const plain = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return {
+      blob: await response.blob(),
+      name: star ? decodeURIComponent(star) : (plain ?? "original"),
+    };
+  }
+  deleteOriginal(docId: string) {
+    return this.request<void>(`/docs/${docId}/original`, { method: "DELETE" });
+  }
   docPeople(docId: string) {
     return this.request<{ id: string; name: string; email: string }[]>(
       `/docs/${docId}/people`,
@@ -1451,6 +1547,24 @@ export class OrbynClient {
   }
   deleteBlock(id: string) {
     return this.request<void>(`/blocks/${id}`, { method: "DELETE" });
+  }
+  /** Sessions that ended in the last few days and wait for "how did it go?". */
+  sessionCheckIns() {
+    return this.request<SessionCheckIn[]>("/blocks/check-ins");
+  }
+  /** Say how a session went: done for today, need more, or skip. */
+  checkInSession(id: string, input: SessionCheckInInput) {
+    return this.request<SessionCheckedIn>(`/blocks/${id}/check-in`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Mark a session started (from its reminder, or while it's on). */
+  startSession(id: string, from: "app" | "reminder" = "app") {
+    return this.request<{ id: string; item_id: string; started_at: string }>(
+      `/blocks/${id}/start`,
+      { method: "POST", body: { from } },
+    );
   }
   /**
    * Move a block to the next free working time of the same length, one that
@@ -2767,6 +2881,20 @@ export class OrbynClient {
     return this.request<AiTestResult>(`/ai/providers/${id}/test`, {
       method: "POST",
       body: model ? { model } : {},
+    });
+  }
+  /**
+   * Search by meaning's own setup: on needs the model that measures text
+   * and `accept` (every page is sent to the provider to be measured).
+   */
+  setSemanticSearch(input: {
+    on: boolean;
+    embedding_model?: string;
+    accept?: boolean;
+  }) {
+    return this.request<AiSettings>("/ai/settings/semantic", {
+      method: "PUT",
+      body: input,
     });
   }
   updateAiSettings(input: { provider_id: string | null; model?: string }) {

@@ -45,6 +45,11 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { applySessionChange } from "./session-change.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
+import {
+  KeptOutError,
+  keptOutFor,
+  scrubKeptOut,
+} from "../../lib/assistant-off.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -67,6 +72,10 @@ async function scopeOverview(
   scope: ChatScope | null,
 ) {
   if (!scope) return null;
+  // A project kept out of the assistant (or a task in one) can't be a scope.
+  const out = await keptOutFor(pool, u.id);
+  if (out.projects.has(scope.id) || out.ids.has(scope.id))
+    fail(422, new KeptOutError().message);
   const ctx: AgentContext = {
     user: { id: u.id, role: u.role },
     timezone,
@@ -195,6 +204,7 @@ async function answer(
     cited: new Map(),
     notes: [],
     scope: d.scope,
+    keptOut: await keptOutFor(pool, u.id),
     allowOutsideScope:
       /\b(outside|another project|other projects|all projects|whole workspace|across projects)\b/i.test(
         d.message,
@@ -258,30 +268,34 @@ async function answer(
       ctx,
       d.message,
       d.history,
-      {
-        ...(!inside ? await overview(ctx) : {}),
-        matching_request: await related(ctx, d.message),
-        // Timetable, shift or exam events the request names, further ahead.
-        ...(!inside
-          ? {
-              matching_calendar: await calendarMatches(
-                ctx,
-                requestWords(d.message),
-              ),
-            }
-          : {}),
-        ...(scoped ? { scope: scoped } : {}),
-        ...(scoped
-          ? {
-              available_sources: [...(ctx.cited?.values() ?? [])].map(
-                (source) => ({
-                  ref: `[${source.number}]`,
-                  title: source.title,
-                }),
-              ),
-            }
-          : {}),
-      },
+      // Nothing from a project kept out of the assistant is preloaded.
+      scrubKeptOut(
+        {
+          ...(!inside ? await overview(ctx) : {}),
+          matching_request: await related(ctx, d.message),
+          // Timetable, shift or exam events the request names, further ahead.
+          ...(!inside
+            ? {
+                matching_calendar: await calendarMatches(
+                  ctx,
+                  requestWords(d.message),
+                ),
+              }
+            : {}),
+          ...(scoped ? { scope: scoped } : {}),
+          ...(scoped
+            ? {
+                available_sources: [...(ctx.cited?.values() ?? [])].map(
+                  (source) => ({
+                    ref: `[${source.number}]`,
+                    title: source.title,
+                  }),
+                ),
+              }
+            : {}),
+        },
+        ctx.keptOut!,
+      ),
       log,
     );
   } catch (error) {
@@ -612,7 +626,11 @@ export async function aiRoutes(app: FastifyInstance) {
         return { applied: true, project_id: p.applied_project_id ?? null };
       if (p.expires_at <= new Date())
         fail(409, "Proposal expired. Ask the assistant again.");
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      // A project's History says the assistant made these changes.
+      await db.query(
+        "SELECT set_config('orbyn.user_id', $1, true), set_config('orbyn.origin', 'assistant', true)",
+        [u.id],
+      );
       let projectId: string | null = null;
       if (p.project)
         ({ project_id: projectId } = await applyProject(

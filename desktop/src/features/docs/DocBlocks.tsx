@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
+  mentionedPerson,
   parseDocInline,
   tagRuns,
   type DocBlock,
@@ -82,6 +83,19 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
             <code key={i} data-src={run.start}>
               {shade(run.text)}
             </code>
+          );
+        // A mention of someone who can open the page: a quiet pill, not a
+        // link to follow.
+        if (run.link && mentionedPerson(run.link))
+          return (
+            <span
+              key={i}
+              data-src={run.start}
+              className="doc-mention"
+              title={`Mentioned: ${run.text.replace(/^@/, "")}`}
+            >
+              {shade(run.text)}
+            </span>
           );
         if (run.link)
           return (

@@ -1,3 +1,4 @@
+import { dropKeptOut } from "../lib/assistant-off.js";
 import { z } from "zod";
 import { addDays, dayTime, localDateKey } from "@orbyn/core";
 import { inSpaces } from "../lib/visibility.js";
@@ -122,8 +123,13 @@ export const getCalendar = defineCapability({
       places,
     ] = await Promise.all([
       loadPrefs(ctx.db, userId),
-      calendarEntries(ctx.db, userId, from, to),
-      timeBlocks(ctx.db, userId, from, to),
+      // Nothing from a project kept out of the assistant.
+      calendarEntries(ctx.db, userId, from, to).then((rows) =>
+        dropKeptOut(ctx.db, rows),
+      ),
+      timeBlocks(ctx.db, userId, from, to).then((rows) =>
+        dropKeptOut(ctx.db, rows),
+      ),
       ctx.db.query<{ start_at: Date; end_at: Date; name: string }>(
         `SELECT b.start_at, b.end_at, h.name FROM habit_blocks b
              JOIN habits h ON h.id = b.habit_id

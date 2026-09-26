@@ -108,6 +108,11 @@ const schema = z.object({
   /** The file store refuses uploads when less disk than this (MB) would be left. */
   FILES_MIN_FREE_MB: z.coerce.number().int().min(0).default(1024),
   /**
+   * "Keep the original": how much each person may keep of the files they
+   * imported (MB), stored in FILES_DIR/kept, which must be backed up.
+   */
+  FILES_KEEP_QUOTA_MB: z.coerce.number().int().min(0).default(500),
+  /**
    * The OCR service (Compose profile `ocr`) for scanned pages and photos.
    * Blank: Word files and PDFs with real text still import; scanned pages
    * are refused with a clear message.

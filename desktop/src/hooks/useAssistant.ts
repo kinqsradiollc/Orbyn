@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  newId,
   proposalNote,
+  savedReply,
+  savedTurnsOf,
   type ChatTurn,
   type ChatScope,
   type Item,
   type Proposal,
+  type ProjectChatSummary,
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import type { Planner } from "./usePlanner";
@@ -51,6 +55,34 @@ export function useAssistant({
   turnsRef.current = turns;
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  // A project chat is saved after each reply, under one id per conversation.
+  const chatId = useRef<string | null>(null);
+  const [savedChats, setSavedChats] = useState<ProjectChatSummary[] | null>(
+    null,
+  );
+
+  const loadChats = (projectId: string) =>
+    client.projectChats(projectId).then(setSavedChats, () => setSavedChats([]));
+
+  useEffect(() => {
+    setSavedChats(null);
+    if (scope?.kind === "project") void loadChats(scope.id);
+  }, [scope?.kind, scope?.id]);
+
+  /** Keep the conversation under its project, quietly (a miss is harmless). */
+  const saveChat = (all: Turn[]) => {
+    const current = scopeRef.current;
+    if (current?.kind !== "project" || !all.length) return;
+    chatId.current ??= newId();
+    const id = chatId.current;
+    void client
+      .saveProjectChat(id, {
+        project_id: current.id,
+        turns: savedTurnsOf(all),
+      })
+      .then(() => loadChats(current.id))
+      .catch(() => undefined);
+  };
 
   // A cleared session (sign out or 401) also drops the conversation.
   useEffect(() => {
@@ -118,19 +150,18 @@ export function useAssistant({
             .filter((id): id is string => !!id),
         );
         if (request !== generation.current) return;
-        setTurns((t) => [
-          ...t,
-          {
-            id: nextId(),
-            role: "assistant",
-            proposal,
-            state:
-              proposal.actions.length || proposal.session_change
-                ? "pending"
-                : "info",
-            before: itemsRef.current.filter((i) => touched.has(i.id)),
-          },
-        ]);
+        const reply: Turn = {
+          id: nextId(),
+          role: "assistant",
+          proposal,
+          state:
+            proposal.actions.length || proposal.session_change
+              ? "pending"
+              : "info",
+          before: itemsRef.current.filter((i) => touched.has(i.id)),
+        };
+        setTurns((t) => [...t, reply]);
+        saveChat([...turnsRef.current, reply]);
       } catch (error) {
         if (request !== generation.current) return;
         // Nothing typed is lost: the message goes back in the box and act() shows the error.
@@ -231,6 +262,34 @@ export function useAssistant({
     if (sending.current) return;
     setTurns([]);
     setMessage("");
+    chatId.current = null;
+  };
+
+  /** Pick up a saved project chat where it was left. */
+  const openChat = async (id: string) => {
+    if (sending.current) return;
+    const chat = await client.projectChat(id);
+    chatId.current = chat.id;
+    setMessage("");
+    setTurns(
+      chat.turns.map((t, n): Turn =>
+        t.role === "user"
+          ? { id: nextId(), role: "user", text: t.text }
+          : {
+              id: nextId(),
+              role: "assistant",
+              proposal: savedReply(t, n) as Proposal,
+              state: "info",
+              before: [],
+            },
+      ),
+    );
+  };
+
+  const deleteChat = async (id: string) => {
+    await client.deleteProjectChat(id);
+    if (chatId.current === id) chatId.current = null;
+    setSavedChats((list) => list?.filter((c) => c.id !== id) ?? null);
   };
 
   const setScope = (next: AssistantScope | null) => {
@@ -246,6 +305,7 @@ export function useAssistant({
     setScopeState(next);
     setTurns([]);
     setMessage("");
+    chatId.current = null;
   };
 
   const pending = latestPending();
@@ -263,6 +323,10 @@ export function useAssistant({
     apply,
     dismiss,
     reset,
+    /** Saved chats about the scoped project, newest first (null: loading). */
+    savedChats,
+    openChat,
+    deleteChat,
   };
 }
 

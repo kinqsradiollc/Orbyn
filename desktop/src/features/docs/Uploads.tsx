@@ -12,6 +12,7 @@ import {
   type DocSummary,
   type ImportJob,
 } from "@orbyn/core";
+import { KeepOriginalsSwitch } from "./OriginalFile";
 import { client } from "../../lib/api";
 
 /**
@@ -186,8 +187,11 @@ export function UploadsPanel({
   onMakeCards,
   onFiles,
   caps,
+  report,
 }: {
   caps: ImportCapabilities | null;
+  /** Shows errors; with it, the "Keep the original" setting shows too. */
+  report?: (e: unknown) => void;
   jobs: ImportJob[];
   docs: DocSummary[];
   busy: boolean;
@@ -205,9 +209,10 @@ export function UploadsPanel({
     <div className="uploads">
       <p className="uploads-intro muted">
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays. Move a page to a folder when
-        you&apos;re ready.
+        file, then deletes it, unless you keep the original. Move a page to a
+        folder when you&apos;re ready.
       </p>
+      {report && <KeepOriginalsSwitch report={report} />}
       <p className="uploads-hint">{importHint(caps)}</p>
       {!waiting.length && !shownJobs.length && (
         <div className="uploads-empty">
@@ -307,6 +312,7 @@ export function UploadsPanel({
                   {job
                     ? importStatusLine(job)
                     : `Ready · from ${doc.imported_from?.file_name ?? "an upload"}`}
+                  {doc.original ? " · original kept" : ""}
                 </small>
               </button>
               <span className="upload-actions">

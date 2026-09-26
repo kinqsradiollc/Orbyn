@@ -6,6 +6,9 @@ import { DOC_KINDS } from "./docs.js";
 import { PROJECT_STATUSES } from "./projects.js";
 import { FAVOURITE_KINDS } from "./folders.js";
 
+/** When a session's reminder can go: as it starts, or minutes before. */
+export const SESSION_REMINDER_MINUTES = [0, 5, 10, 15];
+
 export const KINDS = ["task", "event"] as const;
 export const STATUSES = [
   "todo",
@@ -884,6 +887,19 @@ export const aiSettingsInput = z
   })
   .strict();
 
+/**
+ * Search by meaning's own setup (`PUT /ai/settings/semantic`). Turning it
+ * on needs a model that measures text and an admin accepting, each time,
+ * that every page is sent to the provider to be measured.
+ */
+export const semanticSetupInput = z
+  .object({
+    on: z.boolean(),
+    embedding_model: z.string().trim().max(200).optional(),
+    accept: z.boolean().optional(),
+  })
+  .strict();
+
 export const aiTestInput = z
   .object({ model: z.string().trim().max(200).optional() })
   .strict();
@@ -1323,6 +1339,16 @@ export const plannerPrefsInput = z
     learn_estimates: z.boolean().optional(),
     learn_rhythm: z.boolean().optional(),
     balance_load: z.boolean().optional(),
+    /** A reminder this many minutes before each session starts (0: as it starts); null: off. */
+    session_reminder_minutes: z
+      .number()
+      .int()
+      .refine((n) => SESSION_REMINDER_MINUTES.includes(n), {
+        message:
+          "Choose a reminder as the session starts, or 5, 10 or 15 minutes before.",
+      })
+      .nullable()
+      .optional(),
     /** Morning agenda and evening review emails; send the keys you change. */
     digest: z
       .object({

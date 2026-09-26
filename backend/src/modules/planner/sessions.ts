@@ -277,6 +277,7 @@ export async function itemSessions(
   const rows = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
+              b.started_at, b.outcome,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.item_id = $2

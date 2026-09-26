@@ -1,5 +1,6 @@
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
+import { SemanticSetup } from "./SemanticSetup";
 import {
   useCallback,
   useEffect,
@@ -197,6 +198,14 @@ export function AdminAi({ busy, revision, act, report }: Props) {
           </p>
         )}
       </section>
+
+      <SemanticSetup
+        settings={settings}
+        providerName={active?.name ?? null}
+        busy={busy}
+        act={(fn) => void act(fn)}
+        onChanged={load}
+      />
 
       {editing && settings && (
         <ProviderForm

@@ -1218,6 +1218,7 @@ export function DocsSheet({
               )}
               {uploadsOnly && !hits && (
                 <UploadsList
+                  report={(e) => setError(errorText(e))}
                   jobs={imports.jobs}
                   docs={docs}
                   busy={imports.busy}

@@ -1,4 +1,5 @@
 import React from "react";
+import { OriginalSection } from "./OriginalFile";
 import { StyleSheet, Text, View } from "react-native";
 import {
   MODE_LABELS,
@@ -99,6 +100,7 @@ export function PageInfo({
           )}
         </Section>
         {doc.kind === "doc" && <PageFreshness doc={doc} canWrite={canWrite} />}
+        <OriginalSection doc={doc} canWrite={canWrite} report={report} />
         <Section label="This page">
           <Text style={s.small}>{facts}</Text>
           {/* Who else has it open, when anyone has. */}

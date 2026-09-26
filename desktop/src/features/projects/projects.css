@@ -28,6 +28,68 @@
 .project-home-section p {
   margin: 0;
 }
+/* Milestones: a dated list of their own on Home. */
+.project-milestones-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.project-milestones-head .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.project-home-section .milestone-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+}
+.milestone-flag {
+  color: var(--color-accent);
+}
+.milestone-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.milestone-name {
+  justify-self: start;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+.milestone-tasks {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.milestone-tasks legend {
+  padding: 0 4px;
+  font-size: 13px;
+}
+.milestone-tasks .check-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.milestone-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.project-ai-off {
+  align-self: center;
+}
 .project-home-section ul {
   display: grid;
   gap: 9px;
@@ -1486,4 +1548,7 @@
   min-height: 34px;
   padding: 6px 10px;
   border-radius: var(--radius-sm);
+}
+.milestone-more .text-button.is-destructive {
+  color: var(--color-danger);
 }

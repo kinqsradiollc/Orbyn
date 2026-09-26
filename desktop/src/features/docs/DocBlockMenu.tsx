@@ -22,6 +22,7 @@ import {
   ListChecks,
   ListIndentDecrease,
   ListIndentIncrease,
+  AtSign,
 } from "lucide-react";
 import { BLOCK_KINDS, isListBlock, type DocBlock } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
@@ -369,6 +370,107 @@ export function SlashMenu({
             );
           })}
         </div>
+      </div>
+    </Popover>
+  );
+}
+
+/** Someone who can open the page, as the people picker offers them. */
+export type MentionPerson = { id: string; name: string; email: string };
+
+/**
+ * The people picker that opens on "@" in a line: only people who can
+ * already open the page, narrowed by what's typed. Enter takes the
+ * highlighted person; Escape leaves the "@" as text.
+ */
+export function PeopleMenu({
+  anchor,
+  query,
+  people,
+  onPick,
+  onClose,
+}: {
+  anchor: DOMRect;
+  query: string;
+  /** Null while loading. */
+  people: MentionPerson[] | null;
+  onPick: (person: MentionPerson) => void;
+  onClose: () => void;
+}) {
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (people ?? [])
+      .filter(
+        (p) =>
+          !q ||
+          p.name
+            .toLowerCase()
+            .split(/\s+/)
+            .some((w) => w.startsWith(q)) ||
+          p.email.toLowerCase().startsWith(q),
+      )
+      .slice(0, 8);
+  }, [people, query]);
+  const [highlight, setHighlight] = useState(0);
+  useEffect(() => setHighlight(0), [query]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlight((h) => Math.min(h + 1, matches.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlight((h) => Math.max(h - 1, 0));
+      } else if (e.key === "Enter" && matches[highlight]) {
+        e.preventDefault();
+        e.stopPropagation();
+        onPick(matches[highlight]);
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [matches, highlight, onPick]);
+
+  return (
+    <Popover
+      anchor={anchor}
+      label="Mention someone"
+      onClose={onClose}
+      takeFocus={false}
+      width={320}
+    >
+      <div className="doc-menu">
+        <span className="doc-menu-label">
+          {people === null
+            ? "Finding people…"
+            : matches.length
+              ? "People who can open this page"
+              : "Nobody else can open this page by that name"}
+        </span>
+        {matches.length > 0 && (
+          <div className="doc-menu-kinds" role="listbox" aria-label="People">
+            {matches.map((p, i) => (
+              <button
+                key={p.id}
+                role="option"
+                aria-selected={i === highlight}
+                className={
+                  "doc-menu-item" + (i === highlight ? " is-highlight" : "")
+                }
+                onMouseEnter={() => setHighlight(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onPick(p)}
+              >
+                <AtSign size={15} aria-hidden="true" />
+                <span className="doc-menu-text">
+                  <strong>{p.name}</strong>
+                  <small>{p.email}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </Popover>
   );

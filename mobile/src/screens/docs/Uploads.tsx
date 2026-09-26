@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { KeepOriginals } from "./OriginalFile";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -321,8 +322,11 @@ export function UploadsList({
   onScan,
   onMakeCards,
   caps,
+  report,
 }: {
   caps: ImportCapabilities | null;
+  /** Shows errors; with it, the "Keep the original" setting shows too. */
+  report?: (e: unknown) => void;
   onScan?: () => void;
   onMakeCards?: (docId: string, title: string) => void;
   jobs: ImportJob[];
@@ -341,8 +345,9 @@ export function UploadsList({
     <View style={s.list}>
       <Text style={s.intro}>
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays.
+        file, then deletes it, unless you keep the original.
       </Text>
+      {report && <KeepOriginals report={report} />}
       <Text style={s.hint}>{importHint(caps)}</Text>
       {!waiting.length && !shownJobs.length && (
         <View style={s.empty}>

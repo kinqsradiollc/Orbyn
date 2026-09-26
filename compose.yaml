@@ -46,7 +46,14 @@ x-http-health: &http-health
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # Search by meaning needs pgvector, which this image doesn't have: set
+    # POSTGRES_IMAGE=pgvector/pgvector:pg17 and re-run migrate to make it
+    # possible. That image is Debian (glibc), this one is Alpine (musl), so
+    # text sorts differently: on an existing database, back up first and
+    # run REINDEX DATABASE right after the switch (or dump and restore), or
+    # unique text indexes can silently break. See docs/deployment.md.
+    # Without it, word search works as always and search by meaning stays off.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     # The first-start script is copied in with Windows line endings removed:
     # a checkout on Windows would otherwise fail with "/bin/sh^M: bad
     # interpreter" and leave the database half set up.
@@ -203,7 +210,8 @@ services:
 
   # The file store for importing into Docs: uploads arrive through the
   # gateway's /files/u/ route and are kept encrypted until the converter has
-  # read them, never longer than a day. Needs FILES_SECRET and
+  # read them, never longer than a day, unless the person chose "Keep the
+  # original" (then in kept/, within FILES_KEEP_QUOTA_MB each). Needs FILES_SECRET and
   # FILES_MASTER_KEY in .env; without FILES_SECRET importing is off.
   files:
     <<: *backend
@@ -232,6 +240,21 @@ services:
       TESSERACT_WORKERS: ${TESSERACT_WORKERS:-2}
       FORMULA_URL: ${FORMULA_URL:-}
     command: ["node", "backend/dist/services/converter.js"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Search by meaning: measures changed pages with the embedding model an
+  # admin chose (Admin, AI, Search by meaning), in its own process so the
+  # reminder loop never waits on a provider. Off unless asked for: add
+  # `semantic` to COMPOSE_PROFILES, use the pgvector image above, then turn
+  # it on in Admin. It does nothing while the setting is off.
+  measure:
+    <<: *backend
+    profiles: [semantic]
+    environment:
+      <<: *backend-env
+    command: ["node", "backend/dist/services/measure.js"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
@@ -421,7 +444,8 @@ services:
 
 volumes:
   postgres_data:
-  # Files waiting to be imported (encrypted, gone within a day).
+  # Files waiting to be imported (encrypted, gone within a day), and in
+  # kept/ the originals people chose to keep: back that folder up.
   import_files:
   # The OCR model's weights, downloaded once.
   ocr_models:

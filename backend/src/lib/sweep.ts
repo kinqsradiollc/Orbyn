@@ -344,6 +344,17 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "project_chats",
+    label: "Saved project chats",
+    detail:
+      "Chats with the assistant about a project, a year after they were last used.",
+    table: "project_chats",
+    where: olderThan("updated_at"),
+    days: 365,
+    configurable: true,
+    min: 30,
+  },
+  {
     key: "idempotency_keys",
     label: "Replay keys",
     detail: "Keys that stop an offline change from happening twice.",

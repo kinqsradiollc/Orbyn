@@ -130,6 +130,13 @@ export function ProjectsView({
             "items:write",
           )
         }
+        canManageAi={
+          open.team_id
+            ? ["owner", "admin"].includes(
+                teams.find((team) => team.id === open.team_id)?.role ?? "",
+              )
+            : open.user_id === userId
+        }
         items={items}
         report={report}
         onOpenItem={onOpenItem}

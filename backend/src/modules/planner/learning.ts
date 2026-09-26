@@ -108,10 +108,12 @@ export type KeptBlock = {
 };
 
 /**
- * Past time blocks and how much of each went into its task: all of it when
- * the task was finished by the end of that day, otherwise the focus time
- * logged on the task that day, shared out over its blocks in order. Shared
- * with plan reality (`GET /planner/reality`).
+ * Past time blocks and how much of each went into its task. A session its
+ * person checked in says so itself: all of it for "Done for today" and
+ * "Need more", none for "Skip". Otherwise: all of it when the task was
+ * finished by the end of that day, else the focus time logged on the task
+ * that day, shared out over its blocks in order. Shared with plan reality
+ * (`GET /planner/reality`).
  */
 export async function keptBlocks(
   db: Db,
@@ -123,14 +125,21 @@ export async function keptBlocks(
   blocks: KeptBlock[];
   focus: { item_id: string | null; started_at: Date; minutes: number }[];
 }> {
-  const blocks = (
-    await db.query<{ item_id: string; start_at: Date; end_at: Date }>(
-      `SELECT item_id, start_at, end_at FROM time_blocks
+  const rows = (
+    await db.query<{
+      item_id: string;
+      start_at: Date;
+      end_at: Date;
+      outcome: "done" | "more" | "skipped" | null;
+    }>(
+      `SELECT item_id, start_at, end_at, outcome FROM time_blocks
         WHERE user_id = $1 AND start_at >= $2 AND start_at < $3
         ORDER BY start_at, id`,
       [userId, from, to],
     )
   ).rows;
+  const blocks = rows.map(({ outcome: _outcome, ...b }) => b);
+  const outcomes = rows.map((r) => r.outcome);
   const ids = [...new Set(blocks.map((b) => b.item_id))];
   const [done, focus] = await Promise.all([
     db.query<{ item_id: string; at: Date }>(
@@ -154,12 +163,15 @@ export async function keptBlocks(
     worked.set(key, (worked.get(key) ?? 0) + f.minutes);
   }
   const out: KeptBlock[] = [];
-  for (const b of blocks) {
+  for (const [n, b] of blocks.entries()) {
     const day = localDateKey(b.start_at, timezone);
     const minutes = (b.end_at.getTime() - b.start_at.getTime()) / 60_000;
     const endOfDay = dayTime(addDays(day, 1), 0, timezone).getTime();
+    const outcome = outcomes[n];
     let kept = 0;
-    if ((doneAt.get(b.item_id) ?? Infinity) <= endOfDay) kept = minutes;
+    if (outcome === "skipped") kept = 0;
+    else if (outcome === "done" || outcome === "more") kept = minutes;
+    else if ((doneAt.get(b.item_id) ?? Infinity) <= endOfDay) kept = minutes;
     else {
       const key = `${b.item_id}|${day}`;
       const left = worked.get(key) ?? 0;

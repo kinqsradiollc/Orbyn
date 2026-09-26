@@ -188,3 +188,62 @@
 .field-hint.field-warning {
   color: #9a5b12;
 }
+
+/* Search by meaning: its own setup, off by default. */
+.semantic-setup {
+  display: grid;
+  gap: 12px;
+  padding: 20px 24px;
+}
+.semantic-setup p {
+  margin: 0;
+}
+.semantic-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.semantic-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--color-textMuted);
+}
+.semantic-steps li.is-done {
+  color: var(--color-text);
+}
+.semantic-steps li svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.semantic-steps li.is-done svg {
+  color: var(--color-accent);
+}
+.semantic-form {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+}
+.semantic-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.semantic-form .check-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.semantic-form .primary {
+  justify-self: start;
+}
+.semantic-on {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}

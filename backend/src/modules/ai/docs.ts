@@ -15,6 +15,7 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
+import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
 
 /**
  * The assistant, inside a page.
@@ -55,6 +56,7 @@ export async function aiDocRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
+    if (await docKeptOut(db, id)) fail(422, PAGE_KEPT_OUT);
     return doc;
   }
 

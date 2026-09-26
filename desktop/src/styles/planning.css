@@ -797,6 +797,52 @@ kbd {
   }
 }
 
+/* "Mentioned in": pages that name you, above the notifications. */
+.mentioned-in {
+  margin-bottom: 16px;
+  padding: 18px 20px 12px;
+}
+.mentioned-in h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.mentioned-in ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mentioned-row {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+}
+.mentioned-row:hover:not(:disabled) {
+  background: var(--color-sunken);
+}
+.mentioned-row strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.mentioned-quote {
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mentioned-row small {
+  font-size: 11px;
+  color: var(--color-textMuted);
+}
+
 /* Team time: availability, workload, find a time. */
 .week-nav {
   display: flex;

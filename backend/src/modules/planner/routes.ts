@@ -5,6 +5,7 @@ import {
   blockDuplicateInput,
   blockInput,
   blockRescheduleInput,
+  sessionCheckInInput,
   blockUpdate,
   calendarFeedCreateInput,
   calendarFeedSettingsInput,
@@ -75,6 +76,7 @@ import {
 } from "./calendar.js";
 import { adoptDeviceZone } from "./timezone.js";
 import { itemSessions, withSessionFacts } from "./sessions.js";
+import { checkIn, pendingCheckIns, startSession } from "./check-in.js";
 import {
   daysForRule,
   FRAME_COLUMNS,
@@ -155,6 +157,7 @@ async function plainBlockById(
   const b = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
+              b.started_at, b.outcome,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id WHERE b.id = $1 AND b.user_id = $2`,
       [id, userId],
@@ -240,6 +243,10 @@ export async function plannerRoutes(app: FastifyInstance) {
         learn_estimates: d.learn_estimates ?? current.learn_estimates,
         learn_rhythm: d.learn_rhythm ?? current.learn_rhythm,
         balance_load: d.balance_load ?? current.balance_load,
+        session_reminder_minutes:
+          d.session_reminder_minutes !== undefined
+            ? d.session_reminder_minutes
+            : (current.session_reminder_minutes ?? null),
       };
       if (next.work_end <= next.work_start)
         fail(422, "Working hours must end after they start.");
@@ -263,9 +270,9 @@ export async function plannerRoutes(app: FastifyInstance) {
            default_travel_minutes, extra_timezones, calendar_sets, pinned_user_ids,
            deadline_notice_days, planner_notices, default_alerts, count_blocks_as_spent,
            buffer_scope, travel_padding_minutes, digest, learn_estimates,
-           learn_rhythm, balance_load, updated_at)
+           learn_rhythm, balance_load, session_reminder_minutes, updated_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-           $21,$22,$23,$24,$25,$26,$27, now())
+           $21,$22,$23,$24,$25,$26,$27,$28, now())
          ON CONFLICT (user_id) DO UPDATE SET timezone=$2, work_days=$3, work_start=$4,
            work_end=$5, pad_percent=$6, split_after_minutes=$7, min_block_minutes=$8,
            break_level=$9, horizon_days=$10, buffer_before_minutes=$11,
@@ -274,7 +281,7 @@ export async function plannerRoutes(app: FastifyInstance) {
            deadline_notice_days=$18, planner_notices=$19, default_alerts=$20,
            count_blocks_as_spent=$21, buffer_scope=$22, travel_padding_minutes=$23,
            digest=$24, learn_estimates=$25, learn_rhythm=$26, balance_load=$27,
-           updated_at=now()`,
+           session_reminder_minutes=$28, updated_at=now()`,
         [
           u.id,
           next.timezone,
@@ -303,6 +310,7 @@ export async function plannerRoutes(app: FastifyInstance) {
           next.learn_estimates ?? false,
           next.learn_rhythm ?? true,
           next.balance_load ?? true,
+          next.session_reminder_minutes ?? null,
         ],
       );
       // Picking a zone here is a choice: the apps stop adopting the
@@ -893,6 +901,50 @@ export async function plannerRoutes(app: FastifyInstance) {
     );
   });
 
+  // Sessions that ended and wait for "how did it go?".
+  app.get("/blocks/check-ins", async (r) => {
+    const u = await authenticate(r);
+    return pendingCheckIns(reader(r.headers), u.id);
+  });
+
+  app.post("/blocks/:id/check-in", async (r) => {
+    const u = await authenticate(r);
+    const d = sessionCheckInInput.parse(r.body);
+    return transaction(async (db) => {
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      const result = await checkIn(
+        db,
+        u.id,
+        idParam(r),
+        d.outcome,
+        d.more_minutes,
+      );
+      await queueWebhooks(
+        db,
+        "block.updated",
+        { user_id: u.id, team_id: null },
+        await blockById(db, result.id, u.id),
+      );
+      return result;
+    });
+  });
+
+  // "Start" from a session's reminder, or its menu while it's on.
+  app.post("/blocks/:id/start", async (r) => {
+    const u = await authenticate(r);
+    const { from } = z
+      .object({ from: z.enum(["app", "reminder"]).default("app") })
+      .strict()
+      .parse(r.body ?? {});
+    return transaction(async (db) => {
+      await db.query(
+        "SELECT set_config('orbyn.user_id', $1, true), set_config('orbyn.origin', $2, true)",
+        [u.id, from],
+      );
+      return startSession(db, u.id, idParam(r));
+    });
+  });
+
   // One task's sessions (yours), with its deadline and how much of the time
   // still to come ends by it. Reading them never makes a plan.
   app.get("/items/:id/sessions", async (r): Promise<ItemSessions> => {
@@ -1017,6 +1069,13 @@ export async function plannerRoutes(app: FastifyInstance) {
         );
       slot ??= await workingFree(db, u.id, minutes, [b.id], now);
       if (!slot) fail(409, "There's no free working time in the next 7 days.");
+      // The planner chose the new time, so a project's History says so.
+      await db.query(
+        `SELECT set_config('orbyn.user_id', $1, true),
+                set_config('orbyn.origin',
+                  coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
+        [u.id],
+      );
       await db.query(
         "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
         [b.id, slot.start_at, slot.end_at],
@@ -1121,6 +1180,14 @@ export async function plannerRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = planApplyInput.parse(r.body ?? {});
     return transaction(async (db) => {
+      // A project's History says the planner placed these sessions. An
+      // origin set by the caller (the assistant applying its plan) stays.
+      await db.query(
+        `SELECT set_config('orbyn.user_id', $1, true),
+                set_config('orbyn.origin',
+                  coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
+        [u.id],
+      );
       const plan = (
         await db.query<{
           id: string;
@@ -1211,6 +1278,7 @@ export async function plannerRoutes(app: FastifyInstance) {
 
       const created: TimeBlock[] = [];
       let skipped = 0;
+      const placing: Plan["blocks"] = [];
       for (const b of plan.blocks) {
         const clash = clashes(b);
         const open = await db.query(
@@ -1221,14 +1289,39 @@ export async function plannerRoutes(app: FastifyInstance) {
           skipped++;
           continue;
         }
-        const { id } = (
+        placing.push(b);
+      }
+      // One statement, so a project's History reads "3 sessions planned".
+      if (placing.length) {
+        const ids = (
           await db.query<{ id: string }>(
             `INSERT INTO time_blocks (item_id, user_id, start_at, end_at, source, plan_id)
-             VALUES ($1, $2, $3, $4, 'planner', $5) RETURNING id`,
-            [b.item_id, u.id, b.start_at, b.end_at, plan.id],
+             SELECT x.item_id, $2, x.start_at, x.end_at, 'planner', $3
+               FROM unnest($1::uuid[], $4::timestamptz[], $5::timestamptz[])
+                    WITH ORDINALITY AS x(item_id, start_at, end_at, n)
+              ORDER BY x.n
+             RETURNING id`,
+            [
+              placing.map((b) => b.item_id),
+              u.id,
+              plan.id,
+              placing.map((b) => b.start_at),
+              placing.map((b) => b.end_at),
+            ],
           )
-        ).rows[0];
-        created.push(await plainBlockById(db, id, u.id));
+        ).rows;
+        const byKey = new Map<string, string>();
+        for (const row of (
+          await db.query<{ id: string; item_id: string; start_at: Date }>(
+            "SELECT id, item_id, start_at FROM time_blocks WHERE id = ANY($1::uuid[])",
+            [ids.map((row) => row.id)],
+          )
+        ).rows)
+          byKey.set(`${row.item_id}|${row.start_at.getTime()}`, row.id);
+        for (const b of placing) {
+          const id = byKey.get(`${b.item_id}|${Date.parse(b.start_at)}`);
+          if (id) created.push(await plainBlockById(db, id, u.id));
+        }
       }
       // Numbered together, once every session of the plan is in place.
       const facts = await withSessionFacts(db, u.id, [...created, ...moved]);

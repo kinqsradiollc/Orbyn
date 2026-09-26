@@ -16,6 +16,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { itemDetail } from "../items/routes.js";
 import { lockItem, requireItemAccess } from "../items/service.js";
 import { announceTo } from "../presence/live.js";
+import { startSessionsFor } from "../planner/check-in.js";
 
 const SESSION_COLUMNS = `s.id, s.item_id, i.title AS item_title, s.kind,
   s.started_at, s.ended_at, s.planned_minutes, s.minutes, s.completed`;
@@ -167,6 +168,13 @@ export async function focusRoutes(app: FastifyInstance) {
              device_id = EXCLUDED.device_id, updated_at = now()`,
       [u.id, d.state, d.device ?? null, d.device_id ?? null],
     );
+    // Focus running on a task while one of its sessions is on: that
+    // session has started (it shows in the project's History).
+    if (d.state.item_id && d.state.phase === "work" && d.state.run_started_at)
+      await transaction(async (db) => {
+        await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+        await startSessionsFor(db, u.id, d.state.item_id!);
+      });
     await announceTo(pool, { user_id: u.id }, "focus", { by: d.device_id });
     return (await currentFocus(u.id))!;
   });

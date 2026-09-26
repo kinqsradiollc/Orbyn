@@ -100,6 +100,13 @@ async function storageView(): Promise<AdminStorage> {
                   WHERE ocr_ms IS NOT NULL ORDER BY done_at DESC LIMIT 50) r) AS avg`,
       ),
     ]);
+  const originals = (
+    await pool.query<{ count: number; bytes: string | null; people: number }>(
+      `SELECT count(*)::int AS count, sum(bytes) AS bytes,
+              count(DISTINCT user_id)::int AS people
+         FROM kept_files WHERE doc_id IS NOT NULL`,
+    )
+  ).rows[0];
   const onDisk = new Map((stats?.files ?? []).map((f) => [f.id, f]));
   const count = (s: string) =>
     Number(queue.rows.find((q) => q.status === s)?.n ?? 0);
@@ -113,6 +120,11 @@ async function storageView(): Promise<AdminStorage> {
       oldest_at: files.length ? files.map((f) => f.stored_at).sort()[0] : null,
       disk_total: stats?.disk?.total ?? null,
       disk_free: stats?.disk?.free ?? null,
+    },
+    originals: {
+      count: originals.count,
+      bytes: Number(originals.bytes ?? 0),
+      people: originals.people,
     },
     reading: {
       scans: caps.scans,

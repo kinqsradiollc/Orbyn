@@ -14,6 +14,7 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { cardById } from "../study/service.js";
 import { complete, ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
+import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
 
 /**
  * The assistant for studying, always from the person's own pages:
@@ -39,6 +40,7 @@ const pageOf = async (userId: string, docId: string) => {
     )
   ).rows[0];
   if (!doc) fail(404, "Page not found");
+  if (await docKeptOut(pool, docId)) fail(422, PAGE_KEPT_OUT);
   return {
     ...doc,
     text: serializeDoc(doc.content ?? []).slice(0, PAGE_CHARS),

@@ -85,6 +85,40 @@ export async function enqueue() {
        ON CONFLICT DO NOTHING`,
       [await emailEnabled()],
     );
+    // A reminder when a session starts, for people who asked for one
+    // (planner_prefs.session_reminder_minutes): in the app and on their
+    // phones, once per session and start time. A session moved later gets
+    // a reminder for its new time; one already started gets none.
+    await db.query(
+      `INSERT INTO notifications (user_id, item_id, item_version, channel,
+         destination, title, body, state, kind, ref)
+       SELECT b.user_id, b.item_id, 0, c.channel, c.destination,
+         left(CASE WHEN p.session_reminder_minutes = 0 THEN 'Session starting: '
+           ELSE 'Session in ' || p.session_reminder_minutes || ' min: ' END || i.title, 200),
+         lower(to_char(b.start_at AT TIME ZONE p.timezone, 'FMHH12:MI am')) || '–' ||
+           lower(to_char(b.end_at AT TIME ZONE p.timezone, 'FMHH12:MI am')) ||
+           coalesce(' · ' || pr.name, ''),
+         CASE WHEN c.channel = 'inapp' THEN 'sent' ELSE 'pending' END,
+         'session', b.id || ':' || round(extract(epoch FROM b.start_at))::bigint
+       FROM time_blocks b
+       JOIN planner_prefs p ON p.user_id = b.user_id
+         AND p.session_reminder_minutes IS NOT NULL
+       JOIN users u ON u.id = b.user_id AND NOT u.disabled
+       JOIN items i ON i.id = b.item_id
+       LEFT JOIN projects pr ON pr.id = i.project_id
+       CROSS JOIN LATERAL (
+         SELECT 'inapp' AS channel, u.id::text AS destination
+         UNION ALL SELECT 'push', d.token FROM devices d WHERE d.user_id = u.id
+       ) c
+       WHERE b.start_at > now() - interval '5 minutes'
+         AND b.start_at <= now() + interval '61 minutes'
+         AND b.start_at - make_interval(mins => p.session_reminder_minutes) <= now()
+         AND b.started_at IS NULL
+         AND i.status NOT IN ('done', 'cancelled')
+         AND ((i.team_id IS NULL AND i.user_id = b.user_id)
+           OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id = b.user_id))
+       ON CONFLICT DO NOTHING`,
+    );
     await expireInvites(db);
     // Expired and outdated records are cleared hourly by the sweeper
     // (lib/sweep.ts), in slices, rather than on every cycle.

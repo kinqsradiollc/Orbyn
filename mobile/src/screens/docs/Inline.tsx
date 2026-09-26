@@ -2,6 +2,7 @@ import React from "react";
 import { Linking, StyleSheet, Text } from "react-native";
 import {
   mathToText,
+  mentionedPerson,
   parseDocInline,
   tagRuns,
   type TaggedRun,
@@ -41,6 +42,8 @@ export function Inline({
           (m) => m.start < run.start + run.text.length && m.end > run.start,
         );
         const shown = run.math ? mathToText(run.text) : run.text;
+        // "@Anna": someone named in the page, a quiet pill, not a link.
+        const person = !!run.link && !!mentionedPerson(run.link);
         return (
           <Text
             key={i}
@@ -49,13 +52,16 @@ export function Inline({
               run.bold && s.bold,
               run.italic && s.italic,
               (run.code || run.math) && s.code,
-              !!run.link && s.link,
+              !!run.link && !person && s.link,
+              person && s.mention,
               run.highlight && s.highlight,
               !!run.tag && s.tag,
               lit && s.marked,
             ]}
             onPress={
-              run.link ? () => void Linking.openURL(run.link!) : undefined
+              run.link && !person
+                ? () => void Linking.openURL(run.link!)
+                : undefined
             }
           >
             {shown}
@@ -74,6 +80,11 @@ const s = themed(() =>
     // ground rather than by its letterforms.
     code: { backgroundColor: colors.surfaceMuted },
     link: { color: colors.accent, textDecorationLine: "underline" },
+    mention: {
+      backgroundColor: colors.accentSoft,
+      color: colors.accent,
+      fontFamily: fonts.medium,
+    },
     // Words with a remark: the soft tint with an accent line under them, as
     // on the web, so they don't read as ==highlighted== words.
     marked: {

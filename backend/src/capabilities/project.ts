@@ -223,6 +223,7 @@ export async function projectHub(
       LEFT JOIN agent_grants g ON g.id = a.via_grant_id
       LEFT JOIN items i ON a.entity_type = 'task' AND i.id = a.entity_id
      WHERE a.project_id = ${p.add(id)}
+       AND (a.entity_type <> 'session' OR a.session_user_id = ${s.user})
        AND (a.entity_type <> 'note' OR EXISTS (
              SELECT 1 FROM docs d WHERE d.id = a.entity_id AND ${visibleDocs("d", s)}))
      ORDER BY a.created_at DESC, a.id DESC LIMIT 15`,

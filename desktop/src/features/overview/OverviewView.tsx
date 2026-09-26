@@ -172,6 +172,7 @@ export function OverviewView({
               onOpenCalendar={() => onNavigate("Calendar")}
               onPlanDay={onPlanMyDay}
               onShowLate={onShowLate}
+              onCheckedIn={() => void planned.reload()}
             />
           ) : (
             <OverviewSection

@@ -10,6 +10,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   statfs,
@@ -65,6 +66,18 @@ type KeyFile = {
 const paths = (id: string) => ({
   data: join(filesDir(), `${id}.bin`),
   key: join(filesDir(), `${id}.key`),
+});
+
+/**
+ * Originals kept after their import ("Keep the original") live apart, in
+ * FILES_DIR/kept, which the one-day sweep never touches. They stay as long
+ * as a kept_files row names them with a page; this directory is what an
+ * operator backs up.
+ */
+export const keptDir = () => join(filesDir(), "kept");
+const keptPaths = (id: string) => ({
+  data: join(keptDir(), `${id}.bin`),
+  key: join(keptDir(), `${id}.key`),
 });
 
 const OBJECT_ID = /^[0-9a-f-]{36}$/;
@@ -152,9 +165,9 @@ async function storeStream(
 }
 
 /** A stored file, decrypted. Throws when it's missing or tampered with. */
-export async function readObject(id: string): Promise<Buffer> {
+export async function readObject(id: string, kept = false): Promise<Buffer> {
   if (!OBJECT_ID.test(id)) throw new UploadError(404, "Not found");
-  const p = paths(id);
+  const p = kept ? keptPaths(id) : paths(id);
   const k = JSON.parse(await readFile(p.key, "utf8")) as KeyFile;
   const unwrap = createDecipheriv(
     "aes-256-gcm",
@@ -176,6 +189,80 @@ export async function readObject(id: string): Promise<Buffer> {
     decipher.update(await readFile(p.data)),
     decipher.final(),
   ]);
+}
+
+/** Move an upload into the kept originals; false when it isn't there. */
+export async function keepObject(id: string): Promise<boolean> {
+  if (!OBJECT_ID.test(id)) return false;
+  await mkdir(keptDir(), { recursive: true, mode: 0o700 });
+  const from = paths(id);
+  const to = keptPaths(id);
+  try {
+    await rename(from.key, to.key);
+    await rename(from.data, to.data);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Delete a kept original; once its key is gone it can't be read. */
+export async function removeKept(id: string) {
+  if (!OBJECT_ID.test(id)) return;
+  const p = keptPaths(id);
+  await rm(p.key, { force: true });
+  await rm(p.data, { force: true });
+}
+
+/**
+ * Kept originals that nothing needs any more: no row names them (the
+ * account went), or their page was deleted for good. Rows left without a
+ * page go once their file has.
+ */
+export async function sweepKept() {
+  let names: string[] = [];
+  try {
+    names = await readdir(keptDir());
+  } catch {
+    return 0;
+  }
+  const ids = [
+    ...new Set(
+      names
+        .map((n) => /^([0-9a-f-]{36})\.(bin|key)$/.exec(n)?.[1])
+        .filter((x): x is string => !!x),
+    ),
+  ];
+  if (!ids.length) return 0;
+  const wanted = new Set(
+    (
+      await pool.query<{ id: string }>(
+        "SELECT id::text FROM kept_files WHERE id = ANY($1::uuid[]) AND doc_id IS NOT NULL",
+        [ids],
+      )
+    ).rows.map((r) => r.id),
+  );
+  let removed = 0;
+  for (const id of ids) {
+    if (wanted.has(id)) continue;
+    // A file moved in a moment ago may not have its row yet.
+    const age = await stat(keptPaths(id).data)
+      .then((s) => Date.now() - s.mtimeMs)
+      .catch(() => Infinity);
+    if (age < 60 * 60_000) {
+      const row = await pool.query("SELECT 1 FROM kept_files WHERE id = $1", [
+        id,
+      ]);
+      if (!row.rowCount) continue;
+    }
+    await removeKept(id);
+    removed++;
+  }
+  await pool.query(
+    "DELETE FROM kept_files WHERE doc_id IS NULL AND id = ANY($1::uuid[])",
+    [ids],
+  );
+  return removed;
 }
 
 /** Refuse new uploads when less than this much disk is free (FILES_MIN_FREE_MB). */
@@ -386,6 +473,41 @@ export async function filesRoutes(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
+  /** The converter keeps an import's file as its original. */
+  app.post("/internal/files/:id/keep", async (r, reply) => {
+    if (!isService(r.headers["x-orbyn-service"]))
+      return reply.code(403).send({ message: "Forbidden" });
+    const id = (r.params as { id: string }).id;
+    if (!(await keepObject(id)))
+      return reply.code(404).send({ message: "Not found" });
+    await pool.query(
+      "UPDATE imports SET object_id = NULL WHERE object_id = $1",
+      [id],
+    );
+    return reply.code(204).send();
+  });
+
+  /** A kept original, for the API to hand to someone who may read it. */
+  app.get("/internal/kept/:id", async (r, reply) => {
+    if (!isService(r.headers["x-orbyn-service"]))
+      return reply.code(403).send({ message: "Forbidden" });
+    try {
+      const body = await readObject((r.params as { id: string }).id, true);
+      reply.header("Content-Type", "application/octet-stream");
+      reply.header("Cache-Control", "no-store");
+      return reply.send(body);
+    } catch {
+      return reply.code(404).send({ message: "Not found" });
+    }
+  });
+
+  app.delete("/internal/kept/:id", async (r, reply) => {
+    if (!isService(r.headers["x-orbyn-service"]))
+      return reply.code(403).send({ message: "Forbidden" });
+    await removeKept((r.params as { id: string }).id);
+    return reply.code(204).send();
+  });
+
   /** What the store holds, for Admin → Storage (ids and sizes only). */
   app.get("/internal/stats", async (r, reply) => {
     if (!isService(r.headers["x-orbyn-service"]))
@@ -415,14 +537,23 @@ export async function filesRoutes(app: FastifyInstance) {
     } catch {
       disk = null;
     }
-    return { files, disk };
+    // Kept originals: how many and how much, never whose or what.
+    const kept = { count: 0, bytes: 0 };
+    for (const n of await readdir(keptDir()).catch(() => [] as string[])) {
+      if (!/^[0-9a-f-]{36}\.bin$/.test(n)) continue;
+      const st = await stat(join(keptDir(), n)).catch(() => null);
+      if (!st) continue;
+      kept.count++;
+      kept.bytes += st.size;
+    }
+    return { files, disk, kept };
   });
 
   /** Sweep now (Admin → Storage). */
   app.post("/internal/sweep", async (r, reply) => {
     if (!isService(r.headers["x-orbyn-service"]))
       return reply.code(403).send({ message: "Forbidden" });
-    return { removed: await sweepFiles() };
+    return { removed: (await sweepFiles()) + (await sweepKept()) };
   });
 
   // Every ten minutes, whatever else happens.
@@ -430,6 +561,9 @@ export async function filesRoutes(app: FastifyInstance) {
   app.addHook("onReady", async () => {
     timer = setInterval(() => {
       sweepFiles().catch((e) => app.log.warn({ err: e }, "File sweep failed"));
+      sweepKept().catch((e) =>
+        app.log.warn({ err: e }, "Original sweep failed"),
+      );
     }, 10 * 60_000);
     timer.unref();
   });
