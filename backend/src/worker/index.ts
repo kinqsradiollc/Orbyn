@@ -11,6 +11,9 @@ import {
   remindSubscribed,
   scanConflicts,
   scanPlanningNotices,
+  scanProjectPlanningNotices,
+  scanProjectDeadlineMoves,
+  scanTaskDeadlineMoves,
 } from "./planning.js";
 import { deliverWebhookOne } from "./webhooks.js";
 import { scanDigests } from "./digest.js";
@@ -72,6 +75,9 @@ export async function runWorker() {
         }
         if (Date.now() - lastNotices >= NOTICES_MS) {
           await scanPlanningNotices();
+          await scanProjectDeadlineMoves();
+          await scanTaskDeadlineMoves();
+          await scanProjectPlanningNotices();
           await scanDigests();
           // Today's agenda, written each morning with the assistant's summary.
           await scanMorningAgendas();

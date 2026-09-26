@@ -566,25 +566,32 @@ test("drafting a project returns a reviewable proposal, applied on request", asy
   const after = (
     await app.inject({ url: "/items", headers: headers(alice) })
   ).json();
-  // Four, not three: a project is applied as a parent task with the subtasks
-  // hanging off it, which is what the review card promises ("a parent task and
-  // N subtasks") and what the planner's open_children accounting expects.
   assert.equal(
     after.length,
-    before + 4,
-    "the parent task and its three subtasks were created",
+    before + 3,
+    "the three project tasks were created",
   );
   const parent = after.find(
     (i: { title: string }) => i.title === "Launch the newsletter",
   );
-  assert.ok(parent, "the project's parent task was created");
+  assert.equal(
+    parent,
+    undefined,
+    "no duplicate parent task is created outside the project",
+  );
+  const project = (
+    await app.inject({ url: "/projects", headers: headers(alice) })
+  )
+    .json()
+    .find((p: { name: string }) => p.name === "Launch the newsletter");
+  assert.ok(project);
   const children = after.filter(
-    (i: { parent_id: string | null }) => i.parent_id === parent.id,
+    (i: { project_id: string | null }) => i.project_id === project.id,
   );
   assert.deepEqual(
     children.map((c: { title: string }) => c.title).sort(),
     ["Invite subscribers", "Pick a platform", "Write the first issue"],
-    "every subtask hangs off the parent",
+    "every task is filed in the project",
   );
 });
 

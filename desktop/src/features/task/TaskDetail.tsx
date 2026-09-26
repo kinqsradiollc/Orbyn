@@ -17,6 +17,7 @@ import {
   ListChecks,
   MessageSquare,
   Pencil,
+  Sparkles,
   Plus,
   Trash2,
   Users,
@@ -27,12 +28,17 @@ import {
   dueLine,
   freshItem,
   isClosed,
+  pageAboutTask,
+  projectPlace,
   sameDay,
   statusLabels,
   STATUSES,
   type HttpError,
   type Item,
   type ItemDetail,
+  type ItemContext,
+  type Project,
+  type Doc,
   type ItemLink,
   type ItemStep,
   type Status,
@@ -81,6 +87,9 @@ type Props = {
   onFindTime?: (item: Item) => void;
   /** Show a session's day on the calendar. */
   onShowOnCalendar?: (at: string) => void;
+  onOpenProject?: (projectId: string) => void;
+  onAskTask?: (item: Item) => void;
+  onOpenDoc?: (doc: Doc, blockId?: string | null) => void;
 };
 
 const SNAPS = [0, 25, 50, 75, 100];
@@ -119,9 +128,14 @@ export function TaskDetail({
   onOpenItem,
   onFindTime,
   onShowOnCalendar,
+  onOpenProject,
+  onAskTask,
+  onOpenDoc,
 }: Props) {
   const { ask, tell } = useConfirm();
   const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [context, setContext] = useState<ItemContext | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [newStep, setNewStep] = useState("");
@@ -160,6 +174,26 @@ export function TaskDetail({
       alive = false;
     };
   }, [reloadKey, item.id]);
+  useEffect(() => {
+    if (item.kind !== "task") return;
+    let alive = true;
+    void client.itemContext(item.id).then(
+      (value) => alive && setContext(value),
+      (e) => alive && latest.current.onError(e),
+    );
+    if (canWrite)
+      void client.listProjects().then(
+        (all) =>
+          alive &&
+          setProjects(
+            all.filter((p) => (p.team_id ?? null) === (item.team_id ?? null)),
+          ),
+        (e) => alive && latest.current.onError(e),
+      );
+    return () => {
+      alive = false;
+    };
+  }, [item.id, item.kind, item.team_id, item.version, canWrite]);
 
   /** A dialog in the Sessions section is open: it handles Escape. */
   const [scheduling, setScheduling] = useState(false);
@@ -397,6 +431,11 @@ export function TaskDetail({
             </button>
           )}
           <h2 id="task-drawer-title">{current.title}</h2>
+          {current.kind === "task" && onAskTask && (
+            <button className="text-button" onClick={() => onAskTask(current)}>
+              <Sparkles size={14} aria-hidden="true" /> Ask about this task
+            </button>
+          )}
           <div className="drawer-facts">
             <span>
               <CalendarClock size={14} aria-hidden="true" />
@@ -443,6 +482,127 @@ export function TaskDetail({
             )}
           </div>
           <ItemFacts item={current} className="drawer-planning" />
+          {current.kind === "task" && (
+            <section className="drawer-section" aria-label="Task connections">
+              <div className="drawer-section-head">
+                <h3>Project and pages</h3>
+              </div>
+              {context?.project && onOpenProject && (
+                <button
+                  className="link-button"
+                  onClick={() => onOpenProject(context.project!.id)}
+                >
+                  {projectPlace(context.project)}
+                </button>
+              )}
+              {canWrite && projects.length > 0 && (
+                <div className="task-context-picker">
+                  <Select
+                    value={current.project_id ?? ""}
+                    aria-label="File task in project"
+                    disabled={pending}
+                    onChange={(e) =>
+                      void blockAction(async () => {
+                        await client.setItemProject(current.id, {
+                          project_id: e.target.value || null,
+                        });
+                        setDetail(await client.getItem(current.id));
+                        setContext(await client.itemContext(current.id));
+                      })
+                    }
+                  >
+                    <option value="">No project</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </Select>
+                  {!!context?.project && (
+                    <Select
+                      value={current.stage_id ?? ""}
+                      aria-label="Project stage"
+                      disabled={pending}
+                      onChange={(e) =>
+                        void blockAction(async () => {
+                          await client.setItemProject(current.id, {
+                            project_id: context.project!.id,
+                            stage_id: e.target.value || null,
+                          });
+                          setDetail(await client.getItem(current.id));
+                          setContext(await client.itemContext(current.id));
+                        })
+                      }
+                    >
+                      <option value="">No stage</option>
+                      {projects
+                        .find((p) => p.id === context.project?.id)
+                        ?.stages.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                    </Select>
+                  )}
+                </div>
+              )}
+              {context?.came_from && onOpenDoc && (
+                <div className="task-context-link">
+                  <span>Came from </span>
+                  <button
+                    className="link-button"
+                    onClick={() =>
+                      void client
+                        .getDoc(context.came_from!.doc_id)
+                        .then(
+                          (doc) => onOpenDoc(doc, context.came_from!.block_id),
+                          onError,
+                        )
+                    }
+                  >
+                    {context.came_from.title}
+                  </button>
+                  {context.came_from.quote && (
+                    <small>“{context.came_from.quote}”</small>
+                  )}
+                </div>
+              )}
+              {!!context?.pages.length && onOpenDoc && (
+                <div className="task-context-link">
+                  <span>Pages about this task</span>
+                  {context.pages.map((p) => (
+                    <button
+                      key={p.id}
+                      className="link-button"
+                      onClick={() =>
+                        void client
+                          .getDoc(p.id)
+                          .then((doc) => onOpenDoc(doc, p.block_id), onError)
+                      }
+                    >
+                      {p.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {canWrite && onOpenDoc && (
+                <button
+                  className="link-button"
+                  disabled={pending}
+                  onClick={() =>
+                    void blockAction(async () => {
+                      const doc = await client.createDoc(
+                        pageAboutTask(current),
+                      );
+                      onOpenDoc(doc);
+                    })
+                  }
+                >
+                  New page about this task
+                </button>
+              )}
+            </section>
+          )}
           {canWrite ? (
             <div
               className="status-picker"

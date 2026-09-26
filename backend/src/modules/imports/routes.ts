@@ -13,6 +13,7 @@ import { pool } from "../../db/pool.js";
 import type { Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
+import { requireTeam } from "../../lib/teams.js";
 import { announceTo } from "../presence/live.js";
 import { importsEnabled, uploadToken } from "./tokens.js";
 
@@ -156,6 +157,26 @@ export async function importRoutes(app: FastifyInstance) {
     const d = importCreateInput.parse(r.body ?? {});
     const type = importTypeOf(d.file_name, d.mime);
     if (!type) fail(422, importRefusal(d.file_name, d.mime)!);
+    let projectTeamId: string | null = null;
+    if (d.project_id) {
+      if (d.project_team_id === undefined)
+        fail(400, "The project's current team is required for an import.");
+      const project = (
+        await pool.query<{ user_id: string; team_id: string | null }>(
+          "SELECT user_id, team_id FROM projects WHERE id = $1",
+          [d.project_id],
+        )
+      ).rows[0];
+      if (!project || (!project.team_id && project.user_id !== u.id))
+        fail(404, "Project not found");
+      if (project.team_id) await requireTeam(project.team_id, u, "items:write");
+      if (project.team_id !== d.project_team_id)
+        fail(
+          409,
+          "This project changed teams. Review who can read the file and try again.",
+        );
+      projectTeamId = project.team_id;
+    }
     const active = Number(
       (
         await pool.query<{ n: string }>(
@@ -175,9 +196,10 @@ export async function importRoutes(app: FastifyInstance) {
       );
     const id = (
       await pool.query<{ id: string }>(
-        `INSERT INTO imports (user_id, file_name, file_type, bytes)
-         VALUES ($1, $2, $3, $4) RETURNING id`,
-        [u.id, d.file_name, type, d.bytes],
+        `INSERT INTO imports (user_id, file_name, file_type, bytes,
+           project_id, project_team_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [u.id, d.file_name, type, d.bytes, d.project_id ?? null, projectTeamId],
       )
     ).rows[0].id;
     const expires =

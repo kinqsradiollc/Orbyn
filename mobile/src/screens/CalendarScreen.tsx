@@ -243,6 +243,7 @@ export function CalendarScreen({
     return () => cancelAnimationFrame(frame);
   }, [mode]);
   const [selected, setSelected] = useState(() => new Date());
+  const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date());
   const [view, setView] = useState<{
     key: string;
@@ -860,6 +861,45 @@ export function CalendarScreen({
       }
     });
   };
+  /** A deadline gesture requires an explicit choice before either kind of write. */
+  const dropDeadline = (entry: CalendarEntry, start: Date) => {
+    setMenu({
+      title: "What would you like to move?",
+      detail: `${entry.title} · ${shortDay(start.toISOString())}, ${clockLabel(start.toISOString())}`,
+      actions: [
+        {
+          label: "Plan a session here",
+          icon: "target",
+          run: () =>
+            void act(async () => {
+              const item = await itemFor(entry.item_id);
+              assertEditable(item);
+              const minutes = Math.max(
+                15,
+                Math.min(120, item.estimate_minutes || 30),
+              );
+              const block = await client.createBlock({
+                item_id: entry.item_id,
+                start_at: start.toISOString(),
+                end_at: new Date(
+                  start.getTime() + minutes * 60_000,
+                ).toISOString(),
+              });
+              warnIfLate(block);
+              select(start);
+              reload();
+              onChanged();
+            }),
+        },
+        {
+          label: "Move the deadline",
+          icon: "clock",
+          run: () => void moveEntry(entry, start, null),
+        },
+        { label: "Cancel", run: () => {} },
+      ],
+    });
+  };
   /** Delete an entry's item; a repeating one asks which occurrences go. */
   const deleteEntry = (entry: CalendarEntry) =>
     act(async () => {
@@ -1203,10 +1243,13 @@ export function CalendarScreen({
       grid={multi}
       mates={mates}
       onOpen={openItem}
+      selectedTask={selectedTask}
+      onSelectTask={setSelectedTask}
       onBlockMenu={blockMenu}
       onEntryMenu={entryMenu}
       onMoveBlock={saveBlock}
       onMoveEntry={(entry, start, end) => void moveEntry(entry, start, end)}
+      onMoveDeadline={dropDeadline}
       onExternal={showExternal}
       onGhostMenu={ghostMenu}
       onMoveGhost={pinGhost}
@@ -1218,6 +1261,33 @@ export function CalendarScreen({
   /** Date navigation and the view switch: in the page's sticky header when it has one. */
   const controls = (
     <>
+      {selectedTask && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Clear linked session selection"
+            onPress={() => setSelectedTask(null)}
+            style={s.selectionChip}
+          >
+            <Text style={s.todayLabel}>Showing linked sessions · Clear ×</Text>
+          </PressableScale>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Selected task options"
+            onPress={() => {
+              const entry = entries.find((e) => e.item_id === selectedTask);
+              if (entry) entryMenu(entry);
+              else {
+                const block = blocks.find((b) => b.item_id === selectedTask);
+                if (block) blockMenu(block);
+              }
+            }}
+            style={s.control}
+          >
+            <Icon name="more" size={20} />
+          </PressableScale>
+        </View>
+      )}
       <Text
         style={[shared.sectionTitle, s.headingText]}
         accessibilityRole="header"
@@ -1511,6 +1581,7 @@ export function CalendarScreen({
             month={month}
             selected={selected}
             things={monthThings}
+            sessions={blocks}
             frames={cal?.frames ?? []}
             onSelect={select}
             onMore={(day) => {
@@ -1724,7 +1795,9 @@ export function CalendarScreen({
           setMovingEntry(null);
           if (!entry) return;
           select(start);
-          await moveEntry(entry, start, entry.end_at ? end : null);
+          if (entry.kind === "task" && !entry.end_at)
+            dropDeadline(entry, start);
+          else await moveEntry(entry, start, entry.end_at ? end : null);
         }}
       />
       <SearchSheet
@@ -1925,6 +1998,16 @@ const s = themed(() =>
     legendName: { fontFamily: fonts.medium, fontSize: 12, color: colors.text },
     sets: { paddingHorizontal: 4, marginBottom: 10 },
     control: { padding: 8, minHeight: 44, justifyContent: "center" },
+    selectionChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      minHeight: 44,
+      justifyContent: "center",
+      alignSelf: "flex-start",
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.pill,
+      marginBottom: 8,
+    },
     todayLabel: {
       fontFamily: fonts.semibold,
       fontSize: 12,

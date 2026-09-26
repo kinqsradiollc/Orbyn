@@ -25,6 +25,7 @@ import {
   type DocSummary,
   type Favourite,
   type Folder,
+  type Project,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
@@ -52,7 +53,9 @@ export function DocsView({
   canWriteDoc,
   teamNameFor,
   initialDoc,
+  initialBlockId,
   onInitialDocShown,
+  onOpenProject,
 }: {
   report: (e: unknown) => void;
   userId?: string;
@@ -62,7 +65,9 @@ export function DocsView({
   onItemsChanged?: () => void;
   /** A document to open straight away, e.g. a note opened from its event. */
   initialDoc?: Doc | null;
+  initialBlockId?: string | null;
   onInitialDocShown?: () => void;
+  onOpenProject?: (id: string) => void;
 }) {
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -81,10 +86,31 @@ export function DocsView({
   const [dropping, setDropping] = useState(false);
   const [making, setMaking] = useState<DocSummary | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
+  const [targetBlock, setTargetBlock] = useState<string | null>(null);
   const [filing, setFiling] = useState<{
     doc: DocSummary;
     anchor: DOMRect;
   } | null>(null);
+  const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
+  useEffect(() => {
+    if (!filing?.doc.in_uploads || filing.doc.team_id) {
+      setPersonalProjects([]);
+      return;
+    }
+    let active = true;
+    void client.listProjects().then(
+      (projects) => {
+        if (active)
+          setPersonalProjects(projects.filter((project) => !project.team_id));
+      },
+      (error) => {
+        if (active) report(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [filing?.doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [naming, setNaming] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
@@ -181,6 +207,7 @@ export function DocsView({
   useEffect(() => {
     if (!initialDoc) return;
     setOpen(initialDoc);
+    setTargetBlock(initialBlockId ?? null);
     onInitialDocShown?.();
   }, [initialDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -205,6 +232,8 @@ export function DocsView({
     <DocEditor
       key={open.id}
       doc={open}
+      onOpenProject={onOpenProject}
+      initialBlockId={targetBlock}
       report={report}
       userId={userId}
       canWrite={canWriteDoc ? canWriteDoc(open.team_id) : true}
@@ -370,6 +399,22 @@ export function DocsView({
       );
     } catch (e) {
       report(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const fileInProject = async (doc: DocSummary, projectId: string) => {
+    setBusy(true);
+    try {
+      const full = await client.getDoc(doc.id);
+      await client.updateDoc(doc.id, {
+        version: full.version,
+        project_id: projectId,
+      });
+      setFiling(null);
+      await load();
+    } catch (error) {
+      report(error);
     } finally {
       setBusy(false);
     }
@@ -851,6 +896,24 @@ export function DocsView({
                 {(filing.doc.folder_id ?? "") === f.id && <Check size={16} />}
               </button>
             ))}
+            {personalProjects.length > 0 &&
+              filing.doc.in_uploads &&
+              !filing.doc.team_id && (
+                <>
+                  <strong>Move to personal project</strong>
+                  {personalProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      className="doc-menu-item"
+                      disabled={busy}
+                      onClick={() => void fileInProject(filing.doc, project.id)}
+                    >
+                      <FolderIcon size={16} />
+                      <span>{project.name}</span>
+                    </button>
+                  ))}
+                </>
+              )}
           </div>
         </Popover>
       )}

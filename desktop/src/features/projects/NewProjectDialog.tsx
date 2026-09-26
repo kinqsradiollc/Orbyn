@@ -109,6 +109,12 @@ export function NewProjectDialog({
           text,
           Intl.DateTimeFormat().resolvedOptions().timeZone,
           teamId || null,
+          {
+            summary: brief.trim(),
+            deadline: deadline
+              ? projectDeadlineAt(deadline, null, deviceTimeZone())
+              : null,
+          },
         ),
       );
       setState("pending");
@@ -120,11 +126,13 @@ export function NewProjectDialog({
     }
   };
 
-  const approve = async () => {
+  const approve = async (giveTasksDeadlines = true) => {
     if (!proposal) return;
     setBusy(true);
     try {
-      await client.applyProposal(proposal.id);
+      await client.applyProposal(proposal.id, {
+        give_tasks_deadlines: giveTasksDeadlines,
+      });
       setState("applied");
       onCreated(null);
     } catch (e) {
@@ -306,7 +314,9 @@ export function NewProjectDialog({
                 items={items}
                 busy={busy}
                 state={state}
-                onApply={() => void approve()}
+                onApply={(giveTasksDeadlines) =>
+                  void approve(giveTasksDeadlines)
+                }
                 onDismiss={() => {
                   setProposal(null);
                   setState("discarded");

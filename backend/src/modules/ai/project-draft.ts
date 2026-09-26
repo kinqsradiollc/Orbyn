@@ -81,7 +81,8 @@ function withTaskIds(raw: unknown): unknown {
 /** Provider contract for a reviewable project, including explicit dependencies. */
 export const PROJECT_DRAFT_PROMPT = `You break projects into concrete, actionable subtasks.
 Reply with ONE JSON object and nothing else:
-{"title": string, "tasks": [{"id": string, "title": string, "notes": string, "estimate_minutes": integer, "due_in_days": integer, "depends_on": string[]}]}
+{"title": string, "summary": string, "tasks": [{"id": string, "title": string, "notes": string, "estimate_minutes": integer, "due_in_days": integer, "depends_on": string[]}]}
+Write a short summary of the project's intended result, using only the user's description.
 Use 3 to 15 tasks. Give every task a unique short id containing letters, digits, underscores or hyphens.
 Every task needs a realistic estimate_minutes from 5 to 10080 and due_in_days from 0 to 365 (today is 0).
 The depends_on array names prerequisite task ids in this same response. Use [] for independent tasks.

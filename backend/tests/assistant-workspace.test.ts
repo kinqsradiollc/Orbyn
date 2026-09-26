@@ -167,7 +167,12 @@ test("projects: progress, risk, stages and decisions nothing delivers", async ()
   assert.equal(launch.at_risk, true);
   const detail = await run("get_project", { project_id: projectId });
   assert.equal(detail.isError, false, detail.content);
-  assert.equal(detail.data.stages[0].open_tasks[0].title, "Ship the page");
+  assert.equal(
+    detail.data.stages.flatMap(
+      (stage: { open_tasks: { title: string }[] }) => stage.open_tasks,
+    )[0].title,
+    "Ship the page",
+  );
   assert.match(detail.data.open_records[0].gap, /No task delivers/);
   assert.equal(
     (await run("get_project", { project_id: projectId }, strangerId)).isError,

@@ -19,7 +19,8 @@ const { migrate } = await import("../src/db/migrate.js");
 const { schedule } = await import("../src/modules/planner/scheduler.js");
 const { candidateTasks, computePlan, unfinishedBlocks, atRiskFor } =
   await import("../src/modules/planner/plans.js");
-const { scanPlanningNotices } = await import("../src/worker/planning.js");
+const { scanPlanningNotices, scanTaskDeadlineMoves } =
+  await import("../src/worker/planning.js");
 const {
   addDays,
   atRiskLine,
@@ -1392,6 +1393,57 @@ test("a session after the deadline doesn't silence the at-risk or due-soon notic
   assert.equal(of("deadline", big.id), undefined);
 });
 
+test("an earlier deadline merges its notice and leaves the affected session unchanged", async () => {
+  const me = await newUser();
+  const task = await newTask(me.token, {
+    title: "Moved deadline",
+    due_at: local(2, 16),
+    estimate_minutes: 60,
+  });
+  const blockId = await session(me.id, task.id, local(1, 14));
+  const original = await blockTimes(blockId);
+  await pool.query("UPDATE items SET due_at = $2 WHERE id = $1", [
+    task.id,
+    local(1, 12),
+  ]);
+  const now = new Date();
+  await scanPlanningNotices(now, [me.id]);
+  await scanTaskDeadlineMoves(now);
+  await scanTaskDeadlineMoves(now);
+  const notices = (await call(me.token, "GET", "/notifications"))
+    .body as Json[];
+  const affected = notices.filter(
+    (notice) => notice.item_id === task.id && notice.kind === "deadline",
+  );
+  assert.equal(affected.length, 1);
+  assert.match(affected[0].body, /1 session now ends after it/);
+  assert.match(affected[0].body, /Your sessions stay where they are/);
+  assert.deepEqual(await blockTimes(blockId), original);
+});
+
+test("moving a deadline later does not notify or move a session", async () => {
+  const me = await newUser();
+  const task = await newTask(me.token, {
+    title: "Later deadline",
+    due_at: local(1, 12),
+    estimate_minutes: 60,
+  });
+  const blockId = await session(me.id, task.id, local(1, 14));
+  const original = await blockTimes(blockId);
+  await pool.query("UPDATE items SET due_at = $2 WHERE id = $1", [
+    task.id,
+    local(2, 16),
+  ]);
+  await scanTaskDeadlineMoves(new Date());
+  const notices = (await call(me.token, "GET", "/notifications"))
+    .body as Json[];
+  assert.equal(
+    notices.some((notice) => notice.item_id === task.id),
+    false,
+  );
+  assert.deepEqual(await blockTimes(blockId), original);
+});
+
 test("roll forward: a late session doesn't keep work back, catch-up time does", async () => {
   const me = await newUser();
   // A later session after its deadline: still rolls forward.
@@ -1468,4 +1520,141 @@ test("the planner's task list counts only time before the deadline", async () =>
     during[0].late_sessions?.map((s) => s.id),
     [late],
   );
+});
+
+test("a project deadline caps planning without changing task due dates", async () => {
+  const me = await newUser();
+  const project = await call(me.token, "POST", "/projects", {
+    name: "Release",
+    deadline: local(3, 17),
+  });
+  assert.equal(project.status, 201, project.raw.body);
+  const dated = await newTask(me.token, {
+    title: "Final review",
+    due_at: local(5, 17),
+    estimate_minutes: 120,
+    project_id: project.body.id,
+  });
+  const undated = await newTask(me.token, {
+    title: "Prepare assets",
+    estimate_minutes: 60,
+    project_id: project.body.id,
+  });
+  await session(me.id, dated.id, local(2, 9), 60);
+  await session(me.id, dated.id, local(4, 9), 60);
+  const now = new Date(local(1, 12));
+  const rows = await candidateTasks(pool, me.id, {
+    only: [dated.id, undated.id],
+    now,
+  });
+  const review = rows.find((row) => row.id === dated.id)!;
+  const assets = rows.find((row) => row.id === undated.id)!;
+  assert.equal(review.deadline_at, local(3, 17));
+  assert.equal(review.scheduled_minutes, 60);
+  assert.equal(review.late_minutes, 60);
+  assert.equal(assets.deadline_at, local(3, 17));
+  assert.equal(assets.due_at, null);
+  const card = await call(me.token, "GET", `/items/${dated.id}/sessions`);
+  assert.equal(card.status, 200, card.raw.body);
+  assert.equal(card.body.deadline_at, local(5, 17));
+  assert.equal(card.body.planning_deadline_at, local(3, 17));
+  assert.equal(card.body.planned_minutes, 60);
+  assert.equal(card.body.late_minutes, 60);
+  const feed = await call(
+    me.token,
+    "GET",
+    `/planned?item_ids=${dated.id}&from=${encodeURIComponent(local(2, 0))}&to=${encodeURIComponent(local(5, 0))}`,
+  );
+  assert.equal(feed.status, 200, feed.raw.body);
+  assert.equal(feed.body.tasks[0].fit.deadline_at, local(3, 17));
+  assert.equal(feed.body.tasks[0].planned_minutes, 60);
+  assert.equal(feed.body.tasks[0].late_minutes, 60);
+  const saved = await call(me.token, "GET", `/items/${dated.id}`);
+  assert.equal(saved.body.due_at, local(5, 17));
+});
+
+test("a prerequisite inherits the earliest open dependent deadline", async () => {
+  const me = await newUser();
+  const first = await newTask(me.token, {
+    title: "Design proposal",
+    estimate_minutes: 120,
+  });
+  const second = await newTask(me.token, {
+    title: "Review proposal",
+    due_at: local(5, 17),
+    prerequisite_ids: [first.id],
+  });
+  const third = await newTask(me.token, {
+    title: "Submit proposal",
+    due_at: local(3, 17),
+    prerequisite_ids: [second.id],
+  });
+  await session(me.id, first.id, local(2, 9), 60);
+  await session(me.id, first.id, local(4, 9), 60);
+  const [row] = await candidateTasks(pool, me.id, {
+    only: [first.id],
+    now: new Date(local(1, 12)),
+  });
+  assert.equal(row.deadline_at, local(3, 17));
+  assert.equal(row.scheduled_minutes, 60);
+  assert.equal(row.late_minutes, 60);
+  const card = await call(me.token, "GET", `/items/${first.id}/sessions`);
+  assert.equal(card.status, 200, card.raw.body);
+  assert.equal(card.body.deadline_at, null);
+  assert.equal(card.body.dependent_deadline, local(3, 17));
+  assert.equal(card.body.planning_deadline_at, local(3, 17));
+  const feed = await call(
+    me.token,
+    "GET",
+    `/planned?item_ids=${first.id}&from=${encodeURIComponent(local(2, 0))}&to=${encodeURIComponent(local(5, 0))}`,
+  );
+  assert.equal(feed.status, 200, feed.raw.body);
+  assert.equal(feed.body.tasks[0].fit.deadline_at, local(3, 17));
+  assert.equal(feed.body.tasks[0].late_minutes, 60);
+  const saved = await call(me.token, "GET", `/items/${first.id}`);
+  assert.equal(saved.body.due_at, null);
+  // Closing the earliest dependent leaves the next open deadline as the target.
+  await pool.query("UPDATE items SET status = 'done' WHERE id = $1", [
+    third.id,
+  ]);
+  const [later] = await candidateTasks(pool, me.id, { only: [first.id] });
+  assert.equal(later.deadline_at, local(5, 17));
+});
+
+test("a shared prerequisite does not reveal a private dependent deadline", async () => {
+  const owner = await newUser();
+  const viewer = await newUser();
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name, created_by) VALUES ('Planning privacy', $1) RETURNING id",
+      [owner.id],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO team_members(team_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'viewer')",
+    [team.id, owner.id, viewer.id],
+  );
+  const shared = await newTask(owner.token, {
+    title: "Shared preparation",
+    team_id: team.id,
+  });
+  await newTask(owner.token, {
+    title: "Private launch",
+    due_at: local(2, 17),
+    prerequisite_ids: [shared.id],
+  });
+  const ownerView = await call(
+    owner.token,
+    "GET",
+    `/items/${shared.id}/sessions`,
+  );
+  const viewerView = await call(
+    viewer.token,
+    "GET",
+    `/items/${shared.id}/sessions`,
+  );
+  assert.equal(ownerView.body.dependent_deadline, local(2, 17));
+  assert.equal(viewerView.status, 200, viewerView.raw.body);
+  assert.equal(viewerView.body.dependent_deadline, null);
+  assert.equal(viewerView.body.planning_deadline_at, null);
 });

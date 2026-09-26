@@ -183,6 +183,12 @@ export function RootScreen() {
   const [task, setTask] = useState<Item | null>(null);
   /** The meeting note being read, opened from its event. */
   const [note, setNote] = useState<Doc | null>(null);
+  const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  const [projectSectionToOpen, setProjectSectionToOpen] = useState<
+    "decisions" | "history" | null
+  >(null);
+  const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   /** A page to suggest study cards from, when Study opens from Uploads. */
   const [studySuggest, setStudySuggest] = useState<{
     docId: string;
@@ -546,7 +552,10 @@ export function RootScreen() {
     if (kind === "rollforward") void startRollForward();
     else if (kind === "at_risk" || kind === "deadline")
       void startPlanIt(itemId);
-    else if (kind === "conflict") setTab("Inbox");
+    else if (kind === "project" && text("ref")) {
+      setProjectToOpen(text("ref").split(":")[0]);
+      present({ sheet: "projects" });
+    } else if (kind === "conflict") setTab("Inbox");
     else if (kind === "template" && text("ref")) {
       setTemplateToOpen(text("ref"));
       present({ sheet: "projects" });
@@ -869,14 +878,29 @@ export function RootScreen() {
                 {tab === "AI" && (
                   <AssistantScreen
                     assistant={assistant}
+                    onBackToProject={(id) => {
+                      setProjectToOpen(id);
+                      setSheet("projects");
+                    }}
                     items={items}
                     busy={busy}
-                    onOpenSource={(source) =>
-                      void client.getDoc(source.doc_id).then((doc) => {
-                        setNote(doc);
-                        setSheet("note");
-                      })
-                    }
+                    onOpenSource={(source) => {
+                      if ("doc_id" in source)
+                        void client.getDoc(source.doc_id).then((doc) => {
+                          setNoteBlockId(source.block_id ?? null);
+                          setNote(doc);
+                          setSheet("note");
+                        });
+                      else if (source.kind === "task") openTaskById(source.id);
+                      else if (source.project_id) {
+                        setProjectToOpen(source.project_id);
+                        setProjectSectionToOpen(
+                          source.kind === "decision" ? "decisions" : "history",
+                        );
+                        setProjectSourceId(source.id);
+                        setSheet("projects");
+                      }
+                    }}
                     onKeptNote={(docId) =>
                       void client.getDoc(docId).then((doc) => {
                         setNote(doc);
@@ -917,6 +941,12 @@ export function RootScreen() {
                     onOpenTemplate={(n) =>
                       void noticeAction(n, async () => {
                         setTemplateToOpen(n.ref ?? null);
+                        present({ sheet: "projects" });
+                      })
+                    }
+                    onOpenProject={(n) =>
+                      void noticeAction(n, async () => {
+                        setProjectToOpen(n.ref?.split(":")[0] ?? null);
                         present({ sheet: "projects" });
                       })
                     }
@@ -991,6 +1021,27 @@ export function RootScreen() {
             setTaskOccurrence(null);
             setTask(i);
           }}
+          onOpenProject={(id) => {
+            setProjectToOpen(id);
+            setSheet("projects");
+          }}
+          onAskTask={(item) => {
+            assistant.setScope({ kind: "task", id: item.id, name: item.title });
+            back.current = [];
+            pending.current = null;
+            setSheet(null);
+            setTab("AI");
+          }}
+          onOpenPage={(id, blockId) =>
+            void client.getDoc(id).then(
+              (doc) => {
+                setNote(doc);
+                setNoteBlockId(blockId ?? null);
+                setSheet("note");
+              },
+              (e) => setError(errorText(e)),
+            )
+          }
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenNote={(event: Item) =>
@@ -1122,6 +1173,10 @@ export function RootScreen() {
         />
         <DocsSheet
           visible={sheet === "docs"}
+          onOpenProject={(id) => {
+            setProjectToOpen(id);
+            present({ sheet: "projects" });
+          }}
           userId={user?.id}
           canWriteDoc={canWriteIn}
           onClose={closeSheet}
@@ -1136,7 +1191,12 @@ export function RootScreen() {
         />
         <DocsSheet
           visible={sheet === "note"}
+          onOpenProject={(id) => {
+            setProjectToOpen(id);
+            present({ sheet: "projects" });
+          }}
           initialDoc={note}
+          initialBlockId={noteBlockId}
           userId={user?.id}
           canWriteDoc={canWriteIn}
           onClose={closeSheet}
@@ -1153,6 +1213,14 @@ export function RootScreen() {
           onItemsChanged={() => void refresh()}
         />
         <ProjectsSheet
+          initialProjectId={projectToOpen}
+          initialSection={projectSectionToOpen}
+          initialSourceId={projectSourceId}
+          onInitialProjectShown={() => {
+            setProjectToOpen(null);
+            setProjectSectionToOpen(null);
+            setProjectSourceId(null);
+          }}
           canWriteIn={canWriteIn}
           userId={user?.id}
           visible={sheet === "projects"}
@@ -1165,10 +1233,24 @@ export function RootScreen() {
           }}
           onDismiss={onSheetDismissed}
           onOpenItem={openTask}
-          onOpenNote={(docId) =>
+          onOpenPlanner={openPlanner}
+          onAskProject={(project, question) => {
+            assistant.setScope({
+              kind: "project",
+              id: project.id,
+              name: project.name,
+            });
+            if (question) assistant.setMessage(question);
+            back.current = [];
+            pending.current = null;
+            setSheet(null);
+            setTab("AI");
+          }}
+          onOpenNote={(docId, blockId) =>
             void client.getDoc(docId).then((doc) => {
               setNote(doc);
-              setSheet("note");
+              setNoteBlockId(blockId ?? null);
+              present({ sheet: "note" });
             })
           }
           onItemsChanged={() => void refresh()}

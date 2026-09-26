@@ -1,6 +1,7 @@
 import {
   HttpError,
   type ItemSessions,
+  type ItemContext,
   type PlannedFeed,
   type TodayList,
   type AdminOverview,
@@ -44,6 +45,9 @@ import {
   type FavouriteKind,
   type Folder,
   type Project,
+  type ProjectLink,
+  type ProjectPlanning,
+  type ProjectSession,
   type ProjectActivity,
   type ProjectCheckpoint,
   type ProjectSnapshot,
@@ -69,6 +73,7 @@ import {
   type Passkey,
   type InboxInfo,
   type ChatTurn,
+  type ChatScope,
   type Credentials,
   type Item,
   type ItemDetail,
@@ -780,6 +785,40 @@ export class OrbynClient {
   getProject(id: string) {
     return this.request<Project>(`/projects/${id}`);
   }
+  listProjectLinks(id: string) {
+    return this.request<ProjectLink[]>(`/projects/${id}/links`);
+  }
+  addProjectLink(id: string, input: { url: string; title?: string }) {
+    return this.request<ProjectLink>(`/projects/${id}/links`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  removeProjectLink(id: string, linkId: string) {
+    return this.request<void>(`/projects/${id}/links/${linkId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Mark a project visit and return the prior visit for cross-device catch-up. */
+  visitProject(id: string) {
+    return this.request<{ since_at: string | null; visited_at: string }>(
+      `/projects/${id}/visit`,
+      { method: "POST" },
+    );
+  }
+  projectPlanning(id: string) {
+    return this.request<ProjectPlanning>(`/projects/${id}/planning`);
+  }
+  projectSessions(id: string) {
+    return this.request<ProjectSession[]>(`/projects/${id}/sessions`);
+  }
+  /** Preview a project plan using only tasks assigned to the signed-in person. */
+  planProject(id: string, timezone?: string) {
+    return this.request<Plan>(`/projects/${id}/plan`, {
+      method: "POST",
+      body: { timezone },
+    });
+  }
   /** Recent changes to a project, with private task and note content omitted. */
   projectActivity(id: string, limit = 100) {
     return this.request<ProjectActivity[]>(
@@ -826,15 +865,26 @@ export class OrbynClient {
   deleteProject(id: string) {
     return this.request<void>(`/projects/${id}`, { method: "DELETE" });
   }
-  /** Move a task into a project and stage, or pass null to unfile it. */
+  /**
+   * Move a task into a project and stage, or pass null to unfile it. The
+   * answer carries the task as it now stands.
+   */
   setItemProject(
     itemId: string,
     input: { project_id: string | null; stage_id?: string | null },
   ) {
-    return this.request<{ ok: true }>(`/items/${itemId}/project`, {
+    return this.request<{ ok: true; item: Item }>(`/items/${itemId}/project`, {
       method: "PUT",
       body: input,
     });
+  }
+  /**
+   * What a task hangs off and what hangs off it: its project and stage, the
+   * page line it came from and the other pages about it (only pages you can
+   * open).
+   */
+  itemContext(itemId: string) {
+    return this.request<ItemContext>(`/items/${itemId}/context`);
   }
 
   /** Promises, decisions, experiments and meeting outcomes visible to this user. */
@@ -1974,11 +2024,27 @@ export class OrbynClient {
   }
 
   // ---- AI assistant ----
+  /** Whether the configured assistant can read with tools and draft pages. */
+  aiCapabilities() {
+    return this.request<{ enabled: boolean; tools: boolean }>(
+      "/ai/capabilities",
+    );
+  }
   /** Draft a project (subtasks) from a prompt, as a proposal to review. */
-  draftProject(prompt: string, timezone: string, teamId?: string | null) {
+  draftProject(
+    prompt: string,
+    timezone: string,
+    teamId?: string | null,
+    details?: { summary?: string; deadline?: string | null },
+  ) {
     return this.request<Proposal>("/ai/project", {
       method: "POST",
-      body: { prompt, timezone, ...(teamId ? { team_id: teamId } : {}) },
+      body: {
+        prompt,
+        timezone,
+        ...(teamId ? { team_id: teamId } : {}),
+        ...details,
+      },
     });
   }
   /**
@@ -1987,10 +2053,15 @@ export class OrbynClient {
    * model (one on the user's own machine) is never cut off by a proxy's
    * limit on a single request, and a dropped poll is simply tried again.
    */
-  async chat(message: string, timezone: string, history: ChatTurn[] = []) {
+  async chat(
+    message: string,
+    timezone: string,
+    history: ChatTurn[] = [],
+    scope: ChatScope | null = null,
+  ) {
     const { id } = await this.request<{ id: string }>("/ai/chat/start", {
       method: "POST",
-      body: { message, timezone, history: history.slice(-12) },
+      body: { message, timezone, history: history.slice(-12), scope },
     });
     const until = Date.now() + CHAT_WAIT_MS;
     let delay = CHAT_POLL_MS;
@@ -2007,9 +2078,10 @@ export class OrbynClient {
       "That took too long to answer. Try again, or ask for less at once.",
     );
   }
-  applyProposal(id: string) {
+  applyProposal(id: string, options?: { give_tasks_deadlines?: boolean }) {
     return this.request<{ applied: boolean }>(`/ai/proposals/${id}/apply`, {
       method: "POST",
+      body: options ?? {},
     });
   }
 

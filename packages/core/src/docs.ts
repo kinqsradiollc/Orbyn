@@ -1201,12 +1201,25 @@ export type DocAnswer = {
  * citation worth showing someone.
  */
 export type DocSource = {
+  kind?: "page";
   doc_id: string;
   title: string;
   /** The line that matched, when a search found one. */
   block_id: string | null;
   quote: string;
 };
+
+/** A planner fact the assistant actually read and the user can open. */
+export type AssistantSource = (
+  | DocSource
+  | {
+      kind: "task" | "decision" | "change";
+      id: string;
+      project_id?: string;
+      title: string;
+      quote: string;
+    }
+) & { used?: boolean; number?: number };
 
 /**
  * A line as it reads, with its Markdown markers taken off.

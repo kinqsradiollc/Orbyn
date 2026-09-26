@@ -35,6 +35,7 @@ import { progressOf } from "../../lib/tasks";
 type Props = {
   /** Opens a document found on the Overview. */
   onOpenDoc: (doc: Doc) => void;
+  onOpenProject: (id: string) => void;
   items: Item[];
   busy: boolean;
   canWrite: (item: Item) => boolean;
@@ -67,6 +68,7 @@ export function OverviewView({
   onNavigate,
   onPlanDay,
   onOpenDoc,
+  onOpenProject,
   onFocus,
   onOpenById,
   onPlanIt,
@@ -128,7 +130,11 @@ export function OverviewView({
             </button>
           </EmptyState>
         </section>
-        <WorkspaceStrip onOpenDoc={onOpenDoc} onNavigate={onNavigate} />
+        <WorkspaceStrip
+          onOpenDoc={onOpenDoc}
+          onOpenProject={onOpenProject}
+          onNavigate={onNavigate}
+        />
       </>
     );
 
@@ -316,6 +322,7 @@ export function OverviewView({
       </div>
       <WorkspaceStrip
         onOpenDoc={onOpenDoc}
+        onOpenProject={onOpenProject}
         onNavigate={(view) => onNavigate(view)}
       />
     </>

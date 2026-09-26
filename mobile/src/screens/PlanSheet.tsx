@@ -298,21 +298,23 @@ function Body({
 
   const preview = (dayCount = Number(days), include?: string[]) =>
     run(async () => {
-      let next = await client.previewPlan({
-        start_date: start,
-        days: dayCount,
-        pad_percent: pad,
-        split,
-        break_level: breakLevel,
-        use_frames: useFrames,
-        timezone: deviceTimeZone(),
-        // A seed plan keeps its tasks and the times it keeps free.
-        ...(o?.item_ids ? { item_ids: o.item_ids } : {}),
-        ...(o
-          ? { keep_free: o.keep_free, exclude_item_ids: o.exclude_item_ids }
-          : {}),
-        ...(isEverything(scope) ? {} : { scope }),
-      });
+      let next = o?.project_id
+        ? await client.planProject(o.project_id, deviceTimeZone())
+        : await client.previewPlan({
+            start_date: start,
+            days: dayCount,
+            pad_percent: pad,
+            split,
+            break_level: breakLevel,
+            use_frames: useFrames,
+            timezone: deviceTimeZone(),
+            // A seed plan keeps its tasks and the times it keeps free.
+            ...(o?.item_ids ? { item_ids: o.item_ids } : {}),
+            ...(o
+              ? { keep_free: o.keep_free, exclude_item_ids: o.exclude_item_ids }
+              : {}),
+            ...(isEverything(scope) ? {} : { scope }),
+          });
       // Tasks added by hand ("Plan it") stay in, even outside the scope.
       if (
         include?.length &&

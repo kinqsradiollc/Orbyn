@@ -1,6 +1,7 @@
 import {
   deadlineFit,
   deadlineOf,
+  planningDeadline,
   endsAfterDeadline,
   fail,
   isClosed,
@@ -17,6 +18,7 @@ import {
 import type { Queryable as Db } from "../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { FREE_LOOKAHEAD_DAYS, freeMinutesBefore } from "./free.js";
+import { dependentTargets } from "./targets.js";
 
 /**
  * Sessions with what they're for: the task's deadline (or the occurrence's,
@@ -37,6 +39,8 @@ type SeriesRow = {
   series_start: Date | null;
   exdates: Date[] | null;
   project_id: string | null;
+  project_deadline: Date | null;
+  dependent_deadline?: string | null;
 };
 
 type Span = { id?: string; item_id: string; start_at: string; end_at: string };
@@ -47,6 +51,7 @@ type Facts = Required<
     | "due_at"
     | "due_all_day"
     | "deadline_at"
+    | "planning_deadline_at"
     | "project_id"
     | "part"
     | "parts"
@@ -57,14 +62,23 @@ type Facts = Required<
 const iso = (v: Date | string) => new Date(v).toISOString();
 
 /** Tasks' dates (and projects), by id, to tell which due date each session is for. */
-export async function seriesOf(db: Db, itemIds: string[]) {
+export async function seriesOf(db: Db, userId: string, itemIds: string[]) {
   const rows = (
     await db.query<SeriesRow>(
-      `SELECT id, due_at, end_at, all_day, timezone, rrule, series_start, exdates, project_id
-       FROM items WHERE id = ANY($1::uuid[])`,
+      `SELECT i.id, i.due_at, i.end_at, i.all_day, i.timezone, i.rrule,
+              i.series_start, i.exdates, i.project_id, p.deadline AS project_deadline
+       FROM items i LEFT JOIN projects p ON p.id = i.project_id
+       WHERE i.id = ANY($1::uuid[])`,
       [itemIds],
     )
   ).rows;
+  const dependent = await dependentTargets(
+    db,
+    userId,
+    rows.map((row) => row.id),
+  );
+  for (const row of rows)
+    row.dependent_deadline = dependent.get(row.id) ?? null;
   return new Map(rows.map((r) => [r.id, r]));
 }
 
@@ -120,15 +134,23 @@ function factsFor<T extends Span>(
   const out = new Map<T, Facts>();
   for (const s of known) {
     const d = due.get(s) ?? null;
+    const deadline = planningDeadline(
+      d?.deadline_at,
+      planningDeadline(
+        series.get(s.item_id)!.project_deadline,
+        series.get(s.item_id)!.dependent_deadline,
+      ),
+    );
     const n = numbers.get(s)!;
     out.set(s, {
       due_at: d?.due_at ?? null,
       due_all_day: !!d && series.get(s.item_id)!.all_day,
       deadline_at: d?.deadline_at ?? null,
+      planning_deadline_at: deadline,
       project_id: series.get(s.item_id)!.project_id,
       part: n.part,
       parts: n.parts,
-      after_deadline: endsAfterDeadline(s.end_at, d?.deadline_at),
+      after_deadline: endsAfterDeadline(s.end_at, deadline),
     });
   }
   return out;
@@ -146,7 +168,7 @@ export async function withSessionFacts(
   if (!blocks.length) return blocks;
   const ids = [...new Set(blocks.map((b) => b.item_id))];
   const [series, all] = await Promise.all([
-    seriesOf(db, ids),
+    seriesOf(db, userId, ids),
     sessionsOf(db, userId, ids),
   ]);
   // A block saved a moment ago may not be in `all` yet on a replica.
@@ -183,7 +205,7 @@ export async function numberPlanBlocks(
   if (!blocks.length) return blocks;
   const ids = [...new Set(blocks.map((b) => b.item_id))];
   const [series, saved] = await Promise.all([
-    seriesOf(db, ids),
+    seriesOf(db, userId, ids),
     sessionsOf(db, userId, ids),
   ]);
   const planned = blocks.map((b, n) => ({
@@ -230,10 +252,12 @@ export async function itemSessions(
       open_children: number;
       children_remaining: number;
       project_deadline: Date | null;
+      dependent_deadline?: string | null;
     }>(
       `SELECT i.id, i.due_at, i.end_at, i.all_day, i.timezone, i.rrule, i.series_start, i.exdates,
               i.status, i.kind, i.estimate_minutes, i.spent_minutes,
-              (CASE WHEN i.team_id IS NULL THEN i.user_id = $1 ELSE i.assignee_id = $1 END) AS mine,
+              (CASE WHEN i.team_id IS NULL THEN i.user_id = $1
+                    ELSE coalesce(i.assignee_id = $1, false) END) AS mine,
               ${CHILDREN},
               p.deadline AS project_deadline
        FROM items i LEFT JOIN projects p ON p.id = i.project_id
@@ -242,7 +266,14 @@ export async function itemSessions(
     )
   ).rows[0];
   if (!item) fail(404, "Item not found");
+  item.dependent_deadline =
+    (await dependentTargets(db, userId, [itemId])).get(itemId) ?? null;
   const deadline = deadlineOf(item);
+  const latest = planningDeadline(
+    item.project_deadline,
+    item.dependent_deadline,
+  );
+  const effectiveDeadline = planningDeadline(deadline, latest);
   const rows = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
@@ -261,32 +292,22 @@ export async function itemSessions(
   // A repeating task's current occurrence is its deadline; sessions for
   // occurrences before it belong to work already finished.
   const sessions =
-    item.rrule && deadline
-      ? all.filter((s) => !s.deadline_at || s.deadline_at >= deadline)
+    item.rrule && effectiveDeadline
+      ? all.filter((s) => !s.deadline_at || s.deadline_at >= effectiveDeadline)
       : all;
-  const upcoming = (s: TimeBlock) =>
-    Math.max(
-      0,
-      (Date.parse(s.end_at) - Math.max(Date.parse(s.start_at), now.getTime())) /
-        60_000,
-    );
-  let planned = 0;
-  let late = 0;
-  for (const s of sessions) {
-    if (s.after_deadline) late += upcoming(s);
-    // For a repeating task, only the current occurrence's time counts.
-    else if (!deadline || !s.deadline_at || s.deadline_at <= deadline)
-      planned += upcoming(s);
-  }
+  const split = splitSessions(item, sessions, now, latest);
   return {
     item_id: item.id,
+    assigned_to_me: item.mine,
     due_at: item.due_at ? iso(item.due_at) : null,
     due_all_day: !!item.due_at && item.all_day,
     deadline_at: deadline,
     project_deadline: item.project_deadline ? iso(item.project_deadline) : null,
+    dependent_deadline: item.dependent_deadline ?? null,
+    planning_deadline_at: effectiveDeadline,
     sessions,
-    planned_minutes: Math.round(planned),
-    late_minutes: Math.round(late),
+    planned_minutes: split.planned_minutes,
+    late_minutes: split.late_minutes,
     fit: await fitOf(db, userId, item, all, now),
   };
 }
@@ -323,14 +344,20 @@ async function fitOf(
     spent_minutes: number;
     open_children: number;
     children_remaining: number;
+    project_deadline: Date | null;
+    dependent_deadline?: string | null;
   },
   sessions: TimeBlock[],
   now: Date,
 ) {
   if (item.kind !== "task" || isClosed(item.status)) return null;
   if (!item.mine && !sessions.length) return null;
-  const deadline = deadlineOf(item);
-  const split = splitSessions(item, sessions, now);
+  const latest = planningDeadline(
+    item.project_deadline,
+    item.dependent_deadline,
+  );
+  const deadline = planningDeadline(deadlineOf(item), latest);
+  const split = splitSessions(item, sessions, now, latest);
   const needed = remainingOf(item);
   const input = {
     deadline_at: deadline,

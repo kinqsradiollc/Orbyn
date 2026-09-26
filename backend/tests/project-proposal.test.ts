@@ -100,10 +100,12 @@ test("approval maps temporary graph references to created subtasks inside the su
   await proposeProject(f.db, user.id, draft, "UTC", now, f.services);
   f.calls.length = 0;
   const result = await applyProject(f.db, user, f.saved(), now, f.services);
-  assert.equal(f.mutations.length, 3);
-  assert.equal(f.mutations[0].data?.title, "Ship");
-  assert.equal(f.mutations[1].data?.parent_id, result.parent_id);
-  assert.equal(f.mutations[2].data?.parent_id, result.parent_id);
+  assert.equal(f.mutations.length, 2);
+  assert.equal(f.mutations[0].data?.title, "Design");
+  assert.equal(f.mutations[1].data?.title, "Build");
+  assert.equal(f.mutations[0].data?.project_id, result.project_id);
+  assert.equal(f.mutations[1].data?.project_id, result.project_id);
+  assert.equal(f.mutations[0].data?.parent_id, undefined);
   const edges = f.calls.filter((c) =>
     c.sql.startsWith("INSERT INTO item_dependencies"),
   );
@@ -112,6 +114,42 @@ test("approval maps temporary graph references to created subtasks inside the su
   assert.notEqual(edges[0].args[1], "design");
   assert.equal(
     f.calls.filter((c) => c.sql.startsWith("INSERT INTO time_blocks")).length,
+    2,
+  );
+});
+test("approval saves the typed deadline and brief with the project", async () => {
+  const f = fixture();
+  const deadline = "2026-10-01T06:00:00.000Z";
+  await proposeProject(f.db, user.id, draft, "UTC", now, f.services, {
+    summary: "Ship the first release",
+    deadline,
+  });
+  assert.equal(f.saved().summary, "Ship the first release");
+  assert.equal(f.saved().deadline, deadline);
+  f.calls.length = 0;
+  await applyProject(f.db, user, f.saved(), now, f.services);
+  const project = f.calls.find((c) => c.sql.startsWith("INSERT INTO projects"));
+  assert.deepEqual(project?.args.slice(3), [
+    "Ship the first release",
+    deadline,
+  ]);
+  const brief = f.calls.find((c) => c.sql.startsWith("INSERT INTO docs"));
+  assert.ok(brief);
+  assert.match(String(brief.args[3]), /Ship the first release/);
+  assert.equal(
+    f.calls.some((c) => c.sql.startsWith("UPDATE projects SET doc_id")),
+    true,
+  );
+});
+test("review can create project tasks without the proposed task deadlines", async () => {
+  const f = fixture();
+  await proposeProject(f.db, user.id, draft, "UTC", now, f.services);
+  await applyProject(f.db, user, f.saved(), now, f.services, false);
+  assert.equal(f.mutations.length, draft.tasks.length);
+  assert.ok(f.mutations.every((action) => action.data?.due_at === null));
+  assert.equal(
+    f.calls.filter((call) => call.sql.startsWith("INSERT INTO time_blocks"))
+      .length,
     2,
   );
 });

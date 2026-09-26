@@ -54,13 +54,14 @@ export async function searchRoutes(app: FastifyInstance) {
     const itemParams = [
       u.id,
       q.q,
+      q.project ?? null,
       q.team ?? null,
       q.updated_after ?? null,
       q.limit,
     ];
 
     const wantsDocs = q.type !== "task";
-    const wantsItems = q.type !== "doc" && !q.project && !q.tag;
+    const wantsItems = q.type !== "doc" && !q.tag;
 
     const docs = wantsDocs
       ? (
@@ -110,10 +111,11 @@ export async function searchRoutes(app: FastifyInstance) {
                CROSS JOIN q
               WHERE ${VISIBLE_ITEMS}
                 AND (i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
-                AND ($3::uuid IS NULL OR i.team_id = $3)
-                AND ($4::timestamptz IS NULL OR i.updated_at >= $4)
+                AND ($3::uuid IS NULL OR i.project_id = $3)
+                AND ($4::uuid IS NULL OR i.team_id = $4)
+                AND ($5::timestamptz IS NULL OR i.updated_at >= $5)
               ORDER BY rank DESC, i.updated_at DESC
-              LIMIT $5`,
+              LIMIT $6`,
             itemParams,
           )
         ).rows
@@ -132,7 +134,7 @@ export async function searchRoutes(app: FastifyInstance) {
      * turning it off changes nothing anyone was relying on.
      */
     if (wantsDocs) {
-      const near = await nearest(u.id, q.q, q.limit);
+      const near = await nearest(u.id, q.q, q.limit, q.project);
       if (near.length) {
         const byId = new Map(found.map((h) => [h.id, h]));
         for (const hit of near) {
@@ -145,10 +147,14 @@ export async function searchRoutes(app: FastifyInstance) {
             await db.query<SearchHit>(
               `SELECT d.id, 'doc' AS type, d.title, d.kind, d.team_id,
                       d.project_id, p.name AS project_name, d.updated_at
-                 FROM docs d LEFT JOIN projects p ON p.id = d.project_id
+                FROM docs d LEFT JOIN projects p ON p.id = d.project_id
                 WHERE d.id = $1
-                  AND ($2::text IS NULL OR d.kind = $2)`,
-              [hit.id, q.kind ?? null],
+                  AND ($2::text IS NULL OR d.kind = $2)
+                  AND ($3::uuid IS NULL OR d.project_id = $3)
+                  AND ((d.team_id IS NULL AND d.user_id = $4)
+                    OR d.team_id IN (SELECT team_id FROM team_members
+                                      WHERE user_id = $4))`,
+              [hit.id, q.kind ?? null, q.project ?? null, u.id],
             )
           ).rows[0];
           if (!page) continue;

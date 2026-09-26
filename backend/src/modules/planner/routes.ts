@@ -1000,10 +1000,10 @@ export async function plannerRoutes(app: FastifyInstance) {
       const b = await ownBlock(db, idParam(r), u.id);
       const minutes = (b.end_at.getTime() - b.start_at.getTime()) / 60000;
       const now = new Date();
-      const { deadline_at } = await blockById(db, b.id, u.id);
+      const { planning_deadline_at } = await blockById(db, b.id, u.id);
       const by =
-        deadline_at && Date.parse(deadline_at) > now.getTime()
-          ? new Date(deadline_at)
+        planning_deadline_at && Date.parse(planning_deadline_at) > now.getTime()
+          ? new Date(planning_deadline_at)
           : null;
       let slot = by
         ? await workingFree(db, u.id, minutes, [b.id], now, undefined, by)
@@ -1126,10 +1126,12 @@ export async function plannerRoutes(app: FastifyInstance) {
           id: string;
           blocks: Plan["blocks"];
           moves: PlanMove[] | null;
+          project_id: string | null;
           applied: boolean;
           expires_at: Date;
         }>(
-          `SELECT id, blocks, options->'moves' AS moves, applied, expires_at
+          `SELECT id, blocks, options->'moves' AS moves,
+                  options->'input'->>'project_id' AS project_id, applied, expires_at
            FROM plans WHERE id = $1 AND user_id = $2 FOR UPDATE`,
           [idParam(r), u.id],
         )
@@ -1153,7 +1155,10 @@ export async function plannerRoutes(app: FastifyInstance) {
         "SELECT 1 FROM item_dependencies WHERE item_id=ANY($1::uuid[]) LIMIT 1",
         [[...plan.blocks, ...moves].map((b) => b.item_id)],
       );
-      if (dependencies.rowCount && (await planStale(db, plan.id, u.id)))
+      if (
+        (plan.project_id || dependencies.rowCount) &&
+        (await planStale(db, plan.id, u.id))
+      )
         fail(
           409,
           "The dependency schedule changed. Refresh the plan before applying it.",

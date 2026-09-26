@@ -69,6 +69,7 @@ export async function proposeProject(
   timezone: string,
   now = new Date(),
   dependencies: ProjectProposalServices = services,
+  details: { summary?: string; deadline?: string | null } = {},
 ): Promise<Proposal> {
   const start = localDateKey(now, timezone);
   const days = Math.min(
@@ -100,6 +101,8 @@ export async function proposeProject(
   });
   const project: ProjectDecomposition = {
     ...draft,
+    summary: details.summary ?? draft.summary,
+    deadline: details.deadline ?? null,
     ...scheduled,
     timezone,
     start_date: start,
@@ -133,7 +136,7 @@ export async function proposeProject(
   ).rows[0];
   return {
     id: row.id,
-    summary: `**${draft.title}** — ${draft.tasks.length} subtasks and ${scheduled.blocks.length} scheduled sessions to review.`,
+    summary: `**${draft.title}** — ${draft.tasks.length} tasks and ${scheduled.blocks.length} scheduled sessions to review.`,
     actions,
     project,
     plan: null,
@@ -151,6 +154,7 @@ export async function applyProject(
   stored: StoredProject,
   now = new Date(),
   dependencies: ProjectProposalServices = services,
+  giveTasksDeadlines = true,
 ) {
   const draft = parseProjectDraft(
     JSON.stringify({ title: stored.title, tasks: stored.tasks }),
@@ -174,8 +178,14 @@ export async function applyProject(
   const teamId = stored.team_id ?? null;
   const projectId = (
     await db.query<{ id: string }>(
-      "INSERT INTO projects(user_id,team_id,name) VALUES($1,$2,$3) RETURNING id",
-      [user.id, teamId, draft.title],
+      "INSERT INTO projects(user_id,team_id,name,summary,deadline) VALUES($1,$2,$3,$4,$5) RETURNING id",
+      [
+        user.id,
+        teamId,
+        draft.title,
+        stored.summary ?? "",
+        stored.deadline ?? null,
+      ],
     )
   ).rows[0].id;
   let firstStage: string | null = null;
@@ -188,15 +198,6 @@ export async function applyProject(
     ).rows[0];
     firstStage ??= stage.id;
   }
-  const parent = await dependencies.mutate(
-    db,
-    user,
-    actionSchema.parse({
-      operation: "create",
-      data: { title: draft.title, kind: "task", team_id: teamId },
-    }),
-  );
-  if (!parent) throw new Error("Project parent was not created");
   const ids = new Map<string, string>();
   for (const task of draft.tasks) {
     const made = await dependencies.mutate(
@@ -208,7 +209,8 @@ export async function applyProject(
           title: task.title,
           notes: task.notes,
           kind: "task",
-          parent_id: parent.id,
+          project_id: projectId,
+          stage_id: firstStage,
           team_id: teamId,
           estimate_minutes: task.estimate_minutes,
           // A key result: a number to reach, starting from nothing.
@@ -219,21 +221,18 @@ export async function applyProject(
                 value_unit: stored.measures[task.id].value_unit,
               }
             : {}),
-          due_at: dayTime(
-            addDays(stored.start_date, task.due_in_days + 1),
-            0,
-            stored.timezone,
-          ).toISOString(),
+          due_at: giveTasksDeadlines
+            ? dayTime(
+                addDays(stored.start_date, task.due_in_days + 1),
+                0,
+                stored.timezone,
+              ).toISOString()
+            : null,
         },
       }),
     );
     if (!made) throw new Error("Project subtask was not created");
     ids.set(task.id, made.id);
-    await db.query("UPDATE items SET project_id=$2,stage_id=$3 WHERE id=$1", [
-      made.id,
-      projectId,
-      firstStage,
-    ]);
     for (const prerequisite of task.depends_on)
       await db.query(
         "INSERT INTO item_dependencies(item_id,prerequisite_id) VALUES($1,$2)",
@@ -248,8 +247,18 @@ export async function applyProject(
       [id, user.id, block.start_at, block.end_at],
     );
   }
-  // The brief a template brings, as the project's page.
-  if (stored.page) {
+  // A typed brief becomes the project's page; a template's page takes priority.
+  const page =
+    stored.page ??
+    (stored.summary?.trim()
+      ? {
+          title: `${draft.title} brief`,
+          content: [
+            { type: "paragraph" as const, text: stored.summary.trim() },
+          ],
+        }
+      : null);
+  if (page) {
     const doc = (
       await db.query<{ id: string }>(
         `INSERT INTO docs (user_id, team_id, title, kind, content, project_id)
@@ -257,8 +266,8 @@ export async function applyProject(
         [
           user.id,
           teamId,
-          stored.page.title || draft.title,
-          JSON.stringify(stored.page.content),
+          page.title || draft.title,
+          JSON.stringify(page.content),
           projectId,
         ],
       )
@@ -268,5 +277,5 @@ export async function applyProject(
       doc.id,
     ]);
   }
-  return { project_id: projectId, parent_id: parent.id };
+  return { project_id: projectId };
 }

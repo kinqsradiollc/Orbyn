@@ -153,6 +153,52 @@ test("tasks and pages come back together, ranked on one scale", async () => {
   assert.ok(tasksOnly.every((h: { type: string }) => h.type === "task"));
 });
 
+test("project search includes its tasks and pages but excludes other projects", async () => {
+  const project = await post("/projects", { name: "Vendor launch" });
+  assert.equal(project.statusCode, 201, project.body);
+  const projectId = project.json().id as string;
+  const elsewhere = await post("/projects", { name: "Other work" });
+  assert.equal(elsewhere.statusCode, 201, elsewhere.body);
+  const doc = await post("/docs", {
+    title: "Vendor brief",
+    project_id: projectId,
+    content: [
+      {
+        type: "paragraph",
+        text: "Review the vendor terms.",
+        id: "vendor-line",
+      },
+    ],
+  });
+  assert.equal(doc.statusCode, 201, doc.body);
+  const task = await post("/items", {
+    title: "Review vendor contract",
+    kind: "task",
+    project_id: projectId,
+  });
+  assert.equal(task.statusCode, 201, task.body);
+  const otherTask = await post("/items", {
+    title: "Review vendor invoice",
+    kind: "task",
+    project_id: elsewhere.json().id,
+  });
+  assert.equal(otherTask.statusCode, 201, otherTask.body);
+
+  const hits = (await call(`/search?q=vendor&project=${projectId}`)).json();
+  assert.deepEqual(
+    new Set(hits.map((hit: { id: string }) => hit.id)),
+    new Set([doc.json().id, task.json().id]),
+  );
+  assert.equal(
+    hits.find((hit: { id: string }) => hit.id === doc.json().id).block_id,
+    "vendor-line",
+  );
+  const outsider = (
+    await call(`/search?q=vendor&project=${projectId}`, () => strangerToken)
+  ).json();
+  assert.deepEqual(outsider, []);
+});
+
 test("a search only finds what the searcher may see", async () => {
   const mine = (await call("/search?q=quotas")).json();
   assert.ok(mine.length > 0);

@@ -5,6 +5,7 @@ import {
   dayTime,
   deadlineFit,
   deadlineOf,
+  planningDeadline,
   guessEstimate,
   hasTeamPermission,
   learnedRatio,
@@ -42,6 +43,7 @@ import {
 import { loadFrames } from "./frames.js";
 import { freeSpans, workingSpans } from "./free.js";
 import { numberPlanBlocks, seriesOf } from "./sessions.js";
+import { dependentTargets } from "./targets.js";
 import { loadLearning, smartPlacementOf } from "./learning.js";
 import {
   DEFAULT_ESTIMATE_MINUTES,
@@ -64,6 +66,7 @@ type Pin = { item_id: string; start_at: string; end_at: string };
  * with one thing changed: the preview request plus the tuning so far.
  */
 type PlanState = PreviewInput & {
+  project_id?: string;
   include_item_ids: string[];
   estimates: Record<string, number>;
   pinned_blocks: Pin[];
@@ -81,6 +84,9 @@ const stateOf = (d: Partial<PlanState>): PlanState => ({
 
 type Candidate = SchedulerTask & {
   version: number;
+  assignee_id: string | null;
+  project_deadline: string | null;
+  dependent_deadline: string | null;
   /** Due on a whole day (by the end of it) rather than at a time. */
   due_all_day?: boolean;
   /** Minutes still to come in sessions after a deadline still ahead. */
@@ -122,6 +128,7 @@ export async function candidateTasks(
     only?: string[];
     include?: string[];
     scope?: PreviewInput["scope"] | null;
+    project_id?: string;
     now?: Date;
   } = {},
 ): Promise<Candidate[]> {
@@ -137,11 +144,13 @@ export async function candidateTasks(
         rrule: string | null;
         series_start: Date | null;
         exdates: Date[] | null;
+        project_deadline: Date | null;
       }
     >(
       `SELECT i.id, i.title, i.priority, i.status, i.due_at, i.end_at, i.all_day,
               i.timezone, i.rrule, i.series_start, i.exdates,
-              i.estimate_minutes, i.spent_minutes, i.list_id, i.team_id, i.version,
+              (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline,
+              i.estimate_minutes, i.spent_minutes, i.list_id, i.team_id, i.assignee_id, i.version,
               coalesce((SELECT array_agg(x.tag_id ORDER BY x.tag_id) FROM item_tags x WHERE x.item_id = i.id), '{}') AS tag_ids,
               (SELECT max(b.end_at) FROM time_blocks b WHERE b.item_id=i.id AND b.user_id=$1 AND b.end_at>now()) AS scheduled_end_at,
               coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.id,'ready_at',
@@ -163,6 +172,9 @@ export async function candidateTasks(
                  AND ($5::uuid[] IS NULL OR i.team_id = ANY ($5::uuid[]))))
              AND (cardinality($6::uuid[]) = 0 OR i.list_id = ANY ($6::uuid[]))
            ELSE i.id = ANY ($2::uuid[]) AND ${VISIBLE_ITEMS} END)
+         AND ($7::uuid IS NULL OR (i.project_id = $7 AND
+              (CASE WHEN i.team_id IS NULL THEN i.user_id = $1
+                    ELSE i.assignee_id = $1 END)))
        ORDER BY i.due_at NULLS LAST, i.created_at LIMIT 300`,
       [
         userId,
@@ -171,9 +183,15 @@ export async function candidateTasks(
         scope?.personal ?? true,
         scope?.team_ids ?? null,
         scope?.list_ids ?? [],
+        options.project_id ?? null,
       ],
     )
   ).rows;
+  const dependent = await dependentTargets(
+    db,
+    userId,
+    rows.map((row) => row.id),
+  );
   // Your sessions still to come for them, to tell which count.
   const ahead = new Map<string, LateSessionRow[]>();
   if (rows.length)
@@ -200,18 +218,31 @@ export async function candidateTasks(
         },
       ]);
   return rows.map(
-    ({ end_at, all_day, timezone, rrule, series_start, exdates, ...t }) => {
+    ({
+      end_at,
+      all_day,
+      timezone,
+      rrule,
+      series_start,
+      exdates,
+      project_deadline,
+      ...t
+    }) => {
       const task = { due_at: t.due_at, end_at, all_day, timezone };
       const series = { ...task, rrule, series_start, exdates };
       const sessions = ahead.get(t.id) ?? [];
-      const split = splitSessions(series, sessions, now);
+      const dependentDeadline = dependent.get(t.id) ?? null;
+      const latest = planningDeadline(project_deadline, dependentDeadline);
+      const split = splitSessions(series, sessions, now, latest);
       // A repeating task's sessions for another occurrence aren't this one's.
       const kind = rrule ? sessionKindFor(series, now) : null;
       return {
         ...t,
+        project_deadline: project_deadline?.toISOString() ?? null,
+        dependent_deadline: dependentDeadline,
         due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
         // One rule for when it's due by (the end of the day for an all-day task).
-        deadline_at: deadlineOf(task),
+        deadline_at: planningDeadline(deadlineOf(task), latest),
         due_all_day: !!t.due_at && all_day,
         scheduled_minutes: split.planned_minutes,
         late_minutes: split.late_minutes,
@@ -298,6 +329,7 @@ async function planInputs(db: Db, userId: string, state: PlanState, now: Date) {
       only: state.item_ids,
       include,
       scope: state.scope,
+      project_id: state.project_id,
       now,
     }),
   ]);
@@ -335,11 +367,15 @@ function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
             t.priority,
             t.status,
             t.due_at,
+            t.project_deadline,
+            t.dependent_deadline,
             t.deadline_at,
             t.estimate_minutes,
             t.spent_minutes,
             t.list_id,
             t.team_id,
+            t.assignee_id,
+            t.version,
             t.tag_ids,
             t.open_children,
             t.children_remaining,
@@ -396,11 +432,15 @@ export async function computePlan(
       { due_at: due, end_at: null, all_day: false, timezone: tz },
       t.upcoming ?? [],
       now,
+      planningDeadline(t.project_deadline, t.dependent_deadline),
     );
     return {
       ...t,
       due_at: due,
-      deadline_at: due,
+      deadline_at: planningDeadline(
+        due,
+        planningDeadline(t.project_deadline, t.dependent_deadline),
+      ),
       due_all_day: false,
       scheduled_minutes: split.planned_minutes,
       late_minutes: split.late_minutes,
@@ -419,6 +459,8 @@ export async function computePlan(
       priority: t.priority ?? "medium",
       status: "todo",
       due_at: t.due_at,
+      project_deadline: null,
+      dependent_deadline: null,
       estimate_minutes: t.estimate_minutes,
       spent_minutes: 0,
       scheduled_minutes: 0,
@@ -426,6 +468,7 @@ export async function computePlan(
       list_id: null,
       tag_ids: [],
       team_id: null,
+      assignee_id: null,
       version: 0,
     })),
   ];
@@ -467,6 +510,7 @@ export async function computePlan(
   };
   const planned = tasks.filter((t) => !excluded.has(t.id)).map(tuned);
   const options: PlanOptions = {
+    project_id: state.project_id,
     start_date: start,
     days,
     pad_percent: state.pad_percent ?? prefs.pad_percent,
@@ -610,6 +654,16 @@ export async function makePlan(
     superseded_by: null,
     estimates_saved: estimatesSaved,
   };
+}
+
+/** Keep a project preview scoped through later tuning and stale checks. */
+export function makeProjectPlan(
+  db: Db,
+  userId: string,
+  projectId: string,
+  input: PreviewInput,
+) {
+  return makePlan(db, userId, stateOf({ ...input, project_id: projectId }));
 }
 
 const lengthOf = (b: { start_at: string; end_at: string }) =>
@@ -980,7 +1034,7 @@ export async function unfinishedBlocks(
   if (!blocks.length) return blocks;
   const ids = [...new Set(blocks.map((b) => b.item_id))];
   const [series, later] = await Promise.all([
-    seriesOf(db, ids),
+    seriesOf(db, userId, ids),
     db.query<{ item_id: string; end_at: Date }>(
       `SELECT item_id, end_at FROM time_blocks
        WHERE user_id = $1 AND item_id = ANY($2::uuid[]) AND start_at >= $3`,

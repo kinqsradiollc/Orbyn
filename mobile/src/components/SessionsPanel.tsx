@@ -126,6 +126,10 @@ export function SessionsPanel({
     const next = await client.itemSessions(item.id);
     animateLayout();
     setData(next);
+    if (!next.assigned_to_me) {
+      setPlan(null);
+      setPicking(false);
+    }
   }, [item.id]);
 
   useEffect(() => {
@@ -208,6 +212,7 @@ export function SessionsPanel({
   const pickedEnd = new Date(pickedStart.getTime() + minutes * 60_000);
   const sessions = data?.sessions ?? [];
   const now = Date.now();
+  const canPlan = canWork && data?.assigned_to_me !== false;
 
   return (
     <FadeIn style={shared.card}>
@@ -258,6 +263,9 @@ export function SessionsPanel({
                     {b.part ? `Session ${b.part}` : "Session"}
                   </Text>
                   {late && <Text style={s.lateText}>After the deadline</Text>}
+                  {data?.assigned_to_me === false && !past && (
+                    <Text style={s.lateText}>Not yours any more</Text>
+                  )}
                 </View>
                 {!past && (
                   <View style={s.rowActions}>
@@ -268,14 +276,14 @@ export function SessionsPanel({
                         onPress={() => onShowOnCalendar(b.start_at)}
                       />
                     )}
-                    {canWork && (
+                    {
                       <SmallAction
                         destructive
                         label="Remove"
                         disabled={busy}
                         onPress={() => void remove(b)}
                       />
-                    )}
+                    }
                   </View>
                 )}
               </View>
@@ -350,7 +358,7 @@ export function SessionsPanel({
       )}
       {!!reason && <Text style={[shared.body, s.gap]}>{reason}</Text>}
 
-      {canWork && !picking && (
+      {canPlan && !picking && (
         <View style={s.tools}>
           <Button
             secondary={sessions.length > 0}
@@ -373,7 +381,7 @@ export function SessionsPanel({
           />
         </View>
       )}
-      {canWork && picking && (
+      {canPlan && picking && (
         <View style={s.gap}>
           <Text style={shared.label}>Day</Text>
           <ChipRow label="Day">

@@ -52,7 +52,7 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
-import type { Doc, LegalSummary } from "@orbyn/core";
+import type { AssistantSource, Doc, LegalSummary } from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
 import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
@@ -157,6 +157,12 @@ export function App() {
   const [focusTask, setFocusTask] = useState<Item | null>(null);
   /** A meeting note opened from its event, handed to the Docs view. */
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
+  const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  const [projectSectionToOpen, setProjectSectionToOpen] = useState<
+    "decisions" | "history" | null
+  >(null);
+  const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
@@ -300,12 +306,28 @@ export function App() {
     setEditing("new");
   };
 
-  /** Open a page the assistant cited, where the assistant cited it. */
-  const openSource = (source: { doc_id: string }) =>
-    void client.getDoc(source.doc_id).then((doc) => {
+  const openPage = (docId: string, blockId?: string | null) =>
+    void client.getDoc(docId).then((doc) => {
+      setNoteBlockId(blockId ?? null);
       setNoteDoc(doc);
       setView("Docs");
     }, report);
+
+  /** Open a fact the assistant read at its task, page, or project section. */
+  const openSource = (source: AssistantSource) => {
+    if ("doc_id" in source) {
+      openPage(source.doc_id, source.block_id);
+    } else if (source.kind === "task") {
+      openItemById(source.id);
+    } else if (source.project_id) {
+      setProjectToOpen(source.project_id);
+      setProjectSectionToOpen(
+        source.kind === "decision" ? "decisions" : "history",
+      );
+      setProjectSourceId(source.id);
+      setView("Projects");
+    }
+  };
 
   /** Personal pages are always yours; a team's need `items:write`. */
   const canWriteIn = (teamId: string | null) =>
@@ -687,6 +709,10 @@ export function App() {
                   {...listProps}
                   onNewItem={() => newItem()}
                   onNavigate={navigate}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
                   onOpenDoc={(found) => {
                     setNoteDoc(found);
                     setView("Docs");
@@ -731,6 +757,10 @@ export function App() {
               {view === "Docs" && (
                 <DocsView
                   report={report}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
                   userId={user?.id}
                   canWriteDoc={canWriteIn}
                   teamNameFor={(id) =>
@@ -738,7 +768,11 @@ export function App() {
                   }
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
-                  onInitialDocShown={() => setNoteDoc(null)}
+                  initialBlockId={noteBlockId}
+                  onInitialDocShown={() => {
+                    setNoteDoc(null);
+                    setNoteBlockId(null);
+                  }}
                 />
               )}
               {view === "Study" && (
@@ -753,6 +787,14 @@ export function App() {
               )}
               {view === "Projects" && (
                 <ProjectsView
+                  initialProjectId={projectToOpen}
+                  initialSection={projectSectionToOpen}
+                  initialSourceId={projectSourceId}
+                  onInitialProjectShown={() => {
+                    setProjectToOpen(null);
+                    setProjectSectionToOpen(null);
+                    setProjectSourceId(null);
+                  }}
                   items={items}
                   userId={user?.id ?? ""}
                   teams={teams}
@@ -761,9 +803,20 @@ export function App() {
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}
-                  onOpenNote={(docId) =>
+                  onOpenPlan={openPlan}
+                  onAskProject={(project, question) => {
+                    assistant.setScope({
+                      kind: "project",
+                      id: project.id,
+                      name: project.name,
+                    });
+                    if (question) assistant.setMessage(question);
+                    setView("AI assistant");
+                  }}
+                  onOpenNote={(docId, blockId) =>
                     void client.getDoc(docId).then((doc) => {
                       setNoteDoc(doc);
+                      setNoteBlockId(blockId ?? null);
                       setView("Docs");
                     }, report)
                   }
@@ -808,7 +861,7 @@ export function App() {
                   onOpenPlan={openPlan}
                   onShowOnCalendar={showOnCalendar}
                   onOpenSource={openSource}
-                  onKeptNote={(docId) => openSource({ doc_id: docId })}
+                  onKeptNote={(docId) => openPage(docId)}
                 />
               )}
               {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
@@ -841,6 +894,10 @@ export function App() {
                   onOpenBooking={openBooking}
                   onOpenTemplate={(id) => {
                     setTemplateToOpen(id);
+                    navigate("Projects");
+                  }}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
                     navigate("Projects");
                   }}
                   onOpenDoc={(id) =>
@@ -892,6 +949,26 @@ export function App() {
             onError={report}
             onFindTime={findTimeFor}
             onShowOnCalendar={showOnCalendar}
+            onOpenProject={(id) => {
+              closeTask();
+              setProjectToOpen(id);
+              setView("Projects");
+            }}
+            onAskTask={(item) => {
+              closeTask();
+              assistant.setScope({
+                kind: "task",
+                id: item.id,
+                name: item.title,
+              });
+              setView("AI assistant");
+            }}
+            onOpenDoc={(doc, blockId) => {
+              closeTask();
+              setNoteBlockId(blockId ?? null);
+              setNoteDoc(doc);
+              setView("Docs");
+            }}
             onOpenNote={(event) => {
               void client
                 .itemNote(event.id)
@@ -937,11 +1014,15 @@ export function App() {
             items={items}
             onClose={() => setCommandOpen(false)}
             onOpenItem={openItem}
-            onOpenDoc={(found) => {
+            onOpenDoc={(found, blockId) => {
               setNoteDoc(found);
+              setNoteBlockId(blockId ?? null);
               setView("Docs");
             }}
-            onGoToProjects={() => setView("Projects")}
+            onGoToProjects={(id) => {
+              setProjectToOpen(id);
+              setView("Projects");
+            }}
             onNewItem={() => newItem()}
             onPlanDay={planMyDay}
             onNavigate={navigate}
@@ -949,7 +1030,7 @@ export function App() {
             onOpenPlan={openPlan}
             onShowOnCalendar={showOnCalendar}
             onOpenSource={openSource}
-            onKeptNote={(docId) => openSource({ doc_id: docId })}
+            onKeptNote={(docId) => openPage(docId)}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
             teams={teams}

@@ -83,6 +83,13 @@
   padding: 0;
   justify-content: center;
 }
+.ai-ghost.ai-scope {
+  margin-right: auto;
+  max-width: min(60vw, 360px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* The conversation: a centred column that scrolls behind the composer. */
 .ai-thread {
@@ -727,11 +734,15 @@
 /* The pages the assistant actually read for an answer. Shown so the answer
    can be checked against them rather than taken on trust. */
 .ai-sources {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 2px;
+}
+.ai-sources-group {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin: 6px 0 2px;
 }
 .ai-sources-label {
   color: var(--color-muted);

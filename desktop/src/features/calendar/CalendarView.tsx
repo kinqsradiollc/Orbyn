@@ -288,6 +288,7 @@ export function CalendarView({
     const { onDateChange, onModeChange, mode } = latestNav.current;
     setPlannerOpen(true);
     if (planRequest.plan) {
+      setAutoPreview(null);
       setPlan(planRequest.plan);
       onDateChange(fromDayKey(planRequest.plan.starts_on));
       if (mode === "month" || mode === "agenda")
@@ -467,12 +468,21 @@ export function CalendarView({
     end: Date;
     resized: boolean;
   } | null>(null);
+  const [deadlineDrop, setDeadlineDrop] = useState<{
+    entry: CalendarEntry;
+    start: Date;
+    end: Date;
+  } | null>(null);
   const moveEntry = (
     entry: CalendarEntry,
     start: Date,
     end: Date,
     resized: boolean,
   ) => {
+    if (entry.kind === "task" && !entry.end_at && !resized) {
+      setDeadlineDrop({ entry, start, end });
+      return;
+    }
     if (entry.occurrence) setScopeAsk({ entry, start, end, resized });
     else void saveMove(entry, start, end, resized);
   };
@@ -679,7 +689,13 @@ export function CalendarView({
     newEvent,
     slot,
   };
-  const blocked = !shortcuts || !!menu || !!dialog || !!matesMenu || !!scopeAsk;
+  const blocked =
+    !shortcuts ||
+    !!menu ||
+    !!dialog ||
+    !!matesMenu ||
+    !!scopeAsk ||
+    !!deadlineDrop;
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
@@ -927,6 +943,7 @@ export function CalendarView({
           <div className="month-layout">
             <MonthView
               items={monthItems}
+              blocks={blocks}
               frames={frames}
               selected={date}
               onSelect={onDateChange}
@@ -1192,6 +1209,75 @@ export function CalendarView({
             void saveMove(a.entry, a.start, a.end, a.resized, scope);
           }}
         />
+      )}
+      {deadlineDrop && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDeadlineDrop(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setDeadlineDrop(null);
+          }}
+        >
+          <section
+            className="modal modal-small"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deadline-drop-title"
+          >
+            <div className="section-heading">
+              <h2 id="deadline-drop-title">{deadlineDrop.entry.title}</h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Cancel"
+                onClick={() => setDeadlineDrop(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="muted modal-lead">
+              What should happen at {deadlineDrop.start.toLocaleString()}?
+            </p>
+            <div className="scope-options">
+              <button
+                type="button"
+                className="primary"
+                autoFocus
+                onClick={() => {
+                  const drop = deadlineDrop;
+                  setDeadlineDrop(null);
+                  withItem(drop.entry.item_id, (item) =>
+                    createBlock(item, drop.start),
+                  );
+                }}
+              >
+                Plan a session here
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  const drop = deadlineDrop;
+                  setDeadlineDrop(null);
+                  if (drop.entry.occurrence)
+                    setScopeAsk({ ...drop, resized: false });
+                  else void saveMove(drop.entry, drop.start, drop.end, false);
+                }}
+              >
+                Move deadline
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setDeadlineDrop(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {dialog?.kind === "frame" && (
         <FrameDialog

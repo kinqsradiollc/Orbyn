@@ -109,6 +109,8 @@ export const importCreateInput = z
     file_name: z.string().trim().min(1).max(200),
     bytes: z.number().int().min(1).max(IMPORT_LIMITS.maxBytes),
     mime: z.string().max(200).optional(),
+    project_id: z.uuid().optional(),
+    project_team_id: z.uuid().nullable().optional(),
   })
   .strict();
 export type ImportCreateInput = z.infer<typeof importCreateInput>;

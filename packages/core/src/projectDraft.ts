@@ -19,6 +19,7 @@ const task = z
 export const projectDraftSchema = z
   .object({
     title: z.string().trim().min(1).max(120),
+    summary: z.string().trim().max(2000).default(""),
     tasks: z.array(task).min(1).max(15),
   })
   .strict();
@@ -29,6 +30,8 @@ import type { PlannedBlock, UnplacedTask } from "./types.js";
 
 /** A project and its proposed schedule; temporary task ids are resolved on approval. */
 export type ProjectDecomposition = ProjectDraft & {
+  /** The typed latest finish time, never inferred from a task's due date. */
+  deadline?: string | null;
   timezone: string;
   start_date: string;
   days: number;

@@ -11,25 +11,37 @@ import {
   History,
   List,
   Plus,
+  Ellipsis,
   Trash2,
-  LayoutTemplate,
+  Sparkles,
 } from "lucide-react";
 import {
   changeProjectDeadline,
-  projectAtRisk,
   projectDeadlineParts,
   projectProgress,
   projectTimeline,
   projectReentry,
+  deadlineOf,
+  shortMinutes,
+  itemBody,
+  snippetRuns,
   type Item,
   type ProjectActivity,
   type Project,
+  type ProjectLink,
+  type ProjectPlanning,
   type ProjectStage,
+  type Plan,
+  type ProjectSession,
+  type DocSummary,
+  type WorkRecord,
+  type SearchHit,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
 import { DateField } from "../../components/DateField";
 import { deviceTimeZone } from "../../lib/planning";
+import { ImportButton, useImports } from "../docs/Uploads";
 
 const HISTORY_FIELDS: Record<string, string> = {
   name: "Name",
@@ -92,6 +104,8 @@ function group(items: Item[], project: Project) {
 
 export function ProjectDetail({
   project,
+  initialSection = "home",
+  initialSourceId = null,
   items,
   report,
   onBack,
@@ -100,10 +114,14 @@ export function ProjectDetail({
   onItemsChanged,
   onOpenItem,
   onOpenNote,
+  onOpenPlan,
+  onAskProject,
   userId,
   canWrite,
 }: {
   project: Project;
+  initialSection?: "home" | "decisions" | "history";
+  initialSourceId?: string | null;
   items: Item[];
   report: (e: unknown) => void;
   onBack: () => void;
@@ -112,25 +130,112 @@ export function ProjectDetail({
   onItemsChanged: () => void;
   onOpenItem: (item: Item) => void;
   /** Opens a note of this project's in the documents view. */
-  onOpenNote?: (docId: string) => void;
+  onOpenNote?: (docId: string, blockId?: string | null) => void;
+  onOpenPlan: (plan: Plan) => void;
+  onAskProject?: (project: Project, question?: string) => void;
   userId: string;
   canWrite: boolean;
 }) {
   const { ask, tell } = useConfirm();
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<"list" | "board" | "timeline" | "history">(
-    "list",
-  );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mode, setMode] = useState<
+    "home" | "list" | "board" | "timeline" | "notes" | "decisions" | "history"
+  >(initialSection);
   const [activity, setActivity] = useState<ProjectActivity[] | null>(null);
+  useEffect(() => {
+    if (initialSection === "history")
+      client.projectActivity(project.id).then(setActivity).catch(report);
+  }, [initialSection, project.id, report]);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [reentry, setReentry] = useState<ReturnType<
     typeof projectReentry
   > | null>(null);
+  const [assistantTools, setAssistantTools] = useState(false);
+  useEffect(() => {
+    let live = true;
+    client.aiCapabilities().then(
+      (capabilities) => {
+        if (live) setAssistantTools(capabilities.tools);
+      },
+      () => {
+        if (live) setAssistantTools(false);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const [planning, setPlanning] = useState<ProjectPlanning | null>(null);
+  const [sessions, setSessions] = useState<ProjectSession[]>([]);
+  const [homeNotes, setHomeNotes] = useState<DocSummary[]>([]);
+  const [homeRecords, setHomeRecords] = useState<WorkRecord[]>([]);
+  const [homeLinks, setHomeLinks] = useState<ProjectLink[]>([]);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkTitle, setLinkTitle] = useState("");
+  const [addingLink, setAddingLink] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [searchRecords, setSearchRecords] = useState<WorkRecord[]>([]);
+  const [searchIndex, setSearchIndex] = useState(0);
+  useEffect(() => {
+    setSearchQuery("");
+    setSearchHits([]);
+    setSearchRecords([]);
+  }, [project.id]);
+  const imports = useImports(
+    report,
+    () =>
+      void client
+        .listDocs({ project: project.id })
+        .then(setHomeNotes)
+        .catch(report),
+    project.id,
+    project.team_id,
+  );
   /** The task being dragged across the board, if any. */
   const [dragging, setDragging] = useState<string | null>(null);
   const grouped = useMemo(() => group(items, project), [items, project]);
+  const homeTasks = items
+    .filter(
+      (item) =>
+        item.project_id === project.id &&
+        item.kind === "task" &&
+        item.status !== "done" &&
+        item.status !== "cancelled",
+    )
+    .sort(
+      (a, b) =>
+        Date.parse(deadlineOf(a) ?? project.deadline ?? "9999-12-31") -
+        Date.parse(deadlineOf(b) ?? project.deadline ?? "9999-12-31"),
+    )
+    .slice(0, 5);
+  const homeSessions = sessions
+    .filter(
+      (session) =>
+        Date.parse(session.start_at) >= Date.now() &&
+        Date.parse(session.start_at) < Date.now() + 7 * 86_400_000,
+    )
+    .sort((a, b) => a.start_at.localeCompare(b.start_at))
+    .slice(0, 7);
+  const openQuestions = homeRecords.filter(
+    (record) =>
+      record.status === "open" &&
+      ((record.kind === "decision" && !record.linked_item_id) ||
+        (record.kind === "promise" &&
+          record.due_at &&
+          Date.parse(record.due_at) < Date.now() + 7 * 86_400_000)),
+  );
+  const unassigned = items.filter(
+    (item) =>
+      item.project_id === project.id &&
+      item.team_id === project.team_id &&
+      item.kind === "task" &&
+      item.status !== "done" &&
+      item.status !== "cancelled" &&
+      !item.assignee_id,
+  );
   const percent = projectProgress(project);
-  const risk = projectAtRisk(project);
   // Only tasks in the project's own space can be filed into it.
   const unfiledPool = items.filter(
     (i) =>
@@ -141,18 +246,22 @@ export function ProjectDetail({
 
   useEffect(() => {
     let active = true;
-    const key = `orbyn.project.reentry.${project.id}`;
-    const previous = localStorage.getItem(key);
-    client
-      .projectActivity(project.id)
-      .then((rows) => {
+    setLastSeen(null);
+    setReentry(null);
+    Promise.all([
+      client.visitProject(project.id),
+      client.projectActivity(project.id),
+    ])
+      .then(([visit, rows]) => {
         if (!active) return;
+        setLastSeen(visit.since_at);
         setReentry(
-          previous
-            ? projectReentry(rows.filter((row) => row.created_at > previous))
+          visit.since_at
+            ? projectReentry(
+                rows.filter((row) => row.created_at > visit.since_at!),
+              )
             : null,
         );
-        localStorage.setItem(key, new Date().toISOString());
       })
       .catch(report);
     return () => {
@@ -160,17 +269,162 @@ export function ProjectDetail({
     };
   }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let active = true;
+    setPlanning(null);
+    client.projectPlanning(project.id).then(
+      (summary) => {
+        if (active) setPlanning(summary);
+      },
+      (error) => {
+        if (active) report(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [project.id, project.deadline, items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (mode !== "timeline" && mode !== "home") return;
+    let active = true;
+    client.projectSessions(project.id).then(
+      (rows) => {
+        if (active) setSessions(rows);
+      },
+      (error) => {
+        if (active) report(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [mode, project.id, items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (mode !== "home") return;
+    let active = true;
+    setHomeNotes([]);
+    setHomeRecords([]);
+    setHomeLinks([]);
+    Promise.all([
+      client.listDocs({ project: project.id }),
+      client.listWorkRecords({ project_id: project.id }),
+      client.listProjectLinks(project.id),
+    ]).then(
+      ([notes, records, links]) => {
+        if (active) {
+          setHomeNotes(notes);
+          setHomeRecords(records);
+          setHomeLinks(links);
+        }
+      },
+      (error) => {
+        if (active) report(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [mode, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchHits([]);
+      setSearchRecords([]);
+      return;
+    }
+    setSearchHits([]);
+    setSearchRecords([]);
+    setSearchIndex(0);
+    let active = true;
+    const timer = setTimeout(() => {
+      Promise.all([
+        client.search(q, { project: project.id, limit: 30 }),
+        client.listWorkRecords({ project_id: project.id }),
+      ]).then(
+        ([hits, records]) => {
+          if (!active) return;
+          setSearchHits(hits);
+          setSearchRecords(
+            records.filter(
+              (record) =>
+                record.kind === "decision" &&
+                `${record.title} ${record.details}`
+                  .toLowerCase()
+                  .includes(q.toLowerCase()),
+            ),
+          );
+          setSearchIndex(0);
+        },
+        (error) => {
+          if (active) report(error);
+        },
+      );
+    }, 180);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openSearchHit = (hit: SearchHit | WorkRecord) => {
+    if ("type" in hit) {
+      if (hit.type === "doc") onOpenNote?.(hit.id, hit.block_id);
+      else {
+        const item = items.find((task) => task.id === hit.id);
+        if (item) onOpenItem(item);
+      }
+    } else setMode("decisions");
+  };
+  const searchTasks = searchHits.filter((hit) => hit.type === "task");
+  const searchPages = searchHits.filter((hit) => hit.type === "doc");
+  const searchResults: (SearchHit | WorkRecord)[] = [
+    ...searchTasks,
+    ...searchPages,
+    ...searchRecords,
+  ];
+  const markQuery = (value: string) => {
+    const q = searchQuery.trim();
+    const at = value.toLocaleLowerCase().indexOf(q.toLocaleLowerCase());
+    if (!q || at < 0) return value;
+    return (
+      <>
+        {value.slice(0, at)}
+        <mark>{value.slice(at, at + q.length)}</mark>
+        {value.slice(at + q.length)}
+      </>
+    );
+  };
+  const renderSearchResult = (hit: SearchHit | WorkRecord, index: number) => (
+    <li key={hit.id}>
+      <button
+        className={index === searchIndex ? "is-selected" : ""}
+        onMouseEnter={() => setSearchIndex(index)}
+        onClick={() => openSearchHit(hit)}
+      >
+        <strong>{markQuery(hit.title)}</strong>
+        {"type" in hit ? (
+          <span className="muted">
+            {snippetRuns(hit.snippet ?? "").map((run, part) =>
+              run.hit ? (
+                <mark key={part}>{run.text}</mark>
+              ) : (
+                <span key={part}>{run.text}</span>
+              ),
+            )}
+          </span>
+        ) : (
+          <span className="muted">{markQuery(hit.details)}</span>
+        )}
+      </button>
+    </li>
+  );
+
   const openHistory = () => {
-    const key = `orbyn.project.seen.${project.id}`;
-    setLastSeen(sessionStorage.getItem(key));
     setMode("history");
-    client
-      .projectActivity(project.id)
-      .then((rows) => {
-        setActivity(rows);
-        sessionStorage.setItem(key, new Date().toISOString());
-      })
-      .catch(report);
+    client.projectActivity(project.id).then(setActivity).catch(report);
   };
 
   const save = (patch: Parameters<typeof client.updateProject>[1]) => {
@@ -179,6 +433,90 @@ export function ProjectDetail({
       .updateProject(project.id, patch)
       .then(onChanged)
       .catch(report)
+      .finally(() => setBusy(false));
+  };
+
+  const createProjectPage = async (asBrief: boolean) => {
+    if (!canWrite || !onOpenNote || busy) return;
+    setBusy(true);
+    try {
+      const doc = await client.createDoc({
+        title: asBrief ? `${project.name} brief` : "",
+        kind: "note",
+        project_id: project.id,
+        team_id: project.team_id,
+        content: [{ type: "paragraph", text: "" }],
+      });
+      if (asBrief)
+        onChanged(await client.updateProject(project.id, { doc_id: doc.id }));
+      else setHomeNotes(await client.listDocs({ project: project.id }));
+      onOpenNote(doc.id);
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveLink = async () => {
+    if (!canWrite || !linkUrl.trim() || busy) return;
+    setBusy(true);
+    try {
+      await client.addProjectLink(project.id, {
+        url: linkUrl.trim(),
+        title: linkTitle.trim(),
+      });
+      setHomeLinks(await client.listProjectLinks(project.id));
+      setLinkUrl("");
+      setLinkTitle("");
+      setAddingLink(false);
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeLink = async (linkId: string) => {
+    if (!canWrite || busy) return;
+    setBusy(true);
+    try {
+      await client.removeProjectLink(project.id, linkId);
+      setHomeLinks((links) => links.filter((link) => link.id !== linkId));
+    } catch (error) {
+      report(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addProjectFiles = async (files: File[]) => {
+    if (!canWrite || !files.length) return;
+    if (
+      project.team_id &&
+      !(await ask({
+        title: `Add ${files.length === 1 ? "this file" : "these files"} to ${project.name}?`,
+        body: `Everyone in ${project.team_name ?? "this team"} will be able to read the pages made from them.`,
+        confirmLabel: "Add files",
+      }))
+    )
+      return;
+    await imports.importFiles(files);
+  };
+
+  const planProject = () => {
+    setBusy(true);
+    client
+      .planProject(project.id, deviceTimeZone())
+      .then(onOpenPlan, report)
+      .finally(() => setBusy(false));
+  };
+
+  const claimTask = (item: Item) => {
+    setBusy(true);
+    client
+      .updateItem(item.id, { ...itemBody(item), assignee_id: userId })
+      .then(() => onItemsChanged(), report)
       .finally(() => setBusy(false));
   };
 
@@ -288,6 +626,13 @@ export function ProjectDetail({
           aria-label="How to show the work"
         >
           <button
+            className={mode === "home" ? "is-on" : ""}
+            aria-pressed={mode === "home"}
+            onClick={() => setMode("home")}
+          >
+            Home
+          </button>
+          <button
             className={mode === "list" ? "is-on" : ""}
             aria-pressed={mode === "list"}
             onClick={() => setMode("list")}
@@ -309,6 +654,20 @@ export function ProjectDetail({
             <CalendarRange size={14} /> Timeline
           </button>
           <button
+            className={mode === "notes" ? "is-on" : ""}
+            aria-pressed={mode === "notes"}
+            onClick={() => setMode("notes")}
+          >
+            Pages & files
+          </button>
+          <button
+            className={mode === "decisions" ? "is-on" : ""}
+            aria-pressed={mode === "decisions"}
+            onClick={() => setMode("decisions")}
+          >
+            Decisions
+          </button>
+          <button
             className={mode === "history" ? "is-on" : ""}
             aria-pressed={mode === "history"}
             onClick={openHistory}
@@ -316,31 +675,155 @@ export function ProjectDetail({
             <History size={14} /> History
           </button>
         </div>
-        <button
-          className="icon-button"
-          title="Save as template"
-          aria-label="Save as template"
-          onClick={() =>
-            void client
-              .templateFromProject(project.id)
-              .then((t) =>
-                tell({
-                  title: `Saved “${t.name}” as a template.`,
-                  body: "Start a project from it with Templates, on the projects page.",
-                }),
-              )
-              .catch(report)
-          }
-        >
-          <LayoutTemplate size={15} />
-        </button>
-        <button
-          className="icon-button"
-          onClick={remove}
-          aria-label="Delete project"
-        >
-          <Trash2 size={15} />
-        </button>
+        {onAskProject && (
+          <button className="text-button" onClick={() => onAskProject(project)}>
+            <Sparkles size={15} aria-hidden="true" /> Ask
+          </button>
+        )}
+        {canWrite && (
+          <div className="project-manage">
+            <button
+              className="icon-button"
+              aria-label="Project options"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((value) => !value)}
+            >
+              <Ellipsis size={18} />
+            </button>
+            {menuOpen && (
+              <div className="project-manage-menu">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    const name = prompt("Project name", project.name)?.trim();
+                    if (name && name !== project.name) save({ name });
+                  }}
+                >
+                  Rename
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    const summary = prompt("Summary & brief", project.summary);
+                    if (summary !== null && summary.trim() !== project.summary)
+                      save({ summary: summary.trim() });
+                  }}
+                >
+                  Summary & brief
+                </button>
+                {(["active", "done", "archived"] as const).map((status) => (
+                  <button
+                    key={status}
+                    disabled={status === project.status}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      save({ status });
+                    }}
+                  >
+                    Mark {status}
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void client
+                      .templateFromProject(project.id)
+                      .then((template) =>
+                        tell({
+                          title: `Saved “${template.name}” as a template.`,
+                          body: "Start a project from it with Templates, on the projects page.",
+                        }),
+                      )
+                      .catch(report);
+                  }}
+                >
+                  Save as template
+                </button>
+                <button
+                  className="is-destructive"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void remove();
+                  }}
+                >
+                  Delete project
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="project-search">
+        <input
+          type="search"
+          aria-label={`Search ${project.name}`}
+          placeholder="Search this project"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setSearchQuery("");
+            if (event.key === "ArrowDown" && searchResults.length) {
+              event.preventDefault();
+              setSearchIndex((index) => (index + 1) % searchResults.length);
+            }
+            if (event.key === "ArrowUp" && searchResults.length) {
+              event.preventDefault();
+              setSearchIndex(
+                (index) =>
+                  (index - 1 + searchResults.length) % searchResults.length,
+              );
+            }
+            if (event.key === "Enter" && searchResults.length) {
+              event.preventDefault();
+              openSearchHit(searchResults[searchIndex] ?? searchResults[0]);
+            }
+          }}
+        />
+        {searchQuery.trim().length >= 2 && (
+          <div
+            className="project-search-results"
+            role="region"
+            aria-label="Project search results"
+          >
+            {searchResults.length === 0 && (
+              <p className="muted">No matches in this project.</p>
+            )}
+            {searchTasks.length > 0 && (
+              <section>
+                <h3>Tasks ({searchTasks.length})</h3>
+                <ul>
+                  {searchTasks.map((hit, index) =>
+                    renderSearchResult(hit, index),
+                  )}
+                </ul>
+              </section>
+            )}
+            {searchPages.length > 0 && (
+              <section>
+                <h3>Pages ({searchPages.length})</h3>
+                <ul>
+                  {searchPages.map((hit, index) =>
+                    renderSearchResult(hit, searchTasks.length + index),
+                  )}
+                </ul>
+              </section>
+            )}
+            {searchRecords.length > 0 && (
+              <section>
+                <h3>Decisions ({searchRecords.length})</h3>
+                <ul>
+                  {searchRecords.map((record, index) =>
+                    renderSearchResult(
+                      record,
+                      searchTasks.length + searchPages.length + index,
+                    ),
+                  )}
+                </ul>
+              </section>
+            )}
+          </div>
+        )}
       </div>
 
       {reentry && reentry.total > 0 && (
@@ -363,13 +846,38 @@ export function ProjectDetail({
           <button className="secondary" onClick={openHistory}>
             View history
           </button>
+          {onAskProject && assistantTools && reentry.total >= 2 && (
+            <div className="project-reentry-actions">
+              <button
+                className="secondary"
+                onClick={() =>
+                  onAskProject(
+                    project,
+                    "Explain what changed in this project since my last visit, with sources.",
+                  )
+                }
+              >
+                Explain what changed
+              </button>
+              <button
+                className="secondary"
+                onClick={() =>
+                  onAskProject(
+                    project,
+                    "Draft a project update page from the changes since my last visit. Show me the draft to edit and keep.",
+                  )
+                }
+              >
+                Draft an update
+              </button>
+            </div>
+          )}
         </section>
       )}
 
       <header className="project-header">
         <div className="project-title-row">
           <h2>{project.name}</h2>
-          {risk && <span className="chip chip-warn">At risk</span>}
         </div>
         <p className="muted">{project.summary || "No summary yet."}</p>
         <div className="project-meta">
@@ -403,7 +911,308 @@ export function ProjectDetail({
         </div>
       </header>
 
-      {mode === "history" ? (
+      {planning && project.task_count > 0 && project.status === "active" && (
+        <section
+          className="project-planning"
+          aria-label="Project planning status"
+        >
+          <strong>Your part</strong>
+          <button className="secondary" disabled={busy} onClick={planProject}>
+            Plan this project
+          </button>
+          <p className="muted">
+            Plans your assigned tasks for up to two weeks. Claim unassigned team
+            tasks before planning them.
+          </p>
+          {canWrite && project.team_id && unassigned.length > 0 && (
+            <div className="project-unassigned">
+              <span className="muted">Unassigned work</span>
+              {unassigned.map((item) => (
+                <div key={item.id}>
+                  <span>{item.title}</span>{" "}
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => claimTask(item)}
+                  >
+                    Claim task
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <p>
+            {planning.unestimated_tasks.length
+              ? "Estimated work needs "
+              : "Needs "}
+            {shortMinutes(planning.needed_minutes)} ·{" "}
+            {shortMinutes(planning.planned_minutes)} planned
+            {project.deadline ? " before the deadline" : ""} ·{" "}
+            {shortMinutes(planning.unplanned_minutes)} not planned
+            {planning.planned_finish_at &&
+              ` · Planned finish ${new Date(planning.planned_finish_at).toLocaleDateString([], { month: "short", day: "numeric" })}`}
+          </p>
+          {planning.late_session_count > 0 && (
+            <p className="muted">
+              {planning.late_session_count} session
+              {planning.late_session_count === 1 ? "" : "s"} after a planning
+              deadline
+            </p>
+          )}
+          {planning.unestimated_tasks.length > 0 && (
+            <p className="muted">
+              Needs an estimate:{" "}
+              {planning.unestimated_tasks.map((task) => task.title).join(", ")}
+            </p>
+          )}
+          {planning.team_planned_minutes !== undefined && (
+            <p className="muted">
+              Team: {shortMinutes(planning.team_planned_minutes)} planned · Only
+              your sessions are counted above
+            </p>
+          )}
+        </section>
+      )}
+
+      {mode === "home" ? (
+        <div className="project-home">
+          {homeTasks.length > 0 && (
+            <section className="project-home-section">
+              <h3>Coming due</h3>
+              <ul>
+                {homeTasks.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      className="text-button"
+                      onClick={() => onOpenItem(item)}
+                    >
+                      {item.title}
+                    </button>
+                    <span className="muted">
+                      {deadlineOf(item)
+                        ? new Date(deadlineOf(item)!).toLocaleDateString([], {
+                            month: "short",
+                            day: "numeric",
+                          })
+                        : project.deadline
+                          ? `No deadline · project ends ${new Date(project.deadline).toLocaleDateString([], { month: "short", day: "numeric" })}`
+                          : "No deadline"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {homeSessions.length > 0 && (
+            <section className="project-home-section">
+              <h3>Next 7 days</h3>
+              <ul>
+                {homeSessions.map((session) => {
+                  const item = items.find(
+                    (task) => task.id === session.item_id,
+                  );
+                  return (
+                    <li key={session.id}>
+                      <span>
+                        {new Date(session.start_at).toLocaleString([], {
+                          weekday: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                      {item ? (
+                        <button
+                          className="text-button"
+                          onClick={() => onOpenItem(item)}
+                        >
+                          {item.title}
+                        </button>
+                      ) : (
+                        <span>Session</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+          {(project.summary || project.doc_id || (canWrite && onOpenNote)) && (
+            <section className="project-home-section">
+              <h3>Brief</h3>
+              {project.summary && <p>{project.summary}</p>}
+              {project.doc_id && onOpenNote && (
+                <button
+                  className="text-button"
+                  onClick={() => onOpenNote(project.doc_id!)}
+                >
+                  Open brief
+                </button>
+              )}
+              {!project.doc_id && canWrite && onOpenNote && (
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => void createProjectPage(true)}
+                >
+                  Write a brief
+                </button>
+              )}
+            </section>
+          )}
+          {(homeNotes.length > 0 || homeLinks.length > 0 || canWrite) && (
+            <section className="project-home-section">
+              <h3>Pages & files</h3>
+              {homeLinks.length > 0 && (
+                <ul>
+                  {homeLinks.map((link) => (
+                    <li key={link.id}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {link.title || link.url}
+                      </a>
+                      {canWrite && (
+                        <button
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => void removeLink(link.id)}
+                          aria-label={`Remove ${link.title || link.url}`}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {addingLink && canWrite && (
+                <div className="project-home-actions">
+                  <input
+                    value={linkUrl}
+                    onChange={(event) => setLinkUrl(event.target.value)}
+                    placeholder="https://…"
+                    aria-label="Link URL"
+                    maxLength={2000}
+                  />
+                  <input
+                    value={linkTitle}
+                    onChange={(event) => setLinkTitle(event.target.value)}
+                    placeholder="Title (optional)"
+                    aria-label="Link title"
+                    maxLength={200}
+                  />
+                  <button
+                    className="text-button"
+                    disabled={busy || !linkUrl.trim()}
+                    onClick={() => void saveLink()}
+                  >
+                    Save link
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() => setAddingLink(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {homeNotes.length > 0 && onOpenNote && (
+                <ul>
+                  {homeNotes.slice(0, 5).map((note) => (
+                    <li key={note.id}>
+                      <button
+                        className="text-button"
+                        onClick={() => onOpenNote(note.id)}
+                      >
+                        {note.title || "Untitled"}
+                      </button>
+                      <span className="muted">{note.preview}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="project-home-actions">
+                {homeNotes.length > 0 && onOpenNote && (
+                  <button
+                    className="text-button"
+                    onClick={() => setMode("notes")}
+                  >
+                    All pages & files
+                  </button>
+                )}
+                {canWrite && (
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void createProjectPage(false)}
+                  >
+                    New page
+                  </button>
+                )}
+                {canWrite && homeLinks.length < 20 && !addingLink && (
+                  <button
+                    className="text-button"
+                    onClick={() => setAddingLink(true)}
+                  >
+                    Add link
+                  </button>
+                )}
+                {canWrite && (
+                  <ImportButton
+                    label="Add a file"
+                    onFiles={(files) => void addProjectFiles(files)}
+                    busy={busy || imports.busy}
+                  />
+                )}
+              </div>
+            </section>
+          )}
+          {openQuestions.length > 0 && (
+            <section className="project-home-section">
+              <h3>Open questions</h3>
+              <ul>
+                {openQuestions.slice(0, 5).map((record) => (
+                  <li key={record.id}>
+                    <span>{record.title}</span>
+                    <span className="muted">
+                      {record.kind === "decision"
+                        ? "Decision"
+                        : "Promise due soon"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="text-button"
+                onClick={() => setMode("decisions")}
+              >
+                All decisions
+              </button>
+            </section>
+          )}
+        </div>
+      ) : mode === "notes" && onOpenNote ? (
+        <ProjectNotes
+          projectId={project.id}
+          teamId={project.team_id}
+          canWrite={canWrite && !busy}
+          report={report}
+          onOpen={onOpenNote}
+        />
+      ) : mode === "decisions" ? (
+        <ProjectRecords
+          focusId={initialSourceId}
+          project={project}
+          items={items}
+          userId={userId}
+          canWrite={canWrite}
+          onOpenNote={onOpenNote}
+          report={report}
+        />
+      ) : mode === "history" ? (
         <section
           className="project-history"
           aria-labelledby="project-history-title"
@@ -458,7 +1267,20 @@ export function ProjectDetail({
                       ? items.find((item) => item.id === event.entity_id)
                       : undefined;
                   return (
-                    <li key={event.id}>
+                    <li
+                      key={event.id}
+                      className={
+                        event.id === initialSourceId
+                          ? "project-source-focus"
+                          : undefined
+                      }
+                      ref={
+                        event.id === initialSourceId
+                          ? (element) =>
+                              element?.scrollIntoView({ block: "center" })
+                          : undefined
+                      }
+                    >
                       <span
                         className="project-history-dot"
                         aria-hidden="true"
@@ -515,7 +1337,12 @@ export function ProjectDetail({
           )}
         </section>
       ) : mode === "timeline" ? (
-        <Timeline project={project} items={items} onOpenItem={onOpenItem} />
+        <Timeline
+          project={project}
+          items={items}
+          sessions={sessions}
+          onOpenItem={onOpenItem}
+        />
       ) : mode === "board" ? (
         <div className="pboard" aria-label="Stages as columns">
           {[
@@ -734,25 +1561,6 @@ export function ProjectDetail({
             <Plus size={14} /> Add a stage
           </button>
         </div>
-      )}
-
-      <ProjectRecords
-        project={project}
-        items={items}
-        userId={userId}
-        canWrite={canWrite}
-        onOpenNote={onOpenNote}
-        report={report}
-      />
-
-      {!!onOpenNote && (
-        <ProjectNotes
-          projectId={project.id}
-          teamId={project.team_id}
-          canWrite={!busy}
-          report={report}
-          onOpen={onOpenNote}
-        />
       )}
     </div>
   );

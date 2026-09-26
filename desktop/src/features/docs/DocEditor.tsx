@@ -142,7 +142,9 @@ const fitTitle = (el: HTMLTextAreaElement | null) => {
 
 export function DocEditor({
   doc,
+  initialBlockId,
   onBack,
+  onOpenProject,
   onChanged,
   onDeleted,
   onItemsChanged,
@@ -152,8 +154,12 @@ export function DocEditor({
   report,
 }: {
   doc: Doc;
+  /** A source or citation line to bring into view after opening. */
+  initialBlockId?: string | null;
   /** Left out for the agenda, which has no list to go back to. */
   onBack?: () => void;
+  /** Opens the visible project this page is filed in. */
+  onOpenProject?: (id: string) => void;
   onChanged: (doc: Doc) => void;
   onDeleted: (id: string) => void;
   /** Called after checklist lines are turned into real tasks. */
@@ -743,6 +749,12 @@ export function DocEditor({
     setActiveComment(blockId);
   };
 
+  useEffect(() => {
+    if (!initialBlockId) return;
+    const frame = requestAnimationFrame(() => goToBlock(initialBlockId));
+    return () => cancelAnimationFrame(frame);
+  }, [doc.id, initialBlockId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /**
    * A proposal is a stretch of one named line, so there is no way to propose
    * a line added, taken away, moved, copied, or a box ticked. Every one of
@@ -1041,6 +1053,14 @@ export function DocEditor({
 
   return (
     <div className="doc-editor">
+      {doc.project_id && doc.project_name && onOpenProject && (
+        <button
+          className="text-button"
+          onClick={() => onOpenProject(doc.project_id!)}
+        >
+          In project: {doc.project_name}
+        </button>
+      )}
       <div className="doc-bar">
         {onBack && (
           <button className="text-button" onClick={onBack}>

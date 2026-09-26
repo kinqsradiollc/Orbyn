@@ -4,6 +4,7 @@ import {
   priorityScore,
   projectAtRisk,
   projectProgress,
+  type AssistantSource,
 } from "@orbyn/core";
 import { pool } from "../../../db/pool.js";
 import { VISIBLE_ITEMS } from "../../../lib/teams.js";
@@ -26,6 +27,8 @@ import {
 } from "../../planner/plans.js";
 import { planReality } from "../../followthrough/reality.js";
 import { PROJECT_COUNTS } from "../../projects/counts.js";
+import { projectPlanning } from "../../projects/planning.js";
+import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
 
@@ -173,6 +176,8 @@ type ProjectRow = {
   id: string;
   name: string;
   summary: string;
+  doc_id: string | null;
+  team_id: string | null;
   status: string;
   deadline: Date | null;
   team_name: string | null;
@@ -181,7 +186,8 @@ type ProjectRow = {
   updated_at: Date;
 };
 
-const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.status, p.deadline, p.updated_at,
+const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.doc_id, p.team_id,
+    p.status, p.deadline, p.updated_at,
     t.name AS team_name,
     ${PROJECT_COUNTS}
   FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
@@ -228,6 +234,12 @@ export async function listProjects(
  * that no task delivers yet.
  */
 export async function getProject(ctx: AgentContext, a: { project_id: string }) {
+  if (
+    ctx.scope?.kind === "project" &&
+    !ctx.allowOutsideScope &&
+    a.project_id !== ctx.scope.id
+  )
+    throw new Error("This conversation is scoped to a different project.");
   if (!isUuid(a.project_id))
     throw new Error("Use a project id from list_projects.");
   const project = (
@@ -237,7 +249,8 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     )
   ).rows[0];
   if (!project) throw new Error("No project with that id in this workspace.");
-  const [stages, tasks, notes, records] = await Promise.all([
+  const now = new Date();
+  const [stages, tasks, notes, records, plan, upcoming] = await Promise.all([
     pool.query<{ id: string; name: string }>(
       "SELECT id, name FROM project_stages WHERE project_id = $1 ORDER BY position",
       [a.project_id],
@@ -257,30 +270,73 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
         LIMIT 200`,
       [ctx.user.id, a.project_id],
     ),
-    pool.query<{ id: string; title: string; updated_at: Date }>(
-      `SELECT id, title, updated_at FROM docs WHERE project_id = $1
-        ORDER BY updated_at DESC LIMIT 20`,
-      [a.project_id],
+    pool.query<{
+      id: string;
+      title: string;
+      updated_at: Date;
+      lines: { id?: string; text?: string }[];
+    }>(
+      `SELECT d.id, d.title, d.updated_at,
+              coalesce((SELECT jsonb_agg(x.block ORDER BY x.pos)
+                FROM (SELECT b.block, b.pos FROM jsonb_array_elements(d.content)
+                  WITH ORDINALITY AS b(block, pos)
+                  WHERE nullif(btrim(b.block->>'text'), '') IS NOT NULL
+                  ORDER BY b.pos LIMIT 4) x), '[]'::jsonb) AS lines
+         FROM docs d
+        WHERE d.project_id = $2
+          AND ((d.team_id IS NULL AND d.user_id = $1)
+            OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+        ORDER BY (d.id = $3) DESC, d.updated_at DESC LIMIT 20`,
+      [ctx.user.id, a.project_id, project.doc_id],
     ),
     pool.query<{
+      id: string;
       kind: string;
       title: string;
       status: string;
       due_at: Date | null;
       linked_item_id: string | null;
     }>(
-      `SELECT kind, title, status, due_at, linked_item_id FROM work_records
-        WHERE project_id = $1 AND status IN ('proposed', 'open')
+      `SELECT id, kind, title, status, due_at, linked_item_id FROM work_records
+        WHERE project_id = $2 AND status IN ('proposed', 'open')
+          AND ((team_id IS NULL AND created_by = $1)
+            OR team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
         ORDER BY created_at DESC LIMIT 30`,
-      [a.project_id],
+      [ctx.user.id, a.project_id],
+    ),
+    projectPlanning(pool, ctx.user.id, project, false, now),
+    timeBlocks(
+      pool,
+      ctx.user.id,
+      now,
+      new Date(now.getTime() + 14 * 86_400_000),
     ),
   ]);
+  const ownSessions = await withSessionFacts(
+    pool,
+    ctx.user.id,
+    upcoming.filter((session) =>
+      tasks.rows.some((task) => task.id === session.item_id),
+    ),
+  );
+  const cite = (key: string, source: AssistantSource) => {
+    if (!ctx.cited) return null;
+    const number = ctx.cited.get(key)?.number ?? ctx.cited.size + 1;
+    ctx.cited.set(key, { ...source, number });
+    return `[${number}]`;
+  };
   const task = (t: (typeof tasks.rows)[number]) => ({
     id: t.id,
     title: clean(t.title, 200),
     status: t.status,
     priority: t.priority,
     when: whenLabel(t.due_at, t.end_at, ctx.timezone),
+    source_ref: cite(`task:${t.id}`, {
+      kind: "task",
+      id: t.id,
+      title: clean(t.title, 200),
+      quote: whenLabel(t.due_at, t.end_at, ctx.timezone) ?? "No deadline",
+    }),
   });
   const inStage = (id: string | null) =>
     tasks.rows.filter((t) => t.stage_id === id && !isClosed(t.status));
@@ -289,14 +345,46 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     summary: clean(project.summary, 600),
     stages: [
       ...stages.rows.map((s) => ({
+        id: s.id,
         name: clean(s.name, 80),
         open_tasks: inStage(s.id).map(task),
       })),
-      { name: "No stage", open_tasks: inStage(null).map(task) },
-    ].filter((s) => s.open_tasks.length),
+      { id: null, name: "No stage", open_tasks: inStage(null).map(task) },
+    ],
     finished_tasks: tasks.rows.filter((t) => isClosed(t.status)).length,
-    notes: notes.rows.map((d) => ({ id: d.id, title: clean(d.title, 120) })),
+    brief:
+      notes.rows
+        .find((d) => d.id === project.doc_id)
+        ?.lines.map((line) => clean(line.text, 200)) ?? [],
+    notes: notes.rows.map((d) => ({
+      id: d.id,
+      title: clean(d.title, 120),
+      first_lines: d.lines.slice(0, 2).map((line) => ({
+        block_id: line.id ?? null,
+        text: clean(line.text, 160),
+      })),
+    })),
+    your_plan: plan,
+    your_sessions: ownSessions.slice(0, 12).map((session) => ({
+      id: session.id,
+      task_id: session.item_id,
+      start_at: session.start_at,
+      end_at: session.end_at,
+      deadline_at: session.planning_deadline_at ?? null,
+      after_deadline: session.after_deadline ?? false,
+    })),
     open_records: records.rows.map((r) => ({
+      id: r.id,
+      source_ref:
+        r.kind === "decision"
+          ? cite(`decision:${r.id}`, {
+              kind: "decision",
+              id: r.id,
+              project_id: project.id,
+              title: clean(r.title, 200),
+              quote: r.status,
+            })
+          : null,
       kind: r.kind,
       title: clean(r.title, 200),
       status: r.status,

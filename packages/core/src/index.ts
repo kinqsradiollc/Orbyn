@@ -18,6 +18,7 @@ export * from "./quickcapture.js";
 export * from "./glance.js";
 export * from "./docs.js";
 export * from "./projects.js";
+export * from "./item-context.js";
 export * from "./agenda.js";
 export * from "./folders.js";
 export * from "./export.js";

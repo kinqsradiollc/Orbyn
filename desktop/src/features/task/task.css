@@ -157,6 +157,23 @@
 .drawer-section h3 svg {
   color: var(--color-muted);
 }
+.task-context-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.task-context-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin: 8px 0;
+}
+.task-context-link small {
+  flex-basis: 100%;
+  color: var(--color-muted);
+}
 .drawer-section-head {
   display: flex;
   align-items: center;

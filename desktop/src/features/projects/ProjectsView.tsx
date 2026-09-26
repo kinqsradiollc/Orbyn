@@ -6,6 +6,7 @@ import {
   hasTeamPermission,
   type Item,
   type Project,
+  type Plan,
   type Team,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -25,11 +26,17 @@ export function ProjectsView({
   items,
   teams = [],
   openTemplate = null,
+  initialProjectId = null,
+  initialSection = null,
+  initialSourceId = null,
+  onInitialProjectShown,
   onTemplateOpened,
   report,
   onRefresh,
   onOpenItem,
   onOpenNote,
+  onOpenPlan,
+  onAskProject,
   userId,
 }: {
   items: Item[];
@@ -37,16 +44,27 @@ export function ProjectsView({
   teams?: Team[];
   /** Open Templates on this one (from a "ready to start" notice). */
   openTemplate?: string | null;
+  /** Open this project directly from a task or page. */
+  initialProjectId?: string | null;
+  initialSection?: "decisions" | "history" | null;
+  initialSourceId?: string | null;
+  onInitialProjectShown?: () => void;
   onTemplateOpened?: () => void;
   report: (e: unknown) => void;
   onRefresh: () => void;
   onOpenItem: (item: Item) => void;
   /** Opens one of a project's notes in the documents view. */
-  onOpenNote?: (docId: string) => void;
+  onOpenNote?: (docId: string, blockId?: string | null) => void;
+  onOpenPlan: (plan: Plan) => void;
+  onAskProject?: (project: Project, question?: string) => void;
   userId: string;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
+  const [openSection, setOpenSection] = useState<
+    "home" | "decisions" | "history"
+  >("home");
+  const [openSourceId, setOpenSourceId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState(!!openTemplate);
@@ -66,11 +84,22 @@ export function ProjectsView({
   useEffect(() => {
     void load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!initialProjectId) return;
+    void client.getProject(initialProjectId).then((project) => {
+      setOpenSection(initialSection ?? "home");
+      setOpenSourceId(initialSourceId);
+      setOpen(project);
+      onInitialProjectShown?.();
+    }, report);
+  }, [initialProjectId, initialSection, initialSourceId, report]);
 
   if (open)
     return (
       <ProjectDetail
         project={open}
+        initialSection={openSection}
+        initialSourceId={openSourceId}
         userId={userId}
         canWrite={
           !open.team_id ||
@@ -83,6 +112,8 @@ export function ProjectsView({
         report={report}
         onOpenItem={onOpenItem}
         onOpenNote={onOpenNote}
+        onOpenPlan={onOpenPlan}
+        onAskProject={onAskProject}
         onBack={() => {
           setOpen(null);
           void load();
@@ -140,6 +171,8 @@ export function ProjectsView({
             onRefresh();
             if (project) {
               setCreating(false);
+              setOpenSection("home");
+              setOpenSourceId(null);
               setOpen(project);
             }
           }}

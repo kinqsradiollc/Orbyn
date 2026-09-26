@@ -6,6 +6,7 @@ import {
   freshItem,
   addDays,
   allDayRange,
+  deadlineOf,
   fromDateTimeLocal,
   hasTeamPermission,
   localDateKey,
@@ -18,6 +19,7 @@ import {
   type ItemInput,
   type Kind,
   type Priority,
+  type Project,
   type Status,
   type Team,
   type TeamMember,
@@ -148,6 +150,43 @@ export function ItemEditor({
       ? localDateKey(new Date(Date.parse(endIso) - 1), zone)
       : "",
   );
+  const [project, setProject] = useState<Project | null>(null);
+  const projectId = base.project_id ?? null;
+  useEffect(() => {
+    if (!projectId) {
+      setProject(null);
+      return;
+    }
+    let alive = true;
+    void client.getProject(projectId).then(
+      (value) => alive && setProject(value),
+      () => alive && setProject(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  const allDayDates =
+    allDay && startDay
+      ? allDayRange(
+          startDay,
+          endDay && endDay >= startDay ? endDay : startDay,
+          zone,
+        )
+      : null;
+  const candidateDeadline =
+    kind === "task"
+      ? deadlineOf({
+          due_at: allDayDates?.due_at ?? fromDateTimeLocal(dueValue || null),
+          end_at: allDayDates?.end_at ?? fromDateTimeLocal(endValue || null),
+          all_day: allDay,
+          timezone: zone,
+        })
+      : null;
+  const afterProject =
+    !!project?.deadline &&
+    !!candidateDeadline &&
+    Date.parse(candidateDeadline) > Date.parse(project.deadline);
 
   const [busyTime, setBusyTime] = useState(base.busy ?? true);
   const [color, setColor] = useState<string | null>(base.color ?? null);
@@ -606,6 +645,23 @@ export function ItemEditor({
                     />
                   )}
                 </>
+              )}
+              {afterProject && project?.deadline && (
+                <p className="field-hint" role="status">
+                  This task is due after {project.name}'s deadline (
+                  {new Date(project.deadline).toLocaleString()}).{" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setAllDay(false);
+                      setDueValue(toDateTimeLocal(project.deadline));
+                      setEndValue("");
+                    }}
+                  >
+                    Use project deadline
+                  </button>
+                </p>
               )}
               <label>
                 Estimate

@@ -140,6 +140,7 @@ export async function nearest(
   userId: string,
   query: string,
   limit = 10,
+  projectId?: string,
 ): Promise<NearHit[]> {
   try {
     if (!(await semanticOn())) return [];
@@ -155,9 +156,10 @@ export async function nearest(
           WHERE ((d.team_id IS NULL AND d.user_id = $1)
                  OR d.team_id IN (SELECT team_id FROM team_members
                                    WHERE user_id = $1))
+            AND ($4::uuid IS NULL OR d.project_id = $4)
           ORDER BY e.embedding <=> $2::vector
           LIMIT $3`,
-        [userId, asVector(vector), limit],
+        [userId, asVector(vector), limit, projectId ?? null],
       )
     ).rows;
   } catch {

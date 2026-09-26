@@ -162,7 +162,7 @@ test("a change is one plan, checked item by item and repaired once", async () =>
   );
   const r = await chat(
     me.token,
-    "Move buy groceries to Thursday 5pm and add a standup event",
+    "Move the buy groceries deadline to Thursday 5pm and add a standup event",
   );
   assert.equal(r.statusCode, 200, r.body);
   assert.equal(requests.length, 2);
@@ -228,7 +228,10 @@ test("the model sees short item ids, mapped back on the server", async () => {
       },
     ]),
   );
-  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  const r = await chat(
+    me.token,
+    "Move the buy groceries deadline to Thursday 5pm",
+  );
   assert.equal(r.statusCode, 200, r.body);
   const sent = requests[0].body.messages.at(-1)!.content;
   assert.match(sent, /"id":"i1","title":"Buy groceries"/);
@@ -314,7 +317,10 @@ test("an update whose title names another shown item goes to that item", async (
       },
     ]),
   );
-  const r = await chat(me.token, "Move buy groceries to Thursday 5pm");
+  const r = await chat(
+    me.token,
+    "Move the buy groceries deadline to Thursday 5pm",
+  );
   assert.equal(r.statusCode, 200, r.body);
   assert.deepEqual(
     r.json().actions.map((a: { item_id: string }) => a.item_id),

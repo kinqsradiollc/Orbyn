@@ -7,6 +7,7 @@ import {
   type FrameOccurrence,
   type Item,
   type TaskList,
+  type TimeBlock,
 } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
 import { isAllDay, itemsForDay, timeLabel } from "./dates";
@@ -25,6 +26,8 @@ type Props = {
   onOpen: (item: Item, anchor?: DOMRect) => void;
   /** Frames on these days, shown as small marks beside the date. */
   frames?: FrameOccurrence[];
+  /** Saved work sessions; counted separately from deadlines and events. */
+  blocks?: TimeBlock[];
 };
 
 /** Colors and markers for an item in any calendar view. */
@@ -79,6 +82,7 @@ export function MonthView({
   onOpenDay,
   onOpen,
   frames = [],
+  blocks = [],
 }: Props) {
   const { listById } = usePlanning();
   const today = new Date();
@@ -100,6 +104,9 @@ export function MonthView({
               const dayFrames = frames.filter((f) =>
                 sameDay(new Date(f.start_at), d),
               );
+              const sessions = blocks.filter((b) =>
+                sameDay(new Date(b.start_at), d),
+              ).length;
               return (
                 <button
                   key={d.toISOString()}
@@ -111,7 +118,7 @@ export function MonthView({
                     day: "numeric",
                   })}${sameDay(d, today) ? ", today" : ""}, ${dayItems.length} ${
                     dayItems.length === 1 ? "item" : "items"
-                  }${
+                  }, ${sessions} ${sessions === 1 ? "session" : "sessions"}${
                     dayFrames.length
                       ? ", frames: " + dayFrames.map((f) => f.name).join(", ")
                       : ""
@@ -126,6 +133,11 @@ export function MonthView({
                   onClick={() => onSelect(d)}
                 >
                   <span className="month-date">{d.getDate()}</span>
+                  {sessions > 0 && (
+                    <span className="month-session-count" aria-hidden="true">
+                      {sessions} {sessions === 1 ? "session" : "sessions"}
+                    </span>
+                  )}
                   {dayFrames.length > 0 && (
                     <span className="month-frames" aria-hidden="true">
                       {dayFrames.slice(0, 3).map((f) => (

@@ -1,5 +1,6 @@
 import type { ProjectDecomposition } from "./projectDraft.js";
-import type { DocSource, DraftNote } from "./docs.js";
+import type { AssistantSource, DraftNote } from "./docs.js";
+import type { SessionChange } from "./schemas.js";
 import type { DeadlineFit } from "./fit.js";
 
 import type { z } from "zod";
@@ -335,6 +336,8 @@ export type Notice = {
     | "rollforward"
     | "at_risk"
     | "deadline"
+    /** Your part of a project needs planning (`ref` = project id:local day). */
+    | "project"
     /** Someone you invited answered (`item_id` = the event, `ref` = the attendee). */
     | "rsvp"
     /** A template with a rhythm is ready to start (`ref` = the template). */
@@ -363,11 +366,19 @@ export type Proposal = AgentReply & {
    */
   follow_ups?: string[];
   /** Pages the assistant read while answering, so an answer can be checked. */
-  sources?: DocSource[];
+  sources?: AssistantSource[];
   /** Notes it has drafted, which become pages only when someone keeps them. */
   notes?: DraftNote[];
   /** A schedule the assistant planned; the apps show it to review and apply. */
   plan?: Plan | null;
+  /** One session move or removal awaiting the same approval as item changes. */
+  session_change?: SessionChange | null;
+  /** A reviewed create action that will deliver an open project decision. */
+  decision_links?: {
+    action_index: number;
+    decision_id: string;
+    decision_title: string;
+  }[];
 };
 
 /** A status page component's current condition. */
@@ -638,6 +649,8 @@ export type TimeBlock = {
   due_all_day?: boolean;
   /** The moment it's due by (see `deadlineOf`); null without a date. */
   deadline_at?: string | null;
+  /** Earlier task or project target used for planning, without editing the task. */
+  planning_deadline_at?: string | null;
   /** The task's project, if it's in one. */
   project_id?: string | null;
   /**
@@ -656,6 +669,8 @@ export type TimeBlock = {
  */
 export type ItemSessions = {
   item_id: string;
+  /** Whether the task still belongs to this person; their old sessions remain removable. */
+  assigned_to_me: boolean;
   /** When the task is due (the current occurrence of a repeating one). */
   due_at: string | null;
   due_all_day: boolean;
@@ -666,6 +681,10 @@ export type ItemSessions = {
    * task's own deadline.
    */
   project_deadline: string | null;
+  /** Earliest deadline of an open task that depends on this one, directly or through a chain. */
+  dependent_deadline?: string | null;
+  /** The earlier target used by planning, without changing the task's due date. */
+  planning_deadline_at?: string | null;
   /**
    * Your sessions for it, oldest first. For a repeating task, those for the
    * current occurrence and later ones.
@@ -1145,6 +1164,8 @@ export type PlanTask = {
 
 /** The options a plan was made with, resolved from the request and preferences. */
 export type PlanOptions = {
+  /** Present for a project plan; refresh must keep its ownership filter. */
+  project_id?: string;
   start_date: string;
   days: number;
   pad_percent: number;

@@ -494,14 +494,21 @@ async function ocrNext(): Promise<boolean> {
 
 // ------------------------------------------------------------ finishing ---
 
-/** Put the pages together as a page in Uploads, then delete the file. */
+/** Put the pages together in their chosen project or Uploads, then delete the file. */
 async function finish(importId: string) {
   // Only one lane finishes an import, and never a cancelled one.
   const row = (
-    await pool.query<ImportRow & { notes: string[] }>(
+    await pool.query<
+      ImportRow & {
+        notes: string[];
+        project_id: string | null;
+        project_team_id: string | null;
+      }
+    >(
       `UPDATE imports SET finished_at = now()
         WHERE id = $1 AND status IN ('reading','ocr') AND finished_at IS NULL
-        RETURNING id, user_id, file_name, file_type, object_id, attempts, notes`,
+        RETURNING id, user_id, file_name, file_type, object_id, attempts,
+          notes, project_id, project_team_id`,
       [importId],
     )
   ).rows[0];
@@ -538,12 +545,35 @@ async function finish(importId: string) {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [
         row.user_id,
       ]);
+      const project = row.project_id
+        ? (
+            await db.query<{ name: string; team_id: string | null }>(
+              `SELECT p.name, p.team_id FROM projects p
+                WHERE p.id = $1
+                  AND p.team_id IS NOT DISTINCT FROM $2::uuid
+                  AND ((p.team_id IS NULL AND p.user_id = $3)
+                    OR EXISTS (SELECT 1 FROM team_members m
+                      WHERE m.team_id = p.team_id AND m.user_id = $3
+                        AND m.role IN ('owner', 'admin', 'member')))
+                FOR SHARE`,
+              [row.project_id, row.project_team_id, row.user_id],
+            )
+          ).rows[0]
+        : null;
+      if (row.project_id && !project)
+        throw new ImportFailure(
+          "This project or your access to it changed while the file was being read. Nothing was shared. Import it again after checking the project.",
+        );
       const docId = (
         await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, title, kind, content, imported_from, in_uploads)
-           VALUES ($1, $2, 'doc', $3::jsonb, $4::jsonb, true) RETURNING id`,
+          `INSERT INTO docs (user_id, team_id, project_id, title, kind, content,
+             imported_from, in_uploads)
+           VALUES ($1, $2, $3, $4, 'doc', $5::jsonb, $6::jsonb, $7)
+           RETURNING id`,
           [
             row.user_id,
+            project?.team_id ?? null,
+            row.project_id,
             title,
             JSON.stringify(content),
             JSON.stringify({
@@ -553,9 +583,18 @@ async function finish(importId: string) {
               ocr_pages: pages.filter((p) => p.needs_ocr).length,
               imported_at: new Date().toISOString(),
             }),
+            !row.project_id,
           ],
         )
       ).rows[0].id;
+      if (row.project_id) {
+        await db.query(
+          `UPDATE project_activity SET summary = 'File added: ' || $2
+            WHERE project_id = $1 AND entity_id = $3
+              AND kind = 'note_added'`,
+          [row.project_id, title, docId],
+        );
+      }
       await db.query(
         `UPDATE imports SET status = 'ready', doc_id = $2, notes = $3::jsonb,
                 engines = (SELECT coalesce(array_agg(DISTINCT engine), '{}')
@@ -572,8 +611,10 @@ async function finish(importId: string) {
          ON CONFLICT DO NOTHING`,
         [
           row.user_id,
-          `“${title}” is ready in Uploads`,
-          `Imported from ${row.file_name}. Move it to a folder when you're ready.`,
+          `“${title}” is ready in ${project?.name ?? "Uploads"}`,
+          project
+            ? `Imported from ${row.file_name} into ${project.name}.`
+            : `Imported from ${row.file_name}. Move it to a folder when you're ready.`,
           `doc:${docId}`,
         ],
       );
@@ -582,7 +623,12 @@ async function finish(importId: string) {
     log("finish failed", { import: row.id, error: (error as Error).message });
     await pool.query(
       `UPDATE imports SET status = 'failed', error = $2 WHERE id = $1`,
-      [row.id, "This file couldn't be turned into a page. Please try again."],
+      [
+        row.id,
+        error instanceof ImportFailure
+          ? error.message
+          : "This file couldn't be turned into a page. Please try again.",
+      ],
     );
   }
   if (cached?.id === row.id) cached = null;

@@ -206,6 +206,7 @@ export function CalendarGrid({
     copy: boolean;
   } | null>(null);
   const dragRef = useRef(drag);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const setDrag = (next: typeof drag) => {
     dragRef.current = next;
     setDragState(next);
@@ -395,7 +396,7 @@ export function CalendarGrid({
   const copied = drag?.copy ? blocks.find((b) => b.id === drag.id) : undefined;
   const spans: Span<Cell>[] = [
     ...entries
-      .filter((e) => !isAllDayEntry(e))
+      .filter((e) => !isAllDayEntry(e) && (e.kind !== "task" || !!e.end_at))
       .map((entry) => {
         const key = "e:" + entryKey(entry);
         const m = moving?.id === key ? moving : null;
@@ -451,7 +452,10 @@ export function CalendarGrid({
   const ghostById = new Map(ghosts.map((g) => [ghostId(g), g]));
 
   return (
-    <div className="timegrid" style={style}>
+    <div
+      className={"timegrid" + (selectedTaskId ? " has-selection" : "")}
+      style={style}
+    >
       <div className="tg-head">
         <span className="tg-corner tg-zone-heads">
           {zones.length > 0 &&
@@ -513,14 +517,19 @@ export function CalendarGrid({
                 return (
                   <button
                     key={entryKey(e)}
-                    className={entryClass(e) + look.className}
+                    className={
+                      entryClass(e) +
+                      look.className +
+                      (selectedTaskId === e.item_id ? " is-related" : "")
+                    }
                     style={look.style}
                     title={e.title}
                     aria-label={`${e.title} (${e.kind === "event" ? "Event" : statusLabels[e.status]}, all day)`}
                     aria-haspopup="dialog"
-                    onClick={(ev) =>
-                      onEntry(e, ev.currentTarget.getBoundingClientRect())
-                    }
+                    onClick={(ev) => {
+                      if (e.kind === "task") setSelectedTaskId(e.item_id);
+                      onEntry(e, ev.currentTarget.getBoundingClientRect());
+                    }}
                   >
                     {e.kind === "task" && (
                       <i className="dot" aria-hidden="true" />
@@ -585,8 +594,10 @@ export function CalendarGrid({
                     return;
                   }
                   // Only empty space: entries and blocks open their menus.
-                  if (e.target === e.currentTarget)
+                  if (e.target === e.currentTarget) {
+                    setSelectedTaskId(null);
                     onSelectSlot(at(d, minutesAt(e.clientY, n)));
+                  }
                 }}
               >
                 {frames.map((f) => {
@@ -636,6 +647,63 @@ export function CalendarGrid({
                     </div>
                   );
                 })}
+                {entries
+                  .filter(
+                    (e) =>
+                      e.kind === "task" &&
+                      !e.end_at &&
+                      !isAllDayEntry(e) &&
+                      sameDay(new Date(e.start_at), d),
+                  )
+                  .map((e) => {
+                    const key = "e:" + entryKey(e);
+                    const shown =
+                      moving?.id === key ? moving.start : new Date(e.start_at);
+                    const minutes = shown.getHours() * 60 + shown.getMinutes();
+                    const draggable = canDragEntry(e);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className={
+                          "tg-deadline-marker" +
+                          (selectedTaskId === e.item_id ? " is-selected" : "")
+                        }
+                        style={{ top: minutes * PX_PER_MIN }}
+                        aria-label={`${e.title} deadline, ${timeLabel(shown)}`}
+                        aria-pressed={selectedTaskId === e.item_id}
+                        aria-haspopup="dialog"
+                        onPointerDown={
+                          draggable
+                            ? (ev) =>
+                                begin(
+                                  ev,
+                                  { kind: "entry", entry: e },
+                                  key,
+                                  "move",
+                                  n,
+                                )
+                            : undefined
+                        }
+                        onPointerMove={draggable ? move : undefined}
+                        onPointerUp={draggable ? finish : undefined}
+                        onPointerCancel={draggable ? cancel : undefined}
+                        onClick={(ev) => {
+                          if (suppressClick.current) {
+                            suppressClick.current = false;
+                            return;
+                          }
+                          setSelectedTaskId(e.item_id);
+                          onEntry(e, ev.currentTarget.getBoundingClientRect());
+                        }}
+                      >
+                        <span className="tg-deadline-line" aria-hidden="true" />
+                        <span className="tg-deadline-label">
+                          {e.title} · due {timeLabel(shown)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 {layoutSpans(spans, d, 0, 24).map((p) => {
                   const short = p.height * PX_PER_MIN < 38;
                   const place = {
@@ -824,7 +892,11 @@ export function CalendarGrid({
                     return (
                       <div
                         key={p.key}
-                        className={"tg-slot" + (dragging ? " is-dragging" : "")}
+                        className={
+                          "tg-slot" +
+                          (dragging ? " is-dragging" : "") +
+                          (selectedTaskId === b.item_id ? " is-related" : "")
+                        }
                         style={place}
                       >
                         <button
@@ -835,6 +907,7 @@ export function CalendarGrid({
                             (late ? " is-late" : "")
                           }
                           aria-label={`Session for ${b.title}, ${spanLabel(b.start_at, b.end_at)}${line ? `, ${line}` : ""}`}
+                          aria-pressed={selectedTaskId === b.item_id}
                           aria-haspopup="dialog"
                           onPointerDown={(ev) =>
                             begin(
@@ -853,6 +926,7 @@ export function CalendarGrid({
                               suppressClick.current = false;
                               return;
                             }
+                            setSelectedTaskId(b.item_id);
                             onBlock(
                               b,
                               ev.currentTarget.getBoundingClientRect(),

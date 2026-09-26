@@ -17,6 +17,15 @@ export type ProjectStage = {
   position: number;
 };
 
+/** A web resource pinned to a project Home. */
+export type ProjectLink = {
+  id: string;
+  project_id: string;
+  url: string;
+  title: string;
+  created_at: string;
+};
+
 export type Project = {
   id: string;
   user_id: string;
@@ -33,6 +42,30 @@ export type Project = {
   /** Tasks in the project, and how many are finished. */
   task_count: number;
   done_count: number;
+};
+
+/** Your open work in a project, measured against each task's planning target. */
+export type ProjectPlanning = {
+  project_id: string;
+  deadline: string | null;
+  task_count: number;
+  needed_minutes: number;
+  planned_minutes: number;
+  unplanned_minutes: number;
+  late_session_count: number;
+  /** Last counted session when every estimated minute has been covered. */
+  planned_finish_at: string | null;
+  unestimated_tasks: { id: string; title: string }[];
+  /** Shown only to a team owner or admin, without names or session times. */
+  team_planned_minutes?: number;
+};
+
+/** One of the viewer's actual scheduled sessions in a project. */
+export type ProjectSession = {
+  id: string;
+  item_id: string;
+  start_at: string;
+  end_at: string;
 };
 
 /** A compact record of a meaningful change to a project's work. */
@@ -201,10 +234,11 @@ export function projectTimeline(
     stage_id?: string | null;
   }[],
   now = new Date(),
+  sessions: ProjectSession[] = [],
 ): Timeline | null {
   const stageName = new Map(project.stages.map((s) => [s.id, s.name]));
   const dated = tasks.filter((t) => t.due_at);
-  if (!dated.length) return null;
+  if (!dated.length && !sessions.length) return null;
 
   const spans = dated.map((t) => {
     const to = Date.parse(deadlineOf({ ...t, due_at: t.due_at })!);
@@ -213,8 +247,14 @@ export function projectTimeline(
     return { task: t, from, to };
   });
 
-  let start = Math.min(...spans.map((s) => s.from));
-  let end = Math.max(...spans.map((s) => s.to));
+  let start = Math.min(
+    ...spans.map((s) => s.from),
+    ...sessions.map((s) => Date.parse(s.start_at)),
+  );
+  let end = Math.max(
+    ...spans.map((s) => s.to),
+    ...sessions.map((s) => Date.parse(s.end_at)),
+  );
   if (project.deadline)
     end = Math.max(end, new Date(project.deadline).getTime());
   // A range needs width, even when everything falls on one moment.
@@ -254,4 +294,33 @@ export function projectTimeline(
         };
       }),
   };
+}
+
+/** Exact positions of saved sessions on a project's time axis. */
+export function projectSessionTicks(
+  line: Timeline,
+  sessions: ProjectSession[],
+) {
+  const start = Date.parse(line.start);
+  const span = Date.parse(line.end) - start;
+  return sessions
+    .filter(
+      (session) =>
+        Date.parse(session.end_at) > start &&
+        Date.parse(session.start_at) < start + span,
+    )
+    .map((session) => {
+      const left = clampPercent(
+        ((Date.parse(session.start_at) - start) / span) * 100,
+      );
+      return {
+        ...session,
+        left,
+        width: Math.max(
+          1.5,
+          clampPercent(((Date.parse(session.end_at) - start) / span) * 100) -
+            left,
+        ),
+      };
+    });
 }

@@ -704,6 +704,62 @@
   z-index: 4;
   opacity: 0.85;
 }
+.tg-deadline-marker {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: grab;
+  text-align: left;
+}
+.tg-deadline-marker:active {
+  cursor: grabbing;
+}
+.tg-deadline-line {
+  flex: 1 1 12px;
+  min-width: 8px;
+  height: 2px;
+  background: currentColor;
+}
+.tg-deadline-label {
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  font-weight: 600;
+}
+.tg-deadline-marker.is-selected,
+.tg-deadline-marker:focus-visible {
+  z-index: 5;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-xs);
+  background: var(--color-accentSoft);
+}
+.tg-slot.is-related {
+  z-index: 2;
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-xs);
+}
+.timegrid.has-selection .tg-slot:not(.is-related),
+.timegrid.has-selection .tg-deadline-marker:not(.is-selected),
+.timegrid.has-selection .tg-allday .cal-entry:not(.is-related) {
+  opacity: 0.48;
+}
+.timegrid.has-selection .tg-allday .cal-entry.is-related {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
 .tg-join {
   position: absolute;
   top: 3px;
@@ -1260,6 +1316,18 @@
   height: 4px;
   border-radius: 2px;
   opacity: 0.75;
+}
+.month-session-count {
+  position: absolute;
+  top: 11px;
+  left: 38px;
+  max-width: calc(100% - 76px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-textSoft);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 /* Tuning a plan: planned blocks can be dragged (pinned) and removed. */

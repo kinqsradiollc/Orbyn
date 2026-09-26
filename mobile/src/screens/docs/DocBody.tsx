@@ -27,6 +27,8 @@ export function DocBody({
   renderUnder,
   onOpenComments,
   onEditBlock,
+  targetBlockId,
+  onTargetLayout,
 }: {
   content: DocBlock[];
   /** The checklist lines tied to a task, by id; only these say "task". */
@@ -58,6 +60,9 @@ export function DocBody({
   renderUnder?: (blockId: string) => React.ReactNode;
   onOpenComments?: (blockId: string) => void;
   onEditBlock?: (index: number) => void;
+  /** A line opened from a task or citation. */
+  targetBlockId?: string | null;
+  onTargetLayout?: (y: number) => void;
 }) {
   /**
    * Wrap a line so tapping it opens it, and hang its remarks underneath —
@@ -72,11 +77,21 @@ export function DocBody({
    */
   const decorate = (index: number, body: React.ReactNode) => {
     const id = content[index].id;
+    const targetLayout =
+      id === targetBlockId
+        ? (event: { nativeEvent: { layout: { y: number } } }) =>
+            onTargetLayout?.(event.nativeEvent.layout.y)
+        : undefined;
     const count = (id && counts?.[id]) || 0;
     const under = id ? renderUnder?.(id) : null;
-    if (!count && !under) return <View key={index}>{body}</View>;
+    if (!count && !under)
+      return (
+        <View key={index} onLayout={targetLayout}>
+          {body}
+        </View>
+      );
     return (
-      <View key={index} style={styles.commented}>
+      <View key={index} style={styles.commented} onLayout={targetLayout}>
         <View style={styles.commentedRow}>
           <View style={styles.commentedBody}>{body}</View>
           {count > 0 && (

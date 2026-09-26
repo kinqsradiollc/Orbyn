@@ -1,6 +1,7 @@
 import {
   deadlineFit,
   deadlineOf,
+  planningDeadline,
   endsAfterDeadline,
   isClosed,
   remainingOf,
@@ -18,6 +19,7 @@ import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { busyIntervals, loadPrefs } from "./calendar.js";
 import { FREE_LOOKAHEAD_DAYS, freeSpans, workingSpans } from "./free.js";
 import { CHILD_COLUMNS } from "./plans.js";
+import { dependentTargets } from "./targets.js";
 
 /**
  * The planned feed: your planned time, task by task, with each task's one
@@ -36,6 +38,8 @@ export type FitRow = SeriesSource & {
   kind: Kind;
   status: Status;
   estimate_minutes: number | null;
+  project_deadline: Date | null;
+  dependent_deadline?: string | null;
   spent_minutes: number;
   open_children: number;
   children_remaining: number;
@@ -48,6 +52,7 @@ export type FitRow = SeriesSource & {
 /** The columns for a `FitRow`, on alias `i`, with the user as `$1`. */
 export const FIT_COLUMNS = `i.id, i.title, i.kind, i.status, i.due_at, i.end_at, i.all_day,
   i.timezone, i.rrule, i.series_start, i.exdates, i.estimate_minutes, i.spent_minutes,
+  (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline,
   (CASE WHEN i.team_id IS NULL THEN i.user_id = $1 ELSE i.assignee_id = $1 END) AS mine,
   EXISTS (SELECT 1 FROM time_blocks x WHERE x.item_id = i.id AND x.user_id = $1) AS has_sessions,
   ${CHILD_COLUMNS}`;
@@ -116,13 +121,20 @@ export async function fitsFor(
   now = new Date(),
 ): Promise<Map<string, TaskFit>> {
   const out = new Map<string, TaskFit>();
+  const dependent = await dependentTargets(
+    db,
+    userId,
+    rows.map((row) => row.id),
+  );
   const short: { id: string; input: Parameters<typeof deadlineFit>[0] }[] = [];
   const horizon = now.getTime() + FREE_LOOKAHEAD_DAYS * 86_400_000;
   for (const r of rows) {
+    r.dependent_deadline = dependent.get(r.id) ?? null;
     const ahead = (sessions.get(r.id) ?? []).filter(
       (s) => Date.parse(s.end_at) > now.getTime(),
     );
-    const split = splitSessions(r, ahead, now);
+    const latest = planningDeadline(r.project_deadline, r.dependent_deadline);
+    const split = splitSessions(r, ahead, now, latest);
     const told =
       r.kind === "task" && !isClosed(r.status) && (r.mine || r.has_sessions);
     if (!told) {
@@ -133,7 +145,7 @@ export async function fitsFor(
       });
       continue;
     }
-    const deadline = deadlineOf(r);
+    const deadline = planningDeadline(deadlineOf(r), latest);
     const input = {
       deadline_at: deadline,
       needed_minutes: remainingOf(r),
@@ -243,7 +255,10 @@ export async function plannedFeed(
               end_at: s.end_at,
               after_deadline: endsAfterDeadline(
                 s.end_at,
-                dueFor(s.end_at)?.deadline_at,
+                planningDeadline(
+                  dueFor(s.end_at)?.deadline_at,
+                  planningDeadline(r.project_deadline, r.dependent_deadline),
+                ),
               ),
             }))
         : [],

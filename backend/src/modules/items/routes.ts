@@ -17,6 +17,9 @@ import {
   stepUpdate,
   timeLogInput,
   type ItemDetail,
+  type ItemContext,
+  type DocBlock,
+  quoteOf,
   type ItemSort,
   type ItemSyncPage,
   type OccurrenceChanges,
@@ -431,6 +434,84 @@ export async function itemRoutes(app: FastifyInstance) {
     if (!item) fail(404, "Item not found");
     await requireItemAccess(u, item, "items:read");
     return itemDetail(id, (text, values) => db.query(text, values));
+  });
+
+  /** The task's project and readable source pages, including its source line. */
+  app.get("/items/:id/context", async (r): Promise<ItemContext> => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const item = (
+      await db.query<ItemRow>("SELECT * FROM items WHERE id = $1", [id])
+    ).rows[0];
+    if (!item) fail(404, "Item not found");
+    await requireItemAccess(u, item, "items:read");
+    const project = item.project_id
+      ? ((
+          await db.query<NonNullable<ItemContext["project"]>>(
+            `SELECT p.id, p.name, p.team_id, p.status, p.deadline,
+                    s.id AS stage_id, s.name AS stage_name
+               FROM projects p LEFT JOIN project_stages s
+                 ON s.id = $2 AND s.project_id = p.id
+              WHERE p.id = $1 AND ((p.team_id IS NULL AND p.user_id = $3)
+                OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $3))`,
+            [item.project_id, item.stage_id, u.id],
+          )
+        ).rows[0] ?? null)
+      : null;
+    const docs = (
+      await db.query<{
+        id: string;
+        title: string;
+        kind: ItemContext["pages"][number]["kind"];
+        team_id: string | null;
+        updated_at: Date;
+        content: DocBlock[];
+        block_id: string | null;
+      }>(
+        `SELECT d.id, d.title, d.kind, d.team_id, d.updated_at, d.content,
+                l.block_id
+           FROM docs d LEFT JOIN LATERAL (
+             SELECT block_id, created_at FROM doc_task_links
+              WHERE doc_id = d.id AND item_id = $1
+              ORDER BY created_at, block_id LIMIT 1
+           ) l ON true
+          WHERE (d.item_id = $1 OR l.block_id IS NOT NULL)
+            AND ((d.team_id IS NULL AND d.user_id = $2)
+              OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+          ORDER BY (l.block_id IS NOT NULL) DESC,
+                   l.created_at ASC NULLS LAST, d.updated_at DESC, d.id
+          LIMIT 101`,
+        [id, u.id],
+      )
+    ).rows;
+    const source = docs.find((d) => d.block_id);
+    const block = source?.content.find((b) => b.id === source.block_id);
+    return {
+      project,
+      came_from: source
+        ? {
+            doc_id: source.id,
+            title: source.title,
+            kind: source.kind,
+            block_id: source.block_id!,
+            quote: quoteOf(block),
+            todo: block?.type === "todo",
+            done: block?.type === "todo" ? block.done : false,
+          }
+        : null,
+      pages: docs
+        .filter((d) => d.id !== source?.id)
+        .slice(0, 100)
+        .map((d) => ({
+          id: d.id,
+          title: d.title,
+          kind: d.kind,
+          team_id: d.team_id,
+          updated_at: d.updated_at.toISOString(),
+          block_id: d.block_id,
+        })),
+    };
   });
 
   // A device may name the item itself (made offline): sending it again is

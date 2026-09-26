@@ -22,6 +22,7 @@ import {
 } from "../modules/planner/plans.js";
 import { queueWebhooks } from "../lib/webhooks.js";
 import { emailEnabled } from "./channels/email.js";
+import { projectPlanning } from "../modules/projects/planning.js";
 
 /**
  * Move repeating events whose current occurrence has ended on to the next
@@ -71,7 +72,7 @@ export async function advanceRepeating(now = new Date()) {
 }
 
 export type PlannerNoticeKind =
-  "conflict" | "rollforward" | "at_risk" | "deadline" | "calendar";
+  "conflict" | "rollforward" | "at_risk" | "deadline" | "calendar" | "project";
 
 /**
  * One planner notice: in the app always, and on push and email as the
@@ -382,6 +383,223 @@ export async function scanPlanningNotices(
                 : `"${t.title}" is due ${words}, and no session is planned for it yet. Plan it?`,
         },
         email,
+      );
+    }
+  }
+}
+
+/** One project notice per person and local day while their work is still
+ * unplanned within seven days of the project's latest finish time. */
+export async function scanProjectPlanningNotices(
+  now = new Date(),
+  only?: string[],
+  pageSize = 500,
+) {
+  const horizon = new Date(now.getTime() + 7 * 86_400_000);
+  const email = await emailEnabled();
+  const candidates = `
+    SELECT DISTINCT CASE WHEN i.team_id IS NULL THEN i.user_id ELSE i.assignee_id END AS user_id
+      FROM items i JOIN projects p ON p.id = i.project_id
+      JOIN users u ON u.id = CASE WHEN i.team_id IS NULL THEN i.user_id ELSE i.assignee_id END
+     WHERE p.status = 'active' AND p.deadline > $1 AND p.deadline <= $2
+       AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
+       AND NOT u.disabled
+       AND (i.team_id IS NULL OR EXISTS (
+         SELECT 1 FROM team_members m WHERE m.team_id = i.team_id AND m.user_id = i.assignee_id))
+       AND ($3::uuid[] IS NULL OR u.id = ANY($3::uuid[]))
+       AND ($4::uuid IS NULL OR u.id > $4::uuid)
+     ORDER BY user_id LIMIT $5`;
+  for await (const userId of pagedUsers(
+    candidates,
+    [now, horizon, only ?? null],
+    pageSize,
+  )) {
+    const prefs = await loadPrefs(pool, userId);
+    const today = localDateKey(now, prefs.timezone);
+    const projects = (
+      await pool.query<{
+        id: string;
+        name: string;
+        deadline: Date;
+        team_id: string | null;
+      }>(
+        `SELECT DISTINCT p.id, p.name, p.deadline, p.team_id
+           FROM projects p JOIN items i ON i.project_id = p.id
+          WHERE p.status = 'active' AND p.deadline > $2 AND p.deadline <= $3
+            AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
+            AND (CASE WHEN i.team_id IS NULL THEN i.user_id = $1
+                      ELSE i.assignee_id = $1 END)
+          ORDER BY p.deadline LIMIT 200`,
+        [userId, now, horizon],
+      )
+    ).rows;
+    for (const project of projects) {
+      const summary = await projectPlanning(pool, userId, project, false, now);
+      if (
+        !summary.task_count ||
+        (!summary.unplanned_minutes &&
+          !summary.unestimated_tasks.length &&
+          !summary.late_session_count)
+      )
+        continue;
+      const detail = summary.unestimated_tasks.length
+        ? `${summary.unestimated_tasks.length} task${summary.unestimated_tasks.length === 1 ? " needs" : "s need"} an estimate`
+        : `${spokenMinutes(summary.unplanned_minutes)} not planned`;
+      await notify(
+        {
+          userId,
+          itemId: null,
+          kind: "project",
+          ref: `${project.id}:${today}`,
+          title: `Plan ${project.name}`,
+          body: `${project.name} ends ${whenFormat(prefs.timezone).format(project.deadline)}. Your part has ${detail}. Plan this project?`,
+        },
+        email,
+      );
+    }
+  }
+}
+
+/** A moved-earlier project deadline leaves sessions in place and tells only
+ * the people whose own sessions became late. The local-day key merges this
+ * warning with the project's daily planning notice. */
+export async function scanProjectDeadlineMoves(now = new Date()) {
+  const changes = (
+    await pool.query<{
+      project_id: string;
+      name: string;
+      old_deadline: Date | null;
+      new_deadline: Date;
+      created_at: Date;
+    }>(
+      `SELECT DISTINCT ON (a.project_id) a.project_id, p.name,
+              (a.before_state->>'deadline')::timestamptz AS old_deadline,
+              (a.after_state->>'deadline')::timestamptz AS new_deadline,
+              a.created_at
+         FROM project_activity a JOIN projects p ON p.id = a.project_id
+        WHERE a.kind = 'project_changed' AND p.status = 'active'
+          AND a.created_at > $1::timestamptz - interval '24 hours'
+          AND a.after_state->>'deadline' IS NOT NULL
+          AND (a.before_state->>'deadline' IS NULL OR
+               (a.after_state->>'deadline')::timestamptz <
+               (a.before_state->>'deadline')::timestamptz)
+        ORDER BY a.project_id, a.created_at DESC`,
+      [now],
+    )
+  ).rows;
+  if (!changes.length) return;
+  const email = await emailEnabled();
+  for (const change of changes) {
+    const affected = (
+      await pool.query<{ user_id: string; count: number }>(
+        `SELECT b.user_id, count(*)::int AS count
+           FROM time_blocks b JOIN items i ON i.id = b.item_id
+          WHERE i.project_id = $1 AND i.kind = 'task'
+            AND b.end_at > $2 AND b.end_at > $3
+            AND ($4::timestamptz IS NULL OR b.end_at <= $4)
+            AND (CASE WHEN i.team_id IS NULL THEN i.user_id = b.user_id
+                      ELSE EXISTS (SELECT 1 FROM team_members m
+                                   WHERE m.team_id = i.team_id AND m.user_id = b.user_id) END)
+          GROUP BY b.user_id`,
+        [change.project_id, change.new_deadline, now, change.old_deadline],
+      )
+    ).rows;
+    for (const person of affected) {
+      const prefs = await loadPrefs(pool, person.user_id);
+      const day = localDateKey(change.created_at, prefs.timezone);
+      const ref = `${change.project_id}:${day}`;
+      const body = `${change.name}'s deadline moved earlier to ${whenFormat(prefs.timezone).format(change.new_deadline)}. ${plural(person.count, "session")} now ends after it. Your sessions stay where they are; review the project plan.`;
+      await notify(
+        {
+          userId: person.user_id,
+          itemId: null,
+          kind: "project",
+          ref,
+          title: `Review ${change.name}'s deadline`,
+          body,
+        },
+        email,
+      );
+      // If the daily notice arrived first, make its in-app text carry the
+      // deadline change without sending a second push or email.
+      await pool.query(
+        `UPDATE notifications SET title = $3, body = $4, read = false
+         WHERE user_id = $1 AND kind = 'project' AND ref = $2 AND channel = 'inapp'
+           AND body IS DISTINCT FROM $4`,
+        [person.user_id, ref, `Review ${change.name}'s deadline`, body],
+      );
+    }
+  }
+}
+
+/** An earlier task deadline can make an already planned session late. Tell
+ * only the person whose own session is affected, once on their local day. */
+export async function scanTaskDeadlineMoves(now = new Date()) {
+  const changes = (
+    await pool.query<{
+      item_id: string;
+      title: string;
+      old_deadline: Date | null;
+      new_deadline: Date;
+      changed_at: Date;
+    }>(
+      `SELECT m.item_id, i.title,
+              CASE WHEN bool_or(m.old_deadline IS NULL) THEN NULL
+                   ELSE max(m.old_deadline) END AS old_deadline,
+              min(m.new_deadline) AS new_deadline,
+              max(m.created_at) AS changed_at
+         FROM item_deadline_moves m JOIN items i ON i.id = m.item_id
+        WHERE m.created_at > $1::timestamptz - interval '24 hours'
+          AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
+        GROUP BY m.item_id, i.title
+        HAVING CASE
+          WHEN max(i.end_at) IS NOT NULL THEN max(i.end_at)
+          WHEN bool_or(i.all_day) THEN
+            ((max(i.due_at) AT TIME ZONE max(i.timezone))::date + 1)
+              AT TIME ZONE max(i.timezone)
+          ELSE max(i.due_at) END <= min(m.new_deadline)`,
+      [now],
+    )
+  ).rows;
+  if (!changes.length) return;
+  const email = await emailEnabled();
+  for (const change of changes) {
+    const affected = (
+      await pool.query<{ user_id: string; count: number }>(
+        `SELECT b.user_id, count(*)::int AS count
+           FROM time_blocks b JOIN items i ON i.id = b.item_id
+          WHERE b.item_id = $1 AND b.end_at > $2 AND b.end_at > $3
+            AND ($4::timestamptz IS NULL OR b.end_at <= $4)
+            AND (CASE WHEN i.team_id IS NULL THEN i.user_id = b.user_id
+                      ELSE EXISTS (SELECT 1 FROM team_members m
+                                   WHERE m.team_id = i.team_id AND m.user_id = b.user_id) END)
+          GROUP BY b.user_id`,
+        [change.item_id, change.new_deadline, now, change.old_deadline],
+      )
+    ).rows;
+    for (const person of affected) {
+      const prefs = await loadPrefs(pool, person.user_id);
+      const ref = localDateKey(change.changed_at, prefs.timezone);
+      const title = `Review ${change.title}'s deadline`;
+      const body = `${change.title} is now due ${whenFormat(prefs.timezone).format(change.new_deadline)}. ${plural(person.count, "session")} now ends after it. Your sessions stay where they are; review the task plan.`;
+      await notify(
+        {
+          userId: person.user_id,
+          itemId: change.item_id,
+          kind: "deadline",
+          ref,
+          title,
+          body,
+        },
+        email,
+      );
+      // The daily due-soon notice may already be in the inbox. Keep one
+      // in-app card and make the moved deadline visible on that card.
+      await pool.query(
+        `UPDATE notifications SET title = $4, body = $5, read = false
+         WHERE user_id = $1 AND item_id = $2 AND kind = 'deadline'
+           AND ref = $3 AND channel = 'inapp' AND body IS DISTINCT FROM $5`,
+        [person.user_id, change.item_id, ref, title, body],
       );
     }
   }

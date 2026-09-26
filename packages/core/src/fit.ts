@@ -1,5 +1,6 @@
 import {
   deadlineOf,
+  planningDeadline,
   dueDate,
   dueWhen,
   SESSION_DUE_SOON_DAYS,
@@ -146,9 +147,11 @@ export function splitSessions<T extends Span>(
   task: SeriesSource,
   sessions: T[],
   now = new Date(),
+  projectDeadline?: string | Date | null,
 ): SessionSplit<T> {
   const kind = sessionKindFor(task, now);
-  const deadline = deadlineOf(task);
+  const deadline = planningDeadline(deadlineOf(task), projectDeadline);
+  const cap = deadline ? Date.parse(deadline) : null;
   let planned = 0;
   let lateMinutes = 0;
   const late: T[] = [];
@@ -157,7 +160,11 @@ export function splitSessions<T extends Span>(
     const end = new Date(s.end_at).getTime();
     const ahead = Math.max(0, end - Math.max(start, now.getTime())) / 60_000;
     if (!ahead) continue;
-    const k = kind(s);
+    const original = kind(s);
+    const k =
+      original === "planned" && cap && cap > now.getTime() && end > cap
+        ? "late"
+        : original;
     if (k === "planned") planned += ahead;
     else if (k === "late") {
       lateMinutes += ahead;

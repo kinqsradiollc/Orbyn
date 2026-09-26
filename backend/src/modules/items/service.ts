@@ -113,6 +113,39 @@ export async function requireItemAccess(
   else if (item.user_id !== actor.id) fail(404, "Item not found");
 }
 
+/** Check that a task's project and stage belong to the same visible space. */
+async function checkProjectPlacement(
+  db: Db,
+  actor: Actor,
+  teamId: string | null,
+  projectId: string | null,
+  stageId: string | null,
+) {
+  if (!projectId) {
+    if (stageId) fail(422, "A stage needs a project.");
+    return;
+  }
+  const project = (
+    await db.query<{ user_id: string; team_id: string | null }>(
+      "SELECT user_id, team_id FROM projects WHERE id = $1",
+      [projectId],
+    )
+  ).rows[0];
+  if (
+    !project ||
+    project.team_id !== teamId ||
+    (!teamId && project.user_id !== actor.id)
+  )
+    fail(404, "Project not found");
+  if (stageId) {
+    const stage = await db.query(
+      "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
+      [stageId, projectId],
+    );
+    if (!stage.rowCount) fail(422, "That stage isn't in this project.");
+  }
+}
+
 /**
  * A task's number to reach (a key result). Omitted fields keep what is
  * saved. While a target is set, progress follows current / target — unless
@@ -626,6 +659,11 @@ export async function mutate(
     const parentId = d.parent_id ?? null;
     if (parentId)
       await checkParent(db, actor, parentId, null, d.team_id, actor.id);
+    const projectId = d.kind === "task" ? (d.project_id ?? null) : null;
+    const stageId = projectId ? (d.stage_id ?? null) : null;
+    if (d.kind !== "task" && (d.project_id || d.stage_id))
+      fail(422, "Only tasks can be filed in projects.");
+    await checkProjectPlacement(db, actor, d.team_id, projectId, stageId);
     const prefs = await loadPrefs(db, actor.id);
     const allDay = d.all_day ?? false;
     // An all-day item keeps its days in the planner's zone unless it has its own.
@@ -679,6 +717,11 @@ export async function mutate(
         ],
       )
     ).rows[0];
+    if (projectId)
+      await db.query(
+        "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
+        [created.id, projectId, stageId],
+      );
     await setTags(db, created.id, tagIds);
     if (d.kind === "task") await setMeasure(db, created.id, d);
     // Only a task waits on anything; an event happens when it happens.
@@ -714,6 +757,24 @@ export async function mutate(
       if (!d.team_id) owner = actor.id;
     }
   }
+  if (d.kind !== "task" && (d.project_id || d.stage_id))
+    fail(422, "Only tasks can be filed in projects.");
+  const projectId =
+    d.kind === "task"
+      ? d.project_id !== undefined
+        ? d.project_id
+        : moved
+          ? null
+          : (current.project_id ?? null)
+      : null;
+  const stageId = projectId
+    ? d.stage_id !== undefined
+      ? d.stage_id
+      : projectId === current.project_id && !moved
+        ? (current.stage_id ?? null)
+        : null
+    : null;
+  await checkProjectPlacement(db, actor, d.team_id, projectId, stageId);
   // Omitted planning fields keep their saved values; a list, tags or assignee
   // that no longer fit after a move to another team are dropped.
   const keep = <T>(value: T | undefined, saved: T) =>
@@ -859,10 +920,7 @@ export async function mutate(
          THEN reminder_version + 1 ELSE reminder_version END,
        -- A project belongs to one space: moved to another, the task leaves
        -- the project and its stage, which the new space can't see.
-       project_id = CASE WHEN team_id IS DISTINCT FROM $9::uuid
-         THEN NULL ELSE project_id END,
-       stage_id = CASE WHEN team_id IS DISTINCT FROM $9::uuid
-         THEN NULL ELSE stage_id END,
+       project_id = $28::uuid, stage_id = $29::uuid,
        updated_at = now()
      WHERE id = $11`,
     [
@@ -893,6 +951,8 @@ export async function mutate(
       alerts,
       parentId,
       reorder,
+      projectId,
+      stageId,
     ],
   );
   // A page line tied to this task now reads ticked or not with it: the

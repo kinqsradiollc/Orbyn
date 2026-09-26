@@ -1,6 +1,6 @@
 import { ProjectDraftReview } from "./ProjectDraftReview";
 import { alertLabel } from "./EventFields";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import {
   Bell,
   Calendar,
@@ -18,7 +18,7 @@ import {
   type Item,
   type ItemInput,
   type Plan,
-  type DocSource,
+  type AssistantSource,
   type Proposal,
   parseRichText,
   type RichInline,
@@ -37,7 +37,7 @@ type Props = {
   busy: boolean;
   /** Defaults to "pending" when the reply proposes changes, otherwise "info". */
   state?: TurnState;
-  onApply: () => void;
+  onApply: (giveTasksDeadlines?: boolean) => void;
   onDismiss: () => void;
   /** Sends a suggested quick reply; only the latest reply gets one. */
   onFollowUp?: (text: string) => void;
@@ -48,7 +48,7 @@ type Props = {
   /** After the plan is applied: the calendar at its first changed session. */
   onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
-  onOpenSource?: (source: DocSource) => void;
+  onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
 };
@@ -282,10 +282,15 @@ export function ProposalReview({
   onKeptNote,
 }: Props) {
   const count = proposal.actions.length;
-  const status = state ?? (count ? "pending" : "info");
+  const sessionChange = proposal.session_change;
+  const total = count + Number(!!sessionChange);
+  const [giveTasksDeadlines, setGiveTasksDeadlines] = useState(true);
+  const status = state ?? (count || sessionChange ? "pending" : "info");
   const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
   const plan = proposal.plan;
   const sources = proposal.sources ?? [];
+  const usedSources = sources.filter((source) => source.used);
+  const otherSources = sources.filter((source) => !source.used);
   return (
     <div className="ai-proposal">
       <SummaryText text={proposal.summary} />
@@ -293,18 +298,34 @@ export function ProposalReview({
           against it rather than taken on trust. */}
       {sources.length > 0 && (
         <div className="ai-sources">
-          <span className="ai-sources-label">Read:</span>
-          {sources.map((s) => (
-            <button
-              key={s.doc_id + (s.block_id ?? "")}
-              className="ai-source"
-              title={s.quote}
-              disabled={!onOpenSource}
-              onClick={() => onOpenSource?.(s)}
-            >
-              <FileText size={12} aria-hidden="true" /> {s.title || "Untitled"}
-            </button>
-          ))}
+          {(
+            [
+              ["Used", usedSources],
+              ["Also read", otherSources],
+            ] as const
+          ).map(([label, group]) =>
+            group.length ? (
+              <div key={label} className="ai-sources-group">
+                <span className="ai-sources-label">{label}:</span>
+                {group.map((source) => (
+                  <button
+                    key={
+                      "doc_id" in source
+                        ? `page:${source.doc_id}`
+                        : `${source.kind}:${source.id}`
+                    }
+                    className="ai-source"
+                    title={source.quote}
+                    disabled={!onOpenSource}
+                    onClick={() => onOpenSource?.(source)}
+                  >
+                    <FileText size={12} aria-hidden="true" /> [{source.number}]{" "}
+                    {source.title || "Untitled"}
+                  </button>
+                ))}
+              </div>
+            ) : null,
+          )}
         </div>
       )}
       {plan && (
@@ -321,6 +342,18 @@ export function ProposalReview({
         report={() => {}}
       />
       {proposal.project && <ProjectDraftReview project={proposal.project} />}
+      {proposal.project && status === "pending" && (
+        <label className="ai-switch-row">
+          <input
+            type="checkbox"
+            role="switch"
+            className="ai-switch"
+            checked={giveTasksDeadlines}
+            onChange={(event) => setGiveTasksDeadlines(event.target.checked)}
+          />
+          Give tasks these deadlines
+        </label>
+      )}
       {count > 0 && !proposal.project && (
         <div
           className={
@@ -344,25 +377,64 @@ export function ProposalReview({
                     "An item in your planner"}
                 </strong>
                 <Details action={a} items={items} before={before} />
+                {proposal.decision_links?.find(
+                  (link) => link.action_index === n,
+                ) && (
+                  <p>
+                    Delivers decision:{" "}
+                    {
+                      proposal.decision_links.find(
+                        (link) => link.action_index === n,
+                      )?.decision_title
+                    }
+                  </p>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
+      {sessionChange && (
+        <div className="ai-action">
+          <span className="ai-op">
+            {sessionChange.operation === "move"
+              ? "Move session"
+              : "Remove session"}
+          </span>
+          <div className="ai-action-body">
+            <strong>{sessionChange.title}</strong>
+            <p>
+              {new Date(sessionChange.from_start_at).toLocaleString()}–
+              {new Date(sessionChange.from_end_at).toLocaleTimeString()}
+              {sessionChange.operation === "move" && (
+                <>
+                  {" "}
+                  → {new Date(sessionChange.start_at).toLocaleString()}–
+                  {new Date(sessionChange.end_at).toLocaleTimeString()}
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
       {status === "pending" && (
         <div className="ai-decide">
-          <button className="primary" disabled={busy} onClick={onApply}>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={() => onApply(giveTasksDeadlines)}
+          >
             <Check size={15} />{" "}
             {proposal.project
               ? "Create project and schedule"
-              : `Approve ${count} ${count === 1 ? "change" : "changes"}`}
+              : `Approve ${total} ${total === 1 ? "change" : "changes"}`}
           </button>
           <button className="secondary" disabled={busy} onClick={onDismiss}>
             Discard
           </button>
         </div>
       )}
-      {status === "applied" && count > 0 && (
+      {status === "applied" && total > 0 && (
         <p className="ai-status ai-status-ok">
           <Check size={14} /> Saved to your planner
         </p>

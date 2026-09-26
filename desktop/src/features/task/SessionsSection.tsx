@@ -152,7 +152,7 @@ export function SessionsSection({
   };
 
   const open = !isClosed(item.status);
-  const canPlan = canWrite && open;
+  const canPlan = canWrite && open && data?.assigned_to_me !== false;
   const now = Date.now();
   const sessions = data?.sessions ?? [];
   const findLabel = data?.deadline_at
@@ -188,6 +188,9 @@ export function SessionsSection({
           {label}
           {b.part ? ` · Session ${b.part}` : ""}
           {late && <strong> · After the deadline</strong>}
+          {data?.assigned_to_me === false && !past && (
+            <strong> · Not yours any more</strong>
+          )}
         </span>
         {!past && (
           <span className="session-actions">
@@ -200,7 +203,7 @@ export function SessionsSection({
                 Show on calendar
               </button>
             )}
-            {canWrite && (
+            {
               <button
                 type="button"
                 className="link-button"
@@ -210,7 +213,7 @@ export function SessionsSection({
               >
                 Remove
               </button>
-            )}
+            }
           </span>
         )}
       </li>

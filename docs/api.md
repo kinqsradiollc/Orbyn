@@ -316,16 +316,21 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
    - **The heavy OCR model** replaces Tesseract only where it's configured, which it isn't by
      default.
 4. The finished page is created with `in_uploads: true`, an in-app notice (`kind: "import"`) says
-   it's ready, and the file is deleted.
+   it's ready, and the file is deleted. With `project_id`, the page instead lands in that project
+   with `in_uploads: false`. The caller needs project edit access when starting the import and when
+   conversion finishes. A project import must include `project_team_id`, the team shown in the
+   upload confirmation (or `null` for a personal project). For a team project, the team must still
+   be the same; otherwise conversion
+   fails without sharing the page. The source file is deleted in either case.
 
-| Method and path             | Body / result                                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `POST /imports`             | `{ file_name, bytes, mime? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up             |
-| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`) |
-| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                           |
-| `GET /imports/:id`          | → `ImportJob`                                                                                                            |
-| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                          |
-| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                               |
+| Method and path             | Body / result                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /imports`             | `{ file_name, bytes, mime?, project_id?, project_team_id? }` → `201 { import, upload_path, expires_at }`; `503` when importing isn't set up |
+| `PUT {upload_path}`         | The file's bytes, any `Content-Type` → `201 { id, bytes }`. Reached through the gateway (`/files/u/…`, `/api/files/u/…`)                    |
+| `GET /imports`              | Your imports still going, and the last 7 days' → `[ImportJob]`                                                                              |
+| `GET /imports/:id`          | → `ImportJob`                                                                                                                               |
+| `DELETE /imports/:id`       | Cancels an import still going, or clears a finished one → `204`                                                                             |
+| `GET /imports/capabilities` | What this server can read → `{ enabled, scans, formulas, photos, limits }`                                                                  |
 
 `scans` is how pages without their own text are read:
 
@@ -491,6 +496,60 @@ Without `stages` a project starts with Planning, In progress, Review and Done. �
 
 → the project with its stages and task counts. `404` when it isn't yours.
 
+### Project Home links (auth)
+
+`GET /projects/:id/links` lists up to 20 pinned web links for a visible project. Each link has
+`id`, `project_id`, `url`, `title`, and `created_at`. `POST /projects/:id/links` accepts
+`{ "url": "https://example.com", "title": "Reference" }` and requires project write access.
+Only HTTP(S) URLs without embedded credentials are accepted. Posting the same URL updates its
+title. `DELETE /projects/:id/links/:linkId` requires write access. Inaccessible projects return
+`404`; a full project returns `409` when adding a new link.
+
+### `GET /projects/:id/planning` (auth)
+
+→ `{ project_id, deadline, task_count, needed_minutes, planned_minutes, unplanned_minutes,
+late_session_count, planned_finish_at, unestimated_tasks, team_planned_minutes? }`.
+The first counts and minutes cover only your open tasks and your own sessions. Each task's planned
+time counts only before its earliest task, project or dependent target. Excess sessions on one
+task cannot cover another. `planned_finish_at` is present only when all estimated work is covered;
+tasks without an estimate are named in `unestimated_tasks` and excluded from the hour totals.
+On a team project, `team_planned_minutes` is returned only to owners and admins, as an aggregate
+without names or session times. `404` when the project is not visible to you.
+
+### `POST /projects/:id/plan` (auth)
+
+Body: `{ "timezone": "Australia/Melbourne" }` (time zone optional). Creates an expiring plan
+preview for your open tasks in an active project. Team tasks must be assigned to you first;
+unassigned and other people's tasks are excluded, including when the preview is tuned. The
+horizon ends on the project's deadline if it is within two weeks; otherwise it covers two weeks.
+Returns the usual planner `Plan`. The preview does not change tasks or sessions. `404` when the
+project is not visible; `422` for an inactive project, invalid time zone or no assigned work.
+
+### `GET /projects/:id/sessions` (auth)
+
+→ up to 500 of your saved sessions for tasks in this project, newest first, as
+`{ id, item_id, start_at, end_at }`. Used for exact ticks on the project timeline.
+Other team members' session times are not returned. `404` when the project is not visible.
+
+### `POST /projects/:id/visit` (auth)
+
+Marks the project as visited by this person and returns `{ "since_at", "visited_at" }`.
+`since_at` is the visit before this one, or `null` on the first visit. Reopening within five
+minutes keeps the same catch-up point. The prior visit is kept on the server for both clients
+and for later "what changed?" answers. `404` when the project is not visible.
+
+The planner's daily worker also creates one `project` notification per person and local day
+when that person's work remains unplanned within seven days of an active project deadline.
+Its `ref` is `<project id>:<local day>`; the action opens the project. Team members do not
+receive one another's session times.
+When a project deadline moves earlier, a person with sessions newly after that deadline gets
+the same day's project notice updated with the change; sessions are not moved automatically.
+When a task deadline moves earlier, a person with sessions newly after it gets one `deadline`
+notice for that change's local day. A due-soon notice for the same task and day is updated
+in place; the sessions stay at their saved times for review.
+`GET /items/:id/sessions` also returns `assigned_to_me`, so a person can remove their old
+sessions after the task changes hands.
+
 ### `GET /projects/:id/activity?limit=100` (auth)
 
 → recent project, task, linked-note and work-record changes, newest first (maximum 200). The timeline contains
@@ -532,7 +591,16 @@ the project with no stage.
 ```
 
 Moves a task into a project and stage. `project_id: null` takes it out of the project. A stage
-that belongs to a different project is `422`.
+that belongs to a different project is `422`. Leaving `stage_id` out keeps the stage when the
+project stays the same; a different project starts with no stage. The response is
+`{ "ok": true, "item": <updated item> }`, including its new edit version.
+
+### `GET /items/:id/context` (auth)
+
+Returns the task's project and stage, the readable page and line from which it was made, and
+other readable pages tied to the task. `came_from.quote` is null when that line has since been
+removed. Personal pages belonging to someone else are never included, even when the task is
+shared in a team. An inaccessible task returns `404`.
 
 ### Work records (auth)
 
@@ -787,8 +855,10 @@ as it stands; anything that does not match comes back in `not_found` rather than
 → `[ { "id", "type", "title", "kind", "team_id", "project_id", "project_name", "updated_at",
 "snippet", "block_id", "rank" } ]`, best first.
 
-`type` is `doc` or `task`; leave it out for both, ranked together on one scale. Pages are matched on
-a weighted `tsvector` — title A, headings B, tags and project name C, body D — and on the **letters**
+`type` is `doc` or `task`; leave it out for both, ranked together on one scale. `project` limits
+results to that project's pages and tasks; every hit still passes the caller's normal visibility
+check. Pages are matched on a weighted `tsvector` — title A, headings B, tags and project name C,
+body D — and on the **letters**
 of the title as well, so `Lanch breif` finds Launch brief. Rank is the text match lifted for a
 recently edited page, plus a little for a title that merely looks like what was typed.
 
@@ -975,24 +1045,25 @@ also include `team_name` and `user_id` (the creator).
 
 Planning fields, all optional:
 
-| Field              | Meaning                                                                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `estimate_minutes` | How long the task takes (1 to 10080); the planner uses it.                                                                                                                                 |
-| `spent_minutes`    | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                                                                                                                   |
-| `list_id`          | A list from `GET /lists`: your own for personal items, the team's for team ones.                                                                                                           |
-| `tag_ids`          | Up to 20 tags, with the same rule as lists.                                                                                                                                                |
-| `assignee_id`      | Who on the team is doing a team task. Responses also carry `assignee_name`.                                                                                                                |
-| `location`         | Where an event happens; drives travel time.                                                                                                                                                |
-| `meeting_url`      | A video-call link (`https://…`); the apps show Join from 5 minutes before.                                                                                                                 |
-| `rrule`            | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly, monthly), `BYMONTHDAY` (monthly, yearly; `-1` is the last day), `BYSETPOS` (monthly), `COUNT` or `UNTIL`. |
-| `timezone`         | The IANA zone a repeating or all-day item keeps its wall-clock time in.                                                                                                                    |
-| `all_day`          | A whole-day item: `due_at` is midnight in its `timezone` (your planner zone when not given) and `end_at` the midnight after its last day (one day for an event when omitted). Never busy.  |
-| `busy`             | Whether an event counts as busy (default true). Free events don't block the planner, booking pages or teammates, and get no buffers or travel.                                             |
-| `color`            | `#rrggbb` for the calendar, or null.                                                                                                                                                       |
-| `alerts`           | Minutes before `due_at` to remind: up to 5, each 0 to 40320 (four weeks), sorted and without repeats.                                                                                      |
-| `attendees`        | Events only: up to 50 `{ "email", "name"? }` to invite by email (see [Invitations](#invitations)). Sending the list replaces it.                                                           |
-| `parent_id`        | Tasks only: the task this one is a subtask of (see [Subtasks](#subtasks)); null for a top-level task.                                                                                      |
-| `links`            | Up to 20 `{ "url", "title"? }` web links (`http://` or `https://`). Sending the list replaces it; the item detail returns them with `id` and `position`.                                   |
+| Field                    | Meaning                                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `estimate_minutes`       | How long the task takes (1 to 10080); the planner uses it.                                                                                                                                 |
+| `project_id`, `stage_id` | File a task in a visible project and one of its stages. Omit to keep the saved place; `project_id: null` removes it. Moving the task to another space removes its old project.             |
+| `spent_minutes`          | Read-only: minutes logged with the focus timer (`POST /items/:id/time`).                                                                                                                   |
+| `list_id`                | A list from `GET /lists`: your own for personal items, the team's for team ones.                                                                                                           |
+| `tag_ids`                | Up to 20 tags, with the same rule as lists.                                                                                                                                                |
+| `assignee_id`            | Who on the team is doing a team task. Responses also carry `assignee_name`.                                                                                                                |
+| `location`               | Where an event happens; drives travel time.                                                                                                                                                |
+| `meeting_url`            | A video-call link (`https://…`); the apps show Join from 5 minutes before.                                                                                                                 |
+| `rrule`                  | How it repeats: `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY`, `INTERVAL`, `BYDAY` (weekly, monthly), `BYMONTHDAY` (monthly, yearly; `-1` is the last day), `BYSETPOS` (monthly), `COUNT` or `UNTIL`. |
+| `timezone`               | The IANA zone a repeating or all-day item keeps its wall-clock time in.                                                                                                                    |
+| `all_day`                | A whole-day item: `due_at` is midnight in its `timezone` (your planner zone when not given) and `end_at` the midnight after its last day (one day for an event when omitted). Never busy.  |
+| `busy`                   | Whether an event counts as busy (default true). Free events don't block the planner, booking pages or teammates, and get no buffers or travel.                                             |
+| `color`                  | `#rrggbb` for the calendar, or null.                                                                                                                                                       |
+| `alerts`                 | Minutes before `due_at` to remind: up to 5, each 0 to 40320 (four weeks), sorted and without repeats.                                                                                      |
+| `attendees`              | Events only: up to 50 `{ "email", "name"? }` to invite by email (see [Invitations](#invitations)). Sending the list replaces it.                                                           |
+| `parent_id`              | Tasks only: the task this one is a subtask of (see [Subtasks](#subtasks)); null for a top-level task.                                                                                      |
+| `links`                  | Up to 20 `{ "url", "title"? }` web links (`http://` or `https://`). Sending the list replaces it; the item detail returns them with `id` and `position`.                                   |
 
 Read-only fields on every item: `remaining_minutes` (`max(0, estimate − spent)`, null without an
 estimate), `position` (its manual order), `child_count` (subtasks that aren't cancelled) and
@@ -1394,7 +1465,7 @@ it: `minutes` is then at most 25). `reasons` are short sentences, most important
 
 ### `POST /ai/project` (auth, 10/min)
 
-`{ "prompt", "timezone", "team_id"? }`. With `team_id` (you need write access to that team) the project and its tasks become the team's once approved. Drafts a project from the prompt: the AI provider returns a title and a set of subtasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
+`{ "prompt", "timezone", "team_id"?, "summary"?, "deadline"? }`. With `team_id` (you need write access to that team) the project and its tasks become the team's once approved. `summary` is saved on the project and as its brief page; `deadline` is the project's latest finish time. Drafts a project from the prompt: the AI provider returns a title and a set of tasks with estimates and due-date offsets, which come back as a **proposal** (`{ id, summary, actions, project }`) — the same shape as `/ai/chat`, nothing saved until `POST /ai/proposals/:id/apply`. `502` if the provider fails or returns an unreadable plan, `503` when no provider is set up.
 
 ### `POST /ai/chat/start` (auth, 10/min)
 
@@ -1475,7 +1546,7 @@ block; the assistant only chooses the days and times to keep free.
 
 ### `POST /ai/proposals/:id/apply` (auth)
 
-Applies every action in one transaction. → `{ "applied": true }`. Idempotent. Returns `409` if the
+Optional body `{ "give_tasks_deadlines": false }` creates a proposed project's tasks without their suggested due dates; the reviewed sessions are still created. The default is `true`. Applies every action in one transaction. → `{ "applied": true }`. Idempotent. Returns `409` if the
 proposal expired (15 minutes) or an item version is stale, and `404` if any action targets an item
 the user does not own, in which case nothing is applied.
 
@@ -1562,25 +1633,27 @@ routes below and the `block.*` webhooks carry, besides the session and its task'
 | `part`, `parts`  | "Session 2 of 3": its number among all of your sessions for the task (past ones too; for a repeating task, those for the same occurrence), in time order                                                              |
 | `project_id`     | The task's project, or null                                                                                                                                                                                           |
 
-| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                      |
-| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                          |
-| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                    |
-| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                              |
-| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                       |
-| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by its task's deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days |
-| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                      |
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /blocks?from=&to=`       | Your sessions in the range                                                                                                                                                                                                                                                                                                                                       |
+| `GET /items/:id/sessions`     | One task's sessions (yours), below. Reading them never makes a plan. `404` when you can't see the task                                                                                                                                                                                                                                                           |
+| `POST /blocks`                | `{ "item_id", "start_at", "end_at" }` (a task you can see; at most 24 hours)                                                                                                                                                                                                                                                                                     |
+| `PUT /blocks/:id`             | `{ "start_at", "end_at" }`. The session counts as placed by hand from then on (`source: "manual"`)                                                                                                                                                                                                                                                               |
+| `DELETE /blocks/:id`          | `204`; `404` when the session isn't yours                                                                                                                                                                                                                                                                                                                        |
+| `POST /blocks/:id/reschedule` | `{ "before_deadline"? }` → moves it to your next free working time of the same length, one that ends by the earlier task or project deadline when there is one (it looks up to a month ahead for that). With `before_deadline: true` only such a time will do: `409` when there's none, or the deadline has passed. Otherwise `409` if nothing is free in 7 days |
+| `POST /blocks/:id/duplicate`  | `{ "start_at"? }` → `201` a new block for the same task and length, at `start_at` or the next free working time after the original; `409` if the task is done or nothing is free in 7 days                                                                                                                                                                       |
 
 `GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
-sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
+dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
 too (for a repeating task, those for its current occurrence and later ones);
 `planned_minutes` is the time still to come in sessions that end by the deadline (all of it
 without one), and `late_minutes` the time still to come in sessions that end after it.
-`project_deadline` is the deadline of the task's project, a latest date for its tasks that never
-becomes the task's own.
+`project_deadline` is the deadline of the task's project. `dependent_deadline` is the earliest
+deadline of an open task downstream of this prerequisite. `planning_deadline_at` is the earliest
+of those dates and the task's own deadline; it caps the time that counts as planned and never
+changes `due_at` or `deadline_at`.
 
-**Does it fit?** `fit` is the task's one status against its deadline (`deadlineFit` in
+**Does it fit?** `fit` is the task's one status against its planning deadline (`deadlineFit` in
 `@orbyn/core`), or null for a finished task or one that isn't yours to plan (a teammate's, when
 you have no sessions for it):
 

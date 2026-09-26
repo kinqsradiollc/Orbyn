@@ -16,6 +16,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   deadline: "clock",
   rsvp: "users",
   template: "layoutGrid",
+  project: "calendar",
 };
 
 /**
@@ -34,6 +35,7 @@ export function InboxScreen({
   onPlanIt,
   onOpenItem,
   onOpenTemplate,
+  onOpenProject,
   onOpenItemById,
   onOpenDoc,
 }: {
@@ -52,6 +54,7 @@ export function InboxScreen({
   onOpenItem: (notice: Notice) => void;
   /** Review a template that's ready to start ("template", `ref` = template). */
   onOpenTemplate?: (notice: Notice) => void;
+  onOpenProject?: (notice: Notice) => void;
   /** Open a task an ask is about. */
   onOpenItemById?: (itemId: string) => void;
   /** Open the page an "import" notice is about (`ref` = "doc:<id>"). */
@@ -94,12 +97,14 @@ export function InboxScreen({
                   ? { label: "Open event", run: onOpenItem }
                   : n.kind === "template" && n.ref && onOpenTemplate
                     ? { label: "Review", run: onOpenTemplate }
-                    : docId && onOpenDoc
-                      ? {
-                          label: "Open page",
-                          run: (x: Notice) => onOpenDoc(x, docId),
-                        }
-                      : null;
+                    : n.kind === "project" && n.ref && onOpenProject
+                      ? { label: "Open project", run: onOpenProject }
+                      : docId && onOpenDoc
+                        ? {
+                            label: "Open page",
+                            run: (x: Notice) => onOpenDoc(x, docId),
+                          }
+                        : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable

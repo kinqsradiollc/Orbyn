@@ -4,9 +4,14 @@ import {
   fail,
   projectAssign,
   projectInput,
+  projectLinkInput,
+  planDaysBefore,
+  planPreviewInput,
   projectUpdate,
   type Project,
+  type ProjectLink,
   type ProjectStage,
+  type ProjectSession,
 } from "@orbyn/core";
 import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
@@ -14,6 +19,11 @@ import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { PROJECT_COUNTS } from "./counts.js";
 import { projectTimeMachineRoutes } from "./time-machine.js";
+import { loadItem } from "../items/service.js";
+import { projectPlanning } from "./planning.js";
+import { visibleProjectActivity } from "./activity-visibility.js";
+import { makeProjectPlan } from "../planner/plans.js";
+import { z } from "zod";
 
 /**
  * Projects group planner tasks into a named piece of work with ordered
@@ -141,6 +151,213 @@ export async function projectRoutes(app: FastifyInstance) {
     return { ...row, stages: stages.get(id) ?? [] };
   });
 
+  app.get("/projects/:id/links", async (r): Promise<ProjectLink[]> => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const visible = await db.query(
+      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
+      [u.id, id],
+    );
+    if (!visible.rows.length) fail(404, "Project not found");
+    return (
+      await db.query<ProjectLink>(
+        `SELECT id, project_id, url, title, created_at FROM project_links
+         WHERE project_id = $1 ORDER BY created_at, id`,
+        [id],
+      )
+    ).rows;
+  });
+
+  app.post("/projects/:id/links", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const input = projectLinkInput.parse(r.body);
+    const link = await transaction(async (db) => {
+      await requireProject(db, id, u, "items:write");
+      const existing = await db.query(
+        "SELECT 1 FROM project_links WHERE project_id = $1 AND url = $2",
+        [id, input.url],
+      );
+      const count = await db.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM project_links WHERE project_id = $1",
+        [id],
+      );
+      if (!existing.rows.length && Number(count.rows[0].count) >= 20)
+        fail(409, "Project links are full");
+      return (
+        await db.query<ProjectLink>(
+          `INSERT INTO project_links (project_id, url, title) VALUES ($1, $2, $3)
+           ON CONFLICT (project_id, url) DO UPDATE SET title = EXCLUDED.title
+           RETURNING id, project_id, url, title, created_at`,
+          [id, input.url, input.title],
+        )
+      ).rows[0];
+    });
+    reply.code(201);
+    return link;
+  });
+
+  app.delete("/projects/:id/links/:linkId", async (r, reply) => {
+    const u = await authenticate(r);
+    const params = z.object({ id: z.uuid(), linkId: z.uuid() }).parse(r.params);
+    await transaction(async (db) => {
+      await requireProject(db, params.id, u, "items:write");
+      const removed = await db.query(
+        "DELETE FROM project_links WHERE id = $1 AND project_id = $2 RETURNING id",
+        [params.linkId, params.id],
+      );
+      if (!removed.rows.length) fail(404, "Link not found");
+    });
+    reply.code(204);
+  });
+
+  app.post("/projects/:id/visit", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    return transaction(async (db) => {
+      await requireProject(db, id, u, "items:read");
+      const visit = (
+        await db.query<{ previous_seen_at: Date | null; last_seen_at: Date }>(
+          `INSERT INTO project_visits(user_id, project_id, last_seen_at)
+           VALUES($1, $2, now())
+           ON CONFLICT (user_id, project_id) DO UPDATE SET
+             previous_seen_at = CASE
+               WHEN project_visits.last_seen_at < now() - interval '5 minutes'
+                 THEN project_visits.last_seen_at
+               ELSE project_visits.previous_seen_at END,
+             last_seen_at = CASE
+               WHEN project_visits.last_seen_at < now() - interval '5 minutes'
+                 THEN now()
+               ELSE project_visits.last_seen_at END
+           RETURNING previous_seen_at, last_seen_at`,
+          [u.id, id],
+        )
+      ).rows[0];
+      return {
+        since_at: visit.previous_seen_at?.toISOString() ?? null,
+        visited_at: visit.last_seen_at.toISOString(),
+      };
+    });
+  });
+
+  app.get("/projects/:id/planning", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const project = (
+      await db.query<{
+        id: string;
+        deadline: Date | null;
+        team_id: string | null;
+      }>(
+        `SELECT p.id, p.deadline, p.team_id FROM projects p
+          WHERE p.id = $2 AND ${VISIBLE}`,
+        [u.id, id],
+      )
+    ).rows[0];
+    if (!project) fail(404, "Project not found");
+    const role = project.team_id
+      ? (
+          await db.query<{ role: string }>(
+            "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
+            [project.team_id, u.id],
+          )
+        ).rows[0]?.role
+      : null;
+    return projectPlanning(
+      db,
+      u.id,
+      project,
+      role === "owner" || role === "admin",
+    );
+  });
+
+  /** Actual sessions on this project's timeline, belonging only to the viewer. */
+  app.get("/projects/:id/sessions", async (r): Promise<ProjectSession[]> => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const db = reader(r.headers);
+    const visible = await db.query(
+      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
+      [u.id, id],
+    );
+    if (!visible.rowCount) fail(404, "Project not found");
+    const rows = (
+      await db.query<{
+        id: string;
+        item_id: string;
+        start_at: Date;
+        end_at: Date;
+      }>(
+        `SELECT b.id, b.item_id, b.start_at, b.end_at
+         FROM time_blocks b JOIN items i ON i.id = b.item_id
+         WHERE i.project_id = $1 AND b.user_id = $2
+         ORDER BY b.start_at DESC LIMIT 500`,
+        [id, u.id],
+      )
+    ).rows;
+    return rows.map((row) => ({
+      ...row,
+      start_at: row.start_at.toISOString(),
+      end_at: row.end_at.toISOString(),
+    }));
+  });
+
+  /** Preview only work this person owns in this project. Team tasks must be
+   * claimed through the normal item edit before they can enter their plan. */
+  app.post("/projects/:id/plan", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { timezone } = z
+      .object({ timezone: z.string().max(100).optional() })
+      .strict()
+      .parse(r.body ?? {});
+    return transaction(async (db) => {
+      const project = await requireProject(db, id, u, "items:read");
+      const details = (
+        await db.query<{ status: string; deadline: Date | null }>(
+          "SELECT status, deadline FROM projects WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+      if (details.status !== "active")
+        fail(422, "Only active projects can be planned.");
+      const tasks = (
+        await db.query<{ id: string }>(
+          `SELECT id FROM items WHERE project_id = $1 AND kind = 'task'
+           AND status NOT IN ('done', 'cancelled')
+           AND (CASE WHEN team_id IS NULL THEN user_id = $2
+                     ELSE team_id = $3 AND assignee_id = $2 END)
+           ORDER BY created_at LIMIT 201`,
+          [id, u.id, project.team_id],
+        )
+      ).rows;
+      if (!tasks.length)
+        fail(
+          422,
+          "No tasks assigned to you in this project. Claim an unassigned task first.",
+        );
+      if (tasks.length > 200)
+        fail(422, "A project plan can include up to 200 assigned tasks.");
+      return makeProjectPlan(
+        db,
+        u.id,
+        id,
+        planPreviewInput.parse({
+          item_ids: tasks.map((task) => task.id),
+          days:
+            planDaysBefore(
+              details.deadline?.toISOString(),
+              new Date(),
+              timezone,
+            ) ?? 14,
+          timezone,
+        }),
+      );
+    });
+  });
+
   /** A readable project timeline; its payload intentionally excludes note bodies. */
   app.get<{ Params: { id: string }; Querystring: { limit?: string } }>(
     "/projects/:id/activity",
@@ -162,11 +379,14 @@ export async function projectRoutes(app: FastifyInstance) {
         await db.query(
           `SELECT a.id, a.project_id, a.actor_id, u.name AS actor_name,
                   a.kind, a.entity_type, a.entity_id, a.event_order, a.summary,
-                  a.before_state, a.after_state, a.created_at
+                  a.before_state,
+                  (a.after_state - 'baseline_tasks' - 'baseline_notes'
+                    - 'baseline_records' - 'baseline_stages') AS after_state,
+                  a.created_at
              FROM project_activity a LEFT JOIN users u ON u.id = a.actor_id
-            WHERE a.project_id = $1
+            WHERE a.project_id = $1 AND ${visibleProjectActivity("$3")}
             ORDER BY a.event_order DESC LIMIT $2`,
-          [id, requested],
+          [id, requested, u.id],
         )
       ).rows;
     },
@@ -245,14 +465,30 @@ export async function projectRoutes(app: FastifyInstance) {
     return transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const item = (
-        await db.query<{ id: string; user_id: string; team_id: string | null }>(
-          "SELECT id, user_id, team_id FROM items WHERE id = $1 FOR UPDATE",
+        await db.query<{
+          id: string;
+          user_id: string;
+          team_id: string | null;
+          kind: string;
+          project_id: string | null;
+          stage_id: string | null;
+        }>(
+          `SELECT id, user_id, team_id, kind, project_id, stage_id
+             FROM items WHERE id = $1 FOR UPDATE`,
           [id],
         )
       ).rows[0];
       if (!item) fail(404, "Item not found");
+      if (item.kind !== "task")
+        fail(422, "Only tasks can be filed in projects.");
       if (item.team_id) await requireTeam(item.team_id, u, "items:write", db);
       else if (item.user_id !== u.id) fail(404, "Item not found");
+
+      const stageId = body.project_id
+        ? body.stage_id === undefined && item.project_id === body.project_id
+          ? item.stage_id
+          : (body.stage_id ?? null)
+        : null;
 
       if (body.project_id) {
         const project = await requireProject(
@@ -270,21 +506,22 @@ export async function projectRoutes(app: FastifyInstance) {
               ? "Only this team's tasks can go into a team project."
               : "Team tasks can only go into their team's projects.",
           );
-        if (body.stage_id) {
+        if (stageId) {
           const ok = (
             await db.query(
               "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
-              [body.stage_id, body.project_id],
+              [stageId, body.project_id],
             )
           ).rowCount;
           if (!ok) fail(422, "That stage isn't in this project.");
         }
       }
       await db.query(
-        "UPDATE items SET project_id = $2, stage_id = $3, updated_at = now() WHERE id = $1",
-        [id, body.project_id, body.project_id ? body.stage_id : null],
+        `UPDATE items SET project_id = $2, stage_id = $3,
+           version = version + 1, updated_at = now() WHERE id = $1`,
+        [id, body.project_id, stageId],
       );
-      return { ok: true };
+      return { ok: true, item: await loadItem(db, id) };
     });
   });
 }

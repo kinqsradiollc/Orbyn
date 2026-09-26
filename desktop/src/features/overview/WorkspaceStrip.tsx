@@ -24,9 +24,11 @@ const when = (iso: string) => {
  */
 export function WorkspaceStrip({
   onOpenDoc,
+  onOpenProject,
   onNavigate,
 }: {
   onOpenDoc: (doc: Doc) => void;
+  onOpenProject: (id: string) => void;
   onNavigate: (view: "Projects" | "Docs" | "Study") => void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -67,7 +69,7 @@ export function WorkspaceStrip({
               <li key={p.id}>
                 <button
                   className="strip-row"
-                  onClick={() => onNavigate("Projects")}
+                  onClick={() => onOpenProject(p.id)}
                 >
                   <span className="strip-main">
                     <strong>{p.name}</strong>

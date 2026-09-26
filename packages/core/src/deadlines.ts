@@ -44,6 +44,23 @@ export function deadlineOf(item: DeadlineSource): string | null {
   return iso(item.due_at);
 }
 
+/** The earlier of a task's own deadline and its project's latest finish time. */
+export function planningDeadline(
+  taskDeadline: string | Date | null | undefined,
+  projectDeadline: string | Date | null | undefined,
+): string | null {
+  if (!taskDeadline) return projectDeadline ? iso(projectDeadline) : null;
+  if (!projectDeadline) return iso(taskDeadline);
+  return iso(
+    new Date(
+      Math.min(
+        new Date(taskDeadline).getTime(),
+        new Date(projectDeadline).getTime(),
+      ),
+    ),
+  );
+}
+
 /** Whether something ending at `end` ends after `deadline`. No deadline: never. */
 export function endsAfterDeadline(
   end: string | Date,

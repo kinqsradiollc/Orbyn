@@ -100,6 +100,8 @@ const MODE_KEY = "orbyn-doc-mode:";
 
 export function DocEditor({
   doc,
+  initialBlockId,
+  onTargetOffset,
   comments,
   userId,
   onBlocksChange,
@@ -110,6 +112,8 @@ export function DocEditor({
   report,
 }: {
   doc: Doc;
+  initialBlockId?: string | null;
+  onTargetOffset?: (y: number) => void;
   /** The page's comments, so a line can show its own underneath. */
   comments: DocCommentsState;
   userId?: string;
@@ -151,6 +155,24 @@ export function DocEditor({
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [deciding, setDeciding] = useState(false);
   const [title, setTitle] = useState(doc.title);
+  const bodyOffset = useRef<number | null>(null);
+  const targetOffset = useRef<number | null>(null);
+  const jumped = useRef(false);
+  useEffect(() => {
+    bodyOffset.current = null;
+    targetOffset.current = null;
+    jumped.current = false;
+  }, [doc.id, initialBlockId]);
+  const sendTarget = () => {
+    if (
+      jumped.current ||
+      bodyOffset.current === null ||
+      targetOffset.current === null
+    )
+      return;
+    jumped.current = true;
+    onTargetOffset?.(bodyOffset.current + targetOffset.current);
+  };
   /** The lines tied to a task, as the server last said. */
   const linked = useMemo(
     () => new Set(doc.linked_block_ids ?? []),
@@ -974,82 +996,94 @@ export function DocEditor({
         )}
       </View>
 
-      <DocBody
-        content={blocks}
-        tasks={linked}
-        editing={focused}
-        draft={draft}
-        onDraftChange={changeDraft}
-        onCommit={commit}
-        onBlurLine={syncDraft}
-        selection={caret}
-        counts={comments.counts}
-        marks={markRanges(comments.anchored)}
-        onOpenComments={(blockId) =>
-          setOpenThread((open) => (open === blockId ? null : blockId))
-        }
-        renderUnder={(blockId) => {
-          const list = comments.anchored.get(blockId) ?? [];
-          const waiting = pending?.blockId === blockId;
-          if (picking?.blockId === blockId)
+      <View
+        onLayout={(event) => {
+          bodyOffset.current = event.nativeEvent.layout.y;
+          sendTarget();
+        }}
+      >
+        <DocBody
+          content={blocks}
+          targetBlockId={initialBlockId}
+          onTargetLayout={(y) => {
+            targetOffset.current = y;
+            sendTarget();
+          }}
+          tasks={linked}
+          editing={focused}
+          draft={draft}
+          onDraftChange={changeDraft}
+          onCommit={commit}
+          onBlurLine={syncDraft}
+          selection={caret}
+          counts={comments.counts}
+          marks={markRanges(comments.anchored)}
+          onOpenComments={(blockId) =>
+            setOpenThread((open) => (open === blockId ? null : blockId))
+          }
+          renderUnder={(blockId) => {
+            const list = comments.anchored.get(blockId) ?? [];
+            const waiting = pending?.blockId === blockId;
+            if (picking?.blockId === blockId)
+              return (
+                <WordPicker
+                  source={picking.source}
+                  onCancel={() => setPicking(null)}
+                  onAsk={(range) => {
+                    setPicking(null);
+                    setAsking({ blockId, ...range });
+                  }}
+                  onPick={(range) => {
+                    setPicking(null);
+                    setPending({
+                      blockId,
+                      quote: range.quote.slice(0, 400),
+                      range_start: range.start,
+                      range_end: range.end,
+                    });
+                    setOpenThread(blockId);
+                  }}
+                />
+              );
+            if (asking?.blockId === blockId)
+              return (
+                <AskSheet
+                  quote={asking.quote}
+                  busy={deciding}
+                  onCancel={() => setAsking(null)}
+                  onAsk={(action, instruction) =>
+                    void assist(action, instruction)
+                  }
+                />
+              );
+            if (openThread !== blockId && !waiting) return null;
             return (
-              <WordPicker
-                source={picking.source}
-                onCancel={() => setPicking(null)}
-                onAsk={(range) => {
-                  setPicking(null);
-                  setAsking({ blockId, ...range });
+              <DocThread
+                comments={list}
+                state={comments}
+                userId={userId}
+                quote={list[0]?.quote ?? pending?.quote}
+                placeholder="Comment on this line…"
+                autoFocus={waiting}
+                anchor={{
+                  block_id: blockId,
+                  quote: pending?.quote ?? list[0]?.quote ?? "",
+                  range_start: pending?.range_start,
+                  range_end: pending?.range_end,
                 }}
-                onPick={(range) => {
-                  setPicking(null);
-                  setPending({
-                    blockId,
-                    quote: range.quote.slice(0, 400),
-                    range_start: range.start,
-                    range_end: range.end,
-                  });
+                // Stay open on the line just commented on, so the remark
+                // that was written is there to read rather than folding away.
+                onDone={() => {
+                  setPending(null);
                   setOpenThread(blockId);
                 }}
               />
             );
-          if (asking?.blockId === blockId)
-            return (
-              <AskSheet
-                quote={asking.quote}
-                busy={deciding}
-                onCancel={() => setAsking(null)}
-                onAsk={(action, instruction) =>
-                  void assist(action, instruction)
-                }
-              />
-            );
-          if (openThread !== blockId && !waiting) return null;
-          return (
-            <DocThread
-              comments={list}
-              state={comments}
-              userId={userId}
-              quote={list[0]?.quote ?? pending?.quote}
-              placeholder="Comment on this line…"
-              autoFocus={waiting}
-              anchor={{
-                block_id: blockId,
-                quote: pending?.quote ?? list[0]?.quote ?? "",
-                range_start: pending?.range_start,
-                range_end: pending?.range_end,
-              }}
-              // Stay open on the line just commented on, so the remark
-              // that was written is there to read rather than folding away.
-              onDone={() => {
-                setPending(null);
-                setOpenThread(blockId);
-              }}
-            />
-          );
-        }}
-        onEditBlock={reading && !suggesting ? undefined : openLine}
-        onToggleTodo={reading || !structural ? undefined : toggle}
-      />
+          }}
+          onEditBlock={reading && !suggesting ? undefined : openLine}
+          onToggleTodo={reading || !structural ? undefined : toggle}
+        />
+      </View>
 
       {focused !== null && (!reading || suggesting) ? (
         /* Eleven kinds of line wrapped over three rows and took 374pt of an

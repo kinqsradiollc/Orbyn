@@ -205,18 +205,20 @@ export function PlannerPanel({
       setPending(true);
       setOutcome(null);
       try {
-        let next = await client.previewPlan({
-          start_date: startDate,
-          days: dayCount,
-          use_frames: useFrames,
-          split,
-          pad_percent: pad,
-          break_level: breakLevel,
-          timezone: deviceTimeZone(),
-          ...(only?.length
-            ? { item_ids: only }
-            : { scope: scopeOf(personal, teamIds, listIds) ?? undefined }),
-        });
+        let next = plan?.options?.project_id
+          ? await client.planProject(plan.options.project_id, deviceTimeZone())
+          : await client.previewPlan({
+              start_date: startDate,
+              days: dayCount,
+              use_frames: useFrames,
+              split,
+              pad_percent: pad,
+              break_level: breakLevel,
+              timezone: deviceTimeZone(),
+              ...(only?.length
+                ? { item_ids: only }
+                : { scope: scopeOf(personal, teamIds, listIds) ?? undefined }),
+            });
         // A fresh plan after one was applied starts from the planner's ticks.
         if (applied) setTicks({});
         // "Plan it": make sure the task is in, even outside the scope.
@@ -244,6 +246,7 @@ export function PlannerPanel({
       personal,
       teamIds,
       listIds,
+      plan?.options?.project_id,
       applied,
       onPlan,
       fail,

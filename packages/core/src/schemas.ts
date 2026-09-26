@@ -228,6 +228,16 @@ export const itemData = z
      * makes it a top-level task.
      */
     parent_id: z.uuid().nullable().optional(),
+    /**
+     * The project the item is filed in, in its own space (a team's project
+     * for a team item, one of the owner's own for a personal item), and
+     * which of its stages. Omitted on edit keeps what is saved; null takes it
+     * out. A project given without a stage puts it in no stage, unless it is
+     * the one it's already in. Moving to another space takes it out of the
+     * old space's project.
+     */
+    project_id: z.uuid().nullable().optional(),
+    stage_id: z.uuid().nullable().optional(),
     /** Web links on the item (up to 20). Sending the list replaces it. */
     links: z
       .array(itemLinkInput)
@@ -257,6 +267,10 @@ export const itemData = z
   .refine(
     (d) => !d.parent_id || d.kind === "task",
     "Only tasks can be subtasks",
+  )
+  .refine(
+    (d) => !d.stage_id || d.project_id !== null,
+    "A stage belongs to a project: pick the project too",
   );
 
 // Documents. The body is the editor's block list; each block is validated so a
@@ -340,6 +354,28 @@ export const docUpdate = z
   .strict();
 
 // Projects. Stages are given by name and order; the server keeps their ids.
+export const projectLinkInput = z
+  .object({
+    url: z
+      .string()
+      .trim()
+      .max(2000)
+      .refine((value) => {
+        try {
+          const parsed = new URL(value);
+          return (
+            (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+            !parsed.username &&
+            !parsed.password
+          );
+        } catch {
+          return false;
+        }
+      }, "Links must start with http:// or https:// and cannot include credentials."),
+    title: z.string().trim().max(200).default(""),
+  })
+  .strict();
+
 export const projectInput = z
   .object({
     name: z.string().trim().min(1).max(120),
@@ -373,7 +409,10 @@ export const projectUpdate = z
 export const projectAssign = z
   .object({
     project_id: z.uuid().nullable(),
-    stage_id: z.uuid().nullable().default(null),
+    stage_id: z.uuid().nullable().optional(),
+  })
+  .refine((d) => d.project_id !== null || !d.stage_id, {
+    message: "A stage needs a project.",
   })
   .strict();
 
@@ -534,6 +573,40 @@ export const agentReply = z.object({
   actions: z.array(actionSchema).max(20).default([]),
 });
 
+/** One assistant-suggested change to the viewer's own session. */
+export const sessionChangeSchema = z
+  .discriminatedUnion("operation", [
+    z.object({
+      operation: z.literal("remove"),
+      block_id: z.uuid(),
+      item_id: z.uuid(),
+      project_id: z.uuid().nullable().default(null),
+      title: z.string().max(200),
+      from_start_at: z.iso.datetime(),
+      from_end_at: z.iso.datetime(),
+    }),
+    z.object({
+      operation: z.literal("move"),
+      block_id: z.uuid(),
+      item_id: z.uuid(),
+      project_id: z.uuid().nullable().default(null),
+      title: z.string().max(200),
+      from_start_at: z.iso.datetime(),
+      from_end_at: z.iso.datetime(),
+      start_at: z.iso.datetime(),
+      end_at: z.iso.datetime(),
+    }),
+  ])
+  .refine(
+    (change) =>
+      change.operation === "remove" ||
+      (Date.parse(change.end_at) > Date.parse(change.start_at) &&
+        Date.parse(change.end_at) - Date.parse(change.start_at) <=
+          24 * 60 * 60_000),
+    "A session must last more than zero and no more than 24 hours.",
+  );
+export type SessionChange = z.output<typeof sessionChangeSchema>;
+
 export const deviceData = z.object({
   token: z
     .string()
@@ -549,11 +622,18 @@ export const chatTurn = z
   })
   .strict();
 
+export const chatScope = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("project"), id: z.uuid() }),
+  z.object({ kind: z.literal("task"), id: z.uuid() }),
+]);
+export type ChatScope = z.output<typeof chatScope>;
+
 export const chatRequest = z.object({
   message: z.string().trim().min(1).max(4000),
   timezone: z.string().max(80).default("UTC"),
   /** Most recent turns first-to-last; the server keeps only what it needs. */
   history: z.array(chatTurn).max(12).default([]),
+  scope: chatScope.nullable().default(null),
 });
 
 export const preferences = z.object({ email_reminders: z.boolean() });
@@ -569,6 +649,8 @@ export const chatWebhookInput = z
 /** Ask the assistant to draft a project (subtasks) for review. */
 export const projectRequest = z.object({
   prompt: z.string().trim().min(1).max(2000),
+  summary: z.string().trim().max(2000).optional(),
+  deadline: z.iso.datetime({ offset: true }).nullable().optional(),
   timezone: z.string().max(80).default("UTC"),
   /** Draft it for a team: the project and its tasks become the team's once approved. */
   team_id: z.uuid().nullable().optional(),

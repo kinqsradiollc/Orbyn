@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import {
   assistantSuggestions,
-  type DocSource,
+  type AssistantSource,
   type Item,
   type Plan,
 } from "@orbyn/core";
@@ -39,27 +39,55 @@ export function AssistantScreen({
   onOpenSource,
   onKeptNote,
   onShowOnCalendar,
+  onBackToProject,
 }: {
   assistant: Assistant;
   items: Item[];
   busy: boolean;
   /** Opens a page the assistant read, at the line it cited. */
-  onOpenSource?: (source: DocSource) => void;
+  onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
   /** After a plan is applied: the calendar at its first changed session. */
   onShowOnCalendar?: (at: string) => void;
+  onBackToProject?: (projectId: string) => void;
 }) {
-  const { turns, thinking, ask, apply, discard, reset } = assistant;
+  const { turns, thinking, ask, apply, discard, reset, scope, setScope } =
+    assistant;
   const { height } = useWindowDimensions();
   const locked = busy || thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
     .find((t) => t.role === "assistant")?.id;
+  const suggestions = scope
+    ? scope.kind === "project"
+      ? [
+          "Where does it stand?",
+          "What's at risk before the deadline?",
+          "What changed since I last looked?",
+        ]
+      : ["Will I finish this by the deadline?", "What should I plan next?"]
+    : SUGGESTIONS;
 
   return (
     <>
+      {scope && (
+        <View style={s.scopeRow}>
+          <SmallAction
+            label={`In: ${scope.name} ×`}
+            disabled={thinking}
+            onPress={() => setScope(null)}
+          />
+          {scope.kind === "project" && onBackToProject && (
+            <SmallAction
+              label={`Back to ${scope.name}`}
+              disabled={thinking}
+              onPress={() => onBackToProject(scope.id)}
+            />
+          )}
+        </View>
+      )}
       {turns.length === 0 ? (
         <FadeIn style={[s.welcome, { minHeight: Math.max(400, height - 480) }]}>
           <View style={s.badge}>
@@ -71,7 +99,7 @@ export function AssistantScreen({
             You’ll review every change before it’s saved.
           </Text>
           <View style={s.chips}>
-            {SUGGESTIONS.map((text) => (
+            {suggestions.map((text) => (
               <PressableScale
                 key={text}
                 accessibilityRole="button"
@@ -132,7 +160,9 @@ export function AssistantScreen({
                   before={turn.before}
                   busy={locked}
                   state={turn.state}
-                  onApprove={() => apply(turn.id)}
+                  onApprove={(giveTasksDeadlines) =>
+                    apply(turn.id, giveTasksDeadlines)
+                  }
                   onDiscard={() => discard(turn.id)}
                   onOpenSource={onOpenSource}
                   onKeptNote={onKeptNote}
@@ -173,9 +203,11 @@ export function AssistantScreen({
       </View>
 
       <Text style={[shared.small, s.note]}>
-        Your request, recent items and the next few days of your calendar
-        (subscribed calendars included) are shared with your configured AI
-        provider.
+        {scope?.kind === "project"
+          ? "Your question, this project's tasks, notes and decisions, and any pages the assistant opens are sent to the AI service Orbyn uses to answer you."
+          : scope?.kind === "task"
+            ? "Your question, this task and its sessions, and any pages the assistant opens are sent to the AI service Orbyn uses to answer you."
+            : "Your question, recent tasks, the next few days of your calendar and any pages the assistant opens are sent to the AI service Orbyn uses to answer you."}
       </Text>
     </>
   );
@@ -383,6 +415,12 @@ const s = themed(() =>
     },
     intro: { marginBottom: 16 },
     chips: { gap: 10 },
+    scopeRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
     chip: {
       width: "100%",
       flexDirection: "row",

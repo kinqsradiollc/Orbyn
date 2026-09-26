@@ -31,6 +31,7 @@ export function MonthView({
   month,
   selected,
   things,
+  sessions = [],
   frames,
   onSelect,
   onMore,
@@ -38,6 +39,8 @@ export function MonthView({
   month: Date;
   selected: Date;
   things: MonthThing[];
+  /** Saved sessions, counted on the local day they start. */
+  sessions?: { start_at: string }[];
   frames: FrameOccurrence[];
   onSelect: (day: Date) => void;
   /** Open a day whose things didn't all fit. */
@@ -49,7 +52,7 @@ export function MonthView({
   const compact = width < 600;
   const scale = Math.min(MAX_SCALE, fontScale);
   const lane = Math.round(LANE_HEIGHT * scale);
-  const dateRow = Math.round(DATE_HEIGHT * scale);
+  const dateRow = Math.round((DATE_HEIGHT + (compact ? 0 : 16)) * scale);
   const moreRow = Math.round(MORE_HEIGHT * scale);
   return (
     <View>
@@ -80,11 +83,14 @@ export function MonthView({
               const isToday = sameDay(day, today);
               const dayFrames = frames.filter((f) => covers(f, day));
               const count = total[c];
+              const sessionTotal = sessions.filter((session) =>
+                sameDay(new Date(session.start_at), day),
+              ).length;
               return (
                 <Pressable
                   key={day.toISOString()}
                   accessibilityRole="button"
-                  accessibilityLabel={`${day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${isToday ? ", today" : ""}, ${count ? `${count} on the calendar` : "nothing on the calendar"}${dayFrames.length ? `, ${dayFrames.map((f) => f.name).join(", ")}` : ""}`}
+                  accessibilityLabel={`${day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${isToday ? ", today" : ""}, ${count ? `${count} on the calendar` : "nothing on the calendar"}, ${sessionTotal} sessions${dayFrames.length ? `, ${dayFrames.map((f) => f.name).join(", ")}` : ""}`}
                   accessibilityState={{ selected: active }}
                   onPress={() => onSelect(day)}
                   style={({ pressed }) => [
@@ -129,12 +135,28 @@ export function MonthView({
                       ))}
                     </View>
                   </View>
-                  {compact && count > 0 && (
-                    <View style={s.activityDots}>
-                      {Array.from({ length: Math.min(count, 3) }, (_, n) => (
-                        <View key={n} style={s.activityDot} />
-                      ))}
-                    </View>
+                  {sessionTotal > 0 ? (
+                    <Text
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={MAX_SCALE}
+                      style={s.sessionCount}
+                    >
+                      {sessionTotal}{" "}
+                      {compact
+                        ? "◷"
+                        : sessionTotal === 1
+                          ? "session"
+                          : "sessions"}
+                    </Text>
+                  ) : (
+                    compact &&
+                    count > 0 && (
+                      <View style={s.activityDots}>
+                        {Array.from({ length: Math.min(count, 3) }, (_, n) => (
+                          <View key={n} style={s.activityDot} />
+                        ))}
+                      </View>
+                    )
                   )}
                 </Pressable>
               );
@@ -221,6 +243,14 @@ export function MonthView({
 
 const s = themed(() =>
   StyleSheet.create({
+    sessionCount: {
+      fontFamily: fonts.medium,
+      fontSize: 10,
+      color: colors.accent,
+      textAlign: "center",
+      paddingHorizontal: 2,
+      paddingTop: 2,
+    },
     compactHead: { justifyContent: "center", paddingLeft: 0 },
     compactDate: { fontSize: 15 },
     activityDots: {

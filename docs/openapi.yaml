@@ -383,6 +383,25 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /items/{id}/context:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get:
+      tags: [Items]
+      summary: A task's project, source line and readable related pages
+      responses:
+        "200":
+          description: Project and page links filtered to what the caller can open
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project, came_from, pages]
+                properties:
+                  project: { type: [object, "null"] }
+                  came_from: { type: [object, "null"] }
+                  pages: { type: array, items: { type: object } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /items/{id}/position:
     parameters: [{ $ref: "#/components/parameters/Id" }]
     put:
@@ -1242,6 +1261,10 @@ components:
           type: [string, "null"]
           format: date-time
           description: The moment it's due by; the end of the day for an all-day task, the end time for a span.
+        planning_deadline_at:
+          type: [string, "null"]
+          format: date-time
+          description: Earlier task or project target used to judge whether the session is late.
         after_deadline:
           { type: boolean, description: The session ends after the deadline. }
         part:
@@ -1258,6 +1281,8 @@ components:
         due_all_day: { type: boolean }
         deadline_at: { type: [string, "null"], format: date-time }
         project_deadline: { type: [string, "null"], format: date-time }
+        dependent_deadline: { type: [string, "null"], format: date-time }
+        planning_deadline_at: { type: [string, "null"], format: date-time }
         sessions:
           type: array
           items: { $ref: "#/components/schemas/TimeBlock" }

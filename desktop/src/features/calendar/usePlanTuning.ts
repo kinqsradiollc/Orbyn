@@ -170,23 +170,25 @@ export function usePlanTuning(
     setPending(true);
     setError("");
     try {
-      let next = await client.previewPlan(
-        o
-          ? {
-              start_date: o.start_date,
-              days: o.days,
-              pad_percent: o.pad_percent,
-              split: o.split,
-              break_level: o.break_level,
-              use_frames: o.use_frames,
-              timezone: o.timezone,
-              keep_free: o.keep_free,
-              item_ids: o.item_ids ?? undefined,
-              exclude_item_ids: o.exclude_item_ids,
-              scope: o.scope ?? undefined,
-            }
-          : { start_date: plan.starts_on, days: plan.days },
-      );
+      let next = o?.project_id
+        ? await client.planProject(o.project_id, o.timezone)
+        : await client.previewPlan(
+            o
+              ? {
+                  start_date: o.start_date,
+                  days: o.days,
+                  pad_percent: o.pad_percent,
+                  split: o.split,
+                  break_level: o.break_level,
+                  use_frames: o.use_frames,
+                  timezone: o.timezone,
+                  keep_free: o.keep_free,
+                  item_ids: o.item_ids ?? undefined,
+                  exclude_item_ids: o.exclude_item_ids,
+                  scope: o.scope ?? undefined,
+                }
+              : { start_date: plan.starts_on, days: plan.days },
+          );
       setPlan(next);
       setStale(false);
       if (

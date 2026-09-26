@@ -67,11 +67,19 @@ async function person(admin = false) {
   return { token: token as string, id: user.id as string };
 }
 
-async function upload(token: string, name: string, body: Buffer, mime: string) {
+async function upload(
+  token: string,
+  name: string,
+  body: Buffer,
+  mime: string,
+  projectId?: string,
+) {
   const start = await call(token, "POST", "/imports", {
     file_name: name,
     bytes: body.length,
     mime,
+    ...(projectId ? { project_id: projectId } : {}),
+    ...(projectId ? { project_team_id: null } : {}),
   });
   assert.equal(start.status, 201, JSON.stringify(start.body));
   const put = await app.inject({
@@ -84,6 +92,87 @@ async function upload(token: string, name: string, body: Buffer, mime: string) {
   assert.equal(put.statusCode, 201, put.body);
   return start.body.import.id as string;
 }
+
+test("a project import becomes a project page with file history, and outsiders cannot target it", async () => {
+  const owner = await person();
+  const outsider = await person();
+  const created = await call(owner.token, "POST", "/projects", {
+    name: "Research",
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const projectId = created.body.id as string;
+  const denied = await call(outsider.token, "POST", "/imports", {
+    file_name: "week6.docx",
+    bytes: wordFile().length,
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    project_id: projectId,
+    project_team_id: null,
+  });
+  assert.equal(denied.status, 404);
+  const changedTeam = await call(owner.token, "POST", "/imports", {
+    file_name: "week6.docx",
+    bytes: wordFile().length,
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    project_id: projectId,
+    project_team_id: randomUUID(),
+  });
+  assert.equal(changedTeam.status, 409);
+
+  const id = await upload(
+    owner.token,
+    "week6.docx",
+    wordFile(),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    projectId,
+  );
+  await convertPending();
+  const job = (await call(owner.token, "GET", `/imports/${id}`)).body;
+  assert.equal(job.status, "ready", JSON.stringify(job));
+  const doc = (await call(owner.token, "GET", `/docs/${job.doc_id}`)).body;
+  assert.equal(doc.project_id, projectId);
+  assert.equal(doc.in_uploads, false);
+  const history = (
+    await call(owner.token, "GET", `/projects/${projectId}/activity`)
+  ).body;
+  assert.ok(
+    history.some(
+      (event: { summary: string; entity_id: string }) =>
+        event.entity_id === doc.id &&
+        event.summary === `File added: ${doc.title}`,
+    ),
+  );
+  const row = (
+    await pool.query("SELECT object_id FROM imports WHERE id = $1", [id])
+  ).rows[0];
+  assert.equal(row.object_id, null);
+});
+
+test("conversion fails closed if the project disappears after upload", async () => {
+  const owner = await person();
+  const created = await call(owner.token, "POST", "/projects", {
+    name: "Temporary project",
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const projectId = created.body.id as string;
+  const id = await upload(
+    owner.token,
+    "week6.docx",
+    wordFile(),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    projectId,
+  );
+  const removed = await call(owner.token, "DELETE", `/projects/${projectId}`);
+  assert.equal(removed.status, 204, JSON.stringify(removed.body));
+  await convertPending();
+  const job = (await call(owner.token, "GET", `/imports/${id}`)).body;
+  assert.equal(job.status, "failed");
+  assert.equal(job.doc_id, null);
+  assert.match(job.error, /Nothing was shared/);
+  const row = (
+    await pool.query("SELECT object_id FROM imports WHERE id = $1", [id])
+  ).rows[0];
+  assert.equal(row.object_id, null);
+});
 
 before(async () => {
   await migrate();
