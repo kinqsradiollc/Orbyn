@@ -24,6 +24,10 @@ export type AppLink =
   | { kind: "assistant" }
   /** "Share into Orbyn" with this text or link, to choose where it goes. */
   | { kind: "share"; text: string | null; url: string | null }
+  /** The Review inbox, at one change when the link names it. */
+  | { kind: "review"; id: string | null }
+  /** Search, with these words already typed (orbyn://search?q=). */
+  | { kind: "search"; q: string }
   | LinkTarget;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,8 +83,14 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
     if (rest.length || !UUID.test(id)) return null;
     return { kind: head, id: id.toLowerCase() };
   }
+  if (head === "review") {
+    if (rest.length || (id && !UUID.test(id))) return null;
+    return { kind: "review", id: id ? id.toLowerCase() : null };
+  }
   if (id) return null;
   if (head === "today") return { kind: "today" };
+  if (head === "search")
+    return { kind: "search", q: (text("q") ?? "").slice(0, 200) };
   // These three are the phone's own; the web has no such pages.
   if (custom && head === "agenda") return { kind: "agenda" };
   if (custom && head === "scan") return { kind: "scan" };

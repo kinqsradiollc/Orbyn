@@ -136,6 +136,16 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 1,
   },
   {
+    key: "recent_opens",
+    label: "Recently opened",
+    detail: "What each person opened lately, for the quick switcher.",
+    table: "recent_opens",
+    where: olderThan("opened_at"),
+    days: 90,
+    configurable: true,
+    min: 7,
+  },
+  {
     key: "audit_log",
     label: "Audit log",
     detail: "Admin and security actions.",

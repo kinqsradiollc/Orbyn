@@ -40,6 +40,7 @@ export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 /** Routes a capability already covers, with the capabilities that do. */
 export const COVERED: Record<string, string[]> = {
   "GET /search": ["search"],
+  "GET /find": ["search"],
   "GET /items": ["query"],
   "GET /items/:id": ["fetch"],
   "GET /docs": ["query"],
@@ -62,6 +63,7 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "POST /recents": "device",
   "GET /admin/agents": "admin",
   "PUT /admin/agents": "admin",
   "GET /admin/agents/clients": "admin",
@@ -454,4 +456,7 @@ export const PUBLIC: string[] = [
   "POST /oauth/revoke",
   "POST /oauth/register",
   "GET /.well-known/*",
+  // The files phones check to open the web app's links in the app.
+  "GET /.well-known/apple-app-site-association",
+  "GET /.well-known/assetlinks.json",
 ];

@@ -19,6 +19,7 @@ import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
 import { docRoutes } from "./modules/docs/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
+import { appLinkRoutes } from "./modules/app-links/routes.js";
 import { aiDocRoutes } from "./modules/ai/docs.js";
 import { folderRoutes } from "./modules/organize/folders.js";
 import { projectRoutes } from "./modules/projects/routes.js";
@@ -69,6 +70,8 @@ export const serviceModules: Record<
     // Signing in with Orbyn for outside agents (OAuth): the authorization
     // server, its metadata and the consent page's routes.
     oauthRoutes,
+    // The files phones check to open the web app's links in the app.
+    appLinkRoutes,
     davRoutes,
     itemRoutes,
     deviceRoutes,

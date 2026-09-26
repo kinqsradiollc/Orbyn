@@ -1453,7 +1453,7 @@ export function reanchorSuggestions(
  */
 export type SearchHit = {
   id: string;
-  type: "doc" | "task" | "record";
+  type: "doc" | "task" | "record" | "project";
   title: string;
   kind: string;
   team_id: string | null;
@@ -1469,6 +1469,20 @@ export type SearchHit = {
   /** The line that matched, so a hit can open where the words are. */
   block_id: string | null;
   rank: number;
+};
+
+/** One thing the quick switcher found (GET /find). */
+export type FindHit = {
+  id: string;
+  /** A task, an event, a page or a project. */
+  type: "task" | "event" | "doc" | "project";
+  title: string;
+  /** A little about it: its project, or what kind of page it is. */
+  hint: string | null;
+  team_id: string | null;
+  updated_at: string;
+  /** Whether it came from what you opened lately rather than the words. */
+  recent: boolean;
 };
 
 /**

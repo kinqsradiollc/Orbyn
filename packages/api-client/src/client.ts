@@ -50,6 +50,7 @@ import {
   type ExportFormat,
   type Proposed,
   type SearchHit,
+  type FindHit,
   type DocSummary,
   type EventNoteRef,
   type DocVersion,
@@ -1173,7 +1174,7 @@ export class OrbynClient {
   search(
     q: string,
     filter: {
-      type?: "doc" | "task";
+      type?: "doc" | "task" | "project";
       kind?: DocKind;
       project?: string;
       tag?: string;
@@ -1186,6 +1187,28 @@ export class OrbynClient {
     for (const [k, v] of Object.entries(filter))
       if (v !== undefined) params.set(k, String(v));
     return this.request<SearchHit[]>(`/search?${params}`);
+  }
+
+  /**
+   * The quick switcher: pages, tasks and projects by name, from the first
+   * letter. With no words, what you opened last (then what changed last).
+   */
+  find(
+    q: string,
+    filter: { type?: "doc" | "task" | "project"; limit?: number } = {},
+  ) {
+    const params = new URLSearchParams({ q });
+    for (const [k, v] of Object.entries(filter))
+      if (v !== undefined) params.set(k, String(v));
+    return this.request<FindHit[]>(`/find?${params}`);
+  }
+
+  /** Something was opened: it leads the quick switcher's recent list. */
+  recordRecent(kind: "doc" | "task" | "project", id: string) {
+    return this.request<void>("/recents", {
+      method: "POST",
+      body: { kind, id },
+    });
   }
 
   /**

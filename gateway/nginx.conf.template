@@ -311,6 +311,22 @@ ${UPSTREAM_MCP}
       proxy_set_header X-Request-Id $request_id;
       proxy_pass http://127.0.0.1:8080;
     }
+    # Opening the web app's links in the phone app: the association files
+    # iOS and Android check, built by the API from its environment.
+    location = /.well-known/apple-app-site-association {
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080;
+    }
+    location = /.well-known/assetlinks.json {
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080;
+    }
     # Any other well-known document isn't here: a 404, not the web app's page
     # (clients probe paths like /.well-known/openid-configuration).
     location ^~ /.well-known/ {

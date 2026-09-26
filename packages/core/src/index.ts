@@ -53,3 +53,5 @@ export * from "./undo.js";
 export * from "./create-actions.js";
 export * from "./app-links.js";
 export * from "./share.js";
+export * from "./search-query.js";
+export * from "./security-page.js";

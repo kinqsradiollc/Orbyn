@@ -83,6 +83,14 @@ const schema = z.object({
    */
   APP_URL: z.string().default("http://localhost:8080"),
   /**
+   * Opening the web app's links in the phone app: the Apple developer team
+   * that signs the iOS app, and the SHA-256 fingerprints (comma separated) of
+   * the certificates that sign the Android app. Blank serves empty
+   * association files, so links stay in the browser.
+   */
+  APPLE_TEAM_ID: z.string().default(""),
+  ANDROID_CERT_FINGERPRINTS: z.string().default(""),
+  /**
    * "true" lets webhooks call private network addresses (local development
    * and tests only). Otherwise they must reach a public address.
    */

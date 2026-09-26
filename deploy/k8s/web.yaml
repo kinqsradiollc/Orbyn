@@ -126,6 +126,13 @@ data:
       location = /.well-known/oauth-authorization-server {
         proxy_pass http://orbyn_api/.well-known/oauth-authorization-server;
       }
+      # The files phones check to open /app/ links in the Orbyn app.
+      location = /.well-known/apple-app-site-association {
+        proxy_pass http://orbyn_api/.well-known/apple-app-site-association;
+      }
+      location = /.well-known/assetlinks.json {
+        proxy_pass http://orbyn_api/.well-known/assetlinks.json;
+      }
       # Well-known documents this app doesn't have: a 404, not the app's page.
       location ^~ /.well-known/ {
         default_type application/json;

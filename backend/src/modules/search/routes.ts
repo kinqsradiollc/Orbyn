@@ -5,6 +5,8 @@ import { authenticate } from "../../lib/auth.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { nearest } from "./semantic.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { visibleProjects } from "../../lib/visibility.js";
+import { findRoutes } from "./find.js";
 
 /**
  * One search across pages and tasks (and, within a project, its records).
@@ -122,6 +124,10 @@ export async function searchRoutes(app: FastifyInstance) {
 
     const wantsDocs = !q.type || q.type === "doc";
     const wantsItems = (!q.type || q.type === "task") && !q.tag;
+    // Projects have no tags, kinds or a project of their own, so a search
+    // narrowed by one of those isn't looking for a project.
+    const wantsProjects =
+      (!q.type || q.type === "project") && !q.tag && !q.kind && !q.project;
     // Records have no search index of their own, so they are looked through
     // only within one project (or when asked for), where there are few.
     const wantsRecords =
@@ -194,8 +200,37 @@ export async function searchRoutes(app: FastifyInstance) {
         ).rows
       : [];
 
+    const projects = wantsProjects
+      ? (
+          await db.query<SearchHit>(
+            `WITH q AS (SELECT websearch_to_tsquery('english', $2) AS tsq)
+             SELECT p.id, 'project' AS type, p.name AS title, p.status AS kind,
+                    p.team_id, p.id AS project_id, p.name AS project_name,
+                    p.updated_at,
+                    ts_headline('english', p.summary, q.tsq, '${MARKS}') AS snippet,
+                    NULL AS block_id,
+                    ${RANK(
+                      "setweight(to_tsvector('english', p.name), 'A') || setweight(to_tsvector('english', p.summary), 'C')",
+                      "p.name",
+                      "p.updated_at",
+                    )} AS rank
+               FROM projects p
+               CROSS JOIN q
+              WHERE ${visibleProjects("p")}
+                AND (to_tsvector('english', p.name || ' ' || p.summary) @@ q.tsq
+                     OR similarity(p.name, $2) > 0.25)
+                AND ($3::uuid IS NULL OR p.id = $3)
+                AND ($4::uuid IS NULL OR p.team_id = $4)
+                AND ($5::timestamptz IS NULL OR p.updated_at >= $5)
+              ORDER BY rank DESC, p.updated_at DESC
+              LIMIT $6`,
+            itemParams,
+          )
+        ).rows
+      : [];
+
     // The lists are ranked on the same scale, so they interleave honestly.
-    const found = [...docs, ...items, ...records].sort(
+    const found = [...docs, ...items, ...records, ...projects].sort(
       (a, b) => Number(b.rank) - Number(a.rank),
     );
 
@@ -244,4 +279,6 @@ export async function searchRoutes(app: FastifyInstance) {
 
     return found.slice(0, q.limit);
   });
+
+  await findRoutes(app);
 }

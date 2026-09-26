@@ -531,17 +531,37 @@ export const searchQuery = z
   .object({
     q: z.string().trim().min(1).max(200),
     /**
-     * "doc" searches pages only, "task" tasks only, "record" work records
-     * (decisions and the like) only. By default pages and tasks, plus records
-     * when searching one project.
+     * "doc" searches pages only, "task" tasks only, "project" projects only,
+     * "record" work records (decisions and the like) only. By default pages,
+     * tasks and projects, plus records when searching one project.
      */
-    type: z.enum(["doc", "task", "record"]).optional(),
+    type: z.enum(["doc", "task", "record", "project"]).optional(),
     kind: z.enum(DOC_KINDS).optional(),
     project: z.uuid().optional(),
     tag: z.uuid().optional(),
     team: z.uuid().optional(),
     updated_after: z.iso.datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .strict();
+
+/**
+ * The quick switcher (NAV-02): things by name, from the first letter typed.
+ * With no words it lists what you opened last.
+ */
+export const findQuery = z
+  .object({
+    q: z.string().trim().max(200).default(""),
+    type: z.enum(["doc", "task", "project"]).optional(),
+    limit: z.coerce.number().int().min(1).max(30).default(12),
+  })
+  .strict();
+
+/** Something just opened, for the quick switcher's recent list. */
+export const recentOpenInput = z
+  .object({
+    kind: z.enum(["doc", "task", "project"]),
+    id: z.uuid(),
   })
   .strict();
 
