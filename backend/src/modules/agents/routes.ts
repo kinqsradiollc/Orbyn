@@ -24,6 +24,7 @@ import {
   AGENT_SETTING_KEYS,
   invalidateSettings,
   settings,
+  type LiveSettings,
 } from "../../lib/settings.js";
 import { requireTeam } from "../../lib/teams.js";
 import {
@@ -44,6 +45,15 @@ import { cancelTeamProposals } from "../proposals/service.js";
  * person reaches these: personal API keys are refused (KEY_BLOCKED) and
  * agent credentials never authenticate here.
  */
+/** Admin's view of the switches, with old API keys' last day on MCP. */
+const adminView = (s: LiveSettings): AgentSettings => ({
+  ...s.agents,
+  legacy_keys_until:
+    s.legacy_keys_until && Date.parse(s.legacy_keys_until) > Date.now()
+      ? s.legacy_keys_until
+      : null,
+});
+
 export async function agentRoutes(app: FastifyInstance) {
   app.get("/me/agents", async (r): Promise<AgentsOverview> => {
     const u = await authenticate(r);
@@ -193,7 +203,7 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get("/admin/agents", async (r): Promise<AgentSettings> => {
     await authorize(r, "system:manage");
     invalidateSettings();
-    return (await settings()).agents;
+    return adminView(await settings());
   });
 
   app.put("/admin/agents", async (r): Promise<AgentSettings> => {
@@ -255,7 +265,7 @@ export async function agentRoutes(app: FastifyInstance) {
       );
     });
     invalidateSettings();
-    return (await settings()).agents;
+    return adminView(await settings());
   });
 
   /** Admin → Agents: the apps that have signed in, and how many use each. */

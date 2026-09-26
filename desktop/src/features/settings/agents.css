@@ -287,3 +287,24 @@
   display: flex;
   gap: 8px;
 }
+
+/* One-click install links (Cursor, VS Code, Goose, LM Studio). */
+.agents-install {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.agents-install-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agents-install-links a.secondary {
+  padding: 8px 14px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+.agents-install-links a.secondary:hover {
+  border-color: var(--color-borderHover);
+  background: var(--color-hover);
+}

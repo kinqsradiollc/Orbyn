@@ -39,6 +39,7 @@ export const AGENT_SETTING_KEYS = [
   "blocked_client_ids",
   "max_grant_days",
   "agent_limits",
+  "mcp_apps_enabled",
 ] as const satisfies readonly (keyof AgentSettings)[];
 
 type Smtp = {

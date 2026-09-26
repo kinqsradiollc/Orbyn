@@ -48,6 +48,13 @@ import {
   type Progress,
 } from "../../capabilities/registry.js";
 import { TASKS_EXTENSION } from "./tasks.js";
+import {
+  APP_MIME,
+  MCP_APPS_EXTENSION,
+  cardResources,
+  readCard,
+  toolUiMeta,
+} from "./apps.js";
 import { todayForPrincipal, todayMarkdown } from "../../capabilities/today.js";
 import type { Principal } from "../../capabilities/policy.js";
 import {
@@ -277,6 +284,7 @@ function progressFor(ctx: {
 /** The server for one call, bound to its caller. */
 export function buildServer(call: CallContext): Server {
   const p = call.caller.principal;
+  const apps = !!call.settings.agents.mcp_apps_enabled;
   const server = new Server(
     {
       name: "orbyn",
@@ -294,7 +302,11 @@ export function buildServer(call: CallContext): Server {
         completions: {},
         // Long jobs (imports, large plans) as tasks, for clients that
         // declare the extension on the call; the others get a handle.
-        extensions: { [TASKS_EXTENSION]: {} },
+        extensions: {
+          [TASKS_EXTENSION]: {},
+          // Cards (MCP Apps), when the administrator turned them on.
+          ...(apps ? { [MCP_APPS_EXTENSION]: { mimeTypes: [APP_MIME] } } : {}),
+        },
       },
       instructions: INSTRUCTIONS,
       supportedProtocolVersions: PROTOCOL_VERSIONS,
@@ -312,7 +324,11 @@ export function buildServer(call: CallContext): Server {
   );
 
   server.setRequestHandler("tools/list", async () => ({
-    tools: listedTools(p).map(listedTool),
+    tools: listedTools(p).map((cap) => {
+      const tool = listedTool(cap);
+      const ui = apps ? toolUiMeta(cap.name) : null;
+      return ui ? { ...tool, _meta: { ...tool._meta, ...ui } } : tool;
+    }),
   }));
 
   server.setRequestHandler("tools/call", async (request, ctx) => {
@@ -418,7 +434,10 @@ export function buildServer(call: CallContext): Server {
       "resources/list",
       {},
       async (ctx) => {
-        const all = await listedResources(ctx);
+        const all = [
+          ...(await listedResources(ctx)),
+          ...(apps ? cardResources() : []),
+        ];
         const offset = await ctx.cursor.open(
           typeof request.params?.cursor === "string"
             ? request.params.cursor
@@ -518,6 +537,10 @@ export function buildServer(call: CallContext): Server {
   server.setRequestHandler("resources/read", async (request) => {
     const uri = request.params.uri;
     const started = Date.now();
+    if (apps && uri.startsWith("ui://")) {
+      const card = readCard(uri);
+      if (card) return card;
+    }
     const notFound = () =>
       new ProtocolError(
         ProtocolErrorCode.InvalidParams,

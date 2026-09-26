@@ -1,4 +1,5 @@
 import {
+  agentInstallLinks,
   AGENT_ACCESS_LABELS,
   AGENT_TOOLSETS,
   AGENT_TOOLSET_LABELS,
@@ -56,6 +57,7 @@ export const CHANGELOG: { date: string; changes: string[] }[] = [
   {
     date: "2026-09-26",
     changes: [
+      "One-click install links for Cursor, VS Code, Goose and LM Studio; plugins for Claude Code, Codex and Gemini CLI; server.json for the MCP Registry; optional cards (MCP Apps) for Today, plan previews and proposals, off unless the administrator turns them on.",
       "Live updates: subscriptions/listen (2026-07-28) follows Today, days, pages, projects, tasks, records, templates and views, and the list of recent things, on a stream held by Orbyn's realtime service.",
       "Long jobs: start_import, plan_revision and plans over a week (or more than 25 tasks) become tasks for clients that declare the Tasks extension (tasks/get, tasks/cancel, notifications/tasks); others get the same handle as before. Progress notifications on plans for calls that send a progressToken.",
       "Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.",
@@ -282,6 +284,19 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- `tools/list` may be cached for 5 minutes (`ttlMs`, private). Its order is stable.",
     "- `X-MCP-Toolsets` and `X-MCP-Readonly` headers can narrow a connection for one call, but never widen it.",
     "",
+    "## Adding Orbyn to an app",
+    "",
+    "Links that open an app with Orbyn's address filled in (the app then signs in with Orbyn, or asks for an agent key; no key is ever in a link). They are also in Settings → Connected agents.",
+    "",
+    ...agentInstallLinks(catalog.server.address).map(
+      (l) => `- ${l.label}: <${l.href}>`,
+    ),
+    "- Claude Code, Codex and Gemini CLI: Orbyn's plugins bundle the address and the `orbyn` skill.",
+    "",
+    "## Cards (MCP Apps)",
+    "",
+    "When the administrator turns on Admin → Agents → \"Cards in agents\", apps that support MCP Apps can show small cards beside answers: Today (`get_today`), a plan preview with Apply (`plan_schedule`, `plan_revision`; Apply calls `schedule_sessions` through the app) and a proposal to review in Orbyn (`propose_changes`). Tools name their card in `_meta.ui.resourceUri`; the cards are `ui://orbyn/…` resources (`text/html;profile=mcp-app`) with nothing loaded from outside, drawn in Orbyn's colours and following only the app's light or dark mode. Approving still happens only in Orbyn.",
+    "",
     "## Live updates",
     "",
     "An agent can follow what changes (MCP `2026-07-28`, `subscriptions/listen`) instead of asking again and again. Send `subscriptions/listen` to the same address with the `Mcp-Method: subscriptions/listen` header; the answer is a stream of events, held by Orbyn's realtime service.",
@@ -458,4 +473,66 @@ export function catalogMarkdown(catalog: Catalog): string {
     "",
   );
   return out.join("\n");
+}
+
+/** What each risk tier means for a person, for the annotations audit. */
+const TIER_REVIEW: Record<Capability["tier"], string> = {
+  R: "Runs directly; changes nothing.",
+  W1: "Runs directly; adds only private things (undoable).",
+  W2: "Runs directly where the connection may change things (undoable); team pages get suggestions; a suggest-only connection files a proposal.",
+  W3: "Always waits in the Review inbox for the signed-in person.",
+};
+
+export type AnnotationAudit = {
+  name: string;
+  title: string;
+  toolset: string;
+  tier: Capability["tier"];
+  annotations: Capability["annotations"];
+  review: string;
+  issues: string[];
+};
+
+/**
+ * The annotations audit the directories ask for: every tool's hints next
+ * to what it really does (its tier and effects), with anything that
+ * disagrees listed as an issue. CI holds the issues at none.
+ */
+export function auditAnnotations(): AnnotationAudit[] {
+  return registry.all
+    .filter((c) => !c.legacyOnly)
+    .map((c) => {
+      const a = c.annotations;
+      const issues: string[] = [];
+      if (!c.title) issues.push("no title");
+      if (a.openWorldHint !== false)
+        issues.push("openWorldHint must be false: no tool reaches outside");
+      if (c.mode === "read") {
+        if (a.readOnlyHint !== true) issues.push("a read must be readOnlyHint");
+        if (a.destructiveHint) issues.push("a read can't be destructive");
+        if (c.tier !== "R") issues.push("a read is tier R");
+      } else {
+        if (a.readOnlyHint !== false) issues.push("a change isn't read-only");
+        if (c.tier === "R") issues.push("a change needs a write tier");
+        if (c.access === "read")
+          issues.push("a change needs more than read access");
+        if (
+          c.effects?.some(
+            (e) =>
+              e === "email_outside" || e === "publish" || e === "fetch_outside",
+          ) &&
+          c.tier !== "W3"
+        )
+          issues.push("outward effects always go to review (W3)");
+      }
+      return {
+        name: c.name,
+        title: c.title,
+        toolset: c.toolset,
+        tier: c.tier,
+        annotations: a,
+        review: TIER_REVIEW[c.tier],
+        issues,
+      };
+    });
 }

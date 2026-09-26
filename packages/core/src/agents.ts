@@ -238,6 +238,16 @@ export type AgentSettings = {
   blocked_client_ids: string[];
   max_grant_days: number;
   agent_limits: AgentLimits;
+  /**
+   * Cards in agents that can show them (MCP Apps: Today, a plan preview
+   * with Apply, a proposal to review in Orbyn). Off by default: a preview.
+   */
+  mcp_apps_enabled: boolean;
+  /**
+   * Until when old personal API keys still work over MCP (read-only here;
+   * the date is 90 days after agent access arrived), or null once past.
+   */
+  legacy_keys_until?: string | null;
 };
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
@@ -248,6 +258,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   blocked_client_ids: [],
   max_grant_days: AGENT_KEY_MAX_DAYS,
   agent_limits: DEFAULT_AGENT_LIMITS,
+  mcp_apps_enabled: false,
 };
 
 /** The client ids agent keys and old API keys connect as, for blocking. */
@@ -277,6 +288,7 @@ export const agentSettingsUpdate = z
       .max(200)
       .optional(),
     max_grant_days: z.number().int().min(1).max(AGENT_KEY_MAX_DAYS).optional(),
+    mcp_apps_enabled: z.boolean().optional(),
     agent_limits: z
       .object({
         calls_per_minute: limit(10_000),
@@ -391,6 +403,80 @@ export function agentSetup(
         snippet: `URL: ${url}\nHeader: Authorization: Bearer ${key ?? "<your agent key>"}`,
       };
   }
+}
+
+/** The MCP server's name in apps' configs (no underscore, for Gemini CLI). */
+export const MCP_SERVER_NAME = "orbyn";
+
+/** Apps with a one-click install link, in the order Settings offers them. */
+export const AGENT_INSTALL_APPS = [
+  "cursor",
+  "vscode",
+  "goose",
+  "lmstudio",
+] as const;
+export type AgentInstallApp = (typeof AGENT_INSTALL_APPS)[number];
+
+export const AGENT_INSTALL_LABELS: Record<AgentInstallApp, string> = {
+  cursor: "Cursor",
+  vscode: "VS Code",
+  goose: "Goose",
+  lmstudio: "LM Studio",
+};
+
+const BASE64 =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/** Base64 of a string's UTF-8 bytes (no btoa: the same on every platform). */
+export function base64(text: string): string {
+  const bytes: number[] = [];
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    if (c < 0x80) bytes.push(c);
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    else if (c < 0x10000)
+      bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else
+      bytes.push(
+        0xf0 | (c >> 18),
+        0x80 | ((c >> 12) & 63),
+        0x80 | ((c >> 6) & 63),
+        0x80 | (c & 63),
+      );
+  }
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const [a, b, c] = [bytes[i], bytes[i + 1], bytes[i + 2]];
+    const n = (a << 16) | ((b ?? 0) << 8) | (c ?? 0);
+    out +=
+      BASE64[(n >> 18) & 63] +
+      BASE64[(n >> 12) & 63] +
+      (b === undefined ? "=" : BASE64[(n >> 6) & 63]) +
+      (c === undefined ? "=" : BASE64[n & 63]);
+  }
+  return out;
+}
+
+/**
+ * One-click links that add Orbyn to an app, with only its address: the
+ * app then signs in with Orbyn (or asks for an agent key), so no secret
+ * is ever in a link.
+ */
+export function agentInstallLinks(
+  url: string,
+): { app: AgentInstallApp; label: string; href: string }[] {
+  const name = MCP_SERVER_NAME;
+  const hrefs: Record<AgentInstallApp, string> = {
+    cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=${name}&config=${encodeURIComponent(base64(JSON.stringify({ url })))}`,
+    vscode: `https://vscode.dev/redirect/mcp/install?name=${name}&config=${encodeURIComponent(JSON.stringify({ type: "http", url }))}`,
+    goose: `goose://extension?url=${encodeURIComponent(url)}&type=streamable_http&id=${name}&name=Orbyn&description=${encodeURIComponent("Tasks, calendar, sessions, projects and pages")}`,
+    lmstudio: `lmstudio://add_mcp?name=${name}&config=${encodeURIComponent(base64(JSON.stringify({ url })))}`,
+  };
+  return AGENT_INSTALL_APPS.map((app) => ({
+    app,
+    label: AGENT_INSTALL_LABELS[app],
+    href: hrefs[app],
+  }));
 }
 
 /** "Expires in 29 days", "Expires tomorrow", "Expired". */

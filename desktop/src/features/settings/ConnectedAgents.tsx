@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bot, Copy, Globe, KeyRound, Plus, Terminal } from "lucide-react";
+import {
+  Bot,
+  Copy,
+  ExternalLink,
+  Globe,
+  KeyRound,
+  Plus,
+  Terminal,
+} from "lucide-react";
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
@@ -10,6 +18,7 @@ import {
   AGENT_SETUP_LABELS,
   AGENT_SIGN_IN_STEPS,
   agentExpiryText,
+  agentInstallLinks,
   agentSetup,
   isSignInClient,
   type AgentAccess,
@@ -818,6 +827,27 @@ function ConnectAgent({
           </li>
         </ol>
       )}
+
+      <div className="agents-install">
+        <span className="agents-step-title">Or add Orbyn in one click</span>
+        <div className="agents-install-links">
+          {agentInstallLinks(url || "https://mcp.orbyn.dev/mcp").map((l) => (
+            <a
+              key={l.app}
+              className="secondary"
+              href={l.href}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={13} /> {l.label}
+            </a>
+          ))}
+        </div>
+        <small className="muted">
+          Opens the app with Orbyn’s address filled in. It then signs in with
+          Orbyn, or asks for an agent key. No key is ever part of the link.
+        </small>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   AGENT_SETUP_LABELS,
   AGENT_SIGN_IN_STEPS,
   agentExpiryText,
+  agentInstallLinks,
   agentSetup,
   isSignInClient,
   type AgentAccess,
@@ -618,6 +619,23 @@ export function ConnectedAgentsCard({
             />
           </>
         )}
+
+        <Text style={[shared.label, s.step]}>Or add Orbyn in one click</Text>
+        <Text style={[shared.small, s.gap]}>
+          These apps run on a computer: send yourself the link and open it
+          there. The app then signs in with Orbyn, or asks for an agent key. No
+          key is ever part of the link.
+        </Text>
+        {agentInstallLinks(url).map((l) => (
+          <View key={l.app} style={s.installRow}>
+            <Text style={[shared.label, s.flex]}>{l.label}</Text>
+            <SmallAction
+              label="Share link"
+              disabled={false}
+              onPress={() => void shareText(l.href)}
+            />
+          </View>
+        ))}
       </View>
     </>
   );
@@ -673,5 +691,13 @@ const s = themed(() =>
       marginBottom: 10,
     },
     last: { marginBottom: 0 },
+    installRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
   }),
 );

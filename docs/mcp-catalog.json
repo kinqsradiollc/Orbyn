@@ -7793,6 +7793,7 @@
     {
       "date": "2026-09-26",
       "changes": [
+        "One-click install links for Cursor, VS Code, Goose and LM Studio; plugins for Claude Code, Codex and Gemini CLI; server.json for the MCP Registry; optional cards (MCP Apps) for Today, plan previews and proposals, off unless the administrator turns them on.",
         "Live updates: subscriptions/listen (2026-07-28) follows Today, days, pages, projects, tasks, records, templates and views, and the list of recent things, on a stream held by Orbyn's realtime service.",
         "Long jobs: start_import, plan_revision and plans over a week (or more than 25 tasks) become tasks for clients that declare the Tasks extension (tasks/get, tasks/cancel, notifications/tasks); others get the same handle as before. Progress notifications on plans for calls that send a progressToken.",
         "Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.",

@@ -50,6 +50,20 @@ Claude (claude.ai, Claude Desktop and the Claude apps), ChatGPT and any MCP clie
 - `tools/list` may be cached for 5 minutes (`ttlMs`, private). Its order is stable.
 - `X-MCP-Toolsets` and `X-MCP-Readonly` headers can narrow a connection for one call, but never widen it.
 
+## Adding Orbyn to an app
+
+Links that open an app with Orbyn's address filled in (the app then signs in with Orbyn, or asks for an agent key; no key is ever in a link). They are also in Settings → Connected agents.
+
+- Cursor: <cursor://anysphere.cursor-deeplink/mcp/install?name=orbyn&config=eyJ1cmwiOiJodHRwczovL21jcC5vcmJ5bi5kZXYvbWNwIn0%3D>
+- VS Code: <https://vscode.dev/redirect/mcp/install?name=orbyn&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.orbyn.dev%2Fmcp%22%7D>
+- Goose: <goose://extension?url=https%3A%2F%2Fmcp.orbyn.dev%2Fmcp&type=streamable_http&id=orbyn&name=Orbyn&description=Tasks%2C%20calendar%2C%20sessions%2C%20projects%20and%20pages>
+- LM Studio: <lmstudio://add_mcp?name=orbyn&config=eyJ1cmwiOiJodHRwczovL21jcC5vcmJ5bi5kZXYvbWNwIn0%3D>
+- Claude Code, Codex and Gemini CLI: Orbyn's plugins bundle the address and the `orbyn` skill.
+
+## Cards (MCP Apps)
+
+When the administrator turns on Admin → Agents → "Cards in agents", apps that support MCP Apps can show small cards beside answers: Today (`get_today`), a plan preview with Apply (`plan_schedule`, `plan_revision`; Apply calls `schedule_sessions` through the app) and a proposal to review in Orbyn (`propose_changes`). Tools name their card in `_meta.ui.resourceUri`; the cards are `ui://orbyn/…` resources (`text/html;profile=mcp-app`) with nothing loaded from outside, drawn in Orbyn's colours and following only the app's light or dark mode. Approving still happens only in Orbyn.
+
 ## Live updates
 
 An agent can follow what changes (MCP `2026-07-28`, `subscriptions/listen`) instead of asking again and again. Send `subscriptions/listen` to the same address with the `Mcp-Method: subscriptions/listen` header; the answer is a stream of events, held by Orbyn's realtime service.
@@ -868,6 +882,7 @@ Catalog version: `2026-09-26`.
 
 ### 2026-09-26
 
+- One-click install links for Cursor, VS Code, Goose and LM Studio; plugins for Claude Code, Codex and Gemini CLI; server.json for the MCP Registry; optional cards (MCP Apps) for Today, plan previews and proposals, off unless the administrator turns them on.
 - Live updates: subscriptions/listen (2026-07-28) follows Today, days, pages, projects, tasks, records, templates and views, and the list of recent things, on a stream held by Orbyn's realtime service.
 - Long jobs: start_import, plan_revision and plans over a week (or more than 25 tasks) become tasks for clients that declare the Tasks extension (tasks/get, tasks/cancel, notifications/tasks); others get the same handle as before. Progress notifications on plans for calls that send a progressToken.
 - Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.
