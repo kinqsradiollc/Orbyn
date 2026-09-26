@@ -1069,6 +1069,13 @@ export async function plannerRoutes(app: FastifyInstance) {
         );
       slot ??= await workingFree(db, u.id, minutes, [b.id], now);
       if (!slot) fail(409, "There's no free working time in the next 7 days.");
+      // The planner chose the new time, so a project's History says so.
+      await db.query(
+        `SELECT set_config('orbyn.user_id', $1, true),
+                set_config('orbyn.origin',
+                  coalesce(nullif(current_setting('orbyn.origin', true), ''), 'planner'), true)`,
+        [u.id],
+      );
       await db.query(
         "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
         [b.id, slot.start_at, slot.end_at],

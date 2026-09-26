@@ -27,7 +27,9 @@ export async function hasVectors(db: Queryable = pool): Promise<boolean> {
   if (present !== null) return present;
   const row = (
     await db.query<{ ok: boolean }>(
-      "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') AS ok",
+      `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector')
+              AND to_regclass('doc_embeddings') IS NOT NULL
+              AND to_regclass('doc_embedding_queue') IS NOT NULL AS ok`,
     )
   ).rows[0];
   present = !!row?.ok;

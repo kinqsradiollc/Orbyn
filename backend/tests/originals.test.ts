@@ -133,6 +133,40 @@ test("the setting is off by default and each person's own", async () => {
   assert.equal((await call(me.token, "GET", "/me/originals")).body.keep, true);
 });
 
+test("the setting: a personal API key may read it but not change it, and 429 past the limit", async () => {
+  const me = await person();
+  const made = await call(me.token, "POST", "/me/api-keys", { name: "Script" });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const key = made.body.key as string;
+  assert.ok(key.startsWith("ok_"));
+  assert.equal((await call(key, "GET", "/me/originals")).status, 200);
+  assert.equal(
+    (await call(key, "PUT", "/me/originals", { keep: true })).status,
+    403,
+  );
+  assert.equal((await call(me.token, "GET", "/me/originals")).body.keep, false);
+
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  await settings();
+  const live = cachedSettings();
+  const was = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 1;
+  const from = () =>
+    app.inject({
+      method: "PUT",
+      url: "/me/originals",
+      remoteAddress: "10.19.250.1",
+      headers: { authorization: `Bearer ${me.token}` },
+      payload: { keep: true },
+    });
+  try {
+    assert.notEqual((await from()).statusCode, 429);
+    assert.equal((await from()).statusCode, 429);
+  } finally {
+    live.rate_limit_per_minute = was;
+  }
+});
+
 test("without it, an import's file is deleted as before", async () => {
   const me = await person();
   const { job } = await importWord(me.token, "plain.docx");

@@ -315,7 +315,7 @@ A PDF, a Word document (`.docx`) or a photo of notes (PNG, JPEG) becomes an ordi
 (`packages/core/src/imports.ts`, `backend/src/modules/imports/`). Import is free.
 
 **Keep the original** (off by default): with `keep_original: true` on `POST /imports` (or the
-person's setting, `PUT /me/originals { keep }`), the file is kept after it becomes a page, encrypted in
+person's setting, `PUT /me/originals { keep }`, which a personal API key may read but not change), the file is kept after it becomes a page, encrypted in
 the file store's `kept/` folder, within `FILES_KEEP_QUOTA_MB` per person (over it, the page is still
 made and its notes say the original wasn't kept). `GET /me/originals` → `{ keep, used_bytes,
 quota_bytes, files }`. A page's `original` field names it; `GET /docs/:id/original` downloads it for
@@ -720,7 +720,8 @@ milestone. Changes show in the project's History.
 title) reaches any AI — the assistant's tools and preload, a chat scope (`422`), page help and Study
 (`422` for its pages), the morning agenda's summary, search by meaning (its measurements are
 forgotten) and connected agents (every agent query leaves it out). Only the owner of a personal
-project, or a team's owners and admins, may change it (`403`). Projects carry `assistant_off`.
+project, or a team's owners and admins, may change it (`403`), and only signed in: a personal API
+key is refused (`403`). Projects carry `assistant_off`.
 
 ### Saved project chats (auth, ai service)
 

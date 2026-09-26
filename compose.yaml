@@ -47,9 +47,12 @@ x-http-health: &http-health
 services:
   postgres:
     # Search by meaning needs pgvector, which this image doesn't have: set
-    # POSTGRES_IMAGE=pgvector/pgvector:pg17 (same Postgres 17, same data) and
-    # re-run migrations to make it possible. Without it, word search works
-    # as always and search by meaning simply stays off.
+    # POSTGRES_IMAGE=pgvector/pgvector:pg17 and re-run migrate to make it
+    # possible. That image is Debian (glibc), this one is Alpine (musl), so
+    # text sorts differently: on an existing database, back up first and
+    # run REINDEX DATABASE right after the switch (or dump and restore), or
+    # unique text indexes can silently break. See docs/deployment.md.
+    # Without it, word search works as always and search by meaning stays off.
     image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     # The first-start script is copied in with Windows line endings removed:
     # a checkout on Windows would otherwise fail with "/bin/sh^M: bad

@@ -370,13 +370,31 @@ test("sessions show in a project's History with where they came from, to their o
   assert.equal(moved?.origin, "assistant");
 
   // Deleting the task logs the task, not each of its sessions.
-  const before = (await history(member.token, p.id)).length;
-  await call(member.token, "DELETE", `/items/${t.id}`);
-  const afterRows = await history(member.token, p.id);
-  assert.ok(
-    !afterRows
-      .slice(0, afterRows.length - before + 1)
-      .some((r) => r.kind === "session_removed" && r.summary.startsWith("3")),
+  const removals = async () =>
+    (
+      await pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM project_activity
+          WHERE kind = 'session_removed' AND entity_id = $1`,
+        [t.id],
+      )
+    ).rows[0].n;
+  const removedBefore = await removals();
+  const version = (
+    await pool.query<{ version: number }>(
+      "SELECT version FROM items WHERE id = $1",
+      [t.id],
+    )
+  ).rows[0].version;
+  const gone = await call(
+    member.token,
+    "DELETE",
+    `/items/${t.id}?version=${version}`,
+  );
+  assert.ok(gone.status < 300, gone.raw.body);
+  assert.equal(
+    await removals(),
+    removedBefore,
+    "no session_removed row for the deleted task's sessions",
   );
 });
 
@@ -872,4 +890,103 @@ test("saved project chats are each person's own", async () => {
     chatTitle([{ role: "user", text: "  hello \n there " }]),
     "hello there",
   );
+});
+
+// ------------------------------------------- keys, kinds and rate limits ---
+
+test("a personal API key can't let a kept-out project back in", async () => {
+  const owner = await person("Owner");
+  const p = await project(owner.token);
+  const made = await call(owner.token, "POST", "/me/api-keys", {
+    name: "Script",
+  });
+  assert.equal(made.status, 201, made.raw.body);
+  const key = made.body.key as string;
+  assert.ok(key.startsWith("ok_"));
+  const url = `/projects/${p.id}/assistant`;
+  assert.equal(
+    (await call(owner.token, "PUT", url, { off: true })).status,
+    200,
+  );
+  const refused = await call(key, "PUT", url, { off: false });
+  assert.equal(refused.status, 403, refused.raw.body);
+  assert.equal((await keptOutFor(pool, owner.id)).projects.size, 1);
+});
+
+test("only tasks join a milestone, and at most 50 per project even in parallel", async () => {
+  const owner = await person("Owner");
+  const p = await project(owner.token);
+  const today = localDateKey(new Date(), "UTC");
+  const m = await call(owner.token, "POST", `/projects/${p.id}/milestones`, {
+    name: "Beta",
+    due_on: today,
+  });
+  assert.equal(m.status, 201, m.raw.body);
+  // An event can't be put in a project through the API; one that got there
+  // some other way still can't join a milestone.
+  const event = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO items (user_id, kind, title, due_at, project_id)
+       VALUES ($1, 'event', 'Kick-off', now() + interval '1 day', $2) RETURNING id`,
+      [owner.id, p.id],
+    )
+  ).rows[0].id;
+  const put = await call(owner.token, "PUT", `/items/${event}/milestone`, {
+    milestone_id: m.body.id,
+  });
+  assert.equal(put.status, 422, put.raw.body);
+
+  const adds = await Promise.all(
+    Array.from({ length: 55 }, (_, i) =>
+      call(owner.token, "POST", `/projects/${p.id}/milestones`, {
+        name: `M${i}`,
+        due_on: today,
+      }),
+    ),
+  );
+  assert.equal(adds.filter((r) => r.status === 201).length, 49);
+  assert.ok(adds.every((r) => r.status === 201 || r.status === 409));
+  const count = (
+    await pool.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM project_milestones WHERE project_id = $1",
+      [p.id],
+    )
+  ).rows[0].n;
+  assert.equal(count, 50);
+});
+
+test("the new planning routes answer 429 past the per-minute limit", async () => {
+  const me = await person();
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  await settings();
+  const live = cachedSettings();
+  const was = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 1;
+  const routes: [string, string, Json | undefined][] = [
+    ["POST", `/blocks/${randomUUID()}/check-in`, { outcome: "done" }],
+    ["POST", `/blocks/${randomUUID()}/start`, { from: "reminder" }],
+    ["POST", `/projects/${randomUUID()}/milestones`, { name: "M" }],
+    ["PUT", `/items/${randomUUID()}/milestone`, { milestone_id: null }],
+    ["PUT", `/projects/${randomUUID()}/assistant`, { off: true }],
+    ["PUT", `/ai/chats/${randomUUID()}`, { turns: [] }],
+    ["GET", "/me/mentions", undefined],
+  ];
+  try {
+    let n = 0;
+    for (const [method, url, payload] of routes) {
+      const from = `10.93.0.${++n}`;
+      const once = () =>
+        app.inject({
+          method: method as "GET" | "POST" | "PUT",
+          url,
+          remoteAddress: from,
+          headers: { authorization: `Bearer ${me.token}` },
+          ...(payload === undefined ? {} : { payload }),
+        });
+      assert.notEqual((await once()).statusCode, 429, `${method} ${url}`);
+      assert.equal((await once()).statusCode, 429, `${method} ${url}`);
+    }
+  } finally {
+    live.rate_limit_per_minute = was;
+  }
 });

@@ -238,6 +238,11 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const made = await transaction(async (db) => {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const project = await requireProject(db, id, u, "items:write");
+      // One add at a time per project, so parallel adds can't pass the cap.
+      await db.query(
+        "SELECT pg_advisory_xact_lock(hashtext('project_milestones:' || $1))",
+        [id],
+      );
       const count = (
         await db.query<{ n: number }>(
           "SELECT count(*)::int AS n FROM project_milestones WHERE project_id = $1",
@@ -363,6 +368,8 @@ export async function milestoneRoutes(app: FastifyInstance) {
       await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
       const item = await lockItem(db, id);
       await requireItemAccess(u, item, "items:write", db);
+      if (milestone_id && item.kind !== "task")
+        fail(422, "Only tasks can be part of a milestone.");
       if (milestone_id) {
         const ok = await db.query(
           "SELECT 1 FROM project_milestones WHERE id = $1 AND project_id = $2",

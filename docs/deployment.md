@@ -752,10 +752,22 @@ Word search always works. Search by meaning is an extra that stays off until an 
 **Admin → AI → Search by meaning**, because every page is then sent to the AI provider to be
 measured. To make it possible:
 
-1. Use a Postgres image with `pgvector`: set `POSTGRES_IMAGE=pgvector/pgvector:pg17` in `.env` (the
-   same Postgres 17 and the same data directory as `postgres:17-alpine`), recreate `postgres`, and
-   run the `migrate` service again so migration 041 can create the tables. Without it nothing
-   changes: the setup says the database can't store measurements.
+1. Use a Postgres image with `pgvector`: set `POSTGRES_IMAGE=pgvector/pgvector:pg17` in `.env`,
+   recreate `postgres`, and run the `migrate` service again. Every migrate run calls
+   `ensure_vectors()`, which creates the extension, the tables and the queue trigger (which skips
+   projects kept out of the assistant) as soon as `pgvector` is there, so this works on a database
+   that was first set up without it. Without it nothing changes: the setup says the database can't
+   store measurements.
+
+   **Collation caveat on an existing database.** `pgvector/pgvector:pg17` is Debian (glibc) while
+   `postgres:17-alpine` is Alpine (musl). They sort text differently, so an existing data directory
+   opened under the new image can have text indexes (the unique indexes on email and handle, for
+   example) that no longer match their order, and lookups and uniqueness checks can quietly go
+   wrong. Before switching, take a backup (`pg_dump`) and stop the API and worker. Right after the
+   new image starts, run `REINDEX DATABASE orbyn;` (your `POSTGRES_DB`, as the database owner) before anything writes,
+   or dump from the old image and restore into a fresh volume on the new one. A brand-new
+   deployment that starts on the pgvector image has nothing to reindex.
+
 2. Start the measuring service: add `semantic` to `COMPOSE_PROFILES` (`docker compose --profile
 semantic up -d measure`). It measures changed pages in its own process, never in the reminder
    loop, and reports a heartbeat Admin reads.

@@ -123,11 +123,11 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // The account export, as JSON or as the .zip with every page in it.
   { route: /^\/me\/export(?:\.zip)?$/ },
   // Account settings: email reminders, deleting the account, the public
-  // profile, privacy choices, the time zone, agreeing to the Terms, the
+  // profile, privacy choices, keeping uploaded originals, the time zone, agreeing to the Terms, the
   // email-to-task address and the calendar feed link. Reading them is fine.
   { method: "PUT", route: /^\/me$/ },
   { method: "DELETE", route: /^\/me$/ },
-  { method: "PUT", route: /^\/me\/(?:profile|privacy)$/ },
+  { method: "PUT", route: /^\/me\/(?:profile|privacy|originals)$/ },
   { method: "POST", route: /^\/me\/timezone$/ },
   { method: "POST", route: /^\/me\/consent$/ },
   { method: "POST", route: /^\/me\/inbox\/rotate$/ },
@@ -143,6 +143,9 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // signed-in person can.
   { route: /^\/me\/(?:agents|agent-keys)(?:\/|$)/ },
   { method: "PUT", route: /^\/teams\/:id\/agent-access$/ },
+  // Letting a project kept out of the assistant back in widens what agents
+  // (and the assistant) can read, so it is a signed-in person's call too.
+  { method: "PUT", route: /^\/projects\/:id\/assistant$/ },
   // Connecting an agent (the consent page) and confirming it's you before
   // granting one write access: a signed-in person only.
   { route: /^\/oauth\// },
