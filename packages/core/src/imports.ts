@@ -89,8 +89,10 @@ export type ImportJob = {
   /** Pages that need OCR, and how many of those are done. */
   ocr_pages: number;
   ocr_done: number;
-  /** The page it became, once ready. */
+  /** The page it became, once ready; null while that page is in Trash. */
   doc_id: string | null;
+  /** The page it became is in Trash, so there is nothing to open. */
+  doc_in_trash: boolean;
   /** Why it failed, in words for the person. */
   error: string | null;
   /** What changed on the way in: tables as lists, figures left out. */
@@ -109,6 +111,8 @@ export const importCreateInput = z
     file_name: z.string().trim().min(1).max(200),
     bytes: z.number().int().min(1).max(IMPORT_LIMITS.maxBytes),
     mime: z.string().max(200).optional(),
+    project_id: z.uuid().optional(),
+    project_team_id: z.uuid().nullable().optional(),
   })
   .strict();
 export type ImportCreateInput = z.infer<typeof importCreateInput>;
@@ -564,6 +568,7 @@ export function importStatusLine(job: ImportJob): string {
       return done + wait;
     }
     case "ready":
+      if (job.doc_in_trash) return "Ready · the page is in Trash";
       return job.notes.length ? `Ready · ${job.notes.join(" · ")}` : "Ready";
     case "failed":
       return job.error ?? "Couldn't be imported.";

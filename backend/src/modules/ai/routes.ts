@@ -11,11 +11,15 @@ import {
   localDateKey,
   projectRequest,
   type ChatTurn,
+  type ChatScope,
   type Proposal,
+  type DocBlock,
+  quoteOf,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
-import type { z } from "zod";
+import { z } from "zod";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -32,11 +36,15 @@ import {
   related,
   requestWords,
   type AgentContext,
+  getItem,
+  recordSource,
 } from "./agent/tools.js";
-import { calendarMatches } from "./agent/workspace.js";
+import { calendarMatches, getProject } from "./agent/workspace.js";
 import { rewriteAgenda } from "../docs/agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
+import { applySessionChange } from "./session-change.js";
+import { visibleProjectActivity } from "../projects/activity-visibility.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -52,11 +60,120 @@ function intentOf(message: string, history: ChatTurn[]) {
     : message;
 }
 
+/** Permission-check the chosen project or task before its facts reach a provider. */
+async function scopeOverview(
+  u: UserRow,
+  timezone: string,
+  scope: ChatScope | null,
+) {
+  if (!scope) return null;
+  const ctx: AgentContext = {
+    user: { id: u.id, role: u.role },
+    timezone,
+    intentText: "",
+    actions: [],
+    clarification: null,
+  };
+  if (scope.kind === "project") {
+    const visible = await pool.query(
+      `SELECT 1 FROM projects p WHERE p.id = $2
+        AND ((p.team_id IS NULL AND p.user_id = $1)
+          OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+      [u.id, scope.id],
+    );
+    if (!visible.rows.length) fail(404, "Project not found");
+    const [project, changes] = await Promise.all([
+      getProject(ctx, { project_id: scope.id }),
+      pool.query<{ id: string; summary: string; created_at: Date }>(
+        `SELECT a.id, a.summary, a.created_at FROM project_activity a
+           JOIN project_visits v ON v.project_id = a.project_id AND v.user_id = $1
+          WHERE a.project_id = $2 AND v.previous_seen_at IS NOT NULL
+            AND a.created_at > v.previous_seen_at
+            AND ${visibleProjectActivity("$1")}
+          ORDER BY a.event_order DESC LIMIT 8`,
+        [u.id, scope.id],
+      ),
+    ]);
+    return {
+      kind: "project" as const,
+      id: scope.id,
+      name: project.name,
+      summary: project.summary,
+      deadline: project.deadline,
+      your_plan: project.your_plan,
+      brief: project.brief,
+      stages: project.stages.map((stage) => ({
+        id: stage.id,
+        name: stage.name,
+      })),
+      tasks: project.stages.flatMap((stage) => stage.open_tasks).slice(0, 12),
+      open_decisions: project.open_records
+        .filter((record) => record.kind === "decision")
+        .slice(0, 8),
+      pages: project.notes.slice(0, 6),
+      your_sessions: project.your_sessions.slice(0, 8),
+      since_last_visit: changes.rows.map((change) => ({
+        id: change.id,
+        summary: change.summary,
+        at: change.created_at.toISOString(),
+      })),
+    };
+  }
+  const visible = await pool.query(
+    `SELECT 1 FROM items i WHERE i.id = $2 AND i.kind = 'task' AND ${VISIBLE_ITEMS}`,
+    [u.id, scope.id],
+  );
+  if (!visible.rows.length) fail(404, "Task not found");
+  const task = await getItem(ctx, { id: scope.id });
+  const [children, source] = await Promise.all([
+    pool.query<{ id: string; title: string; status: string }>(
+      `SELECT i.id, i.title, i.status FROM items i
+        WHERE i.parent_id = $2 AND ${VISIBLE_ITEMS}
+        ORDER BY i.created_at LIMIT 12`,
+      [u.id, scope.id],
+    ),
+    pool.query<{
+      doc_id: string;
+      title: string;
+      block_id: string;
+      content: DocBlock[];
+    }>(
+      `SELECT d.id AS doc_id, d.title, l.block_id, d.content
+         FROM doc_task_links l JOIN docs d ON d.id = l.doc_id
+        WHERE l.item_id = $2 AND ${docVisibleTo("$1")}
+        ORDER BY l.created_at LIMIT 1`,
+      [u.id, scope.id],
+    ),
+  ]);
+  const cameFrom = source.rows[0];
+  return {
+    kind: "task" as const,
+    id: scope.id,
+    name: task.title,
+    due_at: task.due_at,
+    notes: task.notes.slice(0, 600),
+    planning: task.planning,
+    checklist: task.checklist.slice(0, 12),
+    subtasks: children.rows,
+    source_page: cameFrom
+      ? {
+          doc_id: cameFrom.doc_id,
+          title: cameFrom.title,
+          block_id: cameFrom.block_id,
+          quote: quoteOf(
+            cameFrom.content.find((block) => block.id === cameFrom.block_id),
+          ),
+        }
+      : null,
+  };
+}
+
 /** One assistant turn for `u`: run the agent and store what it proposes. */
 async function answer(
   u: UserRow,
   d: ChatRequest,
   log: FastifyBaseLogger,
+  preloadedScope?: Awaited<ReturnType<typeof scopeOverview>>,
 ): Promise<Proposal> {
   try {
     new Intl.DateTimeFormat("en", { timeZone: d.timezone });
@@ -77,19 +194,93 @@ async function answer(
     clarification: null,
     cited: new Map(),
     notes: [],
+    scope: d.scope,
+    allowOutsideScope:
+      /\b(outside|another project|other projects|all projects|whole workspace|across projects)\b/i.test(
+        d.message,
+      ),
   };
+  const scoped =
+    preloadedScope === undefined
+      ? await scopeOverview(u, d.timezone, d.scope)
+      : preloadedScope;
+  if (scoped?.kind === "project") {
+    for (const task of scoped.tasks.slice(0, 6))
+      recordSource(ctx, `task:${task.id}`, {
+        kind: "task",
+        id: task.id,
+        title: task.title,
+        quote: task.when ?? "No deadline",
+      });
+    for (const decision of scoped.open_decisions.slice(0, 4))
+      recordSource(ctx, `decision:${decision.id}`, {
+        kind: "decision",
+        id: decision.id,
+        project_id: scoped.id,
+        title: decision.title,
+        quote: decision.status,
+      });
+    for (const change of scoped.since_last_visit.slice(0, 4))
+      recordSource(ctx, `change:${change.id}`, {
+        kind: "change",
+        id: change.id,
+        project_id: scoped.id,
+        title: change.summary,
+        quote: change.at,
+      });
+    for (const page of scoped.pages.slice(0, 4))
+      recordSource(ctx, page.id, {
+        doc_id: page.id,
+        title: page.title,
+        block_id: page.first_lines[0]?.block_id ?? null,
+        quote: page.first_lines[0]?.text ?? "",
+      });
+  } else if (scoped?.kind === "task") {
+    recordSource(ctx, `task:${scoped.id}`, {
+      kind: "task",
+      id: scoped.id,
+      title: scoped.name,
+      quote: scoped.due_at ?? "No deadline",
+    });
+    if (scoped.source_page)
+      recordSource(ctx, scoped.source_page.doc_id, {
+        doc_id: scoped.source_page.doc_id,
+        title: scoped.source_page.title,
+        block_id: scoped.source_page.block_id,
+        quote: scoped.source_page.quote ?? "",
+      });
+  }
   let result;
   try {
+    const inside = d.scope && !ctx.allowOutsideScope;
     result = await runAgent(
       ai,
       ctx,
       d.message,
       d.history,
       {
-        ...(await overview(ctx)),
+        ...(!inside ? await overview(ctx) : {}),
         matching_request: await related(ctx, d.message),
         // Timetable, shift or exam events the request names, further ahead.
-        matching_calendar: await calendarMatches(ctx, requestWords(d.message)),
+        ...(!inside
+          ? {
+              matching_calendar: await calendarMatches(
+                ctx,
+                requestWords(d.message),
+              ),
+            }
+          : {}),
+        ...(scoped ? { scope: scoped } : {}),
+        ...(scoped
+          ? {
+              available_sources: [...(ctx.cited?.values() ?? [])].map(
+                (source) => ({
+                  ref: `[${source.number}]`,
+                  title: source.title,
+                }),
+              ),
+            }
+          : {}),
       },
       log,
     );
@@ -174,8 +365,13 @@ async function answer(
   );
   const p = (
     await pool.query(
-      "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
-      [u.id, JSON.stringify(actions)],
+      "INSERT INTO proposals(user_id,actions,session_change,decision_links) VALUES($1,$2,$3,$4) RETURNING id",
+      [
+        u.id,
+        JSON.stringify(actions),
+        ctx.sessionChange ? JSON.stringify(ctx.sessionChange) : null,
+        JSON.stringify(ctx.decisionLinks ?? []),
+      ],
     )
   ).rows[0];
   return {
@@ -186,6 +382,8 @@ async function answer(
     sources: result.sources,
     notes: result.notes,
     plan: ctx.plan ?? null,
+    session_change: ctx.sessionChange ?? null,
+    decision_links: ctx.decisionLinks ?? [],
   };
 }
 
@@ -203,13 +401,14 @@ function runJob(
   u: UserRow,
   d: ChatRequest,
   log: FastifyBaseLogger,
+  scoped: Awaited<ReturnType<typeof scopeOverview>>,
 ) {
   const beat = setInterval(() => {
     pool
       .query("UPDATE ai_jobs SET heartbeat_at=now() WHERE id=$1", [id])
       .catch(() => {});
   }, HEARTBEAT_MS);
-  answer(u, d, log)
+  answer(u, d, log, scoped)
     .then((proposal) =>
       pool.query(
         "UPDATE ai_jobs SET state='done', result=$2, heartbeat_at=now() WHERE id=$1",
@@ -240,6 +439,14 @@ function runJob(
  * until the user calls `/ai/proposals/:id/apply`, which runs atomically.
  */
 export async function aiRoutes(app: FastifyInstance) {
+  app.get("/ai/capabilities", async (r) => {
+    await authenticate(r);
+    const provider = await resolveAi();
+    return {
+      enabled: !!provider,
+      tools: !!provider && !provider.structuredOutput,
+    };
+  });
   // Draft a project from a prompt: a set of subtasks with estimates and due
   // dates, returned as a proposal to review — nothing is saved until applied.
   /**
@@ -298,7 +505,18 @@ export async function aiRoutes(app: FastifyInstance) {
         "The AI provider returned an invalid task graph. Please try again.",
       );
     }
-    const proposal = await proposeProject(pool, u.id, draft, d.timezone);
+    const proposal = await proposeProject(
+      pool,
+      u.id,
+      draft,
+      d.timezone,
+      new Date(),
+      undefined,
+      {
+        summary: d.summary,
+        deadline: d.deadline,
+      },
+    );
     if (!d.team_id) return proposal;
     // Approving it makes a team project, as a template started for a team does.
     await pool.query(
@@ -332,6 +550,7 @@ export async function aiRoutes(app: FastifyInstance) {
         503,
         "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
       );
+    const scoped = await scopeOverview(u, d.timezone, d.scope);
     // Finished turns are read once and never needed again.
     await pool.query(
       "DELETE FROM ai_jobs WHERE created_at < now() - interval '1 day'",
@@ -341,7 +560,7 @@ export async function aiRoutes(app: FastifyInstance) {
         u.id,
       ])
     ).rows[0];
-    runJob(job.id, u, d, r.log);
+    runJob(job.id, u, d, r.log, scoped);
     reply.code(202);
     return { id: job.id };
   });
@@ -378,6 +597,9 @@ export async function aiRoutes(app: FastifyInstance) {
 
   app.post("/ai/proposals/:id/apply", async (r) => {
     const u = await authenticate(r);
+    const choice = z
+      .object({ give_tasks_deadlines: z.boolean().default(true) })
+      .parse(r.body ?? {});
     return transaction(async (db) => {
       const p = (
         await db.query(
@@ -386,25 +608,75 @@ export async function aiRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!p) fail(404, "Proposal not found");
-      if (p.applied) return { applied: true };
+      if (p.applied)
+        return { applied: true, project_id: p.applied_project_id ?? null };
       if (p.expires_at <= new Date())
         fail(409, "Proposal expired. Ask the assistant again.");
-      if (p.project) await applyProject(db, u, p.project);
+      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      let projectId: string | null = null;
+      if (p.project)
+        ({ project_id: projectId } = await applyProject(
+          db,
+          u,
+          p.project,
+          new Date(),
+          undefined,
+          choice.give_tasks_deadlines,
+        ));
       else
-        for (const raw of p.actions)
-          await mutate(db, u, actionSchema.parse(raw));
-      await db.query("UPDATE proposals SET applied=true WHERE id=$1", [p.id]);
+        for (const [index, raw] of p.actions.entries()) {
+          const action = actionSchema.parse(raw);
+          const item = await mutate(db, u, action);
+          const link = (p.decision_links ?? []).find(
+            (candidate: { action_index: number }) =>
+              candidate.action_index === index,
+          );
+          if (!link) continue;
+          if (
+            action.operation !== "create" ||
+            !item ||
+            !action.data?.project_id ||
+            item.project_id !== action.data.project_id
+          )
+            fail(
+              409,
+              "The decision task could not be linked. Ask for a new proposal.",
+            );
+          const linked = await db.query(
+            `UPDATE work_records w SET linked_item_id = $1, version = version + 1,
+                updated_at = now()
+              WHERE w.id = $2 AND w.kind = 'decision' AND w.status = 'open'
+                AND w.linked_item_id IS NULL AND w.project_id = $3
+                AND ((w.team_id IS NULL AND w.created_by = $4)
+                  OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $4))`,
+            [item.id, link.decision_id, item.project_id, u.id],
+          );
+          if (!linked.rowCount)
+            fail(
+              409,
+              "The decision changed since this proposal. Ask again to review it.",
+            );
+        }
+      if (p.session_change)
+        await applySessionChange(db, u.id, p.session_change);
+      await db.query(
+        "UPDATE proposals SET applied=true, applied_project_id=$2 WHERE id=$1",
+        [p.id, projectId],
+      );
       await audit(
         {
           actorId: u.id,
           action: "ai.proposal_applied",
           targetType: "proposal",
           targetId: p.id,
-          details: { actions: p.actions.length },
+          details: {
+            actions: p.actions.length,
+            session_change: !!p.session_change,
+          },
         },
         db,
       );
-      return { applied: true };
+      return { applied: true, project_id: projectId };
     });
   });
 }

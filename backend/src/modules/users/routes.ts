@@ -15,8 +15,9 @@ import {
   digest,
   publicUser,
 } from "../../lib/auth.js";
-import { idParam } from "../../lib/params.js";
+import { idParam, strictRateLimit } from "../../lib/params.js";
 import { exportData, importData } from "../organize/portability.js";
+import { exportArchive } from "../organize/archive.js";
 import { assertChatUrl, chatFor, postChat } from "../chat/channel.js";
 import { encryptSecret } from "../../lib/secrets.js";
 
@@ -97,6 +98,22 @@ export async function userRoutes(app: FastifyInstance) {
       `attachment; filename="orbyn-export-${new Date().toISOString().slice(0, 10)}.json"`,
     );
     return data;
+  });
+
+  /**
+   * Leave with everything, pages included: a .zip of every page you own as
+   * Markdown in its folders, your projects and folders, what you imported,
+   * your consent history, and the same planner file as above. Built on the
+   * spot, so it is held to the stricter limit.
+   */
+  app.get("/me/export.zip", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    const { name, body } = await exportArchive(pool, u.id);
+    return reply
+      .type("application/zip")
+      .header("content-disposition", `attachment; filename="${name}"`)
+      .header("cache-control", "no-store")
+      .send(body);
   });
 
   // Bring items in from an Orbyn export or a CSV. Defaults to a dry run.

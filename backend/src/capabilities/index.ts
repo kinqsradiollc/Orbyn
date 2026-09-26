@@ -1,0 +1,32 @@
+import { getCalendar } from "./calendar-view.js";
+import { getContext } from "./context.js";
+import { fetchCapability } from "./fetch.js";
+import { addTask, getAgenda, searchItems } from "./legacy.js";
+import { getProject } from "./project.js";
+import { query } from "./query.js";
+import { Registry } from "./registry.js";
+import { findPassages, search } from "./search.js";
+import { getToday } from "./today.js";
+
+/**
+ * Every capability, in the order tools/list gives them. The order is part
+ * of the contract (clients cache the list), so new tools go at the end of
+ * their group and names never change.
+ */
+export const registry = new Registry([
+  // Core reads (phase A1).
+  getContext,
+  search,
+  fetchCapability,
+  getToday,
+  getCalendar,
+  query,
+  getProject,
+  findPassages,
+  // The first endpoint's tools, for old personal API keys only.
+  searchItems,
+  addTask,
+  getAgenda,
+]);
+
+export { Registry };

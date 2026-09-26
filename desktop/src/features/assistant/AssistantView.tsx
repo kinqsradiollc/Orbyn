@@ -8,11 +8,12 @@ import {
   Sparkles,
   SquarePen,
   Sunrise,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import {
   assistantSuggestions as SUGGESTIONS,
-  type DocSource,
+  type AssistantSource,
   type Item,
   type Plan,
 } from "@orbyn/core";
@@ -30,11 +31,13 @@ type Props = {
   busy: boolean;
   assistant: Assistant;
   /** Saves a plan the assistant made; resolves with a message. */
-  onApplyPlan: (plan: Plan) => Promise<string>;
+  onApplyPlan: (plan: Plan, moves?: string[]) => Promise<string>;
   /** Shows a plan in the calendar's planner. */
   onOpenPlan: (plan: Plan) => void;
+  /** After a plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
-  onOpenSource?: (source: DocSource) => void;
+  onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
 };
@@ -45,6 +48,7 @@ export function AssistantView({
   assistant,
   onApplyPlan,
   onOpenPlan,
+  onShowOnCalendar,
   onOpenSource,
   onKeptNote,
 }: Props) {
@@ -58,7 +62,33 @@ export function AssistantView({
     apply,
     dismiss,
     reset,
+    scope,
+    setScope,
   } = assistant;
+  const suggestions = scope
+    ? scope.kind === "project"
+      ? [
+          { title: "Where does it stand?", hint: "Summarise this project" },
+          {
+            title: "What's at risk before the deadline?",
+            hint: "Check this project's plan",
+          },
+          {
+            title: "What changed since I last looked?",
+            hint: "Catch up on this project",
+          },
+        ]
+      : [
+          {
+            title: "Will I finish this by the deadline?",
+            hint: "Check this task's plan",
+          },
+          {
+            title: "What should I plan next?",
+            hint: "Find the next step for this task",
+          },
+        ]
+    : SUGGESTIONS;
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
@@ -131,6 +161,17 @@ export function AssistantView({
   return (
     <section className={"ai-chat" + (empty ? " is-empty" : "")}>
       <div className="ai-chat-head">
+        {scope && (
+          <button
+            type="button"
+            className="ai-ghost ai-scope"
+            disabled={thinking}
+            onClick={() => setScope(null)}
+            title="Remove assistant scope"
+          >
+            In: {scope.name} <X size={14} aria-hidden="true" />
+          </button>
+        )}
         {turns.length > 0 && (
           <button
             type="button"
@@ -162,10 +203,13 @@ export function AssistantView({
                   before={turn.before}
                   busy={locked}
                   state={turn.state}
-                  onApply={() => void apply(turn.id)}
+                  onApply={(giveTasksDeadlines) =>
+                    void apply(turn.id, giveTasksDeadlines)
+                  }
                   onDismiss={() => dismiss(turn.id)}
                   onApplyPlan={onApplyPlan}
                   onOpenPlan={onOpenPlan}
+                  onShowOnCalendar={onShowOnCalendar}
                   onOpenSource={onOpenSource}
                   onKeptNote={onKeptNote}
                   onFollowUp={
@@ -254,7 +298,7 @@ export function AssistantView({
 
         {empty && (
           <div className="ai-suggestions" aria-label="Suggestions">
-            {SUGGESTIONS.map((s, n) => {
+            {suggestions.map((s, n) => {
               const Icon = SUGGESTION_ICONS[n % SUGGESTION_ICONS.length];
               return (
                 <button
@@ -276,9 +320,11 @@ export function AssistantView({
       </div>
 
       <small className="ai-note">
-        Your request, recent items and the next few days of your calendar
-        (subscribed calendars included) are shared with your configured AI
-        provider.
+        {scope?.kind === "project"
+          ? `Your question, this project's tasks, notes and decisions, and any pages the assistant opens are sent to the AI service Orbyn uses to answer you.`
+          : scope?.kind === "task"
+            ? `Your question, this task and its sessions, and any pages the assistant opens are sent to the AI service Orbyn uses to answer you.`
+            : `Your question, recent tasks, the next few days of your calendar and any pages the assistant opens are sent to the AI service Orbyn uses to answer you.`}
       </small>
 
       {quickMenu && (
@@ -288,16 +334,18 @@ export function AssistantView({
           onClose={() => setQuickMenu(null)}
         >
           <div className="popover-actions">
-            <button
-              type="button"
-              disabled={locked || !message.trim()}
-              title="Turn what you typed into a project of tasks to review"
-              onClick={startProject}
-            >
-              <Sparkles size={15} aria-hidden="true" />
-              Draft a project from this
-            </button>
-            {SUGGESTIONS.map((s, n) => {
+            {!scope && (
+              <button
+                type="button"
+                disabled={locked || !message.trim()}
+                title="Turn what you typed into a project of tasks to review"
+                onClick={startProject}
+              >
+                <Sparkles size={15} aria-hidden="true" />
+                Draft a project from this
+              </button>
+            )}
+            {suggestions.map((s, n) => {
               const Icon = SUGGESTION_ICONS[n % SUGGESTION_ICONS.length];
               return (
                 <button

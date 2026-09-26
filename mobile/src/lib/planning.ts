@@ -1,5 +1,11 @@
 import { Share } from "react-native";
-import { byDueDate, isClosed, priorityScore, type Item } from "@orbyn/core";
+import {
+  byDueDate,
+  isClosed,
+  latestDates,
+  priorityScore,
+  type Item,
+} from "@orbyn/core";
 
 /** The device's IANA time zone, sent with plans and repeating items. */
 export const deviceTimeZone = () =>
@@ -61,11 +67,21 @@ export const sizeOf = (item: Pick<Item, "estimate_minutes">): Size => {
   return m <= 60 ? "medium" : "long";
 };
 
-/** Most pressing first (priorityScore), then by due date. */
-export const byPriority =
-  (now = new Date()) =>
-  (a: Item, b: Item) =>
-    priorityScore(b, now) - priorityScore(a, now) || byDueDate(a, b);
+/**
+ * Most pressing first (priorityScore), then by due date. With `among` (the
+ * loaded tasks), urgency counts to each task's latest date — its own
+ * deadline, its project's, or that of a task waiting on it — as the planner
+ * does (`latestDates`).
+ */
+export const byPriority = (now = new Date(), among?: Item[]) => {
+  const latest = among ? latestDates(among) : null;
+  const score = (i: Item) =>
+    priorityScore(
+      latest?.has(i.id) ? { ...i, deadline_at: latest.get(i.id) } : i,
+      now,
+    );
+  return (a: Item, b: Item) => score(b) - score(a) || byDueDate(a, b);
+};
 
 /** Open tasks other than `exceptId`, most pressing first. */
 export const nextUp = (items: Item[], exceptId?: string, now = new Date()) =>
@@ -73,7 +89,7 @@ export const nextUp = (items: Item[], exceptId?: string, now = new Date()) =>
     .filter(
       (i) => i.kind === "task" && !isClosed(i.status) && i.id !== exceptId,
     )
-    .sort(byPriority(now));
+    .sort(byPriority(now, items));
 
 /** Local midnight `offset` days from `from`. */
 export const dayStart = (offset = 0, from = new Date()) =>

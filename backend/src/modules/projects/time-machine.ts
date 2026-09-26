@@ -8,6 +8,8 @@ import {
 import { reader, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
+import { visibleProjectActivity } from "./activity-visibility.js";
+import { docReadableBy } from "../../lib/doc-visibility.js";
 
 const eventOrderSchema = z
   .string()
@@ -57,12 +59,13 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
         `SELECT a.event_order, a.created_at, a.summary, u.name AS actor_name
        FROM project_activity a LEFT JOIN users u ON u.id = a.actor_id
        WHERE a.project_id = $1 AND ($2::bigint IS NULL OR a.event_order < $2)
+         AND ${visibleProjectActivity("$4")}
          AND a.event_order >= coalesce((
            SELECT max(b.event_order) FROM project_activity b
            WHERE b.project_id = $1 AND b.after_state ? 'baseline_stages'
          ), 0)
        ORDER BY a.event_order DESC LIMIT $3`,
-        [projectId, query.before ?? null, query.limit],
+        [projectId, query.before ?? null, query.limit, user.id],
       )
     ).rows;
   });
@@ -78,8 +81,10 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
     await requireVisible(db, projectId, user);
     const point = (
       await db.query<{ created_at: string }>(
-        "SELECT created_at FROM project_activity WHERE project_id = $1 AND event_order = $2",
-        [projectId, eventOrder],
+        `SELECT a.created_at FROM project_activity a
+          WHERE a.project_id = $1 AND a.event_order = $2
+            AND ${visibleProjectActivity("$3")}`,
+        [projectId, eventOrder, user.id],
       )
     ).rows[0];
     if (!point) fail(404, "Project history point not found");
@@ -106,14 +111,40 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
       ).rowCount;
       if (laterBaseline) fail(404, "Project history begins at a later change.");
     }
+    const visible = (
+      await db.query<{ entity_type: "task" | "note" | "record"; id: string }>(
+        `SELECT 'task' AS entity_type, i.id FROM items i WHERE (i.project_id = $1 OR EXISTS (
+           SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = i.id))
+           AND ((i.team_id IS NULL AND i.user_id = $2)
+             OR i.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+         UNION ALL
+         SELECT 'note', d.id FROM docs d WHERE (d.project_id = $1 OR EXISTS (
+           SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = d.id))
+           AND ${docReadableBy("$2")}
+         UNION ALL
+         SELECT 'record', w.id FROM work_records w WHERE (w.project_id = $1 OR EXISTS (
+           SELECT 1 FROM project_activity a WHERE a.project_id = $1 AND a.entity_id = w.id))
+           AND ((w.team_id IS NULL AND w.created_by = $2)
+             OR w.team_id IN (SELECT team_id FROM team_members WHERE user_id = $2))
+         UNION ALL
+         SELECT DISTINCT a.entity_type, a.entity_id FROM project_activity a
+           WHERE a.project_id = $1 AND a.entity_type IN ('task', 'note', 'record')
+             AND ${visibleProjectActivity("$2")}`,
+        [projectId, user.id],
+      )
+    ).rows;
+    const allowed = new Set(
+      visible.map((row) => `${row.entity_type}:${row.id}`),
+    );
     const latest = (
       await db.query<Latest>(
-        `SELECT DISTINCT ON (entity_type, entity_id)
-         entity_type, entity_id, after_state
-       FROM project_activity
-       WHERE project_id = $1 AND event_order <= $2 AND event_order >= $3
-       ORDER BY entity_type, entity_id, event_order DESC`,
-        [projectId, eventOrder, baselineOrder],
+        `SELECT DISTINCT ON (a.entity_type, a.entity_id)
+         a.entity_type, a.entity_id, a.after_state
+       FROM project_activity a
+       WHERE a.project_id = $1 AND a.event_order <= $2 AND a.event_order >= $3
+         AND ${visibleProjectActivity("$4")}
+       ORDER BY a.entity_type, a.entity_id, a.event_order DESC`,
+        [projectId, eventOrder, baselineOrder, user.id],
       )
     ).rows;
     const projectState = latest.find(
@@ -147,7 +178,12 @@ export async function projectTimeMachineRoutes(app: FastifyInstance) {
           );
         else rows.delete(row.entity_id);
       }
-      return [...rows.values()];
+      return [...rows.values()].filter(
+        (row) =>
+          type === "project" ||
+          type === "stage" ||
+          allowed.has(`${type}:${row.entity_id}`),
+      );
     };
     const snapshot: ProjectSnapshot = {
       event_order: eventOrder,

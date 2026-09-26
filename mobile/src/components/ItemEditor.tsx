@@ -12,13 +12,14 @@ import {
 } from "react-native";
 import { Switch } from "./Switch";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { DateTimeControl } from "./DateTimeControl";
 import {
   MAX_ITEM_LINKS as MAX_LINKS,
   allDayRange,
   dayTime,
   localDateKey,
   dateLabel,
+  deadlineOf,
   hasTeamPermission,
   statusLabels,
   statusOrder,
@@ -26,6 +27,7 @@ import {
   type AttendeeStatus,
   type Item,
   type ItemInput,
+  type Project,
   type DefaultAlerts,
   type Team,
   type TeamMember,
@@ -46,6 +48,7 @@ import {
   ESTIMATES,
   LIST_COLORS,
   minutesLabel,
+  shortDay,
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { PressableScale } from "../motion";
@@ -272,6 +275,28 @@ function Form({
   // All-day items keep dates only: local midnight to the midnight after the last day.
   const allDay = !!editing.all_day;
   const zone = editing.timezone ?? deviceTimeZone();
+  const [project, setProject] = useState<Project | null>(null);
+  const projectId = editing.project_id ?? null;
+  useEffect(() => {
+    if (!projectId) {
+      setProject(null);
+      return;
+    }
+    let alive = true;
+    void client.getProject(projectId).then(
+      (value) => alive && setProject(value),
+      () => alive && setProject(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  const candidateDeadline =
+    editing.kind === "task" ? deadlineOf({ ...editing, timezone: zone }) : null;
+  const afterProject =
+    !!project?.deadline &&
+    !!candidateDeadline &&
+    Date.parse(candidateDeadline) > Date.parse(project.deadline);
   const dayOf = (iso: string | null | undefined) => {
     const d = iso ? new Date(iso) : new Date();
     const [year, month, day] = localDateKey(d, zone).split("-").map(Number);
@@ -464,28 +489,37 @@ function Form({
           </Section>
           {allDay && (
             <>
-              <Section label={editing.kind === "event" ? "First day" : "Day"}>
+              {/* A task is due by the end of its day, so "Due" is its last
+                  day. Either way, moving it moves the whole run of days. */}
+              <Section label={editing.kind === "event" ? "First day" : "Due"}>
                 <DateField
-                  label={editing.kind === "event" ? "First day" : "Day"}
-                  value={keyOf(firstDay)}
+                  label={editing.kind === "event" ? "First day" : "Due"}
+                  value={keyOf(
+                    editing.kind === "event" || lastDay < firstDay
+                      ? firstDay
+                      : lastDay,
+                  )}
                   onChange={(key) => {
                     if (!key) return;
-                    const start = fromKey(key);
-                    const days = Math.round(
-                      (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
-                    );
-                    onChange(
-                      allDayRange(
-                        key,
-                        keyOf(
-                          new Date(
-                            start.getFullYear(),
-                            start.getMonth(),
-                            start.getDate() + Math.max(0, days),
-                          ),
-                        ),
-                        zone,
+                    const days = Math.max(
+                      0,
+                      Math.round(
+                        (lastDay.getTime() - firstDay.getTime()) / 86_400_000,
                       ),
+                    );
+                    const picked = fromKey(key);
+                    const shift = (d: Date, n: number) =>
+                      keyOf(
+                        new Date(
+                          d.getFullYear(),
+                          d.getMonth(),
+                          d.getDate() + n,
+                        ),
+                      );
+                    onChange(
+                      editing.kind === "event"
+                        ? allDayRange(key, shift(picked, days), zone)
+                        : allDayRange(shift(picked, -days), key, zone),
                     );
                   }}
                 />
@@ -512,14 +546,23 @@ function Form({
               {(["due_at", "end_at"] as const).map((field) => (
                 <Section
                   key={field}
-                  label={field === "due_at" ? "Due / start" : "End (optional)"}
+                  label={
+                    field === "end_at"
+                      ? "End (optional)"
+                      : editing.kind === "event"
+                        ? "Start"
+                        : "Due"
+                  }
                 >
                   <View style={s.dateRow}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={
-                        (field === "due_at" ? "Due date: " : "End date: ") +
-                        dateLabel(editing[field])
+                        (field === "end_at"
+                          ? "End: "
+                          : editing.kind === "event"
+                            ? "Start: "
+                            : "Due: ") + dateLabel(editing[field])
                       }
                       disabled={readOnly}
                       onPress={() => setPicker({ field, mode: "date" })}
@@ -558,6 +601,13 @@ function Form({
                       </Pressable>
                     )}
                   </View>
+                  {field === "end_at" &&
+                    editing.kind === "task" &&
+                    !!editing.end_at && (
+                      <Text style={[shared.small, s.hint]}>
+                        With an end time, it’s due when it ends.
+                      </Text>
+                    )}
                 </Section>
               ))}
               {editing.kind === "event" && (
@@ -570,7 +620,7 @@ function Form({
               )}
               {picker && (
                 <View style={s.pickerCard}>
-                  <DateTimePicker
+                  <DateTimeControl
                     value={new Date(editing[picker.field] || Date.now())}
                     mode={picker.mode}
                     display={Platform.OS === "ios" ? "spinner" : "default"}
@@ -599,7 +649,7 @@ function Form({
                             0,
                           );
                         setDate(picker.field, current.toISOString());
-                        if (Platform.OS === "android")
+                        if (Platform.OS === "android" || Platform.OS === "web")
                           setPicker(
                             picker.mode === "date"
                               ? { ...picker, mode: "time" }
@@ -627,6 +677,27 @@ function Form({
                 </View>
               )}
             </>
+          )}
+          {afterProject && project?.deadline && (
+            <View style={s.projectDeadlineWarning}>
+              <Text style={shared.small}>
+                Due after the project ({shortDay(project.deadline)})
+              </Text>
+              {!readOnly && (
+                <Button
+                  title={`Use ${shortDay(project.deadline)}`}
+                  secondary
+                  onPress={() => {
+                    setPicker(null);
+                    onChange({
+                      due_at: project.deadline,
+                      end_at: null,
+                      all_day: false,
+                    });
+                  }}
+                />
+              )}
+            </View>
           )}
           <Section label="Repeat">
             <RepeatPicker
@@ -1296,6 +1367,15 @@ const s = themed(() =>
     },
     notes: { minHeight: 100 },
     hint: { marginTop: 8 },
+    projectDeadlineWarning: {
+      gap: 8,
+      marginBottom: 18,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
     measureRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     measureInput: { flex: 1, minWidth: 0 },
     measureUnit: { flex: 1.2, minWidth: 0 },

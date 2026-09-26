@@ -1,6 +1,12 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { projectTimeline, type Item, type Project } from "@orbyn/core";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  projectTimeline,
+  projectSessionTicks,
+  type Item,
+  type Project,
+  type ProjectSession,
+} from "@orbyn/core";
 import { colors, fonts, radii, themed } from "../../theme";
 
 const day = (iso: string) =>
@@ -9,8 +15,9 @@ const day = (iso: string) =>
 /**
  * The project on one time axis.
  *
- * Each bar runs from when a task would have to start — its due time less
- * its estimate — to when it is due, with a mark for today and one for the
+ * Each bar runs from when a task would have to start — its deadline less
+ * its estimate — to its deadline (`deadlineOf`: an all-day task is due by
+ * the end of its day), with a mark for today and one for the project's
  * deadline. It is the same reading of the same numbers the desktop shows;
  * only the drawing is different, because a phone has one column rather
  * than a wide chart.
@@ -18,11 +25,15 @@ const day = (iso: string) =>
 export function ProjectTimeline({
   project,
   tasks,
+  sessions,
+  onOpenItem,
 }: {
   project: Project;
   tasks: Item[];
+  sessions: ProjectSession[];
+  onOpenItem: (item: Item) => void;
 }) {
-  const timeline = projectTimeline(project, tasks);
+  const timeline = projectTimeline(project, tasks, new Date(), sessions);
   // A timeline can only place work that has a date; the rest is listed.
   const undated = tasks.filter((t) => !t.due_at);
   if (!timeline)
@@ -34,6 +45,15 @@ export function ProjectTimeline({
         </Text>
       </View>
     );
+
+  const ticks = projectSessionTicks(timeline, sessions);
+  const byId = new Map(tasks.map((item) => [item.id, item]));
+  const undatedWithSessions = undated.filter((item) =>
+    ticks.some((tick) => tick.item_id === item.id),
+  );
+  const notShown = undated.filter(
+    (item) => !undatedWithSessions.includes(item),
+  );
 
   return (
     <View style={s.wrap}>
@@ -72,16 +92,60 @@ export function ProjectTimeline({
                   bar.late && s.barLate,
                 ]}
               />
+              {ticks
+                .filter((tick) => tick.item_id === bar.id)
+                .map((tick) => (
+                  <Pressable
+                    key={tick.id}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${bar.title} scheduled session`}
+                    onPress={() => {
+                      const item = byId.get(bar.id);
+                      if (item) onOpenItem(item);
+                    }}
+                    style={[
+                      s.session,
+                      { left: `${tick.left}%`, width: `${tick.width}%` },
+                    ]}
+                  />
+                ))}
             </View>
             <Text style={s.laneStage}>{bar.stage}</Text>
           </View>
         ))}
+        {undatedWithSessions.map((item) => (
+          <View key={item.id} style={s.lane}>
+            <Text style={s.laneTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <View style={s.track}>
+              {ticks
+                .filter((tick) => tick.item_id === item.id)
+                .map((tick) => (
+                  <Pressable
+                    key={tick.id}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${item.title} scheduled session`}
+                    onPress={() => onOpenItem(item)}
+                    style={[
+                      s.session,
+                      { left: `${tick.left}%`, width: `${tick.width}%` },
+                    ]}
+                  />
+                ))}
+            </View>
+          </View>
+        ))}
       </View>
 
-      {undated.length > 0 && (
+      {notShown.length > 0 && (
         <View style={s.undated}>
-          <Text style={s.undatedHead}>No date yet · {undated.length}</Text>
-          {undated.map((t) => (
+          <Text style={s.undatedHead}>
+            No date or session · {notShown.length}
+          </Text>
+          {notShown.map((t) => (
             <Text key={t.id} style={s.undatedItem} numberOfLines={1}>
               {t.title}
             </Text>
@@ -132,6 +196,15 @@ const s = themed(() =>
     },
     barDone: { backgroundColor: colors.faint },
     barLate: { backgroundColor: colors.danger },
+    session: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      minWidth: 5,
+      borderWidth: 1,
+      borderColor: colors.text,
+      backgroundColor: colors.surface,
+    },
     laneStage: { color: colors.muted, fontSize: 11 },
     undated: { gap: 2, marginTop: 4 },
     undatedHead: {

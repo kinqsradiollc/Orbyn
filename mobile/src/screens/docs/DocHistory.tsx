@@ -13,7 +13,6 @@ import {
   diffCounts,
   listLayout,
   mathToText,
-  MAX_SITTINGS,
   restoreLine,
   type Doc,
   type DocBlock,
@@ -69,14 +68,20 @@ export function DocHistory({
   doc,
   onRestored,
   canWrite = true,
+  openKey = 0,
   report,
 }: {
   doc: Doc;
   canWrite?: boolean;
+  /** Changed to open the history from elsewhere (the page's ⋯ or Info). */
+  openKey?: number;
   onRestored: (doc: Doc) => void;
   report: (e: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (openKey) setOpen(true);
+  }, [openKey]);
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
   const [chosen, setChosen] = useState<Required<DocVersion> | null>(null);
   const [older, setOlder] = useState<Required<DocVersion> | null>(null);
@@ -97,30 +102,14 @@ export function DocHistory({
   }, [open, doc.id, report]);
 
   const pick = (v: DocVersion) => {
-    if (!versions) return;
     setBusy(true);
-    const at = versions.findIndex((x) => x.version === v.version);
-    const before = versions[at + 1];
-    // The ones kept since, newest first, for who changed what since.
-    const since = at < MAX_SITTINGS ? versions.slice(0, at) : null;
-    Promise.all([
-      client.getDocVersion(doc.id, v.version),
-      before ? client.getDocVersion(doc.id, before.version) : null,
-      since
-        ? Promise.all(since.map((x) => client.getDocVersion(doc.id, x.version)))
-        : null,
-    ])
-      .then(([version, prior, newer]) => {
+    // One read brings the version, the one before it and the ones since.
+    client
+      .getDocVersionChanges(doc.id, v.version)
+      .then(({ version, older: prior, sittings: since }) => {
         setChosen(version);
         setOlder(prior);
-        setSittings(
-          newer
-            ? [version, ...newer.reverse()].map((x) => ({
-                content: x.content,
-                author: x.author,
-              }))
-            : null,
-        );
+        setSittings(since);
         if (compare === "previous" && !prior) setCompare("current");
       })
       .catch(report)

@@ -1,3 +1,4 @@
+import type { PlannedFeed, TodayList } from "./today.js";
 import type { Item, Notice, Tag, TaskList, Team, User } from "./types.js";
 
 // Offline-first support: the app keeps the last planner data it loaded so it
@@ -14,6 +15,10 @@ export type PlannerSnapshot = {
   teams: Team[];
   lists: TaskList[];
   tags: Tag[];
+  /** Planned time by task ("Planned 9:15", status chips); null when not loaded. */
+  planned?: PlannedFeed | null;
+  /** The Today list; null when not loaded. Only shown on the day it's for. */
+  today?: TodayList | null;
 };
 
 /** Bump when the snapshot shape changes, so old caches are ignored. */
@@ -31,6 +36,8 @@ const EMPTY: PlannerSnapshot = {
   teams: [],
   lists: [],
   tags: [],
+  planned: null,
+  today: null,
 };
 
 /** Serialize a snapshot for storage, stamped with the version and time. */
@@ -57,6 +64,23 @@ function looksLikeSnapshot(d: unknown): d is PlannerSnapshot {
     (s.user === null || (typeof s.user === "object" && s.user !== null))
   );
 }
+
+/** The planned feed, when a stored value looks like one. */
+const plannedOf = (v: unknown): PlannedFeed | null =>
+  v && typeof v === "object" && isArray((v as PlannedFeed).tasks)
+    ? (v as PlannedFeed)
+    : null;
+
+/** The Today list, when a stored value looks like one. */
+const todayOf = (v: unknown): TodayList | null =>
+  v &&
+  typeof v === "object" &&
+  isArray((v as TodayList).rows) &&
+  isArray((v as TodayList).unfinished) &&
+  typeof (v as TodayList).day === "string" &&
+  typeof (v as TodayList).timezone === "string"
+    ? (v as TodayList)
+    : null;
 
 /**
  * Decode a stored snapshot, or null when it's missing, corrupt, from another
@@ -92,5 +116,8 @@ export function decodeSnapshot(
     teams: env.data.teams,
     lists: env.data.lists,
     tags: env.data.tags,
+    // Added later: a snapshot saved without them still decodes.
+    planned: plannedOf(env.data.planned),
+    today: todayOf(env.data.today),
   };
 }

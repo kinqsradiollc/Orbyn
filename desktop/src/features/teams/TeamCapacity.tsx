@@ -169,7 +169,7 @@ export function TeamCapacity({
                               ? "not working"
                               : d.free_minutes === null
                                 ? d.over
-                                  ? "booked over working hours"
+                                  ? "planned over working hours"
                                   : `${LEVEL_WORDS[d.level]} free`
                                 : d.over
                                   ? `over by ${hoursLabel(d.over_minutes ?? 0)}`
@@ -211,7 +211,7 @@ export function TeamCapacity({
           <i className="capacity-swatch is-l3" /> 5h+
         </span>
         <span>
-          <i className="capacity-swatch is-over" /> booked over hours
+          <i className="capacity-swatch is-over" /> planned over hours
         </span>
       </p>
       {picked && (
@@ -224,7 +224,7 @@ export function TeamCapacity({
               {picked.day.off
                 ? "Not a working day."
                 : picked.day.free_minutes === null
-                  ? `${LEVEL_WORDS[picked.day.level]} free${picked.day.over ? ", booked past working hours" : ""}.`
+                  ? `${LEVEL_WORDS[picked.day.level]} free${picked.day.over ? ", planned past working hours" : ""}.`
                   : `${hoursLabel(picked.day.free_minutes)} free of ${hoursLabel(
                       picked.day.working_minutes ?? 0,
                     )}${
@@ -233,7 +233,7 @@ export function TeamCapacity({
                         : ""
                     }${
                       picked.day.over
-                        ? `, booked ${hoursLabel(picked.day.over_minutes ?? 0)} past working hours`
+                        ? `, planned ${hoursLabel(picked.day.over_minutes ?? 0)} past working hours`
                         : ""
                     }.`}
             </span>

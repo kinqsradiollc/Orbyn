@@ -14,6 +14,7 @@ import { audit } from "../../lib/audit.js";
 import { authorize } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { TEAM_COLUMNS } from "../teams/routes.js";
+import { revokeConnections } from "../agents/service.js";
 import { adminDatabaseRoutes } from "./database.js";
 import { adminInsightRoutes } from "./insights.js";
 import { adminUserPowerRoutes } from "./users.js";
@@ -116,8 +117,10 @@ export async function adminRoutes(app: FastifyInstance) {
         "UPDATE users SET role=$1, disabled=$2, email_verified=$3 WHERE id=$4",
         [role, disabled, emailVerified, id],
       );
-      if (disabled && !target.disabled)
+      if (disabled && !target.disabled) {
         await db.query("DELETE FROM sessions WHERE user_id=$1", [id]);
+        await revokeConnections(db, { userId: id }, "disabled", actor.id, r.id);
+      }
       if (role !== target.role)
         await audit(
           {

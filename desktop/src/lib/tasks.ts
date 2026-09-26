@@ -1,4 +1,10 @@
-import { STATUSES, isClosed, type Item, type Status } from "@orbyn/core";
+import {
+  STATUSES,
+  dueBeforeToday,
+  isClosed,
+  type Item,
+  type Status,
+} from "@orbyn/core";
 
 /** 0-100 progress for display. Done items always read as complete. */
 export const progressOf = (i: Pick<Item, "status" | "progress">) =>
@@ -33,12 +39,12 @@ export function timeAgo(iso: string, now = Date.now()) {
   });
 }
 
-/** Open items whose due date has passed (before today). */
+/**
+ * Open items whose deadline fell before today (see `dueBeforeToday`): due
+ * earlier today is today, and an all-day task is overdue from the next day.
+ */
 export const isOverdue = (i: Item, now = new Date()) =>
-  !isClosed(i.status) &&
-  !!i.due_at &&
-  new Date(i.due_at) <
-    new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  !isClosed(i.status) && dueBeforeToday(i, now);
 
 /** Count of items per status, plus "all". */
 export function statusCounts(items: Item[]) {

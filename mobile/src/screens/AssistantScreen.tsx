@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -10,13 +10,14 @@ import {
 } from "react-native";
 import {
   assistantSuggestions,
-  type DocSource,
+  type AssistantSource,
   type Item,
   type Plan,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
-import { PlanView } from "../components/PlanView";
+import { PlanView, tickedMoves } from "../components/PlanView";
+import { SmallAction } from "../components/SmallAction";
 import { ProposalReview } from "../components/ProposalReview";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion } from "../motion";
@@ -37,25 +38,56 @@ export function AssistantScreen({
   busy,
   onOpenSource,
   onKeptNote,
+  onShowOnCalendar,
+  onBackToProject,
 }: {
   assistant: Assistant;
   items: Item[];
   busy: boolean;
   /** Opens a page the assistant read, at the line it cited. */
-  onOpenSource?: (source: DocSource) => void;
+  onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
+  /** After a plan is applied: the calendar at its first changed session. */
+  onShowOnCalendar?: (at: string) => void;
+  onBackToProject?: (projectId: string) => void;
 }) {
-  const { turns, thinking, ask, apply, discard, reset } = assistant;
+  const { turns, thinking, ask, apply, discard, reset, scope, setScope } =
+    assistant;
   const { height } = useWindowDimensions();
   const locked = busy || thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
     .find((t) => t.role === "assistant")?.id;
+  const suggestions = scope
+    ? scope.kind === "project"
+      ? [
+          "Where does it stand?",
+          "What's at risk before the deadline?",
+          "What changed since I last looked?",
+        ]
+      : ["Will I finish this by the deadline?", "What should I plan next?"]
+    : SUGGESTIONS;
 
   return (
     <>
+      {scope && (
+        <View style={s.scopeRow}>
+          <SmallAction
+            label={`In: ${scope.name} ×`}
+            disabled={thinking}
+            onPress={() => setScope(null)}
+          />
+          {scope.kind === "project" && onBackToProject && (
+            <SmallAction
+              label={`Back to ${scope.name}`}
+              disabled={thinking}
+              onPress={() => onBackToProject(scope.id)}
+            />
+          )}
+        </View>
+      )}
       {turns.length === 0 ? (
         <FadeIn style={[s.welcome, { minHeight: Math.max(400, height - 480) }]}>
           <View style={s.badge}>
@@ -67,7 +99,7 @@ export function AssistantScreen({
             You’ll review every change before it’s saved.
           </Text>
           <View style={s.chips}>
-            {SUGGESTIONS.map((text) => (
+            {suggestions.map((text) => (
               <PressableScale
                 key={text}
                 accessibilityRole="button"
@@ -128,7 +160,9 @@ export function AssistantScreen({
                   before={turn.before}
                   busy={locked}
                   state={turn.state}
-                  onApprove={() => apply(turn.id)}
+                  onApprove={(giveTasksDeadlines) =>
+                    apply(turn.id, giveTasksDeadlines)
+                  }
                   onDiscard={() => discard(turn.id)}
                   onOpenSource={onOpenSource}
                   onKeptNote={onKeptNote}
@@ -142,8 +176,16 @@ export function AssistantScreen({
                   <PlanCard
                     plan={turn.proposal.plan}
                     applied={turn.planApplied}
+                    result={turn.planResult}
+                    onShowOnCalendar={
+                      onShowOnCalendar && turn.planAt
+                        ? () => onShowOnCalendar(turn.planAt!)
+                        : undefined
+                    }
                     busy={locked}
-                    onApply={() => void assistant.applyPlan(turn.id)}
+                    onApply={(moves) =>
+                      void assistant.applyPlan(turn.id, moves)
+                    }
                   />
                 )}
               </View>
@@ -161,9 +203,11 @@ export function AssistantScreen({
       </View>
 
       <Text style={[shared.small, s.note]}>
-        Your request, recent items and the next few days of your calendar
-        (subscribed calendars included) are shared with your configured AI
-        provider.
+        {scope?.kind === "project"
+          ? "Your question, this project's tasks, notes and decisions, and any pages the assistant opens are sent to the AI service Orbyn uses to answer you."
+          : scope?.kind === "task"
+            ? "Your question, this task and its sessions, and any pages the assistant opens are sent to the AI service Orbyn uses to answer you."
+            : "Your question, recent tasks, the next few days of your calendar and any pages the assistant opens are sent to the AI service Orbyn uses to answer you."}
       </Text>
     </>
   );
@@ -220,18 +264,30 @@ export function AssistantComposer({
   );
 }
 
-/** A schedule the assistant planned, to review and apply as time blocks. */
+/**
+ * A schedule the assistant planned, to review and apply: its sessions, the
+ * late sessions it can move before their deadline (the planner's own ticked,
+ * yours unticked) and what's at risk. Once applied, it says what it did.
+ */
 function PlanCard({
   plan,
   applied,
+  result,
+  onShowOnCalendar,
   busy,
   onApply,
 }: {
   plan: Plan;
   applied: boolean;
+  /** What applying did, in words (when applied here). */
+  result?: string;
+  /** Once applied here: the calendar at the first session it changed. */
+  onShowOnCalendar?: () => void;
   busy: boolean;
-  onApply: () => void;
+  onApply: (moves: string[]) => void;
 }) {
+  const [ticks, setTicks] = useState<Record<string, boolean>>({});
+  const chosen = tickedMoves(plan, ticks);
   return (
     <FadeIn style={s.plan}>
       <View style={s.planHead}>
@@ -240,7 +296,16 @@ function PlanCard({
           Proposed schedule
         </Text>
       </View>
-      <PlanView plan={plan} limit={6} />
+      <PlanView
+        plan={applied ? { ...plan, applied: true } : plan}
+        limit={6}
+        ticks={ticks}
+        onTick={
+          applied || busy
+            ? undefined
+            : (id, on) => setTicks((t) => ({ ...t, [id]: on }))
+        }
+      />
       {applied ? (
         <View style={s.planDone}>
           <Icon
@@ -249,15 +314,26 @@ function PlanCard({
             color={colors.accent}
             strokeWidth={2.4}
           />
-          <Text style={s.planDoneText}>Added to your calendar</Text>
+          <View style={s.planDoneBody}>
+            <Text style={s.planDoneText} accessibilityRole="alert">
+              {result ?? "Added to your calendar"}
+            </Text>
+            {onShowOnCalendar && (
+              <SmallAction
+                label="Show on calendar"
+                disabled={false}
+                onPress={onShowOnCalendar}
+              />
+            )}
+          </View>
         </View>
       ) : (
         <Button
-          title="Apply plan"
+          title="Apply"
           icon="check"
-          disabled={busy || plan.blocks.length === 0}
+          disabled={busy || (plan.blocks.length === 0 && chosen.length === 0)}
           style={s.planButton}
-          onPress={onApply}
+          onPress={() => onApply(chosen)}
         />
       )}
     </FadeIn>
@@ -339,6 +415,12 @@ const s = themed(() =>
     },
     intro: { marginBottom: 16 },
     chips: { gap: 10 },
+    scopeRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
     chip: {
       width: "100%",
       flexDirection: "row",
@@ -481,13 +563,17 @@ const s = themed(() =>
     planButton: { marginTop: 12, marginBottom: 0 },
     planDone: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-start",
       gap: 6,
       marginTop: 12,
     },
+    // The message, with "Show on calendar" under it at its own width.
+    planDoneBody: { flex: 1, gap: 8, alignItems: "flex-start" },
     planDoneText: {
+      alignSelf: "stretch",
       fontFamily: fonts.semibold,
       fontSize: 13,
+      lineHeight: 18,
       color: colors.accent,
     },
   }),

@@ -33,6 +33,7 @@ type Props = {
   onOpenBooking: (bookingId: string) => void;
   /** Opens a template that is ready to start, for review ("template" notices). */
   onOpenTemplate?: (templateId: string) => void;
+  onOpenProject?: (projectId: string) => void;
   /** Opens a page in Docs (an imported file that's ready: "import" notices). */
   onOpenDoc?: (docId: string) => void;
 };
@@ -46,6 +47,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   deadline: Hourglass,
   rsvp: UserCheck,
   template: LayoutTemplate,
+  project: CalendarDays,
   import: FileText,
 };
 
@@ -59,6 +61,7 @@ export function NotificationsView({
   onOpenItem,
   onOpenBooking,
   onOpenTemplate,
+  onOpenProject,
   onOpenDoc,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
@@ -143,6 +146,17 @@ export function NotificationsView({
                 }}
               >
                 <LayoutTemplate size={14} /> Review
+              </button>
+            )}
+            {n.kind === "project" && n.ref && onOpenProject && (
+              <button
+                className="secondary notice-action"
+                onClick={() => {
+                  if (!n.read) onRead(n);
+                  onOpenProject(n.ref!.split(":")[0]);
+                }}
+              >
+                <CalendarDays size={14} /> Open project
               </button>
             )}
             {n.kind === "rollforward" && (

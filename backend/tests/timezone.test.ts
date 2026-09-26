@@ -13,13 +13,14 @@ process.env.SMTP_HOST = "";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
+const { addDays } = await import("@orbyn/core");
 const app = await buildApp();
 let caller = 0;
 const address = () => `10.15.${Math.floor(++caller / 250)}.${caller % 250}`;
 
 async function call(
   token: string,
-  method: "GET" | "POST" | "PUT",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   url: string,
   payload?: unknown,
 ) {
@@ -101,14 +102,35 @@ test("an agenda written in the wrong zone is written again once the zone is righ
     )
   ).rows[0].id;
   const utc = (await call(me, "GET", "/agenda/today")).body;
+  // A page just asked for yesterday, untouched and titled like no today,
+  // is a day's page of its own and must survive too; so must one in Trash.
+  const utcToday = new Date().toISOString().slice(0, 10);
+  const asked = (await call(me, "POST", `/agenda/${addDays(utcToday, -1)}`))
+    .body;
+  assert.equal(asked.agenda_date, addDays(utcToday, -1));
   await call(me, "POST", "/me/timezone", { timezone: "Pacific/Kiritimati" });
   const fixed = (await call(me, "GET", "/agenda/today")).body;
   assert.notEqual(fixed.id, utc.id, "the untouched page was replaced");
+  for (const [id, what] of [
+    [yesterday, "yesterday's agenda"],
+    [asked.id, "the page asked for yesterday"],
+  ])
+    assert.equal(
+      (await pool.query("SELECT 1 FROM docs WHERE id = $1", [id])).rowCount,
+      1,
+      `${what} is kept`,
+    );
+  // Today's page thrown away is left in Trash, where it can still be
+  // brought back, rather than deleted for good.
+  const other = await newUser();
+  const binned = (await call(other, "GET", "/agenda/today")).body;
+  assert.equal((await call(other, "DELETE", `/docs/${binned.id}`)).status, 204);
+  await call(other, "POST", "/me/timezone", { timezone: "Asia/Tokyo" });
   assert.equal(
-    (await pool.query("SELECT 1 FROM docs WHERE id = $1", [yesterday]))
+    (await pool.query("SELECT 1 FROM docs WHERE id = $1", [binned.id]))
       .rowCount,
     1,
-    "yesterday's agenda is kept",
+    "the page in Trash is kept",
   );
 });
 

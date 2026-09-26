@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  planOutcome,
   proposalNote,
   type ChatTurn,
+  type ChatScope,
   type Item,
   type Proposal,
 } from "@orbyn/core";
@@ -21,7 +23,16 @@ export type Turn =
       before: Item[];
       /** Whether the schedule in `proposal.plan` has been applied. */
       planApplied: boolean;
+      /**
+       * What applying it did, in words ("Planned 3 tasks today · Moved 1
+       * session before its deadline."), once applied here.
+       */
+      planResult?: string;
+      /** Where the applied plan's first changed session starts, for "Show on calendar". */
+      planAt?: string | null;
     };
+
+export type AssistantScope = ChatScope & { name: string };
 
 type Options = {
   /** Current session token; the conversation is dropped when it clears. */
@@ -44,6 +55,9 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [scope, setScopeState] = useState<AssistantScope | null>(null);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
   const sending = useRef(false);
   const generation = useRef(0);
   const turnsRef = useRef(turns);
@@ -57,6 +71,8 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setThinking(false);
     setTurns([]);
     setMessage("");
+    setScopeState(null);
+    scopeRef.current = null;
     return () => {
       generation.current += 1;
     };
@@ -102,6 +118,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           trimmed,
           Intl.DateTimeFormat().resolvedOptions().timeZone,
           prior,
+          scopeRef.current && {
+            kind: scopeRef.current.kind,
+            id: scopeRef.current.id,
+          },
         );
         if (request !== generation.current) return;
         const touched = new Set(
@@ -116,7 +136,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
             id: nextId(),
             role: "assistant",
             proposal,
-            state: proposal.actions.length ? "pending" : "info",
+            state:
+              proposal.actions.length || proposal.session_change
+                ? "pending"
+                : "info",
             before: itemsRef.current.filter((i) => touched.has(i.id)),
             planApplied: !!proposal.plan?.applied,
           },
@@ -149,13 +172,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     );
 
   /** Approve a reply's changes; defaults to the most recent pending one. */
-  const apply = (turnId?: unknown) => {
+  const apply = (turnId?: unknown, giveTasksDeadlines = true) => {
     const id = typeof turnId === "string" ? turnId : latestPending()?.id;
     const turn = turnsRef.current.find((t) => t.id === id);
     if (!turn || turn.role !== "assistant" || turn.state !== "pending")
       return Promise.resolve();
     return act(async () => {
-      await client.applyProposal(turn.proposal.id);
+      await client.applyProposal(turn.proposal.id, {
+        give_tasks_deadlines: giveTasksDeadlines,
+      });
       setState(turn.id, "applied");
       await refresh();
     });
@@ -167,18 +192,25 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     if (id) setState(id, "discarded");
   };
 
-  /** Save the schedule a reply planned (its time blocks) to the calendar. */
-  const applyPlan = (turnId: string) => {
+  /**
+   * Save the schedule a reply planned (its sessions) to the calendar, moving
+   * the late sessions ticked (`moves`; the planner's choice when omitted).
+   */
+  const applyPlan = (turnId: string, moves?: string[]) => {
     const turn = turnsRef.current.find((t) => t.id === turnId);
     if (!turn || turn.role !== "assistant" || !turn.proposal.plan)
       return Promise.resolve();
     const plan = turn.proposal.plan;
     return act(async () => {
-      await client.applyPlan(plan.id);
+      const result = await client.applyPlan(plan.id, moves ? { moves } : {});
+      const planResult = planOutcome(result, plan.at_risk);
+      const planAt =
+        [...result.blocks, ...result.moved].map((b) => b.start_at).sort()[0] ??
+        null;
       setTurns((t) =>
         t.map((x) =>
           x.id === turnId && x.role === "assistant"
-            ? { ...x, planApplied: true }
+            ? { ...x, planApplied: true, planResult, planAt }
             : x,
         ),
       );
@@ -192,12 +224,29 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setMessage("");
   };
 
+  const setScope = (next: AssistantScope | null) => {
+    if (
+      scopeRef.current?.kind === next?.kind &&
+      scopeRef.current?.id === next?.id
+    )
+      return;
+    generation.current += 1;
+    sending.current = false;
+    setThinking(false);
+    scopeRef.current = next;
+    setScopeState(next);
+    setTurns([]);
+    setMessage("");
+  };
+
   const pending = latestPending();
   return {
     message,
     setMessage,
     turns,
     thinking,
+    scope,
+    setScope,
     /** The most recent reply still awaiting approval, if any. */
     proposal: pending && pending.role === "assistant" ? pending.proposal : null,
     ask,

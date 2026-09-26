@@ -48,6 +48,29 @@ message instead.
 - Calendar starts in Day unless a view was saved. Phone month grids use activity dots;
   wider layouts retain event bars. Switching to Week or Month keeps the date picker visible.
 - Choice controls wrap when their available width cannot provide 44-point targets.
+- **One +** sits in the header on every tab. A tap runs the favourite (New task until another is
+  chosen); a long press opens the + sheet: New task, New page, From template, Scan notes, New
+  project, Plan my day, Start focus and Ask assistant, with Arrange at the bottom to reorder
+  rows, hide the ones never used and star the one a tap runs (kept on the device,
+  `packages/core/src/create-actions.ts`).
+- **Writing a page:** the line being typed gets one row of icons on the keyboard (the sheet
+  docks it just above it): Undo, Redo, Aa (the kind of line), Bold, Italic, Highlight, Link
+  (a web address for now), To-do (a to-do with words becomes a task of its own: Make task),
+  Indent, Outdent, Comment, Ask (the assistant, on the chosen words or the whole line), ⋯ (Move
+  up, Move down, Comment on some words, Delete line) and Hide keyboard last, which puts the line
+  away. The style the caret is in is tinted. Undo and Redo work across the page, not only the
+  line (`packages/core/src/undo.ts`, `line-toolbar.ts`).
+- **A page's header** is Back, its title (once the page's own title has scrolled away), Info
+  and ⋯. Info holds how you're working on the page (Editing, Suggesting, Viewing), what it
+  belongs to, its tags, "still true?", its size, who else is here, and Show history. ⋯ holds Ask
+  about this page, Share…, Export…, History, Save as template and Move to Trash.
+- **Share** is in the ⋯ of pages (the link, a Markdown file or a PDF), tasks and projects (the
+  link). Links are the web app's (`/app/doc/<id>`, `/app/task/<id>`, `/app/project/<id>`); the web
+  app on a phone's browser has the same Share where the browser has a share sheet.
+- **Save to Orbyn:** text and links shared from another app open a sheet with the link's title and
+  site, the last three places used as chips, and where it goes: an Inbox task "Read: <title>"
+  with the link, today's agenda (under Notes), a page, a new page in a folder, or a project; one
+  Save (`POST /capture`, `POST /capture/preview` for the title). Files still go to Uploads.
 
 ### Redesign verification (22 September 2026)
 
@@ -124,6 +147,30 @@ Flow inside the app:
 If your Expo account has "enhanced push security" enabled, set `EXPO_ACCESS_TOKEN` in the root
 `.env` so the worker can authenticate.
 
+## Links into the app, and the app icon's quick actions
+
+One listener in the app (`mobile/src/hooks/useAppLinks.ts`, read by `parseAppLink` in
+`@orbyn/core`) opens every link into the app: `orbyn://add` (a new task; with `?text=` it's added
+straight away, below), `orbyn://agenda`, `orbyn://scan`, `orbyn://assistant`,
+`orbyn://share?url=&text=` (Save to Orbyn), `orbyn://today`, and `orbyn://doc/<id>`,
+`orbyn://task/<id>` and `orbyn://project/<id>` — or the web app's `/app/…` paths for the same. A
+link that arrives signed out opens after sign-in.
+
+Long-pressing the app icon offers **New task, Today's agenda, Scan notes and Ask assistant**, each
+opening one of those links. They come from a config plugin and a small local module,
+`mobile/modules/orbyn-quick-actions` (listed in `app.json` → `plugins`):
+
+- iOS: `UIApplicationShortcutItems` in Info.plist, each carrying its link; the module's app
+  delegate subscriber hands the chosen one to JS (`takeInitialQuickAction`, `onQuickAction`).
+- Android: static app shortcuts (`res/xml/orbyn_shortcuts.xml`) that open the link on the main
+  activity, so it arrives through `Linking`.
+
+**This needs a new native build (EAS or `expo prebuild`)** — Expo Go and the web build have no
+quick actions; the same is true of receiving shared text and links (the share extension's
+`supportsText`/`supportsWebUrlWithMaxCount` on iOS and `text/plain` on Android, in `app.json`). The
+JS side, the plugin's Info.plist and manifest output (`npx expo config --type introspect`) and the
+link parser are checked; the icon menu itself is verified on a device after that build.
+
 ## Quick capture with Siri / Shortcuts
 
 The app registers the `orbyn://` URL scheme, and opening `orbyn://add?text=<your task>` adds a task
@@ -134,8 +181,8 @@ from the text (via `POST /items/quick`) and refreshes. No native extension is ne
 2. Name the Shortcut (e.g. "Add to Orbyn") and, on iOS, add it to Siri — then say it to capture a
    task hands-free.
 
-The person must already be signed in on the device. On-device behaviour is verified by hand; the
-link parser (`parseAddDeepLink` in `@orbyn/core`) is unit-tested. Home-screen widgets and an Apple
+A link opened while signed out waits for sign-in. On-device behaviour is verified by hand; the
+link parsers (`parseAddDeepLink`, `parseAppLink` in `@orbyn/core`) are unit-tested. Home-screen widgets and an Apple
 Watch app are separate native targets — see the next section.
 
 ## Home-screen widget & Apple Watch (native)

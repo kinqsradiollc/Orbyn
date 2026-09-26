@@ -16,18 +16,19 @@ database or to AI providers directly; everything goes through the gateway.
 One backend image runs each service with a different command. They scale independently and can
 live on different machines; see [scalability.md](scalability.md).
 
-| Service     | Entry point             | Owns                                                                                                  |
-| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------- |
-| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                |
-| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                             |
-| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                          |
-| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                            |
-| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page                                       |
-| `files`     | `services/files.ts`     | File store for imports: signed one-time uploads, encrypted, deleted within 24 h                       |
-| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                           |
-| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                        |
-| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                |
-| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/u/*` to files, rest to api |
+| Service     | Entry point             | Owns                                                                                                                                            |
+| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                                                          |
+| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                                                                       |
+| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                    |
+| `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                     |
+| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                      |
+| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page                                                                                 |
+| `files`     | `services/files.ts`     | File store for imports: signed one-time uploads, encrypted, deleted within 24 h                                                                 |
+| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                     |
+| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                  |
+| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                          |
+| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/u/*` to files, `/mcp` to mcp, rest to api; port 8082 is the MCP host |
 
 `server.ts` runs every module in one process for local development and tests.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
@@ -35,15 +36,66 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
 ## Backend (`backend/src`)
 
-| Path              | Responsibility                                                                  |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `config/env.ts`   | Loads `.env` and validates configuration with zod                               |
-| `db/pool.ts`      | Primary and optional read-replica pools, `reader()`, `transaction()`            |
-| `modules/<name>/` | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
-| `modules/items/`  | `mutate()`, the single write path with optimistic locking, plus progress        |
-| `modules/ai/`     | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
-| `worker/`         | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
-| `app.ts`          | Which modules each service mounts (`serviceModules`)                            |
+| Path                  | Responsibility                                                                  |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `config/env.ts`       | Loads `.env` and validates configuration with zod                               |
+| `db/pool.ts`          | Primary and optional read-replica pools, `reader()`, `transaction()`            |
+| `modules/<name>/`     | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
+| `modules/items/`      | `mutate()`, the single write path with optimistic locking, plus progress        |
+| `modules/ai/`         | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
+| `capabilities/`       | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
+| `modules/mcp-server/` | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
+| `modules/agents/`     | Agent keys, Connected agents, activity, admin switches, team agent policy       |
+| `lib/visibility.ts`   | The one rule for what a person (or a narrowed connection) can see               |
+| `worker/`             | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
+| `app.ts`              | Which modules each service mounts (`serviceModules`)                            |
+
+### Outside agents (MCP)
+
+The `mcp` service answers outside AI agents at `MCP_PUBLIC_URL` (`https://mcp.orbyn.dev/mcp`; the
+gateway's port 8082, and `/api/mcp` on the web app for older setups). It runs the official MCP
+TypeScript SDK (v2) statelessly: protocol `2026-07-28` and the 2025 revisions through `initialize`,
+no sessions, JSON answers.
+
+- **Who is calling.** An agent key (`oak_`, made in Settings → Connected agents), an agent access
+  token (`oat_`, from OAuth in phase A2), or, for 90 days, an old personal API key (`ok_`) as a
+  legacy connection with `Deprecation` and `Sunset` headers. Each is a row in `agent_grants`
+  (access level, spaces, toolsets, expiry), with credentials hashed in `agent_tokens`. The REST
+  API and CalDAV refuse agent credentials (`authenticate()`), and `/mcp` refuses app sessions.
+- **What it may do** is a `Principal` (`capabilities/policy.ts`), rebuilt on every call from live
+  data. In each space, its level is the lowest of the connection's access, the person's team role,
+  and the team's agent policy (`teams.agent_access`). Agents act as an ordinary member, so the
+  system-admin team override never applies.
+- **Tools** come from the capability registry (`capabilities/`). Each one declares a zod input
+  and output, MCP annotations, a risk tier, and the access and toolset it needs. Reads run in a
+  `BEGIN READ ONLY` transaction, with the `lib/visibility.ts` builders. They go to the replica,
+  or to the primary for 10 s after the connection wrote (read-your-writes). Text by others is
+  cleaned and fenced as untrusted content, labelled with where it came from: a teammate (also
+  when a teammate edited a team page, from `doc_versions`), a subscribed calendar, an imported
+  file, a booking guest (with email addresses hidden) or an email. An item's source is kept on
+  the item (`item_sources`, carried to a new series when a repeating one is split), so a
+  booking's events stay the guest's words after the booking or its page is deleted. A project's
+  change rows keep their task's source themselves (`project_activity.source`), so a deleted
+  task's title stays fenced. Images that would load from another host are removed. No MCP path
+  calls an AI provider or semantic search.
+- **Rate limits by credential.** The general limit counts an agent's requests against its
+  connection only at the MCP address and only once the credential is a live connection's; a
+  made-up one counts per address, like any other request, so it can't skip sign-in limits.
+- **Limits and switches.** Limits are per connection, never per address: calls, searches, writes
+  and a daily quota (`agent_usage_daily`). The gateway also caps calls in flight per credential.
+  Kill switches: revoke a connection (L1); block an app, `blocked_client_ids` (L2); pause
+  changes, `agents_writes_enabled` (L3); all agents off, `agents_enabled`, or the gateway's
+  `MCP_DISABLED` (L4). The settings apply within 10 s. A connection that keeps going over its
+  limits, or keeps being refused (probing), is paused (`suspended_at`) until its person restores
+  it.
+- **Activity.** `agent_activity` records one row per change, and reads are counted per minute.
+  Rows are written in batches. Agent calls never count as the person being active. The sweeper
+  keeps activity 180 days and usage 90, and clears spent codes, seals and long-expired
+  credentials.
+- **Ratchet.** `backend/tests/route-inventory.test.ts` classifies every route. A signed-in route
+  must be covered by a tool, excluded with a reason, or pending (`capabilities/exclusions.ts`),
+  and pending may only shrink. `docs/mcp-catalog.json` and `docs/mcp.md` are generated from the
+  registry and checked in CI.
 
 ### Importing files into Docs
 

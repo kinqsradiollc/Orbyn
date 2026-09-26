@@ -501,7 +501,7 @@ function Body({ teams }: { teams: Team[] }) {
               </Disclosure>
               <Disclosure
                 title="Scheduling"
-                detail="Focus blocks, breaks and planning horizon"
+                detail="Sessions, breaks and planning horizon"
               >
                 <View style={s.preferenceCard}>
                   <Field
@@ -538,17 +538,17 @@ function Body({ teams }: { teams: Team[] }) {
                       accessibilityLabel="Split tasks longer than, in minutes"
                     />
                   </Field>
-                  <Field label="Shortest block">
+                  <Field label="Shortest session">
                     <NumberInput
                       value={form.minBlock}
                       onChangeText={(minBlock) => patch({ minBlock })}
                       suffix="minutes"
-                      accessibilityLabel="Shortest block, in minutes"
+                      accessibilityLabel="Shortest session, in minutes"
                     />
                   </Field>
-                  <Field label="Breaks between blocks" style={s.last}>
+                  <Field label="Breaks between sessions" style={s.last}>
                     <Segmented
-                      accessibilityLabel="Breaks between blocks"
+                      accessibilityLabel="Breaks between sessions"
                       options={BREAK_LEVELS}
                       labels={BREAK_LABELS}
                       value={form.break_level}
@@ -735,9 +735,9 @@ function Body({ teams }: { teams: Team[] }) {
                 detail="Estimates, your best hours and a usual day"
               >
                 <Text style={[shared.small, s.sectionHint]}>
-                  The planner learns from your own finished tasks, planned
-                  blocks and focus sessions. Your tasks aren’t changed; only
-                  where and how long they’re planned.
+                  The planner learns from your own finished tasks, sessions and
+                  focus time. Your tasks aren’t changed; only where and how long
+                  they’re planned.
                 </Text>
                 {(
                   [

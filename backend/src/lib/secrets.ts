@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  hkdfSync,
+  randomBytes,
+} from "node:crypto";
 import { fail } from "@orbyn/core";
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
@@ -90,4 +95,17 @@ export function maskSecret(plain: string): string {
   if (!plain) return "";
   if (plain.length <= 8) return "••••";
   return `${plain.slice(0, 3)}…${plain.slice(-4)}`;
+}
+
+/**
+ * A 32-byte key for one purpose ("mcp-cursor", "mcp-seal"), derived with
+ * HKDF from the key credentials are encrypted with: SECRETS_KEY when set,
+ * otherwise the key kept in the database. Signing handles with it needs no
+ * setting of its own, and different purposes never share a key.
+ */
+export async function derivedKey(purpose: string): Promise<Buffer> {
+  const base = env.SECRETS_KEY ? secretsKey() : await databaseKey();
+  return Buffer.from(
+    hkdfSync("sha256", base, Buffer.alloc(0), `orbyn:${purpose}`, 32),
+  );
 }

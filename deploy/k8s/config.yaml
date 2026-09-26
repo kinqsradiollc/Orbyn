@@ -47,7 +47,12 @@ data:
   STATUS_API_URL: "http://api.orbyn.svc.cluster.local:8000"
   STATUS_AI_URL: "http://ai.orbyn.svc.cluster.local:8000"
   STATUS_REALTIME_URL: "http://realtime.orbyn.svc.cluster.local:8000"
+  STATUS_MCP_URL: "http://mcp.orbyn.svc.cluster.local:8000"
   STATUS_INTERVAL_MS: "30000"
+
+  # The MCP address outside agents connect to (the orbyn-mcp ingress host).
+  # Never derived from request headers. OAUTH_ISSUER defaults to APP_URL.
+  MCP_PUBLIC_URL: "https://mcp.orbyn.example/mcp"
 
   # AI providers are added by admins in the app and stored in the database.
 

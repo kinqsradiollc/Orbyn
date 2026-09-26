@@ -46,3 +46,43 @@
 .project-draft-review p.project-draft-warning {
   color: var(--color-warn);
 }
+.ai-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block: 12px;
+  cursor: pointer;
+}
+.ai-switch-row .ai-switch {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  flex: none;
+  margin: 0;
+  border: 1px solid var(--color-borderStrong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  cursor: pointer;
+  position: relative;
+}
+.ai-switch-row .ai-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  transition: translate var(--motion-fast) var(--ease-out);
+}
+.ai-switch-row .ai-switch:checked {
+  background: var(--color-accent);
+}
+.ai-switch-row .ai-switch:checked::after {
+  translate: 16px 0;
+}
+.ai-switch-row .ai-switch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

@@ -10,9 +10,11 @@ const { pool } = await import("../src/db/pool.js");
 const app = await buildApp();
 let lead = "";
 let outsider = "";
+let leadId = "";
+let outsiderId = "";
 
 const call = (
-  method: "GET" | "POST" | "PUT",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   url: string,
   payload?: unknown,
   token = lead,
@@ -37,13 +39,75 @@ before(async () => {
       },
     });
     assert.equal(result.statusCode, 201, result.body);
-    if (name === "Lead") lead = result.json().token;
-    else outsider = result.json().token;
+    if (name === "Lead") {
+      lead = result.json().token;
+      leadId = result.json().user.id;
+    } else {
+      outsider = result.json().token;
+      outsiderId = result.json().user.id;
+    }
   }
 });
 after(async () => {
   await app.close();
   await pool.end();
+});
+
+test("team history and snapshots omit pages a viewer cannot open", async () => {
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name, created_by) VALUES ('History team', $1) RETURNING id",
+      [leadId],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES ($1,$2,'owner'),($1,$3,'viewer')",
+    [team.id, leadId, outsiderId],
+  );
+  const project = (
+    await call("POST", "/projects", {
+      name: "Shared history",
+      team_id: team.id,
+    })
+  ).json();
+  await pool.query(
+    "INSERT INTO docs(user_id,project_id,title) VALUES ($1,$2,'Private history title')",
+    [leadId, project.id],
+  );
+  const shared = await call("POST", "/docs", {
+    title: "Shared history title",
+    project_id: project.id,
+    team_id: team.id,
+  });
+  assert.equal(shared.statusCode, 201, shared.body);
+  await call("PUT", `/projects/${project.id}`, {
+    name: "Shared history updated",
+  });
+  const history = await call(
+    "GET",
+    `/projects/${project.id}/activity`,
+    undefined,
+    outsider,
+  );
+  assert.equal(history.statusCode, 200, history.body);
+  assert.doesNotMatch(history.body, /Private history title/);
+  assert.match(history.body, /Shared history title/);
+  const checkpoints = await call(
+    "GET",
+    `/projects/${project.id}/time-machine/checkpoints`,
+    undefined,
+    outsider,
+  );
+  assert.doesNotMatch(checkpoints.body, /Private history title/);
+  const snapshot = await call(
+    "GET",
+    `/projects/${project.id}/time-machine/${checkpoints.json()[0].event_order}`,
+    undefined,
+    outsider,
+  );
+  assert.equal(snapshot.statusCode, 200, snapshot.body);
+  assert.doesNotMatch(snapshot.body, /Private history title/);
+  assert.match(snapshot.body, /Shared history title/);
 });
 
 test("time machine requires auth and validates its cursor", async () => {
@@ -91,6 +155,45 @@ test("time machine requires auth and validates its cursor", async () => {
   );
 });
 
+test("a deleted task keeps its history under its last access rules", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "Deleted work" })
+  ).json();
+  const task = (
+    await call("POST", "/items", { title: "Historical task", kind: "task" })
+  ).json();
+  const filed = (
+    await call("PUT", `/items/${task.id}/project`, {
+      project_id: project.id,
+    })
+  ).json();
+  const added = (
+    await call("GET", `/projects/${project.id}/time-machine/checkpoints`)
+  )
+    .json()
+    .find(
+      (row: { summary: string }) =>
+        row.summary === "Task added: Historical task",
+    );
+  assert.ok(added);
+  const deleted = await call(
+    "DELETE",
+    `/items/${task.id}?version=${filed.item.version}`,
+  );
+  assert.equal(deleted.statusCode, 204, deleted.body);
+  const snapshot = await call(
+    "GET",
+    `/projects/${project.id}/time-machine/${added.event_order}`,
+  );
+  assert.equal(snapshot.statusCode, 200, snapshot.body);
+  assert.equal(snapshot.json().tasks[0].title, "Historical task");
+  assert.equal(
+    (await call("GET", `/projects/${project.id}/activity`, undefined, outsider))
+      .statusCode,
+    404,
+  );
+});
+
 test("a snapshot shows task state at the selected change, including later removal", async () => {
   const project = (
     await call("POST", "/projects", { name: "Launch archive" })
@@ -98,11 +201,10 @@ test("a snapshot shows task state at the selected change, including later remova
   const task = (
     await call("POST", "/items", { title: "Prepare launch", kind: "task" })
   ).json();
-  assert.equal(
-    (await call("PUT", `/items/${task.id}/project`, { project_id: project.id }))
-      .statusCode,
-    200,
-  );
+  const filed = await call("PUT", `/items/${task.id}/project`, {
+    project_id: project.id,
+  });
+  assert.equal(filed.statusCode, 200);
   const first = (
     await call("GET", `/projects/${project.id}/time-machine/checkpoints`)
   ).json();
@@ -124,7 +226,7 @@ test("a snapshot shows task state at the selected change, including later remova
     title: "Prepare launch",
     kind: "task",
     status: "done",
-    version: task.version,
+    version: filed.json().item.version,
   });
   assert.equal(done.statusCode, 200, done.body);
   const latest = (
@@ -248,11 +350,10 @@ test("a preexisting project starts at a truthful baseline", async () => {
   const task = (
     await call("POST", "/items", { title: "Existing task", kind: "task" })
   ).json();
-  assert.equal(
-    (await call("PUT", `/items/${task.id}/project`, { project_id: project.id }))
-      .statusCode,
-    200,
-  );
+  const filed = await call("PUT", `/items/${task.id}/project`, {
+    project_id: project.id,
+  });
+  assert.equal(filed.statusCode, 200);
   const early = (
     await call("GET", `/projects/${project.id}/time-machine/checkpoints`)
   ).json()[0];
@@ -291,7 +392,7 @@ test("a preexisting project starts at a truthful baseline", async () => {
     title: "Existing task",
     kind: "task",
     status: "done",
-    version: task.version,
+    version: filed.json().item.version,
   });
   assert.equal(done.statusCode, 200, done.body);
   const changed = (

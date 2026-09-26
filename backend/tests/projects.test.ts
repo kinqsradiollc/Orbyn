@@ -7,8 +7,16 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { projectProgress, projectAtRisk, projectTimeline, DEFAULT_STAGES } =
-  await import("@orbyn/core");
+const { scanProjectPlanningNotices, scanProjectDeadlineMoves } =
+  await import("../src/worker/planning.js");
+const {
+  projectProgress,
+  projectAtRisk,
+  projectTimeline,
+  projectSessionTicks,
+  DEFAULT_STAGES,
+  dayTime,
+} = await import("@orbyn/core");
 
 const app = await buildApp();
 let token = "";
@@ -111,6 +119,74 @@ test("a new project comes with default stages", async () => {
   assert.equal(p.done_count, 0);
 });
 
+test("project visits preserve the prior visit across clients and reject strangers", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "Visit history" })
+  ).json();
+  const url = `/projects/${project.id}/visit`;
+  const first = await call("POST", url);
+  assert.equal(first.statusCode, 200, first.body);
+  assert.equal(first.json().since_at, null);
+  assert.ok(first.json().visited_at);
+  // A remount or second device during the same visit must keep the catch-up point.
+  const repeated = await call("POST", url);
+  assert.equal(repeated.statusCode, 200, repeated.body);
+  assert.equal(repeated.json().since_at, null);
+  await pool.query(
+    "UPDATE project_visits SET last_seen_at = now() - interval '10 minutes' WHERE project_id = $1",
+    [project.id],
+  );
+  const next = await call("POST", url);
+  assert.equal(next.statusCode, 200, next.body);
+  assert.ok(next.json().since_at);
+  assert.notEqual(next.json().visited_at, next.json().since_at);
+  assert.equal(
+    (await call("POST", url, undefined, () => otherToken)).statusCode,
+    404,
+  );
+  assert.equal((await app.inject({ method: "POST", url })).statusCode, 401);
+});
+
+test("project links enforce visibility and safe URLs", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "References" })
+  ).json();
+  const path = `/projects/${project.id}/links`;
+  const created = await call("POST", path, {
+    url: "https://example.com/reference",
+    title: "Design reference",
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  assert.equal((await call("GET", path)).json()[0].title, "Design reference");
+  assert.equal(
+    (await call("POST", path, { url: "javascript:alert(1)" })).statusCode,
+    422,
+  );
+  assert.equal(
+    (await call("POST", path, { url: "https://user:pass@example.com" }))
+      .statusCode,
+    422,
+  );
+  assert.equal(
+    (await call("GET", path, undefined, () => otherToken)).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call("POST", path, { url: "https://example.com" }, () => otherToken))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (await app.inject({ method: "GET", url: path })).statusCode,
+    401,
+  );
+  assert.equal(
+    (await call("DELETE", `${path}/${created.json().id}`)).statusCode,
+    204,
+  );
+  assert.deepEqual((await call("GET", path)).json(), []);
+});
+
 test("tasks join a project and a stage, and counts follow", async () => {
   const p = (
     await call("POST", "/projects", {
@@ -122,15 +198,16 @@ test("tasks join a project and a stage, and counts follow", async () => {
   const a = await newTask("Define the audience");
   const b = await newTask("Draft the email");
 
-  assert.equal(
-    (
-      await call("PUT", `/items/${a.id}/project`, {
-        project_id: p.id,
-        stage_id: planning.id,
-      })
-    ).statusCode,
-    200,
-  );
+  const filed = await call("PUT", `/items/${a.id}/project`, {
+    project_id: p.id,
+    stage_id: planning.id,
+  });
+  assert.equal(filed.statusCode, 200);
+  const kept = await call("PUT", `/items/${a.id}/project`, {
+    project_id: p.id,
+  });
+  assert.equal(kept.statusCode, 200, kept.body);
+  assert.equal(kept.json().item.stage_id, planning.id);
   assert.equal(
     (await call("PUT", `/items/${b.id}/project`, { project_id: p.id }))
       .statusCode,
@@ -142,7 +219,7 @@ test("tasks join a project and a stage, and counts follow", async () => {
     title: "Define the audience",
     kind: "task",
     status: "done",
-    version: a.version,
+    version: kept.json().item.version,
   });
 
   const read = (await call("GET", `/projects/${p.id}`)).json();
@@ -160,6 +237,119 @@ test("a stage from another project is refused", async () => {
     stage_id: two.stages[0].id,
   });
   assert.equal(bad.statusCode, 422, bad.body);
+});
+
+test("task context exposes only readable project and page links", async () => {
+  const project = (
+    await call("POST", "/projects", { name: "Coursework" })
+  ).json();
+  const task = (
+    await call("POST", "/items", {
+      title: "Write the report",
+      kind: "task",
+      project_id: project.id,
+      stage_id: project.stages[0].id,
+    })
+  ).json();
+  const source = (
+    await call("POST", "/docs", {
+      title: "Lecture notes",
+      content: [
+        {
+          id: "source-line",
+          type: "todo",
+          text: "Write the report",
+          done: false,
+        },
+      ],
+    })
+  ).json();
+  await pool.query(
+    "INSERT INTO doc_task_links (doc_id, block_id, item_id, done) VALUES ($1,$2,$3,false)",
+    [source.id, "source-line", task.id],
+  );
+  const about = (
+    await call("POST", "/docs", {
+      title: "Report outline",
+      kind: "note",
+      item_id: task.id,
+      project_id: project.id,
+    })
+  ).json();
+
+  const response = await call("GET", `/items/${task.id}/context`);
+  assert.equal(response.statusCode, 200, response.body);
+  const context = response.json();
+  assert.equal(context.project.name, "Coursework");
+  assert.equal(context.project.stage_id, project.stages[0].id);
+  assert.equal(context.came_from.doc_id, source.id);
+  assert.equal(context.came_from.quote, "Write the report");
+  assert.deepEqual(
+    context.pages.map((p: { id: string }) => p.id),
+    [about.id],
+  );
+  assert.equal(
+    (
+      await call(
+        "GET",
+        `/items/${task.id}/context`,
+        undefined,
+        () => otherToken,
+      )
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (await app.inject({ method: "GET", url: `/items/${task.id}/context` }))
+      .statusCode,
+    401,
+  );
+});
+
+test("a team task never reveals its owner's personal source page", async () => {
+  const email = `proj-reader-${randomUUID()}@example.com`;
+  const teammate = (
+    await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email, password: "a-long-test-password", name: "Reader" },
+    })
+  ).json().token as string;
+  const team = (await call("POST", "/teams", { name: "Shared work" })).json();
+  assert.equal(
+    (await call("POST", `/teams/${team.id}/members`, { email, role: "viewer" }))
+      .statusCode,
+    201,
+  );
+  const task = (
+    await call("POST", "/items", {
+      title: "Team report",
+      kind: "task",
+      team_id: team.id,
+    })
+  ).json();
+  const privatePage = (
+    await call("POST", "/docs", {
+      title: "Private research",
+      content: [
+        { id: "private-line", type: "todo", text: "Team report", done: false },
+      ],
+    })
+  ).json();
+  await pool.query(
+    "INSERT INTO doc_task_links (doc_id, block_id, item_id, done) VALUES ($1,$2,$3,false)",
+    [privatePage.id, "private-line", task.id],
+  );
+  const context = await call(
+    "GET",
+    `/items/${task.id}/context`,
+    undefined,
+    () => teammate,
+  );
+  assert.equal(context.statusCode, 200, context.body);
+  assert.equal(context.json().came_from, null);
+  assert.deepEqual(context.json().pages, []);
+  assert.ok(!context.body.includes("Private research"));
 });
 
 test("renaming, reordering and removing stages keeps the survivors", async () => {
@@ -199,6 +389,456 @@ test("a deadline can be set and then cleared", async () => {
     await call("PUT", `/projects/${p.id}`, { deadline: null })
   ).json();
   assert.equal(cleared.deadline, null);
+});
+
+test("project planning reports your remaining work against counted sessions", async () => {
+  const now = Date.now();
+  const deadline = new Date(now + 2 * 86_400_000).toISOString();
+  const p = (
+    await call("POST", "/projects", { name: "Measured launch", deadline })
+  ).json();
+  const task = (
+    await call("POST", "/items", {
+      title: "Prepare launch",
+      kind: "task",
+      estimate_minutes: 120,
+      project_id: p.id,
+    })
+  ).json();
+  const unknown = (
+    await call("POST", "/items", {
+      title: "Check details",
+      kind: "task",
+      project_id: p.id,
+    })
+  ).json();
+  const userId = (
+    await pool.query<{ user_id: string }>(
+      "SELECT user_id FROM items WHERE id = $1",
+      [task.id],
+    )
+  ).rows[0].user_id;
+  const earlier = new Date(now + 86_400_000);
+  const later = new Date(now + 3 * 86_400_000);
+  for (const start of [earlier, later])
+    await pool.query(
+      "INSERT INTO time_blocks(item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+      [task.id, userId, start, new Date(start.getTime() + 60 * 60_000)],
+    );
+  const response = await call("GET", `/projects/${p.id}/planning`);
+  assert.equal(response.statusCode, 200, response.body);
+  const summary = response.json();
+  assert.equal(summary.task_count, 2);
+  assert.equal(summary.needed_minutes, 120);
+  assert.equal(summary.planned_minutes, 60);
+  assert.equal(summary.unplanned_minutes, 60);
+  assert.equal(summary.late_session_count, 1);
+  assert.equal(summary.planned_finish_at, null);
+  assert.deepEqual(summary.unestimated_tasks, [
+    { id: unknown.id, title: "Check details" },
+  ]);
+  assert.equal(
+    (
+      await call(
+        "GET",
+        `/projects/${p.id}/planning`,
+        undefined,
+        () => otherToken,
+      )
+    ).statusCode,
+    404,
+  );
+});
+
+test("team planning totals are visible only to owners and admins", async () => {
+  const email = `project-member-${randomUUID()}@example.com`;
+  const member = (
+    await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email, password: "a-long-test-password", name: "Member" },
+    })
+  ).json().token as string;
+  const team = (await call("POST", "/teams", { name: "Status team" })).json();
+  assert.equal(
+    (await call("POST", `/teams/${team.id}/members`, { email, role: "member" }))
+      .statusCode,
+    201,
+  );
+  const project = (
+    await call("POST", "/projects", { name: "Team status", team_id: team.id })
+  ).json();
+  const task = (
+    await call("POST", "/items", {
+      title: "Prepare release",
+      kind: "task",
+      team_id: team.id,
+      project_id: project.id,
+      estimate_minutes: 60,
+    })
+  ).json();
+  const ownerId = (
+    await pool.query<{ user_id: string }>(
+      "SELECT user_id FROM items WHERE id = $1",
+      [task.id],
+    )
+  ).rows[0].user_id;
+  const start = new Date(Date.now() + 86_400_000);
+  await pool.query(
+    "INSERT INTO time_blocks(item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+    [task.id, ownerId, start, new Date(start.getTime() + 60 * 60_000)],
+  );
+  const owner = (await call("GET", `/projects/${project.id}/planning`)).json();
+  const other = (
+    await call(
+      "GET",
+      `/projects/${project.id}/planning`,
+      undefined,
+      () => member,
+    )
+  ).json();
+  assert.equal(owner.team_planned_minutes, 60);
+  assert.equal(other.team_planned_minutes, undefined);
+  assert.equal(other.planned_minutes, 0);
+  const ownerSessions = (
+    await call("GET", `/projects/${project.id}/sessions`)
+  ).json();
+  const memberSessions = (
+    await call(
+      "GET",
+      `/projects/${project.id}/sessions`,
+      undefined,
+      () => member,
+    )
+  ).json();
+  assert.equal(ownerSessions.length, 1);
+  assert.equal(ownerSessions[0].item_id, task.id);
+  assert.deepEqual(memberSessions, []);
+  await call("PUT", `/projects/${project.id}`, {
+    deadline: new Date(start.getTime() - 60 * 60_000).toISOString(),
+  });
+  await scanProjectDeadlineMoves(new Date());
+  const movedNotices = (
+    await pool.query<{ user_id: string; body: string }>(
+      "SELECT user_id, body FROM notifications WHERE kind = 'project' AND ref LIKE $1 AND channel = 'inapp'",
+      [`${project.id}:%`],
+    )
+  ).rows;
+  assert.deepEqual(
+    movedNotices.map((notice) => notice.user_id),
+    [ownerId],
+  );
+  // The project had no deadline before: it was set, not moved.
+  assert.match(movedNotices[0].body, /now has a deadline/);
+  assert.doesNotMatch(movedNotices[0].body, /moved earlier/);
+});
+
+test("project plan previews only assigned work and respects project access", async () => {
+  const email = `project-planner-${randomUUID()}@example.com`;
+  const member = (
+    await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email, password: "a-long-test-password", name: "Planner" },
+    })
+  ).json().token as string;
+  const memberId = (
+    await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [
+      email,
+    ])
+  ).rows[0].id;
+  const team = (await call("POST", "/teams", { name: "Plan team" })).json();
+  await call("POST", `/teams/${team.id}/members`, { email, role: "member" });
+  const project = (
+    await call("POST", "/projects", { name: "Team plan", team_id: team.id })
+  ).json();
+  const assigned = (
+    await call("POST", "/items", {
+      title: "My assigned work",
+      kind: "task",
+      team_id: team.id,
+      project_id: project.id,
+      assignee_id: memberId,
+      estimate_minutes: 60,
+    })
+  ).json();
+  const unassigned = (
+    await call("POST", "/items", {
+      title: "Unclaimed work",
+      kind: "task",
+      team_id: team.id,
+      project_id: project.id,
+      estimate_minutes: 60,
+    })
+  ).json();
+  const planned = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    { timezone: "Australia/Melbourne" },
+    () => member,
+  );
+  assert.equal(planned.statusCode, 200, planned.body);
+  assert.ok(
+    planned
+      .json()
+      .tasks.some((task: { item_id: string }) => task.item_id === assigned.id),
+  );
+  assert.ok(
+    !planned
+      .json()
+      .tasks.some(
+        (task: { item_id: string }) => task.item_id === unassigned.id,
+      ),
+  );
+  assert.ok(planned.json().days <= 14);
+  assert.equal(planned.json().options.project_id, project.id);
+  const tuned = await app.inject({
+    method: "PATCH",
+    url: `/planner/plans/${planned.json().id}`,
+    headers: { authorization: `Bearer ${member}` },
+    payload: { include_item_ids: [unassigned.id] },
+  });
+  assert.equal(tuned.statusCode, 200, tuned.body);
+  assert.ok(
+    !tuned
+      .json()
+      .tasks.some(
+        (task: { item_id: string }) => task.item_id === unassigned.id,
+      ),
+  );
+  assert.equal(tuned.json().options.project_id, project.id);
+  assert.equal(
+    (await call("POST", `/projects/${project.id}/plan`, {}, () => otherToken))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `/projects/${project.id}/plan`,
+        { timezone: "Invalid/Zone" },
+        () => member,
+      )
+    ).statusCode,
+    422,
+  );
+  const sessionStart = new Date(Date.now() + 2 * 86_400_000);
+  await pool.query(
+    "INSERT INTO time_blocks(item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+    [
+      assigned.id,
+      memberId,
+      sessionStart,
+      new Date(sessionStart.getTime() + 30 * 60_000),
+    ],
+  );
+  const handedOver = await call("PUT", `/items/${assigned.id}`, {
+    title: assigned.title,
+    kind: "task",
+    team_id: team.id,
+    assignee_id: null,
+    version: assigned.version,
+  });
+  assert.equal(handedOver.statusCode, 200, handedOver.body);
+  const oldSessions = await call(
+    "GET",
+    `/items/${assigned.id}/sessions`,
+    undefined,
+    () => member,
+  );
+  assert.equal(oldSessions.statusCode, 200, oldSessions.body);
+  assert.equal(oldSessions.json().assigned_to_me, false);
+  assert.equal(oldSessions.json().sessions.length, 1);
+  const stale = await call(
+    "GET",
+    `/planner/plans/${tuned.json().id}/stale`,
+    undefined,
+    () => member,
+  );
+  assert.equal(stale.statusCode, 200, stale.body);
+  assert.equal(stale.json().stale, true);
+  const claimed = await call(
+    "PUT",
+    `/items/${unassigned.id}`,
+    {
+      title: unassigned.title,
+      kind: "task",
+      team_id: team.id,
+      assignee_id: memberId,
+      version: unassigned.version,
+    },
+    () => member,
+  );
+  assert.equal(claimed.statusCode, 200, claimed.body);
+  const afterClaim = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    {},
+    () => member,
+  );
+  assert.equal(afterClaim.statusCode, 200, afterClaim.body);
+  assert.ok(
+    afterClaim
+      .json()
+      .tasks.some(
+        (task: { item_id: string }) => task.item_id === unassigned.id,
+      ),
+  );
+});
+
+test("plan this project claims unassigned tasks with the plan and needs edit rights", async () => {
+  const memberEmail = `claimer-${randomUUID()}@example.com`;
+  const viewerEmail = `viewer-${randomUUID()}@example.com`;
+  const register2 = async (email: string) =>
+    (
+      await app.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: { email, password: "a-long-test-password", name: "Claimer" },
+      })
+    ).json().token as string;
+  const member = await register2(memberEmail);
+  const viewer = await register2(viewerEmail);
+  const memberId = (
+    await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [
+      memberEmail,
+    ])
+  ).rows[0].id;
+  const team = (await call("POST", "/teams", { name: "Claim team" })).json();
+  await call("POST", `/teams/${team.id}/members`, {
+    email: memberEmail,
+    role: "member",
+  });
+  await call("POST", `/teams/${team.id}/members`, {
+    email: viewerEmail,
+    role: "viewer",
+  });
+  const project = (
+    await call("POST", "/projects", { name: "Claim plan", team_id: team.id })
+  ).json();
+  const open = (
+    await call("POST", "/items", {
+      title: "Open for anyone",
+      notes: "Keep these notes",
+      kind: "task",
+      team_id: team.id,
+      project_id: project.id,
+      estimate_minutes: 60,
+    })
+  ).json();
+  // A viewer can read the project but not plan it.
+  const viewed = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    {},
+    () => viewer,
+  );
+  assert.equal(viewed.statusCode, 403, viewed.body);
+  assert.equal(
+    (
+      await call(
+        "POST",
+        `/projects/${project.id}/plan`,
+        { claim_item_ids: ["not-a-uuid"] },
+        () => member,
+      )
+    ).statusCode,
+    422,
+  );
+  const planned = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    { timezone: "Australia/Melbourne", claim_item_ids: [open.id] },
+    () => member,
+  );
+  assert.equal(planned.statusCode, 200, planned.body);
+  assert.ok(
+    planned
+      .json()
+      .tasks.some((task: { item_id: string }) => task.item_id === open.id),
+  );
+  // No deadline: the plan looks two weeks ahead and says so.
+  assert.match(planned.json().summary, /^Planned the next 2 weeks\./);
+  const row = (
+    await pool.query<{ assignee_id: string; notes: string; version: number }>(
+      "SELECT assignee_id, notes, version FROM items WHERE id = $1",
+      [open.id],
+    )
+  ).rows[0];
+  assert.equal(row.assignee_id, memberId);
+  assert.equal(row.notes, "Keep these notes");
+  assert.equal(row.version, open.version + 1);
+  // Claimed already: a second claim is a conflict, not a silent take-over.
+  const again = await call(
+    "POST",
+    `/projects/${project.id}/plan`,
+    { claim_item_ids: [open.id] },
+    () => member,
+  );
+  assert.equal(again.statusCode, 409, again.body);
+});
+
+test("a near project deadline sends one planning notice per local day", async () => {
+  const due = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  const project = (
+    await call("POST", "/projects", { name: "Notice project", deadline: due })
+  ).json();
+  const task = (
+    await call("POST", "/items", {
+      title: "Still needs time",
+      kind: "task",
+      project_id: project.id,
+      estimate_minutes: 120,
+    })
+  ).json();
+  const userId = (
+    await pool.query<{ user_id: string }>(
+      "SELECT user_id FROM projects WHERE id = $1",
+      [project.id],
+    )
+  ).rows[0].user_id;
+  await scanProjectPlanningNotices(new Date(), [userId]);
+  await scanProjectPlanningNotices(new Date(), [userId]);
+  const notices = (
+    await pool.query<{ id: string; ref: string; title: string }>(
+      "SELECT id, ref, title FROM notifications WHERE user_id = $1 AND kind = 'project' AND ref LIKE $2 AND channel = 'inapp'",
+      [userId, `${project.id}:%`],
+    )
+  ).rows;
+  assert.equal(notices.length, 1);
+  assert.match(notices[0].title, /Notice project/);
+  const start = new Date(Date.now() + 2 * 86_400_000);
+  await pool.query(
+    "INSERT INTO time_blocks(item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4)",
+    [task.id, userId, start, new Date(start.getTime() + 60 * 60_000)],
+  );
+  const earlier = new Date(Date.now() + 86_400_000).toISOString();
+  const moved = await call("PUT", `/projects/${project.id}`, {
+    deadline: earlier,
+  });
+  assert.equal(moved.statusCode, 200, moved.body);
+  await scanProjectDeadlineMoves(new Date());
+  const merged = (
+    await pool.query<{ id: string; body: string }>(
+      "SELECT id, body FROM notifications WHERE user_id = $1 AND kind = 'project' AND ref LIKE $2 AND channel = 'inapp'",
+      [userId, `${project.id}:%`],
+    )
+  ).rows;
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].id, notices[0].id);
+  assert.match(merged[0].body, /deadline moved earlier/);
+  await pool.query("UPDATE notifications SET read = true WHERE id = $1", [
+    merged[0].id,
+  ]);
+  await scanProjectDeadlineMoves(new Date());
+  const afterRepeat = (
+    await pool.query<{ read: boolean }>(
+      "SELECT read FROM notifications WHERE id = $1",
+      [merged[0].id],
+    )
+  ).rows[0];
+  assert.equal(afterRepeat.read, true);
 });
 
 test("deleting a project leaves its tasks behind, unfiled", async () => {
@@ -303,11 +943,178 @@ test("a timeline lays dated tasks on one axis", () => {
   }
 });
 
+test("a timeline bar ends at the task's deadline and is late only once it has passed", () => {
+  const TZ = "Australia/Melbourne";
+  const at = (day: string, hour: number) =>
+    dayTime(day, hour * 60, TZ).toISOString();
+  // 10 am Thursday 24 September in Melbourne.
+  const now = new Date(at("2026-09-24", 10));
+  const line = projectTimeline(
+    { deadline: null, stages: [] },
+    [
+      // All day today: due by tonight, so not late this morning.
+      {
+        id: "today",
+        title: "Renew licence",
+        due_at: at("2026-09-24", 0),
+        all_day: true,
+        timezone: TZ,
+        status: "todo",
+      },
+      // All day yesterday: that day is over.
+      {
+        id: "yesterday",
+        title: "Book venue",
+        due_at: at("2026-09-23", 0),
+        all_day: true,
+        timezone: TZ,
+        status: "todo",
+      },
+      // 9 am to noon today: due when it ends.
+      {
+        id: "span",
+        title: "Workshop",
+        due_at: at("2026-09-24", 9),
+        end_at: at("2026-09-24", 12),
+        status: "todo",
+      },
+      // Due at 9 am today: that has passed.
+      {
+        id: "plain",
+        title: "Send notes",
+        due_at: at("2026-09-24", 9),
+        status: "todo",
+      },
+    ],
+    now,
+  )!;
+  const bar = (id: string) => line.bars.find((b) => b.id === id)!;
+  assert.equal(bar("today").late, false, "all day today");
+  assert.equal(bar("yesterday").late, true, "all day yesterday");
+  assert.equal(bar("span").late, false, "before its end time");
+  assert.equal(bar("plain").late, true, "past its due time");
+  // The axis runs to the latest deadline: the end of today's all-day task.
+  assert.equal(line.end, at("2026-09-25", 0));
+  // Bars end at their deadlines: the all-day task's at the end of its day,
+  // the span's at its end time; an all-day bar covers its whole day.
+  const edge = (iso: string) =>
+    ((Date.parse(iso) - Date.parse(line.start)) /
+      (Date.parse(line.end) - Date.parse(line.start))) *
+    100;
+  const close = (a: number, b: number, what: string) =>
+    assert.ok(Math.abs(a - b) < 0.01, `${what}: ${a} vs ${b}`);
+  close(bar("today").left + bar("today").width, 100, "all-day end");
+  close(bar("today").left, edge(at("2026-09-24", 0)), "all-day start");
+  close(
+    bar("span").left + bar("span").width,
+    edge(at("2026-09-24", 12)),
+    "span end",
+  );
+  // Done is never late.
+  const done = projectTimeline(
+    { deadline: null, stages: [] },
+    [
+      {
+        id: "d",
+        title: "Old",
+        due_at: at("2026-09-20", 9),
+        status: "done",
+      },
+    ],
+    now,
+  )!;
+  assert.equal(done.bars[0].late, false);
+});
+
 test("a project with no dated tasks has no timeline", () => {
   assert.equal(
     projectTimeline({ deadline: null, stages: [] }, [
       { id: "a", title: "Undated", status: "todo" },
     ]),
     null,
+  );
+});
+
+test("saved sessions occupy their real position on a project timeline", () => {
+  const session = {
+    id: randomUUID(),
+    item_id: "task",
+    start_at: "2026-09-24T09:00:00.000Z",
+    end_at: "2026-09-24T10:00:00.000Z",
+  };
+  const line = projectTimeline(
+    { deadline: null, stages: [] },
+    [{ id: "task", title: "Undated", status: "todo" }],
+    new Date("2026-09-24T08:00:00.000Z"),
+    [session],
+  );
+  assert.ok(line);
+  assert.equal(line.bars.length, 0);
+  const ticks = projectSessionTicks(line, [session]);
+  assert.equal(ticks.length, 1);
+  assert.equal(ticks[0].left, 0);
+  assert.ok(ticks[0].width > 0);
+});
+
+test("tasks carry their project's deadline, and a new deadline reaches them on sync", async () => {
+  const first = new Date(Date.now() + 3 * 86_400_000).toISOString();
+  const project = (
+    await call("POST", "/projects", { name: "Latest date", deadline: first })
+  ).json();
+  const task = (
+    await call("POST", "/items", {
+      title: "Due after the project",
+      kind: "task",
+      project_id: project.id,
+      due_at: new Date(Date.now() + 40 * 86_400_000).toISOString(),
+    })
+  ).json();
+  assert.equal(task.project_deadline, first);
+  const before = (
+    await pool.query<{ updated_at: Date }>(
+      "SELECT updated_at FROM items WHERE id = $1",
+      [task.id],
+    )
+  ).rows[0].updated_at;
+  // Scored against the project's deadline (3 days), not its own (40).
+  const scored = (await call("GET", "/items?sort=score")).json() as {
+    id: string;
+    score: number;
+  }[];
+  const plain = (
+    await call("POST", "/items", {
+      title: "Same but unfiled",
+      kind: "task",
+      due_at: new Date(Date.now() + 40 * 86_400_000).toISOString(),
+    })
+  ).json();
+  const rescored = (await call("GET", "/items?sort=score")).json() as {
+    id: string;
+    score: number;
+  }[];
+  assert.ok(
+    rescored.find((i) => i.id === task.id)!.score >
+      rescored.find((i) => i.id === plain.id)!.score,
+    JSON.stringify(scored.slice(0, 3)),
+  );
+  const moved = new Date(Date.now() + 2 * 86_400_000).toISOString();
+  const saved = await call("PUT", `/projects/${project.id}`, {
+    deadline: moved,
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const after = (
+    await pool.query<{ updated_at: Date; version: number }>(
+      "SELECT updated_at, version FROM items WHERE id = $1",
+      [task.id],
+    )
+  ).rows[0];
+  assert.ok(after.updated_at > before, "the task syncs again");
+  assert.equal(after.version, task.version, "never an edit of the task");
+  const reloaded = (await call("GET", `/items/${task.id}`)).json();
+  assert.equal(reloaded.project_deadline, moved);
+  assert.equal(
+    reloaded.due_at,
+    task.due_at,
+    "the project never writes a task's deadline",
   );
 });

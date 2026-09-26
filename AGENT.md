@@ -26,7 +26,7 @@ From `conventions-skill`: kebab-case.ts files, PascalCase components/types, came
 ## UI Conventions
 
 - **Colours:** never change the palette. Use theme tokens (`var(--color-*)` on web, `colors.*` on mobile); no colour literals in new code.
-- **Corners:** web uses the radius scale in `desktop/src/styles/global.css` — `--radius-xs` (4, bars and marks), `--radius-sm` (8, controls), `--radius-md` (12, cards and panels), `--radius-lg` (16, dialogs), `--radius-pill`. Mobile uses `radii.input` / `radii.card` / `radii.pill`. No raw pixel radii.
+- **Corners:** web uses the radius scale in `desktop/src/styles/global.css` — `--radius-xs` (4, bars and marks), `--radius-sm` (8, controls), `--radius-md` (12, cards and panels), `--radius-lg` (16, dialogs), `--radius-pill`. Mobile uses `radii.input` / `radii.card` / `radii.pill` (and `radii.check` for checkboxes). No raw pixel radii.
 - **Controls are ours, not the browser's:** `Select` (`components/Select.tsx`) instead of `<select>`, `DateField` (`components/DateField.tsx`) instead of `<input type="date|time|datetime-local">`. Bare fields, checkboxes and radios are styled at zero specificity in `global.css`; a switch is a checkbox with `role="switch"` and `className="ai-switch"`. Mobile switches set `trackColor={{ true: colors.accent }}`.
 - **Managing things lives behind ⋯:** rename, delete, leave and similar rare actions go in a menu beside the title (`MoreMenu` on mobile, a bottom action sheet; small toolbar icons on web), never as a row of buttons over the content.
 - **Mobile type is light, like the web:** `fonts.semibold` renders at 500 and `fonts.bold` at 600; controls are drawn at 34pt and reach 44pt through `hitSlop`. Selected chips are a soft accent tint, not a solid fill.
@@ -73,6 +73,7 @@ npm run dev:web
 | `status`    | Probes every 30s, `GET /status`                                                   |
 | `notifier`  | Reminder scheduling & delivery                                                    |
 | `realtime`  | Live streams (`/events`, doc presence), fanned out through Postgres LISTEN/NOTIFY |
+| `mcp`       | Outside AI agents over MCP (`/mcp`): stateless, limits per connection             |
 | `files`     | File store for imports: one-time signed uploads, encrypted, deleted within a day  |
 | `converter` | Turns imported PDFs/Word/photos into pages in Docs → Uploads                      |
 | `formula`   | pix2tex for equations on scans (`formula/`), Compose profile `formula`, optional  |

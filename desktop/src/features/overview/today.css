@@ -1,0 +1,215 @@
+/* "Today" on the Overview: events, sessions and what's due, in time order. */
+.today-card .section-heading {
+  padding-bottom: 8px;
+}
+/* One grid for the whole list, so times, titles and buttons line up. The
+   first track holds a row's left padding (12px) as well as its icon. */
+.today-list {
+  display: grid;
+  grid-template-columns: 28px max-content minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 0 16px 12px;
+  list-style: none;
+}
+.today-list + .today-list {
+  padding-top: 2px;
+}
+.today-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.today-icon {
+  display: inline-flex;
+  grid-column: 1;
+  color: var(--color-accentText);
+}
+.today-icon svg {
+  flex: none;
+}
+.today-row.is-event .today-icon {
+  color: var(--color-muted);
+}
+.today-row.is-warn .today-icon {
+  color: var(--color-warn);
+}
+.today-lead {
+  grid-column: 2;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--color-textMuted);
+}
+.today-row.is-warn .today-lead {
+  color: var(--color-warn);
+  font-weight: 600;
+}
+.today-main {
+  display: flex;
+  grid-column: 3;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.today-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+button.today-title {
+  cursor: pointer;
+}
+button.today-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.today-row.is-event .today-title {
+  font-weight: 500;
+  color: var(--color-textSoft);
+}
+.today-facts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+.today-meta {
+  font-size: 11px;
+  color: var(--color-textMuted);
+}
+.today-meta.is-late {
+  color: var(--color-warn);
+  font-weight: 600;
+}
+.today-action,
+.today-buttons {
+  grid-column: 4;
+  justify-self: end;
+}
+.today-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 2px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.today-action.is-quiet {
+  color: var(--color-textMuted);
+}
+.today-buttons {
+  display: inline-flex;
+  gap: 12px;
+}
+/* Not finished: a title and its buttons. */
+.today-list.is-unfinished {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.today-list.is-unfinished .today-main {
+  grid-column: 1;
+}
+.today-list.is-unfinished .today-buttons {
+  grid-column: 2;
+}
+/* Over already: quieter, still readable. */
+.today-row.is-past {
+  background: var(--color-sunken);
+}
+.today-row.is-past .today-title,
+.today-row.is-past .today-lead {
+  color: var(--color-muted);
+}
+.today-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 0 18px 10px;
+}
+.today-more .text-button {
+  padding: 2px 0;
+  font-size: 13px;
+}
+.today-unfinished {
+  padding-top: 4px;
+}
+.today-unfinished h3 {
+  margin: 0;
+  padding: 6px 18px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--color-textMuted);
+}
+.today-unfinished h3 span {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+}
+.today-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--color-divider);
+}
+.today-footer .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+}
+/* Phones: the time over the title, the button on the right. */
+@media (max-width: 560px) {
+  .today-list {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    padding: 0 12px 12px;
+  }
+  .today-row {
+    row-gap: 2px;
+  }
+  .today-icon {
+    grid-row: 1;
+    align-self: start;
+    margin-top: 1px;
+  }
+  .today-lead {
+    grid-row: 1;
+  }
+  .today-main {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .today-lead.is-empty {
+    display: none;
+  }
+  .today-lead.is-empty + .today-main {
+    grid-row: 1;
+  }
+  .today-action,
+  .today-buttons {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    margin-left: 8px;
+  }
+  .today-list.is-unfinished .today-main,
+  .today-list.is-unfinished .today-buttons {
+    grid-row: 1;
+  }
+}

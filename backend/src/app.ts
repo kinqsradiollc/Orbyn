@@ -4,7 +4,9 @@ import { createService } from "./services/http.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { inboundRoutes } from "./modules/inbound/routes.js";
-import { mcpRoutes } from "./modules/mcp/routes.js";
+import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
+import { agentRoutes } from "./modules/agents/routes.js";
+import { oauthRoutes } from "./modules/oauth/routes.js";
 import { davRoutes } from "./modules/dav/routes.js";
 import { itemRoutes } from "./modules/items/routes.js";
 import { deviceRoutes } from "./modules/devices/routes.js";
@@ -32,6 +34,7 @@ import { subscriptionRoutes } from "./modules/planner/subscriptions.js";
 import { focusRoutes } from "./modules/focus/routes.js";
 import { teamCapacityRoutes } from "./modules/teams/capacity.js";
 import { templateRoutes } from "./modules/templates/routes.js";
+import { pageTemplateRoutes } from "./modules/templates/pages.js";
 import { followThroughRoutes } from "./modules/followthrough/routes.js";
 import {
   legacyDocStreamRoutes,
@@ -43,13 +46,14 @@ import { studyRoutes } from "./modules/study/routes.js";
 import { aiStudyRoutes } from "./modules/ai/study.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
+import { captureRoutes } from "./modules/capture/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
  * service that owns it (gateway/nginx.conf); keep the two in step.
  */
 export const serviceModules: Record<
-  "api" | "ai" | "status" | "realtime" | "files",
+  "api" | "ai" | "status" | "realtime" | "files" | "mcp",
   FastifyPluginAsync[]
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
@@ -61,7 +65,10 @@ export const serviceModules: Record<
     studyRoutes,
     importRoutes,
     inboundRoutes,
-    mcpRoutes,
+    agentRoutes,
+    // Signing in with Orbyn for outside agents (OAuth): the authorization
+    // server, its metadata and the consent page's routes.
+    oauthRoutes,
     davRoutes,
     itemRoutes,
     deviceRoutes,
@@ -70,6 +77,7 @@ export const serviceModules: Record<
     adminRoutes,
     organizeRoutes,
     docRoutes,
+    captureRoutes,
     searchRoutes,
     aiDocRoutes,
     folderRoutes,
@@ -87,6 +95,7 @@ export const serviceModules: Record<
     presenceRoutes,
     teamCapacityRoutes,
     templateRoutes,
+    pageTemplateRoutes,
     followThroughRoutes,
     // Older apps' live-document path, for ingresses that send only /events
     // to the realtime service.
@@ -107,6 +116,11 @@ export const serviceModules: Record<
    * upload streams, so it runs apart from the API.
    */
   files: [filesRoutes],
+  /**
+   * The MCP address for outside agents: stateless, short calls, scaled on
+   * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.
+   */
+  mcp: [mcpServerRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);
@@ -117,13 +131,20 @@ export const buildRealtimeService = () =>
   createService("realtime", serviceModules.realtime);
 export const buildFilesService = () =>
   createService("files", serviceModules.files);
+export const buildMcpService = () => createService("mcp", serviceModules.mcp);
 
-/** Every module in one process: tests and quick local development. */
-export const buildApp = () =>
+/**
+ * Every module in one process: tests and quick local development. `first`
+ * plugins register before the modules (the route inventory test uses one to
+ * hook every route as it is added).
+ */
+export const buildApp = (first: FastifyPluginAsync[] = []) =>
   createService("all", [
+    ...first,
     ...serviceModules.api,
     ...serviceModules.ai,
     ...serviceModules.status,
     ...serviceModules.files,
+    ...serviceModules.mcp,
     realtimeRoutes,
   ]);

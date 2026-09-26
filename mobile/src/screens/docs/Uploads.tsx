@@ -10,7 +10,9 @@ import {
   importRefusal,
   importStatusLine,
   importTypeOf,
+  readShared,
   type ImportCapabilities,
+  type SharedContent,
   type DocSummary,
   type ImportJob,
 } from "@orbyn/core";
@@ -32,7 +34,11 @@ type LocalFile = {
  * Upload one local file for importing: start the import, send the bytes,
  * and cancel the import if the upload doesn't arrive.
  */
-export async function sendLocalFile(file: LocalFile): Promise<void> {
+export async function sendLocalFile(
+  file: LocalFile,
+  projectId?: string,
+  projectTeamId?: string | null,
+): Promise<void> {
   // On the web the picker hands over the File itself; on a phone, a local
   // copy that fetch can read as a Blob.
   const body: Blob =
@@ -43,6 +49,8 @@ export async function sendLocalFile(file: LocalFile): Promise<void> {
     file_name: file.name,
     bytes: file.size ?? body.size,
     mime: file.mimeType ?? undefined,
+    project_id: projectId,
+    project_team_id: projectId ? projectTeamId : undefined,
   });
   try {
     await client.uploadImportFile(
@@ -57,21 +65,40 @@ export async function sendLocalFile(file: LocalFile): Promise<void> {
 }
 
 /**
- * Files shared to Orbyn from another app (the share sheet), imported into
- * Docs → Uploads. Receiving shares needs a native build with the share
- * extension; anywhere else (the web, Expo Go) this finds nothing.
+ * What another app shared to Orbyn (the share sheet): files — PDF, Word and
+ * photos — to import into Docs → Uploads, and text or a link to send where
+ * the person chooses (the "Share into Orbyn" sheet). Receiving shares needs
+ * a native build with the share extension; anywhere else (the web, Expo Go)
+ * this finds nothing.
  */
-export async function takeSharedFiles(): Promise<LocalFile[]> {
-  if (Platform.OS === "web") return [];
+export async function takeShared(): Promise<{
+  files: LocalFile[];
+  shared: SharedContent | null;
+}> {
+  const none = { files: [], shared: null };
+  if (Platform.OS === "web") return none;
   try {
     const Sharing = await import("expo-sharing");
-    if (!Sharing.getSharedPayloads().length) return [];
-    const resolved = await Sharing.getResolvedSharedPayloadsAsync();
+    const raw = Sharing.getSharedPayloads();
+    if (!raw.length) return none;
+    // Words and links are read as they came; only files need resolving.
+    const words = raw.filter(
+      (p) => p.shareType === "text" || p.shareType === "url",
+    );
+    const resolved = raw.some(
+      (p) => p.shareType !== "text" && p.shareType !== "url",
+    )
+      ? await Sharing.getResolvedSharedPayloadsAsync()
+      : [];
     Sharing.clearSharedPayloads();
-    return resolved
+    const files = resolved
       .filter(
         (p): p is typeof p & { contentUri: string } =>
-          !!p.contentUri && p.contentType !== "website",
+          !!p.contentUri &&
+          p.contentType !== "website" &&
+          p.contentType !== "text" &&
+          p.shareType !== "text" &&
+          p.shareType !== "url",
       )
       .map((p) => ({
         name:
@@ -81,9 +108,78 @@ export async function takeSharedFiles(): Promise<LocalFile[]> {
         mimeType: p.contentMimeType,
         uri: p.contentUri,
       }));
+    const read = readShared(
+      words.map((p) =>
+        p.shareType === "url" ? { url: p.value } : { text: p.value },
+      ),
+    );
+    return {
+      files,
+      shared: read.url || read.text ? read : null,
+    };
   } catch {
-    return [];
+    return none;
   }
+}
+
+/**
+ * Photograph a page of notes and send it to be read into a page, from
+ * anywhere (the + sheet's Scan notes, the app icon's quick action). False
+ * when nothing was sent: no camera allowed, the photo put away, or the
+ * server not reading photos; `onError` says which.
+ */
+export async function scanAndSend(
+  onError: (message: string) => void,
+): Promise<boolean> {
+  const caps = await client.importCapabilities().catch(() => null);
+  if (caps && (!caps.enabled || !caps.photos)) {
+    onError(
+      caps.enabled
+        ? "Photos of notes can't be read on this server. Import a PDF or Word file instead."
+        : "Importing files isn't set up on this server yet.",
+    );
+    return false;
+  }
+  const photo = await takeNotesPhoto(onError);
+  if (!photo) return false;
+  try {
+    await sendLocalFile(photo);
+    return true;
+  } catch (e) {
+    onError(errorText(e));
+    return false;
+  }
+}
+
+/** The camera, for one page of notes; null when none was taken. */
+async function takeNotesPhoto(
+  onError: (message: string) => void,
+): Promise<LocalFile | null> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) {
+    onError(
+      "Orbyn needs the camera to scan notes. Allow it in Settings, or choose a file instead.",
+    );
+    return null;
+  }
+  const shot = await ImagePicker.launchCameraAsync({
+    mediaTypes: ["images"],
+    quality: 0.85,
+    exif: false,
+  });
+  if (shot.canceled || !shot.assets[0]) return null;
+  const photo = shot.assets[0];
+  const stamp = new Date()
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ")
+    .replace(":", ".");
+  return {
+    name: `Scanned notes ${stamp}.jpg`,
+    size: photo.fileSize ?? null,
+    mimeType: "image/jpeg",
+    uri: photo.uri,
+  };
 }
 
 /**
@@ -91,7 +187,12 @@ export async function takeSharedFiles(): Promise<LocalFile[]> {
  * notes; it uploads, is read on the server, and becomes a page in Uploads.
  * The imports going on are refreshed while any is still being read.
  */
-export function useImports(onError: (m: string) => void, onReady: () => void) {
+export function useImports(
+  onError: (m: string) => void,
+  onReady: () => void,
+  projectId?: string,
+  projectTeamId?: string | null,
+) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [uploading, setUploading] = useState(0);
   const [caps, setCaps] = useState<ImportCapabilities | null>(null);
@@ -156,7 +257,7 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
     }
     setUploading((n) => n + 1);
     try {
-      await sendLocalFile(file);
+      await sendLocalFile(file, projectId, projectTeamId);
     } catch (e) {
       onError(errorText(e));
     } finally {
@@ -178,31 +279,8 @@ export function useImports(onError: (m: string) => void, onReady: () => void) {
 
   /** Photograph a page of notes and import it. */
   const scanNotes = async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      onError(
-        "Orbyn needs the camera to scan notes. Allow it in Settings, or choose a file instead.",
-      );
-      return;
-    }
-    const shot = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.85,
-      exif: false,
-    });
-    if (shot.canceled || !shot.assets[0]) return;
-    const photo = shot.assets[0];
-    const stamp = new Date()
-      .toISOString()
-      .slice(0, 16)
-      .replace("T", " ")
-      .replace(":", ".");
-    await upload({
-      name: `Scanned notes ${stamp}.jpg`,
-      size: photo.fileSize ?? null,
-      mimeType: "image/jpeg",
-      uri: photo.uri,
-    });
+    const photo = await takeNotesPhoto(onError);
+    if (photo) await upload(photo);
   };
 
   const remove = async (job: ImportJob) => {

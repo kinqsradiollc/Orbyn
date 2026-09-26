@@ -351,7 +351,7 @@ test("plans place tasks around events, apply once, and conflicts can be reschedu
   assert.equal(blocks[0].item_id, report.body.id);
   assert.equal(blocks[0].start_at, new Date(local(1, 10)).toISOString());
   assert.deepEqual(blocks.map((b: Json) => b.part).slice(0, 2), [1, 2]);
-  assert.match(plan.body.summary, /blocks? over 1 day/);
+  assert.match(plan.body.summary, /sessions? over 1 day/);
 
   const applied = await call(
     me.token,

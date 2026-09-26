@@ -49,5 +49,10 @@ export async function deleteAccount(db: Db, id: string) {
      WHERE i.user_id=$1 AND i.team_id IS NOT NULL`,
     [id],
   );
+  // Its agent connections go with it (ON DELETE CASCADE); every copy is
+  // told at once (orbyn_auth), like any other revocation.
+  await db.query("SELECT pg_notify('orbyn_auth', $1)", [
+    JSON.stringify({ users: [id], reason: "account_deleted" }),
+  ]);
   await db.query("DELETE FROM users WHERE id=$1", [id]);
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   fail,
   occurrences,
@@ -7,6 +8,7 @@ import {
   type ItemInput,
   type OccurrenceChanges,
 } from "@orbyn/core";
+import { itemSourceSql } from "../../capabilities/sources.js";
 import type { Db } from "../../db/pool.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import {
@@ -15,6 +17,7 @@ import {
   type SeriesRow,
 } from "../planner/calendar.js";
 import { queueInvites } from "./attendees.js";
+import { carryEventNotes, seriesRowOf } from "./notes.js";
 import {
   allDayTimes,
   loadItem,
@@ -264,12 +267,13 @@ export async function editFollowing(
     occurrence,
   );
   if (fromTheStart(item, series, when))
-    return mutate(db, actor, {
-      operation: "update",
-      item_id: id,
-      version,
-      data,
-    });
+    return mutate(
+      db,
+      actor,
+      { operation: "update", item_id: id, version, data },
+      undefined,
+      { editedFrom: when },
+    );
   const tags = (
     await db.query<{ tag_id: string }>(
       "SELECT tag_id FROM item_tags WHERE item_id = $1",
@@ -289,34 +293,52 @@ export async function editFollowing(
   const keepsTime = start.getTime() === when.getTime();
   const pick = <T>(value: T | undefined, saved: T) =>
     value === undefined ? saved : value;
-  const created = await mutate(db, actor, {
-    operation: "create",
-    data: {
-      ...data,
-      due_at: start.toISOString(),
-      rrule:
-        data.rrule === undefined || data.rrule === item.rrule
-          ? restOf(series, when)
-          : data.rrule,
-      timezone: pick(data.timezone, item.timezone),
-      estimate_minutes: pick(data.estimate_minutes, item.estimate_minutes),
-      list_id: pick(data.list_id, item.list_id),
-      tag_ids: pick(data.tag_ids, tags),
-      assignee_id: pick(data.assignee_id, item.assignee_id),
-      location: pick(data.location, item.location),
-      meeting_url: pick(data.meeting_url, item.meeting_url),
-      all_day: pick(data.all_day, item.all_day),
-      busy: pick(data.busy, item.busy),
-      color: pick(data.color, item.color),
-      parent_id: pick(data.parent_id, item.parent_id),
-      alerts: pick(data.alerts, item.alerts.map(Number)),
-      attendees: pick(
-        data.attendees,
-        invited.map((a) => (a.name ? a : { email: a.email })),
-      ),
+  // The new series is the same thing from here on: where its text came from
+  // (an email, a booking guest) carries over. Recorded first, so nothing
+  // written while the series is made reads it as the person's own.
+  const newId = randomUUID();
+  await db.query(
+    `INSERT INTO item_sources (item_id, source)
+     SELECT $2, x.source
+       FROM (SELECT ${itemSourceSql("i")} AS source FROM items i WHERE i.id = $1) x
+      WHERE x.source IS NOT NULL`,
+    [id, newId],
+  );
+  const created = await mutate(
+    db,
+    actor,
+    {
+      operation: "create",
+      data: {
+        ...data,
+        due_at: start.toISOString(),
+        rrule:
+          data.rrule === undefined || data.rrule === item.rrule
+            ? restOf(series, when)
+            : data.rrule,
+        timezone: pick(data.timezone, item.timezone),
+        estimate_minutes: pick(data.estimate_minutes, item.estimate_minutes),
+        list_id: pick(data.list_id, item.list_id),
+        tag_ids: pick(data.tag_ids, tags),
+        assignee_id: pick(data.assignee_id, item.assignee_id),
+        location: pick(data.location, item.location),
+        meeting_url: pick(data.meeting_url, item.meeting_url),
+        all_day: pick(data.all_day, item.all_day),
+        busy: pick(data.busy, item.busy),
+        color: pick(data.color, item.color),
+        parent_id: pick(data.parent_id, item.parent_id),
+        alerts: pick(data.alerts, item.alerts.map(Number)),
+        attendees: pick(
+          data.attendees,
+          invited.map((a) => (a.name ? a : { email: a.email })),
+        ),
+      },
     },
-  });
-  if (created && keepsTime && (later.length || moved.length)) {
+    newId,
+  );
+  if (!created) return created;
+  const carried = keepsTime && (later.length || moved.length);
+  if (carried) {
     await db.query(
       "UPDATE items SET exdates = $2::timestamptz[] WHERE id = $1",
       [created.id, later],
@@ -326,9 +348,16 @@ export async function editFollowing(
         "INSERT INTO item_overrides (item_id, occurrence, data) VALUES ($1, $2, $3)",
         [created.id, m.occurrence, JSON.stringify(m.data)],
       );
-    return loadItem(db, created.id);
   }
-  return created;
+  // The notes of the classes from here on go with them to the new series.
+  await carryEventNotes(
+    db,
+    series,
+    { id: created.id, series: await seriesRowOf(db, created.id) },
+    { was: when, now: start },
+    when,
+  );
+  return carried ? loadItem(db, created.id) : created;
 }
 
 /** Skip one occurrence: it joins the exdates and loses any changes of its own. */
@@ -344,6 +373,13 @@ async function cancelOne(db: Db, item: ItemRow, when: Date) {
   );
   await db.query(
     "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = $2",
+    [item.id, when],
+  );
+  // Its note, if it had one, stays the event's: the class is gone. It
+  // remembers the class, so it never outranks the series' own note.
+  await db.query(
+    `UPDATE docs SET occurrence = NULL, class_was = occurrence
+      WHERE item_id = $1 AND kind = 'meeting' AND occurrence = $2`,
     [item.id, when],
   );
   return changed(db, item);
@@ -387,5 +423,13 @@ export async function deleteOccurrences(
     return null;
   }
   await endSeries(db, item, series, when);
+  // The classes from here on are gone: their notes stay the event's.
+  await carryEventNotes(
+    db,
+    series,
+    { id: item.id, series: await seriesRowOf(db, item.id) },
+    { was: when, now: when },
+    when,
+  );
   return changed(db, item);
 }

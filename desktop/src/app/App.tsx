@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
+  deadlineOf,
   hasSystemPermission,
   hasTeamPermission,
   planDayPrompt,
@@ -21,7 +22,18 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
-import { rememberTaskLink, takeTaskLink, taskLinkId } from "./task-link";
+import {
+  deepLinkKey,
+  deepLinkOf,
+  deepLinkPath,
+  focusDocBlock,
+  rememberDeepLink,
+  takeDeepLink,
+  type DeepLink,
+} from "./deep-link";
+import "./deep-link.css";
+import { usePlannedData } from "../hooks/usePlannedData";
+import { PlanningProviders } from "./PlanningProviders";
 import { Sidebar } from "../components/Sidebar";
 import {
   AnnouncementBanner,
@@ -51,7 +63,7 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
-import type { Doc, LegalSummary } from "@orbyn/core";
+import type { AssistantSource, Doc, LegalSummary } from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
 import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
@@ -74,6 +86,11 @@ import {
 } from "../features/booking/BookingView";
 import { PublicBooking } from "../features/booking/PublicBooking";
 import { RsvpPage } from "../features/rsvp/RsvpPage";
+import {
+  OAuthConsentPage,
+  takeOAuthReturn,
+} from "../features/auth/OAuthConsent";
+import type { AuthMode } from "../hooks/usePlanner";
 import { PublicInvitePage } from "../features/booking/PublicInvite";
 import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
@@ -114,6 +131,7 @@ export function App() {
     refreshUser,
   } = planner;
   const planning = usePlanningData(token, revision, report);
+  const planned = usePlannedData(token, revision);
   /** The current Terms version, to know whether to ask for agreement. */
   const [legal, setLegal] = useState<LegalSummary | null>(null);
   useEffect(() => {
@@ -151,10 +169,24 @@ export function App() {
   const [draft, setDraft] = useState<Partial<ItemInput> | null>(null);
   /** The task open in the detail panel (as last seen, in case it isn't in `items`). */
   const [openTask, setOpenTask] = useState<Item | null>(null);
+  /** The time of a repeating event the task panel was opened on. */
+  const [openOccurrence, setOpenOccurrence] = useState<{
+    itemId: string;
+    occurrence: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!openTask) setOpenOccurrence(null);
+  }, [openTask]);
   /** The task in focus mode. */
   const [focusTask, setFocusTask] = useState<Item | null>(null);
   /** A meeting note opened from its event, handed to the Docs view. */
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
+  const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  const [projectSectionToOpen, setProjectSectionToOpen] = useState<
+    "decisions" | "history" | null
+  >(null);
+  const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
@@ -187,27 +219,60 @@ export function App() {
     !nativeDesktop &&
     ["/book/", "/rsvp/", "/invite/", "/u/"].some((p) => path.startsWith(p));
 
+  // Connecting an app (/oauth/authorize): signing in happens in place, so
+  // every parameter the app sent stays in the address.
+  const isOAuth = !nativeDesktop && path === "/oauth/authorize";
+  const [oauthMode, setOauthMode] = useState<AuthMode>("login");
+  useEffect(() => {
+    if (!token || isOAuth) return;
+    // Signed in somewhere else (a reset link) while an app was waiting.
+    const back = takeOAuthReturn();
+    if (back) window.location.assign(back);
+  }, [token]);
   useEffect(() => {
     if (token && (path === "/login" || path === "/signup"))
       navigatePath("/app", true);
     if (!token && path === "/app") navigatePath("/login", true);
   }, [token, path]);
-  // A link to one task (/app/task/<id>) opens it over the app; signed out,
-  // it waits until sign-in.
-  const linkedTask = taskLinkId(path);
+  // A link to one thing (/app/task/<id>, /app/doc/<id>#<line>,
+  // /app/project/<id>, /app/today) opens it over the app. Signed out, it
+  // waits through every sign-in step (two-step and passkeys included), kept
+  // for this tab and in the sign-in page's ?next=, and opens after.
+  const linked = deepLinkOf(path, nativeDesktop ? "" : location.hash);
+  // Read now: the sign-in redirect below replaces the address before effects.
+  const signInSearch = nativeDesktop ? "" : location.search;
+  const openDeepLink = (link: DeepLink) => {
+    if (link.kind === "task") openItemById(link.id);
+    else if (link.kind === "doc")
+      void client.getDoc(link.id).then((doc) => {
+        setNoteDoc(doc);
+        setView("Docs");
+        if (link.block) focusDocBlock(link.block);
+      }, report);
+    else if (link.kind === "project") {
+      setProjectToOpen(link.id);
+      setView("Projects");
+    } else setView("Overview");
+  };
   useEffect(() => {
-    if (!linkedTask) return;
+    if (!linked) return;
     if (!token) {
-      rememberTaskLink(linkedTask);
+      rememberDeepLink(linked);
       navigatePath("/login", true);
+      if (!nativeDesktop)
+        window.history.replaceState(
+          {},
+          "",
+          `/login?next=${encodeURIComponent(deepLinkPath(linked))}`,
+        );
       return;
     }
     navigatePath("/app", true);
-    openItemById(linkedTask);
-  }, [token, linkedTask]);
+    openDeepLink(linked);
+  }, [token, deepLinkKey(linked)]);
   useEffect(() => {
-    const waiting = token ? takeTaskLink() : null;
-    if (waiting) openItemById(waiting);
+    const waiting = token ? takeDeepLink(signInSearch) : null;
+    if (waiting) openDeepLink(waiting);
   }, [token]);
   useEffect(() => {
     // Public booking pages set their own titles and say noindex themselves.
@@ -233,21 +298,27 @@ export function App() {
                   : "What Orbyn collects, why, how long it's kept, and your rights.",
               index: true,
             }
-          : path === "/status"
+          : isOAuth
             ? {
-                title: "Service status · Orbyn",
-                description: "Whether every part of Orbyn is up right now.",
+                title: "Connect an app · Orbyn",
+                description: app,
                 index: false,
               }
-            : token
-              ? { title: view + " · Orbyn", description: app, index: false }
-              : path === "/login"
-                ? { title: "Sign in · Orbyn", description: app, index: false }
-                : {
-                    title: "Create your space · Orbyn",
-                    description: app,
-                    index: false,
-                  },
+            : path === "/status"
+              ? {
+                  title: "Service status · Orbyn",
+                  description: "Whether every part of Orbyn is up right now.",
+                  index: false,
+                }
+              : token
+                ? { title: view + " · Orbyn", description: app, index: false }
+                : path === "/login"
+                  ? { title: "Sign in · Orbyn", description: app, index: false }
+                  : {
+                      title: "Create your space · Orbyn",
+                      description: app,
+                      index: false,
+                    },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -270,6 +341,7 @@ export function App() {
   // shortcuts and N starts a new item, unless you're typing or a dialog,
   // panel or menu is open.
   const inShell = !(
+    isOAuth ||
     path === "/status" ||
     path === "/terms" ||
     path === "/privacy" ||
@@ -315,12 +387,28 @@ export function App() {
     setEditing("new");
   };
 
-  /** Open a page the assistant cited, where the assistant cited it. */
-  const openSource = (source: { doc_id: string }) =>
-    void client.getDoc(source.doc_id).then((doc) => {
+  const openPage = (docId: string, blockId?: string | null) =>
+    void client.getDoc(docId).then((doc) => {
+      setNoteBlockId(blockId ?? null);
       setNoteDoc(doc);
       setView("Docs");
     }, report);
+
+  /** Open a fact the assistant read at its task, page, or project section. */
+  const openSource = (source: AssistantSource) => {
+    if ("doc_id" in source) {
+      openPage(source.doc_id, source.block_id);
+    } else if (source.kind === "task") {
+      openItemById(source.id);
+    } else if (source.project_id) {
+      setProjectToOpen(source.project_id);
+      setProjectSectionToOpen(
+        source.kind === "decision" ? "decisions" : "history",
+      );
+      setProjectSourceId(source.id);
+      setView("Projects");
+    }
+  };
 
   /** Personal pages are always yours; a team's need `items:write`. */
   const canWriteIn = (teamId: string | null) =>
@@ -352,7 +440,16 @@ export function App() {
     if (status !== i.status && guard(i)) void planner.setItemStatus(i, status);
   };
 
-  const openItem = (i: Item) => setOpenTask(i);
+  /**
+   * Opens an item in the task panel. Opened on one time of a repeating
+   * event (a class), that time is kept, so its meeting note is that class's.
+   */
+  const openItem = (i: Item, occurrence?: OccurrenceRef) => {
+    setOpenTask(i);
+    setOpenOccurrence(
+      occurrence ? { itemId: i.id, occurrence: occurrence.occurrence } : null,
+    );
+  };
   const closeTask = useCallback(() => setOpenTask(null), []);
   const closeFocus = useCallback(() => setFocusTask(null), []);
   const startFocus = (i: Item) => {
@@ -408,35 +505,64 @@ export function App() {
     setCalendarMode("day");
     setPlanRequest({ key: Date.now(), days: 1 });
   };
-  const applyPlan = async (plan: Plan) => {
-    const result = await client.applyPlan(plan.id);
+  const applyPlan = async (plan: Plan, moves?: string[]) => {
+    const result = await client.applyPlan(plan.id, moves ? { moves } : {});
     await refresh();
-    return appliedText(result);
+    return appliedText(result, plan);
   };
-  /** "Roll forward" on a notice: a plan for unfinished blocks, in the calendar. */
-  const rollForward = async () => {
+  /**
+   * "Roll forward" on a notice: a plan for unfinished blocks (all of them,
+   * or those named: "Plan again" on Today), in the calendar.
+   */
+  const rollForward = async (blockIds?: string[]) => {
     try {
-      openPlan(await client.rollForward());
+      openPlan(await client.rollForward(blockIds));
     } catch (e) {
       report(e);
     }
   };
-  /** "Plan it" on a notice: a preview that includes the task, up to its due day. */
-  const planIt = (n: Notice) => {
-    if (!n.item_id) return;
-    const due = items.find((i) => i.id === n.item_id)?.due_at;
-    const daysLeft = due
-      ? Math.ceil((Date.parse(due) - Date.now()) / 86_400_000)
-      : 0;
+  /**
+   * "Plan it" on a notice: a preview that includes the task, looking ahead
+   * as far as its deadline (days counted in the planner's zone). On a Today
+   * row (`only`) the preview plans that task alone, as "Find time before
+   * the deadline" does.
+   */
+  const planTask = (itemId: string, only = false) => {
+    const item = items.find((i) => i.id === itemId);
     navigate("Calendar");
     setPlanRequest({
       key: Date.now(),
-      days: daysLeft > 0 ? Math.min(7, daysLeft) : undefined,
-      include: [n.item_id],
+      until: item ? deadlineOf(item) : undefined,
+      ...(only ? { only: [itemId] } : { include: [itemId] }),
     });
+  };
+  const planIt = (n: Notice) => {
+    if (n.item_id) planTask(n.item_id);
+  };
+  /**
+   * "Find time before the deadline" on a task: the calendar's planner,
+   * previewing only this task over the days up to its deadline.
+   */
+  const findTimeFor = (item: Item) => {
+    closeTask();
+    navigate("Calendar");
+    setPlanRequest({
+      key: Date.now(),
+      until: deadlineOf(item),
+      only: [item.id],
+    });
+  };
+  /** "Show on calendar" on a session: its week, with the task panel closed. */
+  const showOnCalendar = (at: string) => {
+    closeTask();
+    navigate("Calendar");
+    setCalendarDate(new Date(at));
+    if (calendarMode === "month" || calendarMode === "agenda")
+      setCalendarMode("week");
   };
   /** Opens an item by id (from a notice), fetching it if the list doesn't have it. */
   const openItemById = (id: string) => {
+    setOpenOccurrence(null);
     const found = items.find((i) => i.id === id);
     if (found) setOpenTask(found);
     else client.getItem(id).then(setOpenTask, report);
@@ -579,6 +705,32 @@ export function App() {
       />
     );
 
+  if (isOAuth)
+    return (
+      <OAuthConsentPage
+        signedIn={!!token}
+        user={user}
+        onSwitchAccount={() => void planner.logout()}
+        signIn={(notice) => (
+          <AuthPage
+            key={oauthMode}
+            notice={notice}
+            initialMode={oauthMode}
+            onSwitchMode={() =>
+              setOauthMode((m) => (m === "login" ? "register" : "login"))
+            }
+            onNavigate={navigatePath}
+            busy={busy}
+            error={error}
+            onClearError={() => planner.setError("")}
+            onSubmit={(mode, values) => void planner.authenticate(mode, values)}
+            twoFactorRequired={planner.twoFactorRequired}
+            onPasskey={(email) => void planner.passkeyLogin(email || undefined)}
+          />
+        )}
+      />
+    );
+
   if (!token)
     return (
       <AuthPage
@@ -604,7 +756,7 @@ export function App() {
   };
 
   return (
-    <PlanningContext.Provider value={planning}>
+    <PlanningProviders planning={planning} planned={planned}>
       <div className={"app" + (railed ? " is-railed" : "")}>
         <Sidebar
           open={mobileNav}
@@ -674,6 +826,10 @@ export function App() {
                   {...listProps}
                   onNewItem={() => newItem()}
                   onNavigate={navigate}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
                   onOpenDoc={(found) => {
                     setNoteDoc(found);
                     setView("Docs");
@@ -683,6 +839,11 @@ export function App() {
                     void assistant.ask(planDayPrompt);
                   }}
                   onFocus={startFocus}
+                  onOpenById={openItemById}
+                  onPlanIt={(id) => planTask(id, true)}
+                  onPlanAgain={(id) => void rollForward([id])}
+                  onPlanMyDay={planMyDay}
+                  onShowLate={() => navigate("My tasks")}
                 />
               )}
               {view === "My tasks" && (
@@ -713,6 +874,10 @@ export function App() {
               {view === "Docs" && (
                 <DocsView
                   report={report}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
                   userId={user?.id}
                   canWriteDoc={canWriteIn}
                   teamNameFor={(id) =>
@@ -720,7 +885,11 @@ export function App() {
                   }
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
-                  onInitialDocShown={() => setNoteDoc(null)}
+                  initialBlockId={noteBlockId}
+                  onInitialDocShown={() => {
+                    setNoteDoc(null);
+                    setNoteBlockId(null);
+                  }}
                 />
               )}
               {view === "Study" && (
@@ -735,17 +904,38 @@ export function App() {
               )}
               {view === "Projects" && (
                 <ProjectsView
+                  initialProjectId={projectToOpen}
+                  initialSection={projectSectionToOpen}
+                  initialSourceId={projectSourceId}
+                  onInitialProjectShown={() => {
+                    setProjectToOpen(null);
+                    setProjectSectionToOpen(null);
+                    setProjectSourceId(null);
+                  }}
                   items={items}
                   userId={user?.id ?? ""}
                   teams={teams}
                   openTemplate={templateToOpen}
                   onTemplateOpened={() => setTemplateToOpen(null)}
+                  openProject={projectToOpen}
+                  onProjectOpened={() => setProjectToOpen(null)}
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}
-                  onOpenNote={(docId) =>
+                  onOpenPlan={openPlan}
+                  onAskProject={(project, question) => {
+                    assistant.setScope({
+                      kind: "project",
+                      id: project.id,
+                      name: project.name,
+                    });
+                    if (question) assistant.setMessage(question);
+                    setView("AI assistant");
+                  }}
+                  onOpenNote={(docId, blockId) =>
                     void client.getDoc(docId).then((doc) => {
                       setNoteDoc(doc);
+                      setNoteBlockId(blockId ?? null);
                       setView("Docs");
                     }, report)
                   }
@@ -788,8 +978,9 @@ export function App() {
                   assistant={assistant}
                   onApplyPlan={applyPlan}
                   onOpenPlan={openPlan}
+                  onShowOnCalendar={showOnCalendar}
                   onOpenSource={openSource}
-                  onKeptNote={(docId) => openSource({ doc_id: docId })}
+                  onKeptNote={(docId) => openPage(docId)}
                 />
               )}
               {view === "Teams" && <TeamsView teams={teams} {...teamActions} />}
@@ -815,13 +1006,17 @@ export function App() {
                   notices={notices}
                   onRead={planner.markRead}
                   onReschedule={reschedule}
-                  onRollForward={rollForward}
+                  onRollForward={() => rollForward()}
                   onPlanIt={planIt}
                   onOpenItem={openItemById}
                   onOpenCalendar={() => navigate("Calendar")}
                   onOpenBooking={openBooking}
                   onOpenTemplate={(id) => {
                     setTemplateToOpen(id);
+                    navigate("Projects");
+                  }}
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
                     navigate("Projects");
                   }}
                   onOpenDoc={(id) =>
@@ -868,12 +1063,46 @@ export function App() {
             onEdit={setEditing}
             onFocus={startFocus}
             items={items}
-            onOpenItem={setOpenTask}
+            onOpenItem={(i) => openItem(i)}
             onChanged={refresh}
             onError={report}
-            onOpenNote={(event) => {
+            occurrence={
+              openOccurrence?.itemId === shownTask.id
+                ? openOccurrence.occurrence
+                : null
+            }
+            onFindTime={findTimeFor}
+            onShowOnCalendar={showOnCalendar}
+            onOpenProject={(id) => {
+              closeTask();
+              setProjectToOpen(id);
+              setView("Projects");
+            }}
+            onAskTask={(item) => {
+              closeTask();
+              assistant.setScope({
+                kind: "task",
+                id: item.id,
+                name: item.title,
+              });
+              setView("AI assistant");
+            }}
+            onOpenDoc={(doc, blockId) => {
+              closeTask();
+              setNoteBlockId(blockId ?? null);
+              setNoteDoc(doc);
+              setView("Docs");
+            }}
+            onOpenNote={(event, series) => {
               void client
-                .itemNote(event.id)
+                // Opened on one class of a repeating event: that class's
+                // note, unless the series' own was asked for.
+                .itemNote(
+                  event.id,
+                  !series && event.rrule && openOccurrence?.itemId === event.id
+                    ? openOccurrence.occurrence
+                    : null,
+                )
                 .then((note) => {
                   closeTask();
                   setNoteDoc(note);
@@ -916,18 +1145,23 @@ export function App() {
             items={items}
             onClose={() => setCommandOpen(false)}
             onOpenItem={openItem}
-            onOpenDoc={(found) => {
+            onOpenDoc={(found, blockId) => {
               setNoteDoc(found);
+              setNoteBlockId(blockId ?? null);
               setView("Docs");
             }}
-            onGoToProjects={() => setView("Projects")}
+            onGoToProjects={(id) => {
+              setProjectToOpen(id);
+              setView("Projects");
+            }}
             onNewItem={() => newItem()}
             onPlanDay={planMyDay}
             onNavigate={navigate}
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}
+            onShowOnCalendar={showOnCalendar}
             onOpenSource={openSource}
-            onKeptNote={(docId) => openSource({ doc_id: docId })}
+            onKeptNote={(docId) => openPage(docId)}
             onApplied={refresh}
             onShowShortcuts={() => setShortcutsOpen(true)}
             teams={teams}
@@ -941,6 +1175,6 @@ export function App() {
         )}
         <Celebration />
       </div>
-    </PlanningContext.Provider>
+    </PlanningProviders>
   );
 }

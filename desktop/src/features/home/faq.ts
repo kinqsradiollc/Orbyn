@@ -33,6 +33,6 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can I take my data with me?",
-    a: "Any time. Export everything you have in Orbyn, and download any page as PDF, Word, Markdown, HTML or plain text.",
+    a: "Any time. Export everything as a .zip: every page as Markdown in its folders, plus your projects, folders and tasks. You can also download any page as PDF, Word, Markdown, HTML or plain text.",
   },
 ];

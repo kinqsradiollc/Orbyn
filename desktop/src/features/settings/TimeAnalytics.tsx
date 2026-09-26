@@ -53,7 +53,7 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
       <div className="settings-head">
         <div>
           <p className="muted">
-            Time you set aside on the calendar, by list and tag. Private to you.
+            Your sessions on the calendar, by list and tag. Private to you.
           </p>
         </div>
         <div className="segmented" role="group" aria-label="Range">
@@ -74,7 +74,7 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
         <p className="muted">Loading…</p>
       ) : data.planned_minutes === 0 ? (
         <p className="muted">
-          No time set aside in this range yet. Plan your day, or add time to a
+          No sessions in this range yet. Plan your day, or plan a session for a
           task, and it’ll show here.
         </p>
       ) : (
@@ -82,7 +82,7 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
           <div className="analytics-totals">
             <div>
               <strong className="mono">{hours(data.planned_minutes)}</strong>
-              <small>set aside</small>
+              <small>planned</small>
             </div>
             <div>
               <strong className="mono">{data.completed}</strong>

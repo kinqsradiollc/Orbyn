@@ -1,4 +1,4 @@
-import { agendaTitle } from "@orbyn/core";
+import { dayTime, localDateKey } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import { todaysAgenda } from "../modules/docs/agenda.js";
 
@@ -48,9 +48,19 @@ export async function scanMorningAgendas(
   const lane = async () => {
     while (next < people.length && written < limit && Date.now() < deadline) {
       const p = people[next++];
+      const today = localDateKey(now, p.tz);
+      // Any page for today counts, even one in Trash: a page thrown away
+      // this morning is not written again behind its owner's back. The
+      // exception is a page written ahead of its day (from tomorrow's
+      // agenda, say) that nobody has touched since: it is still as the
+      // calendar was then, so it is written again now, with the summary.
       const has = await pool.query(
-        "SELECT 1 FROM docs WHERE user_id = $1 AND kind = 'agenda' AND title = $2 LIMIT 1",
-        [p.id, agendaTitle(now, p.tz)],
+        `SELECT 1 FROM docs WHERE user_id = $1 AND kind = 'agenda'
+           AND agenda_date = $2::date
+           AND NOT (deleted_at IS NULL AND version = 1
+                    AND created_at < $3::timestamptz)
+         LIMIT 1`,
+        [p.id, today, dayTime(today, 0, p.tz)],
       );
       if (has.rowCount) continue;
       try {

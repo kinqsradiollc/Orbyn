@@ -294,6 +294,9 @@
 :root[data-theme="dark"] .agenda-main small {
   color: var(--color-textMuted);
 }
+:root[data-theme="dark"] .agenda-main small.agenda-late {
+  color: var(--color-warn);
+}
 :root[data-theme="dark"] .calendar-agenda-item.done strong {
   color: var(--color-textMuted);
 }
@@ -351,6 +354,12 @@
 }
 :root[data-theme="dark"] .cal-block.is-done .cal-title {
   color: var(--color-textMuted);
+}
+:root[data-theme="dark"] .cal-block.is-late {
+  border-color: var(--color-warn);
+}
+:root[data-theme="dark"] .cal-block.is-late .cal-session {
+  color: var(--color-warn);
 }
 :root[data-theme="dark"] .tg-resize::after {
   background: color-mix(in srgb, var(--green) 50%, var(--color-surface));
@@ -1037,6 +1046,9 @@
 }
 :root[data-theme="dark"] .popover-head small {
   color: var(--color-textSoft);
+}
+:root[data-theme="dark"] .popover-head small.popover-warn {
+  color: var(--color-warn);
 }
 :root[data-theme="dark"] .popover-note {
   color: var(--color-textMuted);

@@ -20,7 +20,7 @@ import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { PortabilitySettings } from "./PortabilitySettings";
 import { EmailToTask } from "./EmailToTask";
-import { McpNote } from "./McpNote";
+import { ConnectedAgents } from "./ConnectedAgents";
 import { ChatDelivery } from "./ChatDelivery";
 import { CalDavNote } from "./CalDavNote";
 import { timeAgo } from "../../lib/tasks";
@@ -36,13 +36,15 @@ const EVENT_LABELS: Partial<Record<WebhookEvent, string>> = {
   "item.updated": "Item updated",
   "item.completed": "Item completed",
   "item.deleted": "Item deleted",
-  "block.scheduled": "Time scheduled",
+  "block.scheduled": "Session planned",
+  "block.updated": "Session moved",
+  "block.deleted": "Session removed",
   "booking.requested": "Booking requested",
   "booking.confirmed": "Booking confirmed",
   "booking.rescheduled": "Booking moved",
   "booking.cancelled": "Booking cancelled",
   "event.starting": "Event starting soon",
-  "block.started": "Time block started",
+  "block.started": "Session started",
   "task.at_risk": "Task at risk",
 };
 
@@ -98,6 +100,7 @@ export function ConnectionsSettings({ report }: Props) {
           (OpenAPI).
         </p>
       </SettingsSection>
+      <ConnectedAgents report={report} />
       <ApiKeys report={report} />
       <Webhooks report={report} />
       <CalendarFeedCard report={report} />
@@ -105,7 +108,6 @@ export function ConnectionsSettings({ report }: Props) {
       <EmailToTask report={report} />
       <ChatDelivery report={report} />
       <CalDavNote />
-      <McpNote />
       <PortabilitySettings report={report} />
     </>
   );
@@ -161,10 +163,11 @@ function ApiKeys({ report }: Props) {
         <KeyRound size={16} aria-hidden="true" /> Personal API keys
       </h2>
       <p className="muted">
-        A key acts as you for your tasks, pages and calendar. Send it as{" "}
+        For scripts, automation tools and calendar apps (CalDAV). A key acts as
+        you for your tasks, pages and calendar. Send it as{" "}
         <code>Authorization: Bearer …</code> to Orbyn&apos;s API. It can&apos;t
         make or remove other keys, or change your account settings, sign-in or
-        webhooks.
+        webhooks. For AI agents, use an agent key under Connected agents.
       </p>
       {fresh && <OnceSecret label="Your new API key" value={fresh} />}
       {keys === null ? (

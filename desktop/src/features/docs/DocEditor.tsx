@@ -1,4 +1,3 @@
-import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
   useEffect,
@@ -17,6 +16,7 @@ import {
   Highlighter,
   History,
   Italic,
+  LayoutTemplate,
   Link,
   ListChecks,
   ListPlus,
@@ -28,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  addedInlineTags,
   BLOCK_KINDS,
   blockDepth,
   blockToType,
@@ -60,18 +61,24 @@ import {
   type DocSuggestion,
   type InlineStyle,
   type Restyled,
+  adoptTaskTicks,
   carryBlockIds,
   mergeDocs,
   carryNewIds,
   newBlockId,
+  onlyTaskTicksMoved,
   parseDoc,
   serializeBlock,
   serializeDoc,
+  setTodoSource,
+  ticksTakenFrom,
   type Doc,
   type DocBlock,
 } from "@orbyn/core";
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
+import { SharePageButton } from "../../components/ShareButton";
+import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
 import { DocViewers } from "./DocViewers";
@@ -89,8 +96,13 @@ import {
 } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
+import { PageTags } from "./PageTags";
+import { SaveTemplateDialog } from "./PageTemplates";
 
 type Kind = (typeof BLOCK_KINDS)[number];
+
+/** How soon after ⌘⇧V a paste counts as the plain paste it asked for. */
+const PLAIN_PASTE_MS = 1_000;
 
 /** How often "Saved 2 min ago" is brought up to date. */
 const CLOCK_MS = 30_000;
@@ -138,6 +150,14 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 /** How long the "someone else edited this" note stays up. */
 const MERGE_NOTE_MS = 6_000;
+
+/**
+ * What to say when the only news is a task tied to a line being finished or
+ * reopened: nothing when the page heard it came from the task itself (most
+ * likely ticked beside the page), and no talk of anyone else otherwise.
+ */
+const taskNews = (by?: string) =>
+  by === "task" ? "" : "A task on this page changed.";
 
 /**
  * Re-read an edited line, so "# " or "- " changes the block's type. Pasting
@@ -199,7 +219,9 @@ const fitTitle = (el: HTMLTextAreaElement | null) => {
 
 export function DocEditor({
   doc,
+  initialBlockId,
   onBack,
+  onOpenProject,
   onChanged,
   onDeleted,
   onItemsChanged,
@@ -210,8 +232,12 @@ export function DocEditor({
   onUndoDelete,
 }: {
   doc: Doc;
+  /** A source or citation line to bring into view after opening. */
+  initialBlockId?: string | null;
   /** Left out for the agenda, which has no list to go back to. */
   onBack?: () => void;
+  /** Opens the visible project this page is filed in. */
+  onOpenProject?: (id: string) => void;
   onChanged: (doc: Doc) => void;
   onDeleted: (id: string) => void;
   /**
@@ -229,7 +255,6 @@ export function DocEditor({
   teamName?: string | null;
   report: (e: unknown) => void;
 }) {
-  const { tell } = useConfirm();
   const toast = useToast();
   /**
    * A page opens the way it was last worked on, and always read-only for
@@ -249,6 +274,11 @@ export function DocEditor({
   const [deciding, setDeciding] = useState(false);
   /** What a line being suggested on has been typed into, before it is sent. */
   const suggestDraft = useRef<string | null>(null);
+  /** The lines tied to a task, as the server last said. */
+  const linked = useMemo(
+    () => new Set(doc.linked_block_ids ?? []),
+    [doc.linked_block_ids],
+  );
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -256,6 +286,13 @@ export function DocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [save, setSave] = useState<SaveState>("idle");
   const version = useRef(doc.version);
+  /**
+   * The version the ticks on screen were taken from, sent with each save so
+   * a tick already counted isn't counted again (see ticksTakenFrom). It
+   * stays put while a tick made here is unsaved, even as other copies are
+   * merged in.
+   */
+  const ticksFrom = useRef(doc.version);
   const dirty = useRef(false);
   /**
    * The document as the server last had it. Merging needs this: it is what
@@ -264,6 +301,10 @@ export function DocEditor({
   const base = useRef<DocBlock[]>(doc.content);
   /** Current state, readable from callbacks that were made earlier. */
   const live = useRef({ title: doc.title, blocks: [] as DocBlock[] });
+  /**
+   * What someone else's edits just did to the page, shown beside Saved as
+   * part of working together. Every other notice goes through the toast.
+   */
   const [note, setNote] = useState("");
   /** Which line is open for editing, readable from the live subscription. */
   const focusedRef = useRef<number | null>(null);
@@ -322,10 +363,25 @@ export function DocEditor({
   /** When the page was last saved, for the line at its end. */
   const [savedAt, setSavedAt] = useState(doc.updated_at);
   const [now, setNow] = useState(() => new Date());
-  /** The next paste came from ⌘⇧V: take the words exactly as they are. */
-  const plainPaste = useRef(false);
+  /**
+   * When ⌘⇧V was last pressed. The paste it makes follows at once, so only
+   * a paste within PLAIN_PASTE_MS of it is plain: a ⌘⇧V that pasted nothing
+   * (an empty clipboard, a paste the browser blocked) doesn't turn the next
+   * ordinary ⌘V plain.
+   */
+  const plainPaste = useRef(0);
   /** A line made by "New task" in the / menu, waiting for its words. */
   const pendingTask = useRef<string | null>(null);
+  /** The page's tags, as its tag row shows them. */
+  const [tags, setTags] = useState(doc.tags ?? []);
+  /**
+   * The page as it stood when its #tags were last looked at. A #tag typed
+   * since then is added to the page when the line is left; one that was
+   * already there is not, so a tag taken off isn't put straight back.
+   */
+  const tagBase = useRef<DocBlock[]>(doc.content);
+  /** Whether "Save as template" is open. */
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   // A different document replaces the editor's state entirely.
   useEffect(() => {
@@ -334,6 +390,7 @@ export function DocEditor({
       doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
     );
     version.current = doc.version;
+    ticksFrom.current = doc.version;
     base.current = doc.content;
     dirty.current = false;
     setSave("idle");
@@ -342,7 +399,32 @@ export function DocEditor({
     setSavedAt(doc.updated_at);
     setHistoryView(null);
     setLinking(null);
+    setTags(doc.tags ?? []);
+    tagBase.current = doc.content;
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Add to the page the #tags typed into it since they were last looked at. */
+  const settleTags = useRef<() => void>(() => {});
+  /** Set once the page goes to Trash: there is nothing left to tag. */
+  const gone = useRef(false);
+  settleTags.current = () => {
+    if (gone.current) return;
+    const now = live.current.blocks;
+    const added = addedInlineTags(tagBase.current, now);
+    tagBase.current = now;
+    if (!added.length || !canWrite) return;
+    client
+      .addDocTags(doc.id, added)
+      .then(({ tags: next }) => setTags(next), report);
+  };
+  // Leaving a line — Enter, the arrows, a click elsewhere — is when a #tag
+  // typed in it counts, not every keystroke on the way to "#physics".
+  const lastFocused = useRef<number | null>(null);
+  useEffect(() => {
+    if (lastFocused.current !== null && lastFocused.current !== focused)
+      settleTags.current();
+    lastFocused.current = focused;
+  }, [focused]);
 
   // "Saved 2 min ago" keeps up with the clock.
   useEffect(() => {
@@ -358,10 +440,14 @@ export function DocEditor({
    * screen. Lines only one side touched are kept as they are; where both
    * sides changed the same line, the version that is already saved stands
    * and the other is put back on the line below, so nothing typed is lost.
-   * Returns the blocks now on screen.
+   * `by` is who moved it on, when the live stream said. Returns the blocks
+   * now on screen.
    */
-  const reconcile = useCallback((theirs: Doc): DocBlock[] => {
+  const reconcile = useCallback((theirs: Doc, by?: string): DocBlock[] => {
     const mine = live.current.blocks;
+    const tasksOnly =
+      theirs.title === live.current.title &&
+      onlyTaskTicksMoved(base.current, theirs);
     const merge = mergeDocs(base.current, mine, theirs.content);
     const next = merge.blocks.length
       ? merge.blocks
@@ -372,31 +458,104 @@ export function DocEditor({
     // The title is one field; whoever saved last has it.
     if (theirs.title !== live.current.title) setTitle(theirs.title);
     live.current = { title: theirs.title, blocks: next };
-    setNote(
+    // A tick kept from before the merge was made on the older copy, and is
+    // still sent as one.
+    ticksFrom.current = ticksTakenFrom(ticksFrom.current, theirs, next);
+    const news =
       merge.conflicts.length === 1
         ? "Someone else edited this. The line you changed is kept below theirs."
         : merge.conflicts.length > 1
           ? `Someone else edited this. The ${merge.conflicts.length} lines you changed are kept below theirs.`
-          : "Updated with someone else's changes.",
-    );
+          : tasksOnly
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
+    if (news) setNote(news);
     return next;
   }, []);
 
+  /**
+   * Take the ticks a save came back with for the lines tied to tasks. A
+   * repeating task ticked here has moved on to its next occurrence and reads
+   * unticked again; showing the old tick would send it back with the next
+   * save. A line ticked or unticked again since keeps what was done here.
+   * Whatever it took is saved straight away, so the page also says it to
+   * anything that saves it without saying where its ticks came from.
+   */
+  const adoptTicks = useCallback((sent: DocBlock[], saved: Doc): boolean => {
+    const { blocks: next, changed } = adoptTaskTicks(
+      live.current.blocks,
+      sent,
+      saved,
+    );
+    if (!changed.length) return false;
+    // A line open for editing holds its own copy of its Markdown.
+    const at = focusedRef.current;
+    const open = at === null ? undefined : next[at];
+    if (
+      areaRef.current &&
+      open?.type === "todo" &&
+      open.id &&
+      changed.includes(open.id)
+    )
+      areaRef.current.value = setTodoSource(areaRef.current.value, open.done);
+    live.current = { ...live.current, blocks: next };
+    setBlocks(next);
+    return true;
+  }, []);
+
+  /** The latest `persist`, for a save that has to follow the one running. */
+  const persistRef = useRef<
+    (nextTitle: string, nextBlocks: DocBlock[]) => Promise<void>
+  >(async () => {});
+  /** Queue a save of what is on screen now, behind the one running. */
+  const saveAgain = useCallback(() => {
+    dirty.current = true;
+    void persistRef.current(live.current.title, live.current.blocks);
+  }, []);
+
+  /**
+   * A save came back: take its ticks, and note the version the ticks on
+   * screen are now taken from. Anything that took a new tick is saved again,
+   * after that, so the save says so.
+   */
+  const settle = useCallback(
+    (sent: DocBlock[], saved: Doc) => {
+      const took = adoptTicks(sent, saved);
+      ticksFrom.current = ticksTakenFrom(
+        ticksFrom.current,
+        saved,
+        live.current.blocks,
+      );
+      if (took) saveAgain();
+    },
+    [adoptTicks, saveAgain],
+  );
+
   const persist = useCallback(
     (nextTitle: string, nextBlocks: DocBlock[]) => {
+      // The version these lines' ticks were taken from, as they are now. A
+      // save queued behind one still running goes out after that one's
+      // answer, but its ticks are still the ones from before it: the server
+      // mustn't count them again.
+      const from = ticksFrom.current;
       const write = async () => {
         setSave("saving");
         try {
-          const saved = await client.updateDoc(doc.id, {
-            title: nextTitle,
-            content: nextBlocks,
-            version: version.current,
-          });
+          const saved = await client.updateDoc(
+            doc.id,
+            {
+              title: nextTitle,
+              content: nextBlocks,
+              version: version.current,
+            },
+            { ticksFrom: from },
+          );
           version.current = saved.version;
           base.current = saved.content;
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
+          settle(nextBlocks, saved);
           setSave("saved");
           setSavedAt(saved.updated_at);
           setNow(new Date());
@@ -408,16 +567,24 @@ export function DocEditor({
             try {
               const theirs = await client.getDoc(doc.id);
               const merged = reconcile(theirs);
-              const saved = await client.updateDoc(doc.id, {
-                title: live.current.title,
-                content: merged,
-                version: version.current,
-              });
+              const mergedTitle = live.current.title;
+              // Not theirs.version: a tick kept from before the merge was
+              // made on the older copy (see reconcile).
+              const saved = await client.updateDoc(
+                doc.id,
+                {
+                  title: mergedTitle,
+                  content: merged,
+                  version: version.current,
+                },
+                { ticksFrom: ticksFrom.current },
+              );
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
-                live.current.title !== nextTitle ||
-                live.current.blocks !== nextBlocks;
+                live.current.title !== mergedTitle ||
+                live.current.blocks !== merged;
+              settle(merged, saved);
               setSave("saved");
               onChanged(saved);
               return;
@@ -434,8 +601,9 @@ export function DocEditor({
       saveQueue.current = saveQueue.current.then(write, write);
       return saveQueue.current;
     },
-    [doc.id, onChanged, reconcile, report],
+    [doc.id, onChanged, reconcile, report, settle],
   );
+  persistRef.current = persist;
 
   flushOnClose.current = () => {
     if (!canWrite || !dirty.current) return;
@@ -448,8 +616,10 @@ export function DocEditor({
       dirty.current = true;
       live.current = { title: nextTitle, blocks: nextBlocks };
       if (timer.current) clearTimeout(timer.current);
+      // What is on screen when the clock runs out, not when it started: a
+      // save or a merge that landed meanwhile may have changed it.
       timer.current = setTimeout(
-        () => void persist(nextTitle, nextBlocks),
+        () => void persist(live.current.title, live.current.blocks),
         SAVE_AFTER_MS,
       );
     },
@@ -461,6 +631,7 @@ export function DocEditor({
     return () => {
       if (timer.current) clearTimeout(timer.current);
       flushOnClose.current();
+      settleTags.current();
     };
   }, []);
 
@@ -469,18 +640,29 @@ export function DocEditor({
    * not on callbacks that are rebuilt each time the page is typed into.
    * Without this the stream was torn down and reopened on every keystroke.
    */
-  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
-  onEvent.current = (remote: number, trashed: boolean) => {
+  const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
+  onEvent.current = (
+    remote: number,
+    { trashed, tags: retagged, by }: DocNews,
+  ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed) {
       if (timer.current) clearTimeout(timer.current);
       dirty.current = false;
       flushOnClose.current = () => {};
+      gone.current = true;
       onDeleted(doc.id);
       toast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone changed the page's tags: the row follows, the words stay.
+    if (retagged) {
+      void client
+        .getDoc(doc.id)
+        .then((theirs) => setTags(theirs.tags ?? []), report);
       return;
     }
     if (remote && remote <= version.current) return;
@@ -489,19 +671,27 @@ export function DocEditor({
       // A line open for editing counts as ours even before a keystroke:
       // replacing the whole page would pull the text out from under it.
       if (!dirty.current && focusedRef.current === null) {
+        const news =
+          theirs.title === live.current.title &&
+          onlyTaskTicksMoved(base.current, theirs)
+            ? taskNews(by)
+            : "Updated with someone else's changes.";
         version.current = theirs.version;
+        ticksFrom.current = theirs.version;
         base.current = theirs.content;
+        tagBase.current = theirs.content;
+        setTags(theirs.tags ?? []);
         setTitle(theirs.title);
         setBlocks(
           theirs.content.length
             ? theirs.content
             : [{ type: "paragraph", text: "" }],
         );
-        setNote("Updated with someone else's changes.");
+        if (news) setNote(news);
         onChanged(theirs);
         return;
       }
-      const merged = reconcile(theirs);
+      const merged = reconcile(theirs, by);
       // Only send the merged page back when something of ours was waiting;
       // an open but untouched line has nothing to add.
       if (dirty.current) void persist(live.current.title, merged);
@@ -515,8 +705,7 @@ export function DocEditor({
    * in, so two people can work on the same page at once.
    */
   useEffect(
-    () =>
-      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    () => client.watchDoc(doc.id, (v, news) => onEvent.current(v, news)),
     [doc.id],
   );
 
@@ -652,7 +841,7 @@ export function DocEditor({
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
       setSuggestions((list) => [...list, ...made]);
-      setNote("Suggested. It waits for someone to take it.");
+      toast({ text: "Suggested. It waits for someone to take it." });
     } catch (e) {
       report(e);
     }
@@ -674,6 +863,7 @@ export function DocEditor({
       .then(({ doc: saved }) => {
         if (saved) {
           version.current = saved.version;
+          ticksFrom.current = saved.version;
           base.current = saved.content;
           setBlocks(saved.content);
           onChanged(saved);
@@ -725,7 +915,7 @@ export function DocEditor({
     }
     setPicked(null);
     window.getSelection()?.removeAllRanges();
-    setNote("Asking the assistant…");
+    toast({ text: "Asking the assistant…" });
     try {
       const made = await client.assistDoc(doc.id, {
         block_id: words.blockId,
@@ -735,9 +925,8 @@ export function DocEditor({
         instruction,
       });
       setSuggestions((list) => [...list, made]);
-      setNote("Suggested. Take it or leave it.");
+      toast({ text: "Suggested. Take it or leave it." });
     } catch (e) {
-      setNote("");
       report(e);
     }
   };
@@ -773,7 +962,7 @@ export function DocEditor({
       linking.url,
     );
     if (!made) {
-      setNote("That doesn't look like a web address.");
+      toast({ text: "That doesn't look like a web address.", tone: "warn" });
       return;
     }
     const next = blocks.slice();
@@ -863,6 +1052,12 @@ export function DocEditor({
     setActiveComment(blockId);
   };
 
+  useEffect(() => {
+    if (!initialBlockId) return;
+    const frame = requestAnimationFrame(() => goToBlock(initialBlockId));
+    return () => cancelAnimationFrame(frame);
+  }, [doc.id, initialBlockId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /**
    * A proposal is a stretch of one named line, so there is no way to propose
    * a line added, taken away, moved, copied, or a box ticked. Every one of
@@ -929,6 +1124,7 @@ export function DocEditor({
     const { created, doc: updated } = await client.docToTasks(doc.id, blockIds);
     if (updated && updated.version > version.current) {
       version.current = updated.version;
+      ticksFrom.current = updated.version;
       base.current = updated.content;
       setSavedAt(updated.updated_at);
       onChanged(updated);
@@ -1130,6 +1326,21 @@ export function DocEditor({
     update(next);
   };
 
+  /** Flip the box of the checklist line being typed, keeping the caret. */
+  const tickLine = (el: HTMLTextAreaElement) => {
+    const box = /^(\s*[-*]\s+\[)( |x|X)\]/.exec(el.value);
+    if (!box) return;
+    const at = box[1].length;
+    typeInto(el, {
+      text:
+        el.value.slice(0, at) +
+        (box[2] === " " ? "x" : " ") +
+        el.value.slice(at + 1),
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    });
+  };
+
   /**
    * Restyle the words selected in the line being typed — bold, italic, a
    * link — through the same path as typing, so it can be undone with ⌘Z and
@@ -1141,7 +1352,7 @@ export function DocEditor({
   ) => {
     const made = change(el.value, el.selectionStart, el.selectionEnd);
     if (!made) {
-      setNote("Those words already have another style.");
+      toast({ text: "Those words already have another style.", tone: "warn" });
       return;
     }
     typeInto(el, made);
@@ -1190,11 +1401,13 @@ export function DocEditor({
         return;
       }
       // ⌘⇧V: the next paste keeps only the words.
-      if (key === "v" && e.shiftKey) plainPaste.current = true;
-      // ⌘⏎ ticks a checklist line, or unticks it.
+      if (key === "v" && e.shiftKey) plainPaste.current = Date.now();
+      // ⌘⏎ ticks a checklist line, or unticks it. The box is flipped in the
+      // line itself, as typing would, so the open line shows it, the next
+      // keystroke keeps it and ⌘Z takes it back.
       if (e.key === "Enter" && blocks[index].type === "todo") {
         e.preventDefault();
-        toggleTodo(index);
+        if (structural) tickLine(e.currentTarget);
         return;
       }
     }
@@ -1231,8 +1444,8 @@ export function DocEditor({
     e: React.ClipboardEvent<HTMLTextAreaElement>,
     index: number,
   ) => {
-    const plain = plainPaste.current;
-    plainPaste.current = false;
+    const plain = Date.now() - plainPaste.current < PLAIN_PASTE_MS;
+    plainPaste.current = 0;
     const block = blocks[index];
     if (block.type === "code" || block.type === "math") return;
     const el = e.currentTarget;
@@ -1408,7 +1621,7 @@ export function DocEditor({
    */
   const download = async (format: ExportFormat) => {
     setDownloadMenu(false);
-    setNote(`Making the ${EXPORT_LABELS[format].name} file…`);
+    toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
     try {
       const { blob, name } = await client.exportDoc(doc.id, format);
       const url = URL.createObjectURL(blob);
@@ -1417,17 +1630,26 @@ export function DocEditor({
       a.download = name;
       a.click();
       URL.revokeObjectURL(url);
-      setNote("");
+      toast({ text: `Downloaded “${name}”` });
     } catch (e) {
-      setNote("");
       report(e);
     }
   };
 
-  // Lines already tied to a task are not offered again.
-  const openTodos = blocks.filter(
-    (b) => b.type === "todo" && !b.done && !b.id && b.text.trim().length > 0,
-  ).length;
+  // Lines already tied to a task are not offered again. The server says
+  // which: every line gets an id once it's remarked on, so an id alone
+  // doesn't make a line a task. An agenda's lines copy tasks you already
+  // have, so it offers none.
+  const openTodos =
+    doc.kind === "agenda"
+      ? 0
+      : blocks.filter(
+          (b) =>
+            b.type === "todo" &&
+            !b.done &&
+            !(b.id && linked.has(b.id)) &&
+            b.text.trim().length > 0,
+        ).length;
 
   /** Turn the unticked checklist lines into real tasks. */
   const makeTasks = () =>
@@ -1436,8 +1658,8 @@ export function DocEditor({
         // The server ties each line to its task and hands back the document;
         // adopting it keeps the ids, so the lines now follow their tasks.
         const created = await linesToTasks();
-        await tell({
-          title:
+        toast({
+          text:
             created === 0
               ? "Every item here is already a task."
               : `Added ${created} task${created === 1 ? "" : "s"} to your planner. Ticking one here ticks it there.`,
@@ -1464,6 +1686,7 @@ export function DocEditor({
     }
     dirty.current = false;
     flushOnClose.current = () => {};
+    gone.current = true;
     onDeleted(doc.id);
     toast({
       text: `Moved “${title || "Untitled"}” to Trash`,
@@ -1480,6 +1703,14 @@ export function DocEditor({
 
   return (
     <div className="doc-editor">
+      {doc.project_id && doc.project_name && onOpenProject && (
+        <button
+          className="text-button"
+          onClick={() => onOpenProject(doc.project_id!)}
+        >
+          In project: {doc.project_name}
+        </button>
+      )}
       <div className="doc-bar">
         {onBack && (
           <button className="text-button" onClick={onBack}>
@@ -1548,16 +1779,31 @@ export function DocEditor({
           </button>
           <button
             className="icon-button"
+            onClick={() => setSavingTemplate(true)}
+            aria-label="Save as template"
+            aria-haspopup="dialog"
+            title="Save as template"
+          >
+            <LayoutTemplate size={15} />
+          </button>
+          <button
+            className="icon-button"
             onClick={() =>
               void navigator.clipboard
                 .writeText(`# ${title}\n\n${markdown}`)
-                .then(() => setNote("Copied as Markdown."), report)
+                .then(() => toast({ text: "Copied as Markdown" }), report)
             }
             aria-label="Copy as Markdown"
             title="Copy as Markdown"
           >
             <Copy size={15} />
           </button>
+          {/* On a phone's browser: the system share sheet (SHR-07). */}
+          <SharePageButton
+            docId={doc.id}
+            title={title || "Untitled"}
+            onError={report}
+          />
           <span className="doc-download">
             <button
               className={"icon-button" + (downloadMenu ? " is-on" : "")}
@@ -1809,6 +2055,15 @@ export function DocEditor({
                 }}
               />
             )}
+            <PageTags
+              docId={doc.id}
+              teamId={doc.team_id}
+              tags={tags}
+              canWrite={canWrite && !reading}
+              // The library reads tags afresh on the way back to it.
+              onChange={setTags}
+              report={report}
+            />
 
             <div className="doc-body" ref={bodyRef}>
               {blocks.map((block, index) =>
@@ -1923,6 +2178,7 @@ export function DocEditor({
                         }
                         number={layout[index].number}
                         depth={layout[index].depth}
+                        isTask={!!block.id && linked.has(block.id)}
                       />
                     </div>
                   </div>
@@ -2028,6 +2284,7 @@ export function DocEditor({
             onRestored={(restored) => {
               // The restored page is the page now: adopt it whole.
               version.current = restored.version;
+              ticksFrom.current = restored.version;
               base.current = restored.content;
               dirty.current = false;
               setTitle(restored.title);
@@ -2036,12 +2293,25 @@ export function DocEditor({
                   ? restored.content
                   : [{ type: "paragraph", text: "" }],
               );
-              setNote("Restored an earlier version.");
+              toast({ text: "Restored an earlier version" });
               onChanged(restored);
             }}
           />
         )}
       </div>
+
+      {savingTemplate && (
+        <SaveTemplateDialog
+          doc={doc}
+          canShare={canWrite}
+          onClose={() => setSavingTemplate(false)}
+          onSaved={(t) =>
+            toast({
+              text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+            })
+          }
+        />
+      )}
 
       {chat && (
         <DocChat

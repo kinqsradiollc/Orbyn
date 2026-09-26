@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   adminUserProfileUpdate,
   fail,
+  type AdminAgentGrant,
   type AdminUserDetail,
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
@@ -13,6 +14,7 @@ import { sendPasswordResetEmail } from "../auth/mail.js";
 import { appLink } from "../booking/service.js";
 import { emailEnabled } from "../../worker/channels/email.js";
 import { exportData } from "../organize/portability.js";
+import { revokeConnections, revokeGrant } from "../agents/service.js";
 
 /**
  * What an admin can do for one account beyond role, disable and delete:
@@ -45,7 +47,7 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!user) fail(404, "User not found");
-    const [sessions, security, teams, counts, activity, trail, keys] =
+    const [sessions, security, teams, counts, activity, trail, keys, agents] =
       await Promise.all([
         db.query(
           `SELECT id::text, user_agent, last_seen_at, expires_at FROM sessions
@@ -95,6 +97,19 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
             WHERE user_id = $1 ORDER BY created_at DESC`,
           [id],
         ),
+        // Their outside agents' connections (never the credentials).
+        db.query<AdminAgentGrant>(
+          `SELECT g.id, g.kind, g.name, g.client_name,
+                  (SELECT c.host FROM oauth_clients c
+                    WHERE c.id = g.client_id AND g.kind = 'oauth') AS client_host,
+                  g.access, g.expires_at, g.last_used_at, g.suspended_at, g.created_at
+             FROM agent_grants g
+            WHERE g.user_id = $1 AND g.revoked_at IS NULL
+              AND (g.kind <> 'oauth' OR g.authorized_at IS NOT NULL)
+              AND (g.expires_at IS NULL OR g.expires_at > now())
+            ORDER BY g.created_at DESC LIMIT 50`,
+          [id],
+        ),
       ]);
     const sec = security.rows[0];
     const lastSeen: Date | null = sec.last_seen ?? null;
@@ -106,6 +121,7 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
       passkeys: sec.passkeys,
       api_keys: sec.api_keys,
       keys: keys.rows,
+      agents: agents.rows,
       teams: teams.rows,
       counts: counts.rows[0],
       activity: activity.rows,
@@ -172,19 +188,37 @@ export async function adminUserPowerRoutes(app: FastifyInstance) {
       const gone = await db.query("DELETE FROM sessions WHERE user_id = $1", [
         id,
       ]);
+      // Everywhere includes the agents connected to the account.
+      const agents = await revokeConnections(
+        db,
+        { userId: id },
+        "admin_sign_out",
+        actor.id,
+        r.id,
+      );
       await audit(
         {
           actorId: actor.id,
           action: "user.signed_out",
           targetType: "user",
           targetId: id,
-          details: { email, sessions: gone.rowCount ?? 0 },
+          details: { email, sessions: gone.rowCount ?? 0, agents },
         },
         db,
       );
       return gone.rowCount ?? 0;
     });
     return { ended };
+  });
+
+  // End one of the account's agent connections (a key or a sign-in).
+  app.delete("/admin/users/:id/agents/:grantId", async (r, reply) => {
+    const actor = await authorize(r, "users:manage");
+    const id = idParam(r);
+    const grantId = idParam(r, "grantId");
+    await exists(id);
+    await revokeGrant(id, grantId, actor.id, "admin", r.id);
+    return reply.code(204).send();
   });
 
   app.delete("/admin/users/:id/sessions/:sessionId", async (r, reply) => {

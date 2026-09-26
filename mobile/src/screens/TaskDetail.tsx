@@ -13,12 +13,18 @@ import {
 } from "react-native";
 import {
   dateLabel,
+  dueLine,
   hasTeamPermission,
   isClosed,
+  seriesNoteFor,
+  pageAboutTask,
+  projectPlace,
   statusLabels,
   statusOrder,
+  type EventNoteRef,
   type Item,
   type ItemDetail,
+  type ItemContext,
   type Project,
   type ItemStep,
   type ItemUpdate,
@@ -27,6 +33,7 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { SmallAction } from "../components/SmallAction";
 import { Chip, ChipRow } from "../components/Chip";
 import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -38,8 +45,10 @@ import { MeetingOutcome } from "../components/followthrough/MeetingOutcome";
 import { StatusPill } from "../components/Pill";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
-import { SchedulePanel } from "../components/SchedulePanel";
-import { Sheet, sheetStyles } from "../components/Sheet";
+import { SessionsPanel } from "../components/SessionsPanel";
+import { HeaderButton, Sheet, sheetStyles } from "../components/Sheet";
+import { ActionSheet } from "../components/MoreMenu";
+import { shareLink } from "../lib/share";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
@@ -108,7 +117,12 @@ export function TaskDetail({
   onFocus,
   onChanged,
   onOpenNote,
+  occurrence,
   onOpenItem,
+  onShowOnCalendar,
+  onOpenProject,
+  onAskTask,
+  onOpenPage,
 }: {
   visible: boolean;
   /** The row that was tapped; shown straight away while the detail loads. */
@@ -127,9 +141,21 @@ export function TaskDetail({
   onFocus: (item: Item) => void;
   /** Called after every change so lists and counts refresh. */
   onChanged: () => void;
-  /** Open (or start) the meeting note for an event. */
-  onOpenNote?: (event: Item) => void;
+  /**
+   * Open (or start) the meeting note for an event: the class it was opened
+   * on for a repeating one, or with `series`, the whole series'.
+   */
+  onOpenNote?: (event: Item, series?: boolean) => void;
+  /** The class of a repeating event the sheet was opened on (its first start). */
+  occurrence?: string | null;
+  /** Show a session's day on the calendar. */
+  onShowOnCalendar?: (at: string) => void;
+  onOpenProject?: (id: string) => void;
+  onAskTask?: (item: Item) => void;
+  onOpenPage?: (id: string, blockId?: string | null) => void;
 }) {
+  /** The ⋯ in the header: sharing the task's link. */
+  const [menu, setMenu] = useState(false);
   return (
     <Sheet
       avoidKeyboard={false}
@@ -137,6 +163,16 @@ export function TaskDetail({
       title={item?.kind === "event" ? "Event" : "Task"}
       onClose={onClose}
       onDismiss={onDismiss}
+      actions={
+        item ? (
+          <HeaderButton
+            icon="more"
+            label={item.kind === "event" ? "Event options" : "Task options"}
+            on={menu}
+            onPress={() => setMenu(true)}
+          />
+        ) : undefined
+      }
     >
       {item && (
         <Body
@@ -148,10 +184,30 @@ export function TaskDetail({
           onFocus={onFocus}
           onChanged={onChanged}
           onOpenNote={onOpenNote}
+          occurrence={occurrence}
           onOpenItem={onOpenItem}
+          onShowOnCalendar={onShowOnCalendar}
+          onOpenProject={onOpenProject}
+          onAskTask={onAskTask}
+          onOpenPage={onOpenPage}
         />
       )}
       <CelebrationHost />
+      {item && (
+        <ActionSheet
+          visible={menu}
+          label={item.kind === "event" ? "Event options" : "Task options"}
+          title={item.title}
+          actions={[
+            {
+              label: "Share link…",
+              onPress: () =>
+                void shareLink({ kind: "task", id: item.id }, item.title),
+            },
+          ]}
+          onClose={() => setMenu(false)}
+        />
+      )}
     </Sheet>
   );
 }
@@ -164,7 +220,12 @@ function Body({
   onFocus,
   onChanged,
   onOpenNote,
+  occurrence,
   onOpenItem,
+  onShowOnCalendar,
+  onOpenProject,
+  onAskTask,
+  onOpenPage,
 }: {
   seed: Item;
   items: Item[];
@@ -172,13 +233,19 @@ function Body({
   onEdit: (item: Item) => void;
   onFocus: (item: Item) => void;
   onChanged: () => void;
-  onOpenNote?: (event: Item) => void;
+  onOpenNote?: (event: Item, series?: boolean) => void;
+  occurrence?: string | null;
   onOpenItem: (item: Item) => void;
+  onShowOnCalendar?: (at: string) => void;
+  onOpenProject?: (id: string) => void;
+  onAskTask?: (item: Item) => void;
+  onOpenPage?: (id: string, blockId?: string | null) => void;
 }) {
   const [newSubtask, setNewSubtask] = useState("");
   /** The task above, when it isn't among the loaded items. */
   const [fetchedParent, setFetchedParent] = useState<Item | null>(null);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [context, setContext] = useState<ItemContext | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [newStep, setNewStep] = useState("");
@@ -222,8 +289,42 @@ function Body({
     seed.updates_count,
     seed.last_update_at,
   ]);
+  useEffect(() => {
+    if (seed.kind !== "task") return;
+    let alive = true;
+    void client.itemContext(seed.id).then(
+      (value) => alive && setContext(value),
+      (e) => alive && setError(errorText(e)),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [seed.id, seed.version]);
 
   const item: Item = detail ?? seed;
+  // Opened on one class of a repeating event: that class opens its own
+  // note, so a note the series keeps for every class is pointed to here.
+  const [seriesNote, setSeriesNote] = useState<EventNoteRef | null>(null);
+  const noteKind = seed.kind === "event" && !!seed.rrule && !!onOpenNote;
+  useEffect(() => {
+    if (!noteKind || !occurrence) return;
+    let alive = true;
+    client.eventNotes([seed.id]).then(
+      (notes) =>
+        alive &&
+        setSeriesNote(
+          seriesNoteFor(notes, {
+            item_id: seed.id,
+            occurrence,
+            team_id: seed.team_id,
+          }) ?? null,
+        ),
+      () => alive && setSeriesNote(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [seed.id, seed.team_id, noteKind, occurrence]);
   const team = item.team_id
     ? teams.find((t) => t.id === item.team_id)
     : undefined;
@@ -274,6 +375,7 @@ function Body({
         project_id: projectId,
         ...(stageId === undefined ? {} : { stage_id: stageId }),
       });
+      setContext(await client.itemContext(item.id));
       // `run` adopts what it is given, so hand back the item as it now is.
       return client.getItem(item.id);
     });
@@ -345,8 +447,8 @@ function Body({
     Alert.alert(
       "Cancel this task?",
       subtasks.length
-        ? "It leaves your plans and its time blocks are removed. Its subtasks stay as they are. You can reopen it later."
-        : "It leaves your plans and its time blocks are removed. You can reopen it later.",
+        ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
+        : "It leaves your plans and its sessions are removed. You can reopen it later.",
       [
         { text: "Keep it", style: "cancel" },
         {
@@ -503,14 +605,26 @@ function Body({
             <Text style={s.title} accessibilityRole="header">
               {item.title}
             </Text>
+            {item.kind === "task" && onAskTask && (
+              <SmallAction
+                label="Ask about this task"
+                disabled={busy}
+                onPress={() => onAskTask(item)}
+              />
+            )}
             <View style={s.metaRow}>
               <View style={s.metaItem}>
                 <Icon name="clock" size={14} color={colors.muted} />
                 <Text style={s.metaText}>
-                  {dateLabel(item.due_at)}
-                  {item.end_at
-                    ? ` – ${new Date(item.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
-                    : ""}
+                  {item.kind === "task" && item.due_at
+                    ? // "Due" is the deadline: an all-day task is due by the end
+                      // of its (last) day, one with an end time when it ends.
+                      dueLine(item)
+                    : `${dateLabel(item.due_at)}${
+                        item.end_at
+                          ? ` – ${new Date(item.end_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                          : ""
+                      }`}
                 </Text>
               </View>
               <View style={[s.chip, { backgroundColor: priority.bg }]}>
@@ -608,14 +722,26 @@ function Body({
           </FadeIn>
 
           {canWork && (
-            <View>
-              <Button
-                title="Focus on this"
-                icon="target"
-                onPress={() => onFocus(item)}
-              />
-              <SchedulePanel item={item} onBooked={onChanged} />
-            </View>
+            <Button
+              title="Focus on this"
+              icon="target"
+              onPress={() => onFocus(item)}
+            />
+          )}
+
+          {item.kind === "task" && (
+            <SessionsPanel
+              item={item}
+              canWork={canWork}
+              reloadKey={[
+                item.version,
+                item.status,
+                item.due_at,
+                item.end_at,
+              ].join("|")}
+              onChanged={onChanged}
+              onShowOnCalendar={onShowOnCalendar}
+            />
           )}
 
           {readOnly && (
@@ -747,48 +873,104 @@ function Body({
             )}
 
           {/* Which project this belongs to, and where in it. */}
-          {item.kind === "task" && !readOnly && !!projects?.length && (
-            <FadeIn index={2} style={shared.card}>
-              <View style={s.cardHeading}>
-                <Text style={shared.sectionTitle} accessibilityRole="header">
-                  Project
-                </Text>
-              </View>
-              <ChipRow label="Project">
-                <Chip
-                  label="None"
-                  selected={!project}
-                  disabled={busy}
-                  onPress={() => putInProject(null)}
-                />
-                {projects.map((p) => (
+          {item.kind === "task" &&
+            (context?.project || (!readOnly && !!projects?.length)) && (
+              <FadeIn index={2} style={shared.card}>
+                <View style={s.cardHeading}>
+                  <Text style={shared.sectionTitle} accessibilityRole="header">
+                    Project
+                  </Text>
+                </View>
+                {!!context?.project && !!onOpenProject && (
                   <Chip
-                    key={p.id}
-                    label={p.name}
-                    selected={project?.id === p.id}
-                    disabled={busy}
-                    onPress={() => putInProject(p.id)}
+                    label={`Open ${projectPlace(context.project)}`}
+                    selected={false}
+                    onPress={() => onOpenProject(context.project!.id)}
                   />
-                ))}
-              </ChipRow>
-              {!!project && (
-                <ChipRow label="Stage">
-                  <Chip
-                    label="No stage"
-                    selected={!detail?.stage_id}
-                    disabled={busy}
-                    onPress={() => putInProject(project.id, null)}
-                  />
-                  {project.stages.map((stage) => (
+                )}
+                {!readOnly && !!projects?.length && (
+                  <ChipRow label="Project">
                     <Chip
-                      key={stage.id}
-                      label={stage.name}
-                      selected={detail?.stage_id === stage.id}
+                      label="None"
+                      selected={!project}
                       disabled={busy}
-                      onPress={() => putInProject(project.id, stage.id)}
+                      onPress={() => putInProject(null)}
                     />
-                  ))}
-                </ChipRow>
+                    {projects.map((p) => (
+                      <Chip
+                        key={p.id}
+                        label={p.name}
+                        selected={project?.id === p.id}
+                        disabled={busy}
+                        onPress={() => putInProject(p.id)}
+                      />
+                    ))}
+                  </ChipRow>
+                )}
+                {!readOnly && !!project && (
+                  <ChipRow label="Stage">
+                    <Chip
+                      label="No stage"
+                      selected={!detail?.stage_id}
+                      disabled={busy}
+                      onPress={() => putInProject(project.id, null)}
+                    />
+                    {project.stages.map((stage) => (
+                      <Chip
+                        key={stage.id}
+                        label={stage.name}
+                        selected={detail?.stage_id === stage.id}
+                        disabled={busy}
+                        onPress={() => putInProject(project.id, stage.id)}
+                      />
+                    ))}
+                  </ChipRow>
+                )}
+              </FadeIn>
+            )}
+          {item.kind === "task" && !!onOpenPage && (
+            <FadeIn index={2} style={shared.card}>
+              <Text style={shared.sectionTitle} accessibilityRole="header">
+                Pages
+              </Text>
+              {!!context?.came_from && (
+                <View>
+                  <Chip
+                    label={`Came from ${context.came_from.title}`}
+                    selected={false}
+                    onPress={() =>
+                      onOpenPage(
+                        context.came_from!.doc_id,
+                        context.came_from!.block_id,
+                      )
+                    }
+                  />
+                  {!!context.came_from.quote && (
+                    <Text style={shared.small}>
+                      “{context.came_from.quote}”
+                    </Text>
+                  )}
+                </View>
+              )}
+              {context?.pages.map((page) => (
+                <Chip
+                  key={page.id}
+                  label={page.title}
+                  selected={false}
+                  onPress={() => onOpenPage(page.id, page.block_id)}
+                />
+              ))}
+              {!readOnly && (
+                <Chip
+                  label="New page about this task"
+                  selected={false}
+                  onPress={() =>
+                    void client.createDoc(pageAboutTask(item)).then(
+                      (doc) => onOpenPage(doc.id),
+                      (e) => setError(errorText(e)),
+                    )
+                  }
+                />
               )}
             </FadeIn>
           )}
@@ -1008,6 +1190,19 @@ function Body({
               onPress={() => onOpenNote(item)}
             />
           )}
+          {item.kind === "event" &&
+            !readOnly &&
+            !!onOpenNote &&
+            !!occurrence &&
+            !!seriesNote && (
+              <Button
+                secondary
+                title={`Series note: “${seriesNote.title || "Untitled"}”`}
+                icon="fileText"
+                disabled={busy}
+                onPress={() => onOpenNote(item, true)}
+              />
+            )}
           {item.kind === "task" && !readOnly && !isClosed(item.status) && (
             <Button
               destructive

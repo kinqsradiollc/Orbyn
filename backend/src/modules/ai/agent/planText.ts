@@ -44,7 +44,7 @@ export function planMarkdown(plan: Plan, timeZone: string) {
   if (plan.blocks.length)
     lines.push(
       "",
-      "Review the plan and tap **Apply plan** to add these blocks to your calendar.",
+      "Review the plan and tap **Apply plan** to add these sessions to your calendar.",
     );
   return lines.join("\n");
 }

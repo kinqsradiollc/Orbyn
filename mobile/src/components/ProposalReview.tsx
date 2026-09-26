@@ -1,12 +1,12 @@
 import { ProjectDraftReview } from "./ProjectDraftReview";
-import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
   dateLabel,
   describeRrule,
   parseRichText,
   type Action,
-  type DocSource,
+  type AssistantSource,
   type RichInline,
   type Item,
   type ItemInput,
@@ -287,19 +287,24 @@ export function ProposalReview({
   busy: boolean;
   /** Defaults to "pending" when the reply proposes changes, otherwise "info". */
   state?: TurnState;
-  onApprove: () => void;
+  onApprove: (giveTasksDeadlines?: boolean) => void;
   onDiscard: () => void;
   /** Sends a suggested quick reply; only the latest reply gets one. */
   onFollowUp?: (text: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
-  onOpenSource?: (source: DocSource) => void;
+  onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
 }) {
   const count = proposal.actions.length;
-  const status = state ?? (count ? "pending" : "info");
+  const sessionChange = proposal.session_change;
+  const total = count + Number(!!sessionChange);
+  const [giveTasksDeadlines, setGiveTasksDeadlines] = useState(true);
+  const status = state ?? (count || sessionChange ? "pending" : "info");
   const followUps = (proposal.follow_ups ?? []).filter((t) => t.trim());
   const sources = proposal.sources ?? [];
+  const usedSources = sources.filter((source) => source.used);
+  const otherSources = sources.filter((source) => !source.used);
   return (
     <View>
       <SummaryText text={proposal.summary} />
@@ -307,15 +312,30 @@ export function ProposalReview({
           against it rather than taken on trust. */}
       {sources.length > 0 && (
         <View style={s.sources}>
-          <Text style={s.sourcesLabel}>READ</Text>
-          {sources.map((source) => (
-            <SmallAction
-              key={source.doc_id + (source.block_id ?? "")}
-              label={source.title || "Untitled"}
-              disabled={!onOpenSource}
-              onPress={() => onOpenSource?.(source)}
-            />
-          ))}
+          {(
+            [
+              ["USED", usedSources],
+              ["ALSO READ", otherSources],
+            ] as const
+          ).map(([label, group]) =>
+            group.length ? (
+              <View key={label} style={s.sourceGroup}>
+                <Text style={s.sourcesLabel}>{label}</Text>
+                {group.map((source) => (
+                  <SmallAction
+                    key={
+                      "doc_id" in source
+                        ? `page:${source.doc_id}`
+                        : `${source.kind}:${source.id}`
+                    }
+                    label={`[${source.number}] ${source.title || "Untitled"}`}
+                    disabled={!onOpenSource}
+                    onPress={() => onOpenSource?.(source)}
+                  />
+                ))}
+              </View>
+            ) : null,
+          )}
         </View>
       )}
       <DraftNotes
@@ -324,6 +344,23 @@ export function ProposalReview({
         report={() => {}}
       />
       {proposal.project && <ProjectDraftReview project={proposal.project} />}
+      {proposal.project && status === "pending" && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={shared.body}>Give tasks these deadlines</Text>
+          <Switch
+            accessibilityLabel="Give tasks these deadlines"
+            value={giveTasksDeadlines}
+            onValueChange={setGiveTasksDeadlines}
+            trackColor={{ true: colors.accent }}
+          />
+        </View>
+      )}
       {count > 0 && !proposal.project && (
         <View style={[s.actions, status === "discarded" && { opacity: 0.5 }]}>
           {proposal.actions.map((a, n) => {
@@ -342,9 +379,35 @@ export function ProposalReview({
                   </Text>
                 </View>
                 <Details action={a} items={items} before={before} />
+                {proposal.decision_links?.find(
+                  (link) => link.action_index === n,
+                ) && (
+                  <Text style={shared.body}>
+                    Delivers decision:{" "}
+                    {
+                      proposal.decision_links.find(
+                        (link) => link.action_index === n,
+                      )?.decision_title
+                    }
+                  </Text>
+                )}
               </FadeIn>
             );
           })}
+        </View>
+      )}
+      {sessionChange && (
+        <View style={s.action}>
+          <Text style={s.actionTitle}>
+            {sessionChange.operation === "move" ? "Move" : "Remove"} session ·{" "}
+            {sessionChange.title}
+          </Text>
+          <Text style={shared.body}>
+            {new Date(sessionChange.from_start_at).toLocaleString()}
+            {sessionChange.operation === "move"
+              ? ` → ${new Date(sessionChange.start_at).toLocaleString()}`
+              : ""}
+          </Text>
         </View>
       )}
       {status === "pending" && (
@@ -353,11 +416,11 @@ export function ProposalReview({
             title={
               proposal.project
                 ? "Create project and schedule"
-                : `Approve ${count} ${count === 1 ? "change" : "changes"}`
+                : `Approve ${total} ${total === 1 ? "change" : "changes"}`
             }
             icon="check"
             disabled={busy}
-            onPress={onApprove}
+            onPress={() => onApprove(giveTasksDeadlines)}
           />
           <Button
             secondary
@@ -368,7 +431,7 @@ export function ProposalReview({
           />
         </View>
       )}
-      {status === "applied" && count > 0 && (
+      {status === "applied" && total > 0 && (
         <FadeIn style={s.status}>
           <Icon
             name="check"
@@ -417,11 +480,14 @@ const s = themed(() =>
   StyleSheet.create({
     summary: { gap: 8 },
     sources: {
+      gap: 6,
+      marginTop: 6,
+    },
+    sourceGroup: {
       flexDirection: "row",
       alignItems: "center",
       flexWrap: "wrap",
       gap: 6,
-      marginTop: 6,
     },
     sourcesLabel: { color: colors.muted, fontSize: 10, letterSpacing: 0.7 },
     heading: {

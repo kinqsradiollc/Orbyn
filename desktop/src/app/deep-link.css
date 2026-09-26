@@ -1,0 +1,9 @@
+/* A page's line opened from a link (/app/doc/<id>#<line>), marked briefly. */
+.deep-linked-block {
+  border-radius: var(--radius-xs);
+  background: var(--color-accentSoft);
+  box-shadow: 0 0 0 4px var(--color-accentSoft);
+  transition:
+    background 0.6s ease,
+    box-shadow 0.6s ease;
+}

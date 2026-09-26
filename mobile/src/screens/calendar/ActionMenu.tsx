@@ -4,6 +4,7 @@ import { Button } from "../../components/Button";
 import type { IconName } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { shared } from "../../styles";
+import { colors, fonts, themed } from "../../theme";
 
 export type MenuAction = {
   label: string;
@@ -12,7 +13,16 @@ export type MenuAction = {
   run: () => void;
 };
 
-export type Menu = { title: string; detail: string; actions: MenuAction[] };
+/** A line under the menu's title; `warn` for one that needs attention. */
+export type MenuFact = { text: string; warn?: boolean };
+
+export type Menu = {
+  title: string;
+  detail: string;
+  /** More lines under the detail ("Deadline Fri 2 Oct, 5 pm"). */
+  facts?: MenuFact[];
+  actions: MenuAction[];
+};
 
 /**
  * Options for something on the calendar, as a sheet of buttons (an Alert
@@ -48,7 +58,24 @@ export function ActionMenu({
       <ScrollView contentContainerStyle={sheetStyles.body}>
         <View style={sheetStyles.column}>
           {!!menu?.detail && (
-            <Text style={[shared.subtitle, s.detail]}>{menu.detail}</Text>
+            <Text
+              style={[
+                shared.subtitle,
+                s.detail,
+                !!menu.facts?.length && s.detailTight,
+              ]}
+            >
+              {menu.detail}
+            </Text>
+          )}
+          {!!menu?.facts?.length && (
+            <View style={s.facts}>
+              {menu.facts.map((f) => (
+                <Text key={f.text} style={[shared.small, f.warn && s.warn]}>
+                  {f.text}
+                </Text>
+              ))}
+            </View>
           )}
           {menu?.actions.map((a) => (
             <Button
@@ -66,6 +93,11 @@ export function ActionMenu({
   );
 }
 
-const s = StyleSheet.create({
-  detail: { marginTop: 0, marginBottom: 16 },
-});
+const s = themed(() =>
+  StyleSheet.create({
+    detail: { marginTop: 0, marginBottom: 16 },
+    detailTight: { marginBottom: 6 },
+    facts: { gap: 4, marginBottom: 16 },
+    warn: { fontFamily: fonts.semibold, color: colors.warningStrong },
+  }),
+);

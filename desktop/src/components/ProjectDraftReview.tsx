@@ -49,16 +49,19 @@ export function ProjectDraftReview({
       aria-label="Project and schedule preview"
     >
       <h3>{project.title}</h3>
+      {project.summary && <p>{project.summary}</p>}
+      {project.deadline && (
+        <p className="muted">Project deadline: {time(project.deadline)}</p>
+      )}
       <p className="muted">
-        Creates a project with a parent task and {project.tasks.length}{" "}
-        subtasks. Times are in {project.timezone}. Review covers {project.days}{" "}
-        days.
+        Creates a project with {project.tasks.length} tasks. Times are in{" "}
+        {project.timezone}. Review covers {project.days} days.
       </p>
       {project.unplaced.length > 0 && (
         <p className="project-draft-warning">
           {project.unplaced.length}{" "}
-          {project.unplaced.length === 1 ? "subtask cannot" : "subtasks cannot"}{" "}
-          be fully scheduled. They will still be created; their unscheduled work
+          {project.unplaced.length === 1 ? "task cannot" : "tasks cannot"} be
+          fully scheduled. They will still be created; their unscheduled work
           needs another plan.
         </p>
       )}

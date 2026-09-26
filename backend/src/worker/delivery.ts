@@ -7,7 +7,13 @@ import { sendPush } from "./channels/push.js";
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
 /** Planner notices: sent by `planner_notices`, not `email_reminders`. */
-const PLANNER_KINDS = ["conflict", "rollforward", "at_risk", "deadline"];
+const PLANNER_KINDS = [
+  "conflict",
+  "rollforward",
+  "at_risk",
+  "deadline",
+  "project",
+];
 
 /**
  * Claim and deliver one due notification. Returns false when the queue is
@@ -79,14 +85,23 @@ export async function deliverOne(): Promise<boolean> {
                 ).rowCount
               : n.kind === "invite"
                 ? await inviteStale(db, n)
-                : PLANNER_KINDS.includes(n.kind)
-                  ? await plannerNoticeStale(db, n, item)
-                  : !item ||
-                    !item.can_see ||
-                    item.disabled ||
-                    isClosed(item.status) ||
-                    item.reminder_version !== n.item_version ||
-                    (n.channel === "email" && !item.email_reminders);
+                : n.kind === "agent"
+                  ? // About the person's own security or team: goes out
+                    // while their account is active.
+                    !(
+                      await db.query(
+                        "SELECT 1 FROM users WHERE id = $1 AND NOT disabled",
+                        [n.user_id],
+                      )
+                    ).rowCount
+                  : PLANNER_KINDS.includes(n.kind)
+                    ? await plannerNoticeStale(db, n, item)
+                    : !item ||
+                      !item.can_see ||
+                      item.disabled ||
+                      isClosed(item.status) ||
+                      item.reminder_version !== n.item_version ||
+                      (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,
@@ -191,6 +206,20 @@ async function plannerNoticeStale(
   if (n.channel === "push" && !who.push) return true;
   if (n.item_id && (!item || !item.can_see || isClosed(item.status)))
     return true;
+  if (n.kind === "project") {
+    const projectId = n.ref.split(":")[0];
+    const visible = await db.query(
+      `SELECT 1 FROM projects p JOIN items i ON i.project_id = p.id
+       WHERE p.id::text = $1 AND p.status = 'active' AND p.deadline > now()
+         AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
+         AND (CASE WHEN i.team_id IS NULL THEN i.user_id = $2
+                   ELSE i.assignee_id = $2 AND EXISTS (
+                     SELECT 1 FROM team_members m WHERE m.team_id = i.team_id AND m.user_id = $2) END)
+       LIMIT 1`,
+      [projectId, n.user_id],
+    );
+    if (!visible.rowCount) return true;
+  }
   if (n.kind === "conflict") {
     const block = await db.query(
       "SELECT 1 FROM time_blocks WHERE id::text = $1 AND user_id = $2",

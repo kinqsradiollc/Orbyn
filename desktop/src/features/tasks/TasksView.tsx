@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   searchItems,
+  plannedTodayIds,
   emptyPlans,
   emptySearch,
   STATUSES,
@@ -29,6 +30,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { Popover } from "../../components/Popover";
 import { usePlanning } from "../../app/planning";
+import { usePlanned } from "../../app/planned";
 import { statusCounts } from "../../lib/tasks";
 import {
   byScore,
@@ -84,7 +86,7 @@ const SIZES: Size[] = ["quick", "short", "long", "none"];
 const DUE_OPTIONS: { id: DueFilter; label: string }[] = [
   { id: "any", label: "Any due date" },
   { id: "overdue", label: "Overdue" },
-  { id: "today", label: "Today" },
+  { id: "today", label: "Today (planned or due)" },
   { id: "tomorrow", label: "Tomorrow" },
   { id: "soon", label: "Due soon" },
   { id: "week", label: "This week" },
@@ -119,8 +121,12 @@ const negate = (n: number | null | undefined) => (n == null ? null : -n);
  * `score` each item comes with (none for events and finished tasks, which go
  * last); ties go to the more pressing task.
  */
-function sortBy(sort: ItemSort, now: Date): (a: Item, b: Item) => number {
-  const pressing = byScore(now);
+function sortBy(
+  sort: ItemSort,
+  now: Date,
+  among: Item[],
+): (a: Item, b: Item) => number {
+  const pressing = byScore(now, among);
   switch (sort) {
     case "newest":
       return (a, b) =>
@@ -152,7 +158,7 @@ function sortBy(sort: ItemSort, now: Date): (a: Item, b: Item) => number {
 /** Smart lists that can be pinned above the list. Overdue always is. */
 type PinId = "today" | "tomorrow" | "soon";
 const PINNABLE: { id: PinId; label: string; hint: string }[] = [
-  { id: "today", label: "Today", hint: "Due today" },
+  { id: "today", label: "Today", hint: "Planned or due today" },
   { id: "tomorrow", label: "Tomorrow", hint: "Due tomorrow" },
   { id: "soon", label: "Due soon", hint: "Due after tomorrow, within a week" },
 ];
@@ -187,6 +193,7 @@ export function TasksView({
   onChanged,
 }: Props) {
   const { lists, tags, listById, tagById } = usePlanning();
+  const { feed } = usePlanned();
   const [filter, setFilter] = useState<Filter>("all");
   const [progressOpen, setProgressOpen] = useState(false);
   const [layout, setLayoutState] = useState<Layout>(() =>
@@ -259,10 +266,12 @@ export function TasksView({
   };
 
   const now = new Date();
+  // Tasks with a session of yours today count as "Today" too.
+  const plannedToday = plannedTodayIds(feed, now);
   const matching = searchItems(items, query)
     .filter(
       (i) =>
-        matchesDue(i, due, now) &&
+        matchesDue(i, due, now, plannedToday) &&
         (priority === "any" || i.priority === priority) &&
         (listId === "any" ||
           (listId === "none" ? !i.list_id : i.list_id === listId)) &&
@@ -275,7 +284,7 @@ export function TasksView({
               ? !!i.team_id && !i.assignee_id
               : i.assignee_id === assignee)),
     )
-    .sort(sortBy(sort, now));
+    .sort(sortBy(sort, now, items));
   const counts = statusCounts(matching);
   const visible =
     filter === "all" ? matching : matching.filter((i) => i.status === filter);
@@ -289,8 +298,10 @@ export function TasksView({
           }
         : emptyPlans;
 
-  // Pinned smart lists: open items only, and each item shows once.
+  // Pinned smart lists: open items only, and each item shows once (in the
+  // first that takes it: a late task planned today stays under Overdue).
   const open = visible.filter((i) => !isClosed(i.status));
+  const taken = new Set<string>();
   const pinned =
     layout === "list"
       ? [
@@ -300,7 +311,12 @@ export function TasksView({
           .map((p) => ({
             key: p.id,
             title: p.label,
-            items: open.filter((i) => matchesDue(i, p.id, now)),
+            items: open.filter(
+              (i) =>
+                !taken.has(i.id) &&
+                matchesDue(i, p.id, now, plannedToday) &&
+                !!taken.add(i.id),
+            ),
           }))
           .filter((s) => s.items.length)
       : [];

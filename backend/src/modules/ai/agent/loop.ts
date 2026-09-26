@@ -1,6 +1,6 @@
 import { fitData } from "./format.js";
 import type { FastifyBaseLogger } from "fastify";
-import type { Action, ChatTurn, DocSource, DraftNote } from "@orbyn/core";
+import type { Action, ChatTurn, AssistantSource, DraftNote } from "@orbyn/core";
 import {
   attemptMsFor,
   ProviderError,
@@ -24,6 +24,7 @@ import {
 } from "./protocol.js";
 import { runTool, TOOL_SPECS, type AgentContext } from "./tools.js";
 import { runGraph } from "./graph.js";
+import { finalizeSources } from "./sources.js";
 
 /**
  * The agent loop, after BrainRouter's runTurn: one loop of model call, then
@@ -44,7 +45,7 @@ export type AgentResult = {
   actions: Action[];
   follow_ups: string[];
   /** Pages read while answering, so the reply can point at them. */
-  sources: DocSource[];
+  sources: AssistantSource[];
   /** Notes drafted this turn, which become pages only if kept. */
   notes: DraftNote[];
   /** The reply came in the old single-JSON format (actions not yet vetted). */
@@ -218,21 +219,27 @@ export async function runAgent(
     if (ctx.clarification) {
       summary = ctx.clarification.question;
       actions = [];
+      ctx.sessionChange = null;
+      ctx.decisionLinks = [];
     }
     if (!summary)
-      summary = actions.length
-        ? actions.length === 1
-          ? "Here's the change for you to review."
-          : `Here are ${actions.length} changes for you to review.`
-        : "I couldn't find an answer to that. Could you rephrase it?";
+      summary = ctx.sessionChange
+        ? "Here's the session change for you to review."
+        : actions.length
+          ? actions.length === 1
+            ? "Here's the change for you to review."
+            : `Here are ${actions.length} changes for you to review.`
+          : "I couldn't find an answer to that. Could you rephrase it?";
     if (partial)
       summary +=
         "\n\n_I ran out of steps before finishing, so this may be incomplete._";
+    const checked = finalizeSources(summary, [...(ctx.cited?.values() ?? [])]);
+    summary = checked.summary;
     return {
       summary,
       actions,
       follow_ups: ctx.clarification?.options ?? [],
-      sources: [...(ctx.cited?.values() ?? [])].slice(0, 6),
+      sources: checked.sources,
       notes: ctx.notes ?? [],
       legacy,
       steps,

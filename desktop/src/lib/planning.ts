@@ -1,6 +1,8 @@
 import {
+  dueDayAt,
   formatRrule,
   isClosed,
+  latestDates,
   parseRrule,
   priorityScore,
   zonedParts,
@@ -59,12 +61,23 @@ export const sizeOf = (i: Pick<Item, "estimate_minutes">): Size => {
 /** Due-date buckets for the task filter. */
 export type DueFilter =
   "any" | "overdue" | "today" | "tomorrow" | "soon" | "week" | "none";
-export function matchesDue(i: Item, due: DueFilter, now = new Date()) {
+/**
+ * Whether a task falls in a due bucket. "today" is planned or due today:
+ * `plannedToday` holds the tasks with a session of yours today.
+ */
+export function matchesDue(
+  i: Item,
+  due: DueFilter,
+  now = new Date(),
+  plannedToday?: Set<string>,
+) {
   if (due === "any") return true;
   if (due === "none") return !i.due_at;
+  if (due === "today" && plannedToday?.has(i.id)) return true;
   if (!i.due_at) return false;
   if (due === "overdue") return isOverdue(i, now);
-  const at = new Date(i.due_at);
+  // The day it's due by: an all-day task's last day, a span's end.
+  const at = dueDayAt(i)!;
   /** Local midnight `n` days from today. */
   const day = (n: number) =>
     new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
@@ -77,11 +90,22 @@ export function matchesDue(i: Item, due: DueFilter, now = new Date()) {
   return within(0, 7 - now.getDay());
 }
 
-/** Open tasks first, most pressing first; finished ones last. */
-export function byScore(now = new Date()) {
+/**
+ * Open tasks first, most pressing first; finished ones last. With `among`
+ * (the loaded tasks), urgency counts to each task's latest date — its own
+ * deadline, its project's, or that of a task waiting on it — as the planner
+ * does (`latestDates`).
+ */
+export function byScore(now = new Date(), among?: Item[]) {
+  const latest = among ? latestDates(among) : null;
+  const score = (i: Item) =>
+    priorityScore(
+      latest?.has(i.id) ? { ...i, deadline_at: latest.get(i.id) } : i,
+      now,
+    );
   return (a: Item, b: Item) =>
     Number(isClosed(a.status)) - Number(isClosed(b.status)) ||
-    priorityScore(b, now) - priorityScore(a, now) ||
+    score(b) - score(a) ||
     a.title.localeCompare(b.title);
 }
 
@@ -89,7 +113,7 @@ export function byScore(now = new Date()) {
 export const nextUp = (items: Item[], exclude?: string, limit = 5) =>
   items
     .filter((i) => i.kind === "task" && !isClosed(i.status) && i.id !== exclude)
-    .sort(byScore())
+    .sort(byScore(new Date(), items))
     .slice(0, limit);
 
 // ---- Repeating items ---------------------------------------------------------

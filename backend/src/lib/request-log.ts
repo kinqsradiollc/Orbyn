@@ -25,6 +25,18 @@ export const requestUser = new WeakMap<FastifyRequest, string>();
  * towards anyone's daily activity.
  */
 export const analyticsOptOut = new WeakSet<FastifyRequest>();
+/**
+ * Requests made by outside agents (MCP). They are traced like any other,
+ * but an agent polling is not the person being active, so they never count
+ * towards daily activity (which drives active-user numbers and "while you
+ * were away").
+ */
+export const agentRequests = new WeakSet<FastifyRequest>();
+/**
+ * A clearer name for what a request did than its route pattern: MCP calls
+ * are logged as "mcp:<tool>" (or "mcp:<method>"), since they all POST /mcp.
+ */
+export const routeLabels = new WeakMap<FastifyRequest, string>();
 
 const SKIP =
   /^\/(?:live|ready|version|health|metrics)$|^\/events(?:\/|$)|^\/docs\/[^/]+\/live$/;
@@ -197,7 +209,8 @@ export function recordRequests(app: FastifyInstance, service: string) {
   app.addHook("onResponse", async (request, reply) => {
     const path = request.url.split("?")[0];
     if (SKIP.test(path) || request.method === "OPTIONS") return;
-    const route = request.routeOptions.url ?? "(no route)";
+    const route =
+      routeLabels.get(request) ?? request.routeOptions.url ?? "(no route)";
     if (SKIP.test(route)) return;
     const status = reply.statusCode;
     const duration = Math.round(reply.elapsedTime);
@@ -214,7 +227,7 @@ export function recordRequests(app: FastifyInstance, service: string) {
         at: new Date(),
       },
       kept,
-      !analyticsOptOut.has(request),
+      !analyticsOptOut.has(request) && !agentRequests.has(request),
     );
   });
 

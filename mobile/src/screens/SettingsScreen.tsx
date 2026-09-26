@@ -33,6 +33,7 @@ import { SmallAction } from "../components/SmallAction";
 import * as WebBrowser from "expo-web-browser";
 import { client, webOrigin } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
+import { saveFile } from "../lib/download";
 import { disablePush, enablePush } from "../lib/push";
 import {
   colors,
@@ -272,7 +273,7 @@ export function SettingsScreen({
           <Text style={[shared.eyebrow, s.section]}>WHERE YOUR TIME GOES</Text>
           <View style={shared.card}>
             <Text style={shared.body}>
-              {Math.round(analytics.planned_minutes / 60)} h set aside and{" "}
+              {Math.round(analytics.planned_minutes / 60)} h in sessions and{" "}
               {analytics.completed} task
               {analytics.completed === 1 ? "" : "s"} finished in the last 30
               days.
@@ -303,18 +304,18 @@ export function SettingsScreen({
             <View style={s.preference}>
               <View style={{ flex: 1 }}>
                 <Text style={s.prefTitle}>
-                  Count blocked time as worked when I complete a task
+                  Count session time as worked when I complete a task
                 </Text>
                 <Text style={shared.small}>
-                  The time blocks you had for it, up to now, are added to its
-                  time spent. Each block counts once.
+                  The sessions you had for it, up to now, are added to its time
+                  spent. Each session counts once.
                 </Text>
               </View>
               <Switch
                 value={countBlocks}
                 disabled={busy}
                 trackColor={{ true: colors.accent }}
-                accessibilityLabel="Count blocked time as worked when I complete a task"
+                accessibilityLabel="Count session time as worked when I complete a task"
                 onValueChange={(value) =>
                   void saveNotices({ count_blocks_as_spent: value })
                 }
@@ -389,7 +390,7 @@ export function SettingsScreen({
               Warn before a due date
             </Text>
             <Text style={[shared.small, s.prefText]}>
-              When a task has no time set aside yet.
+              When a task has no sessions planned yet.
             </Text>
             <ChipRow label="Days before a due date">
               {[...new Set([...NOTICE_DAYS, notices.days])]
@@ -725,13 +726,26 @@ export function SettingsScreen({
 
       <SettingsSection title="Import & export">
         <Text style={shared.body}>
-          Take your data with you, or bring it in from another app.
+          Take everything with you — every page as Markdown in its folders — or
+          bring tasks in from another app.
         </Text>
         <Button
           secondary
-          title="Export my data"
+          title="Export everything (.zip)"
           disabled={busy}
           style={{ marginTop: 12, marginBottom: 0 }}
+          onPress={() =>
+            void act(async () => {
+              const { blob, name } = await client.exportArchive();
+              await saveFile(name, blob, "application/zip");
+            })
+          }
+        />
+        <Button
+          secondary
+          title="Export my data (JSON)"
+          disabled={busy}
+          style={{ marginTop: 8, marginBottom: 0 }}
           onPress={() =>
             void act(async () => {
               const archive = await client.exportData();

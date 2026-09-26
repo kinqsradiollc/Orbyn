@@ -4,10 +4,10 @@
 #
 # Model: deny everything in both directions, then allow only these flows.
 #   Ingress (into pods)
-#     ingress controller -> api, ai, realtime, status, files :8000, web :8080
+#     ingress controller -> api, ai, realtime, status, files, mcp :8000, web :8080
 #     converter          -> files :8000                (reading uploads back)
-#     status             -> api, ai, realtime :8000, web :8080   (health probes)
-#     web                -> api, ai, realtime, status :8000 (/api proxy, web.yaml)
+#     status             -> api, ai, realtime, mcp :8000, web :8080   (health probes)
+#     web                -> api, ai, realtime, status, mcp :8000 (/api proxy, web.yaml)
 #     backend pods       -> pgbouncer :6432            (only if pgbouncer.yaml is used)
 #   Egress (out of pods)
 #     every pod -> cluster DNS
@@ -52,7 +52,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [api, ai, realtime, status, files, web]
+        values: [api, ai, realtime, status, files, mcp, web]
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -78,7 +78,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [api, ai, realtime, web]
+        values: [api, ai, realtime, mcp, web]
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -101,7 +101,7 @@ spec:
     matchExpressions:
       - key: app.kubernetes.io/component
         operator: In
-        values: [api, ai, realtime, status]
+        values: [api, ai, realtime, status, mcp]
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -131,6 +131,7 @@ spec:
                 values:
                   [
                     api,
+                    mcp,
                     ai,
                     realtime,
                     status,
@@ -181,6 +182,7 @@ spec:
         values:
           [
             api,
+            mcp,
             ai,
             realtime,
             status,
@@ -225,7 +227,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/component
                 operator: In
-                values: [api, ai, realtime, status, web]
+                values: [api, ai, realtime, status, mcp, web]
       ports:
         - protocol: TCP
           port: 8000

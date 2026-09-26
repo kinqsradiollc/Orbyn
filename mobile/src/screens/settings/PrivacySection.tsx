@@ -138,7 +138,8 @@ export function PrivacySection({
           </View>
         )}
         <Text style={[shared.small, { marginTop: 12 }]}>
-          To take a copy of your data, use Export my data in Import & export.
+          To take a copy of everything, pages included, use Export everything in
+          Import & export.
         </Text>
       </SettingsSection>
 

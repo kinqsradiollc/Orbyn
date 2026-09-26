@@ -51,6 +51,7 @@ const schema = z.object({
   STATUS_API_URL: z.string().default(""),
   STATUS_AI_URL: z.string().default(""),
   STATUS_REALTIME_URL: z.string().default(""),
+  STATUS_MCP_URL: z.string().default(""),
   /** Database connections each service process keeps (to Postgres or PgBouncer). */
   DB_POOL_MAX: z.coerce.number().int().min(1).max(200).default(10),
   /**
@@ -127,10 +128,26 @@ const schema = z.object({
   FORMULA_URL: z.string().default(""),
   /** How long one page may take on CPU before it's given up on. */
   OCR_TIMEOUT_MS: z.coerce.number().int().min(10_000).default(600_000),
+  /**
+   * The MCP address outside agents connect to: the canonical resource their
+   * credentials are for, shown in Settings → Connected agents and in every
+   * 401 challenge. Set here, never derived from request headers.
+   */
+  MCP_PUBLIC_URL: z.string().default("https://mcp.orbyn.dev/mcp"),
+  /** Who issues agent sign-ins (OAuth, phase A2); defaults to APP_URL. */
+  OAUTH_ISSUER: z.string().default(""),
+  /** Seconds an agent access token (oat_) lasts. */
+  OAUTH_ACCESS_TTL: z.coerce.number().int().min(60).max(86_400).default(3600),
+  /** Days an unused agent refresh token (ort_) lasts; 90 at most in all. */
+  OAUTH_REFRESH_TTL: z.coerce.number().int().min(1).max(90).default(30),
 });
 
 export type Env = z.infer<typeof schema>;
 export const env: Env = schema.parse(process.env);
+
+/** The OAuth issuer: OAUTH_ISSUER, or the web app's address. */
+export const oauthIssuer = () =>
+  (env.OAUTH_ISSUER || env.APP_URL).replace(/\/+$/, "");
 
 export const adminEmails = new Set(
   env.ADMIN_EMAILS.split(",")

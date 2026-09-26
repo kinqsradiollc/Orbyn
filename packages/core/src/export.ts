@@ -149,6 +149,10 @@ export function docToHtml(title: string, blocks: DocBlock[]): string {
     }
   }
   closeList();
+  // The colours below are written out, not theme tokens: the file is opened
+  // on its own, far from the app's stylesheet, so it has no variables to
+  // read. They match the light theme (the highlight is its warnSoft tint),
+  // and the file prints on white either way.
   return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -199,3 +203,67 @@ const plainRuns = (text: string) =>
 /** A page as the Markdown it already is, with its title as a heading. */
 export const docToMarkdown = (title: string, blocks: DocBlock[]): string =>
   `# ${title}\n\n${serializeDoc(blocks)}`;
+
+/**
+ * A name that is safe as a file or folder name on every operating system:
+ * no slashes or reserved characters, no leading dots, not too long.
+ */
+export function safeFileName(name: string, fallback = "Untitled"): string {
+  const clean = name
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\.+/, "")
+    .slice(0, 80)
+    .trim();
+  return clean || fallback;
+}
+
+/** What the front matter of an exported page says about it. */
+export type PageFacts = {
+  title: string;
+  kind: string;
+  created_at: string;
+  updated_at: string;
+  /** The day an agenda is for. */
+  agenda_date?: string | null;
+  folder?: string | null;
+  project?: string | null;
+  tags?: string[];
+  /** The file an imported page was read from; the file itself isn't kept. */
+  imported_from?: { file_name: string } | null;
+  in_trash?: boolean;
+};
+
+const KIND_WORDS: Record<string, string> = {
+  doc: "page",
+  note: "note",
+  agenda: "agenda",
+  meeting: "meeting note",
+};
+
+/**
+ * A page as a Markdown file to keep: YAML front matter with where it lived
+ * and when, then the page itself. Strings are written double-quoted, which
+ * every YAML reader takes as they are.
+ */
+export function pageFile(facts: PageFacts, blocks: DocBlock[]): string {
+  const q = (s: string) => JSON.stringify(s);
+  const lines = [
+    "---",
+    `title: ${q(facts.title || "Untitled")}`,
+    `kind: ${q(KIND_WORDS[facts.kind] ?? facts.kind)}`,
+    `created: ${q(facts.created_at)}`,
+    `updated: ${q(facts.updated_at)}`,
+  ];
+  if (facts.agenda_date) lines.push(`date: ${q(facts.agenda_date)}`);
+  if (facts.folder) lines.push(`folder: ${q(facts.folder)}`);
+  if (facts.project) lines.push(`project: ${q(facts.project)}`);
+  if (facts.tags?.length) lines.push(`tags: [${facts.tags.map(q).join(", ")}]`);
+  if (facts.imported_from)
+    lines.push(`imported_from: ${q(facts.imported_from.file_name)}`);
+  if (facts.in_trash) lines.push("in_trash: true");
+  lines.push("---", "");
+  return lines.join("\n") + docToMarkdown(facts.title || "Untitled", blocks);
+}

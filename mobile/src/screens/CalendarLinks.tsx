@@ -103,7 +103,7 @@ export function CalendarFeedCard() {
         <View style={s.divider} />
         <FeedLink
           title="Busy times only"
-          detail="Just “Busy” blocks, with no details. Safe to share with others."
+          detail="Just “Busy” times, with no details. Safe to share with others."
           on={!!settings?.busy_enabled}
           url={links.busy}
           busy={busy}
@@ -113,16 +113,14 @@ export function CalendarFeedCard() {
         <View style={s.divider} />
         <View style={s.switchRow}>
           <View style={{ flex: 1 }}>
-            <Text style={s.title}>Include time blocks</Text>
-            <Text style={shared.small}>
-              Time set aside for tasks shows as “Focus: task”.
-            </Text>
+            <Text style={s.title}>Include sessions</Text>
+            <Text style={shared.small}>Sessions show as “Focus: task”.</Text>
           </View>
           <Switch
             value={!!settings?.include_blocks}
             disabled={busy || !settings}
             trackColor={{ true: colors.accent }}
-            accessibilityLabel="Include time blocks in the feed"
+            accessibilityLabel="Include sessions in the feed"
             onValueChange={(include_blocks) =>
               void run(async () =>
                 setSettings(

@@ -1,3 +1,4 @@
+import { dueDayAt } from "./deadlines.js";
 import { localDateKey } from "./time.js";
 import type { Item } from "./types.js";
 
@@ -14,7 +15,7 @@ export type Glance = {
   todayOpen: number;
   /** Tasks due today already done. */
   todayDone: number;
-  /** Open tasks whose day is before today. */
+  /** Open tasks whose deadline fell on a day before today. */
   overdue: number;
   /** The next event starting now or later, or null. */
   nextEvent: GlanceEvent | null;
@@ -43,7 +44,8 @@ export function buildGlance(
   for (const it of items) {
     if (!it.due_at) continue;
     if (it.kind === "task") {
-      const dayKey = localDateKey(new Date(it.due_at), tz);
+      // The deadline's day: an all-day task is due today until it's over.
+      const dayKey = localDateKey(dueDayAt(it)!, tz);
       if (it.status === "done") {
         if (dayKey === todayKey) todayDone++;
       } else if (dayKey === todayKey) {

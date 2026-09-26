@@ -1,5 +1,19 @@
 import {
   HttpError,
+  type AgendaDay,
+  type CaptureRequest,
+  type CaptureResult,
+  type LinkPreview,
+  type DocTag,
+  type PageTemplate,
+  type PageTemplateFromDoc,
+  type PageTemplateInput,
+  type PageTemplateUpdate,
+  type PageTemplateUse,
+  type ItemSessions,
+  type ItemContext,
+  type PlannedFeed,
+  type TodayList,
   type AdminOverview,
   type AdminAnalytics,
   type AdminUserDetail,
@@ -37,11 +51,16 @@ import {
   type Proposed,
   type SearchHit,
   type DocSummary,
+  type EventNoteRef,
   type DocVersion,
+  type DocVersionChanges,
   type Favourite,
   type FavouriteKind,
   type Folder,
   type Project,
+  type ProjectLink,
+  type ProjectPlanning,
+  type ProjectSession,
   type ProjectActivity,
   type ProjectCheckpoint,
   type ProjectSnapshot,
@@ -67,6 +86,7 @@ import {
   type Passkey,
   type InboxInfo,
   type ChatTurn,
+  type ChatScope,
   type Credentials,
   type Item,
   type ItemDetail,
@@ -98,7 +118,26 @@ import {
   type TeamRole,
   type User,
   type ApiKey,
+  type AgentActivity,
+  type AgentKeyInput,
+  type AgentSettings,
+  type AgentSettingsUpdate,
+  type AgentsOverview,
+  type NewAgentKey,
+  type TeamAgentAccess,
+  type TeamAgentsView,
+  type AdminAgentClient,
+  type AdminAgentUsage,
+  type OAuthCheck,
+  type OAuthConsentInput,
+  type OAuthRedirect,
+  type OAuthRequest,
+  type ReauthInput,
+  type Reauthenticated,
   type BlockDuplicateInput,
+  type BlockRescheduleInput,
+  type PlanApplied,
+  type PlanApplyInput,
   type BlockInput,
   type BlockUpdate,
   type Booking,
@@ -205,7 +244,13 @@ export type LiveNews = {
  * What a document's stream says beyond its version: `trashed` when someone
  * moved it to Trash, so an editor that has it open can let it go.
  */
-export type DocNews = { trashed: boolean };
+export type DocNews = {
+  trashed: boolean;
+  /** Only the page's tags changed; its words and version are as they were. */
+  tags: boolean;
+  /** Who made the change, so an editor can skip its own saves ("" when unknown). */
+  by: string;
+};
 
 /** "?scope=this&occurrence=…" for edits to part of a repeating item. */
 const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
@@ -270,6 +315,8 @@ export type RequestOptions = {
   raw?: boolean;
   /** Send once: a retry with the same key gets the first answer back. */
   idempotencyKey?: string;
+  /** Extra request headers. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -371,6 +418,7 @@ export class OrbynClient {
             ? { "Idempotency-Key": idempotencyKey }
             : {}),
           "X-Orbyn-Editor": this.editorId,
+          ...options.headers,
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -573,6 +621,20 @@ export class OrbynClient {
   exportData() {
     return this.request<unknown>("/me/export");
   }
+  /**
+   * Everything, pages included, as a .zip: every page as Markdown in its
+   * folders, projects, folders, imports, consent history and the planner
+   * file. Comes back as a blob with the name the server chose.
+   */
+  async exportArchive() {
+    const response = await this.raw("/me/export.zip");
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return {
+      blob: await response.blob(),
+      name: named ?? "orbyn-export.zip",
+    };
+  }
   /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
   importData(input: {
     format: "orbyn" | "csv";
@@ -750,6 +812,21 @@ export class OrbynClient {
         : "/agenda/today",
     );
   }
+  /**
+   * One day's agenda, for stepping back and forward: today's is written on
+   * the spot; another day's `doc` is null until `writeAgenda` writes it.
+   */
+  agendaOn(date: string, timezone?: string) {
+    return this.request<AgendaDay>(
+      timezone
+        ? `/agenda/${date}?timezone=${encodeURIComponent(timezone)}`
+        : `/agenda/${date}`,
+    );
+  }
+  /** Write one day's agenda from the calendar (or get the one written). */
+  writeAgenda(date: string) {
+    return this.request<Doc>(`/agenda/${date}`, { method: "POST" });
+  }
   /** Tell the server the device's zone; adopted unless you picked one. */
   reportTimeZone(timezone: string) {
     return this.request<{ adopted: boolean; timezone: string }>(
@@ -757,9 +834,43 @@ export class OrbynClient {
       { method: "POST", body: { timezone } },
     );
   }
-  /** The note for an event, created from a template the first time. */
-  itemNote(itemId: string) {
-    return this.request<Doc>(`/items/${itemId}/note`, { method: "POST" });
+  /**
+   * The note for an event, created from a template the first time. For a
+   * repeating event, `occurrence` (the calendar entry's) opens that class's
+   * own note; without it, the series' note.
+   */
+  itemNote(itemId: string, occurrence?: string | null) {
+    return this.request<Doc>(`/items/${itemId}/note`, {
+      method: "POST",
+      ...(occurrence ? { body: { occurrence } } : {}),
+    });
+  }
+  /**
+   * The notes these events have, to mark them (`eventNoteFor` finds an
+   * entry's). `from`/`to` keep a repeating event's class notes to the
+   * times shown.
+   */
+  async eventNotes(
+    itemIds: string[],
+    range: { from?: string; to?: string } = {},
+  ): Promise<EventNoteRef[]> {
+    const ids = [...new Set(itemIds)];
+    // The server takes 200 events at a time.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 200)
+      chunks.push(ids.slice(i, i + 200));
+    const found = await Promise.all(
+      chunks.map((chunk) =>
+        this.request<EventNoteRef[]>(
+          `/docs/event-notes?${new URLSearchParams({
+            items: chunk.join(","),
+            ...(range.from ? { from: range.from } : {}),
+            ...(range.to ? { to: range.to } : {}),
+          })}`,
+        ),
+      ),
+    );
+    return found.flat();
   }
   /**
    * Turn a page's open checklist lines into tasks: every one that isn't a
@@ -783,6 +894,47 @@ export class OrbynClient {
   }
   getProject(id: string) {
     return this.request<Project>(`/projects/${id}`);
+  }
+  listProjectLinks(id: string) {
+    return this.request<ProjectLink[]>(`/projects/${id}/links`);
+  }
+  addProjectLink(id: string, input: { url: string; title?: string }) {
+    return this.request<ProjectLink>(`/projects/${id}/links`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  removeProjectLink(id: string, linkId: string) {
+    return this.request<void>(`/projects/${id}/links/${linkId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Mark a project visit and return the prior visit for cross-device catch-up. */
+  visitProject(id: string) {
+    return this.request<{ since_at: string | null; visited_at: string }>(
+      `/projects/${id}/visit`,
+      { method: "POST" },
+    );
+  }
+  projectPlanning(id: string) {
+    return this.request<ProjectPlanning>(`/projects/${id}/planning`);
+  }
+  projectSessions(id: string) {
+    return this.request<ProjectSession[]>(`/projects/${id}/sessions`);
+  }
+  /** Preview a project plan using only tasks assigned to the signed-in person. */
+  /**
+   * Preview a plan for your tasks in a project. `claimItemIds` are unassigned
+   * team tasks you take on with it: they become yours and are planned too.
+   */
+  planProject(id: string, timezone?: string, claimItemIds: string[] = []) {
+    return this.request<Plan>(`/projects/${id}/plan`, {
+      method: "POST",
+      body: {
+        timezone,
+        ...(claimItemIds.length ? { claim_item_ids: claimItemIds } : {}),
+      },
+    });
   }
   /** Recent changes to a project, with private task and note content omitted. */
   projectActivity(id: string, limit = 100) {
@@ -830,15 +982,26 @@ export class OrbynClient {
   deleteProject(id: string) {
     return this.request<void>(`/projects/${id}`, { method: "DELETE" });
   }
-  /** Move a task into a project and stage, or pass null to unfile it. */
+  /**
+   * Move a task into a project and stage, or pass null to unfile it. The
+   * answer carries the task as it now stands.
+   */
   setItemProject(
     itemId: string,
     input: { project_id: string | null; stage_id?: string | null },
   ) {
-    return this.request<{ ok: true }>(`/items/${itemId}/project`, {
+    return this.request<{ ok: true; item: Item }>(`/items/${itemId}/project`, {
       method: "PUT",
       body: input,
     });
+  }
+  /**
+   * What a task hangs off and what hangs off it: its project and stage, the
+   * page line it came from and the other pages about it (only pages you can
+   * open).
+   */
+  itemContext(itemId: string) {
+    return this.request<ItemContext>(`/items/${itemId}/context`);
   }
 
   /** Promises, decisions, experiments and meeting outcomes visible to this user. */
@@ -1047,6 +1210,23 @@ export class OrbynClient {
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);
   }
+  /** Put exactly these tags (by id) on a page. */
+  setDocTags(id: string, tags: string[]) {
+    return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {
+      method: "PUT",
+      body: { tags },
+    });
+  }
+  /**
+   * Add tags to a page by name, as typing "#physics" in a line does; a name
+   * with no tag yet makes one. `added` says which names were new to it.
+   */
+  addDocTags(id: string, names: string[]) {
+    return this.request<{ tags: DocTag[]; added: string[] }>(
+      `/docs/${id}/tags`,
+      { method: "POST", body: { names } },
+    );
+  }
   createDoc(input: {
     title?: string;
     kind?: DocKind;
@@ -1059,6 +1239,12 @@ export class OrbynClient {
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
+  /**
+   * Save a page. An editor passes `ticksFrom`, the version of the page its
+   * checklist ticks were taken from (the version it last read or saved when
+   * the content was put together), so a tick made on a line as it now stands
+   * counts, and one carried over from before doesn't count twice.
+   */
   updateDoc(
     id: string,
     input: {
@@ -1069,8 +1255,15 @@ export class OrbynClient {
       tags?: string[];
       version: number;
     },
+    options: { ticksFrom?: number } = {},
   ) {
-    return this.request<Doc>(`/docs/${id}`, { method: "PUT", body: input });
+    return this.request<Doc>(`/docs/${id}`, {
+      method: "PUT",
+      body: input,
+      ...(options.ticksFrom
+        ? { headers: { "X-Orbyn-Ticks-From": String(options.ticksFrom) } }
+        : {}),
+    });
   }
   /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {
@@ -1099,6 +1292,15 @@ export class OrbynClient {
       `/docs/${id}/versions/${version}`,
     );
   }
+  /**
+   * One past state for "Show changes": the version, the one kept before it,
+   * and the sittings since (null when too many were kept since), in one read.
+   */
+  getDocVersionChanges(id: string, version: number) {
+    return this.request<DocVersionChanges>(
+      `/docs/${id}/versions/${version}/changes`,
+    );
+  }
   /** Put a past state back; it becomes a new version on top. */
   restoreDocVersion(id: string, version: number) {
     return this.request<Doc>(`/docs/${id}/versions/${version}/restore`, {
@@ -1108,8 +1310,11 @@ export class OrbynClient {
 
   /**
    * Watch a document for changes made elsewhere. Calls `onChange` with the
-   * version the document has reached; the caller then re-reads it. Returns a
-   * function that stops watching.
+   * version the document has reached and who moved it on: another editor's
+   * id, "task" when a task tied to one of its lines was finished or reopened
+   * somewhere else, or "agenda" when the day's agenda was written again
+   * from the calendar. The caller then re-reads it. Returns a function that
+   * stops watching.
    *
    * This reads the stream with `fetch` rather than `EventSource`, which
    * cannot carry an Authorization header and would force the token into the
@@ -1165,9 +1370,13 @@ export class OrbynClient {
                 const payload = JSON.parse(line.slice(5)) as {
                   version?: number;
                   trashed?: boolean;
+                  tags?: boolean;
+                  by?: string;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
+                  tags: payload.tags === true,
+                  by: typeof payload.by === "string" ? payload.by : "",
                 });
               } catch {
                 // A half-written event: the next one will bring us up to date.
@@ -1227,6 +1436,10 @@ export class OrbynClient {
     const q = new URLSearchParams({ from, to });
     return this.request<TimeBlock[]>(`/blocks?${q}`);
   }
+  /** Your sessions for one task, past ones too, with its deadline. Makes no plan. */
+  itemSessions(itemId: string) {
+    return this.request<ItemSessions>(`/items/${itemId}/sessions`);
+  }
   createBlock(input: BlockInput) {
     return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
   }
@@ -1239,10 +1452,15 @@ export class OrbynClient {
   deleteBlock(id: string) {
     return this.request<void>(`/blocks/${id}`, { method: "DELETE" });
   }
-  /** Move a block to the next free working time of the same length. */
-  rescheduleBlock(id: string) {
+  /**
+   * Move a block to the next free working time of the same length, one that
+   * ends by its task's deadline when there is one. With `before_deadline`,
+   * only such a time will do (409 when there's none).
+   */
+  rescheduleBlock(id: string, input: BlockRescheduleInput = {}) {
     return this.request<TimeBlock>(`/blocks/${id}/reschedule`, {
       method: "POST",
+      body: input,
     });
   }
   /** Another block for the same task and length, at `start_at` or the next free time after it. */
@@ -1276,6 +1494,30 @@ export class OrbynClient {
   /** What to do now: the free time until your next event and tasks for it. */
   getUpNext() {
     return this.request<UpNext>("/planner/next");
+  }
+  /**
+   * Today, planned and due in one list: events, your sessions, tasks due
+   * today and late ones, and unfinished sessions from earlier days. The day
+   * is `timezone`'s (pass the device's), or the planner's.
+   */
+  today(timezone?: string) {
+    const q = timezone ? `?${new URLSearchParams({ timezone })}` : "";
+    return this.request<TodayList>(`/today${q}`);
+  }
+  /**
+   * Your planned time, task by task, with each task's status: some tasks
+   * (`item_ids`), or every open task that's yours to plan plus any with a
+   * session in the window (`from`, `to`), whose sessions each lists.
+   */
+  planned(options: { item_ids?: string[]; from?: string; to?: string } = {}) {
+    const q = new URLSearchParams();
+    if (options.item_ids?.length) q.set("item_ids", options.item_ids.join(","));
+    if (options.from && options.to) {
+      q.set("from", options.from);
+      q.set("to", options.to);
+    }
+    const text = q.toString();
+    return this.request<PlannedFeed>(`/planned${text ? `?${text}` : ""}`);
   }
   /** Email yourself a digest now, to preview it. */
   sendTestDigest(kind: "morning" | "evening" = "morning") {
@@ -1395,11 +1637,16 @@ export class OrbynClient {
   planStale(id: string) {
     return this.request<PlanStaleness>(`/planner/plans/${id}/stale`);
   }
-  applyPlan(id: string) {
-    return this.request<{ blocks: TimeBlock[]; skipped: number }>(
-      `/planner/plans/${id}/apply`,
-      { method: "POST" },
-    );
+  /**
+   * Save a plan: its new sessions, and the late sessions to move before
+   * their deadline (`moves`, block ids; the ones the planner ticked when
+   * omitted).
+   */
+  applyPlan(id: string, input: PlanApplyInput = {}) {
+    return this.request<PlanApplied>(`/planner/plans/${id}/apply`, {
+      method: "POST",
+      body: input,
+    });
   }
   /** Unfinished blocks, tasks at risk, and blocks that clash with events. */
   plannerReview() {
@@ -1800,6 +2047,77 @@ export class OrbynClient {
   deleteApiKey(id: string) {
     return this.request<void>(`/me/api-keys/${id}`, { method: "DELETE" });
   }
+  // ---- Connected agents (MCP) ----
+  /** Your connected agents, the MCP address, and until when old keys work there. */
+  agents() {
+    return this.request<AgentsOverview>("/me/agents");
+  }
+  /** A new agent key; the returned `key` is shown once. */
+  createAgentKey(input: AgentKeyInput) {
+    return this.request<NewAgentKey>("/me/agent-keys", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Revoke a connection (an agent key, or an old key's MCP access). */
+  revokeAgent(id: string) {
+    return this.request<void>(`/me/agents/${id}`, { method: "DELETE" });
+  }
+  /** Restore a connection Orbyn paused for misbehaving. */
+  restoreAgent(id: string) {
+    return this.request<void>(`/me/agents/${id}/restore`, { method: "POST" });
+  }
+  /** What one connection did, newest first. */
+  agentActivity(id: string) {
+    return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
+  }
+  /** Team settings → Outside agents: the policy, and (managers) who connects. */
+  teamAgents(teamId: string) {
+    return this.request<TeamAgentsView>(`/teams/${teamId}/agents`);
+  }
+  // ---- Signing in with Orbyn (the consent page) ----
+  /** What an app's sign-in request asks for; with your spaces when signed in. */
+  oauthCheck(request: OAuthRequest) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(request))
+      if (typeof v === "string") q.set(k, v);
+    return this.request<OAuthCheck>(`/oauth/authorize/check?${q}`);
+  }
+  /** Allow the request: where to send the browser back, with a code. */
+  oauthAllow(input: OAuthConsentInput) {
+    return this.request<OAuthRedirect>("/oauth/authorize", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Decline the request: where to send the browser back, with an error. */
+  oauthDeny(request: OAuthRequest) {
+    return this.request<OAuthRedirect>("/oauth/authorize/deny", {
+      method: "POST",
+      body: { request },
+    });
+  }
+  /** Passkey options for confirming it's you (without a new session). */
+  reauthOptions() {
+    return this.request<{ handle: string; options: unknown }>(
+      "/me/reauth/options",
+      { method: "POST", body: {} },
+    );
+  }
+  /** Confirm it's you: password (and two-step code) or a passkey. */
+  reauth(input: ReauthInput) {
+    return this.request<Reauthenticated>("/me/reauth", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** A team's cap on outside agents (owners and admins). */
+  setTeamAgentAccess(teamId: string, agent_access: TeamAgentAccess) {
+    return this.request<{ id: string; agent_access: TeamAgentAccess }>(
+      `/teams/${teamId}/agent-access`,
+      { method: "PUT", body: { agent_access } },
+    );
+  }
   listWebhooks() {
     return this.request<Webhook[]>("/me/webhooks");
   }
@@ -1842,6 +2160,23 @@ export class OrbynClient {
    * Create an item from one line of text ("Lunch with @anna tomorrow 1pm
    * ;Cafe Roma"), parsed on the server without AI.
    */
+  /** A shared link's title and site, looked up on the server for the share sheet. */
+  linkPreview(url: string) {
+    return this.request<LinkPreview>("/capture/preview", {
+      method: "POST",
+      body: { url },
+    });
+  }
+  /**
+   * Put a link or some text shared into Orbyn where it was sent: an Inbox
+   * task, today's agenda, a page, a new page in a folder, or a project.
+   */
+  capture(input: CaptureRequest) {
+    return this.request<CaptureResult>("/capture", {
+      method: "POST",
+      body: input,
+    });
+  }
   quickAdd(text: string, timezone?: string) {
     return this.request<QuickAddCreated>("/items/quick", {
       method: "POST",
@@ -1936,11 +2271,27 @@ export class OrbynClient {
   }
 
   // ---- AI assistant ----
+  /** Whether the configured assistant can read with tools and draft pages. */
+  aiCapabilities() {
+    return this.request<{ enabled: boolean; tools: boolean }>(
+      "/ai/capabilities",
+    );
+  }
   /** Draft a project (subtasks) from a prompt, as a proposal to review. */
-  draftProject(prompt: string, timezone: string, teamId?: string | null) {
+  draftProject(
+    prompt: string,
+    timezone: string,
+    teamId?: string | null,
+    details?: { summary?: string; deadline?: string | null },
+  ) {
     return this.request<Proposal>("/ai/project", {
       method: "POST",
-      body: { prompt, timezone, ...(teamId ? { team_id: teamId } : {}) },
+      body: {
+        prompt,
+        timezone,
+        ...(teamId ? { team_id: teamId } : {}),
+        ...details,
+      },
     });
   }
   /**
@@ -1949,10 +2300,15 @@ export class OrbynClient {
    * model (one on the user's own machine) is never cut off by a proxy's
    * limit on a single request, and a dropped poll is simply tried again.
    */
-  async chat(message: string, timezone: string, history: ChatTurn[] = []) {
+  async chat(
+    message: string,
+    timezone: string,
+    history: ChatTurn[] = [],
+    scope: ChatScope | null = null,
+  ) {
     const { id } = await this.request<{ id: string }>("/ai/chat/start", {
       method: "POST",
-      body: { message, timezone, history: history.slice(-12) },
+      body: { message, timezone, history: history.slice(-12), scope },
     });
     const until = Date.now() + CHAT_WAIT_MS;
     let delay = CHAT_POLL_MS;
@@ -1969,10 +2325,15 @@ export class OrbynClient {
       "That took too long to answer. Try again, or ask for less at once.",
     );
   }
-  applyProposal(id: string) {
-    return this.request<{ applied: boolean }>(`/ai/proposals/${id}/apply`, {
-      method: "POST",
-    });
+  applyProposal(id: string, options?: { give_tasks_deadlines?: boolean }) {
+    // `project_id`: the project a drafted-project proposal made, else null.
+    return this.request<{ applied: boolean; project_id: string | null }>(
+      `/ai/proposals/${id}/apply`,
+      {
+        method: "POST",
+        body: options ?? {},
+      },
+    );
   }
 
   // ---- teams ----
@@ -2067,6 +2428,30 @@ export class OrbynClient {
   adminRevokeApiKey(id: string, keyId: string) {
     return this.request<void>(`/admin/users/${id}/api-keys/${keyId}`, {
       method: "DELETE",
+    });
+  }
+  /** Admin: the apps that have signed in with Orbyn. */
+  adminAgentClients() {
+    return this.request<AdminAgentClient[]>("/admin/agents/clients");
+  }
+  /** Admin: agent use by app over the last `days`. */
+  adminAgentUsage(days = 30) {
+    return this.request<AdminAgentUsage>(`/admin/agents/usage?days=${days}`);
+  }
+  /** Admin: end one of an account's agent connections. */
+  adminRevokeUserAgent(id: string, grantId: string) {
+    return this.request<void>(`/admin/users/${id}/agents/${grantId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Admin: the switches and limits for outside agents. */
+  adminAgentSettings() {
+    return this.request<AgentSettings>("/admin/agents");
+  }
+  adminUpdateAgentSettings(input: AgentSettingsUpdate) {
+    return this.request<AgentSettings>("/admin/agents", {
+      method: "PUT",
+      body: input,
     });
   }
   /** A one-hour password reset link to pass on (also emailed when mail is set up). */
@@ -2548,6 +2933,51 @@ export class OrbynClient {
       to: to.toISOString(),
     });
     return this.request<TeamCapacity>(`/teams/${teamId}/capacity?${q}`);
+  }
+
+  // ---- page templates ------------------------------------------------------
+
+  /** Your page templates, your teams', and the starters everyone has. */
+  listPageTemplates() {
+    return this.request<PageTemplate[]>("/page-templates");
+  }
+  createPageTemplate(input: PageTemplateInput) {
+    return this.request<PageTemplate>("/page-templates", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updatePageTemplate(id: string, input: PageTemplateUpdate) {
+    return this.request<PageTemplate>(`/page-templates/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deletePageTemplate(id: string) {
+    return this.request<void>(`/page-templates/${id}`, { method: "DELETE" });
+  }
+  /** Save a page as a template: its words, folder and tags, boxes unticked. */
+  savePageAsTemplate(docId: string, input: PageTemplateFromDoc = {}) {
+    return this.request<PageTemplate>(`/page-templates/from-doc/${docId}`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /**
+   * Make a page from a template, blanks filled in. With `make_tasks`, its
+   * to-do lines become tasks (in the project, when one is chosen). For an
+   * event that already has a note, that note comes back (`existing`) and
+   * nothing new is made.
+   */
+  usePageTemplate(id: string, input: PageTemplateUse = {}) {
+    return this.request<{
+      doc: Doc;
+      tasks_created: number;
+      existing: boolean;
+    }>(`/page-templates/${encodeURIComponent(id)}/use`, {
+      method: "POST",
+      body: input,
+    });
   }
 
   // ---- project templates ---------------------------------------------------

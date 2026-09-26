@@ -18,7 +18,12 @@ import { client } from "../../lib/api";
  * Importing files into Docs: the imports going on, kept fresh while any is
  * still being read, and a way to start one from a picked or dropped file.
  */
-export function useImports(report: (e: unknown) => void, onReady: () => void) {
+export function useImports(
+  report: (e: unknown) => void,
+  onReady: () => void,
+  projectId?: string,
+  projectTeamId?: string | null,
+) {
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [starting, setStarting] = useState(0);
   const [caps, setCaps] = useState<ImportCapabilities | null>(null);
@@ -94,6 +99,8 @@ export function useImports(report: (e: unknown) => void, onReady: () => void) {
           file_name: file.name,
           bytes: file.size,
           mime: file.type || undefined,
+          project_id: projectId,
+          project_team_id: projectId ? projectTeamId : undefined,
         });
         startedId = started.id;
         await refresh();
@@ -127,10 +134,12 @@ export function ImportButton({
   onFiles,
   busy,
   className = "text-button",
+  label = "Import file",
 }: {
   onFiles: (files: File[]) => void;
   busy: boolean;
   className?: string;
+  label?: string;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -141,7 +150,7 @@ export function ImportButton({
         title="Import a PDF, Word file or photo of notes"
         onClick={() => input.current?.click()}
       >
-        <FileUp size={15} /> {busy ? "Uploading…" : "Import file"}
+        <FileUp size={15} /> {busy ? "Uploading…" : label}
       </button>
       <input
         ref={input}

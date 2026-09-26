@@ -1,6 +1,7 @@
 import {
   addDays,
   dayTime,
+  deadlineOf,
   fail,
   isClosed,
   isLocalMidnight,
@@ -12,10 +13,12 @@ import {
   type Item,
   type ItemInput,
   type Kind,
+  type Status,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
+import { followTaskState } from "../docs/task-lines.js";
 import { openAsk } from "../followthrough/asks.js";
 import {
   isOccurrence,
@@ -30,6 +33,7 @@ import {
   queueInvites,
   syncAttendees,
 } from "./attendees.js";
+import { carryEventNotes } from "./notes.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -65,7 +69,8 @@ export const ITEM_COLUMNS = `i.*, t.name AS team_name, a.name AS assignee_name,
   CASE WHEN i.estimate_minutes IS NULL THEN NULL
        ELSE greatest(0, i.estimate_minutes - i.spent_minutes) END AS remaining_minutes,
   (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status <> 'cancelled') AS child_count,
-  (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status = 'done') AS children_done`;
+  (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status = 'done') AS children_done,
+  (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline`;
 
 /** Subtasks go this many levels deep at most (a task, its subtask, and theirs). */
 export const MAX_SUBTASK_DEPTH = 3;
@@ -108,6 +113,39 @@ export async function requireItemAccess(
 ) {
   if (item.team_id) await requireTeam(item.team_id, actor, permission, db);
   else if (item.user_id !== actor.id) fail(404, "Item not found");
+}
+
+/** Check that a task's project and stage belong to the same visible space. */
+async function checkProjectPlacement(
+  db: Db,
+  actor: Actor,
+  teamId: string | null,
+  projectId: string | null,
+  stageId: string | null,
+) {
+  if (!projectId) {
+    if (stageId) fail(422, "A stage needs a project.");
+    return;
+  }
+  const project = (
+    await db.query<{ user_id: string; team_id: string | null }>(
+      "SELECT user_id, team_id FROM projects WHERE id = $1",
+      [projectId],
+    )
+  ).rows[0];
+  if (
+    !project ||
+    project.team_id !== teamId ||
+    (!teamId && project.user_id !== actor.id)
+  )
+    fail(404, "Project not found");
+  if (stageId) {
+    const stage = await db.query(
+      "SELECT 1 FROM project_stages WHERE id = $1 AND project_id = $2",
+      [stageId, projectId],
+    );
+    if (!stage.rowCount) fail(422, "That stage isn't in this project.");
+  }
 }
 
 /**
@@ -564,6 +602,22 @@ function alertsFor(
   return saved ?? defaults;
 }
 
+export type MutateOptions = {
+  /**
+   * The page whose checklist tick this change is: that page's own save
+   * deals with its line, so only the other pages showing the task are told.
+   */
+  fromDoc?: string;
+  /**
+   * For an edit to a repeating item made from one of its times: that
+   * time's first start, which the edit's `due_at` is the new start of
+   * (else its current time is). Its classes' notes move by as much.
+   */
+  editedFrom?: Date;
+  /** For a create: the project (and its stage) the new task starts in. */
+  place?: { project_id: string; stage_id: string | null };
+};
+
 /**
  * The single write path for planner items, used by the REST routes, AI
  * proposal application, and bookings. Enforces RBAC and optimistic locking on
@@ -577,6 +631,7 @@ export async function mutate(
   action: Action,
   /** For a create: the id the device already gave it (made offline). */
   createId?: string,
+  options: MutateOptions = {},
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
   await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
@@ -614,6 +669,11 @@ export async function mutate(
     const parentId = d.parent_id ?? null;
     if (parentId)
       await checkParent(db, actor, parentId, null, d.team_id, actor.id);
+    const projectId = d.kind === "task" ? (d.project_id ?? null) : null;
+    const stageId = projectId ? (d.stage_id ?? null) : null;
+    if (d.kind !== "task" && (d.project_id || d.stage_id))
+      fail(422, "Only tasks can be filed in projects.");
+    await checkProjectPlacement(db, actor, d.team_id, projectId, stageId);
     const prefs = await loadPrefs(db, actor.id);
     const allDay = d.all_day ?? false;
     // An all-day item keeps its days in the planner's zone unless it has its own.
@@ -631,13 +691,15 @@ export async function mutate(
         `INSERT INTO items (id, title, notes, kind, status, priority, due_at, end_at,
            reminder_minutes, team_id, user_id, progress, estimate_minutes, list_id,
            assignee_id, location, meeting_url, rrule, timezone, series_start,
-           all_day, busy, color, alerts, parent_id, position)
+           all_day, busy, color, alerts, parent_id, position, project_id,
+           stage_id)
          VALUES (coalesce($24::uuid, gen_random_uuid()),
            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
            CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
            $19,$20,$21,$22::integer[],$23,
            (SELECT coalesce(max(x.position), -1) + 1 FROM items x
-            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}))
+            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}),
+           $25::uuid, $26::uuid)
          RETURNING id`,
         [
           d.title,
@@ -664,9 +726,16 @@ export async function mutate(
           alerts,
           parentId,
           createId ?? null,
+          options.place?.project_id ?? null,
+          options.place?.stage_id ?? null,
         ],
       )
     ).rows[0];
+    if (projectId)
+      await db.query(
+        "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
+        [created.id, projectId, stageId],
+      );
     await setTags(db, created.id, tagIds);
     if (d.kind === "task") await setMeasure(db, created.id, d);
     // Only a task waits on anything; an event happens when it happens.
@@ -702,6 +771,24 @@ export async function mutate(
       if (!d.team_id) owner = actor.id;
     }
   }
+  if (d.kind !== "task" && (d.project_id || d.stage_id))
+    fail(422, "Only tasks can be filed in projects.");
+  const projectId =
+    d.kind === "task"
+      ? d.project_id !== undefined
+        ? d.project_id
+        : moved
+          ? null
+          : (current.project_id ?? null)
+      : null;
+  const stageId = projectId
+    ? d.stage_id !== undefined
+      ? d.stage_id
+      : projectId === current.project_id && !moved
+        ? (current.stage_id ?? null)
+        : null
+    : null;
+  await checkProjectPlacement(db, actor, d.team_id, projectId, stageId);
   // Omitted planning fields keep their saved values; a list, tags or assignee
   // that no longer fit after a move to another team are dropped.
   const keep = <T>(value: T | undefined, saved: T) =>
@@ -716,7 +803,11 @@ export async function mutate(
   const tagIds = keep(d.tag_ids, moved ? [] : savedTags);
   const assignee = keep(d.assignee_id, moved ? null : current.assignee_id);
   await checkPlacement(db, owner, d.team_id, listId, tagIds);
-  await checkAssignee(db, d.team_id, d.team_id ? assignee : null);
+  // A saved assignee who has since left the team doesn't stop other changes,
+  // such as ticking the task off; a new one, or one taken to another space,
+  // has to be a member.
+  if (moved || assignee !== current.assignee_id)
+    await checkAssignee(db, d.team_id, d.team_id ? assignee : null);
   // A subtask moved to another space leaves its parent, like its list.
   const parentId =
     d.kind === "task"
@@ -766,6 +857,9 @@ export async function mutate(
       endAt,
       timezone,
     ));
+  // Where the edit put the item's current time, before completing a
+  // repeating task moves it on: its classes move by as much.
+  const movedTo = dueAt;
   let progress = d.progress ?? (d.status === "done" ? 100 : current.progress);
   let seriesStart = rrule ? (iso(current.series_start) ?? dueAt) : null;
   // A changed rule or a moved first date starts the series again from here.
@@ -773,6 +867,8 @@ export async function mutate(
     seriesStart = dueAt;
   let exdates = rrule ? current.exdates.map((x) => iso(x)!) : [];
   let completedOccurrence: string | null = null;
+  /** When the finished occurrence was due by (see `deadlineOf`). */
+  let completedDeadline: string | null = null;
 
   // Completing a repeating task moves it to its next occurrence instead.
   if (
@@ -792,6 +888,12 @@ export async function mutate(
     );
     if (next) {
       completedOccurrence = dueAt;
+      completedDeadline = deadlineOf({
+        due_at: dueAt,
+        end_at: endAt,
+        all_day: allDay,
+        timezone,
+      });
       const series: SeriesRow = {
         id: current.id,
         kind: d.kind,
@@ -833,6 +935,9 @@ export async function mutate(
          OR (status IN ('done', 'cancelled') AND $4 NOT IN ('done', 'cancelled'))
          OR team_id IS DISTINCT FROM $9::uuid
          THEN reminder_version + 1 ELSE reminder_version END,
+       -- A project belongs to one space: moved to another, the task leaves
+       -- the project and its stage, which the new space can't see.
+       project_id = $28::uuid, stage_id = $29::uuid,
        updated_at = now()
      WHERE id = $11`,
     [
@@ -863,8 +968,16 @@ export async function mutate(
       alerts,
       parentId,
       reorder,
+      projectId,
+      stageId,
     ],
   );
+  // A page line tied to this task now reads ticked or not with it: the
+  // pages showing it move on a version, so an editor still showing the old
+  // tick re-reads rather than saving it back (see followTaskState). The page
+  // doing the tick, if any, sorts out its own line (syncTicks).
+  if ((status === "done") !== (current.status === "done"))
+    await followTaskState(db, current.id, status === "done", options.fromDoc);
   await setTags(db, current.id, tagIds);
   if (d.kind === "task") await setMeasure(db, current.id, d);
   else
@@ -884,12 +997,36 @@ export async function mutate(
   if (parentId !== current.parent_id || status !== current.status)
     await touch(db, [current.parent_id, parentId]);
 
-  // Changes to single occurrences stay only while they're still occurrences.
-  if (!rrule)
+  // Changes to single occurrences stay only while they're still
+  // occurrences; each class's note goes with its class.
+  const was: SeriesRow | null =
+    current.rrule && current.due_at
+      ? {
+          id: current.id,
+          kind: current.kind,
+          due_at: new Date(current.due_at),
+          end_at: current.end_at ? new Date(current.end_at) : null,
+          rrule: current.rrule,
+          timezone: current.timezone,
+          series_start: current.series_start
+            ? new Date(current.series_start)
+            : null,
+          exdates: current.exdates.map((x) => new Date(x)),
+          all_day: current.all_day,
+        }
+      : null;
+  if (!rrule) {
     await db.query("DELETE FROM item_overrides WHERE item_id = $1", [
       current.id,
     ]);
-  else if (
+    if (was)
+      await carryEventNotes(
+        db,
+        was,
+        { id: current.id, series: null },
+        { was: was.due_at, now: was.due_at },
+      );
+  } else if (
     rrule !== current.rrule ||
     seriesStart !== iso(current.series_start) ||
     timezone !== current.timezone
@@ -917,6 +1054,13 @@ export async function mutate(
       await db.query(
         "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = ANY ($2::timestamptz[])",
         [current.id, stale],
+      );
+    if (was && movedTo)
+      await carryEventNotes(
+        db,
+        was,
+        { id: current.id, series },
+        { was: options.editedFrom ?? was.due_at, now: new Date(movedTo) },
       );
   }
 
@@ -970,8 +1114,19 @@ export async function mutate(
   // Completing counts the blocks' past time as spent (when asked to).
   if (d.status === "done" && current.status !== "done")
     await countBlocksAsSpent(db, actor.id, current.id);
-  // Time set aside for work that's finished or cancelled isn't needed any more.
-  if (isClosed(d.status) && !isClosed(current.status))
+  // Sessions for work that's finished or cancelled aren't needed any more. A
+  // repeating task that moved on keeps the sessions meant for its later
+  // occurrences. A session is for the first occurrence whose deadline it
+  // ends by (sessionDueFor in @orbyn/core), so the finished occurrence's are
+  // the ones ending by its deadline: the end of its day when it's all-day,
+  // its end time when it has one, otherwise its due time.
+  if (completedDeadline)
+    await db.query(
+      `DELETE FROM time_blocks
+        WHERE item_id = $1 AND start_at > now() AND end_at <= $2`,
+      [current.id, completedDeadline],
+    );
+  else if (isClosed(status) && !isClosed(current.status))
     await db.query(
       "DELETE FROM time_blocks WHERE item_id = $1 AND start_at > now()",
       [current.id],
@@ -990,4 +1145,50 @@ export async function mutate(
   if (d.status === "done" && current.status !== "done")
     await queueWebhooks(db, "item.completed", audience, result);
   return result;
+}
+
+/**
+ * Change a task's status the way any other edit does: through `mutate`, so
+ * finishing it clears its future sessions, a repeating task moves on to its
+ * next occurrence, and webhooks and open apps hear about it. Used by the
+ * quick tick (a progress update) and by ticking a page's checklist line.
+ * No version is needed: a tick is never a stale edit. Only the core fields
+ * are sent, so every planning field keeps its saved value and isn't checked
+ * again (a tick shouldn't fail over a tag or a prerequisite). Progress
+ * follows the usual rule (100 when done, otherwise kept) unless one is
+ * given. Must run inside a transaction.
+ */
+export async function setItemStatus(
+  db: Db,
+  actor: Actor,
+  itemId: string,
+  status: Status,
+  progress?: number,
+  options: MutateOptions = {},
+): Promise<Item> {
+  const row = await lockItem(db, itemId);
+  const iso = (v: Date | string | null) =>
+    v ? new Date(v).toISOString() : null;
+  return (await mutate(
+    db,
+    actor,
+    {
+      operation: "update",
+      item_id: itemId,
+      version: row.version,
+      data: itemData.parse({
+        title: row.title,
+        notes: row.notes,
+        kind: row.kind,
+        status,
+        priority: row.priority,
+        due_at: iso(row.due_at),
+        end_at: iso(row.end_at),
+        team_id: row.team_id,
+        ...(progress === undefined ? {} : { progress }),
+      }),
+    },
+    undefined,
+    options,
+  ))!;
 }

@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { Eye, Trash2, X } from "lucide-react";
 import {
   freshItem,
+  addDays,
   allDayRange,
+  deadlineOf,
   fromDateTimeLocal,
   hasTeamPermission,
   localDateKey,
@@ -17,6 +19,7 @@ import {
   type ItemInput,
   type Kind,
   type Priority,
+  type Project,
   type Status,
   type Team,
   type TeamMember,
@@ -55,6 +58,14 @@ import {
   type OccurrenceRef,
 } from "./ScopeDialog";
 import { DateField } from "./DateField";
+
+/** "Fri 16 Oct". */
+const shortDay = (iso: string) =>
+  new Date(iso).toLocaleDateString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 
 type Props = {
   editing: Item | "new";
@@ -147,6 +158,43 @@ export function ItemEditor({
       ? localDateKey(new Date(Date.parse(endIso) - 1), zone)
       : "",
   );
+  const [project, setProject] = useState<Project | null>(null);
+  const projectId = base.project_id ?? null;
+  useEffect(() => {
+    if (!projectId) {
+      setProject(null);
+      return;
+    }
+    let alive = true;
+    void client.getProject(projectId).then(
+      (value) => alive && setProject(value),
+      () => alive && setProject(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  const allDayDates =
+    allDay && startDay
+      ? allDayRange(
+          startDay,
+          endDay && endDay >= startDay ? endDay : startDay,
+          zone,
+        )
+      : null;
+  const candidateDeadline =
+    kind === "task"
+      ? deadlineOf({
+          due_at: allDayDates?.due_at ?? fromDateTimeLocal(dueValue || null),
+          end_at: allDayDates?.end_at ?? fromDateTimeLocal(endValue || null),
+          all_day: allDay,
+          timezone: zone,
+        })
+      : null;
+  const afterProject =
+    !!project?.deadline &&
+    !!candidateDeadline &&
+    Date.parse(candidateDeadline) > Date.parse(project.deadline);
 
   const [busyTime, setBusyTime] = useState(base.busy ?? true);
   const [color, setColor] = useState<string | null>(base.color ?? null);
@@ -525,7 +573,30 @@ export function ItemEditor({
                   </small>
                 </label>
               )}
-              {allDay ? (
+              {allDay && kind === "task" ? (
+                // A task is due by the end of its day, so "Due" is its last
+                // day; moving it moves a task that runs over days as a whole.
+                <label>
+                  Due
+                  <DateField
+                    type="date"
+                    required
+                    value={endDay > startDay ? endDay : startDay}
+                    onChange={(e) => {
+                      const due = e.target.value;
+                      const days =
+                        startDay && endDay > startDay
+                          ? Math.round(
+                              (Date.parse(endDay) - Date.parse(startDay)) /
+                                86_400_000,
+                            )
+                          : 0;
+                      setStartDay(due ? addDays(due, -days) : "");
+                      setEndDay(due);
+                    }}
+                  />
+                </label>
+              ) : allDay ? (
                 <>
                   <label>
                     Starts
@@ -553,7 +624,7 @@ export function ItemEditor({
               ) : (
                 <>
                   <label>
-                    Due / start time
+                    {kind === "task" ? "Due" : "Start time"}
                     <DateField
                       type="datetime-local"
                       value={dueValue}
@@ -567,6 +638,11 @@ export function ItemEditor({
                       value={endValue}
                       onChange={(e) => setEndValue(e.target.value)}
                     />
+                    {kind === "task" && endValue && (
+                      <small className="field-hint">
+                        With an end time, it&apos;s due when it ends.
+                      </small>
+                    )}
                   </label>
                   {kind === "event" && (
                     <AttentionWarning
@@ -577,6 +653,22 @@ export function ItemEditor({
                     />
                   )}
                 </>
+              )}
+              {afterProject && project?.deadline && (
+                <p className="field-hint" role="status">
+                  Due after the project ({shortDay(project.deadline)}){" "}
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setAllDay(false);
+                      setDueValue(toDateTimeLocal(project.deadline));
+                      setEndValue("");
+                    }}
+                  >
+                    Use {shortDay(project.deadline)}
+                  </button>
+                </p>
               )}
               <label>
                 Estimate

@@ -9,11 +9,13 @@ import {
   SlidersHorizontal,
   Users,
   Wand2,
+  X,
 } from "lucide-react";
 import {
   addMonths,
   dateLabel,
   isClosed,
+  lateSessionWarning,
   monthGrid,
   sameDay,
   startOfDay,
@@ -79,6 +81,10 @@ export type PlanRequest = {
   days?: number;
   /** Tasks the preview must include ("Plan it"). */
   include?: string[];
+  /** Plan only these tasks ("Find time before the deadline"). */
+  only?: string[];
+  /** Plan up to this deadline, counting days in the planner's zone. */
+  until?: string | null;
 };
 
 const MODES: { id: CalendarMode; label: string; key: string }[] = [
@@ -94,7 +100,8 @@ type Props = {
   items: Item[];
   teams: Team[];
   canWrite: (item: Item) => boolean;
-  onOpen: (item: Item) => void;
+  /** Opens an item; on a repeating one, `occurrence` is the time clicked. */
+  onOpen: (item: Item, occurrence?: OccurrenceRef) => void;
   /** Opens the item editor (to edit a whole series). */
   onEditItem: (item: Item, occurrence?: OccurrenceRef) => void;
   onFocus: (item: Item) => void;
@@ -136,6 +143,16 @@ type Dialog =
   | { kind: "sets" }
   | { kind: "frame"; frameId: string }
   | null;
+/**
+ * A short message under the toolbar, sometimes with Undo, or with its own
+ * choices ("Keep it", "Find time before").
+ */
+type Note = {
+  text: string;
+  undo?: () => void;
+  tone?: "warn";
+  actions?: { label: string; run: () => void }[];
+};
 
 const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString([], {
@@ -143,6 +160,12 @@ const shortDay = (iso: string) =>
     month: "short",
     day: "numeric",
   });
+
+/** Which time of a repeating item an entry is, for opening or editing it. */
+const occurrenceOf = (e: CalendarEntry): OccurrenceRef | undefined =>
+  e.occurrence
+    ? { occurrence: e.occurrence, start_at: e.start_at, end_at: e.end_at }
+    : undefined;
 
 /**
  * Month / Week / Day / Agenda calendar on the calendar API, with calendar
@@ -252,6 +275,8 @@ export function CalendarView({
   const [autoPreview, setAutoPreview] = useState<{
     days?: number;
     include?: string[];
+    only?: string[];
+    until?: string | null;
     key: number;
   } | null>(null);
   const tuner = usePlanTuning(plan, setPlan, plannerOpen, data, report, items);
@@ -264,16 +289,23 @@ export function CalendarView({
     const { onDateChange, onModeChange, mode } = latestNav.current;
     setPlannerOpen(true);
     if (planRequest.plan) {
+      setAutoPreview(null);
       setPlan(planRequest.plan);
       onDateChange(fromDayKey(planRequest.plan.starts_on));
       if (mode === "month" || mode === "agenda")
         onModeChange(planRequest.plan.days > 1 ? "week" : "day");
     } else {
       if (mode === "month" || mode === "agenda")
-        onModeChange(planRequest.days && planRequest.days > 1 ? "week" : "day");
+        onModeChange(
+          (planRequest.days && planRequest.days > 1) || planRequest.until
+            ? "week"
+            : "day",
+        );
       setAutoPreview({
         days: planRequest.days,
         include: planRequest.include,
+        only: planRequest.only,
+        until: planRequest.until,
         key: planRequest.key,
       });
     }
@@ -281,6 +313,8 @@ export function CalendarView({
 
   // ---- menus and dialogs ----
   const [menu, setMenu] = useState<Menu>(null);
+  /** A late-session warning with its choices ("Keep it", "Find time before"). */
+  const [note, setNote] = useState<Note | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
 
   const resolve = async (id: string) =>
@@ -301,17 +335,69 @@ export function CalendarView({
     await reload();
   };
 
+  /** "Moved to Wed 30 Sep, 4:00 pm." */
+  const movedTo = (at: string) =>
+    `${shortDay(at)}, ${new Date(at).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    })}`;
+
+  /**
+   * A session now ends after its task's deadline: say so, and offer to keep
+   * it there or move it to free time before the deadline. Never refused.
+   */
+  const warnIfLate = (block: TimeBlock) => {
+    const text = lateSessionWarning(block);
+    if (!text) return;
+    setNote({
+      tone: "warn",
+      text: `${text}.`,
+      actions: [
+        { label: "Keep it", run: () => setNote(null) },
+        {
+          label: "Find time before",
+          run: () => void moveBeforeDeadline(block),
+        },
+      ],
+    });
+  };
+
+  /** Move a session to the next free time that ends by its deadline. */
+  const moveBeforeDeadline = async (block: TimeBlock) => {
+    try {
+      const moved = await client.rescheduleBlock(block.id, {
+        before_deadline: true,
+      });
+      setNote({
+        text: `Moved to ${movedTo(moved.start_at)}, before the deadline.`,
+        undo: () =>
+          void mutate(() =>
+            client.updateBlock(block.id, {
+              start_at: block.start_at,
+              end_at: block.end_at,
+            }),
+          ),
+      });
+    } catch (e) {
+      if ((e as HttpError).status === 401) report(e);
+      else setNote({ tone: "warn", text: errorText(e) });
+    }
+    await reload();
+  };
+
   const createBlock = (item: Item, start: Date, end?: Date) => {
     if (item.kind !== "task") return;
     const minutes = Math.min(item.estimate_minutes ?? 30, 1440);
-    void mutate(() =>
-      client.createBlock({
-        item_id: item.id,
-        start_at: start.toISOString(),
-        end_at: (
-          end ?? new Date(start.getTime() + minutes * 60_000)
-        ).toISOString(),
-      }),
+    void mutate(async () =>
+      warnIfLate(
+        await client.createBlock({
+          item_id: item.id,
+          start_at: start.toISOString(),
+          end_at: (
+            end ?? new Date(start.getTime() + minutes * 60_000)
+          ).toISOString(),
+        }),
+      ),
     );
   };
 
@@ -332,23 +418,25 @@ export function CalendarView({
           ),
         },
     );
-    void mutate(() =>
-      client.updateBlock(block.id, {
-        start_at: start.toISOString(),
-        end_at: end.toISOString(),
-      }),
+    void mutate(async () =>
+      warnIfLate(
+        await client.updateBlock(block.id, {
+          start_at: start.toISOString(),
+          end_at: end.toISOString(),
+        }),
+      ),
     );
   };
 
-  /** A block moved to the next free working time of the same length. */
+  /**
+   * A block moved to the next free working time of the same length, one
+   * that ends by its deadline when there is one.
+   */
   const reschedule = async (block: TimeBlock) => {
     try {
       const moved = await client.rescheduleBlock(block.id);
-      toast({
-        text: `Moved to ${shortDay(moved.start_at)}, ${new Date(
-          moved.start_at,
-        ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
-      });
+      if (lateSessionWarning(moved)) warnIfLate(moved);
+      else toast({ text: `Moved to ${movedTo(moved.start_at)}.` });
     } catch (e) {
       report(e);
     }
@@ -361,12 +449,8 @@ export function CalendarView({
         block.id,
         start ? { start_at: start.toISOString() } : {},
       );
-      if (!start)
-        toast({
-          text: `Copied to ${shortDay(copy.start_at)}, ${new Date(
-            copy.start_at,
-          ).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
-        });
+      if (lateSessionWarning(copy)) warnIfLate(copy);
+      else if (!start) toast({ text: `Copied to ${movedTo(copy.start_at)}.` });
     } catch (e) {
       report(e);
     }
@@ -386,12 +470,21 @@ export function CalendarView({
     end: Date;
     resized: boolean;
   } | null>(null);
+  const [deadlineDrop, setDeadlineDrop] = useState<{
+    entry: CalendarEntry;
+    start: Date;
+    end: Date;
+  } | null>(null);
   const moveEntry = (
     entry: CalendarEntry,
     start: Date,
     end: Date,
     resized: boolean,
   ) => {
+    if (entry.kind === "task" && !entry.end_at && !resized) {
+      setDeadlineDrop({ entry, start, end });
+      return;
+    }
     if (entry.occurrence) setScopeAsk({ entry, start, end, resized });
     else void saveMove(entry, start, end, resized);
   };
@@ -597,7 +690,13 @@ export function CalendarView({
     newEvent,
     slot,
   };
-  const blocked = !shortcuts || !!menu || !!dialog || !!matesMenu || !!scopeAsk;
+  const blocked =
+    !shortcuts ||
+    !!menu ||
+    !!dialog ||
+    !!matesMenu ||
+    !!scopeAsk ||
+    !!deadlineDrop;
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
@@ -671,7 +770,12 @@ export function CalendarView({
   /** Open an item from the month grid or day list; external events show their details. */
   const openKey = (i: Item, anchor?: DOMRect) => {
     const x = externalById.get(i.id);
-    if (!x) return withItem(itemIdOf(i.id), onOpen);
+    if (!x) {
+      const entry = entries.find((e) => entryKey(e) === i.id);
+      return withItem(itemIdOf(i.id), (item) =>
+        onOpen(item, entry && occurrenceOf(entry)),
+      );
+    }
     setMenu({
       kind: "external",
       event: x,
@@ -802,6 +906,41 @@ export function CalendarView({
           </div>
         </div>
 
+        {note && (
+          <div
+            className={
+              "calendar-note" + (note.tone === "warn" ? " is-warn" : "")
+            }
+            role={note.tone === "warn" ? "alert" : "status"}
+          >
+            <span>{note.text}</span>
+            {note.undo && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  const undo = note.undo!;
+                  setNote(null);
+                  undo();
+                }}
+              >
+                Undo
+              </button>
+            )}
+            {note.actions?.map((a) => (
+              <button key={a.label} className="text-button" onClick={a.run}>
+                {a.label}
+              </button>
+            ))}
+            <button
+              className="icon-button"
+              aria-label="Dismiss"
+              onClick={() => setNote(null)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         {gridMode && (
           <TeammatesLegend shown={mates.shown} onClear={mates.clear} />
         )}
@@ -810,6 +949,7 @@ export function CalendarView({
           <div className="month-layout">
             <MonthView
               items={monthItems}
+              blocks={blocks}
               frames={frames}
               selected={date}
               onSelect={onDateChange}
@@ -917,6 +1057,10 @@ export function CalendarView({
               }}
               request={autoPreview}
               onChanged={changed}
+              onShowDay={(at) => {
+                onDateChange(new Date(at));
+                if (mode === "agenda") onModeChange("week");
+              }}
               report={report}
               revision={revision}
               onClose={closePlanner}
@@ -937,7 +1081,11 @@ export function CalendarView({
           canComplete={canComplete(menu.entry)}
           onReopen={() => void reopen(menu.entry.item_id)}
           onClose={() => setMenu(null)}
-          onOpen={() => withItem(menu.entry.item_id, onOpen)}
+          onOpen={() =>
+            withItem(menu.entry.item_id, (item) =>
+              onOpen(item, occurrenceOf(menu.entry)),
+            )
+          }
           onEditSeries={() => {
             const e = menu.entry;
             withItem(e.item_id, (item) =>
@@ -980,10 +1128,11 @@ export function CalendarView({
           onDuplicate={() => void duplicate(menu.block)}
           onReschedule={() => void reschedule(menu.block)}
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
+          onFindTime={() => void moveBeforeDeadline(menu.block)}
           onDelete={async () => {
             if (
               await ask({
-                title: `Delete this time block for “${menu.block.title}”?`,
+                title: `Delete this session for “${menu.block.title}”?`,
                 confirmLabel: "Delete",
                 destructive: true,
               })
@@ -1019,7 +1168,7 @@ export function CalendarView({
       )}
       {dialog?.kind === "schedule" && (
         <BlockDialog
-          heading="Set time aside"
+          heading="Plan a session"
           subject={dialog.item.title}
           start={nextQuarter(date)}
           minutes={Math.min(dialog.item.estimate_minutes ?? 30, 1440)}
@@ -1070,6 +1219,82 @@ export function CalendarView({
             void saveMove(a.entry, a.start, a.end, a.resized, scope);
           }}
         />
+      )}
+      {deadlineDrop && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDeadlineDrop(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setDeadlineDrop(null);
+          }}
+        >
+          <section
+            className="modal modal-small"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deadline-drop-title"
+          >
+            <div className="section-heading">
+              <h2 id="deadline-drop-title">{deadlineDrop.entry.title}</h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Cancel"
+                onClick={() => setDeadlineDrop(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="muted modal-lead">
+              What should happen at {deadlineDrop.start.toLocaleString()}?
+            </p>
+            <div className="scope-options">
+              <button
+                type="button"
+                className="primary"
+                autoFocus
+                onClick={() => {
+                  const drop = deadlineDrop;
+                  setDeadlineDrop(null);
+                  withItem(drop.entry.item_id, (item) =>
+                    createBlock(item, drop.start),
+                  );
+                }}
+              >
+                Plan a session here
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  const drop = deadlineDrop;
+                  setDeadlineDrop(null);
+                  if (drop.entry.occurrence)
+                    setScopeAsk({ ...drop, resized: false });
+                  else void saveMove(drop.entry, drop.start, drop.end, false);
+                }}
+              >
+                Move the deadline to{" "}
+                {deadlineDrop.start.toLocaleString([], {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setDeadlineDrop(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {dialog?.kind === "frame" && (
         <FrameDialog

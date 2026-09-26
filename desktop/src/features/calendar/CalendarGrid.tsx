@@ -9,6 +9,7 @@ import {
 import { Lock, Pin, Sparkles, Timer, Users, Video, X } from "lucide-react";
 import {
   sameDay,
+  sessionLine,
   statusLabels,
   type BusyInterval,
   type CalendarEntry,
@@ -28,6 +29,7 @@ import {
 import { hourLabel, minutesOf, timeLabel } from "./dates";
 import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";
+import { Popover } from "../../components/Popover";
 import { entryClass, listLook } from "./MonthView";
 import type { MateBusy } from "./Teammates";
 import {
@@ -205,6 +207,12 @@ export function CalendarGrid({
     copy: boolean;
   } | null>(null);
   const dragRef = useRef(drag);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [duePicker, setDuePicker] = useState<{
+    entries: CalendarEntry[];
+    at: Date;
+    anchor: DOMRect;
+  } | null>(null);
   const setDrag = (next: typeof drag) => {
     dragRef.current = next;
     setDragState(next);
@@ -394,7 +402,7 @@ export function CalendarGrid({
   const copied = drag?.copy ? blocks.find((b) => b.id === drag.id) : undefined;
   const spans: Span<Cell>[] = [
     ...entries
-      .filter((e) => !isAllDayEntry(e))
+      .filter((e) => !isAllDayEntry(e) && (e.kind !== "task" || !!e.end_at))
       .map((entry) => {
         const key = "e:" + entryKey(entry);
         const m = moving?.id === key ? moving : null;
@@ -450,7 +458,10 @@ export function CalendarGrid({
   const ghostById = new Map(ghosts.map((g) => [ghostId(g), g]));
 
   return (
-    <div className="timegrid" style={style}>
+    <div
+      className={"timegrid" + (selectedTaskId ? " has-selection" : "")}
+      style={style}
+    >
       <div className="tg-head">
         <span className="tg-corner tg-zone-heads">
           {zones.length > 0 &&
@@ -512,14 +523,19 @@ export function CalendarGrid({
                 return (
                   <button
                     key={entryKey(e)}
-                    className={entryClass(e) + look.className}
+                    className={
+                      entryClass(e) +
+                      look.className +
+                      (selectedTaskId === e.item_id ? " is-related" : "")
+                    }
                     style={look.style}
                     title={e.title}
                     aria-label={`${e.title} (${e.kind === "event" ? "Event" : statusLabels[e.status]}, all day)`}
                     aria-haspopup="dialog"
-                    onClick={(ev) =>
-                      onEntry(e, ev.currentTarget.getBoundingClientRect())
-                    }
+                    onClick={(ev) => {
+                      if (e.kind === "task") setSelectedTaskId(e.item_id);
+                      onEntry(e, ev.currentTarget.getBoundingClientRect());
+                    }}
                   >
                     {e.kind === "task" && (
                       <i className="dot" aria-hidden="true" />
@@ -584,8 +600,10 @@ export function CalendarGrid({
                     return;
                   }
                   // Only empty space: entries and blocks open their menus.
-                  if (e.target === e.currentTarget)
+                  if (e.target === e.currentTarget) {
+                    setSelectedTaskId(null);
                     onSelectSlot(at(d, minutesAt(e.clientY, n)));
+                  }
                 }}
               >
                 {frames.map((f) => {
@@ -633,6 +651,97 @@ export function CalendarGrid({
                     >
                       {height >= 14 && <span>{x.label}</span>}
                     </div>
+                  );
+                })}
+                {deadlineGroups(
+                  entries.filter(
+                    (e) =>
+                      e.kind === "task" &&
+                      !e.end_at &&
+                      !isAllDayEntry(e) &&
+                      sameDay(new Date(e.start_at), d),
+                  ),
+                  (e) =>
+                    moving?.id === "e:" + entryKey(e)
+                      ? moving.start
+                      : new Date(e.start_at),
+                  (e) => moving?.id === "e:" + entryKey(e),
+                ).map(({ at: shown, entries: due }) => {
+                  const minutes = shown.getHours() * 60 + shown.getMinutes();
+                  if (due.length > 1) {
+                    // Several deadlines at the same minute: one marker and
+                    // a picker, never a pile of overlapping lines.
+                    const selected = due.some(
+                      (e) => e.item_id === selectedTaskId,
+                    );
+                    return (
+                      <button
+                        key={"due:" + shown.getTime()}
+                        type="button"
+                        className={
+                          "tg-deadline-marker is-group" +
+                          (selected ? " is-selected" : "")
+                        }
+                        style={{ top: minutes * PX_PER_MIN }}
+                        aria-label={`${due.length} tasks due at ${timeLabel(shown)}`}
+                        aria-haspopup="dialog"
+                        onClick={(ev) =>
+                          setDuePicker({
+                            entries: due,
+                            at: shown,
+                            anchor: ev.currentTarget.getBoundingClientRect(),
+                          })
+                        }
+                      >
+                        <span className="tg-deadline-line" aria-hidden="true" />
+                        <span className="tg-deadline-label">
+                          Due · {due.length} tasks
+                        </span>
+                      </button>
+                    );
+                  }
+                  const e = due[0];
+                  const key = "e:" + entryKey(e);
+                  const draggable = canDragEntry(e);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={
+                        "tg-deadline-marker" +
+                        (selectedTaskId === e.item_id ? " is-selected" : "")
+                      }
+                      style={{ top: minutes * PX_PER_MIN }}
+                      aria-label={`${e.title} deadline, ${timeLabel(shown)}`}
+                      aria-pressed={selectedTaskId === e.item_id}
+                      aria-haspopup="dialog"
+                      onPointerDown={
+                        draggable
+                          ? (ev) =>
+                              begin(
+                                ev,
+                                { kind: "entry", entry: e },
+                                key,
+                                "move",
+                                n,
+                              )
+                          : undefined
+                      }
+                      onPointerMove={draggable ? move : undefined}
+                      onPointerUp={draggable ? finish : undefined}
+                      onPointerCancel={draggable ? cancel : undefined}
+                      onClick={(ev) => {
+                        if (suppressClick.current) {
+                          suppressClick.current = false;
+                          return;
+                        }
+                        setSelectedTaskId(e.item_id);
+                        onEntry(e, ev.currentTarget.getBoundingClientRect());
+                      }}
+                    >
+                      <span className="tg-deadline-line" aria-hidden="true" />
+                      <span className="tg-deadline-label">Due · {e.title}</span>
+                    </button>
                   );
                 })}
                 {layoutSpans(spans, d, 0, 24).map((p) => {
@@ -817,19 +926,28 @@ export function CalendarGrid({
                   if (cell.type === "block") {
                     const b = cell.block;
                     const dragging = moving?.id === b.id;
+                    // "Session 2 · due Fri 5 pm", or a late session's warning.
+                    const line = sessionLine(b, now);
+                    const late = !!b.after_deadline && b.status !== "done";
                     return (
                       <div
                         key={p.key}
-                        className={"tg-slot" + (dragging ? " is-dragging" : "")}
+                        className={
+                          "tg-slot" +
+                          (dragging ? " is-dragging" : "") +
+                          (selectedTaskId === b.item_id ? " is-related" : "")
+                        }
                         style={place}
                       >
                         <button
                           className={
                             "cal-block tg-event" +
                             (short ? " is-short" : "") +
-                            (b.status === "done" ? " is-done" : "")
+                            (b.status === "done" ? " is-done" : "") +
+                            (late ? " is-late" : "")
                           }
-                          aria-label={`Time for ${b.title}, ${spanLabel(b.start_at, b.end_at)}`}
+                          aria-label={`Session for ${b.title}, ${spanLabel(b.start_at, b.end_at)}${line ? `, ${line}` : ""}`}
+                          aria-pressed={selectedTaskId === b.item_id}
                           aria-haspopup="dialog"
                           onPointerDown={(ev) =>
                             begin(
@@ -848,6 +966,7 @@ export function CalendarGrid({
                               suppressClick.current = false;
                               return;
                             }
+                            setSelectedTaskId(b.item_id);
                             onBlock(
                               b,
                               ev.currentTarget.getBoundingClientRect(),
@@ -858,7 +977,13 @@ export function CalendarGrid({
                             <Timer size={11} aria-hidden="true" />
                             {b.title}
                           </span>
-                          <small>{spanLabel(b.start_at, b.end_at)}</small>
+                          {line && (
+                            <small className="cal-session">{line}</small>
+                          )}
+                          {/* A short tile has room for one: the session line. */}
+                          {(!short || !line) && (
+                            <small>{spanLabel(b.start_at, b.end_at)}</small>
+                          )}
                         </button>
                         <span
                           className="tg-resize"
@@ -925,7 +1050,7 @@ export function CalendarGrid({
                       </span>
                       <small>
                         {spanLabel(g.start_at, g.end_at)}
-                        {g.parts > 1 && ` · ${g.part}/${g.parts}`}
+                        {g.parts > 1 && ` · Session ${g.part} of ${g.parts}`}
                       </small>
                       {tunable && (
                         <button
@@ -1046,6 +1171,55 @@ export function CalendarGrid({
           })}
         </div>
       </div>
+      {duePicker && (
+        <Popover
+          anchor={duePicker.anchor}
+          label={`Due at ${timeLabel(duePicker.at)}`}
+          onClose={() => setDuePicker(null)}
+        >
+          <div className="popover-head">
+            <strong>Due · {duePicker.entries.length} tasks</strong>
+            <small>{timeLabel(duePicker.at)}</small>
+          </div>
+          <div className="popover-actions">
+            {duePicker.entries.map((e) => (
+              <button
+                key={entryKey(e)}
+                type="button"
+                onClick={() => {
+                  const anchor = duePicker.anchor;
+                  setDuePicker(null);
+                  setSelectedTaskId(e.item_id);
+                  onEntry(e, anchor);
+                }}
+              >
+                {e.title}
+              </button>
+            ))}
+          </div>
+        </Popover>
+      )}
     </div>
   );
+}
+
+/**
+ * Deadlines on one day grouped by the minute they fall on, in time order.
+ * An entry being dragged (`alone`) always keeps its own marker.
+ */
+function deadlineGroups(
+  due: CalendarEntry[],
+  shownAt: (e: CalendarEntry) => Date,
+  alone: (e: CalendarEntry) => boolean,
+) {
+  const groups = new Map<string, { at: Date; entries: CalendarEntry[] }>();
+  for (const e of due) {
+    const shown = shownAt(e);
+    const minute = Math.floor(shown.getTime() / 60_000);
+    const key = alone(e) ? "alone:" + entryKey(e) : String(minute);
+    const group = groups.get(key);
+    if (group) group.entries.push(e);
+    else groups.set(key, { at: shown, entries: [e] });
+  }
+  return [...groups.values()].sort((a, b) => a.at.getTime() - b.at.getTime());
 }

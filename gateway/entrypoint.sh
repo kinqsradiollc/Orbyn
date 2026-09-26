@@ -2,13 +2,16 @@
 # Renders nginx.conf.template from the environment and starts nginx.
 #
 #   API_SERVERS / AI_SERVERS / REALTIME_SERVERS / STATUS_SERVERS / WEB_SERVERS
-#   FILES_SERVERS
+#   FILES_SERVERS / MCP_SERVERS
 #                      "host:port ..."
 #       Instances of each service; hostnames are re-resolved (DNS load
 #       balancing), IP addresses are used as-is. Defaults: Docker service names.
 #   RESOLVER           DNS server for re-resolution (default Docker's 127.0.0.11)
 #   TRUSTED_PROXIES    CIDRs of load balancers in front, for real client IPs
 #   RATE_LIMIT_EXEMPT  CIDRs never rate limited (local load tests only)
+#   MCP_DISABLED=1     answer 503 for every MCP request (a kill switch for
+#                      outside agents that needs a gateway restart; the
+#                      no-restart switch is agents_enabled in Admin)
 #   RENDER_ONLY=1      write /tmp/nginx.conf and exit (used to validate)
 set -eu
 API_SERVERS="${API_SERVERS:-api:8000}"
@@ -17,6 +20,8 @@ REALTIME_SERVERS="${REALTIME_SERVERS:-realtime:8000}"
 STATUS_SERVERS="${STATUS_SERVERS:-status:8000}"
 WEB_SERVERS="${WEB_SERVERS:-desktop:8080}"
 FILES_SERVERS="${FILES_SERVERS:-files:8000}"
+MCP_SERVERS="${MCP_SERVERS:-mcp:8000}"
+MCP_DISABLED="${MCP_DISABLED:-}"
 RESOLVER="${RESOLVER:-127.0.0.11}"
 TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
 RATE_LIMIT_EXEMPT="${RATE_LIMIT_EXEMPT:-}"
@@ -49,11 +54,18 @@ export UPSTREAM_REALTIME="$(servers "$REALTIME_SERVERS")"
 export UPSTREAM_STATUS="$(servers "$STATUS_SERVERS")"
 export UPSTREAM_WEB="$(servers "$WEB_SERVERS")"
 export UPSTREAM_FILES="$(servers "$FILES_SERVERS")"
+export UPSTREAM_MCP="$(servers "$MCP_SERVERS")"
+# Kill switch L4: every MCP request is answered here, in JSON-RPC shape.
+if [ -n "$MCP_DISABLED" ] && [ "$MCP_DISABLED" != "0" ]; then
+  export MCP_GATE="return 503 '{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32002,\"message\":\"Outside agents are switched off for now. Try again later.\"}}';"
+else
+  export MCP_GATE="# MCP is on (MCP_DISABLED unset)."
+fi
 export RESOLVER REAL_IP="$(real_ip)" LIMIT_EXEMPT="$(exempt)"
 
 # tr drops Windows line endings a checkout may have added to the template.
 tr -d '\r' < /etc/orbyn-gateway/nginx.conf.template |
-  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_REALTIME} ${UPSTREAM_STATUS} ${UPSTREAM_WEB} ${UPSTREAM_FILES} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
+  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_REALTIME} ${UPSTREAM_STATUS} ${UPSTREAM_WEB} ${UPSTREAM_FILES} ${UPSTREAM_MCP} ${MCP_GATE} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
   > /tmp/nginx.conf
 
 [ "${RENDER_ONLY:-}" = "1" ] && exit 0

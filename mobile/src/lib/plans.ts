@@ -1,5 +1,6 @@
 import {
   HttpError,
+  planDaysBefore,
   type BusyInterval,
   type Plan,
   type PlannedBlock,
@@ -155,9 +156,43 @@ export async function remakePlan(plan: Plan): Promise<Plan> {
   }
 }
 
-/** A fresh plan that makes sure one task is in it ("Plan it" on a notice). */
-export async function planIncluding(itemId?: string | null) {
-  const plan = await client.previewPlan({ timezone: deviceTimeZone() });
+/** Days up to a deadline, counted in the planner's zone (the phone's for UTC). */
+async function daysUntil(deadline?: string | null) {
+  if (!deadline) return undefined;
+  const zone = await client
+    .getPlannerPrefs()
+    .then((p) => (p.timezone === "UTC" ? deviceTimeZone() : p.timezone))
+    .catch(() => deviceTimeZone());
+  return planDaysBefore(deadline, new Date(), zone);
+}
+
+/**
+ * A plan for one task alone ("Plan it" on a Today row), looking ahead as
+ * far as its deadline, as the web does.
+ */
+export async function planOnly(itemId: string, deadline?: string | null) {
+  const days = await daysUntil(deadline);
+  return client.previewPlan({
+    timezone: deviceTimeZone(),
+    item_ids: [itemId],
+    ...(days ? { days } : {}),
+  });
+}
+
+/**
+ * A fresh plan that makes sure one task is in it ("Plan it" on a notice),
+ * looking ahead as far as the task's deadline (`deadline`, counted in the
+ * planner's zone) as the web does.
+ */
+export async function planIncluding(
+  itemId?: string | null,
+  deadline?: string | null,
+) {
+  const days = await daysUntil(deadline);
+  const plan = await client.previewPlan({
+    timezone: deviceTimeZone(),
+    ...(days ? { days } : {}),
+  });
   if (
     !itemId ||
     plan.tasks?.some((t) => t.item_id === itemId && t.included) ||

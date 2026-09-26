@@ -362,3 +362,49 @@ test("the morning agenda is written by the worker, with the summary", async () =
     0,
   );
 });
+
+test("a page written ahead and left alone gets the morning's summary on its day", async () => {
+  await useProvider(plain);
+  const me = await student();
+  const tomorrow = addDays(today(), 1);
+  const early = (await call(me.token, "POST", `/agenda/${tomorrow}`)).body;
+  assert.equal(early.agenda_date, tomorrow);
+  assert.equal(early.version, 1);
+  // Tomorrow morning, the worker counts it as not written yet.
+  const morning = new Date(at(1, 7));
+  reset("Tomorrow is here: the standup first, then time for the essay.");
+  assert.equal(await scanMorningAgendas(morning, { only: [me.id] }), 1);
+  assert.equal(sent.length, 1);
+  const doc = (
+    await pool.query<{
+      id: string;
+      version: number;
+      content: { text?: string }[];
+    }>("SELECT id, version, content FROM docs WHERE id = $1", [early.id])
+  ).rows[0];
+  assert.equal(doc.version, 2);
+  assert.equal(
+    texts(doc)[0],
+    "Tomorrow is here: the standup first, then time for the essay.",
+  );
+  // Only one page for the day, and the next pass leaves it be.
+  const pages = await pool.query(
+    "SELECT 1 FROM docs WHERE user_id = $1 AND kind = 'agenda' AND agenda_date = $2::date",
+    [me.id, tomorrow],
+  );
+  assert.equal(pages.rowCount, 1);
+  reset();
+  assert.equal(await scanMorningAgendas(morning, { only: [me.id] }), 0);
+
+  // One written ahead and then written in is the person's: left alone.
+  const other = await student();
+  const kept = (await call(other.token, "POST", `/agenda/${tomorrow}`)).body;
+  const edited = await call(other.token, "PUT", `/docs/${kept.id}`, {
+    version: kept.version,
+    content: [...kept.content, { type: "paragraph", text: "Pack the bag" }],
+  });
+  assert.equal(edited.status, 200, edited.raw.body);
+  reset();
+  assert.equal(await scanMorningAgendas(morning, { only: [other.id] }), 0);
+  assert.equal(sent.length, 0);
+});

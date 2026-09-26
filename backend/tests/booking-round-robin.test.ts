@@ -190,6 +190,52 @@ test("a round-robin page can be switched back to collective", async () => {
   assert.equal(upd.body.assignment, "collective");
 });
 
+test("every host's event from a booking is marked as the guest's, and stays so after the page is deleted", async () => {
+  const slug = await makePage("collective");
+  const free = await slots(slug, 5);
+  assert.ok(free.length > 0);
+  const booked = await book(slug, free[0]);
+  assert.equal(booked.status, 201, booked.raw.body);
+  const { page_id, item_ids } = (
+    await pool.query<{ page_id: string; item_ids: string[] }>(
+      `SELECT b.page_id, b.item_ids FROM bookings b
+         JOIN booking_pages p ON p.id = b.page_id WHERE p.slug = $1`,
+      [slug],
+    )
+  ).rows[0];
+  assert.equal(item_ids.length, 2, "one event for each host");
+  const marked = async () =>
+    (
+      await pool.query<{ item_id: string }>(
+        `SELECT item_id FROM item_sources
+          WHERE item_id = ANY ($1::uuid[]) AND source = 'booking_guest'`,
+        [item_ids],
+      )
+    ).rows
+      .map((r) => r.item_id)
+      .sort();
+  assert.deepEqual(await marked(), [...item_ids].sort());
+  const removed = await call(
+    owner.token,
+    "DELETE",
+    `/booking-pages/${page_id}`,
+  );
+  assert.equal(removed.status, 204, removed.raw.body);
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM items WHERE id = ANY ($1::uuid[])", [
+        item_ids,
+      ])
+    ).rowCount,
+    2,
+    "the events stay on the calendars",
+  );
+  assert.deepEqual(await marked(), [...item_ids].sort());
+  // Gone with the events themselves.
+  await pool.query("DELETE FROM items WHERE id = ANY ($1::uuid[])", [item_ids]);
+  assert.deepEqual(await marked(), []);
+});
+
 /** A page with one question and a routing rule sending "yes" to the mate. */
 async function routedPage(questionId: string) {
   const r = await call(owner.token, "POST", "/booking-pages", {

@@ -271,7 +271,104 @@ export type Doc = {
   imported_from?: DocImportSource | null;
   /** Imported and not filed yet: it shows in Uploads until it's moved. */
   in_uploads?: boolean;
+  /** For a daily agenda, the day it is for ("2026-09-24"). */
+  agenda_date?: string | null;
+  /**
+   * For the note of one class of a repeating event, which class: its first
+   * start, as the calendar's `occurrence`. Null for any other page.
+   */
+  occurrence?: string | null;
+  /**
+   * The checklist lines tied to a task, by block id (one page at a time,
+   * not in lists). Any line can carry an id, so only these are tasks.
+   */
+  linked_block_ids?: string[];
 };
+
+/** A note an event has (`GET /docs/event-notes`): enough to mark the event. */
+export type EventNoteRef = {
+  doc_id: string;
+  /** The note's title, to say which page opens. */
+  title: string;
+  item_id: string;
+  /** The class it is for, on a repeating event; null for the whole event. */
+  occurrence: string | null;
+  team_id: string | null;
+  /**
+   * For a note kept as the whole event's because its class is gone
+   * (skipped, deleted, not in a new pattern), the class it was for. Such a
+   * note stands in for the event's own only when it has none.
+   */
+  class_was?: string | null;
+};
+
+/**
+ * The first of `notes` that `matches`, the event's own notes before those
+ * of classes it no longer has — the order the server keeps.
+ */
+function ownNoteFirst(
+  notes: EventNoteRef[],
+  matches: (n: EventNoteRef) => boolean,
+): EventNoteRef | undefined {
+  return notes.find((n) => matches(n) && !n.class_was) ?? notes.find(matches);
+}
+
+/**
+ * The note an event on the calendar opens, of `notes` (latest edited
+ * first): for one time of a repeating event (a calendar entry's
+ * `occurrence`), that time's own; for a repeating event with no time
+ * given, the series' own; for any other event, its note. A note left by a
+ * class that is gone (`class_was`) is the event's only when it has no
+ * other. The same rule the server keeps when a note is opened or made.
+ */
+export function eventNoteFor(
+  notes: EventNoteRef[],
+  entry: {
+    item_id: string;
+    occurrence?: string | null;
+    rrule?: string | null;
+    team_id?: string | null;
+  },
+): EventNoteRef | undefined {
+  const at = entry.occurrence ? Date.parse(entry.occurrence) : null;
+  return ownNoteFirst(
+    notes,
+    (n) =>
+      n.item_id === entry.item_id &&
+      (n.team_id ?? null) === (entry.team_id ?? null) &&
+      (at !== null
+        ? n.occurrence !== null && Date.parse(n.occurrence) === at
+        : !entry.rrule || n.occurrence === null),
+  );
+}
+
+/**
+ * The note a repeating event keeps for the whole series, to point to when
+ * one class of it is open (a calendar entry with an `occurrence`): that
+ * class opens its own note, so the series' — the running note of a weekly
+ * one-to-one, and every note written before classes had their own — would
+ * otherwise go unseen from the calendar. A note left by a class that is
+ * gone stands in only when the series has none of its own. Undefined for
+ * an event that doesn't repeat, or with no class given (the series' note
+ * opens then).
+ */
+export function seriesNoteFor(
+  notes: EventNoteRef[],
+  entry: {
+    item_id: string;
+    occurrence?: string | null;
+    team_id?: string | null;
+  },
+): EventNoteRef | undefined {
+  if (!entry.occurrence) return undefined;
+  return ownNoteFirst(
+    notes,
+    (n) =>
+      n.item_id === entry.item_id &&
+      (n.team_id ?? null) === (entry.team_id ?? null) &&
+      n.occurrence === null,
+  );
+}
 
 /** Where an imported page came from. The file itself is not kept. */
 export type DocImportSource = {
@@ -951,6 +1048,116 @@ export function mergeDocs(
 }
 
 /**
+ * Take the ticks a save came back with for the lines tied to tasks.
+ *
+ * The server stores such a line as its task now stands, which isn't always
+ * how it was sent: a repeating task that was just ticked has moved on to its
+ * next occurrence and reads unticked again, and a tick the task refused
+ * reads as the task really is. The page takes that state for every such line
+ * whose tick hasn't changed again here since the save went out (`sent` is
+ * what was sent, `local` is what is on screen now), so the next save doesn't
+ * carry the old tick back. Other lines are left as they are.
+ *
+ * Returns `local` itself when nothing changes, and the ids of the lines that
+ * took a new tick.
+ */
+export function adoptTaskTicks(
+  local: DocBlock[],
+  sent: DocBlock[],
+  saved: Pick<Doc, "content" | "linked_block_ids">,
+): { blocks: DocBlock[]; changed: string[] } {
+  const linked = new Set(saved.linked_block_ids ?? []);
+  if (!linked.size) return { blocks: local, changed: [] };
+  const now = new Map<string, boolean>();
+  for (const b of saved.content)
+    if (b.type === "todo" && b.id && linked.has(b.id)) now.set(b.id, b.done);
+  const was = new Map<string, boolean>();
+  for (const b of sent) if (b.type === "todo" && b.id) was.set(b.id, b.done);
+  const changed: string[] = [];
+  const blocks = local.map((b) => {
+    if (b.type !== "todo" || !b.id) return b;
+    const server = now.get(b.id);
+    if (server === undefined || server === b.done) return b;
+    // Ticked or unticked again since the save: that's a new change of its own.
+    if (was.get(b.id) !== b.done) return b;
+    changed.push(b.id);
+    return { ...b, done: server };
+  });
+  return changed.length ? { blocks, changed } : { blocks: local, changed };
+}
+
+/**
+ * The version of a page that the ticks on screen were taken from, which an
+ * editor sends with each save (`ticksFrom` on updateDoc) so the server can
+ * tell a tick the person just made from one it has already counted.
+ *
+ * An editor keeps this beside the version it saves against, starting from
+ * the version it opened. Each time a copy from the server arrives (a save's
+ * answer, a fresh read, a copy merged in), it moves to that copy's version
+ * only when every line tied to a task shows the tick that copy has for it:
+ * then any tick made from here on is made on the lines as they stand. While
+ * a tick made here is still unsaved it stays at `held`, the version the
+ * tick was made on, even as newer copies are merged around it. Sent as if
+ * taken from the newer copy, a tick the server already counted (its answer
+ * lost, or another open copy of the page ticking the same line) would count
+ * again.
+ */
+export function ticksTakenFrom(
+  held: number,
+  server: Pick<Doc, "version" | "content" | "linked_block_ids">,
+  screen: DocBlock[],
+): number {
+  if (server.version <= held) return held;
+  // Without the list, every named checklist line might be a task.
+  const linked = server.linked_block_ids
+    ? new Set(server.linked_block_ids)
+    : null;
+  const theirs = new Map<string, boolean>();
+  for (const b of server.content)
+    if (b.type === "todo" && b.id) theirs.set(b.id, b.done);
+  for (const b of screen) {
+    if (b.type !== "todo" || !b.id || (linked && !linked.has(b.id))) continue;
+    if (theirs.get(b.id) !== b.done) return held;
+  }
+  return server.version;
+}
+
+/**
+ * Whether a newer copy of a page differs from an older one only in the
+ * ticks of lines tied to tasks: a task was finished or reopened, and nobody
+ * wrote on the page. An editor then says so rather than that someone else
+ * edited it.
+ */
+export function onlyTaskTicksMoved(
+  before: DocBlock[],
+  after: Pick<Doc, "content" | "linked_block_ids">,
+): boolean {
+  if (before.length !== after.content.length) return false;
+  const linked = new Set(after.linked_block_ids ?? []);
+  return after.content.every((b, i) => {
+    const a = before[i];
+    if (sameBlock(a, b)) return true;
+    return (
+      a.type === "todo" &&
+      b.type === "todo" &&
+      !!b.id &&
+      a.id === b.id &&
+      linked.has(b.id) &&
+      sameBlock({ ...a, done: b.done }, b)
+    );
+  });
+}
+
+/**
+ * A checklist line's Markdown with its box set to `done`, for a line open
+ * for editing whose tick changed underneath it. Anything that isn't a
+ * checklist line comes back as it was.
+ */
+export function setTodoSource(source: string, done: boolean): string {
+  return source.replace(/^(\s*[-*]\s+\[)[ xX](\])/, `$1${done ? "x" : " "}$2`);
+}
+
+/**
  * The kinds of block a person can ask for by name — in a slash menu, a
  * "turn into" menu, or a toolbar. One list, so every surface offers the same
  * things in the same order and with the same words. `shorthand` is what you
@@ -1240,10 +1447,13 @@ export function reanchorSuggestions(
 
 // ---------------------------------------------------------------- search ---
 
-/** One thing found by a search: a page, or a task. */
+/**
+ * One thing found by a search: a page, a task, or a record (a decision,
+ * promise or other work record; only in a project's search).
+ */
 export type SearchHit = {
   id: string;
-  type: "doc" | "task";
+  type: "doc" | "task" | "record";
   title: string;
   kind: string;
   team_id: string | null;
@@ -1313,12 +1523,25 @@ export type DocAnswer = {
  * citation worth showing someone.
  */
 export type DocSource = {
+  kind?: "page";
   doc_id: string;
   title: string;
   /** The line that matched, when a search found one. */
   block_id: string | null;
   quote: string;
 };
+
+/** A planner fact the assistant actually read and the user can open. */
+export type AssistantSource = (
+  | DocSource
+  | {
+      kind: "task" | "decision" | "change";
+      id: string;
+      project_id?: string;
+      title: string;
+      quote: string;
+    }
+) & { used?: boolean; number?: number };
 
 /**
  * A line as it reads, with its Markdown markers taken off.
@@ -1378,6 +1601,16 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const dayKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+/**
+ * When an agenda is filed: the day it is for, at noon in the reader's own
+ * zone, or when it was written for a page from before agendas knew their
+ * day. A page written today for last Tuesday files under last Tuesday.
+ */
+export const agendaDay = (doc: {
+  created_at: string;
+  agenda_date?: string | null;
+}) => (doc.agenda_date ? `${doc.agenda_date}T12:00:00` : doc.created_at);
+
 /** "2026-09" for a moment, in the reader's own zone. */
 export const agendaMonthKey = (iso: string) => {
   const d = new Date(iso);
@@ -1415,11 +1648,14 @@ export function agendaGroups(
 ): AgendaYear[] {
   const agendas = docs
     .filter((d) => d.kind === "agenda")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort(
+      (a, b) =>
+        new Date(agendaDay(b)).getTime() - new Date(agendaDay(a)).getTime(),
+    );
   const years: AgendaYear[] = [];
   for (const doc of agendas) {
-    const at = new Date(doc.created_at);
-    const key = agendaMonthKey(doc.created_at);
+    const at = new Date(agendaDay(doc));
+    const key = agendaMonthKey(agendaDay(doc));
     let year = years.find((y) => y.year === at.getFullYear());
     if (!year) years.push((year = { year: at.getFullYear(), months: [] }));
     let month = year.months.find((m) => m.key === key);
