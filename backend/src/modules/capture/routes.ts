@@ -21,6 +21,7 @@ import { addToPage } from "../docs/routes.js";
 import { todaysAgenda } from "../docs/agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { linkPreview } from "./preview.js";
+import { cachedSettings } from "../../lib/settings.js";
 
 /**
  * Sharing into Orbyn (the phone's share sheet): a link or some text, sent
@@ -73,33 +74,35 @@ async function shareTask(
   project: { id: string; team_id: string | null } | null,
 ): Promise<Item> {
   const fields = captureTask(c);
-  const item = await mutate(db, u, {
-    operation: "create",
-    data: itemData.parse({
-      title: fields.title,
-      notes: fields.notes.slice(0, 10000),
-      kind: "task",
-      team_id: project?.team_id ?? null,
-      ...(fields.links.length ? { links: fields.links } : {}),
-    }),
-  });
-  if (!item) fail(500, "The task couldn't be made.");
-  if (project) {
-    const stage =
-      (
+  // A project's task starts in its first stage, made there in one go so
+  // its webhook, sync and version all say where it is.
+  const stage = project
+    ? ((
         await db.query<{ id: string }>(
           `SELECT id FROM project_stages WHERE project_id = $1
             ORDER BY position LIMIT 1`,
           [project.id],
         )
-      ).rows[0]?.id ?? null;
-    await db.query(
-      "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
-      [item.id, project.id, stage],
-    );
-    item.project_id = project.id;
-    item.stage_id = stage;
-  }
+      ).rows[0]?.id ?? null)
+    : null;
+  const item = await mutate(
+    db,
+    u,
+    {
+      operation: "create",
+      data: itemData.parse({
+        title: fields.title,
+        notes: fields.notes.slice(0, 10000),
+        kind: "task",
+        team_id: project?.team_id ?? null,
+        ...(fields.links.length ? { links: fields.links } : {}),
+      }),
+    },
+    undefined,
+    undefined,
+    project ? { project_id: project.id, stage_id: stage } : undefined,
+  );
+  if (!item) fail(500, "The task couldn't be made.");
   return item;
 }
 
@@ -120,13 +123,30 @@ export async function captureRoutes(app: FastifyInstance) {
   );
 
   /** Put something shared where the person chose. */
-  app.post("/capture", async (r, reply) => {
-    const u = await authenticate(r);
-    const body = captureInput.parse(r.body ?? {});
-    const result = await capture(u, body);
-    reply.code(201);
-    return result;
-  });
+  // No more than the preview's limit (nor the site-wide one): a link sent
+  // without its title is looked up here, which reaches out to the web the
+  // same way.
+  app.post(
+    "/capture",
+    {
+      config: {
+        rateLimit: {
+          max: () => {
+            const site = cachedSettings().rate_limit_per_minute;
+            return Math.min(30, site > 0 ? site : 30);
+          },
+          timeWindow: "1 minute",
+        },
+      },
+    },
+    async (r, reply) => {
+      const u = await authenticate(r);
+      const body = captureInput.parse(r.body ?? {});
+      const result = await capture(u, body);
+      reply.code(201);
+      return result;
+    },
+  );
 }
 
 /** Put a share where it was sent, and say where it went. */

@@ -584,6 +584,8 @@ export async function mutate(
    * (else its current time is). Its classes' notes move by as much.
    */
   editedFrom?: Date,
+  /** For a create: the project (and its stage) the new task starts in. */
+  place?: { project_id: string; stage_id: string | null },
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
   await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
@@ -638,13 +640,15 @@ export async function mutate(
         `INSERT INTO items (id, title, notes, kind, status, priority, due_at, end_at,
            reminder_minutes, team_id, user_id, progress, estimate_minutes, list_id,
            assignee_id, location, meeting_url, rrule, timezone, series_start,
-           all_day, busy, color, alerts, parent_id, position)
+           all_day, busy, color, alerts, parent_id, position, project_id,
+           stage_id)
          VALUES (coalesce($24::uuid, gen_random_uuid()),
            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
            CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
            $19,$20,$21,$22::integer[],$23,
            (SELECT coalesce(max(x.position), -1) + 1 FROM items x
-            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}))
+            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}),
+           $25::uuid, $26::uuid)
          RETURNING id`,
         [
           d.title,
@@ -671,6 +675,8 @@ export async function mutate(
           alerts,
           parentId,
           createId ?? null,
+          place?.project_id ?? null,
+          place?.stage_id ?? null,
         ],
       )
     ).rows[0];

@@ -81,7 +81,8 @@ export type ToolbarStyle = InlineStyle | "link";
 /**
  * The styles the caret, or every character of the selection, sits inside:
  * the toolbar tints those icons. A caret at the very edge of styled words
- * counts as inside them, which is where it lands after styling them.
+ * counts as inside them, which is where it lands after styling them, and
+ * an empty pair of markers around the caret counts as that style on.
  */
 export function stylesAt(
   source: string,
@@ -103,7 +104,11 @@ export function stylesAt(
       (r) =>
         on(r).length && start >= r.start && start <= r.start + r.text.length,
     );
-    return run ? on(run) : [];
+    const styles = run ? on(run) : [];
+    // Bold pressed with nothing chosen leaves "**|**": it's on, ready to
+    // type into, and pressing it again takes it off.
+    const pair = emptyPairAt(source, start);
+    return pair && !styles.includes(pair) ? [...styles, pair] : styles;
   }
   // A selection shows a style only when all of it has that style.
   const covering = runs.filter(

@@ -27,6 +27,7 @@ import {
   undoStep,
   wordsRange,
 } from "@orbyn/core";
+import { linkTarget, routeLink } from "../../desktop/src/app/app-link.ts";
 
 /**
  * The phone's page editor and its + (the mobile app has no test runner of
@@ -109,6 +110,17 @@ test("the toolbar knows which styles the caret sits in", () => {
   assert.deepEqual(stylesAt(line, 34, 34), ["link"]);
   // A selection shows a style only when all of it has that style.
   assert.deepEqual(stylesAt(line, 3, 12), []);
+});
+
+test("Bold pressed with nothing chosen shows as on until it's typed into", () => {
+  const pressed = toolbarStyle("- word ", 7, 7, "bold")!;
+  assert.equal(pressed.text, "- word ****");
+  assert.deepEqual(stylesAt(pressed.text, pressed.start, pressed.end), [
+    "bold",
+  ]);
+  assert.deepEqual(stylesAt("- a == == b", 6, 6), []);
+  assert.deepEqual(stylesAt("- ====", 4, 4), ["highlight"]);
+  assert.deepEqual(stylesAt("- **", 4, 4), []);
 });
 
 test("Link turns chosen words into a link, or puts the address in", () => {
@@ -338,6 +350,39 @@ test("pages, tasks and projects share links the web app opens", () => {
         id: ID,
       },
     );
+});
+
+test("the web app opens a shared page, task or project link", () => {
+  for (const kind of ["doc", "task", "project"] as const) {
+    const path = appPath({ kind, id: ID });
+    // Signed in: back to /app, with the thing opened over it.
+    assert.deepEqual(routeLink(path, true), {
+      go: "/app",
+      open: { kind, id: ID },
+      remember: null,
+    });
+    // Signed out: to sign-in, remembering what to open after.
+    assert.deepEqual(routeLink(path, false), {
+      go: "/login",
+      open: null,
+      remember: { kind, id: ID },
+    });
+    assert.deepEqual(linkTarget(`${path}/`), { kind, id: ID });
+  }
+  // Anything else under /app still asks a signed-out visitor to sign in.
+  for (const path of ["/app", "/app/settings", `/app/doc/not-an-id`])
+    assert.deepEqual(routeLink(path, false), {
+      go: "/login",
+      open: null,
+      remember: null,
+    });
+  assert.deepEqual(routeLink("/login", true).go, "/app");
+  for (const path of ["/", "/terms", "/book/x", "/application"]) {
+    assert.deepEqual(routeLink(path, false).go, null, path);
+    assert.equal(linkTarget(path), null);
+  }
+  assert.equal(linkTarget("/app/agenda"), null);
+  assert.equal(linkTarget("/app/add"), null);
 });
 
 // ------------------------------------------------ app icon quick actions ---

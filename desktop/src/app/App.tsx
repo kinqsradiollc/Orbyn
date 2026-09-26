@@ -21,7 +21,8 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
-import { rememberTaskLink, takeTaskLink, taskLinkId } from "./task-link";
+import { rememberLink, routeLink, takeLink } from "./app-link";
+import type { LinkTarget } from "@orbyn/core";
 import { Sidebar } from "../components/Sidebar";
 import {
   AnnouncementBanner,
@@ -166,6 +167,8 @@ export function App() {
   const [commandOpen, setCommandOpen] = useState(false);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
+  /** A project to open, from a link to it. */
+  const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
@@ -195,27 +198,18 @@ export function App() {
     !nativeDesktop &&
     ["/book/", "/rsvp/", "/invite/", "/u/"].some((p) => path.startsWith(p));
 
+  // Signed out, anything under /app goes to sign-in. A link to one page,
+  // task or project (/app/doc/<id> and the like) opens it over the app;
+  // signed out, it waits until sign-in.
   useEffect(() => {
-    if (token && (path === "/login" || path === "/signup"))
-      navigatePath("/app", true);
-    if (!token && path === "/app") navigatePath("/login", true);
+    const route = routeLink(path, !!token);
+    if (route.remember) rememberLink(route.remember);
+    if (route.go) navigatePath(route.go, true);
+    if (route.open) openLinked(route.open);
   }, [token, path]);
-  // A link to one task (/app/task/<id>) opens it over the app; signed out,
-  // it waits until sign-in.
-  const linkedTask = taskLinkId(path);
   useEffect(() => {
-    if (!linkedTask) return;
-    if (!token) {
-      rememberTaskLink(linkedTask);
-      navigatePath("/login", true);
-      return;
-    }
-    navigatePath("/app", true);
-    openItemById(linkedTask);
-  }, [token, linkedTask]);
-  useEffect(() => {
-    const waiting = token ? takeTaskLink() : null;
-    if (waiting) openItemById(waiting);
+    const waiting = token ? takeLink() : null;
+    if (waiting) openLinked(waiting);
   }, [token]);
   useEffect(() => {
     // Public booking pages set their own titles and say noindex themselves.
@@ -458,6 +452,19 @@ export function App() {
     const found = items.find((i) => i.id === id);
     if (found) setOpenTask(found);
     else client.getItem(id).then(setOpenTask, report);
+  };
+  /** Opens what a link names: a task over the app, a page in Docs, a project in Projects. */
+  const openLinked = (target: LinkTarget) => {
+    if (target.kind === "task") openItemById(target.id);
+    else if (target.kind === "doc")
+      void client.getDoc(target.id).then((doc) => {
+        setNoteDoc(doc);
+        setView("Docs");
+      }, report);
+    else {
+      setProjectToOpen(target.id);
+      setView("Projects");
+    }
   };
   /** Shows a day in the calendar (from an event search result). */
   const jumpToDate = (day: Date) => {
@@ -758,6 +765,8 @@ export function App() {
                   teams={teams}
                   openTemplate={templateToOpen}
                   onTemplateOpened={() => setTemplateToOpen(null)}
+                  openProject={projectToOpen}
+                  onProjectOpened={() => setProjectToOpen(null)}
                   report={report}
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}

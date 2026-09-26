@@ -67,6 +67,12 @@ export function ShareIntoSheet({
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** The lists that couldn't be fetched, each offered again. */
+  const [failed, setFailed] = useState<Partial<Record<Kind, boolean>>>({});
+  /** Pages found on the server for the words typed (older ones too). */
+  const [found, setFound] = useState<{ id: string; title: string }[] | null>(
+    null,
+  );
 
   // A new share starts from the place used last, with its title looked up.
   useEffect(() => {
@@ -78,27 +84,71 @@ export function ShareIntoSheet({
     setQuery("");
     setTitle(null);
     setSite(shared.url ? siteOf(shared.url) : "");
+    // A preview that comes back after another share opened is dropped, so
+    // one link's title never lands on another's task.
+    let current = true;
     if (shared.url)
       client.linkPreview(shared.url).then(
         (p) => {
+          if (!current) return;
           setTitle(p.title);
           setSite(p.site);
         },
         () => {},
       );
+    return () => {
+      current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shared]);
 
   // The lists a destination chooses from, fetched when first needed.
   useEffect(() => {
-    if (!shared) return;
-    if (kind === "page" && !pages)
-      client.listDocs().then(setPages, (e) => setError(errorText(e)));
+    if (!shared || failed[kind]) return;
+    const fail = (e: unknown) => {
+      setFailed((f) => ({ ...f, [kind]: true }));
+      setError(errorText(e));
+    };
+    if (kind === "page" && !pages) client.listDocs().then(setPages, fail);
     if (kind === "new_page" && !folders)
-      client.listFolders().then(setFolders, (e) => setError(errorText(e)));
+      client.listFolders().then(setFolders, fail);
     if (kind === "project" && !projects)
-      client.listProjects().then(setProjects, (e) => setError(errorText(e)));
-  }, [kind, shared, pages, folders, projects]);
+      client.listProjects().then(setProjects, fail);
+  }, [kind, shared, pages, folders, projects, failed]);
+
+  // Words typed to find a page look through all of them on the server, not
+  // just the newest the list brought.
+  useEffect(() => {
+    const words = query.trim();
+    setFound(null);
+    if (kind !== "page" || words.length < 2) return;
+    let current = true;
+    const wait = setTimeout(() => {
+      client.search(words, { type: "doc", limit: 20 }).then(
+        (hits) => {
+          if (current)
+            setFound(
+              hits
+                .filter((h) => h.kind !== "agenda" && canWriteIn(h.team_id))
+                .map((h) => ({ id: h.id, title: h.title })),
+            );
+        },
+        () => {
+          if (current) setFound([]);
+        },
+      );
+    }, 250);
+    return () => {
+      current = false;
+      clearTimeout(wait);
+    };
+  }, [kind, query, canWriteIn]);
+
+  /** Offer a list that couldn't be fetched again. */
+  const retry = (k: Kind) => {
+    setError("");
+    setFailed((f) => ({ ...f, [k]: false }));
+  };
 
   const choose = (c: ShareChoice) => {
     setKind(c.kind);
@@ -109,20 +159,21 @@ export function ShareIntoSheet({
   const task = shared
     ? captureTask({ url: shared.url, title, text: shared.text })
     : null;
-  const writablePages = useMemo(
-    () =>
-      (pages ?? [])
-        .filter((d) => d.kind !== "agenda" && canWriteIn(d.team_id))
-        .filter((d) =>
-          query.trim()
-            ? (d.title || "Untitled")
-                .toLowerCase()
-                .includes(query.trim().toLowerCase())
-            : true,
-        )
-        .slice(0, 6),
-    [pages, query, canWriteIn],
-  );
+  const writablePages = useMemo(() => {
+    const words = query.trim().toLowerCase();
+    const listed = (pages ?? [])
+      .filter((d) => d.kind !== "agenda" && canWriteIn(d.team_id))
+      .filter((d) =>
+        words ? (d.title || "Untitled").toLowerCase().includes(words) : true,
+      )
+      .map((d) => ({ id: d.id, title: d.title }));
+    // The newest that match first, then older ones the server found.
+    const seen = new Set(listed.map((d) => d.id));
+    return [...listed, ...(found ?? []).filter((d) => !seen.has(d.id))].slice(
+      0,
+      6,
+    );
+  }, [pages, query, found, canWriteIn]);
 
   const ready = kind === "inbox" || kind === "agenda" || !!picked;
   const destination = (): CaptureDestination | null => {
@@ -230,6 +281,22 @@ export function ShareIntoSheet({
     );
   };
 
+  const retryRow = (k: Kind) => (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => retry(k)}
+      style={({ pressed }) => [
+        s.option,
+        pressed && { backgroundColor: colors.surfaceMuted },
+      ]}
+    >
+      <Icon name="refreshCw" size={16} color={colors.muted} />
+      <Text style={s.optionText} numberOfLines={1}>
+        Couldn’t load. Try again
+      </Text>
+    </Pressable>
+  );
+
   return (
     <BottomSheet
       visible={!!shared}
@@ -308,10 +375,18 @@ export function ShareIntoSheet({
                   onChangeText={setQuery}
                   accessibilityLabel="Find a page"
                 />
-                {pages === null ? (
+                {failed.page ? (
+                  retryRow("page")
+                ) : pages === null ? (
                   <Text style={s.muted}>Loading…</Text>
                 ) : writablePages.length === 0 ? (
-                  <Text style={s.muted}>No page by that name.</Text>
+                  <Text style={s.muted}>
+                    {!query.trim()
+                      ? "No pages you can add to yet."
+                      : query.trim().length >= 2 && found === null
+                        ? "Looking…"
+                        : "No page by that name."}
+                  </Text>
                 ) : (
                   writablePages.map((d) =>
                     option(d.id, d.title || "Untitled", d.id, "fileText"),
@@ -329,7 +404,9 @@ export function ShareIntoSheet({
             {kind === "new_page" && (
               <View style={s.picker}>
                 {option("none", "Unfiled", null, "fileText")}
-                {folders === null ? (
+                {failed.new_page ? (
+                  retryRow("new_page")
+                ) : folders === null ? (
                   <Text style={s.muted}>Loading…</Text>
                 ) : (
                   folders
@@ -346,7 +423,9 @@ export function ShareIntoSheet({
             )}
             {kind === "project" && (
               <View style={s.picker}>
-                {projects === null ? (
+                {failed.project ? (
+                  retryRow("project")
+                ) : projects === null ? (
                   <Text style={s.muted}>Loading…</Text>
                 ) : projects.filter((p) => canWriteIn(p.team_id)).length ===
                   0 ? (

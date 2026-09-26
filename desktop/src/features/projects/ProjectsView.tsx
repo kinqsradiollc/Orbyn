@@ -26,6 +26,8 @@ export function ProjectsView({
   teams = [],
   openTemplate = null,
   onTemplateOpened,
+  openProject = null,
+  onProjectOpened,
   report,
   onRefresh,
   onOpenItem,
@@ -38,6 +40,9 @@ export function ProjectsView({
   /** Open Templates on this one (from a "ready to start" notice). */
   openTemplate?: string | null;
   onTemplateOpened?: () => void;
+  /** Open this project (from a link to it). */
+  openProject?: string | null;
+  onProjectOpened?: () => void;
   report: (e: unknown) => void;
   onRefresh: () => void;
   onOpenItem: (item: Item) => void;
@@ -56,6 +61,12 @@ export function ProjectsView({
     setTemplates(true);
     onTemplateOpened?.();
   }, [openTemplate, onTemplateOpened]);
+
+  useEffect(() => {
+    if (!openProject) return;
+    onProjectOpened?.();
+    client.getProject(openProject).then(setOpen, report);
+  }, [openProject]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = () =>
     client.listProjects().then(setProjects, (e) => {

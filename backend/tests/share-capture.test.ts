@@ -455,6 +455,10 @@ test("a share goes into a project as a task in its first stage", async () => {
   assert.equal(item.project_id, project.id);
   assert.equal(item.stage_id, project.stages[0].id);
   assert.equal(item.team_id, team, "a team project's task is the team's");
+  // Made in the project from the start: what came back, and what webhooks
+  // and sync were told, already say so.
+  assert.equal(r.json().item.project_id, project.id);
+  assert.equal(r.json().item.version, item.version);
   assert.equal(r.json().note, `Added “${item.title}” to Oceanography.`);
   // A viewer can't add to it; someone outside the team can't find it.
   assert.equal(
@@ -703,6 +707,20 @@ test("sharing answers 429 past the per-minute limit", async () => {
   } finally {
     live.rate_limit_per_minute = was;
   }
+  // Sharing a link looks its title up when the app didn't, so sharing
+  // keeps under the preview's limit too.
+  let shared = 0;
+  for (let n = 0; n < 31; n++)
+    shared = (
+      await app.inject({
+        method: "POST",
+        url: "/capture",
+        headers: { authorization: `Bearer ${member.token}` },
+        remoteAddress: "10.75.0.3",
+        payload: { text: "limited", to: { kind: "inbox" } },
+      })
+    ).statusCode;
+  assert.equal(shared, 429);
   // The preview has its own limit, as it reaches out to the web.
   let last = 0;
   for (let n = 0; n < 31; n++)
