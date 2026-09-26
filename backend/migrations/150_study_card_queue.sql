@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS study_card_queue (
   queued_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Cards by page: the trigger below asks whether a page has any, and a page's
+-- sync replaces its cards, on every save.
+CREATE INDEX IF NOT EXISTS study_cards_doc ON study_cards (doc_id);
+
 -- A page's card lines look like "Question :: Answer", "Term ::: Meaning" or
 -- a cloze "{{…}}"; one that has cards may have just lost its lines.
 CREATE OR REPLACE FUNCTION study_card_queue_doc() RETURNS trigger
