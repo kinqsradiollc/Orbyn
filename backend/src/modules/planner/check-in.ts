@@ -6,7 +6,7 @@ import {
   type SessionOutcome,
 } from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /**
  * Session check-in and "started": what happened to a session once its time
@@ -40,7 +40,7 @@ async function ownSession(db: Db, id: string, userId: string) {
       `SELECT b.id, b.item_id, b.start_at, b.end_at, b.outcome, b.counted,
               b.spent_added, b.started_at
          FROM time_blocks b JOIN items i ON i.id = b.item_id
-        WHERE b.id = $2 AND b.user_id = $1 AND ${VISIBLE_ITEMS}
+        WHERE b.id = $2 AND b.user_id = $1 AND ${visibleItems()}
         FOR UPDATE OF b`,
       [userId, id],
     )
@@ -74,7 +74,7 @@ export async function pendingCheckIns(
         WHERE b.user_id = $1 AND b.outcome IS NULL
           AND b.end_at <= $2 AND b.end_at > $2::timestamptz - make_interval(days => $3)
           AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
-          AND ${VISIBLE_ITEMS}
+          AND ${visibleItems()}
         ORDER BY b.end_at DESC LIMIT 10`,
       [userId, now, CHECK_IN_DAYS],
     )

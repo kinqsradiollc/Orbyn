@@ -3,6 +3,7 @@ import { pool, type Queryable } from "../../db/pool.js";
 import { embed } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
 import { notKeptOut } from "../../lib/assistant-off.js";
+import { readableDocs } from "../../lib/visibility.js";
 
 /**
  * Finding a page that says the thing in other words.
@@ -181,9 +182,7 @@ export async function nearest(
                 1 - (e.embedding <=> $2::vector) AS nearness
            FROM doc_embeddings e JOIN docs d ON d.id = e.doc_id
           WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
-            AND ((d.team_id IS NULL AND d.user_id = $1)
-                 OR d.team_id IN (SELECT team_id FROM team_members
-                                   WHERE user_id = $1))
+            AND ${readableDocs("d")}
             AND ($4::uuid IS NULL OR d.project_id = $4)
           ORDER BY e.embedding <=> $2::vector
           LIMIT $3`,

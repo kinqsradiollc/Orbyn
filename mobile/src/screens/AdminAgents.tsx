@@ -82,7 +82,11 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
     return <Text style={shared.small}>Loading agent settings…</Text>;
 
   const toggle = (
-    key: "agents_enabled" | "agents_writes_enabled" | "dcr_enabled",
+    key:
+      | "agents_enabled"
+      | "agents_writes_enabled"
+      | "dcr_enabled"
+      | "mcp_apps_enabled",
     on: boolean,
     confirmOff: string,
   ) => {
@@ -230,8 +234,25 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           }
         />
         <Toggle
+          label="Cards in agents (preview)"
+          hint="Agents that can show cards get Today, a plan preview with Apply, and changes waiting for review. Approving still happens only in Orbyn."
+          on={settings.mcp_apps_enabled}
+          disabled={busy}
+          onChange={(on) =>
+            toggle(
+              "mcp_apps_enabled",
+              on,
+              "Stop showing cards in agents? Their answers stay the same.",
+            )
+          }
+        />
+        <Toggle
           label="Old personal API keys reach agents"
-          hint="During their 90 days. They always keep working with the API and CalDAV."
+          hint={
+            settings.legacy_keys_until
+              ? `Until ${new Date(settings.legacy_keys_until).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}, then never again. They always keep working with the API and CalDAV.`
+              : "Their 90 days are over. They keep working with the API and CalDAV."
+          }
           on={legacyOn}
           disabled={busy}
           onChange={toggleLegacy}

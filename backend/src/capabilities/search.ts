@@ -7,7 +7,17 @@ import {
   visibleItems,
   visibleProjects,
   visibleRecords,
+  visibleTemplates,
+  visibleViews,
+  visibleFolders,
+  visiblePageTemplates,
+  visibleOwned,
+  type Scope,
 } from "../lib/visibility.js";
+
+/** Lists and tags follow the owner-or-team rule of everything else. */
+const visibleOwnedOf = (alias: string, scope: Scope) =>
+  visibleOwned(alias, "user_id", scope);
 import {
   READ,
   cursorInput,
@@ -29,6 +39,7 @@ import {
   type Provenance,
 } from "./format.js";
 import { refs, type RefType } from "./refs.js";
+import { searchRank } from "../modules/search/rank.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
 import { defineCapability, type CapabilityContext } from "./registry.js";
 
@@ -47,13 +58,25 @@ import { defineCapability, type CapabilityContext } from "./registry.js";
 const MARKS =
   "StartSel=**, StopSel=**, MaxWords=26, MinWords=10, MaxFragments=1";
 
-/** Word match, lifted for recent changes, plus a little for a title that looks right. */
-const rank = (vector: string, title: string, updated: string, q: string) => `
-  ts_rank_cd(${vector}, q.tsq)
-    * (1 + 0.5 * exp(-(extract(epoch FROM now() - ${updated}) / 2592000)))
-  + greatest(similarity(${title}, ${q}) - 0.2, 0) * 0.5`;
+/**
+ * Word match, lifted for recent changes, plus a little for a title that
+ * looks right: the app's own ranking (the search service's), so an agent
+ * and the search box put things in the same order.
+ */
+const rank = searchRank;
 
-const SEARCH_TYPES = ["task", "event", "doc", "project", "record"] as const;
+const SEARCH_TYPES = [
+  "task",
+  "event",
+  "doc",
+  "project",
+  "record",
+  "view",
+  "template",
+  "folder",
+  "list",
+  "tag",
+] as const;
 
 const hit = z.object({
   id: z.string(),
@@ -263,6 +286,41 @@ async function runSearch(
     rows.push(...found.rows.map((r) => ({ ...r, type: "record" as const })));
   }
 
+  // Saved views, templates (project and page), folders, lists and tags, by
+  // name (no project filter applies).
+  for (const [type, table, alias, vis, name] of [
+    ["view", "saved_views", "v", visibleViews, "v.name"],
+    ["template", "project_templates", "t", visibleTemplates, "t.name"],
+    ["template", "page_templates", "t", visiblePageTemplates, "t.name"],
+    ["folder", "folders", "f", visibleFolders, "f.name"],
+    ["list", "lists", "l", visibleOwnedOf, "l.name"],
+    ["tag", "tags", "g", visibleOwnedOf, "g.name"],
+  ] as const) {
+    if (!types.has(type) || project || a.status === "closed") continue;
+    const params = new Params();
+    const scope = scopeFor(ctx.spaces, params);
+    const q = params.add(a.query);
+    const stamp = ["folders", "lists", "tags"].includes(table)
+      ? `${alias}.created_at`
+      : `${alias}.updated_at`;
+    const where = [
+      vis(alias, scope),
+      `(${name} ILIKE '%' || ${q} || '%' OR similarity(${name}, ${q}) > 0.3)`,
+      ...common(alias, params, stamp),
+    ];
+    const found = await ctx.db.query<SearchRow>(
+      `SELECT ${alias}.id, '${type}' AS kind, ${name} AS title, ${alias}.team_id,
+              ${alias}.user_id, u.name AS author_name, ${stamp} AS updated_at,
+              false AS imported, NULL AS block_id, NULL AS snippet,
+              (similarity(${name}, ${q}) * 0.6 + 0.4 / (1 + extract(epoch FROM now() - ${stamp}) / 2592000))::text AS rank
+         FROM ${table} ${alias} JOIN users u ON u.id = ${alias}.user_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY rank DESC LIMIT ${want}`,
+      params.values,
+    );
+    rows.push(...found.rows.map((r) => ({ ...r, type })));
+  }
+
   const hideOutside = ctx.principal.flags.hide_outside_content;
   const sorted = rows
     .map((r): Hit => {
@@ -313,7 +371,7 @@ export const search = defineCapability({
   name: "search",
   title: "Search Orbyn",
   description:
-    'Find tasks, events, pages, projects and work records by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
+    'Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
   input: searchInput,
   output: z.object({
     results: z.array(hit),

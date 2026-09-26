@@ -28,6 +28,39 @@ export const colors = {
   white: "#ffffff",
 } as const;
 
+/**
+ * The same roles in the web app's dark theme (desktop/src/styles/theme.css,
+ * `:root[data-theme="dark"]`), for surfaces drawn outside the apps that
+ * follow a host's light or dark mode (cards shown inside AI agents).
+ * The web's theme.css stays the source; a test keeps the two equal.
+ */
+export const darkColors: Record<keyof typeof colors, string> = {
+  background: "#121614",
+  surface: "#1a1f1c",
+  surfaceMuted: "#212722",
+  border: "#2c342f",
+  divider: "#242b26",
+  text: "#e2e8e3",
+  textSoft: "#b4bfb7",
+  muted: "#8e9a92",
+  faint: "#5f6a63",
+  accent: "#7cc49a",
+  accentPressed: "#9ad3b0",
+  accentSoft: "#1e3327",
+  dot: "#7fa472",
+  soft: "#1f2a22",
+  softBorder: "#2f3f33",
+  danger: "#ec8f71",
+  dangerSoft: "#3a231d",
+  highBg: "#3a261f",
+  highText: "#e5a888",
+  mediumBg: "#1f2c23",
+  mediumText: "#9dc29f",
+  lowBg: "#252b27",
+  lowText: "#a4ae9b",
+  white: "#1a1f1c",
+};
+
 export type ScreenName =
   | "Overview"
   | "My tasks"

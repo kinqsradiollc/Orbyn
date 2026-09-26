@@ -20,6 +20,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   project: "calendar",
   mention: "atSign",
   session: "timer",
+  review: "inbox",
 };
 
 /**
@@ -89,6 +90,8 @@ export function InboxScreen({
   onOpenDoc,
   onOpenPage,
   onStartSession,
+  reviewPending = 0,
+  onOpenReview,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -114,9 +117,41 @@ export function InboxScreen({
   onOpenPage?: (docId: string) => void;
   /** Start a session from its reminder ("session" notices), in focus mode. */
   onStartSession?: (notice: Notice) => void;
+  /** Proposals waiting in Review (agents' and the assistant's). */
+  reviewPending?: number;
+  /** Open Review, on one proposal (a "review" notice) or the whole inbox. */
+  onOpenReview?: (proposalId: string | null, notice?: Notice) => void;
 }) {
+  const review =
+    reviewPending > 0 && onOpenReview ? (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => onOpenReview(null)}
+        style={({ pressed }) => [
+          shared.card,
+          s.review,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <View style={s.icon}>
+          <Icon name="inbox" size={16} color={colors.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.reviewTitle}>
+            {reviewPending === 1
+              ? "1 suggestion waits for you"
+              : `${reviewPending} suggestions wait for you`}
+          </Text>
+          <Text style={shared.small}>
+            Approve or decline what your agents suggest.
+          </Text>
+        </View>
+        <Icon name="chevronRight" size={16} color={colors.muted} />
+      </Pressable>
+    ) : null;
   const asks = (
     <>
+      {review}
       {onOpenPage && <MentionedIn onOpen={onOpenPage} />}
       {onOpenItemById ? <AsksList onOpenItem={onOpenItemById} /> : null}
     </>
@@ -147,9 +182,18 @@ export function InboxScreen({
           n.ref?.startsWith("doc:")
             ? n.ref.slice(4).split(":")[0]
             : null;
+        const proposal =
+          n.kind === "review" && n.ref?.startsWith("proposal:")
+            ? n.ref.slice("proposal:".length)
+            : null;
         const action =
           n.kind === "session" && n.ref && n.item_id && onStartSession
             ? { label: "Start", run: onStartSession }
+            : proposal && onOpenReview
+            ? {
+                label: "Review",
+                run: (x: Notice) => onOpenReview(proposal, x),
+              }
             : n.kind === "conflict" && n.ref
               ? { label: "Reschedule", run: onReschedule }
               : n.kind === "rollforward"
@@ -244,6 +288,18 @@ const s = themed(() =>
     row: { flexDirection: "row", gap: 12, padding: 16 },
     mentions: { marginBottom: 12, gap: 2 },
     mention: { gap: 3, paddingVertical: 10 },
+    review: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 12,
+    },
+    reviewTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
     actions: {
       flexDirection: "row",
       paddingLeft: 62,

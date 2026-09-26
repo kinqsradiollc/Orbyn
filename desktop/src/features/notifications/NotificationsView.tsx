@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Inbox,
   AlertTriangle,
   Bell,
   CalendarCheck,
@@ -42,6 +43,8 @@ type Props = {
   onOpenDoc?: (docId: string) => void;
   /** Starts a session from its reminder ("session" notices), in focus mode. */
   onStartSession?: (blockId: string, itemId: string) => Promise<void>;
+  /** Opens Review on the proposal in a "review" notice's `ref`. */
+  onOpenReview?: (proposalId: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -57,6 +60,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   import: FileText,
   mention: AtSign,
   session: Timer,
+  review: Inbox,
 };
 
 /**
@@ -110,6 +114,7 @@ export function NotificationsView({
   onOpenProject,
   onOpenDoc,
   onStartSession,
+  onOpenReview,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -209,6 +214,19 @@ export function NotificationsView({
                   <LayoutTemplate size={14} /> Review
                 </button>
               )}
+              {n.kind === "review" &&
+                n.ref?.startsWith("proposal:") &&
+                onOpenReview && (
+                  <button
+                    className="secondary notice-action"
+                    onClick={() => {
+                      if (!n.read) onRead(n);
+                      onOpenReview(n.ref!.slice("proposal:".length));
+                    }}
+                  >
+                    <Inbox size={14} /> Review
+                  </button>
+                )}
               {n.kind === "project" && n.ref && onOpenProject && (
                 <button
                   className="secondary notice-action"

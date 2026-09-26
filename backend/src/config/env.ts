@@ -145,6 +145,20 @@ const schema = z.object({
   OAUTH_ACCESS_TTL: z.coerce.number().int().min(60).max(86_400).default(3600),
   /** Days an unused agent refresh token (ort_) lasts; 90 at most in all. */
   OAUTH_REFRESH_TTL: z.coerce.number().int().min(1).max(90).default(30),
+  /**
+   * Where security problems are reported: the Contact line of
+   * /.well-known/security.txt (a mailto: or https: address).
+   */
+  SECURITY_CONTACT: z.string().default("mailto:hello@orbyn.dev"),
+  /**
+   * The token the OpenAI apps directory gives to prove Orbyn owns the MCP
+   * address, answered at /.well-known/openai-apps-challenge (404 when
+   * empty). Set only while a directory submission asks for it.
+   */
+  OPENAI_APPS_CHALLENGE: z
+    .string()
+    .regex(/^[\w.-]{0,256}$/)
+    .default(""),
 });
 
 export type Env = z.infer<typeof schema>;

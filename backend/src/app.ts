@@ -6,6 +6,7 @@ import { userRoutes } from "./modules/users/routes.js";
 import { inboundRoutes } from "./modules/inbound/routes.js";
 import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
 import { agentRoutes } from "./modules/agents/routes.js";
+import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
 import { davRoutes } from "./modules/dav/routes.js";
 import { itemRoutes } from "./modules/items/routes.js";
@@ -21,6 +22,7 @@ import { docRoutes } from "./modules/docs/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
 import { aiDocRoutes } from "./modules/ai/docs.js";
 import { folderRoutes } from "./modules/organize/folders.js";
+import { developerRoutes } from "./modules/developers/routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
 import { workRecordRoutes } from "./modules/work-records/routes.js";
 import { plannerRoutes } from "./modules/planner/routes.js";
@@ -50,6 +52,7 @@ import { originalRoutes } from "./modules/imports/originals.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
 import { captureRoutes } from "./modules/capture/routes.js";
+import { mcpListenRoutes } from "./modules/mcp-server/listen.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -70,6 +73,9 @@ export const serviceModules: Record<
     originalRoutes,
     inboundRoutes,
     agentRoutes,
+    // The Review inbox: approving what the assistant and outside agents
+    // propose, and undoing what agents changed.
+    proposalRoutes,
     // Signing in with Orbyn for outside agents (OAuth): the authorization
     // server, its metadata and the consent page's routes.
     oauthRoutes,
@@ -86,6 +92,7 @@ export const serviceModules: Record<
     searchRoutes,
     aiDocRoutes,
     folderRoutes,
+    developerRoutes,
     projectRoutes,
     workRecordRoutes,
     plannerRoutes,
@@ -114,7 +121,13 @@ export const serviceModules: Record<
    * Long-lived streams: live news for the apps and live documents. Scaled on
    * open connections, apart from the API, which scales on requests.
    */
-  realtime: [realtimeRoutes, legacyDocStreamRoutes],
+  realtime: [
+    realtimeRoutes,
+    legacyDocStreamRoutes,
+    // Agents following Orbyn (MCP subscriptions/listen): the gateway sends
+    // a POST /mcp whose Mcp-Method is subscriptions/listen here.
+    mcpListenRoutes,
+  ],
   /**
    * The file store: uploads for importing into Docs, held encrypted until
    * the converter has read them, and never longer than a day. It holds

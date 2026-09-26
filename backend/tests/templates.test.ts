@@ -7,7 +7,7 @@ import "./setup.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { runDueTemplates } = await import("../src/modules/templates/routes.js");
+const { runDueTemplates } = await import("../src/modules/templates/service.js");
 
 const app = await buildApp();
 type Json = Record<string, any>;

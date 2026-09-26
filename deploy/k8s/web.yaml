@@ -126,6 +126,10 @@ data:
       location = /.well-known/oauth-authorization-server {
         proxy_pass http://orbyn_api/.well-known/oauth-authorization-server;
       }
+      # Where to report a security problem (RFC 9116), from the API.
+      location = /.well-known/security.txt {
+        proxy_pass http://orbyn_api/.well-known/security.txt;
+      }
       # Well-known documents this app doesn't have: a 404, not the app's page.
       location ^~ /.well-known/ {
         default_type application/json;

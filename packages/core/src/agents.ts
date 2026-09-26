@@ -108,6 +108,18 @@ export const agentKeyInput = z
   });
 export type AgentKeyInput = z.input<typeof agentKeyInput>;
 
+/**
+ * Changing a connection's toolsets in Settings → Connected agents. Core is
+ * always on. Bookings can be added to an agent key here; a connection that
+ * signed in (OAuth) gets bookings only by signing in again and allowing it.
+ */
+export const agentToolsetsInput = z
+  .object({
+    toolsets: z.array(z.enum(AGENT_TOOLSETS)).max(8),
+  })
+  .strict();
+export type AgentToolsetsInput = z.input<typeof agentToolsetsInput>;
+
 /** One connection, as the Connected agents list shows it. */
 export type AgentGrant = {
   id: string;
@@ -181,6 +193,12 @@ export type AgentActivity = {
   /** Reads are counted per minute, so one line can stand for several calls. */
   calls: number;
   target_ids: string[];
+  /** It can still be undone (changes only, for 30 days). */
+  undoable: boolean;
+  /** When it was undone, if it was. */
+  undone_at: string | null;
+  /** The proposal it made, waiting in the Review inbox. */
+  proposal_id: string | null;
 };
 
 /** Limits per connection (and per person across connections). */
@@ -220,6 +238,16 @@ export type AgentSettings = {
   blocked_client_ids: string[];
   max_grant_days: number;
   agent_limits: AgentLimits;
+  /**
+   * Cards in agents that can show them (MCP Apps: Today, a plan preview
+   * with Apply, a proposal to review in Orbyn). Off by default: a preview.
+   */
+  mcp_apps_enabled: boolean;
+  /**
+   * Until when old personal API keys still work over MCP (read-only here;
+   * the date is 90 days after agent access arrived), or null once past.
+   */
+  legacy_keys_until?: string | null;
 };
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
@@ -230,6 +258,7 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   blocked_client_ids: [],
   max_grant_days: AGENT_KEY_MAX_DAYS,
   agent_limits: DEFAULT_AGENT_LIMITS,
+  mcp_apps_enabled: false,
 };
 
 /** The client ids agent keys and old API keys connect as, for blocking. */
@@ -259,6 +288,7 @@ export const agentSettingsUpdate = z
       .max(200)
       .optional(),
     max_grant_days: z.number().int().min(1).max(AGENT_KEY_MAX_DAYS).optional(),
+    mcp_apps_enabled: z.boolean().optional(),
     agent_limits: z
       .object({
         calls_per_minute: limit(10_000),
@@ -375,6 +405,80 @@ export function agentSetup(
   }
 }
 
+/** The MCP server's name in apps' configs (no underscore, for Gemini CLI). */
+export const MCP_SERVER_NAME = "orbyn";
+
+/** Apps with a one-click install link, in the order Settings offers them. */
+export const AGENT_INSTALL_APPS = [
+  "cursor",
+  "vscode",
+  "goose",
+  "lmstudio",
+] as const;
+export type AgentInstallApp = (typeof AGENT_INSTALL_APPS)[number];
+
+export const AGENT_INSTALL_LABELS: Record<AgentInstallApp, string> = {
+  cursor: "Cursor",
+  vscode: "VS Code",
+  goose: "Goose",
+  lmstudio: "LM Studio",
+};
+
+const BASE64 =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/** Base64 of a string's UTF-8 bytes (no btoa: the same on every platform). */
+export function base64(text: string): string {
+  const bytes: number[] = [];
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    if (c < 0x80) bytes.push(c);
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    else if (c < 0x10000)
+      bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else
+      bytes.push(
+        0xf0 | (c >> 18),
+        0x80 | ((c >> 12) & 63),
+        0x80 | ((c >> 6) & 63),
+        0x80 | (c & 63),
+      );
+  }
+  let out = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const [a, b, c] = [bytes[i], bytes[i + 1], bytes[i + 2]];
+    const n = (a << 16) | ((b ?? 0) << 8) | (c ?? 0);
+    out +=
+      BASE64[(n >> 18) & 63] +
+      BASE64[(n >> 12) & 63] +
+      (b === undefined ? "=" : BASE64[(n >> 6) & 63]) +
+      (c === undefined ? "=" : BASE64[n & 63]);
+  }
+  return out;
+}
+
+/**
+ * One-click links that add Orbyn to an app, with only its address: the
+ * app then signs in with Orbyn (or asks for an agent key), so no secret
+ * is ever in a link.
+ */
+export function agentInstallLinks(
+  url: string,
+): { app: AgentInstallApp; label: string; href: string }[] {
+  const name = MCP_SERVER_NAME;
+  const hrefs: Record<AgentInstallApp, string> = {
+    cursor: `cursor://anysphere.cursor-deeplink/mcp/install?name=${name}&config=${encodeURIComponent(base64(JSON.stringify({ url })))}`,
+    vscode: `https://vscode.dev/redirect/mcp/install?name=${name}&config=${encodeURIComponent(JSON.stringify({ type: "http", url }))}`,
+    goose: `goose://extension?url=${encodeURIComponent(url)}&type=streamable_http&id=${name}&name=Orbyn&description=${encodeURIComponent("Tasks, calendar, sessions, projects and pages")}`,
+    lmstudio: `lmstudio://add_mcp?name=${name}&config=${encodeURIComponent(base64(JSON.stringify({ url })))}`,
+  };
+  return AGENT_INSTALL_APPS.map((app) => ({
+    app,
+    label: AGENT_INSTALL_LABELS[app],
+    href: hrefs[app],
+  }));
+}
+
 /** "Expires in 29 days", "Expires tomorrow", "Expired". */
 export function agentExpiryText(
   expiresAt: string | null,
@@ -460,20 +564,28 @@ export const AGENT_TOOLSET_LABELS: Record<
     name: "Tasks, calendar, projects and pages",
     blurb: "Always on.",
   },
-  workspace: { name: "Folders, tags and lists", blurb: "Organising pages." },
-  planner: { name: "Planner", blurb: "Sessions, your usual day and plans." },
-  study: { name: "Study", blurb: "Flashcards and reviews." },
+  workspace: {
+    name: "Projects, history and organising",
+    blurb:
+      "Project changes, history, templates, saved views, lists, tags, folders, comments and suggestions.",
+  },
+  planner: {
+    name: "Planner",
+    blurb:
+      "How you work, what-if plans, focus time, routines and planner settings.",
+  },
+  study: { name: "Study", blurb: "Flashcards, exams and revision sessions." },
   followthrough: {
     name: "Follow-through",
-    blurb: "Asks, promises and decisions.",
+    blurb: "Asks, promises, decisions, progress and notices.",
   },
-  teams: { name: "Teams", blurb: "Team members and their time." },
+  teams: { name: "Teams", blurb: "Team members, workload and meeting times." },
   booking: {
     name: "Bookings",
     blurb:
       "Booking pages, and your guests’ names and contact details. Booking changes email your guests, so they always wait for your review.",
   },
-  files: { name: "Files", blurb: "Imported files." },
+  files: { name: "Files", blurb: "Imports into pages, and bulk task imports." },
 };
 
 /** The parameters of an authorization request, as an app sends them. */
@@ -663,3 +775,47 @@ export type AdminAgentGrant = Pick<
   | "suspended_at"
   | "created_at"
 >;
+
+/**
+ * The published description of Orbyn's MCP server (GET /developers/mcp):
+ * what the public developer page shows. The same as docs/mcp-catalog.json,
+ * with this server's address and live limits.
+ */
+export type McpCatalog = {
+  version: string;
+  server: {
+    name: string;
+    title: string;
+    address: string;
+    protocol_versions: string[];
+    instructions: string;
+  };
+  tools: {
+    name: string;
+    title: string;
+    description: string;
+    kind: "read" | "write" | "destructive";
+    access: AgentAccess;
+    toolset: AgentToolset;
+    legacy_only?: boolean;
+  }[];
+  toolsets: { name: AgentToolset; title: string; tools: string[] }[];
+  resources: { uri: string; name: string; public?: boolean }[];
+  resource_templates: {
+    uri_template: string;
+    name: string;
+    description: string;
+  }[];
+  prompts: {
+    name: string;
+    title: string;
+    description: string;
+    arguments: { name: string; required: boolean }[];
+  }[];
+  versioning: string[];
+  changelog: { date: string; changes: string[] }[];
+  limits: AgentLimits;
+  agents_enabled: boolean;
+  security: string;
+  status_url: string;
+};

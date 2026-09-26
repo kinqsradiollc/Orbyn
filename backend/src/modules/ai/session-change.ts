@@ -1,8 +1,8 @@
 import { fail, sessionChangeSchema, type SessionChange } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
-import { queueWebhooks } from "../../lib/webhooks.js";
 import { busyIntervals } from "../planner/calendar.js";
+import { moveSession, removeSession } from "../planner/blocks.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /** Apply one reviewed session change after checking it is still the same session. */
 export async function applySessionChange(
@@ -22,7 +22,7 @@ export async function applySessionChange(
     }>(
       `SELECT b.id, b.item_id, i.project_id, b.start_at, b.end_at, i.status
          FROM time_blocks b JOIN items i ON i.id = b.item_id
-        WHERE b.id = $2 AND b.user_id = $1 AND ${VISIBLE_ITEMS}
+        WHERE b.id = $2 AND b.user_id = $1 AND ${visibleItems()}
         FOR UPDATE OF b`,
       [userId, change.block_id],
     )
@@ -59,41 +59,16 @@ export async function applySessionChange(
       )
     )
       fail(409, "That time is no longer free. Ask for a new proposal.");
-    await db.query(
-      "UPDATE time_blocks SET start_at = $2, end_at = $3, source = 'manual' WHERE id = $1",
-      [change.block_id, change.start_at, change.end_at],
-    );
-    await db.query(
-      "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
-      [change.block_id],
-    );
-    await queueWebhooks(
+    // The same write as moving it by hand (the planner's blocks service).
+    await moveSession(
       db,
-      "block.updated",
-      { user_id: userId, team_id: null },
-      {
-        id: change.block_id,
-        item_id: change.item_id,
-        start_at: change.start_at,
-        end_at: change.end_at,
-      },
+      userId,
+      change.block_id,
+      change.start_at,
+      change.end_at,
     );
   } else {
-    await db.query("DELETE FROM time_blocks WHERE id = $1 AND user_id = $2", [
-      change.block_id,
-      userId,
-    ]);
-    await queueWebhooks(
-      db,
-      "block.deleted",
-      { user_id: userId, team_id: null },
-      {
-        id: change.block_id,
-        item_id: change.item_id,
-        start_at: change.from_start_at,
-        end_at: change.from_end_at,
-      },
-    );
+    await removeSession(db, userId, change.block_id);
   }
   return change;
 }

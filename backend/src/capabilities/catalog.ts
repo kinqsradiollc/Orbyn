@@ -1,9 +1,17 @@
-import { AGENT_ACCESS_LABELS, DEFAULT_AGENT_LIMITS } from "@orbyn/core";
+import {
+  agentInstallLinks,
+  AGENT_ACCESS_LABELS,
+  AGENT_TOOLSETS,
+  AGENT_TOOLSET_LABELS,
+  DEFAULT_AGENT_LIMITS,
+} from "@orbyn/core";
 import { SUSPEND_AFTER } from "../modules/mcp-server/limits.js";
 import { EXCLUDED, PENDING, COVERED } from "./exclusions.js";
 import { registry } from "./index.js";
 import { describe, type Capability } from "./registry.js";
 import { CONVENTIONS } from "./context.js";
+import { GUIDES, RESOURCE_TEMPLATES, templateUri } from "./guides.js";
+import { PROMPTS } from "./prompts.js";
 
 /**
  * The published description of Orbyn's MCP server: mcp-catalog.json (a
@@ -26,8 +34,87 @@ const kindOf = (c: Capability) =>
       ? "destructive"
       : "write";
 
+/**
+ * The catalog's version: the date of the last change to any tool's
+ * contract. Bump it (and add a CHANGELOG entry) with every change.
+ */
+export const CATALOG_VERSION = "2026-09-26";
+
+/**
+ * How tools change (the versioning and deprecation policy), in the words
+ * the developer page and docs/mcp.md use.
+ */
+export const VERSIONING_POLICY = [
+  "Tools only change by adding. A tool is never renamed, an argument never changes its type or becomes required, and an answer only gains fields.",
+  "A new argument is always optional, and leaving it out behaves as before.",
+  'A tool that is going away is marked "Deprecated:" at the start of its description, with what to use instead, at least 90 days before it is removed. Removals are listed here and in the changelog first.',
+  "Error codes and their meaning never change; new codes may be added.",
+  "Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.",
+];
+
+/** What changed in the MCP server, newest first. */
+export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-09-26",
+    changes: [
+      "One-click install links for Cursor, VS Code, Goose and LM Studio; plugins for Claude Code, Codex and Gemini CLI; server.json for the MCP Registry; optional cards (MCP Apps) for Today, plan previews and proposals, off unless the administrator turns them on.",
+      "Live updates: subscriptions/listen (2026-07-28) follows Today, days, pages, projects, tasks, records, templates and views, and the list of recent things, on a stream held by Orbyn's realtime service.",
+      "Long jobs: start_import, plan_revision and plans over a week (or more than 25 tasks) become tasks for clients that declare the Tasks extension (tasks/get, tasks/cancel, notifications/tasks); others get the same handle as before. Progress notifications on plans for calls that send a progressToken.",
+      "Toolsets: workspace, planner, study, follow-through, teams, bookings (add-on) and files, with 30 tools; 51 tools in all. Chosen on the consent page or in Settings → Connected agents, narrowed per call with X-MCP-Toolsets and X-MCP-Readonly.",
+      "get_links (backlinks), save_view and saved views in query, related links in link, starting a project from a template, skipping an occurrence in update_tasks, pages from templates in create_doc.",
+      'Resources for guides (orbyn://spec/markdown, orbyn://spec/views, orbyn://guide/planning), days and views; completions from visible titles; eleven prompts; the "orbyn" Agent Skill.',
+    ],
+  },
+  {
+    date: "2026-09-24",
+    changes: [
+      "Changes and the Review inbox: create_tasks, update_tasks, complete_tasks, edit_checklist, plan_schedule, schedule_sessions, reschedule_sessions, create_doc, edit_doc, link, create_project and propose_changes.",
+      "Signing in with Orbyn (OAuth 2.1) for Claude, ChatGPT and other clients.",
+      "The read tools: get_context, search, fetch, get_today, get_calendar, query, get_project and find_passages; agent keys.",
+    ],
+  },
+];
+
+/** Following changes (subscriptions/listen), for the catalog and docs. */
+export const LIVE_FACTS = {
+  method: "subscriptions/listen",
+  protocol_versions: ["2026-07-28"],
+  resources: [
+    "orbyn://today",
+    "orbyn://day/{date}",
+    "orbyn://task/{id}",
+    "orbyn://doc/{id}",
+    "orbyn://project/{id}",
+    "orbyn://record/{id}",
+    "orbyn://template/{id}",
+    "orbyn://view/{id}",
+  ],
+  notifications: [
+    "notifications/subscriptions/acknowledged",
+    "notifications/resources/updated",
+    "notifications/resources/list_changed",
+    "notifications/tasks",
+  ],
+  keep_alive_seconds: 25,
+  max_minutes: 15,
+  streams_per_connection: 3,
+};
+
+/** Long jobs as MCP tasks (the Tasks extension). */
+export const TASK_FACTS = {
+  extension: "io.modelcontextprotocol/tasks",
+  tools: ["start_import", "plan_revision", "plan_schedule"],
+  methods: ["tasks/get", "tasks/cancel", "tasks/update"],
+  kept_minutes: 60,
+};
+
+/** Where to report a security problem (also /.well-known/security.txt). */
+export const SECURITY_POLICY =
+  "Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.";
+
 export function buildCatalog(facts: ServerFacts) {
   return {
+    version: CATALOG_VERSION,
     server: {
       name: "orbyn",
       title: "Orbyn",
@@ -53,6 +140,42 @@ export function buildCatalog(facts: ServerFacts) {
         output_schema: d.outputSchema,
       };
     }),
+    resources: [
+      { uri: "orbyn://today", name: "Today" },
+      { uri: "orbyn://me", name: "Who and where" },
+      ...Object.entries(GUIDES).map(([uri, g]) => ({
+        uri,
+        name: g.name,
+        public: g.public,
+      })),
+    ],
+    resource_templates: RESOURCE_TEMPLATES.map((t) => ({
+      uri_template: templateUri(t.type),
+      name: t.name,
+      description: t.description,
+    })),
+    prompts: PROMPTS.map((p) => ({
+      name: p.name,
+      title: p.title,
+      description: p.description,
+      arguments: p.arguments.map((a) => ({
+        name: a.name,
+        required: !!a.required,
+        ...(a.complete ? { completes: a.complete } : {}),
+      })),
+      toolsets: p.needs,
+    })),
+    toolsets: AGENT_TOOLSETS.map((t) => ({
+      name: t,
+      title: AGENT_TOOLSET_LABELS[t].name,
+      tools: registry.all
+        .filter((c) => c.toolset === t && !c.legacyOnly)
+        .map((c) => c.name),
+    })),
+    live: LIVE_FACTS,
+    tasks: TASK_FACTS,
+    versioning: VERSIONING_POLICY,
+    changelog: CHANGELOG,
     routes: {
       covered: Object.keys(COVERED).length,
       excluded: Object.keys(EXCLUDED).length,
@@ -124,7 +247,7 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- **Agent keys.** Make a key in Settings → Connected agents. Choose what it may do and which spaces it sees (Personal and any of your teams). Keys last 30 days unless you choose otherwise, and never more than 365. Send it as `Authorization: Bearer oak_…`. The key is shown once and stored only as a hash. You can revoke it at any time, and each key has its own activity list.",
     `- **Access levels.** ${Object.values(AGENT_ACCESS_LABELS)
       .map((l) => `${l.name}: ${l.blurb}`)
-      .join(" ")} In phase A1 every tool reads; changes arrive in phase A3.`,
+      .join(" ")}`,
     "- **Teams.** In each team, an agent can do no more than its person's role allows. Viewers only read. Team owners and admins can cap agents in their team at suggest or read, or turn them off (only when signed in; a personal API key can't change it). Leaving a team takes it off your agent keys, and joining again doesn't give it back to them.",
     '- **Hide outside content.** A connection can leave out text from outside Orbyn: events from subscribed calendars (shown as busy time), what imported files say, tasks and events sent by email (their titles show as "Task from email" or "Event from email", everywhere they are listed) and what booking guests typed (their events show as "Booking"). The agent sees that something is there, not what it says. Imported pages keep their titles. Without it, that text comes back fenced as untrusted content and labelled with where it came from; a booking guest\'s email address never shows.',
     "- **Personal API keys (`ok_`).** They keep working here as a legacy connection for 90 days from this release. Answers carry `Deprecation` and `Sunset` headers. After that they work only with the REST API and CalDAV.",
@@ -156,10 +279,44 @@ export function catalogMarkdown(catalog: Catalog): string {
     "",
     `- Revisions: ${catalog.server.protocol_versions.map((v) => `\`${v}\``).join(", ")}. \`2026-07-28\` is served statelessly, with \`server/discover\`, per-request \`_meta\` and the \`MCP-Protocol-Version\`, \`Mcp-Method\` and \`Mcp-Name\` header checks. A header that disagrees with the body gets \`-32020\`, and an unsupported revision gets \`-32022\` with the supported list. Both answer with HTTP 400.`,
     "- The 2025 revisions start with `initialize`, and `ping` answers. No session id is ever issued.",
-    "- `GET` and `DELETE` get `405`. JSON-RPC batches are refused with `400`. Answers are JSON.",
+    "- `GET` and `DELETE` get `405`. JSON-RPC batches are refused with `400`. Answers are JSON, except a call that asks for progress and `subscriptions/listen`, which are answered as a stream of events.",
     "- Browser pages may call only from claude.ai, chatgpt.com, vscode.dev and insiders.vscode.dev (and the MCP Inspector during local development). Other pages get `403`. Clients that send no `Origin` are fine.",
     "- `tools/list` may be cached for 5 minutes (`ttlMs`, private). Its order is stable.",
     "- `X-MCP-Toolsets` and `X-MCP-Readonly` headers can narrow a connection for one call, but never widen it.",
+    "",
+    "## Adding Orbyn to an app",
+    "",
+    "Links that open an app with Orbyn's address filled in (the app then signs in with Orbyn, or asks for an agent key; no key is ever in a link). They are also in Settings → Connected agents.",
+    "",
+    ...agentInstallLinks(catalog.server.address).map(
+      (l) => `- ${l.label}: <${l.href}>`,
+    ),
+    "- Claude Code, Codex and Gemini CLI: Orbyn's plugins bundle the address and the `orbyn` skill.",
+    "",
+    "## Cards (MCP Apps)",
+    "",
+    "When the administrator turns on Admin → Agents → \"Cards in agents\", apps that support MCP Apps can show small cards beside answers: Today (`get_today`), a plan preview with Apply (`plan_schedule`, `plan_revision`; Apply calls `schedule_sessions` through the app) and a proposal to review in Orbyn (`propose_changes`). Tools name their card in `_meta.ui.resourceUri`; the cards are `ui://orbyn/…` resources (`text/html;profile=mcp-app`) with nothing loaded from outside, drawn in Orbyn's colours and following only the app's light or dark mode. Approving still happens only in Orbyn.",
+    "",
+    "## Live updates",
+    "",
+    "An agent can follow what changes (MCP `2026-07-28`, `subscriptions/listen`) instead of asking again and again. Send `subscriptions/listen` to the same address with the `Mcp-Method: subscriptions/listen` header; the answer is a stream of events, held by Orbyn's realtime service.",
+    "",
+    `- \`notifications.resourceSubscriptions\` follows resources: ${LIVE_FACTS.resources.map((r) => `\`${r}\``).join(", ")}. Only what the connection can read now is followed (up to 100); the rest is left out of the acknowledgement, never reported on. Each is checked again before a note: one that was deleted (or a page sent to the Trash) gets one last \`notifications/resources/updated\` (reading it then says it's gone) and is no longer followed; one that can no longer be read (made private, moved out of a space the connection was given) is dropped without a word.`,
+    "- `notifications.resourcesListChanged` hears when the list of recent things changes (pages and projects added, moved or renamed).",
+    "- `notifications.taskIds` follows the connection's own long jobs (below).",
+    "- The stream starts with `notifications/subscriptions/acknowledged`, naming what was agreed. Then `notifications/resources/updated` (read the resource again), `notifications/resources/list_changed` and `notifications/tasks`, gathered for half a second so a burst is one note each. Every note carries the listen request's id as `io.modelcontextprotocol/subscriptionId`. Notes say what moved, never what it says.",
+    `- A keep-alive comment every ${LIVE_FACTS.keep_alive_seconds} s. The stream ends with a \`complete\` result after ${LIVE_FACTS.max_minutes} minutes or when the credential ends, whichever is first, when Orbyn restarts, and when the connection's access changes (revoked, paused, a team role changed): open it again. At most ${LIVE_FACTS.streams_per_connection} streams per connection.`,
+    "- Tools and prompts don't change while a connection is open, so their lists aren't followed.",
+    "",
+    "## Long jobs (tasks)",
+    "",
+    `A client that declares the Tasks extension (\`${TASK_FACTS.extension}\` in the call's \`_meta\` client capabilities, \`2026-07-28\`) gets a task back from \`start_import\`, \`plan_revision\` and \`plan_schedule\` over more than 7 days or 25 tasks, instead of waiting. Other clients get the same handle as before: an import id to check with \`list_imports\`, or a \`plan_token\`.`,
+    "",
+    "- `tasks/get` with the `taskId` gives its status (`working`, `completed`, `cancelled`, `failed`), a status line and, once completed, the tool's result. Any copy of the service answers.",
+    "- An import's task follows the import: while it waits for the file, its status line says where to PUT the bytes; it completes with the page (or with why the file couldn't be imported).",
+    "- `tasks/cancel` cancels a task still working (and its import). `tasks/update` isn't used: Orbyn's tasks never wait for input.",
+    `- A task is only ever its own connection's, and is kept ${TASK_FACTS.kept_minutes} minutes after it last changed. Follow it on a listen stream with \`taskIds\` to hear \`notifications/tasks\`.`,
+    "- Progress: a call with a `progressToken` in its `_meta` (plans) is answered as a stream: `notifications/progress` for each step, then the result.",
     "",
     "## Limits",
     "",
@@ -208,6 +365,17 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- `search` and `fetch` follow OpenAI's contract: `search` needs only `query`, `fetch` takes `id`, and their text content is the JSON of the structured content.",
     "- Search is by words, the letters of a title, and recency. No embeddings or AI are used here.",
     "",
+    "## Toolsets",
+    "",
+    "Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.",
+    "",
+    "| Toolset | What | Tools |",
+    "| --- | --- | --- |",
+    ...catalog.toolsets.map(
+      (t) =>
+        `| \`${t.name}\` | ${cell(t.title)} | ${t.tools.map((x) => `\`${x}\``).join(", ")} |`,
+    ),
+    "",
     "## Tools",
     "",
     "| Tool | Title | Kind | Needs |",
@@ -245,18 +413,126 @@ export function catalogMarkdown(catalog: Catalog): string {
     } else out.push("No arguments.", "");
   }
   out.push(
+    "## Resources",
+    "",
+    "`resources/list` offers Today, who and where, the guides below, the person's favourites and about 30 things changed lately (paged, never the whole workspace). Every read checks permission again; something missing or out of reach is `-32602` either way.",
+    "",
+    "| Resource | What |",
+    "| --- | --- |",
+    "| `orbyn://today` | The Today list as Markdown, the same as `get_today`. |",
+    "| `orbyn://me` | The same as `get_context`. |",
+    ...Object.entries(GUIDES).map(
+      ([uri, g]) => `| \`${uri}\` | ${cell(g.description)} |`,
+    ),
+    ...RESOURCE_TEMPLATES.map(
+      (t) => `| \`${templateUri(t.type)}\` | ${cell(t.description)} |`,
+    ),
+    "",
+    "`completion/complete` fills a template's id, or a prompt's project, page, event, team or exam, from titles this connection can see (20 at most, counted as searches).",
+    "",
+    "## Prompts",
+    "",
+    "Workflows an agent's prompt menu can offer. Each is plain text naming only Orbyn's tools, and is offered only when the connection has the toolsets it uses.",
+    "",
+    "| Prompt | What | Arguments |",
+    "| --- | --- | --- |",
+    ...catalog.prompts.map(
+      (p) =>
+        `| \`${p.name}\` | ${cell(p.description)} | ${p.arguments.length ? p.arguments.map((a) => `\`${a.name}\`${a.required ? " (required)" : ""}`).join(", ") : "none"} |`,
+    ),
+    "",
+    "The same workflows, the Markdown and view guides and the planning etiquette ship as an Agent Skill for agents that load skills: [`agent-skill/orbyn/SKILL.md`](agent-skill/orbyn/SKILL.md).",
+    "",
     "## Older tools",
     "",
     "Personal API keys on the legacy address also get the first endpoint's three tools, unchanged, until they stop working here:",
     "",
     ...legacy.map((t) => `- \`${t.name}\`: ${prose(t.description)}`),
     "",
-    "## Changes",
+    "## Versioning and deprecation",
     "",
-    "Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.",
+    ...VERSIONING_POLICY.map((p) => `- ${prose(p)}`),
+    "",
+    `Catalog version: \`${catalog.version}\`.`,
+    "",
+    "## Changelog",
+    "",
+    ...catalog.changelog.flatMap((c) => [
+      `### ${c.date}`,
+      "",
+      ...c.changes.map((x) => `- ${prose(x)}`),
+      "",
+    ]),
+    "## Status and security",
+    "",
+    "- Whether every part of Orbyn is up: https://orbyn.dev/status.",
+    `- ${SECURITY_POLICY}`,
+    "- The developer page, with this catalog: https://orbyn.dev/developers/mcp.",
     "",
     `Routes: ${catalog.routes.covered} of the app's signed-in routes are covered by tools, ${catalog.routes.excluded} are never for agents, and ${catalog.routes.pending} are still to come.`,
     "",
   );
   return out.join("\n");
+}
+
+/** What each risk tier means for a person, for the annotations audit. */
+const TIER_REVIEW: Record<Capability["tier"], string> = {
+  R: "Runs directly; changes nothing.",
+  W1: "Runs directly; adds only private things (undoable).",
+  W2: "Runs directly where the connection may change things (undoable); team pages get suggestions; a suggest-only connection files a proposal.",
+  W3: "Always waits in the Review inbox for the signed-in person.",
+};
+
+export type AnnotationAudit = {
+  name: string;
+  title: string;
+  toolset: string;
+  tier: Capability["tier"];
+  annotations: Capability["annotations"];
+  review: string;
+  issues: string[];
+};
+
+/**
+ * The annotations audit the directories ask for: every tool's hints next
+ * to what it really does (its tier and effects), with anything that
+ * disagrees listed as an issue. CI holds the issues at none.
+ */
+export function auditAnnotations(): AnnotationAudit[] {
+  return registry.all
+    .filter((c) => !c.legacyOnly)
+    .map((c) => {
+      const a = c.annotations;
+      const issues: string[] = [];
+      if (!c.title) issues.push("no title");
+      if (a.openWorldHint !== false)
+        issues.push("openWorldHint must be false: no tool reaches outside");
+      if (c.mode === "read") {
+        if (a.readOnlyHint !== true) issues.push("a read must be readOnlyHint");
+        if (a.destructiveHint) issues.push("a read can't be destructive");
+        if (c.tier !== "R") issues.push("a read is tier R");
+      } else {
+        if (a.readOnlyHint !== false) issues.push("a change isn't read-only");
+        if (c.tier === "R") issues.push("a change needs a write tier");
+        if (c.access === "read")
+          issues.push("a change needs more than read access");
+        if (
+          c.effects?.some(
+            (e) =>
+              e === "email_outside" || e === "publish" || e === "fetch_outside",
+          ) &&
+          c.tier !== "W3"
+        )
+          issues.push("outward effects always go to review (W3)");
+      }
+      return {
+        name: c.name,
+        title: c.title,
+        toolset: c.toolset,
+        tier: c.tier,
+        annotations: a,
+        review: TIER_REVIEW[c.tier],
+        issues,
+      };
+    });
 }

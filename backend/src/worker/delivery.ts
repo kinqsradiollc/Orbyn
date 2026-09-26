@@ -3,6 +3,7 @@ import { transaction, type Db } from "../db/pool.js";
 import { bookerReminder } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { sendPush } from "./channels/push.js";
+import { visibleItems } from "../lib/visibility.js";
 
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
@@ -37,8 +38,7 @@ export async function deliverOne(): Promise<boolean> {
       ? (
           await db.query(
             `SELECT i.status, i.reminder_version, u.email_reminders, u.disabled,
-              ((i.team_id IS NULL AND i.user_id=u.id) OR EXISTS (
-                SELECT 1 FROM team_members m WHERE m.team_id=i.team_id AND m.user_id=u.id)) AS can_see
+              ${visibleItems("i", { user: "u.id" })} AS can_see
              FROM items i JOIN users u ON u.id=$2 WHERE i.id=$1`,
             [n.item_id, n.user_id],
           )

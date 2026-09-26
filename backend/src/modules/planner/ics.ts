@@ -8,7 +8,6 @@ import {
   type OccurrenceChanges,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { withSessionFacts } from "./sessions.js";
 import {
   busyIntervals,
@@ -18,6 +17,7 @@ import {
   timeBlocks,
   type SeriesRow,
 } from "./calendar.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /**
  * iCalendar (RFC 5545) for other calendar apps: someone's private feed of
@@ -342,7 +342,7 @@ export async function icsFeed(
   const rows = (
     await db.query<FeedItem>(
       `SELECT ${FEED_COLUMNS} FROM items i
-       WHERE ${VISIBLE_ITEMS} AND i.due_at IS NOT NULL
+       WHERE ${visibleItems()} AND i.due_at IS NOT NULL
          AND (i.rrule IS NOT NULL OR i.due_at > now() - interval '60 days')
        ORDER BY i.due_at LIMIT 2000`,
       [userId],

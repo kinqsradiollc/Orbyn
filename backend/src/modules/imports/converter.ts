@@ -15,6 +15,7 @@ import { PdfLocked, PdfUnreadable, readPdf, singlePage } from "./pdf.js";
 import { formulaAvailable, readFormulas } from "./formula.js";
 import { ocrImage, renderPdfPage, tesseractAvailable } from "./tesseract.js";
 import { serviceKey } from "./tokens.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * The converter: turns uploaded files into Orbyn pages.
@@ -545,9 +546,7 @@ async function finish(importId: string) {
       notes: row.notes ?? [],
     });
     await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [
-        row.user_id,
-      ]);
+      await actAs(db, row.user_id);
       const project = row.project_id
         ? (
             await db.query<{ name: string; team_id: string | null }>(

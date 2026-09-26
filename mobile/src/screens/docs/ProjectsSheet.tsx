@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { onLive } from "../../lib/live";
 import {
   Pressable,
   Linking,
@@ -602,6 +603,31 @@ export function ProjectsSheet({
         setError(errorText(e));
       },
     );
+
+  // Projects changed elsewhere (another device, a teammate, a connected
+  // agent) while this is open: read them again, once for a burst.
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  useEffect(() => {
+    if (!visible) return;
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area &&
+          news.area !== "projects" &&
+          news.area !== "templates" &&
+          news.area !== "records")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void reloadRef.current(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
+  }, [visible]);
 
   const create = () => {
     const name = (draft ?? "").trim();

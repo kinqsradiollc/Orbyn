@@ -18,23 +18,18 @@ import {
   stepInput,
   stepUpdate,
   timeLogInput,
-  type ItemDetail,
   type ItemContext,
   type DocBlock,
   quoteOf,
   type ItemSort,
   type ItemSyncPage,
-  type OccurrenceChanges,
   type QuickAddCreated,
-  type QuickAddList,
-  type QuickAddMember,
   type QuickAddResult,
 } from "@orbyn/core";
-import type { QueryResult } from "pg";
-import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { createHabit } from "../planner/habits.js";
 import { largestFreeMinutes } from "../planner/plans.js";
@@ -51,72 +46,21 @@ import {
   lockItem,
   moveItem,
   mutate,
+  quickAddContext,
   recomputeProgress,
   requireItemAccess,
   setItemStatus,
   type ItemRow,
+  itemDetail,
+  via,
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
-
-type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
-/** Runs queries on a transaction client. */
-const via =
-  (db: Db): Run =>
-  (text, values) =>
-    db.query(text, values);
-
-/**
- * A task with its checklist and its 100 most recent updates, newest first;
- * an event with the people invited and their answers; a repeating item with
- * the occurrences changed on their own.
- */
-export async function itemDetail(
-  id: string,
-  run: Run = (text, values) => pool.query(text, values),
-): Promise<ItemDetail> {
-  const item = (
-    await run(`SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id = $1`, [id])
-  ).rows[0];
-  if (!item) fail(404, "Item not found");
-  const steps = (
-    await run(
-      "SELECT id, item_id, title, done, position, created_at FROM item_steps WHERE item_id=$1 ORDER BY position, created_at, id",
-      [id],
-    )
-  ).rows;
-  const updates = (
-    await run(
-      `SELECT u.id, u.item_id, u.user_id, coalesce(a.name, 'Former member') AS author_name,
-              u.body, u.status, u.progress, u.created_at
-       FROM item_updates u LEFT JOIN users a ON a.id = u.user_id
-       WHERE u.item_id = $1 ORDER BY u.created_at DESC, u.id DESC LIMIT 100`,
-      [id],
-    )
-  ).rows;
-  const attendees = (
-    await run(
-      `SELECT id, email, name, status, responded_at FROM item_attendees
-       WHERE item_id = $1 ORDER BY created_at, email`,
-      [id],
-    )
-  ).rows;
-  const overrides = (
-    await run(
-      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1 ORDER BY occurrence",
-      [id],
-    )
-  ).rows.map((o: { occurrence: Date; data: OccurrenceChanges }) => ({
-    ...o.data,
-    occurrence: o.occurrence.toISOString(),
-  }));
-  const links = (
-    await run(
-      "SELECT id, url, title, position FROM item_links WHERE item_id = $1 ORDER BY position, id",
-      [id],
-    )
-  ).rows;
-  return { ...item, steps, updates, attendees, overrides, links };
-}
+import { addProgressUpdate, logTime } from "./progress.js";
+import {
+  visibleItems,
+  visibleOwned,
+  visibleProjects,
+} from "../../lib/visibility.js";
 
 /** ORDER BY for each list order but the score, which is worked out in code. */
 const ORDER: Record<Exclude<ItemSort, "score">, string> = {
@@ -208,7 +152,7 @@ export async function itemRoutes(app: FastifyInstance) {
       .filter(Boolean)
       .slice(0, 6)
       .map((w) => `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    const where = `${VISIBLE_ITEMS} AND ($2::uuid IS NULL OR i.team_id=$2)
+    const where = `${visibleItems()} AND ($2::uuid IS NULL OR i.team_id=$2)
            AND ($3::uuid IS NULL OR i.list_id=$3)
            AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM item_tags x WHERE x.item_id=i.id AND x.tag_id=$4))
            AND ($5::uuid IS NULL OR i.assignee_id=$5)
@@ -256,8 +200,7 @@ export async function itemRoutes(app: FastifyInstance) {
             await db.query<{ id: string; deleted_at: Date; sync_us: string }>(
               `SELECT d.item_id AS id, d.deleted_at, ${SYNC_US("d.deleted_at")}
                FROM deleted_items d
-               WHERE ((d.team_id IS NULL AND d.user_id = $1)
-                   OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
+               WHERE ${visibleOwned("d", "user_id")}
                  AND ($2::uuid IS NULL OR d.team_id = $2)
                  AND ${AFTER("d.deleted_at", "d.item_id", "$3", "$4")}
                ORDER BY d.deleted_at, d.item_id LIMIT $5`,
@@ -363,15 +306,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = timeLogInput.parse(r.body);
-    return transaction(async (db) => {
-      const item = await lockItem(db, id);
-      await requireItemAccess(u, item, "items:write", db);
-      await db.query(
-        "UPDATE items SET spent_minutes = spent_minutes + $1, updated_at = now() WHERE id = $2",
-        [d.minutes, id],
-      );
-      return itemDetail(id, via(db));
-    });
+    return transaction((db) => logTime(db, u, id, d.minutes));
   });
 
   // Remove one occurrence from a repeating item ("delete this one").
@@ -392,31 +327,9 @@ export async function itemRoutes(app: FastifyInstance) {
       const u = await authenticate(r);
       const d = quickAddInput.parse(r.body);
       const timeZone = d.timezone ?? (await loadPrefs(pool, u.id)).timezone;
-      const mine = `(x.team_id IS NULL AND x.user_id = $1)
-        OR x.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)`;
-      const [lists, tags, members] = await Promise.all([
-        pool.query<QuickAddList>(
-          `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
-          [u.id],
-        ),
-        pool.query<QuickAddList>(
-          `SELECT x.id, x.name, x.team_id FROM tags x WHERE ${mine}`,
-          [u.id],
-        ),
-        // Everyone who shares a team with you, and which of your teams.
-        pool.query<QuickAddMember>(
-          `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
-           FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
-           WHERE m.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
-           GROUP BY p.id, p.name, p.email`,
-          [u.id],
-        ),
-      ]);
       const parsed = parseQuickAdd(d.text, {
         timeZone,
-        lists: lists.rows,
-        tags: tags.rows,
-        members: members.rows,
+        ...(await quickAddContext(pool, u.id)),
         selfId: u.id,
       });
       if (!parsed.input.title)
@@ -471,8 +384,7 @@ export async function itemRoutes(app: FastifyInstance) {
                     s.id AS stage_id, s.name AS stage_name
                FROM projects p LEFT JOIN project_stages s
                  ON s.id = $2 AND s.project_id = p.id
-              WHERE p.id = $1 AND ((p.team_id IS NULL AND p.user_id = $3)
-                OR p.team_id IN (SELECT team_id FROM team_members WHERE user_id = $3))`,
+              WHERE p.id = $1 AND ${visibleProjects("p", { user: "$3" })}`,
             [item.project_id, item.stage_id, u.id],
           )
         ).rows[0] ?? null)
@@ -658,55 +570,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = progressUpdateInput.parse(r.body);
-    const detail = await transaction(async (db) => {
-      const item = await lockItem(db, id);
-      await requireItemAccess(u, item, "items:write", db);
-      if (d.progress !== undefined) {
-        const steps = (
-          await db.query<{ n: number }>(
-            "SELECT count(*)::int AS n FROM item_steps WHERE item_id=$1",
-            [id],
-          )
-        ).rows[0].n;
-        if (steps > 0) fail(409, "This task's progress follows its checklist.");
-      }
-      // A new status goes the way every edit does (see setItemStatus): a
-      // finished task loses its future sessions, a repeating one moves on to
-      // its next occurrence, and webhooks and open apps hear about it.
-      const changed =
-        d.status && d.status !== item.status
-          ? await setItemStatus(db, u, id, d.status)
-          : null;
-      // A repeating task that moved on has already said so in its timeline,
-      // so a bare tick doesn't add a second, empty entry.
-      const movedOn = !!changed && changed.status !== d.status;
-      if (d.body || d.progress !== undefined || !movedOn) {
-        await db.query(
-          "INSERT INTO item_updates(item_id, user_id, body, status, progress) VALUES($1,$2,$3,$4,$5)",
-          [
-            id,
-            u.id,
-            d.body,
-            movedOn ? null : (d.status ?? null),
-            d.progress ?? null,
-          ],
-        );
-        await db.query(
-          "UPDATE items SET updates_count = updates_count + 1, last_update_at = now() WHERE id=$1",
-          [id],
-        );
-      }
-      if (d.progress !== undefined)
-        await db.query(
-          `UPDATE items SET
-             progress = $1::int,
-             status = CASE WHEN status = 'todo' AND $1::int > 0 THEN 'in_progress' ELSE status END,
-             updated_at = now()
-           WHERE id = $2`,
-          [d.progress, id],
-        );
-      return itemDetail(id, via(db));
-    });
+    const detail = await transaction((db) => addProgressUpdate(db, u, id, d));
     reply.code(201);
     return detail;
   });

@@ -7,7 +7,6 @@ import {
   fail,
   type DocAnswer,
   type DocBlock,
-  type DocSuggestion,
 } from "@orbyn/core";
 import { reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
@@ -16,6 +15,8 @@ import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
+import { readableDocs } from "../../lib/visibility.js";
+import { proposeChanges } from "../docs/service.js";
 
 /**
  * The assistant, inside a page.
@@ -49,9 +50,7 @@ export async function aiDocRoutes(app: FastifyInstance) {
       }>(
         `SELECT d.id, d.title, d.content, d.team_id FROM docs d
           WHERE d.id = $2 AND d.deleted_at IS NULL
-            AND ((d.team_id IS NULL AND d.user_id = $1)
-                 OR d.team_id IN (SELECT team_id FROM team_members
-                                   WHERE user_id = $1))`,
+            AND ${readableDocs("d")}`,
         [userId, id],
       )
     ).rows[0];
@@ -127,39 +126,27 @@ passage should be removed entirely, reply with an empty line.`;
 
     const made = await transaction(async (db) => {
       if (doc.team_id) await requireTeam(doc.team_id, u, "items:read");
-      const row = (
-        await db.query<{ id: string }>(
-          `INSERT INTO doc_suggestions
-             (doc_id, user_id, block_id, kind, range_start, range_end,
-              text, quote, note)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-          [
-            id,
-            u.id,
-            d.block_id,
-            answer ? "replace" : "delete",
-            d.range_start,
-            d.range_end,
-            answer,
+      const [made] = await proposeChanges(
+        db,
+        id,
+        u.id,
+        [
+          {
+            block_id: d.block_id,
+            kind: answer ? "replace" : "delete",
+            range_start: d.range_start,
+            range_end: d.range_end,
+            text: answer,
             quote,
-            `Assistant · ${
-              d.action === "custom"
-                ? d.instruction.slice(0, 120)
-                : DOC_AI_LABELS[d.action].name
-            }`,
-          ],
-        )
-      ).rows[0].id;
-      return (
-        await db.query<DocSuggestion>(
-          `SELECT s.id, s.doc_id, s.block_id, s.user_id, u.name AS author,
-                  s.kind, s.range_start, s.range_end, s.text, s.quote, s.note,
-                  s.status, s.detached, s.created_at
-             FROM doc_suggestions s JOIN users u ON u.id = s.user_id
-            WHERE s.id = $1`,
-          [row],
-        )
-      ).rows[0];
+          },
+        ],
+        `Assistant · ${
+          d.action === "custom"
+            ? d.instruction.slice(0, 120)
+            : DOC_AI_LABELS[d.action].name
+        }`,
+      );
+      return made;
     });
     reply.code(201);
     return made;

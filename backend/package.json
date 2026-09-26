@@ -27,7 +27,9 @@
     "start:mcp": "node dist/services/mcp.js",
     "start:all": "node dist/server.js",
     "load": "tsx scripts/load.ts",
-    "mcp:catalog": "tsx scripts/mcp-catalog.ts"
+    "mcp:catalog": "tsx scripts/mcp-catalog.ts",
+    "directory:account": "tsx scripts/directory-account.ts",
+    "gameday": "tsx scripts/gameday.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

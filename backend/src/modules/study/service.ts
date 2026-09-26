@@ -1,4 +1,12 @@
+import type { z } from "zod";
 import {
+  actionSchema,
+  applyRevisionInput,
+  examDecksInput,
+  fail,
+  review,
+  type Rating,
+  type SystemRole,
   addDays,
   cardsInBlocks,
   dayTime,
@@ -15,13 +23,20 @@ import {
   type StudyExam,
   type StudyOverview,
 } from "@orbyn/core";
-import { pool, type Queryable as Db } from "../../db/pool.js";
+import {
+  pool,
+  transaction,
+  type Db as Tx,
+  type Queryable as Db,
+} from "../../db/pool.js";
 import {
   agendaEntries,
   busyIntervals,
   loadPrefs,
 } from "../planner/calendar.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
+import { readableDocs, visibleDocs } from "../../lib/visibility.js";
+import { mutate } from "../items/service.js";
 
 /**
  * Study: cards live in pages as "Question :: Answer" lines, and each person
@@ -30,9 +45,7 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
  */
 
 /** Pages `$1` can see. */
-export const VISIBLE_DOC = `(((d.team_id IS NULL AND d.user_id = $1)
-  OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))
-  AND d.deleted_at IS NULL)`;
+export const VISIBLE_DOC = visibleDocs("d");
 
 /** An exam on the calendar: a subscribed exams calendar, or an event named like one. */
 const EXAM_WORDS =
@@ -94,52 +107,127 @@ export const CARD_SELECT = `SELECT c.id, c.doc_id, d.title AS doc_title, c.card_
   FROM ${LIVE_CARDS}`;
 
 /**
- * Bring `userId`'s cards in line with the pages they can see: new lines
- * become new cards (due now), edited lines update theirs, and cards whose
- * line, page or access is gone are dropped. Review state is kept for any
- * card whose line survives.
+ * Bring one page's cards in line with the page and who can read it: each
+ * reader (its author for a personal page, every member for a team page)
+ * has a card per line; new lines become new cards (due now), edited lines
+ * update theirs, and cards whose line is gone, or whose person can no
+ * longer read the page, are dropped. Review state is kept for any card
+ * whose line survives. A page in the Trash keeps its cards and their
+ * review history, hidden, so restoring it brings them back as they were.
+ *
+ * This is the write side of Study: pages are synced when they are saved
+ * (see {@link drainStudyQueue}), so reading Study never writes.
  */
-export async function syncCards(db: Db, userId: string) {
-  const pages = (
-    await db.query<{ id: string; content: DocBlock[] }>(
-      `SELECT d.id, d.content FROM docs d
-        WHERE ${VISIBLE_DOC}
-          AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '% ::: %'
-               OR d.content::text LIKE '%{{%}}%')
-        ORDER BY d.updated_at DESC LIMIT 500`,
-      [userId],
+export async function syncDocCards(db: Db, docId: string): Promise<void> {
+  const doc = (
+    await db.query<{
+      id: string;
+      user_id: string;
+      team_id: string | null;
+      deleted_at: Date | null;
+      content: DocBlock[];
+    }>(
+      "SELECT id, user_id, team_id, deleted_at, content FROM docs WHERE id = $1",
+      [docId],
     )
-  ).rows;
-  const keep: { doc: string; key: string }[] = [];
-  for (const page of pages) {
-    const cards = cardsInBlocks(page.content ?? []);
-    if (!cards.length) continue;
+  ).rows[0];
+  // A page deleted for good takes its cards with it (ON DELETE CASCADE).
+  if (!doc || doc.deleted_at) return;
+  const readers = doc.team_id
+    ? (
+        await db.query<{ user_id: string }>(
+          "SELECT user_id FROM team_members WHERE team_id = $1",
+          [doc.team_id],
+        )
+      ).rows.map((r) => r.user_id)
+    : [doc.user_id];
+  const cards = cardsInBlocks(doc.content ?? []);
+  if (cards.length && readers.length)
     await db.query(
       // Page order is kept as each card's creation order, so new cards are
       // learnt top to bottom.
       `INSERT INTO study_cards (user_id, doc_id, card_key, block_id, question, answer, created_at)
-       SELECT $1, $2, x.key, x.block_id, x.question, x.answer,
+       SELECT u.id, $1, x.key, x.block_id, x.question, x.answer,
               now() + (x.ord * interval '1 millisecond')
-         FROM jsonb_to_recordset($3::jsonb)
+         FROM unnest($2::uuid[]) AS u(id)
+        CROSS JOIN jsonb_to_recordset($3::jsonb)
            AS x(key text, block_id text, question text, answer text, ord int)
        ON CONFLICT (user_id, doc_id, card_key) DO UPDATE
          SET question = EXCLUDED.question, answer = EXCLUDED.answer, block_id = EXCLUDED.block_id
          WHERE study_cards.question IS DISTINCT FROM EXCLUDED.question
-            OR study_cards.answer IS DISTINCT FROM EXCLUDED.answer`,
-      [userId, page.id, JSON.stringify(cards.map((c, ord) => ({ ...c, ord })))],
+            OR study_cards.answer IS DISTINCT FROM EXCLUDED.answer
+            OR study_cards.block_id IS DISTINCT FROM EXCLUDED.block_id`,
+      [doc.id, readers, JSON.stringify(cards.map((c, ord) => ({ ...c, ord })))],
     );
-    for (const c of cards) keep.push({ doc: page.id, key: c.key });
-  }
-  // A page in Trash keeps its cards and their review history, hidden, so
-  // restoring it brings them back as they were.
   await db.query(
-    `DELETE FROM study_cards c WHERE c.user_id = $1
-       AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS k(doc uuid, key text)
-                        WHERE k.doc = c.doc_id AND k.key = c.card_key)
-       AND NOT EXISTS (SELECT 1 FROM docs t
-                        WHERE t.id = c.doc_id AND t.deleted_at IS NOT NULL)`,
-    [userId, JSON.stringify(keep)],
+    `DELETE FROM study_cards
+      WHERE doc_id = $1
+        AND (NOT (user_id = ANY ($2::uuid[])) OR NOT (card_key = ANY ($3::text[])))`,
+    [doc.id, readers, cards.map((c) => c.key)],
   );
+}
+
+/** Pages synced per drain, at most (the notifier drains again next cycle). */
+const DRAIN_LIMIT = 200;
+
+/**
+ * Sync the pages waiting in the study queue (migration 150 queues a page
+ * when its card lines, its space or its Trash state change, and a team's
+ * pages when someone joins or leaves it). The API calls this with the ids
+ * it just saved, so Study is current at once; the notifier calls it with
+ * none, to take whatever is left. Several callers never sync one page at
+ * the same time (SKIP LOCKED). Returns how many pages were synced.
+ */
+export async function drainStudyQueue(
+  only: { docIds?: string[]; teamId?: string } = {},
+  limit = DRAIN_LIMIT,
+): Promise<number> {
+  if (only.docIds && !only.docIds.length) return 0;
+  return transaction(async (db) => {
+    const queued = (
+      await db.query<{ doc_id: string }>(
+        `SELECT q.doc_id FROM study_card_queue q
+          WHERE ($1::uuid[] IS NULL OR q.doc_id = ANY ($1::uuid[]))
+            AND ($2::uuid IS NULL OR EXISTS (
+                  SELECT 1 FROM docs d WHERE d.id = q.doc_id AND d.team_id = $2))
+          ORDER BY q.queued_at LIMIT $3
+          FOR UPDATE OF q SKIP LOCKED`,
+        [only.docIds ?? null, only.teamId ?? null, limit],
+      )
+    ).rows.map((r) => r.doc_id);
+    for (const id of queued) await syncDocCards(db, id);
+    if (queued.length)
+      await db.query(
+        "DELETE FROM study_card_queue WHERE doc_id = ANY ($1::uuid[])",
+        [queued],
+      );
+    return queued.length;
+  });
+}
+
+/**
+ * {@link drainStudyQueue} for pages just saved, after the answer is ready:
+ * a failure here never fails the save (the notifier syncs the page later).
+ */
+export async function syncSavedPages(...docIds: string[]): Promise<void> {
+  try {
+    await drainStudyQueue({ docIds });
+  } catch {
+    // Left in the queue for the notifier.
+  }
+}
+
+/**
+ * The same for a team whose members changed: its pages' cards now belong to
+ * the new set of members (someone who joined studies them; someone who left
+ * no longer does).
+ */
+export async function syncTeamPages(teamId: string): Promise<void> {
+  try {
+    await drainStudyQueue({ teamId }, 1000);
+  } catch {
+    // Left in the queue for the notifier.
+  }
 }
 
 /** Upcoming exams: subscribed "exams" calendars, and events named like an exam. */
@@ -176,14 +264,14 @@ const endOfToday = (now: Date, tz: string) =>
 export async function studyOverview(
   userId: string,
   now = new Date(),
+  db: Db = pool,
 ): Promise<StudyOverview> {
-  await syncCards(pool, userId);
-  const tz = (await loadPrefs(pool, userId)).timezone || "UTC";
+  const tz = (await loadPrefs(db, userId)).timezone || "UTC";
   const todayEnd = endOfToday(now, tz);
   const todayStart = dayTime(localDateKey(now, tz), 0, tz);
   const [decks, counts, reviewed, days, weak, exams, attached, ahead, states] =
     await Promise.all([
-      pool.query<{
+      db.query<{
         doc_id: string;
         title: string;
         team_id: string | null;
@@ -206,13 +294,13 @@ export async function studyOverview(
           ORDER BY max(d.updated_at) DESC`,
         [userId, todayEnd],
       ),
-      pool.query<{ due: number; fresh: number }>(
+      db.query<{ due: number; fresh: number }>(
         `SELECT count(*) FILTER (WHERE c.reps > 0 AND c.due_at < $2)::int AS due,
                 count(*) FILTER (WHERE c.reps = 0)::int AS fresh
            FROM ${LIVE_CARDS} WHERE c.user_id = $1`,
         [userId, todayEnd],
       ),
-      pool.query<{ n: number; new_today: number }>(
+      db.query<{ n: number; new_today: number }>(
         `SELECT count(*)::int AS n,
                 count(DISTINCT r.card_id) FILTER (
                   WHERE NOT EXISTS (SELECT 1 FROM study_reviews p
@@ -220,13 +308,13 @@ export async function studyOverview(
            FROM study_reviews r WHERE r.user_id = $1 AND r.at >= $2`,
         [userId, todayStart],
       ),
-      pool.query<{ day: string }>(
+      db.query<{ day: string }>(
         `SELECT DISTINCT to_char(at AT TIME ZONE $2, 'YYYY-MM-DD') AS day
            FROM study_reviews WHERE user_id = $1 AND at > now() - interval '400 days'
           ORDER BY day DESC`,
         [userId, tz],
       ),
-      pool.query<{
+      db.query<{
         id: string;
         question: string;
         doc_id: string;
@@ -239,13 +327,13 @@ export async function studyOverview(
           ORDER BY c.lapses DESC, c.difficulty DESC LIMIT 6`,
         [userId],
       ),
-      upcomingExams(pool, userId, now),
-      pool.query<{ exam_key: string; doc_ids: string[] }>(
+      upcomingExams(db, userId, now),
+      db.query<{ exam_key: string; doc_ids: string[] }>(
         "SELECT exam_key, doc_ids FROM study_exams WHERE user_id = $1",
         [userId],
       ),
       // Reviews due on each of the next seven days (overdue counts today).
-      pool.query<{ day: string; n: number }>(
+      db.query<{ day: string; n: number }>(
         `SELECT to_char(greatest(c.due_at, $3) AT TIME ZONE $2, 'YYYY-MM-DD') AS day,
                 count(*)::int AS n
            FROM ${LIVE_CARDS}
@@ -253,7 +341,7 @@ export async function studyOverview(
           GROUP BY 1`,
         [userId, tz, now],
       ),
-      pool.query<CardRow>(
+      db.query<CardRow>(
         `${CARD_SELECT} WHERE c.user_id = $1 ORDER BY c.created_at`,
         [userId],
       ),
@@ -334,12 +422,12 @@ export async function reviewQueue(
   userId: string,
   options: { docId?: string; limit: number; ahead: boolean },
   now = new Date(),
+  db: Db = pool,
 ): Promise<StudyCard[]> {
-  await syncCards(pool, userId);
-  const tz = (await loadPrefs(pool, userId)).timezone || "UTC";
+  const tz = (await loadPrefs(db, userId)).timezone || "UTC";
   const todayStart = dayTime(localDateKey(now, tz), 0, tz);
   const newToday = (
-    await pool.query<{ n: number }>(
+    await db.query<{ n: number }>(
       `SELECT count(DISTINCT r.card_id)::int AS n FROM study_reviews r
         WHERE r.user_id = $1 AND r.at >= $2
           AND NOT EXISTS (SELECT 1 FROM study_reviews p
@@ -349,7 +437,7 @@ export async function reviewQueue(
   ).rows[0].n;
   const doc = options.docId ?? null;
   const due = (
-    await pool.query<CardRow>(
+    await db.query<CardRow>(
       `${CARD_SELECT}
         WHERE c.user_id = $1 AND c.reps > 0 AND ($2::uuid IS NULL OR c.doc_id = $2)
           AND ($3::boolean OR c.due_at <= $4)
@@ -364,7 +452,7 @@ export async function reviewQueue(
   const fresh =
     room > 0
       ? (
-          await pool.query<CardRow>(
+          await db.query<CardRow>(
             `${CARD_SELECT}
               WHERE c.user_id = $1 AND c.reps = 0 AND ($2::uuid IS NULL OR c.doc_id = $2)
               ORDER BY c.created_at, c.id LIMIT $3`,
@@ -395,8 +483,9 @@ export async function planRevision(
   exam: StudyExam,
   minutes: number,
   now = new Date(),
+  db: Db = pool,
 ): Promise<RevisionPlan> {
-  const prefs = await loadPrefs(pool, userId);
+  const prefs = await loadPrefs(db, userId);
   const tz = prefs.timezone || "UTC";
   const examDay = localDateKey(new Date(exam.starts_at), tz);
   const today = localDateKey(now, tz);
@@ -409,7 +498,7 @@ export async function planRevision(
   const to = dayTime(examDay, 0, tz);
   if (to <= from)
     return { exam, sessions, total_minutes: 0, skipped_days: skipped };
-  const busy = await busyIntervals(pool, userId, from, to, {
+  const busy = await busyIntervals(db, userId, from, to, {
     blocks: true,
     derived: true,
   });
@@ -451,3 +540,119 @@ export async function planRevision(
 }
 
 export { isKnown, newCardState };
+
+/** One review: the card's next date comes from how well it was recalled. */
+export async function reviewCard(
+  db: Db,
+  userId: string,
+  cardId: string,
+  rating: Rating,
+  now = new Date(),
+): Promise<StudyCard> {
+  const card = await cardById(db, userId, cardId);
+  if (!card) fail(404, "Card not found");
+  const next = review(stateOf(card), rating, now);
+  await db.query(
+    `UPDATE study_cards SET stability = $3, difficulty = $4, reps = $5,
+   lapses = $6, last_review_at = $7, due_at = $8
+ WHERE id = $1 AND user_id = $2`,
+    [
+      card.id,
+      userId,
+      next.stability,
+      next.difficulty,
+      next.reps,
+      next.lapses,
+      next.last_review_at,
+      next.due_at,
+    ],
+  );
+  await db.query(
+    "INSERT INTO study_reviews (user_id, card_id, rating, at) VALUES ($1, $2, $3, $4)",
+    [userId, card.id, rating, now],
+  );
+  return cardOf((await cardById(db, userId, card.id))!, now);
+}
+
+/** Which pages are revised for an exam (only pages the person can read). */
+export async function setExamDecks(
+  db: Db,
+  userId: string,
+  input: z.input<typeof examDecksInput>,
+) {
+  const d = examDecksInput.parse(input);
+  const visible = (
+    await db.query<{ id: string }>(
+      `SELECT d.id FROM docs d WHERE d.id = ANY ($2::uuid[])
+       AND d.deleted_at IS NULL
+       AND ${readableDocs("d")}`,
+      [userId, d.doc_ids],
+    )
+  ).rows.map((x) => x.id);
+  await db.query(
+    `INSERT INTO study_exams (user_id, exam_key, title, starts_at, doc_ids)
+   VALUES ($1, $2, $3, $4, $5)
+   ON CONFLICT (user_id, exam_key) DO UPDATE
+     SET title = EXCLUDED.title, starts_at = EXCLUDED.starts_at,
+         doc_ids = EXCLUDED.doc_ids, updated_at = now()`,
+    [
+      userId,
+      d.key,
+      d.title,
+      d.starts_at,
+      d.doc_ids.filter((id) => visible.includes(id)),
+    ],
+  );
+}
+
+/**
+ * Apply an approved revision plan: a task "Revise for …" due at the exam,
+ * with the chosen sessions set aside for it on the calendar.
+ */
+export async function applyRevision(
+  db: Tx,
+  u: { id: string; role: SystemRole },
+  input: z.input<typeof applyRevisionInput>,
+) {
+  const d = applyRevisionInput.parse(input);
+  const exam = (await studyOverview(u.id, new Date(), db)).exams.find(
+    (e) => e.key === d.key,
+  );
+  if (!exam) fail(404, "That exam isn't on your calendar in the next 60 days.");
+  for (const s of d.sessions)
+    if (Date.parse(s.end_at) <= Date.parse(s.start_at))
+      fail(422, "Each session has to end after it starts.");
+  const minutes = Math.round(
+    d.sessions.reduce(
+      (n, s) => n + (Date.parse(s.end_at) - Date.parse(s.start_at)),
+      0,
+    ) / 60_000,
+  );
+  const task = await mutate(
+    db,
+    { id: u.id, role: u.role },
+    actionSchema.parse({
+      operation: "create",
+      data: {
+        title: `Revise for ${exam.title}`.slice(0, 200),
+        kind: "task",
+        due_at: exam.starts_at,
+        estimate_minutes: Math.min(minutes, 6000),
+        notes:
+          "Planned by Study. Review your cards in each session; the sessions are on your calendar.",
+      },
+    }),
+  );
+  const blocks: string[] = [];
+  for (const s of d.sessions)
+    blocks.push(
+      (
+        await db.query<{ id: string }>(
+          `INSERT INTO time_blocks (item_id, user_id, start_at, end_at)
+           VALUES ($1, $2, $3, $4) RETURNING id`,
+          [task!.id, u.id, s.start_at, s.end_at],
+        )
+      ).rows[0].id,
+    );
+  return { item_id: task!.id, block_ids: blocks, minutes };
+}

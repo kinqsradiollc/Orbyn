@@ -142,6 +142,9 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // connections, or reopen a team to agents (a team's agent policy); only a
   // signed-in person can.
   { route: /^\/me\/(?:agents|agent-keys)(?:\/|$)/ },
+  // The Review inbox: approving, declining or undoing an agent's changes is
+  // for the person signed in, never a key.
+  { route: /^\/proposals(?:\/|$)/ },
   { method: "PUT", route: /^\/teams\/:id\/agent-access$/ },
   // Letting a project kept out of the assistant back in widens what agents
   // (and the assistant) can read, so it is a signed-in person's call too.

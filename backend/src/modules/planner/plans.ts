@@ -32,7 +32,7 @@ import {
 import type { z } from "zod";
 import type { Db as Tx, Queryable as Db } from "../../db/pool.js";
 import { fail } from "@orbyn/core";
-import { membershipRole, VISIBLE_ITEMS } from "../../lib/teams.js";
+import { membershipRole } from "../../lib/teams.js";
 import { loadItem, mutate } from "../items/service.js";
 import {
   busyIntervals,
@@ -52,6 +52,7 @@ import {
   type SchedulerResult,
   type SchedulerTask,
 } from "./scheduler.js";
+import { inMyTeams, visibleItems } from "../../lib/visibility.js";
 
 export { FRAME_COLUMNS, loadFrames } from "./frames.js";
 export { freeSpans, workingSpans } from "./free.js";
@@ -164,14 +165,14 @@ export async function candidateTasks(
               ${CHILD_COLUMNS}
        FROM items i
        WHERE i.kind = 'task' AND i.status NOT IN ('done', 'cancelled') AND (
-         (i.id = ANY ($3::uuid[]) AND ${VISIBLE_ITEMS})
+         (i.id = ANY ($3::uuid[]) AND ${visibleItems()})
          OR CASE WHEN $2::uuid[] IS NULL
            THEN (($4::boolean AND i.team_id IS NULL AND i.user_id = $1)
                OR (i.assignee_id = $1
-                 AND i.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1)
+                 AND ${inMyTeams("i")}
                  AND ($5::uuid[] IS NULL OR i.team_id = ANY ($5::uuid[]))))
              AND (cardinality($6::uuid[]) = 0 OR i.list_id = ANY ($6::uuid[]))
-           ELSE i.id = ANY ($2::uuid[]) AND ${VISIBLE_ITEMS} END)
+           ELSE i.id = ANY ($2::uuid[]) AND ${visibleItems()} END)
          AND ($7::uuid IS NULL OR (i.project_id = $7 AND
               (CASE WHEN i.team_id IS NULL THEN i.user_id = $1
                     ELSE i.assignee_id = $1 END)))
@@ -340,7 +341,7 @@ async function planInputs(db: Db, userId: string, state: PlanState, now: Date) {
  * A fingerprint of what a plan was made from: busy time, frames, working
  * hours and the tasks' planning fields. When it changes the plan is stale.
  */
-function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
+export function fingerprint(inputs: Awaited<ReturnType<typeof planInputs>>) {
   const p = inputs.prefs;
   return createHash("sha256")
     .update(
@@ -855,7 +856,7 @@ async function saveEstimates(
         estimate_minutes: number | null;
       }>(
         `SELECT i.team_id, i.estimate_minutes FROM items i
-         WHERE i.id = $2 AND i.kind = 'task' AND ${VISIBLE_ITEMS}`,
+         WHERE i.id = $2 AND i.kind = 'task' AND ${visibleItems()}`,
         [actor.id, id],
       )
     ).rows[0];
@@ -1049,7 +1050,7 @@ export async function unfinishedBlocks(
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.end_at < $2 AND b.end_at > $2 - interval '14 days'
-         AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}
+         AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}
        ORDER BY b.start_at`,
       [userId, before],
     )

@@ -365,7 +365,9 @@ export type Notice = {
     /** Someone named you in a page or a remark (`ref` = "doc:<page id>:…"). */
     | "mention"
     /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */
-    | "session";
+    | "session"
+    /** A change waits for your approval in the Review inbox (`ref` = "proposal:<id>"). */
+    | "review";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

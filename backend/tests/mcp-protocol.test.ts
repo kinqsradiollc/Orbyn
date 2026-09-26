@@ -46,6 +46,13 @@ test("2026-07-28: server/discover names the revision, tools and instructions", a
   assert.deepEqual(result.supportedVersions, [MODERN]);
   assert.ok(result.capabilities.tools);
   assert.equal(result.capabilities.tools.listChanged, false);
+  // Resources can be followed (subscriptions/listen), and long jobs are
+  // tasks for clients that declare the extension.
+  assert.equal(result.capabilities.resources.subscribe, true);
+  assert.equal(result.capabilities.resources.listChanged, true);
+  assert.deepEqual(result.capabilities.extensions, {
+    "io.modelcontextprotocol/tasks": {},
+  });
   assert.equal(result.instructions, INSTRUCTIONS);
   assert.equal(result.ttlMs, 300_000);
   assert.equal(result.cacheScope, "private");
@@ -71,6 +78,10 @@ test("2026-07-28: tools/list is stable, cacheable and private; tools/call answer
     "query",
     "get_project",
     "find_passages",
+    // A read key sees the one planning preview too (it changes nothing).
+    "plan_schedule",
+    // Backlinks (A4).
+    "get_links",
   ]);
   assert.deepEqual(
     two.body.result.tools.map((t: { name: string }) => t.name),
@@ -181,7 +192,7 @@ test("2025 era: initialize for each supported revision, with no session id", asy
   const list = await h.legacy(key, "tools/list", undefined, {
     "mcp-protocol-version": "2025-06-18",
   });
-  assert.equal(list.body.result.tools.length, 8);
+  assert.equal(list.body.result.tools.length, 10);
   assert.equal(list.body.result.ttlMs, undefined);
   const note = await h.post(
     { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -194,7 +205,7 @@ test("2025 era: initialize for each supported revision, with no session id", asy
     bearer(key),
   );
   assert.equal(plain.status, 200);
-  assert.equal(plain.body.result.tools.length, 8);
+  assert.equal(plain.body.result.tools.length, 10);
 });
 
 test("invalid tool arguments are an isError result the model can correct (SEP-1303)", async () => {
@@ -357,9 +368,9 @@ test("405 for GET and DELETE; batches, bad JSON and params:null are refused", as
     assert.equal(r.status, 400, JSON.stringify(body));
     assert.equal(r.body.error.code, -32600);
   }
-  // subscriptions/listen isn't served (no long streams here).
+  // subscriptions/listen needs its filter (the stream itself: mcp-live.test.ts).
   const listen = await h.modern(key, "subscriptions/listen");
-  assert.equal(listen.body.error.code, -32601);
+  assert.equal(listen.body.error.code, -32602);
 });
 
 test("429 past a connection's limit, with Retry-After and a JSON-RPC body", async () => {

@@ -15,7 +15,7 @@ import { defineCapability } from "./registry.js";
 
 /** Who the agent acts for, what this connection may do, and the conventions. */
 export const CONVENTIONS = {
-  ids: "Typed ids: task:<uuid>, event:<uuid>@<occurrence>, doc:<uuid>#<block>, project:<uuid>, record:<uuid>, template:<uuid>. fetch takes any of them, an orbyn:// URI, an Orbyn link or an exact title.",
+  ids: "Typed ids: task:<uuid>, event:<uuid>@<occurrence>, doc:<uuid>#<block>, project:<uuid>, record:<uuid>, template:<uuid>, view:<uuid>, proposal:<uuid>, import:<uuid>; people are person:<uuid> and days date:YYYY-MM-DD in links. fetch takes any of them, an orbyn:// URI, an Orbyn link or an exact title.",
   links:
     "Every result has an https url that opens it in Orbyn; cite it when you mention something.",
   times:

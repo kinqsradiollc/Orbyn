@@ -28,6 +28,11 @@ export type ActivityEntry = {
   latencyMs: number;
   /** A change: always its own row. */
   write: boolean;
+  /**
+   * A change whose row was already written in its own transaction (with
+   * its undo and proposal): only counted here.
+   */
+  recorded?: boolean;
   at?: Date;
 };
 
@@ -80,7 +85,9 @@ export class ActivityRecorder {
     if (entry.write) u.writes++;
     if (entry.outcome === "denied") u.denied++;
     this.used.set(entry.grantId, at);
-    if (entry.write) {
+    if (entry.recorded) {
+      // Counted above; its row is already in agent_activity.
+    } else if (entry.write) {
       this.rows.push({
         ...entry,
         at,

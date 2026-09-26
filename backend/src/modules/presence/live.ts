@@ -1,6 +1,8 @@
-import type { FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import pg from "pg";
 import { env } from "../../config/env.js";
+import { pool } from "../../db/pool.js";
+import { requestUser } from "../../lib/request-log.js";
 
 /**
  * Live news for a person's own devices and their teams: something changed
@@ -19,14 +21,51 @@ export const LIVE_KINDS = [
   "focus",
   "presence",
   "doc_presence",
+  "agent_task",
 ] as const;
 export type LiveKind = (typeof LIVE_KINDS)[number];
 
 /** Who the news is for: one person, or everyone on a team. */
 export type LiveAudience = { user_id?: string | null; team_id?: string | null };
 
+/**
+ * What part of the app a "changed" is about, so a screen showing pages or
+ * projects re-reads just then; the planner re-reads on any "changed".
+ */
+export type LiveArea =
+  | "items"
+  | "docs"
+  | "projects"
+  | "organize"
+  | "templates"
+  | "records"
+  | "review";
+
+/**
+ * What a "changed" is about, when it's one thing: agents following it
+ * (subscriptions/listen) hear which page, project or record moved, and the
+ * apps can ignore it. `agent_task` is an agent's long job (the Tasks
+ * extension), heard only by that agent's streams.
+ */
+export const LIVE_ENTITIES = [
+  "task",
+  "doc",
+  "project",
+  "record",
+  "template",
+  "view",
+  "folder",
+  "import",
+  "agent_task",
+] as const;
+export type LiveEntity = (typeof LIVE_ENTITIES)[number];
+
 export type LiveEvent = {
   kind: LiveKind;
+  area?: LiveArea;
+  /** The one thing that changed, when there is one. */
+  entity_type?: LiveEntity;
+  entity_id?: string;
   user?: string;
   team?: string;
   /** The document, for `doc_presence`. */
@@ -39,6 +78,8 @@ type Reader = {
   userId: string;
   teams: Set<string>;
   send: (event: LiveEvent) => void;
+  /** Kinds this reader never wants (the apps skip agents' own jobs). */
+  skip?: ReadonlySet<LiveKind>;
 };
 
 const readers = new Set<Reader>();
@@ -62,8 +103,9 @@ async function ensureListening(): Promise<void> {
       }
       for (const reader of readers)
         if (
-          (event.user && event.user === reader.userId) ||
-          (event.team && reader.teams.has(event.team))
+          !reader.skip?.has(event.kind) &&
+          ((event.user && event.user === reader.userId) ||
+            (event.team && reader.teams.has(event.team)))
         )
           reader.send(event);
     });
@@ -87,7 +129,13 @@ export async function announceTo(
   db: { query: pg.Pool["query"] },
   audience: LiveAudience,
   kind: LiveKind,
-  extra: { doc?: string; by?: string } = {},
+  extra: {
+    doc?: string;
+    by?: string;
+    area?: LiveArea;
+    entity_type?: LiveEntity;
+    entity_id?: string;
+  } = {},
 ): Promise<void> {
   const event: LiveEvent = {
     kind,
@@ -129,7 +177,11 @@ export async function streamLive(
   const reader: Reader = {
     userId,
     teams: new Set(teams),
-    send: (event) => reply.raw.write(`data: ${JSON.stringify(event)}\n\n`),
+    // The apps ignore which thing moved, and a team member may not be able
+    // to see it: they get the news without it.
+    send: ({ entity_type: _type, entity_id: _id, ...event }) =>
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`),
+    skip: APP_SKIPS,
   };
   readers.add(reader);
   const beat = setInterval(() => reply.raw.write(": beat\n\n"), 25_000);
@@ -142,6 +194,27 @@ export async function streamLive(
   };
 }
 
+/** What the apps' stream leaves out: agents' own long jobs. */
+const APP_SKIPS: ReadonlySet<LiveKind> = new Set(["agent_task"]);
+
+/**
+ * Hears a person's news (and their teams') on this copy, for a stream
+ * other than the apps' (an agent's subscriptions/listen). Returns a way to
+ * stop; `teams` can be changed in place.
+ */
+export async function onLive(
+  userId: string,
+  teams: Set<string>,
+  send: (event: LiveEvent) => void,
+): Promise<() => void> {
+  await ensureListening();
+  const reader: Reader = { userId, teams, send };
+  readers.add(reader);
+  return () => {
+    readers.delete(reader);
+  };
+}
+
 /** Only for tests: how many streams this copy is serving. */
 export const liveReaderCount = () => readers.size;
 
@@ -150,4 +223,68 @@ export async function closeLiveNews(): Promise<void> {
   client = null;
   readers.clear();
   await open?.end().catch(() => {});
+}
+
+const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Every successful change through a route module is announced as
+ * "changed" (with its `area`) to the person who made it and, when the
+ * thing changed belongs to a team, to that team: open apps showing lists,
+ * folders, templates or work records re-read them, whoever (or whatever
+ * agent) made the change. The team comes from the answer's `team_id`, or
+ * the request's. Registered once per route module (its hooks only see its
+ * own routes); announced after the answer is sent, so after the commit.
+ */
+export function announceWrites(
+  app: FastifyInstance,
+  area: LiveArea,
+  entity?: LiveEntity,
+) {
+  const seen = new WeakMap<FastifyRequest, { team?: string; id?: string }>();
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (
+      WRITES.has(request.method) &&
+      reply.statusCode < 300 &&
+      typeof payload === "string" &&
+      (payload.includes('"team_id"') || (entity && payload.includes('"id"')))
+    ) {
+      try {
+        const body = JSON.parse(payload) as { team_id?: unknown; id?: unknown };
+        seen.set(request, {
+          ...(typeof body?.team_id === "string" ? { team: body.team_id } : {}),
+          ...(typeof body?.id === "string" ? { id: body.id } : {}),
+        });
+      } catch {
+        // Not JSON: nothing to read the team from.
+      }
+    }
+    return payload;
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    if (!WRITES.has(request.method) || reply.statusCode >= 300) return;
+    const user = requestUser.get(request);
+    if (!user) return;
+    const asked = (request.body as { team_id?: unknown } | null)?.team_id;
+    const found = seen.get(request);
+    const team = found?.team ?? (typeof asked === "string" ? asked : null);
+    // The one thing changed: the route's own :id (/templates/:id, and
+    // actions on it such as /templates/:id/use, whose answer is something
+    // else), or for a route that makes one, the answer's id.
+    const param = (request.params as { id?: unknown } | null)?.id;
+    const own =
+      /^\/[^/]+\/:id(\/|$)/.test(request.routeOptions?.url ?? "") &&
+      typeof param === "string" &&
+      /^[0-9a-f-]{36}$/i.test(param);
+    const id = own ? (param as string) : found?.id;
+    const extra = {
+      area,
+      ...(entity && id ? { entity_type: entity, entity_id: id } : {}),
+    };
+    await announceTo(pool, { user_id: user }, "changed", extra).catch(() => {});
+    if (team)
+      await announceTo(pool, { team_id: team }, "changed", extra).catch(
+        () => {},
+      );
+  });
 }

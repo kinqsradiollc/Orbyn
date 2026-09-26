@@ -1,0 +1,143 @@
+/* The public developer page (/developers/mcp), laid out like /status. */
+.developers-main h1 {
+  font-size: 36px;
+  margin: 6px 0 10px;
+}
+.developers-lede {
+  font-size: 15px;
+  color: var(--color-muted);
+  max-width: 64ch;
+  margin: 0 0 24px;
+}
+.developers-card,
+.developers-toolset {
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-md);
+}
+.developers-card h2,
+.developers-tools h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.developers-card h3 {
+  font-size: 15px;
+  margin: 16px 0 8px;
+}
+.developers-address {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.developers-address code {
+  font-size: 15px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+.developers-list {
+  display: grid;
+  gap: 8px;
+  padding-left: 18px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.developers-list code,
+.developers-tool-head code,
+.developers-errors code {
+  overflow-wrap: anywhere;
+}
+.developers-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.developers-facts div {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.developers-facts dt {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.developers-facts dd {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.developers-errors {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+.developers-errors div {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 12px;
+  font-size: 13px;
+}
+.developers-errors dd {
+  margin: 0;
+}
+.developers-tools {
+  margin: 24px 0 8px;
+}
+.developers-toolset summary {
+  cursor: pointer;
+  font-size: 15px;
+  list-style-position: outside;
+}
+.developers-tool-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 12px;
+}
+.developers-tool-list li {
+  padding-top: 12px;
+  border-top: 1px solid var(--color-divider);
+}
+.developers-tool-list p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.developers-tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.developers-change {
+  margin-bottom: 10px;
+}
+@media (max-width: 640px) {
+  .developers-main h1 {
+    font-size: 24px;
+  }
+  .developers-card,
+  .developers-toolset {
+    padding: 14px 16px;
+  }
+  .developers-errors div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+.developers-kind {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}

@@ -46,6 +46,7 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 | `capabilities/`       | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
 | `modules/mcp-server/` | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
 | `modules/agents/`     | Agent keys, Connected agents, activity, admin switches, team agent policy       |
+| `modules/developers/` | The public MCP developer page data and `/.well-known/security.txt`              |
 | `lib/visibility.ts`   | The one rule for what a person (or a narrowed connection) can see               |
 | `worker/`             | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
 | `app.ts`              | Which modules each service mounts (`serviceModules`)                            |
@@ -99,7 +100,9 @@ no sessions, JSON answers.
   credentials.
 - **Ratchet.** `backend/tests/route-inventory.test.ts` classifies every route. A signed-in route
   must be covered by a tool, excluded with a reason, or pending (`capabilities/exclusions.ts`),
-  and pending may only shrink. `docs/mcp-catalog.json` and `docs/mcp.md` are generated from the
+  and pending may only shrink (it is now empty). Tools beyond core come in toolsets (workspace,
+  planner, study, follow-through, teams, booking, files) chosen at consent or in Settings, and
+  narrowed per request with `X-MCP-Toolsets` and `X-MCP-Readonly`. `docs/mcp-catalog.json` and `docs/mcp.md` are generated from the
   registry and checked in CI.
 
 ### Importing files into Docs

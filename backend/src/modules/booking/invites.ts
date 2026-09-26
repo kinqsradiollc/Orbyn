@@ -12,7 +12,7 @@ import {
   type PublicInvite,
 } from "@orbyn/core";
 import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
-import { authenticate, digest } from "../../lib/auth.js";
+import { authenticate, digest, type UserRow } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { encryptSecret } from "../../lib/secrets.js";
 import { availableSlots, type InviteRow } from "./availability.js";
@@ -133,64 +133,13 @@ export async function inviteRoutes(app: FastifyInstance) {
 
   app.get("/open-invites", async (r) => {
     const u = await authenticate(r);
-    const db = reader(r.headers);
-    const rows = (
-      await db.query<InviteRow>(
-        `SELECT ${INVITE_COLUMNS} FROM open_invites oi
-         WHERE oi.owner_id = $1 ORDER BY oi.created_at DESC LIMIT 200`,
-        [u.id],
-      )
-    ).rows;
-    return Promise.all(rows.map((i) => ownerView(db, i)));
+    return listOpenInvites(reader(r.headers), u.id);
   });
 
   app.post("/open-invites", async (r, reply): Promise<OpenInvite> => {
     const u = await authenticate(r);
     const d = openInviteInput.parse(r.body);
-    const now = Date.now();
-    const windows = d.windows
-      .map((w) => ({
-        start_at: new Date(w.start_at).toISOString(),
-        end_at: new Date(w.end_at).toISOString(),
-      }))
-      .filter((w) => Date.parse(w.end_at) > now)
-      .sort((a, b) => a.start_at.localeCompare(b.start_at));
-    if (!windows.length)
-      fail(422, "Every window has already passed. Pick times ahead.");
-    const end = lastEnd({ windows });
-    if (end > now + MAX_AHEAD_DAYS * DAY)
-      fail(422, `Windows can be up to ${MAX_AHEAD_DAYS} days ahead.`);
-    const expires = Math.min(
-      d.expires_at ? Date.parse(d.expires_at) : end,
-      end,
-    );
-    if (expires <= now)
-      fail(422, "The link would expire straight away. Pick a later time.");
-    const invite = await transaction(async (db) => {
-      await checkCoHosts(db, u.id, d.co_host_ids);
-      const token = randomBytes(24).toString("base64url");
-      const { id } = (
-        await db.query<{ id: string }>(
-          `INSERT INTO open_invites (owner_id, token_hash, token_encrypted, title, duration,
-             windows, location, meeting_url, co_host_ids, remind_before_minutes, expires_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::smallint[], $11) RETURNING id`,
-          [
-            u.id,
-            digest(token),
-            await encryptSecret(token),
-            d.title,
-            d.duration,
-            JSON.stringify(windows),
-            d.location,
-            d.meeting_url,
-            [...new Set(d.co_host_ids.filter((id) => id !== u.id))],
-            d.remind_before_minutes,
-            new Date(expires),
-          ],
-        )
-      ).rows[0];
-      return ownerView(db, (await inviteById(db, id))!);
-    });
+    const invite = await transaction((db) => createOpenInvite(db, u, d));
     reply.code(201);
     return invite;
   });
@@ -204,35 +153,7 @@ export async function inviteRoutes(app: FastifyInstance) {
   // Withdraw an invite. A booking made from it is cancelled (the booker is told).
   app.delete("/open-invites/:id", async (r, reply) => {
     const u = await authenticate(r);
-    await transaction(async (db: Db) => {
-      const invite = await ownInvite(db, idParam(r), u.id, true);
-      if (invite.status === "booked" && invite.booking_id) {
-        const booking = (
-          await db.query<BookingRow>(
-            "SELECT * FROM bookings WHERE id = $1 FOR UPDATE",
-            [invite.booking_id],
-          )
-        ).rows[0];
-        if (
-          !booking ||
-          booking.status !== "confirmed" ||
-          booking.end_at <= new Date()
-        )
-          fail(409, "This invite was already used, so it can't be withdrawn.");
-        await cancel(
-          db,
-          booking,
-          await inviteAsPage(db, invite),
-          { actor: "host", userId: u.id },
-          "",
-        );
-      } else if (invite.status !== "open")
-        fail(409, "This invite isn't open any more.");
-      await db.query(
-        "UPDATE open_invites SET status = 'cancelled', updated_at = now() WHERE id = $1",
-        [invite.id],
-      );
-    });
+    await transaction((db) => withdrawOpenInvite(db, u, idParam(r)));
     return reply.code(204).send();
   });
 
@@ -337,5 +258,108 @@ export async function inviteRoutes(app: FastifyInstance) {
       reply.code(201);
       return result;
     },
+  );
+}
+
+/** Your open invites, newest first. */
+export async function listOpenInvites(
+  db: Queryable,
+  userId: string,
+): Promise<OpenInvite[]> {
+  const rows = (
+    await db.query<InviteRow>(
+      `SELECT ${INVITE_COLUMNS} FROM open_invites oi
+       WHERE oi.owner_id = $1 ORDER BY oi.created_at DESC LIMIT 200`,
+      [userId],
+    )
+  ).rows;
+  return Promise.all(rows.map((i) => ownerView(db, i)));
+}
+
+/** One of your open invites. */
+export async function openInviteOf(
+  db: Queryable,
+  userId: string,
+  id: string,
+): Promise<OpenInvite> {
+  return ownerView(db, await ownInvite(db, id, userId));
+}
+
+/** Offer a few times with one link: the first person to pick one books it. */
+export async function createOpenInvite(
+  db: Db,
+  u: UserRow,
+  input: z.input<typeof openInviteInput>,
+): Promise<OpenInvite> {
+  const d = openInviteInput.parse(input);
+  const now = Date.now();
+  const windows = d.windows
+    .map((w) => ({
+      start_at: new Date(w.start_at).toISOString(),
+      end_at: new Date(w.end_at).toISOString(),
+    }))
+    .filter((w) => Date.parse(w.end_at) > now)
+    .sort((a, b) => a.start_at.localeCompare(b.start_at));
+  if (!windows.length)
+    fail(422, "Every window has already passed. Pick times ahead.");
+  const end = lastEnd({ windows });
+  if (end > now + MAX_AHEAD_DAYS * DAY)
+    fail(422, `Windows can be up to ${MAX_AHEAD_DAYS} days ahead.`);
+  const expires = Math.min(d.expires_at ? Date.parse(d.expires_at) : end, end);
+  if (expires <= now)
+    fail(422, "The link would expire straight away. Pick a later time.");
+  await checkCoHosts(db, u.id, d.co_host_ids);
+  const token = randomBytes(24).toString("base64url");
+  const { id } = (
+    await db.query<{ id: string }>(
+      `INSERT INTO open_invites (owner_id, token_hash, token_encrypted, title, duration,
+         windows, location, meeting_url, co_host_ids, remind_before_minutes, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::smallint[], $11) RETURNING id`,
+      [
+        u.id,
+        digest(token),
+        await encryptSecret(token),
+        d.title,
+        d.duration,
+        JSON.stringify(windows),
+        d.location,
+        d.meeting_url,
+        [...new Set(d.co_host_ids.filter((id) => id !== u.id))],
+        d.remind_before_minutes,
+        new Date(expires),
+      ],
+    )
+  ).rows[0];
+  return ownerView(db, (await inviteById(db, id))!);
+}
+
+/** Withdraw an invite. A booking made from it is cancelled (the booker is told). */
+export async function withdrawOpenInvite(db: Db, u: UserRow, id: string) {
+  const invite = await ownInvite(db, id, u.id, true);
+  if (invite.status === "booked" && invite.booking_id) {
+    const booking = (
+      await db.query<BookingRow>(
+        "SELECT * FROM bookings WHERE id = $1 FOR UPDATE",
+        [invite.booking_id],
+      )
+    ).rows[0];
+    if (
+      !booking ||
+      booking.status !== "confirmed" ||
+      booking.end_at <= new Date()
+    )
+      fail(409, "This invite was already used, so it can't be withdrawn.");
+    await cancel(
+      db,
+      booking,
+      await inviteAsPage(db, invite),
+      { actor: "host", userId: u.id },
+      "",
+    );
+  } else if (invite.status !== "open")
+    fail(409, "This invite isn't open any more.");
+  await db.query(
+    "UPDATE open_invites SET status = 'cancelled', updated_at = now() WHERE id = $1",
+    [invite.id],
   );
 }

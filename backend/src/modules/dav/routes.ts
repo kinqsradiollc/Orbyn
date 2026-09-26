@@ -2,12 +2,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createHash } from "node:crypto";
 import { pool, transaction } from "../../db/pool.js";
 import { digest } from "../../lib/auth.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { eventLines, FEED_COLUMNS, type FeedItem } from "../planner/ics.js";
 import { itemData } from "@orbyn/core";
 import { parseICalendar } from "./ical.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 // A CalDAV server, so Apple Calendar, Thunderbird and DAVx5 can subscribe to
 // a person's events natively (in addition to the ICS feed) and — for VEVENTs —
@@ -50,11 +50,11 @@ const isUuid = (s: string) =>
 
 /**
  * The events CalDAV shows: the same ones the app's calendar does, by the same
- * rule (VISIBLE_ITEMS): your personal events, and your teams' events for as
+ * rule (visibleItems in lib/visibility.ts): your personal events, and your teams' events for as
  * long as you're on the team. Not every event you ever created: one made in
  * a team you've since left stays with that team.
  */
-const DAV_EVENTS = `${VISIBLE_ITEMS} AND i.kind='event' AND i.due_at IS NOT NULL`;
+const DAV_EVENTS = `${visibleItems()} AND i.kind='event' AND i.due_at IS NOT NULL`;
 
 /** The calendar's change tag: changes when any event the user can see changes. */
 async function ctag(userId: string): Promise<string> {

@@ -53,6 +53,7 @@ import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
 import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
+import { DeveloperPage } from "../features/developers/DeveloperPage";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -95,6 +96,9 @@ import { PublicInvitePage } from "../features/booking/PublicInvite";
 import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
 import type { View } from "./views";
+import { ReviewView } from "../features/review/ReviewView";
+import { onOpenReview } from "../lib/review";
+import { onLive } from "../lib/live";
 import "../styles/planning.css";
 
 export function App() {
@@ -183,6 +187,9 @@ export function App() {
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
   const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
   const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  /** A proposal to open in Review (a link, a notice, an agent's activity). */
+  const [reviewToOpen, setReviewToOpen] = useState<string | null>(null);
+  const [reviewPending, setReviewPending] = useState(0);
   const [projectSectionToOpen, setProjectSectionToOpen] = useState<
     "decisions" | "history" | null
   >(null);
@@ -252,8 +259,34 @@ export function App() {
     else if (link.kind === "project") {
       setProjectToOpen(link.id);
       setView("Projects");
+    } else if (link.kind === "review") {
+      setReviewToOpen(link.id);
+      setView("Review");
     } else setView("Overview");
   };
+  // How many proposals wait, for the sidebar: read when signed in and again
+  // whenever the inbox changes (an agent proposed, or another device decided).
+  useEffect(() => {
+    if (!token) return;
+    const count = () =>
+      client.reviewCount().then(
+        (r) => setReviewPending(r.pending),
+        () => {},
+      );
+    void count();
+    const stop = onLive(
+      (news) =>
+        news.kind === "changed" && news.area === "review" && void count(),
+    );
+    const stopOpen = onOpenReview((id) => {
+      setReviewToOpen(id);
+      setView("Review");
+    });
+    return () => {
+      stop();
+      stopOpen();
+    };
+  }, [token]);
   useEffect(() => {
     if (!linked) return;
     if (!token) {
@@ -310,15 +343,26 @@ export function App() {
                   description: "Whether every part of Orbyn is up right now.",
                   index: false,
                 }
-              : token
-                ? { title: view + " · Orbyn", description: app, index: false }
-                : path === "/login"
-                  ? { title: "Sign in · Orbyn", description: app, index: false }
-                  : {
-                      title: "Create your space · Orbyn",
-                      description: app,
-                      index: false,
-                    },
+              : path === "/developers/mcp"
+                ? {
+                    title: "Orbyn for AI agents (MCP) · Orbyn",
+                    description:
+                      "Connect Claude, ChatGPT, Claude Code, Codex or Cursor to Orbyn over MCP: the address, signing in, limits, errors and every tool.",
+                    index: true,
+                  }
+                : token
+                  ? { title: view + " · Orbyn", description: app, index: false }
+                  : path === "/login"
+                    ? {
+                        title: "Sign in · Orbyn",
+                        description: app,
+                        index: false,
+                      }
+                    : {
+                        title: "Create your space · Orbyn",
+                        description: app,
+                        index: false,
+                      },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -343,6 +387,7 @@ export function App() {
   const inShell = !(
     isOAuth ||
     path === "/status" ||
+    path === "/developers/mcp" ||
     path === "/terms" ||
     path === "/privacy" ||
     (!nativeDesktop && path === "/")
@@ -626,6 +671,16 @@ export function App() {
       />
     );
 
+  // The developer page: public, signed in or not.
+  if (path === "/developers/mcp")
+    return (
+      <DeveloperPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
   // Terms and Privacy: public, signed in or not.
   if (path === "/terms" || path === "/privacy")
     return (
@@ -765,6 +820,7 @@ export function App() {
           view={view}
           user={user}
           hasUnread={notices.some((n) => !n.read)}
+          reviewPending={reviewPending}
           onNavigate={navigate}
           onSignOut={() => void planner.logout()}
         />
@@ -1036,6 +1092,18 @@ export function App() {
                       (await client.getItem(itemId).catch(() => null));
                     if (task) startFocus(task);
                   }}
+                  onOpenReview={(id) => {
+                    setReviewToOpen(id);
+                    navigate("Review");
+                  }}
+                />
+              )}
+              {view === "Review" && (
+                <ReviewView
+                  report={report}
+                  focusId={reviewToOpen}
+                  onFocused={() => setReviewToOpen(null)}
+                  onCount={setReviewPending}
                 />
               )}
               {view === "Settings" && (

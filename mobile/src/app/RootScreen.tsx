@@ -69,6 +69,9 @@ import { PlanningSheet } from "../screens/PlanningSheet";
 import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
+import { ReviewSheet } from "../screens/ReviewSheet";
+import { onLive } from "../lib/live";
+import { onOpenReview } from "../lib/review";
 import { TagsSheet } from "../screens/TagsSheet";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { BrowseScreen } from "../screens/BrowseScreen";
@@ -121,7 +124,8 @@ type SheetName =
   | "projects"
   | "settings"
   | "sync"
-  | "progress";
+  | "progress"
+  | "review";
 /** What to present next: a sheet, the item editor, or "Save to Orbyn". */
 type Next = { sheet: SheetName } | { edit: Editing } | { share: SharedContent };
 
@@ -225,6 +229,9 @@ export function RootScreen() {
   const [planSeed, setPlanSeed] = useState<Plan | null>(null);
   /** The booking to open the Booking sheet on (from a notification). */
   const [bookingId, setBookingId] = useState<string | null>(null);
+  /** A proposal to open in Review (a link, a notice). */
+  const [reviewFocus, setReviewFocus] = useState<string | null>(null);
+  const [reviewPending, setReviewPending] = useState(0);
   /** Modal waiting for the sheet's dismiss animation before it opens (iOS). */
   const pending = useRef<Next | null>(null);
   /** Sheets to reopen, most recent last, once the modal above them closes. */
@@ -309,6 +316,29 @@ export function RootScreen() {
     !(user && !user.email_verified) &&
     !(user && legal && user.terms_version !== legal.terms_version);
   useAppLinks(inApp, (link) => openLink.current?.(link));
+  // How many suggestions wait in Review, read again whenever it changes.
+  useEffect(() => {
+    if (!inApp) return;
+    const count = () =>
+      client.reviewCount().then(
+        (r) => setReviewPending(r.pending),
+        () => {},
+      );
+    void count();
+    const stop = onLive(
+      (news) =>
+        news.kind === "changed" && news.area === "review" && void count(),
+    );
+    // Settings → Connected agents → an activity's "Review".
+    const stopOpen = onOpenReview((id) => {
+      setReviewFocus(id);
+      presentRef.current?.({ sheet: "review" });
+    });
+    return () => {
+      stop();
+      stopOpen();
+    };
+  }, [inApp]);
   useEffect(() => {
     if (!token || Platform.OS === "web") return;
     const check = async () => {
@@ -692,6 +722,9 @@ export function RootScreen() {
       case "project":
         setProjectsStart({ open: link.id });
         return present({ sheet: "projects" });
+      case "review":
+        setReviewFocus(link.id);
+        return present({ sheet: "review" });
     }
   };
 
@@ -726,6 +759,9 @@ export function RootScreen() {
         setNote(await client.getDoc(docId));
         present({ sheet: "note" });
       });
+    } else if (kind === "review" && text("ref").startsWith("proposal:")) {
+      setReviewFocus(text("ref").slice("proposal:".length));
+      present({ sheet: "review" });
     } else if (itemId)
       void act(async () => openTask(await client.getItem(itemId)));
   };
@@ -1117,6 +1153,15 @@ export function RootScreen() {
                     onOpenItemById={(id) =>
                       void act(async () => openTask(await client.getItem(id)))
                     }
+                    reviewPending={reviewPending}
+                    onOpenReview={(id, n) => {
+                      const open = async () => {
+                        setReviewFocus(id);
+                        present({ sheet: "review" });
+                      };
+                      if (n) void noticeAction(n, open);
+                      else void open();
+                    }}
                     onOpenTemplate={(n) =>
                       void noticeAction(n, async () => {
                         setTemplateToOpen(n.ref ?? null);
@@ -1554,6 +1599,14 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenItem={openFromSheet}
+        />
+        <ReviewSheet
+          visible={sheet === "review"}
+          focusId={reviewFocus}
+          onFocused={() => setReviewFocus(null)}
+          onCount={setReviewPending}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
         />
         <StatusSheet
           visible={sheet === "status"}

@@ -1,0 +1,15 @@
+{
+  "name": "orbyn",
+  "owner": {
+    "name": "Orbyn",
+    "url": "https://orbyn.dev"
+  },
+  "plugins": [
+    {
+      "name": "orbyn",
+      "source": "./",
+      "description": "Your Orbyn planner in AI agents: today, deadlines, planned sessions, projects and pages.",
+      "version": "2026.9.26"
+    }
+  ]
+}

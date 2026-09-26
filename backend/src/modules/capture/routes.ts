@@ -17,11 +17,13 @@ import { transaction, type Db } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { mutate } from "../items/service.js";
-import { addToPage } from "../docs/routes.js";
+import { addToPage } from "../docs/service.js";
 import { todaysAgenda } from "../docs/agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { linkPreview } from "./preview.js";
 import { cachedSettings } from "../../lib/settings.js";
+import { visibleFolders } from "../../lib/visibility.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Sharing into Orbyn (the phone's share sheet): a link or some text, sent
@@ -56,8 +58,7 @@ async function visibleFolder(db: Db, id: string, u: UserRow) {
     await db.query<{ id: string; team_id: string | null; name: string }>(
       `SELECT f.id, f.team_id, f.name FROM folders f
         WHERE f.id = $2
-          AND ((f.team_id IS NULL AND f.user_id = $1)
-            OR f.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
+          AND ${visibleFolders("f")}`,
       [u.id, id],
     )
   ).rows[0];
@@ -208,7 +209,7 @@ async function capture(
 
   // A new page, in the folder's space (a team folder makes a team page).
   const made = await transaction(async (db) => {
-    await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+    await actAs(db, u.id);
     const folder = to.folder_id
       ? await visibleFolder(db, to.folder_id, u)
       : null;

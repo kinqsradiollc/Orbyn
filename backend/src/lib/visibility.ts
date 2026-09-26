@@ -3,8 +3,9 @@
  * things, and everything in the teams they belong to. Every query that
  * lists or opens tasks, pages, projects, work records, folders or templates
  * on someone's behalf filters with one of these builders, so the rule lives
- * in one place (the copies in older modules move here after the current
- * round of work merges; see VISIBLE_ITEMS in lib/teams.ts).
+ * in one place: the app's routes, the assistant and agents (MCP) all use
+ * them, and tests/visibility.test.ts fails if a copy of the rule appears
+ * anywhere else in the code.
  *
  * A builder returns a SQL condition on a table alias. `scope` names the
  * query parameters to use:
@@ -61,7 +62,7 @@ export function visibleOwned(
     : "";
   return (
     `((${alias}.team_id IS NULL AND ${alias}.${owner} = ${scope.user}${personal})` +
-    ` OR (${alias}.team_id IN (SELECT team_id FROM team_members WHERE user_id = ${scope.user})${teams}))`
+    ` OR (${inMyTeams(alias, scope)}${teams}))`
   );
 }
 
@@ -69,8 +70,19 @@ export function visibleOwned(
 export const visibleItems = (alias = "i", scope: Scope = DEFAULT_SCOPE) =>
   `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
-/** Pages (docs) `scope.user` can see. */
+/**
+ * Pages (docs) `scope.user` can see: readable (see {@link readableDocs})
+ * and not in the Trash. Lists, search, links, the assistant and agents use
+ * this; a page in the Trash is found only through the Trash itself.
+ */
 export const visibleDocs = (alias = "d", scope: Scope = DEFAULT_SCOPE) =>
+  `(${readableDocs(alias, scope)} AND ${alias}.deleted_at IS NULL${scope.ai ? notKeptOut(alias) : ""})`;
+
+/**
+ * Pages `scope.user` may read, whether or not they are in the Trash: for
+ * the Trash itself, restoring, and history (a trashed page's history stays).
+ */
+export const readableDocs = (alias = "d", scope: Scope = DEFAULT_SCOPE) =>
   `(${visibleOwned(alias, "user_id", scope)}${scope.ai ? notKeptOut(alias) : ""})`;
 
 /** Projects `scope.user` can see. */
@@ -88,6 +100,25 @@ export const visibleFolders = (alias = "f", scope: Scope = DEFAULT_SCOPE) =>
 /** Project templates `scope.user` can see. */
 export const visibleTemplates = (alias = "t", scope: Scope = DEFAULT_SCOPE) =>
   visibleOwned(alias, "user_id", scope);
+
+/** Saved views `scope.user` can see: their own, and their teams'. */
+export const visibleViews = (alias = "v", scope: Scope = DEFAULT_SCOPE) =>
+  visibleOwned(alias, "user_id", scope);
+
+/** Page templates `scope.user` can see. */
+export const visiblePageTemplates = (
+  alias = "t",
+  scope: Scope = DEFAULT_SCOPE,
+) => visibleOwned(alias, "user_id", scope);
+
+/**
+ * Rows in a team `scope.user` belongs to (a team-only table, or the team
+ * half of a rule written some other way).
+ */
+export function inMyTeams(alias: string, scope: Scope = DEFAULT_SCOPE) {
+  if (!ALIAS.test(alias)) throw new Error(`Not a safe SQL name: ${alias}`);
+  return `${alias}.team_id IN (SELECT team_id FROM team_members WHERE user_id = ${scope.user})`;
+}
 
 /**
  * Collects query values and hands back their placeholders, so a query built

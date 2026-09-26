@@ -12,7 +12,7 @@ import {
 import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
+import { visibleItems } from "../../lib/visibility.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { loadPrefs } from "../planner/calendar.js";
 import {
@@ -22,7 +22,7 @@ import {
   type FitRow,
 } from "../planner/planned.js";
 import { loadItem, lockItem, requireItemAccess } from "../items/service.js";
-import { requireProject } from "./routes.js";
+import { requireProject } from "./service.js";
 
 /**
  * Milestones: a project's own dated list of checkpoints. Each one rolls up
@@ -70,7 +70,7 @@ export async function projectMilestones(
                 count(*) FILTER (WHERE i.status = 'done')::int AS done
            FROM items i
           WHERE i.project_id = $2 AND i.milestone_id IS NOT NULL
-            AND i.status <> 'cancelled' AND ${VISIBLE_ITEMS}
+            AND i.status <> 'cancelled' AND ${visibleItems()}
           GROUP BY i.milestone_id`,
         [userId, projectId],
       )
@@ -82,7 +82,7 @@ export async function projectMilestones(
       `SELECT ${FIT_COLUMNS}, i.milestone_id FROM items i
         WHERE i.project_id = $2 AND i.milestone_id IS NOT NULL
           AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
-          AND ${VISIBLE_ITEMS}
+          AND ${visibleItems()}
           AND (CASE WHEN i.team_id IS NULL THEN i.user_id = $1
                     ELSE i.assignee_id = $1 END)
         ORDER BY i.created_at, i.id LIMIT 500`,
@@ -188,7 +188,7 @@ async function placeTasks(
     await db.query<{ id: string }>(
       `UPDATE items i SET milestone_id = $3, version = version + 1, updated_at = now()
         WHERE i.id = ANY($2::uuid[]) AND i.project_id = $4 AND i.kind = 'task'
-          AND ${VISIBLE_ITEMS}
+          AND ${visibleItems()}
         RETURNING i.id`,
       [u.id, [...new Set(itemIds)], milestoneId, projectId],
     )

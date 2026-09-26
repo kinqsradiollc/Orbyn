@@ -20,6 +20,7 @@ process.env.MAIL_INBOUND_SECRET = "matrix-inbound-secret";
 process.env.MAIL_INBOUND_DOMAIN = "tasks.orbyn.test";
 
 const { buildApp } = await import("../src/app.js");
+const { AGENT_TOOLSETS } = await import("@orbyn/core");
 const { pool, readTransaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { env } = await import("../src/config/env.js");
@@ -212,8 +213,16 @@ before(async () => {
     personal = true,
     extra: Record<string, unknown> = {},
   ) =>
-    (await h.agentKey(who, { access: "read", personal, team_ids, ...extra }))
-      .key;
+    (
+      await h.agentKey(who, {
+        access: "read",
+        personal,
+        team_ids,
+        // Every toolset: the A4-A5 reads are in the matrix too.
+        toolsets: [...AGENT_TOOLSETS],
+        ...extra,
+      })
+    ).key;
   keys.owner = await key(owner, [teams.crew, teams.closed]);
   keys.admin = await key(admin, [teams.crew]);
   keys.member = await key(member, [teams.crew, teams.closed]);
@@ -243,6 +252,9 @@ async function everything(key: string, label: string) {
   const out: unknown[] = [];
   const reachable = new Set(REACH[label]);
   const tool = async (name: string, args: Record<string, unknown> = {}) => {
+    // Refusals are the point here: never let them pause the connection.
+    strikes.reset();
+    limiter.reset();
     const r = await h.tool(key, name, args);
     assert.ok(r, `${label} ${name}: no result`);
     out.push(r);
@@ -257,6 +269,21 @@ async function everything(key: string, label: string) {
     await tool("query", { over, status: "any", limit: 100 });
   await tool("find_passages", { query: "marmot burrow words", limit: 25 });
   await tool("find_passages", { query: "marmot notes", limit: 25 });
+  // The toolsets' reads (A4-A5).
+  await tool("get_work_patterns");
+  await tool("get_study", { queue: true, ahead: true });
+  await tool("get_follow_through", { days: 31 });
+  await tool("find_time", { minutes: 30 });
+  await tool("get_bookings", { view: "all" });
+  await tool("list_imports");
+  for (const team of Object.values(teams)) await tool("get_team", { team });
+  for (const over of ["tasks", "docs", "projects"])
+    await tool("query", {
+      over,
+      status: "any",
+      limit: 100,
+      starred: over !== "tasks" ? true : undefined,
+    });
   for (const mark of MARKS)
     for (const t of things[mark]) {
       const inReach = reachable.has(mark);
@@ -273,6 +300,27 @@ async function everything(key: string, label: string) {
         const hub = await tool("get_project", { project: t.id });
         assert.equal(!!hub.isError, !inReach, `${label} hub ${mark}`);
       }
+      // Links and history: the same reach as fetch.
+      const typedId = `${t.type === "event" ? "task" : t.type}:${t.id}`;
+      for (const r of [
+        await tool("get_links", { of: typedId }),
+        // An old API key's connection has only the core tools.
+        ...(label === "legacy"
+          ? []
+          : [await tool("get_history", { of: typedId })]),
+      ])
+        if (inReach)
+          assert.equal(
+            r.isError,
+            undefined,
+            `${label} links/history ${t.type} ${mark}: ${r.content?.[0]?.text}`,
+          );
+        else
+          assert.equal(
+            r.isError,
+            true,
+            `${label} links/history ${t.type} ${mark}`,
+          );
       const read = await h.legacy(key, "resources/read", {
         uri: `orbyn://${t.type === "event" ? "task" : t.type}/${t.id}`,
       });

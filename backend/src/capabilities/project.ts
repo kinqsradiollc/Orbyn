@@ -22,6 +22,7 @@ import {
   type Provenance,
 } from "./format.js";
 import { refs } from "./refs.js";
+import { projectPlanning } from "../modules/projects/planning.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
 import {
   CapabilityError,
@@ -132,8 +133,109 @@ export const projectOutput = z.object({
     unscheduled_minutes: z.number(),
     at_risk: z.boolean(),
   }),
+  planning: z
+    .object({
+      needed_minutes: z.number(),
+      planned_minutes: z.number(),
+      unplanned_minutes: z.number(),
+      late_sessions: z.number(),
+      planned_finish_at: when.nullable(),
+      unestimated_tasks: z.number(),
+      team_planned_minutes: z.number().nullable(),
+    })
+    .describe("Your open work against the deadline; team total for admins."),
+  linked_here: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      url: z.string(),
+      kind: z.string(),
+    }),
+  ),
+  pins: z.array(
+    z.object({ id: z.string(), title: z.string(), url: z.string() }),
+  ),
 });
 export type ProjectHub = z.output<typeof projectOutput>;
+
+/**
+ * The project page's planning panel (GET /projects/:id/planning), for the
+ * principal: their own open work, and team totals only for a team's owners
+ * and admins (as their role in this connection's teams says).
+ */
+async function planningOf(
+  ctx: CapabilityContext,
+  project: { id: string; deadline: Date | null; team_id: string | null },
+) {
+  const role = project.team_id
+    ? ctx.principal.teams.find((t) => t.id === project.team_id)?.role
+    : null;
+  const plan = await projectPlanning(
+    ctx.db,
+    ctx.principal.user.id,
+    project,
+    role === "owner" || role === "admin",
+    ctx.now,
+  );
+  return {
+    needed_minutes: plan.needed_minutes,
+    planned_minutes: plan.planned_minutes,
+    unplanned_minutes: plan.unplanned_minutes,
+    late_sessions: plan.late_session_count,
+    planned_finish_at: both(plan.planned_finish_at, ctx.timezone),
+    unestimated_tasks: plan.unestimated_tasks.length,
+    team_planned_minutes: plan.team_planned_minutes ?? null,
+  };
+}
+
+/** Pages and tasks that link to the project (picker and related links). */
+async function linkedHere(ctx: CapabilityContext, id: string) {
+  const p = new Params();
+  const scope = scopeFor(ctx.spaces, p);
+  const pid = p.add(id);
+  const rows = (
+    await ctx.db.query<{
+      kind: "doc" | "task";
+      id: string;
+      title: string;
+      item_kind: string | null;
+      source: string | null;
+      link_kind: string;
+    }>(
+      `SELECT 'doc' AS kind, d.id, d.title, NULL AS item_kind, NULL AS source, l.link_kind
+         FROM object_links l JOIN docs d ON d.id = l.source_id
+        WHERE l.source_kind = 'doc' AND l.target_kind = 'project' AND l.target_id = ${pid}::text
+          AND l.link_kind IN ('link', 'related') AND ${visibleDocs("d", scope)}
+       UNION ALL
+       SELECT 'task', i.id, i.title, i.kind, ${itemSourceSql("i")}, l.link_kind
+         FROM object_links l JOIN items i ON i.id = l.source_id
+        WHERE l.source_kind = 'task' AND l.target_kind = 'project' AND l.target_id = ${pid}::text
+          AND l.link_kind IN ('link', 'related') AND ${visibleItems("i", scope)}
+       LIMIT 20`,
+      p.values,
+    )
+  ).rows;
+  const hide = ctx.principal.flags.hide_outside_content;
+  return rows.map((r) => {
+    const type =
+      r.kind === "doc" ? "doc" : r.item_kind === "event" ? "event" : "task";
+    const ref = refs({ type, id: r.id });
+    return {
+      id: ref.id,
+      title:
+        (r.kind === "doc"
+          ? cleanTitle(r.title)
+          : titleFor(
+              r.title,
+              r.source ?? "you",
+              hide,
+              r.item_kind ?? undefined,
+            )) || "Untitled",
+      url: ref.url,
+      kind: r.link_kind,
+    };
+  });
+}
 
 /** Loads one project the principal can see, or NOT_FOUND. */
 export async function projectHub(
@@ -435,6 +537,18 @@ export async function projectHub(
         ctx.now,
       ),
     },
+    planning: await planningOf(ctx, project),
+    linked_here: await linkedHere(ctx, id),
+    pins: (
+      await ctx.db.query<{ id: string; title: string; url: string }>(
+        "SELECT id, title, url FROM project_links WHERE project_id = $1 ORDER BY created_at, id LIMIT 20",
+        [id],
+      )
+    ).rows.map((l) => ({
+      id: l.id,
+      title: cleanTitle(l.title) || l.url.slice(0, 200),
+      url: l.url,
+    })),
   };
 }
 
@@ -505,6 +619,22 @@ export function projectMarkdown(h: ProjectHub): string {
         `- ${s.start.local}, ${s.minutes} min: ${lineTitle(s.task_title, null, s.provenance, kinds.get(s.task_id))}`,
       );
   }
+  const plan = h.planning;
+  if (plan.needed_minutes || plan.planned_minutes)
+    out.push(
+      "",
+      `Your planning: ${minutesText(plan.planned_minutes)} of ${minutesText(plan.needed_minutes)} planned before the deadline` +
+        (plan.late_sessions
+          ? `, ${plan.late_sessions} session${plan.late_sessions === 1 ? "" : "s"} after it`
+          : "") +
+        (plan.unestimated_tasks
+          ? `, ${plan.unestimated_tasks} task${plan.unestimated_tasks === 1 ? "" : "s"} without an estimate`
+          : "") +
+        (plan.team_planned_minutes !== null
+          ? ` · the team has ${minutesText(plan.team_planned_minutes)} planned`
+          : "") +
+        ".",
+    );
   if (h.docs.length) {
     out.push("", "## Pages");
     for (const d of h.docs) out.push(`- ${mdLink(d.title, d.url)} · ${d.id}`);
@@ -515,6 +645,15 @@ export function projectMarkdown(h: ProjectHub): string {
       out.push(
         `- ${r.kind}: ${r.title} (${r.status}${r.due ? `, due ${r.due.local}` : ""})${r.gap ? ` — ${r.gap}` : ""}`,
       );
+  }
+  if (h.pins.length) {
+    out.push("", "## Pinned links");
+    for (const l of h.pins) out.push(`- ${mdLink(l.title, l.url)}`);
+  }
+  if (h.linked_here.length) {
+    out.push("", "## Linked here");
+    for (const l of h.linked_here)
+      out.push(`- ${mdLink(l.title, l.url)} (${l.kind}) · ${l.id}`);
   }
   if (h.activity.length) {
     out.push("", "## Recent changes");
@@ -530,7 +669,7 @@ export const getProject = defineCapability({
   name: "get_project",
   title: "Open a project",
   description:
-    "A project as a hub: summary, status and deadline; stages with their open tasks; your sessions in the next two weeks; its pages; open promises and decisions (flagging decisions no task delivers); recent changes, marked with the agent that made them; and health (overdue, due this week, estimated work not yet planned, at risk).",
+    "A project as a hub, as its page shows it: summary, status, deadline; stages with open tasks; your sessions in the next two weeks; pages; open promises and decisions; recent changes (with the agent that made them); health; your planning against the deadline; and what links here.",
   input: z
     .object({
       project: z

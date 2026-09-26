@@ -119,6 +119,14 @@
   font-size: 12px;
   color: var(--color-text);
 }
+.agents-activity li > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+}
+.agents-activity li .link-button {
+  flex: none;
+  font-size: 12px;
+}
 .agents-activity-time {
   flex: none;
   width: 64px;
@@ -253,4 +261,50 @@
   .agents-snippet pre {
     align-self: stretch;
   }
+}
+
+/* Tools a connection has besides core: chosen when a key is made, and
+   changed from a connection's row. */
+.agents-toolsets .check-grid {
+  margin-top: 6px;
+}
+.agents-toolsets .check-line span {
+  display: grid;
+  gap: 2px;
+}
+.agents-toolsets .check-line small {
+  color: var(--color-muted);
+}
+.agents-tools-edit {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.agents-tools-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* One-click install links (Cursor, VS Code, Goose, LM Studio). */
+.agents-install {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.agents-install-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.agents-install-links a.secondary {
+  padding: 8px 14px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+.agents-install-links a.secondary:hover {
+  border-color: var(--color-borderHover);
+  background: var(--color-hover);
 }

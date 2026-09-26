@@ -1,5 +1,8 @@
 import {
   HttpError,
+  type AgentGrant,
+  type AgentToolset,
+  type McpCatalog,
   type AgendaDay,
   type CaptureRequest,
   type CaptureResult,
@@ -119,6 +122,10 @@ import {
   type User,
   type ApiKey,
   type AgentActivity,
+  type ReviewApplied,
+  type ReviewApproveInput,
+  type ReviewInbox,
+  type ReviewItem,
   type AgentKeyInput,
   type AgentSettings,
   type AgentSettingsUpdate,
@@ -245,6 +252,19 @@ import {
 /** News from `GET /events`: re-read what it names. */
 export type LiveNews = {
   kind: "changed" | "focus" | "presence" | "doc_presence";
+  /**
+   * What a "changed" is about: pages, projects, lists and folders
+   * (organize), templates, work records, the Review inbox, or items.
+   * Absent on older news, which means anything may have changed.
+   */
+  area?:
+    | "items"
+    | "docs"
+    | "projects"
+    | "organize"
+    | "templates"
+    | "records"
+    | "review";
   user?: string;
   team?: string;
   doc?: string;
@@ -813,30 +833,33 @@ export class OrbynClient {
     });
   }
   /**
-   * Today's agenda document, generated on first ask each day. `timezone` is
-   * the device's, adopted when you haven't picked one in settings.
+   * Today's agenda document, written on first ask each day (a POST: asking
+   * writes it). `timezone` is the device's, adopted when you haven't picked
+   * one in settings.
    */
   agendaToday(timezone?: string) {
-    return this.request<Doc>(
-      timezone
-        ? `/agenda/today?timezone=${encodeURIComponent(timezone)}`
-        : "/agenda/today",
-    );
+    return this.request<Doc>("/agenda/today", {
+      method: "POST",
+      body: timezone ? { timezone } : {},
+    });
   }
   /**
-   * One day's agenda, for stepping back and forward: today's is written on
-   * the spot; another day's `doc` is null until `writeAgenda` writes it.
+   * One day's agenda, for stepping back and forward. Reading never writes:
+   * today's page is written on the spot here when it isn't there yet (as
+   * `agendaToday` does); another day's `doc` is null until `writeAgenda`
+   * writes it.
    */
-  agendaOn(date: string, timezone?: string) {
-    return this.request<AgendaDay>(
-      timezone
-        ? `/agenda/${date}?timezone=${encodeURIComponent(timezone)}`
-        : `/agenda/${date}`,
-    );
+  async agendaOn(date: string, timezone?: string) {
+    const day = await this.request<AgendaDay>(`/agenda/${date}`);
+    if (day.doc || date !== day.today) return day;
+    return { ...day, doc: await this.writeAgenda(date, timezone) };
   }
   /** Write one day's agenda from the calendar (or get the one written). */
-  writeAgenda(date: string) {
-    return this.request<Doc>(`/agenda/${date}`, { method: "POST" });
+  writeAgenda(date: string, timezone?: string) {
+    return this.request<Doc>(`/agenda/${date}`, {
+      method: "POST",
+      body: timezone ? { timezone } : {},
+    });
   }
   /** Tell the server the device's zone; adopted unless you picked one. */
   reportTimeZone(timezone: string) {
@@ -2166,6 +2189,17 @@ export class OrbynClient {
   agents() {
     return this.request<AgentsOverview>("/me/agents");
   }
+  /** The MCP server's public description, for the developer page. */
+  developerCatalog() {
+    return this.request<McpCatalog>("/developers/mcp", { anonymous: true });
+  }
+  /** A connection's toolsets besides core (Settings → Connected agents). */
+  setAgentToolsets(id: string, toolsets: AgentToolset[]) {
+    return this.request<AgentGrant>(`/me/agents/${id}/toolsets`, {
+      method: "PUT",
+      body: { toolsets },
+    });
+  }
   /** A new agent key; the returned `key` is shown once. */
   createAgentKey(input: AgentKeyInput) {
     return this.request<NewAgentKey>("/me/agent-keys", {
@@ -2184,6 +2218,37 @@ export class OrbynClient {
   /** What one connection did, newest first. */
   agentActivity(id: string) {
     return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
+  }
+  /** Undo one change an agent made directly (from its activity). */
+  undoAgentChange(activityId: string) {
+    return this.request<{ undone: true; summary: string }>(
+      `/me/agents/activity/${activityId}/undo`,
+      { method: "POST" },
+    );
+  }
+  // ---- The Review inbox ----
+  /** What waits for approval, and what was decided lately. */
+  reviewInbox() {
+    return this.request<ReviewInbox>("/proposals");
+  }
+  /** How many proposals wait, for the badge. */
+  reviewCount() {
+    return this.request<{ pending: number }>("/proposals/count");
+  }
+  /** One proposal, each change checked against what is there now. */
+  reviewItem(id: string) {
+    return this.request<ReviewItem>(`/proposals/${id}`);
+  }
+  /** Approve a proposal (all of it, or `only` some of its changes). */
+  approveReview(id: string, input: ReviewApproveInput = {}) {
+    return this.request<ReviewApplied>(`/proposals/${id}/apply`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Decline a proposal: nothing changes. */
+  declineReview(id: string) {
+    return this.request<void>(`/proposals/${id}/decline`, { method: "POST" });
   }
   /** Team settings → Outside agents: the policy, and (managers) who connects. */
   teamAgents(teamId: string) {

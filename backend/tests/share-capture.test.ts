@@ -504,7 +504,7 @@ test("a share goes into a project as a task in its first stage", async () => {
 });
 
 test("a share is added to the end of today's agenda's Notes", async () => {
-  const today = (await call(owner.token, "GET", "/agenda/today")).json();
+  const today = (await call(owner.token, "POST", "/agenda/today")).json();
   const r = await call(owner.token, "POST", "/capture", {
     url: ARTICLE,
     text: "Before the lab",

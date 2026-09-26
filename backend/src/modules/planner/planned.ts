@@ -15,11 +15,11 @@ import {
   type Status,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { busyIntervals, loadPrefs } from "./calendar.js";
 import { FREE_LOOKAHEAD_DAYS, freeSpans, workingSpans } from "./free.js";
 import { CHILD_COLUMNS } from "./plans.js";
 import { dependentTargets } from "./targets.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /**
  * The planned feed: your planned time, task by task, with each task's one
@@ -214,7 +214,7 @@ export async function plannedFeed(
     await db.query<FitRow>(
       `SELECT ${FIT_COLUMNS}
        FROM items i
-       WHERE ${VISIBLE_ITEMS} AND i.kind = 'task' AND (
+       WHERE ${visibleItems()} AND i.kind = 'task' AND (
          CASE WHEN $2::uuid[] IS NOT NULL THEN i.id = ANY ($2::uuid[])
          ELSE (i.status NOT IN ('done', 'cancelled')
                AND ((i.team_id IS NULL AND i.user_id = $1) OR i.assignee_id = $1))

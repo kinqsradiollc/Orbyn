@@ -5,7 +5,6 @@ import {
   type ProjectPlanning,
 } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import {
   FIT_COLUMNS,
   fitsFor,
@@ -13,6 +12,7 @@ import {
   type FitRow,
 } from "../planner/planned.js";
 import { dependentTargets } from "../planner/targets.js";
+import { visibleItems } from "../../lib/visibility.js";
 
 /** Only the signed-in person's work and sessions; a teammate's calendar stays private. */
 export async function projectPlanning(
@@ -26,7 +26,7 @@ export async function projectPlanning(
     await db.query<FitRow>(
       `SELECT ${FIT_COLUMNS} FROM items i
         WHERE i.project_id = $2 AND i.kind = 'task'
-          AND i.status NOT IN ('done', 'cancelled') AND ${VISIBLE_ITEMS}
+          AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}
           AND (CASE WHEN i.team_id IS NULL THEN i.user_id = $1
                     ELSE i.assignee_id = $1 END)
         ORDER BY i.created_at, i.id LIMIT 500`,

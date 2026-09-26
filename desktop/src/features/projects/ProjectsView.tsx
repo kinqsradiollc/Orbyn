@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { onLive } from "../../lib/live";
 import { Boxes, LayoutTemplate, Plus } from "lucide-react";
 import {
   projectProgress,
@@ -87,6 +88,25 @@ export function ProjectsView({
 
   useEffect(() => {
     void load();
+    // Projects changed elsewhere (another device, a teammate, or a
+    // connected agent): read them again, once for a burst of changes.
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area &&
+          news.area !== "projects" &&
+          news.area !== "templates" &&
+          news.area !== "records")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void load(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!initialProjectId) return;
