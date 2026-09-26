@@ -144,7 +144,7 @@ const schema = z.object({
    * Where security problems are reported: the Contact line of
    * /.well-known/security.txt (a mailto: or https: address).
    */
-  SECURITY_CONTACT: z.string().default("mailto:security@orbyn.dev"),
+  SECURITY_CONTACT: z.string().default("mailto:hello@orbyn.dev"),
   /**
    * The token the OpenAI apps directory gives to prove Orbyn owns the MCP
    * address, answered at /.well-known/openai-apps-challenge (404 when
