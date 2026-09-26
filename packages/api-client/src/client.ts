@@ -40,6 +40,7 @@ import {
   type AdminDatabaseTableDetail,
   type AdminDatabaseRows,
   type Doc,
+  type DocInfo,
   type TrashedDoc,
   type DocBlock,
   type DocKind,
@@ -145,6 +146,7 @@ import {
   type PlanApplied,
   type PlanApplyInput,
   type BlockInput,
+  type BlockOnDayInput,
   type BlockUpdate,
   type Booking,
   type BookingPage,
@@ -1261,6 +1263,10 @@ export class OrbynClient {
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);
   }
+  /** A page's Info panel: what it belongs to, tags, links, versions. */
+  docInfo(id: string) {
+    return this.request<DocInfo>(`/docs/${id}/info`);
+  }
   /** Put exactly these tags (by id) on a page. */
   setDocTags(id: string, tags: string[]) {
     return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {
@@ -1492,6 +1498,13 @@ export class OrbynClient {
     return this.request<ItemSessions>(`/items/${itemId}/sessions`);
   }
   createBlock(input: BlockInput) {
+    return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
+  }
+  /**
+   * A session on a day (a task dropped on a calendar day): the first free
+   * working time that day, or a 409 saying there's none.
+   */
+  createBlockOnDay(input: BlockOnDayInput) {
     return this.request<TimeBlock>("/blocks", { method: "POST", body: input });
   }
   updateBlock(id: string, input: BlockUpdate) {

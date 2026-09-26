@@ -4,6 +4,7 @@ import {
   addDays,
   blockDuplicateInput,
   blockInput,
+  blockOnDayInput,
   blockRescheduleInput,
   blockUpdate,
   calendarFeedCreateInput,
@@ -175,6 +176,32 @@ async function blockById(db: Db, id: string, userId: string) {
 }
 
 /** Where the API can be reached from outside, for links in responses. */
+/**
+ * The first free working time of `minutes` on `day` (a "YYYY-MM-DD" in the
+ * person's zone), from now on when the day is today. 409 when the day is
+ * over or has no such time, so the person can pick a time themselves.
+ */
+async function freeOnDay(
+  db: Db,
+  userId: string,
+  day: string,
+  minutes: number,
+): Promise<{ start_at: string; end_at: string }> {
+  const prefs = await loadPrefs(db, userId);
+  const now = new Date();
+  const start = dayTime(day, 0, prefs.timezone);
+  const end = dayTime(addDays(day, 1), 0, prefs.timezone);
+  if (end.getTime() <= now.getTime())
+    fail(409, "That day is over. Pick today or a day ahead.");
+  const slot = await workingFree(db, userId, minutes, [], now, start, end);
+  if (!slot)
+    fail(
+      409,
+      "There's no free working time left that day for it. Pick a time in the week view instead.",
+    );
+  return slot;
+}
+
 function publicOrigin(r: FastifyRequest) {
   const host =
     (r.headers["x-forwarded-host"] as string | undefined) ?? r.headers.host;
@@ -900,22 +927,41 @@ export async function plannerRoutes(app: FastifyInstance) {
     return itemSessions(reader(r.headers), u.id, idParam(r));
   });
 
+  // A session at a time, or (with `day` instead of times: a task dropped on
+  // a calendar day) at the first free working time that day. A day's
+  // session may end after the task's deadline: it is flagged late, never
+  // refused, and the deadline is never touched.
   app.post("/blocks", async (r, reply) => {
     const u = await authenticate(r);
-    const d = blockInput.parse(r.body);
+    const body = (r.body ?? {}) as Record<string, unknown>;
+    const onDay = "day" in body ? blockOnDayInput.parse(body) : null;
+    const d = onDay ?? blockInput.parse(body);
     const block = await transaction(async (db) => {
       const item = (
-        await db.query<{ id: string; kind: string }>(
-          `SELECT i.id, i.kind FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+        await db.query<{
+          id: string;
+          kind: string;
+          estimate_minutes: number | null;
+        }>(
+          `SELECT i.id, i.kind, i.estimate_minutes FROM items i
+            WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
           [u.id, d.item_id],
         )
       ).rows[0];
       if (!item) fail(404, "Item not found");
       if (item.kind !== "task") fail(422, "Only tasks can have sessions.");
+      const times = onDay
+        ? await freeOnDay(
+            db,
+            u.id,
+            onDay.day,
+            onDay.minutes ?? Math.min(item.estimate_minutes || 30, 1440),
+          )
+        : (d as { start_at: string; end_at: string });
       const { id } = (
         await db.query<{ id: string }>(
           `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-          [d.item_id, u.id, d.start_at, d.end_at],
+          [d.item_id, u.id, times.start_at, times.end_at],
         )
       ).rows[0];
       const created = await blockById(db, id, u.id);

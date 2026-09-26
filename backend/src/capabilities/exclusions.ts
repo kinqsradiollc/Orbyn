@@ -45,6 +45,9 @@ export const COVERED: Record<string, string[]> = {
   // that fetch returns.
   "GET /links/pick": ["search"],
   "GET /links/resolve": ["fetch"],
+  // A page's Info panel: its facts (project, tags, versions, links) that
+  // fetch returns with the page.
+  "GET /docs/:id/info": ["fetch"],
   "GET /items": ["query"],
   "GET /items/:id": ["fetch"],
   "GET /docs": ["query"],

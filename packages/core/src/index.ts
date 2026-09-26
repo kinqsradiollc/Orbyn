@@ -56,3 +56,5 @@ export * from "./share.js";
 export * from "./search-query.js";
 export * from "./security-page.js";
 export * from "./links.js";
+export * from "./task-groups.js";
+export * from "./doc-outline.js";

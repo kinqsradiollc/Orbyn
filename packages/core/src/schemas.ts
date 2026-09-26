@@ -1132,6 +1132,22 @@ export const blockInput = z
   .object({ item_id: z.uuid(), ...blockTimes })
   .strict()
   .refine(blockSpan, BLOCK_SPAN);
+/**
+ * A session on a day rather than at a time (a task dropped on a calendar
+ * day, ORG-06): the server finds the first free working time that day.
+ * `minutes` defaults to the task's estimate, or 30.
+ */
+export const blockOnDayInput = z
+  .object({
+    item_id: z.uuid(),
+    day: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "A day like 2026-10-02")
+      .refine((d) => !isNaN(Date.parse(`${d}T00:00:00Z`)), "Not a day"),
+    minutes: z.number().int().min(5).max(1440).optional(),
+  })
+  .strict();
+export type BlockOnDayInput = z.output<typeof blockOnDayInput>;
 export const blockUpdate = z
   .object(blockTimes)
   .strict()
