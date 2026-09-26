@@ -2,6 +2,7 @@ import { fail, progressUpdateInput, type ItemDetail } from "@orbyn/core";
 import type { z } from "zod";
 import type { Db } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
+import { announceTo } from "../presence/live.js";
 import {
   itemDetail,
   lockItem,
@@ -68,6 +69,15 @@ export async function addProgressUpdate(
      updated_at = now()
    WHERE id = $2`,
       [d.progress, id],
+    );
+  // A new status was announced by the edit; a note or percent alone is
+  // announced here, so open apps and agents following the task hear of it.
+  if (!changed)
+    await announceTo(
+      db as never,
+      { user_id: item.user_id, team_id: item.team_id },
+      "changed",
+      { entity_type: "task", entity_id: id },
     );
   return itemDetail(id, via(db));
 }

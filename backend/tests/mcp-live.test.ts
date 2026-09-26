@@ -232,6 +232,139 @@ test("listen: acknowledged with only what the connection can read, then told wha
   assert.equal(listenCount(), 0);
 });
 
+test("listen: a followed task and record are told of when changed over REST and through a tool", async () => {
+  const made = await h.agentKey(olga, {
+    access: "write",
+    toolsets: ["core", "followthrough"],
+  });
+  const task = (
+    await h.call(olga.token, "POST", "/items", {
+      kind: "task",
+      title: "Followed task",
+    })
+  ).json() as { id: string; version: number };
+  const other = (
+    await h.call(olga.token, "POST", "/items", {
+      kind: "task",
+      title: "Not followed",
+    })
+  ).json() as { id: string };
+  const rec = (
+    await h.call(olga.token, "POST", "/work-records", {
+      kind: "decision",
+      title: "Followed decision",
+    })
+  ).json() as { id: string; version: number };
+  const follow = {
+    resourceSubscriptions: [
+      `orbyn://task/${task.id}`,
+      `orbyn://record/${rec.id}`,
+    ],
+  };
+  const told = (s: Awaited<ReturnType<typeof listen>>) =>
+    s.events
+      .filter((e) => e.method === "notifications/resources/updated")
+      .map((e) => e.params.uri as string);
+  const itemVersion = async (id: string) =>
+    (await pool.query("SELECT version FROM items WHERE id = $1", [id])).rows[0]
+      .version as number;
+  const recordVersion = async (id: string) =>
+    (await pool.query("SELECT version FROM work_records WHERE id = $1", [id]))
+      .rows[0].version as number;
+
+  // Over REST.
+  const rest = await listen(made.key, follow, async () => {
+    const r = await h.call(olga.token, "PUT", `/items/${task.id}`, {
+      kind: "task",
+      title: "Followed task, renamed",
+      version: await itemVersion(task.id),
+    });
+    assert.equal(r.statusCode, 200, r.body);
+    const saved = await h.call(olga.token, "PUT", `/work-records/${rec.id}`, {
+      version: await recordVersion(rec.id),
+      title: "Followed decision, renamed",
+    });
+    assert.equal(saved.statusCode, 200, saved.body);
+    await new Promise((r) => setTimeout(r, 800));
+  });
+  assert.deepEqual(rest.events[0].params.notifications, follow);
+  assert.ok(told(rest).includes(`orbyn://task/${task.id}`), rest.body);
+  assert.ok(told(rest).includes(`orbyn://record/${rec.id}`), rest.body);
+
+  // Through the agent's own tools, and a progress note alone.
+  const tools = await listen(made.key, follow, async () => {
+    const t = await h.tool(made.key, "update_tasks", {
+      changes: [
+        {
+          id: `task:${task.id}`,
+          version: await itemVersion(task.id),
+          title: "Followed task, by the agent",
+        },
+      ],
+    });
+    assert.equal(t?.structuredContent?.status, "done", JSON.stringify(t));
+    const r = await h.tool(made.key, "save_record", {
+      record: `record:${rec.id}`,
+      version: await recordVersion(rec.id),
+      title: "Followed decision, by the agent",
+    });
+    assert.equal(r?.structuredContent?.status, "done", JSON.stringify(r));
+    await new Promise((r) => setTimeout(r, 800));
+  });
+  assert.ok(told(tools).includes(`orbyn://task/${task.id}`), tools.body);
+  assert.ok(told(tools).includes(`orbyn://record/${rec.id}`), tools.body);
+
+  const note = await listen(made.key, follow, async () => {
+    const r = await h.call(olga.token, "POST", `/items/${task.id}/updates`, {
+      body: "Halfway there",
+    });
+    assert.ok(r.statusCode < 300, r.body);
+    // Another task changing isn't this one.
+    await h.call(olga.token, "PUT", `/items/${other.id}`, {
+      kind: "task",
+      title: "Still not followed",
+      version: await itemVersion(other.id),
+    });
+    await new Promise((r) => setTimeout(r, 800));
+  });
+  assert.deepEqual(told(note), [`orbyn://task/${task.id}`]);
+});
+
+test("listen: a followed page that can no longer be read is dropped, not told of", async () => {
+  const doc = await newDoc(olga, { title: "Soon not mine" });
+  const saves = async (who: Person) => {
+    const page = (await h.call(who.token, "GET", `/docs/${doc.id}`)).json();
+    const r = await h.call(who.token, "PUT", `/docs/${doc.id}`, {
+      version: page.version,
+      content: [{ type: "paragraph", text: `saved at ${Date.now()}` }],
+    });
+    assert.equal(r.statusCode, 200, r.body);
+  };
+  const s = await listen(
+    key,
+    { resourceSubscriptions: [`orbyn://doc/${doc.id}`] },
+    async () => {
+      await saves(olga);
+      await new Promise((r) => setTimeout(r, 800));
+      // It becomes someone else's own page.
+      await pool.query(
+        "UPDATE docs SET user_id = $2, team_id = NULL WHERE id = $1",
+        [doc.id, otto.id],
+      );
+      await saves(otto);
+      await new Promise((r) => setTimeout(r, 800));
+      await saves(otto);
+      await new Promise((r) => setTimeout(r, 800));
+    },
+    4_000,
+  );
+  const updated = s.events.filter(
+    (e) => e.method === "notifications/resources/updated",
+  );
+  assert.equal(updated.length, 1, s.body);
+  assert.equal(updated[0].params.uri, `orbyn://doc/${doc.id}`);
+});
+
 test("listen: keep-alives, and a close at the credential's end", async () => {
   const was = LISTEN.keepAliveMs;
   LISTEN.keepAliveMs = 100;

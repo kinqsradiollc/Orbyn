@@ -6,10 +6,13 @@
 //
 //   DIRECTORY_EMAIL=reviewer@orbyn.dev npm run directory:account -w backend
 //
-// Runs against DATABASE_URL (staging first). Prints the password once;
-// running it again resets the password and adds the demo content again only
-// if it's missing. It never makes an admin, and refuses to run on a database
-// with no admin yet (the first account there would become one).
+// Runs against DATABASE_URL (staging first). Prints the password once.
+// It only makes a new account: if the address already belongs to someone it
+// stops, unless DIRECTORY_RESET=1 is set to reset that (reviewer) account's
+// password, and even then it never touches an admin. The demo content is
+// added again only if it's missing. It never makes an admin, and refuses to
+// run on a database with no admin yet (the first account there would become
+// one).
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import argon2 from "argon2";
@@ -31,12 +34,14 @@ const day = (days: number, hour = 17) => {
 };
 
 /**
- * Makes (or resets) the reviewer account on `app`'s database and gives it
- * demo content. `password` is set as given.
+ * Makes the reviewer account on `app`'s database and gives it demo content.
+ * `password` is set as given. An address already in use is refused unless
+ * `reset` is set, and an admin's address always is: a typo must never reset
+ * someone's password, their two-step sign-in or their role.
  */
 export async function seedDirectoryAccount(
   app: FastifyInstance,
-  opts: { email: string; password: string; name?: string },
+  opts: { email: string; password: string; name?: string; reset?: boolean },
 ): Promise<DirectoryAccount> {
   const { pool } = await import("../src/db/pool.js");
   const email = opts.email.trim().toLowerCase();
@@ -49,10 +54,20 @@ export async function seedDirectoryAccount(
     );
   const hash = await argon2.hash(opts.password);
   let user = (
-    await pool.query<{ id: string }>("SELECT id FROM users WHERE email = $1", [
-      email,
-    ])
-  ).rows[0];
+    await pool.query<{ id: string; role: string }>(
+      "SELECT id, role FROM users WHERE email = $1",
+      [email],
+    )
+  ).rows[0] as { id: string; role?: string } | undefined;
+  const made = !user;
+  if (user?.role === "admin")
+    throw new Error(
+      `${email} belongs to an admin. The reviewer needs an address of its own; nothing was changed.`,
+    );
+  if (user && !opts.reset)
+    throw new Error(
+      `${email} already has an account; nothing was changed. To reset the reviewer account's password, run again with DIRECTORY_RESET=1.`,
+    );
   if (!user) {
     const r = await app.inject({
       method: "POST",
@@ -68,17 +83,26 @@ export async function seedDirectoryAccount(
     user = { id: (r.json() as { user: { id: string } }).user.id };
   }
   // A plain member: verified, no two-step sign-in, not disabled, and the
-  // Terms in force accepted.
+  // Terms in force accepted. The role is only set on an account made here
+  // (an existing one is never an admin, checked above), and the WHERE keeps
+  // an admin out even if one appeared in between.
   const { settings } = await import("../src/lib/settings.js");
   const { agreementVersion } = await import("@orbyn/core");
   const terms = agreementVersion((await settings()).legal);
-  await pool.query(
-    `UPDATE users SET password_hash = $2, email_verified = true, role = 'member',
+  const updated = await pool.query(
+    `UPDATE users SET password_hash = $2, email_verified = true,
+            role = CASE WHEN $4::boolean THEN 'member' ELSE role END,
             disabled = false, terms_version = $3, terms_accepted_at = now()
-      WHERE id = $1`,
-    [user.id, hash, terms],
+      WHERE id = $1 AND role <> 'admin'`,
+    [user.id, hash, terms, made],
   );
-  await pool.query("DELETE FROM user_totp WHERE user_id = $1", [user.id]);
+  if (!updated.rowCount)
+    throw new Error(`${email} belongs to an admin; nothing was changed.`);
+  await pool.query(
+    `DELETE FROM user_totp t USING users u
+      WHERE t.user_id = $1 AND u.id = t.user_id AND u.role <> 'admin'`,
+    [user.id],
+  );
 
   const login = await app.inject({
     method: "POST",
@@ -190,7 +214,11 @@ async function main() {
   const { pool } = await import("../src/db/pool.js");
   const app = await buildApp();
   try {
-    const made = await seedDirectoryAccount(app, { email, password });
+    const made = await seedDirectoryAccount(app, {
+      email,
+      password,
+      reset: process.env.DIRECTORY_RESET === "1",
+    });
     process.stdout.write(
       [
         `Reviewer account ready: ${made.email}`,

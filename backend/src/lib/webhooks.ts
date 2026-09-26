@@ -18,8 +18,18 @@ export async function queueWebhooks(
   dedupeKey: string | null = null,
 ) {
   // Every change worth a webhook is worth telling the open apps about, so
-  // they refresh instead of checking on a timer.
-  await announceTo(db, audience, "changed");
+  // they refresh instead of checking on a timer. A task's own change names
+  // it, so an agent following orbyn://task/<id> hears of it.
+  const itemId =
+    event.startsWith("item.") && typeof data.id === "string"
+      ? data.id
+      : undefined;
+  await announceTo(
+    db,
+    audience,
+    "changed",
+    itemId ? { entity_type: "task", entity_id: itemId } : {},
+  );
   await db.query(
     `INSERT INTO webhook_deliveries (webhook_id, event, payload, dedupe_key)
      SELECT w.id, $1, $4::jsonb, $5 FROM webhooks w

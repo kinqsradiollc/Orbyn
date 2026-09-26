@@ -95,10 +95,19 @@ test("the reviewer account: a verified member, Terms accepted, no two-step sign-
   assert.ok(row.terms_version);
   assert.equal(row.disabled, false);
   assert.equal(row.totp, false);
-  // Running it again resets the password and adds nothing twice.
+  // Running it again without DIRECTORY_RESET changes nothing.
+  await assert.rejects(
+    seedDirectoryAccount(app, {
+      email: reviewer.email,
+      password: "another-long-reviewer-password",
+    }),
+    /already has an account/,
+  );
+  // With it, it resets the password and adds nothing twice.
   const again = await seedDirectoryAccount(app, {
     email: reviewer.email,
     password: "another-long-reviewer-password",
+    reset: true,
   });
   assert.equal(again.userId, reviewer.userId);
   assert.equal(again.doc, reviewer.doc);
@@ -119,6 +128,40 @@ test("the reviewer account: a verified member, Terms accepted, no two-step sign-
     },
   });
   assert.equal(login.statusCode, 200);
+});
+
+test("the reviewer script never touches an admin's account, even when asked to reset", async () => {
+  const before = (
+    await pool.query(
+      "SELECT email, password_hash, role FROM users WHERE id = $1",
+      [admin.id],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO user_totp (user_id, secret_encrypted, confirmed_at) VALUES ($1, 'test', now()) ON CONFLICT DO NOTHING",
+    [admin.id],
+  );
+  for (const reset of [false, true])
+    await assert.rejects(
+      seedDirectoryAccount(app, {
+        email: before.email.toUpperCase(),
+        password: "a-long-reviewer-password",
+        reset,
+      }),
+      /belongs to an admin/,
+    );
+  const after = (
+    await pool.query(
+      `SELECT password_hash, role,
+              EXISTS (SELECT 1 FROM user_totp t WHERE t.user_id = u.id) AS totp
+         FROM users u WHERE id = $1`,
+      [admin.id],
+    )
+  ).rows[0];
+  assert.equal(after.password_hash, before.password_hash);
+  assert.equal(after.role, "admin");
+  assert.equal(after.totp, true);
+  await pool.query("DELETE FROM user_totp WHERE user_id = $1", [admin.id]);
 });
 
 /** Each directory case, run as the app would call it. */

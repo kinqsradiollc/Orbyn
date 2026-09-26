@@ -40,7 +40,9 @@ import { detailed, readTasks, ownTaskIds } from "./tasks.js";
  *   resources it can read (resourceSubscriptions: orbyn://today,
  *   orbyn://day/<date>, orbyn://<task|doc|project|record|template|view>/<id>)
  *   and its own long jobs (taskIds, the Tasks extension). Anything it can't
- *   read is dropped from the acknowledgement, never reported on.
+ *   read is dropped from the acknowledgement, never reported on; a followed
+ *   thing is checked again before each note, and dropped once it can't be
+ *   read (made private, moved out of a space the connection was given).
  * - Then notifications/resources/updated, notifications/resources/list_changed
  *   and notifications/tasks as things change, gathered for half a second so
  *   a burst is one note each. They say what moved, never what it says: the
@@ -163,41 +165,16 @@ const TABLES = {
 } as const;
 
 /**
- * The part of a requested filter this connection gets: the resources it
- * can read now, and its own tasks. Tools and prompts don't change while a
- * connection is open (a change to it closes the stream), so those lists
- * are never followed.
+ * The orbyn://<type>/<id> resources in `uris` that `p` can read now. The
+ * rest (other kinds of URI included) are left out.
  */
-export async function honour(
+async function readableThings(
   p: Principal,
-  requested: Record<string, unknown>,
-): Promise<Filter> {
-  const out: Filter = {};
-  if (requested.resourcesListChanged === true) out.resourcesListChanged = true;
-  const asked = Array.isArray(requested.resourceSubscriptions)
-    ? [
-        ...new Set(
-          requested.resourceSubscriptions.filter(
-            (u): u is string => typeof u === "string",
-          ),
-        ),
-      ].slice(0, LISTEN.maxUris)
-    : [];
-  const kept: string[] = [];
+  uris: string[],
+): Promise<Set<string>> {
+  const kept = new Set<string>();
   const byType = new Map<keyof typeof TABLES, Map<string, string>>();
-  for (const uri of asked) {
-    if (uri === "orbyn://today") {
-      if (p.personal) kept.push(uri);
-      continue;
-    }
-    if (DAY.test(uri)) {
-      if (
-        p.personal &&
-        !Number.isNaN(Date.parse(`${DAY.exec(uri)![1]}T00:00:00Z`))
-      )
-        kept.push(uri);
-      continue;
-    }
+  for (const uri of uris) {
     const m = THING.exec(uri);
     if (!m) continue;
     const type = m[1].toLowerCase() as keyof typeof TABLES;
@@ -219,12 +196,49 @@ export async function honour(
             params.values,
           )
         ).rows;
-        for (const row of found) kept.push(ids.get(row.id)!);
+        for (const row of found) kept.add(ids.get(row.id)!);
       }
     });
+  return kept;
+}
+
+/**
+ * The part of a requested filter this connection gets: the resources it
+ * can read now, and its own tasks. Tools and prompts don't change while a
+ * connection is open (a change to it closes the stream), so those lists
+ * are never followed.
+ */
+export async function honour(
+  p: Principal,
+  requested: Record<string, unknown>,
+): Promise<Filter> {
+  const out: Filter = {};
+  if (requested.resourcesListChanged === true) out.resourcesListChanged = true;
+  const asked = Array.isArray(requested.resourceSubscriptions)
+    ? [
+        ...new Set(
+          requested.resourceSubscriptions.filter(
+            (u): u is string => typeof u === "string",
+          ),
+        ),
+      ].slice(0, LISTEN.maxUris)
+    : [];
+  const keep = await readableThings(p, asked);
+  for (const uri of asked) {
+    if (uri === "orbyn://today") {
+      if (p.personal) keep.add(uri);
+      continue;
+    }
+    if (DAY.test(uri)) {
+      if (
+        p.personal &&
+        !Number.isNaN(Date.parse(`${DAY.exec(uri)![1]}T00:00:00Z`))
+      )
+        keep.add(uri);
+    }
+  }
   // In the order they were asked for.
-  const keep = new Set(kept);
-  if (kept.length) out.resourceSubscriptions = asked.filter((u) => keep.has(u));
+  if (keep.size) out.resourceSubscriptions = asked.filter((u) => keep.has(u));
   const tasks = Array.isArray(requested.taskIds)
     ? requested.taskIds
         .filter((t): t is string => typeof t === "string")
@@ -380,6 +394,7 @@ export async function openListen(
     allTasks: false,
   };
   const lastTask = new Map<string, string>();
+  const docWatches = new Map<string, () => void>();
   let timer: NodeJS.Timeout | null = null;
   const flush = async () => {
     timer = null;
@@ -392,7 +407,17 @@ export async function openListen(
     pending.list = false;
     pending.tasks.clear();
     pending.allTasks = false;
-    for (const uri of updated) note("notifications/resources/updated", { uri });
+    // What it follows may have become private or left a space it was given
+    // since the stream opened: checked again before telling, and dropped
+    // (never told of again) once it can't be read.
+    const things = updated.filter((u) => THING.test(u));
+    const still = things.length
+      ? await readableThings(p, things).catch(() => new Set<string>())
+      : new Set<string>();
+    const gone = things.filter((u) => !still.has(u));
+    if (gone.length) forget(gone);
+    for (const uri of updated)
+      if (!gone.includes(uri)) note("notifications/resources/updated", { uri });
     if (list) note("notifications/resources/list_changed");
     if (taskIds.length) {
       const tasks = await readTasks(grantId, taskIds).catch(() => []);
@@ -422,17 +447,26 @@ export async function openListen(
       timer = setTimeout(() => void flush(), LISTEN.gatherMs);
   });
   // A followed page's words change on their own channel (doc_changed).
-  const docWatches = await Promise.all(
-    (filter.resourceSubscriptions ?? [])
-      .map((uri) => /^orbyn:\/\/doc\/([0-9a-f-]{36})$/i.exec(uri))
-      .filter((m): m is RegExpExecArray => !!m)
-      .map((m) =>
-        watchDoc(m[1].toLowerCase(), () => {
-          pending.updated.add(m[0]);
-          timer ??= setTimeout(() => void flush(), LISTEN.gatherMs);
-        }),
-      ),
-  );
+  for (const m of (filter.resourceSubscriptions ?? [])
+    .map((uri) => /^orbyn:\/\/doc\/([0-9a-f-]{36})$/i.exec(uri))
+    .filter((m): m is RegExpExecArray => !!m))
+    docWatches.set(
+      m[0],
+      await watchDoc(m[1].toLowerCase(), () => {
+        pending.updated.add(m[0]);
+        timer ??= setTimeout(() => void flush(), LISTEN.gatherMs);
+      }),
+    );
+  /** Stops following resources it can no longer read. */
+  function forget(uris: string[]) {
+    filter.resourceSubscriptions = (filter.resourceSubscriptions ?? []).filter(
+      (u) => !uris.includes(u),
+    );
+    for (const uri of uris) {
+      docWatches.get(uri)?.();
+      docWatches.delete(uri);
+    }
+  }
   // Tasks already finished when the stream opened are told at once.
   if (filter.taskIds?.length) {
     pending.allTasks = true;
@@ -474,7 +508,8 @@ export async function openListen(
       clearTimeout(end);
       if (timer) clearTimeout(timer);
       stopNews();
-      for (const stop of docWatches) stop();
+      for (const stop of docWatches.values()) stop();
+      docWatches.clear();
       streams.delete(stream);
       reply.raw.end();
     },

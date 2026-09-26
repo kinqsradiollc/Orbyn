@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AgentOutcome, ReviewChangeInput } from "@orbyn/core";
-import type { Db, Queryable } from "../db/pool.js";
+import { pool, type Db, type Queryable } from "../db/pool.js";
 import type { UserRow } from "../lib/auth.js";
 import { createAgentProposal } from "../modules/proposals/service.js";
+import { announceTo } from "../modules/presence/live.js";
 import { policy, type Principal } from "./policy.js";
 import {
   CapabilityError,
@@ -369,6 +370,31 @@ export async function finishWrite(
       : !parts.done.length && skipped.length
         ? "error"
         : "ok");
+  // Records and templates have no news of their own outside their routes:
+  // once committed, each one changed here is named, so agents following
+  // orbyn://record/<id> or orbyn://template/<id> hear of it.
+  const named = [
+    ...new Set(
+      parts.done
+        .map((d) => /^(record|template):([0-9a-f-]{36})$/i.exec(d.id))
+        .filter((m): m is RegExpExecArray => !!m)
+        .map((m) => `${m[1].toLowerCase()}:${m[2].toLowerCase()}`),
+    ),
+  ].slice(0, 20);
+  const audience = parts.teamId
+    ? { team_id: parts.teamId }
+    : { user_id: ctx.principal.user.id };
+  const after = [
+    ...(parts.after ?? []),
+    ...named.map((ref) => async () => {
+      const [type, id] = ref.split(":") as ["record" | "template", string];
+      await announceTo(pool, audience, "changed", {
+        area: type === "record" ? "records" : "templates",
+        entity_type: type,
+        entity_id: id,
+      });
+    }),
+  ];
   return {
     structured,
     markdown,
@@ -384,7 +410,7 @@ export async function finishWrite(
       proposal_id: pending?.proposal_id ?? null,
       undo: parts.undo,
       team_id: parts.teamId ?? null,
-      after: parts.after,
+      after: after.length ? after : undefined,
     } satisfies WriteMeta,
   };
 }

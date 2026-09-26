@@ -177,7 +177,10 @@ export async function streamLive(
   const reader: Reader = {
     userId,
     teams: new Set(teams),
-    send: (event) => reply.raw.write(`data: ${JSON.stringify(event)}\n\n`),
+    // The apps ignore which thing moved, and a team member may not be able
+    // to see it: they get the news without it.
+    send: ({ entity_type: _type, entity_id: _id, ...event }) =>
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`),
     skip: APP_SKIPS,
   };
   readers.add(reader);
@@ -265,13 +268,15 @@ export function announceWrites(
     const asked = (request.body as { team_id?: unknown } | null)?.team_id;
     const found = seen.get(request);
     const team = found?.team ?? (typeof asked === "string" ? asked : null);
-    // The one thing changed: the answer's id, or the route's :id.
+    // The one thing changed: the route's own :id (/templates/:id, and
+    // actions on it such as /templates/:id/use, whose answer is something
+    // else), or for a route that makes one, the answer's id.
     const param = (request.params as { id?: unknown } | null)?.id;
-    const id =
-      found?.id ??
-      (typeof param === "string" && /^[0-9a-f-]{36}$/i.test(param)
-        ? param
-        : undefined);
+    const own =
+      /^\/[^/]+\/:id(\/|$)/.test(request.routeOptions?.url ?? "") &&
+      typeof param === "string" &&
+      /^[0-9a-f-]{36}$/i.test(param);
+    const id = own ? (param as string) : found?.id;
     const extra = {
       area,
       ...(entity && id ? { entity_type: entity, entity_id: id } : {}),

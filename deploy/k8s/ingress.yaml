@@ -5,7 +5,8 @@
 #                      /mcp      -> mcp     (older agent setups; orbyn-api-mcp)
 #                      /*        -> api     (everything else)
 #   app.orbyn.example  /*        -> web     (static app; its nginx proxies /api/*)
-#   mcp.orbyn.example  /mcp and /.well-known/oauth-protected-resource[/mcp]
+#   mcp.orbyn.example  /mcp, /.well-known/oauth-protected-resource[/mcp] and
+#                      /.well-known/openai-apps-challenge
 #                                -> mcp     (outside AI agents; nothing else)
 #
 # Keep the path split in step with serviceModules in backend/src/app.ts and
@@ -188,6 +189,14 @@ spec:
                   name: http
           - path: /.well-known/oauth-protected-resource
             pathType: Prefix
+            backend:
+              service:
+                name: mcp
+                port:
+                  name: http
+          # OpenAI's apps directory domain check (OPENAI_APPS_CHALLENGE).
+          - path: /.well-known/openai-apps-challenge
+            pathType: Exact
             backend:
               service:
                 name: mcp
