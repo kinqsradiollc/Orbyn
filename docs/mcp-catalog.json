@@ -201,7 +201,7 @@
     {
       "name": "search",
       "title": "Search Orbyn",
-      "description": "Find tasks, events, pages, projects and work records by words, by name (match: \"title\", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team (\"personal\" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.",
+      "description": "Find tasks, events, pages, projects, work records, saved views and project templates by words, by name (match: \"title\", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team (\"personal\" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -231,7 +231,15 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["task", "event", "doc", "project", "record"]
+              "enum": [
+                "task",
+                "event",
+                "doc",
+                "project",
+                "record",
+                "view",
+                "template"
+              ]
             }
           },
           "match": {
@@ -292,7 +300,15 @@
                 "url": { "type": "string" },
                 "type": {
                   "type": "string",
-                  "enum": ["task", "event", "doc", "project", "record"]
+                  "enum": [
+                    "task",
+                    "event",
+                    "doc",
+                    "project",
+                    "record",
+                    "view",
+                    "template"
+                  ]
                 },
                 "snippet": { "type": ["string", "null"] },
                 "block_id": { "type": ["string", "null"] },
@@ -323,7 +339,7 @@
     {
       "name": "fetch",
       "title": "Open by id",
-      "description": "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record: or template:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
+      "description": "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table) or proposal:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -374,7 +390,8 @@
                   "project",
                   "record",
                   "template",
-                  "proposal"
+                  "proposal",
+                  "view"
                 ]
               },
               "uri": { "type": "string" },
@@ -873,7 +890,7 @@
     {
       "name": "query",
       "title": "List with filters",
-      "description": "Lists tasks, events, pages, projects or work records (over) with filters: text, status (open, done, any), project, stage, team (\"personal\" or an id), list, tag, assignee (\"me\" or an id), due_after/due_before (YYYY-MM-DD in the person's zone, or an instant), overdue, folder (pages), kind (a page or record kind) and updated_after. Sort by due, updated, created, priority or title. 25 rows by default, 100 at most, paged with next_cursor.",
+      "description": "Runs a saved view (view:<id>) or an ad-hoc one over tasks, events, pages, projects or work records (over), with filters, sort and group_by; filters given with a view replace its own. Dates: YYYY-MM-DD, an instant, or relative (today, +7d, -3d). 25 rows by default, 100 at most, paged with next_cursor. The language is in orbyn://spec/views.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -889,14 +906,20 @@
       "input_schema": {
         "type": "object",
         "properties": {
+          "view": {
+            "description": "A saved view: view:<id>, its id or its link.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
           "over": {
-            "default": "tasks",
+            "description": "Default tasks.",
             "type": "string",
             "enum": ["tasks", "events", "docs", "projects", "records"]
           },
           "text": { "type": "string", "minLength": 1, "maxLength": 200 },
           "status": {
-            "default": "open",
+            "description": "Default open.",
             "type": "string",
             "enum": ["open", "done", "any"]
           },
@@ -937,19 +960,38 @@
               }
             ]
           },
-          "due_after": { "type": "string" },
-          "due_before": { "type": "string" },
+          "due_after": { "type": "string", "maxLength": 40 },
+          "due_before": { "type": "string", "maxLength": 40 },
           "overdue": { "type": "boolean" },
-          "updated_after": { "type": "string" },
+          "updated_after": { "type": "string", "maxLength": 40 },
           "folder": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "kind": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "links_to": {
+            "description": "Rows linking to doc:, task: or project:.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
           "sort": {
             "type": "string",
             "enum": ["due", "updated", "created", "priority", "title"]
+          },
+          "group_by": {
+            "type": "string",
+            "enum": [
+              "status",
+              "priority",
+              "project",
+              "stage",
+              "assignee",
+              "team",
+              "kind",
+              "due"
+            ]
           },
           "limit": {
             "default": 25,
@@ -971,6 +1013,66 @@
           "over": {
             "type": "string",
             "enum": ["tasks", "events", "docs", "projects", "records"]
+          },
+          "view": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "url": { "type": "string" },
+                  "layout": {
+                    "type": "string",
+                    "enum": ["table", "list", "board", "calendar"]
+                  },
+                  "group_by": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "status",
+                          "priority",
+                          "project",
+                          "stage",
+                          "assignee",
+                          "team",
+                          "kind",
+                          "due"
+                        ]
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "columns": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "status",
+                        "due",
+                        "priority",
+                        "project",
+                        "assignee",
+                        "team",
+                        "updated",
+                        "provenance"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "url",
+                  "layout",
+                  "group_by",
+                  "columns"
+                ],
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
           },
           "rows": {
             "type": "array",
@@ -1007,7 +1109,8 @@
                 "provenance": {
                   "type": "string",
                   "description": "Who wrote it: \"you\", \"teammate:<name>\", or where it came from (booking_guest, inbound_email, import)."
-                }
+                },
+                "group": { "type": ["string", "null"] }
               },
               "required": [
                 "id",
@@ -1021,21 +1124,35 @@
                 "project_id",
                 "assignee",
                 "updated_at",
-                "provenance"
+                "provenance",
+                "group"
               ],
+              "additionalProperties": false
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": { "type": "string" },
+                "label": { "type": "string" },
+                "count": { "type": "number" }
+              },
+              "required": ["key", "label", "count"],
               "additionalProperties": false
             }
           },
           "next_cursor": { "type": ["string", "null"] }
         },
-        "required": ["over", "rows", "next_cursor"],
+        "required": ["over", "view", "rows", "groups", "next_cursor"],
         "additionalProperties": false
       }
     },
     {
       "name": "get_project",
       "title": "Open a project",
-      "description": "A project as a hub: summary, status and deadline; stages with their open tasks; your sessions in the next two weeks; its pages; open promises and decisions (flagging decisions no task delivers); recent changes, marked with the agent that made them; and health (overdue, due this week, estimated work not yet planned, at risk).",
+      "description": "A project as a hub, as its page shows it: summary, status, deadline; stages with open tasks; your sessions in the next two weeks; pages; open promises and decisions; recent changes (with the agent that made them); health; your planning against the deadline; and what links here.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -1311,6 +1428,56 @@
               "at_risk"
             ],
             "additionalProperties": false
+          },
+          "planning": {
+            "type": "object",
+            "properties": {
+              "needed_minutes": { "type": "number" },
+              "planned_minutes": { "type": "number" },
+              "unplanned_minutes": { "type": "number" },
+              "late_sessions": { "type": "number" },
+              "planned_finish_at": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "at": { "type": "string" },
+                      "local": { "type": "string" }
+                    },
+                    "required": ["at", "local"],
+                    "additionalProperties": false
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "unestimated_tasks": { "type": "number" },
+              "team_planned_minutes": { "type": ["number", "null"] }
+            },
+            "required": [
+              "needed_minutes",
+              "planned_minutes",
+              "unplanned_minutes",
+              "late_sessions",
+              "planned_finish_at",
+              "unestimated_tasks",
+              "team_planned_minutes"
+            ],
+            "additionalProperties": false,
+            "description": "Your open work against the deadline; team total for admins."
+          },
+          "linked_here": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "url": { "type": "string" },
+                "kind": { "type": "string" }
+              },
+              "required": ["id", "title", "url", "kind"],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -1321,7 +1488,9 @@
           "docs",
           "records",
           "activity",
-          "health"
+          "health",
+          "planning",
+          "linked_here"
         ],
         "additionalProperties": false
       }
@@ -2822,7 +2991,7 @@
     {
       "name": "link",
       "title": "Link or unlink",
-      "description": "Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder. Unlinking removes no content; Undo takes it back.",
+      "description": "Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder, or related (a plain link between a page or task and a page, task or project, shown in backlinks on both sides). Unlinking removes no content; Undo takes it back.",
       "kind": "write",
       "access": "write",
       "toolset": "core",
@@ -2846,7 +3015,8 @@
               "task_doc",
               "task_project",
               "doc_project",
-              "doc_folder"
+              "doc_folder",
+              "related"
             ]
           },
           "from": { "type": "string", "minLength": 1, "maxLength": 300 },
@@ -3252,7 +3422,535 @@
         "required": ["status", "done", "pending", "skipped"],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "get_links",
+      "title": "Backlinks and links",
+      "description": "Backlinks (in) and outgoing links (out) for a page, task, event, project, person or date: picker links, comment mentions, checklist tasks, dependencies, pages filed in a project, meeting notes and related links, each with its line. For a project, include unresolved and orphans. Links whose other end this connection can't see are left out, uncounted.",
+      "kind": "read",
+      "access": "read",
+      "toolset": "core",
+      "mode": "read",
+      "tier": "R",
+      "annotations": {
+        "title": "Backlinks and links",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "of": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "doc:, task:, project:, person:<id>, date:YYYY-MM-DD, or a link."
+          },
+          "direction": {
+            "default": "both",
+            "type": "string",
+            "enum": ["both", "in", "out"]
+          },
+          "kinds": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "link",
+                "mention",
+                "task_line",
+                "dependency",
+                "project",
+                "meeting",
+                "related"
+              ]
+            }
+          },
+          "include": {
+            "maxItems": 2,
+            "type": "array",
+            "items": { "type": "string", "enum": ["unresolved", "orphans"] }
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page of the same call.",
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": ["of"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "of": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": {
+                "type": "string",
+                "enum": ["doc", "task", "event", "project", "person", "date"]
+              },
+              "title": { "type": "string" },
+              "url": { "type": ["string", "null"] }
+            },
+            "required": ["id", "type", "title", "url"],
+            "additionalProperties": false
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "direction": {
+                  "type": "string",
+                  "enum": ["in", "out"],
+                  "description": "in is a backlink."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "link",
+                    "mention",
+                    "task_line",
+                    "dependency",
+                    "project",
+                    "meeting",
+                    "related"
+                  ]
+                },
+                "other": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "doc",
+                        "task",
+                        "event",
+                        "project",
+                        "person",
+                        "date"
+                      ]
+                    },
+                    "title": { "type": "string" },
+                    "url": { "type": ["string", "null"] }
+                  },
+                  "required": ["id", "type", "title", "url"],
+                  "additionalProperties": false
+                },
+                "line": {
+                  "description": "The line the link sits on.",
+                  "type": ["string", "null"]
+                },
+                "block": {
+                  "description": "That line's anchor.",
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["direction", "kind", "other", "line", "block"],
+              "additionalProperties": false
+            }
+          },
+          "unresolved": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": { "type": "string" },
+                "block": { "type": ["string", "null"] },
+                "target": { "type": "string" }
+              },
+              "required": ["from", "block", "target"],
+              "additionalProperties": false
+            },
+            "description": "Links from the project's pages to things that are gone."
+          },
+          "orphans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" }
+              },
+              "required": ["id", "title"],
+              "additionalProperties": false
+            },
+            "description": "The project's pages with no links."
+          },
+          "next_cursor": { "type": ["string", "null"] }
+        },
+        "required": ["of", "links", "unresolved", "orphans", "next_cursor"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "save_view",
+      "title": "Save a view",
+      "description": "Creates a saved view, or changes one (view + version): a name, what it lists and its filters (as query takes them; dates may be relative like \"+7d\"), sort, group_by, columns and layout (table, list, board or calendar). space: \"personal\" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.",
+      "kind": "write",
+      "access": "write",
+      "toolset": "workspace",
+      "mode": "write",
+      "tier": "W2",
+      "annotations": {
+        "title": "Save a view",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "description": "To change a saved view: view:<id>. Leave out to make one.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "version": {
+            "description": "The view's version, when changing it.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "space": {
+            "description": "Where a new view is kept: \"personal\" (the default), or a team id to share it with the team.",
+            "type": "string",
+            "maxLength": 100
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["table", "list", "board", "calendar"]
+          },
+          "over": {
+            "description": "Default tasks.",
+            "type": "string",
+            "enum": ["tasks", "events", "docs", "projects", "records"]
+          },
+          "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "status": {
+            "description": "Default open.",
+            "type": "string",
+            "enum": ["open", "done", "any"]
+          },
+          "project": {
+            "description": "A project: project:<id>, its id or its link.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "stage": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "team": {
+            "description": "\"personal\", or a team id from get_context.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "list": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "tag": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "assignee": {
+            "anyOf": [
+              { "type": "string", "const": "me" },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            ]
+          },
+          "due_after": { "type": "string", "maxLength": 40 },
+          "due_before": { "type": "string", "maxLength": 40 },
+          "overdue": { "type": "boolean" },
+          "updated_after": { "type": "string", "maxLength": 40 },
+          "folder": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "kind": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "links_to": {
+            "description": "Rows linking to doc:, task: or project:.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "sort": {
+            "type": "string",
+            "enum": ["due", "updated", "created", "priority", "title"]
+          },
+          "group_by": {
+            "type": "string",
+            "enum": [
+              "status",
+              "priority",
+              "project",
+              "stage",
+              "assignee",
+              "team",
+              "kind",
+              "due"
+            ]
+          },
+          "columns": {
+            "maxItems": 8,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "status",
+                "due",
+                "priority",
+                "project",
+                "assignee",
+                "team",
+                "updated",
+                "provenance"
+              ]
+            }
+          },
+          "star": { "type": "boolean" },
+          "client_ref": {
+            "description": "Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["done", "pending_review", "partly_pending"]
+          },
+          "done": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "url": { "type": "string" },
+                "version": { "type": ["number", "null"] },
+                "change": { "type": "string" }
+              },
+              "required": ["id", "title", "url", "version", "change"],
+              "additionalProperties": false
+            }
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "const": "pending_review" },
+                  "proposal_id": { "type": "string" },
+                  "review_url": { "type": "string" },
+                  "expires_at": { "type": "string" },
+                  "changes": { "type": "number" }
+                },
+                "required": [
+                  "status",
+                  "proposal_id",
+                  "review_url",
+                  "expires_at",
+                  "changes"
+                ],
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": { "type": "number" },
+                "reason": { "type": "string" }
+              },
+              "required": ["index", "reason"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["status", "done", "pending", "skipped"],
+        "additionalProperties": false
+      }
     }
   ],
-  "routes": { "covered": 47, "excluded": 162, "pending": 143 }
+  "resources": [
+    { "uri": "orbyn://today", "name": "Today" },
+    { "uri": "orbyn://me", "name": "Who and where" },
+    {
+      "uri": "orbyn://spec/markdown",
+      "name": "Orbyn Markdown",
+      "public": true
+    },
+    { "uri": "orbyn://spec/views", "name": "Saved views", "public": false },
+    { "uri": "orbyn://guide/planning", "name": "Planning", "public": false }
+  ],
+  "resource_templates": [
+    {
+      "uri_template": "orbyn://day/{date}",
+      "name": "Day",
+      "description": "One day (YYYY-MM-DD) of calendar and tasks in the person's time zone."
+    },
+    {
+      "uri_template": "orbyn://view/{id}",
+      "name": "Saved view",
+      "description": "A saved view's current rows as a Markdown table."
+    },
+    {
+      "uri_template": "orbyn://task/{id}",
+      "name": "Task or event",
+      "description": "A task or event as Markdown, with its sessions and notes."
+    },
+    {
+      "uri_template": "orbyn://doc/{id}",
+      "name": "Page",
+      "description": "A page as Markdown, each line with its anchor."
+    },
+    {
+      "uri_template": "orbyn://project/{id}",
+      "name": "Project",
+      "description": "A project hub as Markdown."
+    },
+    {
+      "uri_template": "orbyn://record/{id}",
+      "name": "Work record",
+      "description": "A promise, decision or experiment."
+    },
+    {
+      "uri_template": "orbyn://template/{id}",
+      "name": "Project template",
+      "description": "A project template's tasks."
+    }
+  ],
+  "prompts": [
+    {
+      "name": "plan_my_day",
+      "title": "Plan my day",
+      "description": "Looks at today in Orbyn and proposes sessions for the rest of it, then asks before adding them.",
+      "arguments": [
+        { "name": "focus", "required": false },
+        { "name": "hours_available", "required": false }
+      ],
+      "toolsets": []
+    },
+    {
+      "name": "plan_my_week",
+      "title": "Plan my week",
+      "description": "Lines up the week's work around what's due and what's already on the calendar, and asks once before scheduling.",
+      "arguments": [
+        { "name": "priorities", "required": false },
+        { "name": "focus_project", "required": false, "completes": "project" }
+      ],
+      "toolsets": []
+    },
+    {
+      "name": "daily_shutdown",
+      "title": "Daily shutdown",
+      "description": "Closes the day: what got done, what slipped, and a start on tomorrow.",
+      "arguments": [],
+      "toolsets": []
+    },
+    {
+      "name": "weekly_review",
+      "title": "Weekly review",
+      "description": "Planned against done, follow-ups and overdue work, then a short summary with suggested changes filed for review.",
+      "arguments": [{ "name": "team", "required": false, "completes": "team" }],
+      "toolsets": ["planner", "followthrough"]
+    },
+    {
+      "name": "project_kickoff",
+      "title": "Start a project",
+      "description": "Looks for similar projects and templates, drafts stages and first tasks, then plans the first sessions.",
+      "arguments": [
+        { "name": "name", "required": true },
+        { "name": "deadline", "required": false },
+        { "name": "template", "required": false }
+      ],
+      "toolsets": []
+    },
+    {
+      "name": "catch_up_on_project",
+      "title": "Catch up on a project",
+      "description": "A re-entry brief: where the project stands, what changed since you were last there, and what links to it.",
+      "arguments": [
+        { "name": "project", "required": true, "completes": "project" }
+      ],
+      "toolsets": ["workspace"]
+    },
+    {
+      "name": "ask_project",
+      "title": "Ask about a project",
+      "description": "Answers a question from a project's pages, tasks and decisions, with numbered citations.",
+      "arguments": [
+        { "name": "project", "required": true, "completes": "project" },
+        { "name": "question", "required": true }
+      ],
+      "toolsets": []
+    },
+    {
+      "name": "study_session",
+      "title": "Study session",
+      "description": "Quizzes you on due flashcards one at a time and records how each went.",
+      "arguments": [{ "name": "exam", "required": false, "completes": "exam" }],
+      "toolsets": ["study"]
+    },
+    {
+      "name": "meeting_prep",
+      "title": "Prepare for a meeting",
+      "description": "Gathers what's linked to a meeting and drafts a meeting note for it.",
+      "arguments": [
+        { "name": "event", "required": true, "completes": "event" }
+      ],
+      "toolsets": []
+    },
+    {
+      "name": "triage_inbox",
+      "title": "Triage loose ends",
+      "description": "Finds tasks with no date, project or estimate, and asks waiting on you, and drafts updates for you to confirm.",
+      "arguments": [],
+      "toolsets": []
+    },
+    {
+      "name": "turn_notes_into_tasks",
+      "title": "Turn notes into tasks",
+      "description": "Makes tasks from a page's open checklist lines, linked both ways.",
+      "arguments": [{ "name": "doc", "required": true, "completes": "doc" }],
+      "toolsets": ["workspace"]
+    }
+  ],
+  "routes": { "covered": 52, "excluded": 162, "pending": 143 }
 }

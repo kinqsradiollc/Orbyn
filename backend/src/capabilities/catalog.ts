@@ -4,6 +4,8 @@ import { EXCLUDED, PENDING, COVERED } from "./exclusions.js";
 import { registry } from "./index.js";
 import { describe, type Capability } from "./registry.js";
 import { CONVENTIONS } from "./context.js";
+import { GUIDES, RESOURCE_TEMPLATES, templateUri } from "./guides.js";
+import { PROMPTS } from "./prompts.js";
 
 /**
  * The published description of Orbyn's MCP server: mcp-catalog.json (a
@@ -53,6 +55,31 @@ export function buildCatalog(facts: ServerFacts) {
         output_schema: d.outputSchema,
       };
     }),
+    resources: [
+      { uri: "orbyn://today", name: "Today" },
+      { uri: "orbyn://me", name: "Who and where" },
+      ...Object.entries(GUIDES).map(([uri, g]) => ({
+        uri,
+        name: g.name,
+        public: g.public,
+      })),
+    ],
+    resource_templates: RESOURCE_TEMPLATES.map((t) => ({
+      uri_template: templateUri(t.type),
+      name: t.name,
+      description: t.description,
+    })),
+    prompts: PROMPTS.map((p) => ({
+      name: p.name,
+      title: p.title,
+      description: p.description,
+      arguments: p.arguments.map((a) => ({
+        name: a.name,
+        required: !!a.required,
+        ...(a.complete ? { completes: a.complete } : {}),
+      })),
+      toolsets: p.needs,
+    })),
     routes: {
       covered: Object.keys(COVERED).length,
       excluded: Object.keys(EXCLUDED).length,
@@ -245,6 +272,36 @@ export function catalogMarkdown(catalog: Catalog): string {
     } else out.push("No arguments.", "");
   }
   out.push(
+    "## Resources",
+    "",
+    "`resources/list` offers Today, who and where, the guides below, the person's favourites and about 30 things changed lately (paged, never the whole workspace). Every read checks permission again; something missing or out of reach is `-32602` either way.",
+    "",
+    "| Resource | What |",
+    "| --- | --- |",
+    "| `orbyn://today` | The Today list as Markdown, the same as `get_today`. |",
+    "| `orbyn://me` | The same as `get_context`. |",
+    ...Object.entries(GUIDES).map(
+      ([uri, g]) => `| \`${uri}\` | ${cell(g.description)} |`,
+    ),
+    ...RESOURCE_TEMPLATES.map(
+      (t) => `| \`${templateUri(t.type)}\` | ${cell(t.description)} |`,
+    ),
+    "",
+    "`completion/complete` fills a template's id, or a prompt's project, page, event, team or exam, from titles this connection can see (20 at most, counted as searches).",
+    "",
+    "## Prompts",
+    "",
+    "Workflows an agent's prompt menu can offer. Each is plain text naming only Orbyn's tools, and is offered only when the connection has the toolsets it uses.",
+    "",
+    "| Prompt | What | Arguments |",
+    "| --- | --- | --- |",
+    ...catalog.prompts.map(
+      (p) =>
+        `| \`${p.name}\` | ${cell(p.description)} | ${p.arguments.length ? p.arguments.map((a) => `\`${a.name}\`${a.required ? " (required)" : ""}`).join(", ") : "none"} |`,
+    ),
+    "",
+    "The same workflows, the Markdown and view guides and the planning etiquette ship as an Agent Skill for agents that load skills: [`agent-skill/orbyn/SKILL.md`](agent-skill/orbyn/SKILL.md).",
+    "",
     "## Older tools",
     "",
     "Personal API keys on the legacy address also get the first endpoint's three tools, unchanged, until they stop working here:",

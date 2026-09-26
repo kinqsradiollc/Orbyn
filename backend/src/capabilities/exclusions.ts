@@ -78,6 +78,12 @@ export const COVERED: Record<string, string[]> = {
   "DELETE /items/:id": ["propose_changes"],
   "POST /items/:id/steps": ["edit_checklist"],
   "PUT /items/:id/steps/:stepId": ["edit_checklist"],
+  // Links and saved views (A4).
+  "GET /views": ["search"],
+  "POST /views": ["save_view"],
+  "PUT /views/:id": ["save_view"],
+  "DELETE /views/:id": ["propose_changes"],
+  "GET /views/:id/rows": ["query", "fetch"],
   "DELETE /items/:id/steps/:stepId": ["propose_changes"],
   "POST /blocks": ["schedule_sessions"],
   "PUT /blocks/:id": ["reschedule_sessions"],

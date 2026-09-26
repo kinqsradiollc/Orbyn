@@ -54,3 +54,4 @@ export * from "./create-actions.js";
 export * from "./app-links.js";
 export * from "./share.js";
 export * from "./review.js";
+export * from "./views.js";

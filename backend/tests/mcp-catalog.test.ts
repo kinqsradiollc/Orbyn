@@ -124,10 +124,11 @@ test("budgets: the tool list stays small, and the instructions short", () => {
     (c) => c.toolset === "core" && !c.legacyOnly,
   );
   const size = JSON.stringify(core.map((c) => describe(c))).length;
-  // About 16k tokens for the 20 core tools, reads and changes together
+  // About 16k tokens for the 21 core tools, reads and changes together
   // (roughly four characters a token): A3's twelve write tools share one
-  // compact answer shape and pattern-free id and time fields to fit.
-  assert.ok(size < 64_000, `tools/list for core is ${size} characters`);
+  // compact answer shape and pattern-free id and time fields to fit, and
+  // A4's get_links keeps its answer flat.
+  assert.ok(size < 66_000, `tools/list for core is ${size} characters`);
   assert.ok(
     INSTRUCTIONS.length <= 2048,
     `instructions are ${INSTRUCTIONS.length} characters`,

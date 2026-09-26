@@ -5,6 +5,8 @@ import { addTask, getAgenda, searchItems } from "./legacy.js";
 import { getProject } from "./project.js";
 import { query } from "./query.js";
 import { Registry } from "./registry.js";
+import { getLinks } from "./links.js";
+import { saveView } from "./views.js";
 import { findPassages, search } from "./search.js";
 import { getToday } from "./today.js";
 import {
@@ -57,6 +59,9 @@ export const registry = new Registry([
   link,
   createProjectCapability,
   proposeChanges,
+  // Links and saved views (phase A4).
+  getLinks,
+  saveView,
 ]);
 
 export { Registry };

@@ -8,7 +8,11 @@ import {
   visibleProjects,
   visibleRecords,
   visibleTemplates,
+  visibleViews,
 } from "../lib/visibility.js";
+import { describeView } from "@orbyn/core";
+import { findView } from "../modules/views/service.js";
+import { runView } from "./query.js";
 import { READ, minutesText, spaceName } from "./common.js";
 import {
   MAX_RESULT_CHARS,
@@ -49,6 +53,7 @@ const FETCH_TYPES = [
   "record",
   "template",
   "proposal",
+  "view",
 ] as const;
 
 const output = z.object({
@@ -530,27 +535,24 @@ async function fetchTemplate(
 }
 
 /** An id that names no type: try each kind of thing in turn. */
-async function whichType(
-  ctx: CapabilityContext,
-  id: string,
-): Promise<"task" | "doc" | "project" | "record" | "template"> {
-  const tries: ["task" | "doc" | "project" | "record" | "template", string][] =
-    [
-      ["task", "SELECT 1 FROM items i WHERE i.id = $ID AND VIS"],
-      ["doc", "SELECT 1 FROM docs d WHERE d.id = $ID AND VIS"],
-      ["project", "SELECT 1 FROM projects p WHERE p.id = $ID AND VIS"],
-      ["record", "SELECT 1 FROM work_records w WHERE w.id = $ID AND VIS"],
-      [
-        "template",
-        "SELECT 1 FROM project_templates t WHERE t.id = $ID AND VIS",
-      ],
-    ];
+type Plain = "task" | "doc" | "project" | "record" | "template" | "view";
+
+async function whichType(ctx: CapabilityContext, id: string): Promise<Plain> {
+  const tries: [Plain, string][] = [
+    ["task", "SELECT 1 FROM items i WHERE i.id = $ID AND VIS"],
+    ["doc", "SELECT 1 FROM docs d WHERE d.id = $ID AND VIS"],
+    ["project", "SELECT 1 FROM projects p WHERE p.id = $ID AND VIS"],
+    ["record", "SELECT 1 FROM work_records w WHERE w.id = $ID AND VIS"],
+    ["template", "SELECT 1 FROM project_templates t WHERE t.id = $ID AND VIS"],
+    ["view", "SELECT 1 FROM saved_views v WHERE v.id = $ID AND VIS"],
+  ];
   const vis = {
     task: visibleItems,
     doc: visibleDocs,
     project: visibleProjects,
     record: visibleRecords,
     template: visibleTemplates,
+    view: visibleViews,
   };
   const alias = {
     task: "i",
@@ -558,6 +560,7 @@ async function whichType(
     project: "p",
     record: "w",
     template: "t",
+    view: "v",
   };
   for (const [type, sql] of tries) {
     const p = new Params();
@@ -662,6 +665,55 @@ async function fetchProposal(
   };
 }
 
+/**
+ * A saved view, run: its definition in words and its first 50 rows as a
+ * Markdown table (query with the view pages through the rest).
+ */
+async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
+  const view = await findView(ctx.db, ctx.spaces, ref.id);
+  if (!view) throw notFound();
+  const { rows, more } = await runView(ctx, view.definition, 50, 0);
+  const r = refs({ type: "view", id: view.id });
+  const name = cleanTitle(view.name) || "Untitled view";
+  const cell = (t: string) => t.replace(/\|/g, "/").replace(/\n/g, " ");
+  const text = [
+    `# ${name}`,
+    `${describeView(view.definition)} · ${view.layout} · ${spaceName(view.team_id, ctx.principal.teams)}`,
+    "",
+    ...(rows.length
+      ? [
+          `| ${view.definition.group_by ? "Group | " : ""}Title | Status | Due | Id |`,
+          `|${view.definition.group_by ? " --- |" : ""} --- | --- | --- | --- |`,
+          ...rows.map(
+            (row) =>
+              `| ${row.group !== null ? `${cell(row.group)} | ` : ""}${cell(lineTitle(row.title, row.url, row.provenance, row.type))} | ${row.status ?? ""} | ${row.due?.local ?? ""} | ${row.id} |`,
+          ),
+        ]
+      : ["Nothing matches right now."]),
+    ...(more ? ["", `More rows: query with view "${r.id}".`] : []),
+  ].join("\n");
+  return {
+    id: r.id,
+    title: name,
+    text,
+    url: r.url,
+    metadata: {
+      type: "view",
+      uri: r.uri,
+      team: spaceName(view.team_id, ctx.principal.teams),
+      team_id: view.team_id,
+      project_id: view.definition.project ?? null,
+      status: view.layout,
+      version: view.version,
+      updated_at: view.updated_at,
+      provenance:
+        view.user_id === ctx.principal.user.id ? "you" : "teammate:a teammate",
+      truncated: more,
+      next_block: null,
+    },
+  };
+}
+
 export async function fetchAny(
   ctx: CapabilityContext,
   input: string,
@@ -691,6 +743,8 @@ export async function fetchAny(
       return fetchTemplate(ctx, ref);
     case "proposal":
       return fetchProposal(ctx, ref);
+    case "view":
+      return fetchView(ctx, ref);
     default:
       throw new CapabilityError(
         "UNAVAILABLE",
@@ -704,7 +758,7 @@ export const fetchCapability = defineCapability({
   name: "fetch",
   title: "Open by id",
   description:
-    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record: or template:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
+    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table) or proposal:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
   input: z
     .object({
       id: z.string().trim().min(1).max(500).describe("What to open."),

@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import {
-  fail,
   listInput,
   listUpdate,
   tagInput,
@@ -8,50 +7,29 @@ import {
   type Tag,
   type TaskList,
 } from "@orbyn/core";
-import { reader, transaction, type Db } from "../../db/pool.js";
-import { authenticate, type UserRow } from "../../lib/auth.js";
+import { reader, transaction } from "../../db/pool.js";
+import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { requireTeam } from "../../lib/teams.js";
 import { visibleOwned } from "../../lib/visibility.js";
 import { announceWrites } from "../presence/live.js";
-
-/**
- * Lists and tags. Personal ones belong to their creator; team ones follow
- * team roles like team items do (viewers read, members and above write).
- */
-const LIST_COLUMNS = `l.id, l.user_id, l.team_id, t.name AS team_name, l.name, l.color, l.position, l.created_at,
-  (SELECT count(*)::int FROM items i WHERE i.list_id = l.id AND i.status NOT IN ('done', 'cancelled')) AS item_count`;
+import {
+  LIST_COLUMNS,
+  createList,
+  createTag,
+  deleteList,
+  deleteTag,
+  updateList,
+  updateTag,
+} from "./service.js";
 
 /** Rows `$1` can see: their own personal ones and their teams' ones. */
 const VISIBLE = (alias: string) => visibleOwned(alias, "user_id");
 
-type Owned = { id: string; user_id: string; team_id: string | null };
-
-async function requireOwned(
-  db: Db,
-  table: "lists" | "tags",
-  id: string,
-  u: UserRow,
-  permission: "items:read" | "items:write",
-): Promise<Owned> {
-  const row = (
-    await db.query<Owned>(
-      `SELECT id, user_id, team_id FROM ${table} WHERE id = $1 FOR UPDATE`,
-      [id],
-    )
-  ).rows[0];
-  const missing = table === "lists" ? "List not found" : "Tag not found";
-  if (!row) fail(404, missing);
-  if (row.team_id) await requireTeam(row.team_id, u, permission, db);
-  else if (row.user_id !== u.id) fail(404, missing);
-  return row;
-}
-
-const duplicateTag = (error: unknown) =>
-  (error as { code?: string }).code === "23505"
-    ? fail(409, "There's already a tag with that name here.")
-    : Promise.reject(error);
-
+/**
+ * Lists and tags. Personal ones belong to their creator; team ones follow
+ * team roles like team items do (viewers read, members and above write).
+ * The changes themselves are in service.ts, shared with agents.
+ */
 export async function organizeRoutes(app: FastifyInstance) {
   announceWrites(app, "organize");
   app.get("/lists", async (r) => {
@@ -68,25 +46,7 @@ export async function organizeRoutes(app: FastifyInstance) {
   app.post("/lists", async (r, reply) => {
     const u = await authenticate(r);
     const d = listInput.parse(r.body);
-    const list = await transaction(async (db) => {
-      if (d.team_id) await requireTeam(d.team_id, u, "items:write", db);
-      const { id } = (
-        await db.query<{ id: string }>(
-          `INSERT INTO lists (user_id, team_id, name, color, position)
-           VALUES ($1, $2, $3, coalesce($4, '#376c51'),
-             (SELECT coalesce(max(position), -1) + 1 FROM lists
-              WHERE CASE WHEN $2::uuid IS NULL THEN team_id IS NULL AND user_id = $1 ELSE team_id = $2 END))
-           RETURNING id`,
-          [u.id, d.team_id, d.name, d.color ?? null],
-        )
-      ).rows[0];
-      return (
-        await db.query<TaskList>(
-          `SELECT ${LIST_COLUMNS} FROM lists l LEFT JOIN teams t ON t.id = l.team_id WHERE l.id = $1`,
-          [id],
-        )
-      ).rows[0];
-    });
+    const list = await transaction((db) => createList(db, u, d));
     reply.code(201);
     return list;
   });
@@ -95,30 +55,14 @@ export async function organizeRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = listUpdate.parse(r.body);
-    return transaction(async (db) => {
-      await requireOwned(db, "lists", id, u, "items:write");
-      await db.query(
-        `UPDATE lists SET name = coalesce($2, name), color = coalesce($3, color),
-           position = coalesce($4, position) WHERE id = $1`,
-        [id, d.name ?? null, d.color ?? null, d.position ?? null],
-      );
-      return (
-        await db.query<TaskList>(
-          `SELECT ${LIST_COLUMNS} FROM lists l LEFT JOIN teams t ON t.id = l.team_id WHERE l.id = $1`,
-          [id],
-        )
-      ).rows[0];
-    });
+    return transaction((db) => updateList(db, u, id, d));
   });
 
   // Deleting a list keeps its items; they just leave the list.
   app.delete("/lists/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    await transaction(async (db) => {
-      await requireOwned(db, "lists", id, u, "items:write");
-      await db.query("DELETE FROM lists WHERE id = $1", [id]);
-    });
+    await transaction((db) => deleteList(db, u, id));
     return reply.code(204).send();
   });
 
@@ -136,19 +80,7 @@ export async function organizeRoutes(app: FastifyInstance) {
   app.post("/tags", async (r, reply) => {
     const u = await authenticate(r);
     const d = tagInput.parse(r.body);
-    const tag = await transaction(async (db) => {
-      if (d.team_id) await requireTeam(d.team_id, u, "items:write", db);
-      return (
-        await db
-          .query<Tag>(
-            `INSERT INTO tags (user_id, team_id, name, color)
-             VALUES ($1, $2, $3, coalesce($4, '#6d8a6f'))
-             RETURNING id, user_id, team_id, name, color, created_at`,
-            [u.id, d.team_id, d.name, d.color ?? null],
-          )
-          .catch(duplicateTag)
-      ).rows[0];
-    });
+    const tag = await transaction((db) => createTag(db, u, d));
     reply.code(201);
     return tag;
   });
@@ -157,27 +89,13 @@ export async function organizeRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = tagUpdate.parse(r.body);
-    return transaction(async (db) => {
-      await requireOwned(db, "tags", id, u, "items:write");
-      return (
-        await db
-          .query<Tag>(
-            `UPDATE tags SET name = coalesce($2, name), color = coalesce($3, color)
-             WHERE id = $1 RETURNING id, user_id, team_id, name, color, created_at`,
-            [id, d.name ?? null, d.color ?? null],
-          )
-          .catch(duplicateTag)
-      ).rows[0];
-    });
+    return transaction((db) => updateTag(db, u, id, d));
   });
 
   app.delete("/tags/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    await transaction(async (db) => {
-      await requireOwned(db, "tags", id, u, "items:write");
-      await db.query("DELETE FROM tags WHERE id = $1", [id]);
-    });
+    await transaction((db) => deleteTag(db, u, id));
     return reply.code(204).send();
   });
 }

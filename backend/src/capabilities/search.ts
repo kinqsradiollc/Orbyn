@@ -7,6 +7,8 @@ import {
   visibleItems,
   visibleProjects,
   visibleRecords,
+  visibleTemplates,
+  visibleViews,
 } from "../lib/visibility.js";
 import {
   READ,
@@ -55,7 +57,15 @@ const MARKS =
  */
 const rank = searchRank;
 
-const SEARCH_TYPES = ["task", "event", "doc", "project", "record"] as const;
+const SEARCH_TYPES = [
+  "task",
+  "event",
+  "doc",
+  "project",
+  "record",
+  "view",
+  "template",
+] as const;
 
 const hit = z.object({
   id: z.string(),
@@ -265,6 +275,33 @@ async function runSearch(
     rows.push(...found.rows.map((r) => ({ ...r, type: "record" as const })));
   }
 
+  // Saved views and project templates, by name (no project filter applies).
+  for (const [type, table, alias, vis, name] of [
+    ["view", "saved_views", "v", visibleViews, "v.name"],
+    ["template", "project_templates", "t", visibleTemplates, "t.name"],
+  ] as const) {
+    if (!types.has(type) || project || a.status === "closed") continue;
+    const params = new Params();
+    const scope = scopeFor(ctx.spaces, params);
+    const q = params.add(a.query);
+    const where = [
+      vis(alias, scope),
+      `(${name} ILIKE '%' || ${q} || '%' OR similarity(${name}, ${q}) > 0.3)`,
+      ...common(alias, params),
+    ];
+    const found = await ctx.db.query<SearchRow>(
+      `SELECT ${alias}.id, '${type}' AS kind, ${name} AS title, ${alias}.team_id,
+              ${alias}.user_id, u.name AS author_name, ${alias}.updated_at,
+              false AS imported, NULL AS block_id, NULL AS snippet,
+              (similarity(${name}, ${q}) * 0.6 + 0.4 / (1 + extract(epoch FROM now() - ${alias}.updated_at) / 2592000))::text AS rank
+         FROM ${table} ${alias} JOIN users u ON u.id = ${alias}.user_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY rank DESC LIMIT ${want}`,
+      params.values,
+    );
+    rows.push(...found.rows.map((r) => ({ ...r, type })));
+  }
+
   const hideOutside = ctx.principal.flags.hide_outside_content;
   const sorted = rows
     .map((r): Hit => {
@@ -315,7 +352,7 @@ export const search = defineCapability({
   name: "search",
   title: "Search Orbyn",
   description:
-    'Find tasks, events, pages, projects and work records by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
+    'Find tasks, events, pages, projects, work records, saved views and project templates by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
   input: searchInput,
   output: z.object({
     results: z.array(hit),

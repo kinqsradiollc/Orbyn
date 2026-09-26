@@ -452,10 +452,11 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         );
 
       const grantId = p.grant_id!;
+      // Completions run as the person types, so they count as searches.
       const kind: LimitKind =
         cap?.mode && cap.mode !== "read"
           ? "write"
-          : cap?.limitGroup === "search"
+          : cap?.limitGroup === "search" || method === "completion/complete"
             ? "search"
             : "call";
       const slot = await limiter.take(

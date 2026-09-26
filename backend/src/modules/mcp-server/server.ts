@@ -13,9 +13,23 @@ import {
   scopeFor,
   visibleDocs,
   visibleProjects,
+  visibleViews,
 } from "../../lib/visibility.js";
 import type { LiveSettings } from "../../lib/settings.js";
 import { getContext } from "../../capabilities/context.js";
+import { getCalendar } from "../../capabilities/calendar-view.js";
+import { query } from "../../capabilities/query.js";
+import {
+  GUIDES,
+  RESOURCE_TEMPLATES,
+  templateUri,
+} from "../../capabilities/guides.js";
+import { promptsFor } from "../../capabilities/prompts.js";
+import {
+  COMPLETE_SOURCES,
+  completeValues,
+  type CompleteSource,
+} from "../../capabilities/complete.js";
 import {
   errorResult,
   execute,
@@ -30,6 +44,7 @@ import {
   argsDigest,
   describe,
   type Capability,
+  type CapabilityContext,
 } from "../../capabilities/registry.js";
 import { todayForPrincipal, todayMarkdown } from "../../capabilities/today.js";
 import type { Principal } from "../../capabilities/policy.js";
@@ -101,34 +116,6 @@ export type CallContext = {
   requestId?: string;
 };
 
-const TEMPLATES = [
-  {
-    type: "task",
-    name: "Task or event",
-    description: "A task or event as Markdown, with its sessions and notes.",
-  },
-  {
-    type: "doc",
-    name: "Page",
-    description: "A page as Markdown, each line with its anchor.",
-  },
-  {
-    type: "project",
-    name: "Project",
-    description: "A project hub as Markdown.",
-  },
-  {
-    type: "record",
-    name: "Work record",
-    description: "A promise, decision or experiment.",
-  },
-  {
-    type: "template",
-    name: "Project template",
-    description: "A project template's tasks.",
-  },
-];
-
 const readResource = (uri: string, text: string) => ({
   contents: [{ uri, mimeType: "text/markdown", text }],
 });
@@ -161,6 +148,105 @@ export function listedTool(cap: Capability) {
   };
 }
 
+/** Resources per page of resources/list. */
+const RESOURCE_PAGE = 25;
+
+/**
+ * What resources/list offers: Today, who and where, the guides, the
+ * person's favourites and about 30 things changed lately. Never the whole
+ * workspace.
+ */
+async function listedResources(ctx: CapabilityContext) {
+  const params = new Params();
+  const scope = scopeFor(ctx.spaces, params);
+  const favourites = (
+    await ctx.db.query<{
+      type: "doc" | "project" | "view";
+      id: string;
+      title: string;
+    }>(
+      `SELECT f.kind AS type, f.target_id AS id,
+              coalesce(d.title, p.name, v.name) AS title
+         FROM favourites f
+         LEFT JOIN docs d ON f.kind = 'doc' AND d.id = f.target_id AND ${visibleDocs("d", scope)}
+         LEFT JOIN projects p ON f.kind = 'project' AND p.id = f.target_id AND ${visibleProjects("p", scope)}
+         LEFT JOIN saved_views v ON f.kind = 'view' AND v.id = f.target_id AND ${visibleViews("v", scope)}
+        WHERE f.user_id = ${scope.user}
+          AND coalesce(d.id, p.id, v.id) IS NOT NULL
+        ORDER BY f.created_at DESC LIMIT 20`,
+      params.values,
+    )
+  ).rows;
+  const r = new Params();
+  const rs = scopeFor(ctx.spaces, r);
+  const recent = (
+    await ctx.db.query<{
+      type: "doc" | "project" | "view";
+      id: string;
+      title: string;
+    }>(
+      `(SELECT 'doc' AS type, d.id, d.title, d.updated_at FROM docs d
+         WHERE ${visibleDocs("d", rs)} ORDER BY d.updated_at DESC LIMIT 20)
+       UNION ALL
+       (SELECT 'project', p.id, p.name, p.updated_at FROM projects p
+         WHERE ${visibleProjects("p", rs)} AND p.status <> 'archived'
+         ORDER BY p.updated_at DESC LIMIT 10)
+       UNION ALL
+       (SELECT 'view', v.id, v.name, v.updated_at FROM saved_views v
+         WHERE ${visibleViews("v", rs)} ORDER BY v.updated_at DESC LIMIT 5)
+       ORDER BY 4 DESC`,
+      r.values,
+    )
+  ).rows;
+  const seen = new Set<string>();
+  const things = [...favourites, ...recent].filter((x) => {
+    const key = `${x.type}:${x.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return [
+    {
+      uri: "orbyn://today",
+      name: "Today",
+      mimeType: "text/markdown",
+      description: "The Today list.",
+    },
+    {
+      uri: "orbyn://me",
+      name: "Who and where",
+      mimeType: "application/json",
+      description: "The same as get_context.",
+    },
+    ...Object.entries(GUIDES).map(([uri, g]) => ({
+      uri,
+      name: g.name,
+      mimeType: "text/markdown",
+      description: g.description,
+    })),
+    ...things.map((x) => ({
+      uri: `orbyn://${x.type}/${x.id}`,
+      name: cleanTitle(x.title) || "Untitled",
+      mimeType: "text/markdown",
+    })),
+  ];
+}
+
+/** orbyn://day/{date}: the day's calendar and the tasks due that day. */
+async function dayMarkdown(ctx: CapabilityContext, date: string) {
+  if (Number.isNaN(Date.parse(`${date}T00:00:00Z`)))
+    throw new CapabilityError("INVALID", "That isn't a date.");
+  const cal = await getCalendar.run(ctx, { from: date, days: 1 });
+  const due = await query.run(ctx, {
+    over: "tasks",
+    due_after: date,
+    due_before: date,
+    status: "any",
+    limit: 50,
+  } as never);
+  return `${cal.markdown}\n\n## Due ${date}\n\n${due.markdown}`;
+}
+
 /** The server for one call, bound to its caller. */
 export function buildServer(call: CallContext): Server {
   const p = call.caller.principal;
@@ -175,6 +261,8 @@ export function buildServer(call: CallContext): Server {
       capabilities: {
         tools: { listChanged: false },
         resources: { listChanged: false },
+        prompts: { listChanged: false },
+        completions: {},
       },
       instructions: INSTRUCTIONS,
       supportedProtocolVersions: PROTOCOL_VERSIONS,
@@ -186,6 +274,7 @@ export function buildServer(call: CallContext): Server {
         "resources/templates/list": { ttlMs: 300_000, cacheScope: "private" },
         "resources/list": { ttlMs: 30_000, cacheScope: "private" },
         "resources/read": { ttlMs: 0, cacheScope: "private" },
+        "prompts/list": { ttlMs: 300_000, cacheScope: "private" },
       },
     },
   );
@@ -282,63 +371,116 @@ export function buildServer(call: CallContext): Server {
   });
 
   server.setRequestHandler("resources/templates/list", async () => ({
-    resourceTemplates: TEMPLATES.map((t) => ({
-      uriTemplate: `orbyn://${t.type}/{id}`,
+    resourceTemplates: RESOURCE_TEMPLATES.map((t) => ({
+      uriTemplate: templateUri(t.type),
       name: t.name,
       description: t.description,
       mimeType: "text/markdown",
     })),
   }));
 
-  server.setRequestHandler("resources/list", async () =>
+  server.setRequestHandler("resources/list", async (request) =>
     withReadContext(
       p,
       "resources/list",
       {},
       async (ctx) => {
-        const params = new Params();
-        const scope = scopeFor(ctx.spaces, params);
-        const recent = (
-          await ctx.db.query<{
-            type: "doc" | "project";
-            id: string;
-            title: string;
-          }>(
-            `(SELECT 'doc' AS type, d.id, d.title, d.updated_at FROM docs d
-             WHERE ${visibleDocs("d", scope)} ORDER BY d.updated_at DESC LIMIT 20)
-           UNION ALL
-           (SELECT 'project', p.id, p.name, p.updated_at FROM projects p
-             WHERE ${visibleProjects("p", scope)} AND p.status <> 'archived'
-             ORDER BY p.updated_at DESC LIMIT 10)
-           ORDER BY 4 DESC`,
-            params.values,
-          )
-        ).rows;
+        const all = await listedResources(ctx);
+        const offset = await ctx.cursor.open(
+          typeof request.params?.cursor === "string"
+            ? request.params.cursor
+            : undefined,
+        );
+        const page = all.slice(offset, offset + RESOURCE_PAGE);
         return {
-          resources: [
-            {
-              uri: "orbyn://today",
-              name: "Today",
-              mimeType: "text/markdown",
-              description: "The Today list.",
-            },
-            {
-              uri: "orbyn://me",
-              name: "Who and where",
-              mimeType: "application/json",
-              description: "The same as get_context.",
-            },
-            ...recent.map((r) => ({
-              uri: `orbyn://${r.type}/${r.id}`,
-              name: cleanTitle(r.title) || "Untitled",
-              mimeType: "text/markdown",
-            })),
-          ],
+          resources: page,
+          ...(offset + RESOURCE_PAGE < all.length
+            ? { nextCursor: await ctx.cursor.seal(offset + RESOURCE_PAGE) }
+            : {}),
         };
       },
       { primary: call.primary },
     ),
   );
+
+  server.setRequestHandler("prompts/list", async () => ({
+    prompts: promptsFor(p).map((x) => ({
+      name: x.name,
+      title: x.title,
+      description: x.description,
+      arguments: x.arguments.map((arg) => ({
+        name: arg.name,
+        description: arg.description,
+        required: !!arg.required,
+      })),
+    })),
+  }));
+
+  server.setRequestHandler("prompts/get", async (request) => {
+    const spec = promptsFor(p).find((x) => x.name === request.params.name);
+    if (!spec)
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        `Unknown prompt: ${request.params.name}. Call prompts/list to see the prompts.`,
+      );
+    const args: Record<string, string> = {};
+    for (const [k, v] of Object.entries(request.params.arguments ?? {}))
+      if (spec.arguments.some((arg) => arg.name === k))
+        args[k] = String(v).slice(0, 500);
+    const missing = spec.arguments.filter(
+      (arg) => arg.required && !args[arg.name]?.trim(),
+    );
+    if (missing.length)
+      throw new ProtocolError(
+        ProtocolErrorCode.InvalidParams,
+        `Missing argument: ${missing.map((m) => m.name).join(", ")}.`,
+      );
+    return {
+      description: spec.description,
+      messages: [
+        {
+          role: "user" as const,
+          content: { type: "text" as const, text: spec.text(args) },
+        },
+      ],
+    };
+  });
+
+  server.setRequestHandler("completion/complete", async (request) => {
+    const { ref, argument } = request.params;
+    let source: CompleteSource | null = null;
+    let as: "title" | "id" = "title";
+    if (ref.type === "ref/prompt") {
+      const spec = promptsFor(p).find((x) => x.name === ref.name);
+      source =
+        spec?.arguments.find((arg) => arg.name === argument.name)?.complete ??
+        null;
+    } else if (ref.type === "ref/resource") {
+      const m = /^orbyn:\/\/(\w+)\/\{(\w+)\}$/.exec(ref.uri);
+      const type = m?.[1];
+      if (
+        m &&
+        m[2] === argument.name &&
+        type &&
+        type !== "day" &&
+        (COMPLETE_SOURCES as readonly string[]).includes(type)
+      ) {
+        source = type as CompleteSource;
+        as = "id";
+      }
+    }
+    if (!source) return { completion: { values: [] } };
+    const values = await withReadContext(
+      p,
+      "completion/complete",
+      {},
+      (ctx) => completeValues(ctx, source, String(argument.value ?? ""), as),
+      { primary: call.primary },
+    );
+    return {
+      completion: { values, total: values.length, hasMore: false },
+    };
+  });
 
   server.setRequestHandler("resources/read", async (request) => {
     const uri = request.params.uri;
@@ -367,6 +509,10 @@ export function buildServer(call: CallContext): Server {
             );
             return readResource(uri, todayMarkdown(today));
           }
+          const guide = GUIDES[uri];
+          if (guide) return readResource(uri, guide.text);
+          const day = /^orbyn:\/\/day\/(\d{4}-\d{2}-\d{2})$/.exec(uri);
+          if (day) return readResource(uri, await dayMarkdown(ctx, day[1]));
           if (uri === "orbyn://me") {
             const me = await getContext.run(ctx, {});
             return {
@@ -380,7 +526,7 @@ export function buildServer(call: CallContext): Server {
             };
           }
           if (
-            !/^orbyn:\/\/(task|doc|project|record|template)\/[0-9a-f-]{36}(#[\w-]{1,64})?$/i.test(
+            !/^orbyn:\/\/(task|doc|project|record|template|view)\/[0-9a-f-]{36}(#[\w-]{1,64})?$/i.test(
               uri,
             )
           )

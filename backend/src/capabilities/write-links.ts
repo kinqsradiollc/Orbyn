@@ -116,13 +116,14 @@ const LINK_KINDS = [
   "task_project",
   "doc_project",
   "doc_folder",
+  "related",
 ] as const;
 
 export const link = defineCapability({
   name: "link",
   title: "Link or unlink",
   description:
-    "Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder. Unlinking removes no content; Undo takes it back.",
+    "Links or unlinks: depends_on (task waits on task), task_doc (task and its page line), task_project, doc_project, doc_folder, or related (a plain link between a page or task and a page, task or project, shown in backlinks on both sides). Unlinking removes no content; Undo takes it back.",
   input: z
     .object({
       action: z.enum(["link", "unlink"]),
@@ -156,6 +157,7 @@ export const link = defineCapability({
     const undo: UndoOp[] = [];
     const done: DoneEntry[] = [];
     const tier = "W2" as const;
+    if (a.kind === "related") return relatedLink(ctx, a.from, a.to, on);
     if (a.kind === "doc_project" || a.kind === "doc_folder") {
       const doc = await visibleDoc(ctx, a.from);
       destination(ctx, doc.team_id, tier) === "review" && refuseSuggest();
@@ -276,6 +278,131 @@ export const link = defineCapability({
     return finishWrite(ctx, "Linking", { done, undo, teamId: row.team_id });
   },
 });
+
+/** One end of a related link, checked visible (and locked for a change). */
+async function relatedEnd(ctx: CapabilityContext, input: string) {
+  const ref = parseRef(input);
+  if (ref.type === "doc") {
+    const d = await visibleDoc(ctx, input);
+    return {
+      kind: "doc" as const,
+      id: d.id,
+      team_id: d.team_id,
+      entry: docEntry(d, "Linked"),
+    };
+  }
+  if (ref.type === "task" || ref.type === "event") {
+    const t = await visibleItem(ctx, input);
+    return {
+      kind: "task" as const,
+      id: t.id,
+      team_id: t.team_id,
+      entry: itemEntry(t, "Linked"),
+    };
+  }
+  if (ref.type === "project") {
+    const p = await visibleProject(ctx, input);
+    return {
+      kind: "project" as const,
+      id: p.id,
+      team_id: p.team_id,
+      entry: {
+        id: `project:${p.id}`,
+        title: cleanTitle(p.name) || "Untitled",
+        url: refUrl({ type: "project", id: p.id }),
+        version: null,
+        change: "Linked",
+      } satisfies DoneEntry,
+    };
+  }
+  throw new CapabilityError(
+    "INVALID",
+    "A related link joins pages, tasks and projects: use doc:<id>, task:<id> or project:<id>.",
+  );
+}
+
+/**
+ * A manual "related" link: kept in object_links (kind 'related'), which
+ * page saves never touch, so it lasts until someone unlinks it. It starts
+ * from a page or task (a project can only be the other end), and needs
+ * write access in the space of the end it starts from.
+ */
+async function relatedLink(
+  ctx: CapabilityContext,
+  fromInput: string,
+  toInput: string,
+  on: boolean,
+) {
+  let from = await relatedEnd(ctx, fromInput);
+  let to = await relatedEnd(ctx, toInput);
+  if (from.kind === "project") [from, to] = [to, from];
+  if (from.kind === "project")
+    throw new CapabilityError(
+      "INVALID",
+      "Two projects can't be linked as related; link a page or task to a project instead.",
+    );
+  if (from.kind === to.kind && from.id === to.id)
+    throw new CapabilityError("INVALID", "A thing can't be related to itself.");
+  if (destination(ctx, from.team_id, "W2") === "review") refuseSuggest();
+  const db = dbOf(ctx);
+  const key = [from.kind, from.id, to.kind, to.id];
+  // One related link per pair, whichever way round it was made.
+  const existing = (
+    await db.query<{
+      source_kind: string;
+      source_id: string;
+      target_kind: string;
+      target_id: string;
+    }>(
+      `SELECT source_kind, source_id::text, target_kind, target_id FROM object_links
+        WHERE link_kind = 'related'
+          AND ((source_kind = $1 AND source_id = $2 AND target_kind = $3 AND target_id = $4::text)
+            OR (target_kind = $1 AND target_id = $2::text AND source_kind = $3 AND source_id::text = $4))`,
+      key,
+    )
+  ).rows;
+  const undo: UndoOp[] = [];
+  if (on && !existing.length) {
+    await db.query(
+      `INSERT INTO object_links (source_kind, source_id, target_kind, target_id, link_kind)
+       VALUES ($1, $2, $3, $4, 'related') ON CONFLICT DO NOTHING`,
+      key,
+    );
+    undo.push({
+      op: "related.set",
+      source_kind: from.kind,
+      source_id: from.id,
+      target_kind: to.kind,
+      target_id: to.id,
+      present: false,
+    });
+  }
+  if (!on)
+    for (const e of existing) {
+      await db.query(
+        `DELETE FROM object_links WHERE link_kind = 'related' AND source_kind = $1
+            AND source_id = $2 AND target_kind = $3 AND target_id = $4`,
+        [e.source_kind, e.source_id, e.target_kind, e.target_id],
+      );
+      undo.push({
+        op: "related.set",
+        source_kind: e.source_kind as "doc" | "task",
+        source_id: e.source_id,
+        target_kind: e.target_kind as "doc" | "task" | "project",
+        target_id: e.target_id,
+        present: true,
+      });
+    }
+  const change = on ? "Linked as related" : "Unlinked";
+  return finishWrite(ctx, "Linking", {
+    done: [
+      { ...from.entry, change },
+      { ...to.entry, change },
+    ],
+    undo,
+    teamId: from.team_id,
+  });
+}
 
 function refuseSuggest(): never {
   throw new CapabilityError(

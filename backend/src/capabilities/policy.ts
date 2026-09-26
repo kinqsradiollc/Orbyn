@@ -1,5 +1,6 @@
 import {
   AGENT_ACCESS_RANK,
+  AGENT_TOOLSETS,
   type AgentAccess,
   type AgentToolset,
   type SystemRole,
@@ -206,4 +207,31 @@ export async function reachableTeams(
   ).rows;
   const agent = via === "agent_key" || via === "oauth" || via === "legacy_key";
   return agent ? rows.filter((t) => t.agent_access !== "off") : rows;
+}
+
+/**
+ * The person themselves, signed in to Orbyn's own apps: every space they
+ * belong to, full access, every toolset. Lets the app run the same
+ * capability code (a saved view's rows) the agents do.
+ */
+export async function sessionPrincipal(
+  db: Queryable,
+  user: { id: string; name: string; role: SystemRole },
+): Promise<Principal> {
+  return {
+    user: { id: user.id, name: user.name, role: user.role },
+    via: "session",
+    grant_id: null,
+    client: { id: null, name: "Orbyn" },
+    access: "write",
+    team_ids: null,
+    personal: true,
+    toolsets: [...AGENT_TOOLSETS],
+    flags: {
+      notify_teammates: true,
+      hide_outside_content: false,
+      readonly: false,
+    },
+    teams: await reachableTeams(db, user.id, null, "session"),
+  };
 }

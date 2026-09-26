@@ -20,6 +20,7 @@ import { mergedItem } from "../modules/proposals/service.js";
 import { announceDocChange } from "../modules/docs/live.js";
 import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
+import { deleteView, findView, updateView } from "../modules/views/service.js";
 
 /**
  * Undo for what an outside agent changed: each change it makes records the
@@ -95,6 +96,24 @@ export type UndoOp =
       other_id: string;
       block_id?: string;
       present: boolean;
+    }
+  /** A related link it made or removed. */
+  | {
+      op: "related.set";
+      source_kind: "doc" | "task";
+      source_id: string;
+      target_kind: "doc" | "task" | "project";
+      target_id: string;
+      present: boolean;
+    }
+  /** A saved view it made: remove it. */
+  | { op: "view.delete"; id: string; version: number }
+  /** A saved view it changed: put it back. */
+  | {
+      op: "view.restore";
+      id: string;
+      version: number;
+      fields: { name: string; layout: string; definition: unknown };
     };
 
 /** Undo is kept this long after the change. */
@@ -279,10 +298,51 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
           );
         break;
       }
+      case "related.set": {
+        // Only while the person can still change the end it starts from.
+        if (op.source_kind === "task") {
+          const item = await lockItem(db, op.source_id);
+          await requireItemAccess(u, item, "items:write", db);
+        } else await requireDoc(db, op.source_id, u, "items:write");
+        await db.query(
+          op.present
+            ? `INSERT INTO object_links (source_kind, source_id, target_kind, target_id, link_kind)
+               VALUES ($1, $2, $3, $4, 'related') ON CONFLICT DO NOTHING`
+            : `DELETE FROM object_links WHERE link_kind = 'related' AND source_kind = $1
+                 AND source_id = $2 AND target_kind = $3 AND target_id = $4`,
+          [op.source_kind, op.source_id, op.target_kind, op.target_id],
+        );
+        break;
+      }
+      case "view.delete": {
+        const view = await findView(db, everySpace(u.id), op.id, true);
+        if (!view) break;
+        if (view.version !== op.version) changedSince();
+        await deleteView(db, u, op.id);
+        break;
+      }
+      case "view.restore": {
+        const view = await findView(db, everySpace(u.id), op.id, true);
+        if (!view) break;
+        if (view.version !== op.version) changedSince();
+        await updateView(db, u, op.id, {
+          version: view.version,
+          name: op.fields.name,
+          layout: op.fields.layout as never,
+          definition: op.fields.definition as never,
+        });
+        break;
+      }
     }
   }
   return after;
 }
+
+const everySpace = (userId: string) => ({
+  userId,
+  teamIds: null,
+  personal: true,
+});
 
 /**
  * Undo one change an agent made for `u` (from its activity list): once,

@@ -92,6 +92,10 @@ export const visibleFolders = (alias = "f", scope: Scope = DEFAULT_SCOPE) =>
 export const visibleTemplates = (alias = "t", scope: Scope = DEFAULT_SCOPE) =>
   visibleOwned(alias, "user_id", scope);
 
+/** Saved views `scope.user` can see: their own, and their teams'. */
+export const visibleViews = (alias = "v", scope: Scope = DEFAULT_SCOPE) =>
+  visibleOwned(alias, "user_id", scope);
+
 /** Page templates `scope.user` can see. */
 export const visiblePageTemplates = (
   alias = "t",

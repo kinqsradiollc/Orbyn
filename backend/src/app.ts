@@ -22,6 +22,7 @@ import { docRoutes } from "./modules/docs/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
 import { aiDocRoutes } from "./modules/ai/docs.js";
 import { folderRoutes } from "./modules/organize/folders.js";
+import { viewRoutes } from "./modules/views/routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
 import { workRecordRoutes } from "./modules/work-records/routes.js";
 import { plannerRoutes } from "./modules/planner/routes.js";
@@ -85,6 +86,7 @@ export const serviceModules: Record<
     searchRoutes,
     aiDocRoutes,
     folderRoutes,
+    viewRoutes,
     projectRoutes,
     workRecordRoutes,
     plannerRoutes,
