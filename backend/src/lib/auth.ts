@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { analyticsOptOut, requestUser } from "./request-log.js";
+import { onAuthChange } from "./auth-events.js";
 import type { FastifyRequest } from "fastify";
 import {
   fail,
@@ -141,6 +142,10 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // signed-in person can.
   { route: /^\/me\/(?:agents|agent-keys)(?:\/|$)/ },
   { method: "PUT", route: /^\/teams\/:id\/agent-access$/ },
+  // Connecting an agent (the consent page) and confirming it's you before
+  // granting one write access: a signed-in person only.
+  { route: /^\/oauth\// },
+  { route: /^\/me\/reauth(?:\/|$)/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },
@@ -214,8 +219,29 @@ export function isMcpPath(url: string | undefined): boolean {
   );
 }
 
+/**
+ * The OAuth endpoints apps call themselves (metadata, token, revoke,
+ * register), which answer any origin.
+ */
+export function isOAuthOpenPath(url: string | undefined): boolean {
+  const path = (url ?? "").split("?")[0];
+  return (
+    path === "/.well-known/oauth-authorization-server" ||
+    path === "/oauth/token" ||
+    path === "/oauth/revoke" ||
+    path === "/oauth/register"
+  );
+}
+
 /** Live connections by credential hash (null: not a live one), for rate limiting. */
 const grantIds = new Map<string, { id: string | null; at: number }>();
+
+// A revoked connection, a blocked app or a person signed out everywhere
+// (on any copy) stops counting as live here at once.
+onAuthChange(() => {
+  grantIds.clear();
+  keyIds.clear();
+});
 
 /**
  * What an agent's requests count against in the general rate limit: its
@@ -303,15 +329,22 @@ export async function authorize(
   return u;
 }
 
-/** Create a new opaque session token for a user. Only its hash is stored. */
+/**
+ * Create a new opaque session token for a user. Only its hash is stored.
+ * `reauthenticated`: the person just proved their password (and two-step)
+ * or a passkey, which counts as confirming it's them for the next few
+ * minutes (granting an agent write access needs that).
+ */
 export async function issueSession(
   u: UserRow,
   userAgent = "",
+  options: { reauthenticated?: boolean } = {},
 ): Promise<AuthResponse> {
   const token = randomBytes(48).toString("base64url");
   await pool.query(
-    "INSERT INTO sessions(token_hash,user_id,user_agent) VALUES($1,$2,$3)",
-    [digest(token), u.id, userAgent.slice(0, 400)],
+    `INSERT INTO sessions(token_hash,user_id,user_agent,reauthenticated_at)
+     VALUES($1,$2,$3,CASE WHEN $4 THEN now() END)`,
+    [digest(token), u.id, userAgent.slice(0, 400), !!options.reauthenticated],
   );
   return { token, user: publicUser(u) };
 }

@@ -116,6 +116,12 @@ export type AgentGrant = {
   name: string;
   /** The app on the other end, when known ("Claude", "chatgpt.com"). */
   client_name: string;
+  /**
+   * For apps that signed in: the website the app really comes from (its
+   * id's host, "claude.ai"), or where it sends people back for apps that
+   * registered themselves. Null for keys.
+   */
+  client_host: string | null;
   access: AgentAccess;
   personal: boolean;
   /** Teams it sees; null means every team the person is in (old API keys). */
@@ -270,8 +276,15 @@ export const agentSettingsUpdate = z
   .strict();
 export type AgentSettingsUpdate = z.input<typeof agentSettingsUpdate>;
 
-/** Apps that connect with an agent key, in the order Settings offers them. */
+/**
+ * Apps in the order Settings offers them. Claude (claude.ai, Claude Desktop
+ * and the Claude apps) and ChatGPT connect by signing in with Orbyn
+ * (OAuth): no key, Orbyn asks you what they may do. The others send an
+ * agent key in a header.
+ */
 export const AGENT_SETUP_CLIENTS = [
+  "claude",
+  "chatgpt",
   "claude-code",
   "codex",
   "cursor",
@@ -279,10 +292,17 @@ export const AGENT_SETUP_CLIENTS = [
 ] as const;
 export type AgentSetupClient = (typeof AGENT_SETUP_CLIENTS)[number];
 
-/** Apps that connect by signing in (phase A2): shown, but not yet working. */
-export const AGENT_SOON_CLIENTS = ["claude.ai", "ChatGPT"] as const;
+/** Apps that connect by signing in (OAuth) rather than with a key. */
+export const AGENT_SIGN_IN_CLIENTS = [
+  "claude",
+  "chatgpt",
+] as const satisfies readonly AgentSetupClient[];
+export const isSignInClient = (c: AgentSetupClient) =>
+  (AGENT_SIGN_IN_CLIENTS as readonly string[]).includes(c);
 
 export const AGENT_SETUP_LABELS: Record<AgentSetupClient, string> = {
+  claude: "Claude",
+  chatgpt: "ChatGPT",
   "claude-code": "Claude Code",
   codex: "Codex",
   cursor: "Cursor",
@@ -304,6 +324,18 @@ export function agentSetup(
 ): { where: string; snippet: string } {
   const secret = key ?? `$${AGENT_KEY_ENV}`;
   switch (client) {
+    case "claude":
+      return {
+        where:
+          "In Claude, open Settings → Connectors → Add custom connector, and paste:",
+        snippet: url,
+      };
+    case "chatgpt":
+      return {
+        where:
+          "In ChatGPT, open Settings → Apps & Connectors, create a connector (developer mode), choose OAuth, and paste:",
+        snippet: url,
+      };
     case "claude-code":
       return {
         where: "In a terminal, run:",
@@ -354,3 +386,280 @@ export function agentExpiryText(
   if (days === 1) return "Expires tomorrow";
   return `Expires in ${days} days`;
 }
+
+/** Steps for connecting an app that signs in (no key to make). */
+export const AGENT_SIGN_IN_STEPS: Record<
+  (typeof AGENT_SIGN_IN_CLIENTS)[number],
+  string[]
+> = {
+  claude: [
+    "Add Orbyn as a custom connector with the address above.",
+    "Choose Connect. Orbyn opens: sign in, and choose what Claude may do and in which spaces.",
+    "Back in Claude, turn Orbyn on in a chat's tools. Change or disconnect it here any time.",
+  ],
+  chatgpt: [
+    "Create a connector with the address above and OAuth as its sign-in.",
+    "ChatGPT opens Orbyn: sign in, and choose what ChatGPT may do and in which spaces.",
+    "Use Orbyn from a chat. Change or disconnect it here any time.",
+  ],
+};
+
+// ---- Signing in with Orbyn (OAuth), phase A2 ----
+
+/**
+ * The scopes an app can ask for. Read is the baseline; propose includes
+ * read ("See and suggest"), write includes propose ("See and change");
+ * bookings is an add-on for guests' names and contact details;
+ * offline_access lets the app refresh without asking again.
+ */
+export const OAUTH_SCOPES = [
+  "orbyn:read",
+  "orbyn:propose",
+  "orbyn:write",
+  "orbyn:bookings",
+  "offline_access",
+] as const;
+export type OAuthScope = (typeof OAUTH_SCOPES)[number];
+
+/** The scope string a connection holds, from its choices. */
+export function grantedScopes(
+  access: AgentAccess,
+  bookings: boolean,
+  offline = false,
+): string {
+  const scopes = ["orbyn:read"];
+  if (AGENT_ACCESS_RANK[access] >= 1) scopes.push("orbyn:propose");
+  if (access === "write") scopes.push("orbyn:write");
+  if (bookings) scopes.push("orbyn:bookings");
+  if (offline) scopes.push("offline_access");
+  return scopes.join(" ");
+}
+
+/** The access level a scope string asks for (read when it names none). */
+export function accessFromScopes(scope: string): AgentAccess {
+  const s = new Set(scope.split(/\s+/).filter(Boolean));
+  return s.has("orbyn:write")
+    ? "write"
+    : s.has("orbyn:propose")
+      ? "suggest"
+      : "read";
+}
+
+/** Granting write access (or bookings) needs a password or passkey this recently. */
+export const REAUTH_WINDOW_MINUTES = 10;
+
+/** How long a sign-in connection may last, as offered on the consent page. */
+export const AGENT_GRANT_DAY_CHOICES = [30, 90, 365] as const;
+
+/** Toolsets a sign-in may add to core, in words, for the consent page. */
+export const AGENT_TOOLSET_LABELS: Record<
+  AgentToolset,
+  { name: string; blurb: string }
+> = {
+  core: {
+    name: "Tasks, calendar, projects and pages",
+    blurb: "Always on.",
+  },
+  workspace: { name: "Folders, tags and lists", blurb: "Organising pages." },
+  planner: { name: "Planner", blurb: "Sessions, your usual day and plans." },
+  study: { name: "Study", blurb: "Flashcards and reviews." },
+  followthrough: {
+    name: "Follow-through",
+    blurb: "Asks, promises and decisions.",
+  },
+  teams: { name: "Teams", blurb: "Team members and their time." },
+  booking: {
+    name: "Bookings",
+    blurb:
+      "Booking pages, and your guests’ names and contact details. Booking changes email your guests, so they always wait for your review.",
+  },
+  files: { name: "Files", blurb: "Imported files." },
+};
+
+/** The parameters of an authorization request, as an app sends them. */
+export const oauthRequest = z.object({
+  response_type: z.string().max(40),
+  client_id: z.string().min(1).max(2000),
+  redirect_uri: z.string().min(1).max(2000),
+  code_challenge: z.string().max(200).default(""),
+  code_challenge_method: z.string().max(20).default(""),
+  state: z.string().max(2000).optional(),
+  scope: z.string().max(1000).default(""),
+  resource: z.string().max(2000).optional(),
+});
+export type OAuthRequest = z.input<typeof oauthRequest>;
+
+/** A team on the consent page: your role and its owners' cap on agents. */
+export type OAuthTeamChoice = {
+  id: string;
+  name: string;
+  role: string;
+  agent_access: TeamAgentAccess;
+};
+
+/** What the consent page shows for a request (GET /oauth/authorize/check). */
+export type OAuthCheck = {
+  client: {
+    id: string;
+    /** The app's own name, from its description; never a logo. */
+    name: string;
+    /** The website it really comes from ("claude.ai"). */
+    host: string;
+    /** Whether Orbyn checked where it comes from (its id is its website). */
+    verified: boolean;
+    /** Where it sends you back: a host, or "this computer". */
+    redirect_host: string;
+    /** It sends you back to an app on this computer. */
+    redirect_local: boolean;
+  };
+  /** What the app asked for, as an access level. */
+  requested_access: AgentAccess;
+  requested_bookings: boolean;
+  /** Null when not signed in: the page asks you to sign in first. */
+  account: {
+    name: string;
+    email: string;
+    teams: OAuthTeamChoice[];
+    /** Until when this session counts as just signed in (ISO), or null. */
+    reauth_until: string | null;
+    two_factor: boolean;
+    passkeys: number;
+    /** Your existing connection with this app, when there is one. */
+    existing: AgentGrant | null;
+    max_grant_days: number;
+  } | null;
+};
+
+/** Allowing a request on the consent page (POST /oauth/authorize). */
+export const oauthConsentInput = z
+  .object({
+    request: oauthRequest,
+    access: z.enum(AGENT_ACCESS),
+    personal: z.boolean().default(true),
+    team_ids: z.array(z.uuid()).max(50).default([]),
+    /** Optional toolsets besides core (and booking, which needs `bookings`). */
+    toolsets: z.array(z.enum(AGENT_TOOLSETS)).max(8).default([]),
+    bookings: z.boolean().default(false),
+    notify_teammates: z.boolean().default(false),
+    hide_outside_content: z.boolean().default(false),
+    expires_in_days: z
+      .number()
+      .int()
+      .min(1)
+      .max(AGENT_KEY_MAX_DAYS)
+      .default(90),
+  })
+  .strict()
+  .refine((v) => v.personal || v.team_ids.length > 0, {
+    message: "Choose at least one space: Personal or a team.",
+    path: ["team_ids"],
+  });
+export type OAuthConsentInput = z.input<typeof oauthConsentInput>;
+
+/** Where the browser goes next: back to the app, with a code or an error. */
+export type OAuthRedirect = { redirect_to: string };
+
+/**
+ * Confirming it's you without signing in again (POST /me/reauth): the
+ * password (and a two-step code when it's on), or a passkey.
+ */
+export const reauthInput = z.union([
+  z
+    .object({
+      password: z.string().min(1).max(128),
+      code: z.string().trim().max(20).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      handle: z.string().min(1).max(100),
+      response: z.record(z.string(), z.unknown()),
+    })
+    .strict(),
+]);
+export type ReauthInput = z.input<typeof reauthInput>;
+
+/** Sent back when re-authentication worked. */
+export type Reauthenticated = { reauth_until: string };
+
+/** The team policies, in words. */
+export const TEAM_AGENT_ACCESS_LABELS: Record<
+  TeamAgentAccess,
+  { name: string; blurb: string }
+> = {
+  role: {
+    name: "Follow each member’s role",
+    blurb:
+      "Agents can do what their person can in this team. Viewers’ agents only read.",
+  },
+  suggest: {
+    name: "Read and suggest",
+    blurb: "Agents read, and every change they want waits for review.",
+  },
+  read: { name: "Read only", blurb: "Agents can read, never change." },
+  off: {
+    name: "Off",
+    blurb: "Outside agents can’t see or change anything in this team.",
+  },
+};
+
+/** Team settings → Outside agents. */
+export type TeamAgentsView = {
+  agent_access: TeamAgentAccess;
+  /** When an outside agent first used this team's data, or null. */
+  first_used_at: string | null;
+  /**
+   * Members' connections that can reach this team, by name and app only
+   * (owners and admins; null for others).
+   */
+  connections:
+    | {
+        member: string;
+        app: string;
+        kind: AgentGrantKind;
+        last_used_at: string | null;
+      }[]
+    | null;
+};
+
+/** Admin → Agents: an app that signed in, and how many use it. */
+export type AdminAgentClient = {
+  id: string;
+  kind: "cimd" | "dcr";
+  name: string;
+  host: string;
+  blocked: boolean;
+  connections: number;
+  created_at: string;
+  last_used_at: string | null;
+};
+
+/** Admin → Agents: usage by app over a period (people who opted out of analytics aren't counted). */
+export type AdminAgentUsage = {
+  days: number;
+  apps: {
+    app: string;
+    kind: AgentGrantKind;
+    connections: number;
+    people: number;
+    calls: number;
+    writes: number;
+    denied: number;
+    limited: number;
+  }[];
+};
+
+/** One of an account's agent connections, for Admin → Users. */
+export type AdminAgentGrant = Pick<
+  AgentGrant,
+  | "id"
+  | "kind"
+  | "name"
+  | "client_name"
+  | "client_host"
+  | "access"
+  | "expires_at"
+  | "last_used_at"
+  | "suspended_at"
+  | "created_at"
+>;

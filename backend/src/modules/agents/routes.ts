@@ -1,11 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  AGENT_KEY_CLIENT_ID,
+  LEGACY_KEY_CLIENT_ID,
   TEAM_AGENT_ACCESS,
   agentSettingsUpdate,
+  fail,
+  hasTeamPermission,
+  type AdminAgentClient,
+  type AdminAgentUsage,
   type AgentSettings,
   type AgentsOverview,
   type NewAgentKey,
+  type TeamAgentsView,
+  type TeamRole,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import { reader, transaction } from "../../db/pool.js";
@@ -19,10 +27,12 @@ import {
 } from "../../lib/settings.js";
 import { requireTeam } from "../../lib/teams.js";
 import {
+  announceAuthChange,
   createAgentKey,
   grantActivity,
   listGrants,
   restoreGrant,
+  revokeConnections,
   revokeGrant,
 } from "./service.js";
 
@@ -88,6 +98,9 @@ export async function agentRoutes(app: FastifyInstance) {
         teamId,
         agent_access,
       ]);
+      // Every copy re-reads the team's policy on the next call anyway; this
+      // clears anything held for it at once.
+      await announceAuthChange(db, { teams: [teamId], reason: "team_policy" });
       await audit(
         {
           actorId: u.id,
@@ -102,6 +115,64 @@ export async function agentRoutes(app: FastifyInstance) {
     return { id: teamId, agent_access };
   });
 
+  /**
+   * Team settings → Outside agents: the team's policy for everyone in it;
+   * for owners and admins also which members' agents can reach it (by name
+   * and app only) and when an agent first used it.
+   */
+  app.get("/teams/:id/agents", async (r): Promise<TeamAgentsView> => {
+    const u = await authenticate(r);
+    const teamId = idParam(r);
+    const db = reader(r.headers);
+    const team = (
+      await db.query<{
+        agent_access: TeamAgentsView["agent_access"];
+        agent_first_used_at: Date | null;
+        role: TeamRole | null;
+      }>(
+        `SELECT t.agent_access, t.agent_first_used_at,
+                (SELECT m.role FROM team_members m WHERE m.team_id = t.id AND m.user_id = $2) AS role
+           FROM teams t WHERE t.id = $1`,
+        [teamId, u.id],
+      )
+    ).rows[0];
+    if (!team?.role) fail(404, "Team not found");
+    const manager = hasTeamPermission(team.role, "team:update");
+    const connections = manager
+      ? (
+          await db.query<{
+            member: string;
+            app: string;
+            kind: "oauth" | "key" | "legacy";
+            last_used_at: Date | null;
+          }>(
+            `SELECT u.name AS member,
+                    CASE WHEN g.kind = 'key' THEN 'Agent key “' || g.name || '”'
+                         WHEN g.kind = 'legacy' THEN 'API key “' || g.name || '”'
+                         ELSE coalesce(nullif(g.client_name, ''), 'An app') END AS app,
+                    g.kind, g.last_used_at
+               FROM agent_grants g
+               JOIN users u ON u.id = g.user_id
+               JOIN team_members m ON m.team_id = $1 AND m.user_id = g.user_id
+              WHERE g.revoked_at IS NULL
+                AND (g.expires_at IS NULL OR g.expires_at > now())
+                AND (g.kind <> 'oauth' OR g.authorized_at IS NOT NULL)
+                AND (g.team_ids IS NULL OR g.team_ids @> ARRAY[$1::uuid])
+              ORDER BY g.last_used_at DESC NULLS LAST, lower(u.name) LIMIT 100`,
+            [teamId],
+          )
+        ).rows.map((c) => ({
+          ...c,
+          last_used_at: c.last_used_at?.toISOString() ?? null,
+        }))
+      : null;
+    return {
+      agent_access: team.agent_access,
+      first_used_at: team.agent_first_used_at?.toISOString() ?? null,
+      connections,
+    };
+  });
+
   /** Admin: the switches for outside agents (kill switches L2-L4). */
   app.get("/admin/agents", async (r): Promise<AgentSettings> => {
     await authorize(r, "system:manage");
@@ -112,8 +183,37 @@ export async function agentRoutes(app: FastifyInstance) {
   app.put("/admin/agents", async (r): Promise<AgentSettings> => {
     const u = await authorize(r, "system:manage");
     const d = agentSettingsUpdate.parse(r.body);
+    invalidateSettings();
     const current = (await settings()).agents;
+    // Apps blocked now: their sign-ins end at once. Agent keys and old API
+    // keys are refused while blocked but kept (unblocking brings them back).
+    const pseudo = new Set([AGENT_KEY_CLIENT_ID, LEGACY_KEY_CLIENT_ID]);
+    const newlyBlocked = (d.blocked_client_ids ?? []).filter(
+      (id) => !current.blocked_client_ids.includes(id) && !pseudo.has(id),
+    );
     await transaction(async (db) => {
+      if (d.blocked_client_ids) {
+        await db.query(
+          "UPDATE oauth_clients SET blocked = (id = ANY ($1::text[]))",
+          [d.blocked_client_ids],
+        );
+        for (const id of newlyBlocked)
+          await revokeConnections(
+            db,
+            { clientId: id },
+            "client_blocked",
+            u.id,
+            r.id,
+          );
+        if (
+          d.blocked_client_ids.length !== current.blocked_client_ids.length ||
+          newlyBlocked.length
+        )
+          await announceAuthChange(db, {
+            clients: d.blocked_client_ids,
+            reason: "client_blocked",
+          });
+      }
       for (const key of AGENT_SETTING_KEYS) {
         if (d[key] === undefined) continue;
         const value =
@@ -140,5 +240,65 @@ export async function agentRoutes(app: FastifyInstance) {
     });
     invalidateSettings();
     return (await settings()).agents;
+  });
+
+  /** Admin → Agents: the apps that have signed in, and how many use each. */
+  app.get("/admin/agents/clients", async (r): Promise<AdminAgentClient[]> => {
+    await authorize(r, "system:manage");
+    const { agents } = await settings();
+    return (
+      await reader(r.headers).query<
+        Omit<AdminAgentClient, "created_at" | "last_used_at"> & {
+          created_at: Date;
+          last_used_at: Date | null;
+        }
+      >(
+        `SELECT c.id, c.kind, c.name, c.host, c.blocked, c.created_at, c.last_used_at,
+                (SELECT count(*) FROM agent_grants g
+                  WHERE g.client_id = c.id AND g.revoked_at IS NULL
+                    AND g.authorized_at IS NOT NULL
+                    AND (g.expires_at IS NULL OR g.expires_at > now()))::int AS connections
+           FROM oauth_clients c
+          ORDER BY c.last_used_at DESC NULLS LAST, c.created_at DESC LIMIT 200`,
+      )
+    ).rows.map((c) => ({
+      ...c,
+      blocked: c.blocked || agents.blocked_client_ids.includes(c.id),
+      created_at: c.created_at.toISOString(),
+      last_used_at: c.last_used_at?.toISOString() ?? null,
+    }));
+  });
+
+  /**
+   * Admin → Agents: usage by app over the last `days` (1-90). People who
+   * turned usage analytics off aren't counted.
+   */
+  app.get("/admin/agents/usage", async (r): Promise<AdminAgentUsage> => {
+    await authorize(r, "analytics:read");
+    const { days } = z
+      .object({ days: z.coerce.number().int().min(1).max(90).default(30) })
+      .parse(r.query ?? {});
+    const apps = (
+      await reader(r.headers).query<AdminAgentUsage["apps"][number]>(
+        `SELECT CASE WHEN g.kind = 'key' THEN 'Agent keys'
+                     WHEN g.kind = 'legacy' THEN 'Personal API keys'
+                     ELSE coalesce(nullif(g.client_name, ''), 'An app') END AS app,
+                g.kind,
+                count(DISTINCT g.id)::int AS connections,
+                count(DISTINCT g.user_id)::int AS people,
+                coalesce(sum(d.calls), 0)::int AS calls,
+                coalesce(sum(d.writes), 0)::int AS writes,
+                coalesce(sum(d.denied), 0)::int AS denied,
+                coalesce(sum(d.limited), 0)::int AS limited
+           FROM agent_usage_daily d
+           JOIN agent_grants g ON g.id = d.grant_id
+           JOIN users u ON u.id = g.user_id
+          WHERE d.day > current_date - $1::int AND NOT u.analytics_opt_out
+          GROUP BY 1, 2
+          ORDER BY calls DESC LIMIT 50`,
+        [days],
+      )
+    ).rows;
+    return { days, apps };
   });
 }

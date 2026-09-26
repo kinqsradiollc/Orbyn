@@ -32,7 +32,14 @@ import {
   type Capability,
 } from "../../capabilities/registry.js";
 import { todayForPrincipal, todayMarkdown } from "../../capabilities/today.js";
-import type { Caller } from "./auth.js";
+import type { Principal } from "../../capabilities/policy.js";
+import {
+  insufficientScope,
+  signedIn,
+  stepUpScope,
+  toolScopes,
+  type Caller,
+} from "./auth.js";
 
 /**
  * The MCP protocol itself, from the official TypeScript SDK (v2): one
@@ -113,6 +120,34 @@ const readResource = (uri: string, text: string) => ({
   contents: [{ uri, mimeType: "text/markdown", text }],
 });
 
+/**
+ * The tools a connection is shown. A connection that signed in with Orbyn
+ * also sees the tools it would need more access for (and the booking
+ * tools), so calling one can ask the person for that access (step-up);
+ * keys, which can't be widened, see only what they can call.
+ */
+export function listedTools(p: Principal): Capability[] {
+  if (!signedIn(p) || p.flags.readonly) return registry.for(p);
+  return registry.all.filter(
+    (c) =>
+      !c.legacyOnly &&
+      (p.toolsets.includes(c.toolset) || c.toolset === "booking"),
+  );
+}
+
+/**
+ * A tool as tools/list gives it, with the scopes it needs as OpenAI's
+ * securitySchemes (top level and in _meta, for clients that keep only one).
+ */
+export function listedTool(cap: Capability) {
+  const schemes = [{ type: "oauth2", scopes: toolScopes(cap) }];
+  return {
+    ...describe(cap),
+    securitySchemes: schemes,
+    _meta: { securitySchemes: schemes },
+  };
+}
+
 /** The server for one call, bound to its caller. */
 export function buildServer(call: CallContext): Server {
   const p = call.caller.principal;
@@ -143,7 +178,7 @@ export function buildServer(call: CallContext): Server {
   );
 
   server.setRequestHandler("tools/list", async () => ({
-    tools: registry.for(p).map((cap) => describe(cap)),
+    tools: listedTools(p).map(listedTool),
   }));
 
   server.setRequestHandler("tools/call", async (request) => {
@@ -157,7 +192,23 @@ export function buildServer(call: CallContext): Server {
       );
     const started = Date.now();
     let exec: Execution;
-    if (cap.mode !== "read" && !call.settings.agents.agents_writes_enabled)
+    // Step-up on the result (ChatGPT; other apps got HTTP 403 before this).
+    const scope = stepUpScope(p, cap);
+    if (scope)
+      exec = {
+        result: {
+          ...errorResult(
+            new CapabilityError(
+              "FORBIDDEN",
+              `This connection needs more access for ${name}.`,
+              "Ask the person to sign in again and allow it.",
+            ),
+          ),
+        },
+        outcome: "denied",
+        targets: [],
+      };
+    else if (cap.mode !== "read" && !call.settings.agents.agents_writes_enabled)
       exec = {
         result: errorResult(
           new CapabilityError(
@@ -175,6 +226,11 @@ export function buildServer(call: CallContext): Server {
         log: call.log,
         write: (fn) => call.write((db) => fn(db)),
       });
+    if (scope)
+      exec.result._meta = {
+        ...exec.result._meta,
+        "mcp/www_authenticate": [insufficientScope(scope)],
+      };
     call.onCall(cap, name, exec, Date.now() - started, argsDigest(args));
     return server.projectCallToolResult(
       exec.result as Parameters<Server["projectCallToolResult"]>[0],

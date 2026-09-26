@@ -1,0 +1,53 @@
+/* Team settings → Outside agents. */
+.team-agents {
+  padding-bottom: 14px;
+}
+.team-agents > p,
+.team-agents > ul {
+  margin-left: 23px !important;
+  margin-right: 23px !important;
+}
+.team-agents .subheading h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.team-agents-lead {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.team-agents-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.team-agents-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.team-agents-list li:nth-child(odd) {
+  background: var(--color-surfaceMuted);
+}
+.team-agents-list li > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .team-agents-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .team-agents-list li > span:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

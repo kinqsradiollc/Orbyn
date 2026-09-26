@@ -171,12 +171,13 @@
   color: var(--color-faint);
   cursor: default;
 }
-.agents-soon {
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  background: var(--color-chip);
-  color: var(--color-muted);
-  font-size: 10px;
+.agents-host {
+  font-weight: 400;
+  font-size: 13px;
+}
+.agents-steps > li.agents-step-note {
+  list-style: none;
+  margin-left: -20px;
 }
 .agents-steps {
   margin: 0;

@@ -94,6 +94,17 @@ preflight() {
     case "$oauth_issuer" in
       ""|*localhost*|*127.0.0.1*) warn "The tunnel is on but the OAuth issuer (OAUTH_ISSUER, else APP_URL) is '${oauth_issuer:-unset}': agents can't sign in there." ;;
     esac
+    case "$oauth_issuer" in
+      https://*) ;;
+      *) warn "The OAuth issuer '${oauth_issuer:-unset}' isn't https://: Claude and ChatGPT refuse to sign in to it." ;;
+    esac
+    case "$oauth_issuer" in
+      */) warn "The OAuth issuer '$oauth_issuer' ends in '/': clients compare it exactly, so drop the slash." ;;
+    esac
+    mcp_origin=$(printf '%s' "$mcp_url" | sed -E 's#^(https?://[^/]+).*#\1#')
+    if [ -n "$oauth_issuer" ] && [ "${oauth_issuer%/}" = "$mcp_origin" ]; then
+      warn "The OAuth issuer is the MCP host ($mcp_origin): it must be the web app's address, where the consent page is."
+    fi
   fi
   if [ -z "$(setting FILES_SECRET)" ]; then
     warn "FILES_SECRET is unset: importing PDFs and Word files into Docs stays off."

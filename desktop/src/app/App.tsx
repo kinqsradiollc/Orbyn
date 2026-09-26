@@ -82,6 +82,11 @@ import {
 } from "../features/booking/BookingView";
 import { PublicBooking } from "../features/booking/PublicBooking";
 import { RsvpPage } from "../features/rsvp/RsvpPage";
+import {
+  OAuthConsentPage,
+  takeOAuthReturn,
+} from "../features/auth/OAuthConsent";
+import type { AuthMode } from "../hooks/usePlanner";
 import { PublicInvitePage } from "../features/booking/PublicInvite";
 import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
@@ -197,6 +202,16 @@ export function App() {
     !nativeDesktop &&
     ["/book/", "/rsvp/", "/invite/", "/u/"].some((p) => path.startsWith(p));
 
+  // Connecting an app (/oauth/authorize): signing in happens in place, so
+  // every parameter the app sent stays in the address.
+  const isOAuth = !nativeDesktop && path === "/oauth/authorize";
+  const [oauthMode, setOauthMode] = useState<AuthMode>("login");
+  useEffect(() => {
+    if (!token || isOAuth) return;
+    // Signed in somewhere else (a reset link) while an app was waiting.
+    const back = takeOAuthReturn();
+    if (back) window.location.assign(back);
+  }, [token]);
   useEffect(() => {
     if (token && (path === "/login" || path === "/signup"))
       navigatePath("/app", true);
@@ -266,21 +281,27 @@ export function App() {
                   : "What Orbyn collects, why, how long it's kept, and your rights.",
               index: true,
             }
-          : path === "/status"
+          : isOAuth
             ? {
-                title: "Service status · Orbyn",
-                description: "Whether every part of Orbyn is up right now.",
+                title: "Connect an app · Orbyn",
+                description: app,
                 index: false,
               }
-            : token
-              ? { title: view + " · Orbyn", description: app, index: false }
-              : path === "/login"
-                ? { title: "Sign in · Orbyn", description: app, index: false }
-                : {
-                    title: "Create your space · Orbyn",
-                    description: app,
-                    index: false,
-                  },
+            : path === "/status"
+              ? {
+                  title: "Service status · Orbyn",
+                  description: "Whether every part of Orbyn is up right now.",
+                  index: false,
+                }
+              : token
+                ? { title: view + " · Orbyn", description: app, index: false }
+                : path === "/login"
+                  ? { title: "Sign in · Orbyn", description: app, index: false }
+                  : {
+                      title: "Create your space · Orbyn",
+                      description: app,
+                      index: false,
+                    },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -303,6 +324,7 @@ export function App() {
   // shortcuts and N starts a new item, unless you're typing or a dialog,
   // panel or menu is open.
   const inShell = !(
+    isOAuth ||
     path === "/status" ||
     path === "/terms" ||
     path === "/privacy" ||
@@ -609,6 +631,32 @@ export function App() {
         legal={legal}
         onAccepted={() => void refreshUser()}
         onLogout={() => void planner.logout()}
+      />
+    );
+
+  if (isOAuth)
+    return (
+      <OAuthConsentPage
+        signedIn={!!token}
+        user={user}
+        onSwitchAccount={() => void planner.logout()}
+        signIn={(notice) => (
+          <AuthPage
+            key={oauthMode}
+            notice={notice}
+            initialMode={oauthMode}
+            onSwitchMode={() =>
+              setOauthMode((m) => (m === "login" ? "register" : "login"))
+            }
+            onNavigate={navigatePath}
+            busy={busy}
+            error={error}
+            onClearError={() => planner.setError("")}
+            onSubmit={(mode, values) => void planner.authenticate(mode, values)}
+            twoFactorRequired={planner.twoFactorRequired}
+            onPasskey={(email) => void planner.passkeyLogin(email || undefined)}
+          />
+        )}
       />
     );
 

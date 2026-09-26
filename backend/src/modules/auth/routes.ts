@@ -11,9 +11,12 @@ import {
   passkeyAuth,
   passkeyAuthOptions,
   passkeyRegister,
+  reauthInput,
   resetPassword,
+  REAUTH_WINDOW_MINUTES,
   twoFactorDisable,
   twoFactorEnable,
+  type Reauthenticated,
   type TwoFactorEnabled,
   type TwoFactorSetup,
   type TwoFactorStatus,
@@ -41,7 +44,8 @@ import {
   verifyAuthentication,
   verifyRegistration,
 } from "./webauthn.js";
-import { enforceTwoFactor, twoFactorOn } from "./twoFactor.js";
+import { TOTP_REQUIRED, enforceTwoFactor, twoFactorOn } from "./twoFactor.js";
+import { revokeConnections } from "../agents/service.js";
 import { settings } from "../../lib/settings.js";
 import { decryptSecret, encryptSecret } from "../../lib/secrets.js";
 import {
@@ -188,8 +192,16 @@ export async function authRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       if (!row) fail(403, DISABLED_MESSAGE);
-      // Old sessions may be on someone else's device: end them all.
+      // Old sessions may be on someone else's device: end them all, and
+      // every agent connected under the old password with them.
       await db.query("DELETE FROM sessions WHERE user_id=$1", [row.id]);
+      await revokeConnections(
+        db,
+        { userId: row.id },
+        "password_reset",
+        row.id,
+        r.id,
+      );
       await audit(
         {
           actorId: row.id,
@@ -239,8 +251,71 @@ export async function authRoutes(app: FastifyInstance) {
         },
       });
     }
-    return issueSession(u, r.headers["user-agent"] ?? "");
+    return issueSession(u, r.headers["user-agent"] ?? "", {
+      reauthenticated: true,
+    });
   });
+
+  // Confirming it's you again, without a new session: the password (and a
+  // two-step code when it's on) or a passkey. Marks this session as just
+  // signed in for the next few minutes, which granting an outside agent
+  // write access needs. Failures are 403, never 401: a wrong password here
+  // mustn't sign the app out.
+  app.post("/me/reauth/options", strictRateLimit, async (r) => {
+    const u = await authenticate(r);
+    return authenticationOptions(u.email);
+  });
+  app.post(
+    "/me/reauth",
+    strictRateLimit,
+    async (r): Promise<Reauthenticated> => {
+      const u = await authenticate(r);
+      const d = reauthInput.parse(r.body);
+      let how: "password" | "passkey";
+      if ("password" in d) {
+        const row = (
+          await pool.query<UserRow>("SELECT * FROM users WHERE id=$1", [u.id])
+        ).rows[0];
+        if (!(await argon2.verify(row.password_hash, d.password)))
+          fail(403, "That password is incorrect.");
+        try {
+          await enforceTwoFactor(u.id, d.code || undefined);
+        } catch (e) {
+          if ((e as Error).message === TOTP_REQUIRED) fail(403, TOTP_REQUIRED);
+          fail(403, "That code didn't work. Try again.");
+        }
+        how = "password";
+      } else {
+        const who = await verifyAuthentication(d.handle, d.response as never);
+        if (who !== u.id)
+          fail(
+            403,
+            "That passkey didn't work. Try again, or use your password.",
+          );
+        how = "passkey";
+      }
+      const at = (
+        await pool.query<{ reauthenticated_at: Date }>(
+          `UPDATE sessions SET reauthenticated_at = now() WHERE token_hash = $1
+           RETURNING reauthenticated_at`,
+          [digest(bearerToken(r))],
+        )
+      ).rows[0].reauthenticated_at;
+      await audit({
+        actorId: u.id,
+        action: "user.reauthenticated",
+        targetType: "user",
+        targetId: u.id,
+        details: { how },
+        requestId: r.id,
+      });
+      return {
+        reauth_until: new Date(
+          at.getTime() + REAUTH_WINDOW_MINUTES * 60_000,
+        ).toISOString(),
+      };
+    },
+  );
 
   // Two-step verification. Setup stores an unconfirmed secret; enable proves a
   // code works and hands back one-time recovery codes; disable needs the
@@ -366,7 +441,9 @@ export async function authRoutes(app: FastifyInstance) {
       await pool.query<UserRow>("SELECT * FROM users WHERE id = $1", [userId])
     ).rows[0];
     if (!u || u.disabled) fail(403, DISABLED_MESSAGE);
-    return issueSession(u, r.headers["user-agent"] ?? "");
+    return issueSession(u, r.headers["user-agent"] ?? "", {
+      reauthenticated: true,
+    });
   });
 
   app.post("/auth/logout", async (r, reply) => {

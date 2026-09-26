@@ -13,10 +13,12 @@ import {
   type AgentToolset,
   agentKeyInput,
 } from "@orbyn/core";
-import { pool, transaction, type Queryable } from "../../db/pool.js";
+import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { digest } from "../../lib/auth.js";
 import { settings } from "../../lib/settings.js";
+import { emailEnabled } from "../../worker/channels/email.js";
+import { announceTo } from "../presence/live.js";
 
 /**
  * Connections for outside agents: agent keys made in Settings, old personal
@@ -37,6 +39,7 @@ type GrantRow = {
   team_ids: string[] | null;
   toolsets: AgentToolset[];
   flags: { hide_outside_content?: boolean } | null;
+  client_host: string | null;
   prefix: string | null;
   expires_at: Date | null;
   last_used_at: Date | null;
@@ -47,6 +50,7 @@ type GrantRow = {
 const GRANT_COLUMNS = `g.id, g.kind, g.name, g.client_name, g.access, g.personal,
   g.team_ids, g.toolsets, g.flags, g.expires_at, g.last_used_at, g.suspended_at,
   g.created_at,
+  (SELECT c.host FROM oauth_clients c WHERE c.id = g.client_id AND g.kind = 'oauth') AS client_host,
   (SELECT t.prefix FROM agent_tokens t WHERE t.grant_id = g.id AND t.kind = 'key' LIMIT 1) AS prefix`;
 
 /** Team names for display, for the teams a person is in. */
@@ -78,6 +82,7 @@ const view = (g: GrantRow, names: Map<string, string>): AgentGrant => ({
     .map((id) => ({ id, name: names.get(id)! })),
   toolsets: g.toolsets,
   hide_outside_content: !!g.flags?.hide_outside_content,
+  client_host: g.client_host ?? null,
   prefix: g.prefix,
   expires_at: g.expires_at?.toISOString() ?? null,
   last_used_at: g.last_used_at?.toISOString() ?? null,
@@ -90,6 +95,7 @@ const view = (g: GrantRow, names: Map<string, string>): AgentGrant => ({
  * days (as long as their credentials are kept, the list says they expired).
  */
 const LISTED = `g.revoked_at IS NULL
+  AND (g.kind <> 'oauth' OR g.authorized_at IS NOT NULL)
   AND (g.expires_at IS NULL OR g.expires_at > now() - interval '30 days')`;
 
 /** Connections that count against MAX_GRANTS: not revoked and not expired. */
@@ -111,6 +117,149 @@ export async function listGrants(
     teamNames(db, userId),
   ]);
   return rows.rows.map((g) => view(g, names));
+}
+
+/** One connection as the list shows it, or null when it's not the person's. */
+export async function grantView(
+  db: Queryable,
+  userId: string,
+  grantId: string,
+): Promise<AgentGrant | null> {
+  const [row, names] = await Promise.all([
+    db.query<GrantRow>(
+      `SELECT ${GRANT_COLUMNS} FROM agent_grants g WHERE g.id = $1 AND g.user_id = $2`,
+      [grantId, userId],
+    ),
+    teamNames(db, userId),
+  ]);
+  return row.rows[0] ? view(row.rows[0], names) : null;
+}
+
+/**
+ * Tells every copy of every service that agent access changed (a
+ * connection revoked or paused, a person signed out everywhere, an app
+ * blocked, a team's policy changed), on the orbyn_auth channel, so caches
+ * clear at once. Inside a transaction it's sent on commit, and never if
+ * it rolls back.
+ */
+export async function announceAuthChange(
+  db: Queryable,
+  change: {
+    grants?: string[];
+    users?: string[];
+    clients?: string[];
+    teams?: string[];
+    reason: string;
+  },
+): Promise<void> {
+  const payload = JSON.stringify({
+    ...change,
+    grants: change.grants?.slice(0, 200),
+    users: change.users?.slice(0, 200),
+  });
+  await db.query("SELECT pg_notify('orbyn_auth', $1)", [payload]);
+}
+
+/**
+ * A notice about outside agents: in the app, on the person's phones, and
+ * (for anything about their security) by email, delivered by the notifier.
+ */
+export async function noticeAgentEvent(
+  db: Queryable,
+  userId: string,
+  n: { ref: string; title: string; body: string; email?: boolean },
+): Promise<void> {
+  const email = !!n.email && (await emailEnabled());
+  await db.query(
+    `INSERT INTO notifications (user_id, item_id, item_version, channel, destination,
+       title, body, state, kind, ref)
+     SELECT u.id, NULL, 0, c.channel, c.destination, $2, $3,
+       CASE WHEN c.channel = 'inapp' THEN 'sent' ELSE 'pending' END, 'agent', $4
+     FROM users u
+     CROSS JOIN LATERAL (
+       SELECT 'inapp' AS channel, u.id::text AS destination
+       UNION ALL SELECT 'push', d.token FROM devices d WHERE d.user_id = u.id
+       UNION ALL SELECT 'email', u.email WHERE $5::boolean
+     ) c
+     WHERE u.id = $1 AND NOT u.disabled
+     ON CONFLICT DO NOTHING`,
+    [
+      userId,
+      n.title.slice(0, 200),
+      n.body.slice(0, 2000),
+      n.ref.slice(0, 200),
+      email,
+    ],
+  );
+  await announceTo(db as never, { user_id: userId }, "changed");
+}
+
+/** Why connections were ended in bulk. */
+export type RevokeReason =
+  "password_reset" | "admin_sign_out" | "disabled" | "client_blocked" | "admin";
+
+/**
+ * Ends every live connection a person has (by `userId`), or every one an
+ * app has (by `clientId`): their credentials go at once, what they did
+ * stays, and every copy is told (orbyn_auth). Agent keys and sign-ins are
+ * ended; an old API key's MCP access is left to the key itself (it keeps
+ * working with the REST API, so ending it here would protect nothing).
+ * Returns how many ended.
+ */
+export async function revokeConnections(
+  db: Db,
+  where: { userId?: string; clientId?: string },
+  reason: RevokeReason,
+  actorId: string | null,
+  requestId?: string,
+): Promise<number> {
+  if (!where.userId && !where.clientId) return 0;
+  const gone = (
+    await db.query<{ id: string; user_id: string; kind: string; name: string }>(
+      `UPDATE agent_grants SET revoked_at = now()
+        WHERE revoked_at IS NULL AND kind IN ('oauth', 'key')
+          AND ($1::uuid IS NULL OR user_id = $1)
+          AND ($2::text IS NULL OR client_id = $2)
+        RETURNING id, user_id, kind, name`,
+      [where.userId ?? null, where.clientId ?? null],
+    )
+  ).rows;
+  if (!gone.length) return 0;
+  const ids = gone.map((g) => g.id);
+  await db.query("DELETE FROM agent_tokens WHERE grant_id = ANY ($1::uuid[])", [
+    ids,
+  ]);
+  for (const g of gone.slice(0, 100))
+    await audit(
+      {
+        actorId,
+        action: g.kind === "key" ? "agent_key.revoked" : "agent_grant.revoked",
+        targetType: "agent_grant",
+        targetId: g.id,
+        details: { user_id: g.user_id, name: g.name, kind: g.kind, reason },
+        requestId,
+      },
+      db,
+    );
+  if (gone.length > 100)
+    await audit(
+      {
+        actorId,
+        action: "agent_grant.revoked_many",
+        targetType: where.clientId ? "oauth_client" : "user",
+        targetId: where.clientId ?? where.userId ?? null,
+        details: { count: gone.length, reason },
+        requestId,
+      },
+      db,
+    );
+  await announceAuthChange(db, {
+    grants: ids,
+    users: where.userId ? [where.userId] : undefined,
+    clients: where.clientId ? [where.clientId] : undefined,
+    reason,
+  });
+  return gone.length;
 }
 
 /**
@@ -152,7 +301,7 @@ export async function createAgentKey(
                  now() + make_interval(days => $8::int))
          RETURNING id, kind, name, client_name, access, personal, team_ids,
                    toolsets, flags, expires_at, last_used_at, suspended_at,
-                   created_at, NULL AS prefix`,
+                   created_at, NULL AS client_host, NULL AS prefix`,
         [
           userId,
           AGENT_KEY_CLIENT_ID,
@@ -219,6 +368,7 @@ export async function revokeGrant(
     ).rows[0];
     if (!gone) fail(404, "Connection not found");
     await db.query("DELETE FROM agent_tokens WHERE grant_id = $1", [grantId]);
+    await announceAuthChange(db, { grants: [grantId], reason });
     await audit(
       {
         actorId,
@@ -257,6 +407,15 @@ export async function suspendGrant(
       )
     ).rows[0];
     if (!row) return false;
+    await announceAuthChange(db, { grants: [row.id], reason: "suspended" });
+    await noticeAgentEvent(db, row.user_id, {
+      ref: `grant:${row.id}`,
+      title: `Orbyn paused “${row.name}”`,
+      body:
+        reason === "rate_limit"
+          ? "It kept going over its limits. Check its activity in Settings → Connected agents, then restore it or disconnect it."
+          : "It kept asking for things it can’t reach. Check its activity in Settings → Connected agents, then restore it or disconnect it.",
+    });
     await audit(
       {
         actorId: null,

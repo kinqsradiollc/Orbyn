@@ -32,6 +32,7 @@ import { ItemRow } from "../../components/ItemRow";
 import { RoleBadge } from "../../components/RoleBadge";
 import { stagger } from "../../lib/motion";
 import { TeamPlanning } from "./TeamPlanning";
+import { TeamAgents } from "./TeamAgents";
 
 /** Planner plumbing shared by the Teams and Admin views. */
 export type TeamActions = {
@@ -395,6 +396,15 @@ export function TeamDetail({
             <UserPlus size={15} /> Add member
           </button>
         </form>
+      )}
+
+      {!override && (
+        <TeamAgents
+          teamId={team.id}
+          teamName={team.name}
+          canManage={hasTeamPermission(team.role, "team:update")}
+          report={report}
+        />
       )}
 
       {!override && hasTeamPermission(team.role, "items:read") && (

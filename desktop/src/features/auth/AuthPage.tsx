@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { ArrowRight, KeyRound, Orbit } from "lucide-react";
 import { MINIMUM_AGE } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -14,6 +14,10 @@ type Props = {
   onSubmit: (mode: AuthMode, values: Record<string, string>) => void;
   twoFactorRequired?: boolean;
   onPasskey?: (email: string) => void;
+  /** Shown above the form (an app asking to connect). */
+  notice?: ReactNode;
+  /** Switch between sign-in and sign-up in place (keeping the address). */
+  onSwitchMode?: () => void;
 };
 
 export function AuthPage({
@@ -26,6 +30,8 @@ export function AuthPage({
   onSubmit,
   twoFactorRequired,
   onPasskey,
+  notice,
+  onSwitchMode,
 }: Props) {
   const register = initialMode === "register";
   /** The Terms version the checkbox agrees to; empty until it loads. */
@@ -94,6 +100,7 @@ export function AuthPage({
       </div>
       <main className="auth-form">
         <div className="auth-card fade-up motion-slow">
+          {notice}
           <span className="eyebrow">WELCOME TO YOUR SPACE</span>
           <h2>
             {register ? "A fresh start awaits." : "Good to have you back."}
@@ -223,7 +230,8 @@ export function AuthPage({
           <button
             className="text-button"
             onClick={() => {
-              onNavigate(register ? "/login" : "/signup");
+              if (onSwitchMode) onSwitchMode();
+              else onNavigate(register ? "/login" : "/signup");
               onClearError();
             }}
           >

@@ -234,7 +234,7 @@ test("401: no credential, an app session, a wrong key; each with the challenge",
     { jsonrpc: "2.0", id: 1, method: "tools/list" },
     bearer(me.token),
   );
-  assert.match(session.body.error.message, /not an app sign-in/);
+  assert.match(session.body.error.message, /not the app's/);
 });
 
 test("the protected-resource metadata names the canonical address and issuer", async () => {

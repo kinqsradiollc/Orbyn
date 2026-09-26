@@ -115,7 +115,7 @@ test("the endpoint needs a key, and never takes an app session", async () => {
     bearer(session),
   );
   assert.equal(browser.status, 401);
-  assert.match(browser.body.error.message, /not an app sign-in/);
+  assert.match(browser.body.error.message, /not the app's/);
 
   const wrong = await post(
     { jsonrpc: "2.0", id: 1, method: "tools/list" },

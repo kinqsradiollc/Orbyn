@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ArrowLeft,
+  Bot,
   BellRing,
   CircleDashed,
   Activity,
@@ -36,6 +37,7 @@ import { AdminDatabase } from "./AdminDatabase";
 import { AdminStorage } from "./AdminStorage";
 import { AdminRequests } from "./AdminRequests";
 import { AdminAnalytics } from "./AdminAnalytics";
+import { AdminAgents } from "./AdminAgents";
 import { AdminUserDetail } from "./AdminUserDetail";
 import { stagger } from "../../lib/motion";
 import "./insights.css";
@@ -50,6 +52,7 @@ type Tab =
   | "Database"
   | "Storage"
   | "AI"
+  | "Agents"
   | "System";
 
 const TABS: { label: Tab; icon: LucideIcon }[] = [
@@ -62,6 +65,7 @@ const TABS: { label: Tab; icon: LucideIcon }[] = [
   { label: "Database", icon: Database },
   { label: "Storage", icon: HardDrive },
   { label: "AI", icon: Sparkles },
+  { label: "Agents", icon: Bot },
   { label: "System", icon: ServerCog },
 ];
 
@@ -109,6 +113,7 @@ export function AdminView({
       (t.label !== "Analytics" || canSeeAnalytics) &&
       (t.label !== "Database" || canManageSystem) &&
       (t.label !== "Storage" || canManageSystem) &&
+      (t.label !== "Agents" || canManageSystem) &&
       (t.label !== "System" || canManageSystem),
   );
 
@@ -190,6 +195,9 @@ export function AdminView({
         <AdminStorage report={props.report} />
       )}
       {tab === "AI" && canManageAi && <AdminAi {...props} />}
+      {tab === "Agents" && canManageSystem && (
+        <AdminAgents report={props.report} />
+      )}
       {tab === "System" && canManageSystem && (
         <AdminSystem
           user={props.user}

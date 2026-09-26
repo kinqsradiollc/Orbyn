@@ -1,0 +1,215 @@
+/* Connecting an app (/oauth/authorize): one card, the auth page's layout. */
+.oauth-card {
+  max-width: 460px;
+  width: 100%;
+  display: grid;
+  gap: 14px;
+}
+.oauth-card h2 {
+  font-size: 24px;
+  letter-spacing: -0.5px;
+  margin: 4px 0 0;
+  text-wrap: balance;
+}
+.oauth-card .eyebrow {
+  margin-top: 12px;
+}
+.oauth-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.oauth-app {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.oauth-app-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.oauth-app-line svg {
+  flex: none;
+}
+.oauth-card .oauth-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-highBg);
+  color: var(--color-danger);
+  font-size: 12px;
+}
+.oauth-warn svg {
+  flex: none;
+  margin-top: 2px;
+}
+.oauth-card .oauth-existing {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-soft);
+  color: var(--color-textSoft);
+  font-size: 12px;
+}
+.oauth-card .oauth-problem {
+  color: var(--color-danger);
+}
+.oauth-account .link-button {
+  font-size: 13px;
+}
+.oauth-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.oauth-group legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.oauth-card .oauth-hint {
+  font-size: 12px;
+}
+.oauth-choice,
+.oauth-check,
+.oauth-switch {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.oauth-choice {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.oauth-choice.is-on {
+  border-color: var(--color-accent);
+  background: var(--color-accentSoft);
+}
+.oauth-choice input,
+.oauth-check input {
+  flex: none;
+  margin-top: 2px;
+}
+.oauth-switch input {
+  flex: none;
+}
+.oauth-choice > span,
+.oauth-check > span,
+.oauth-switch > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.oauth-choice small,
+.oauth-check small,
+.oauth-switch small {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.oauth-check {
+  padding: 4px 0;
+}
+.oauth-check.is-off {
+  color: var(--color-faint);
+  cursor: default;
+}
+.oauth-switch {
+  justify-content: space-between;
+  flex-direction: row-reverse;
+  padding: 6px 0;
+}
+.oauth-days {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.oauth-days > span {
+  margin-right: 4px;
+  color: var(--color-textSoft);
+}
+.oauth-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-textSoft);
+  font-size: 12px;
+}
+.oauth-chip.is-on {
+  border-color: transparent;
+  background: var(--color-accentSoft);
+  color: var(--color-accent);
+}
+.oauth-reauth {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-softBorder);
+  border-radius: var(--radius-md);
+  background: var(--color-soft);
+}
+.oauth-reauth p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.oauth-reauth form {
+  display: grid;
+  gap: 8px;
+}
+.oauth-reauth input {
+  width: 100%;
+  padding: 10px 12px;
+}
+.oauth-reauth-acts,
+.oauth-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.oauth-acts .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.oauth-card .oauth-foot {
+  font-size: 12px;
+}
+.oauth-signin-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.oauth-signin-note p {
+  margin: 0;
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .oauth-page .auth-form {
+    padding: 28px 16px;
+  }
+}

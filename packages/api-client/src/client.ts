@@ -104,6 +104,15 @@ import {
   type AgentsOverview,
   type NewAgentKey,
   type TeamAgentAccess,
+  type TeamAgentsView,
+  type AdminAgentClient,
+  type AdminAgentUsage,
+  type OAuthCheck,
+  type OAuthConsentInput,
+  type OAuthRedirect,
+  type OAuthRequest,
+  type ReauthInput,
+  type Reauthenticated,
   type BlockDuplicateInput,
   type BlockInput,
   type BlockUpdate,
@@ -1799,6 +1808,46 @@ export class OrbynClient {
   agentActivity(id: string) {
     return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
   }
+  /** Team settings → Outside agents: the policy, and (managers) who connects. */
+  teamAgents(teamId: string) {
+    return this.request<TeamAgentsView>(`/teams/${teamId}/agents`);
+  }
+  // ---- Signing in with Orbyn (the consent page) ----
+  /** What an app's sign-in request asks for; with your spaces when signed in. */
+  oauthCheck(request: OAuthRequest) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(request))
+      if (typeof v === "string") q.set(k, v);
+    return this.request<OAuthCheck>(`/oauth/authorize/check?${q}`);
+  }
+  /** Allow the request: where to send the browser back, with a code. */
+  oauthAllow(input: OAuthConsentInput) {
+    return this.request<OAuthRedirect>("/oauth/authorize", {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Decline the request: where to send the browser back, with an error. */
+  oauthDeny(request: OAuthRequest) {
+    return this.request<OAuthRedirect>("/oauth/authorize/deny", {
+      method: "POST",
+      body: { request },
+    });
+  }
+  /** Passkey options for confirming it's you (without a new session). */
+  reauthOptions() {
+    return this.request<{ handle: string; options: unknown }>(
+      "/me/reauth/options",
+      { method: "POST", body: {} },
+    );
+  }
+  /** Confirm it's you: password (and two-step code) or a passkey. */
+  reauth(input: ReauthInput) {
+    return this.request<Reauthenticated>("/me/reauth", {
+      method: "POST",
+      body: input,
+    });
+  }
   /** A team's cap on outside agents (owners and admins). */
   setTeamAgentAccess(teamId: string, agent_access: TeamAgentAccess) {
     return this.request<{ id: string; agent_access: TeamAgentAccess }>(
@@ -2072,6 +2121,20 @@ export class OrbynClient {
   /** Revoke one of an account's personal API keys (recorded in the audit log). */
   adminRevokeApiKey(id: string, keyId: string) {
     return this.request<void>(`/admin/users/${id}/api-keys/${keyId}`, {
+      method: "DELETE",
+    });
+  }
+  /** Admin: the apps that have signed in with Orbyn. */
+  adminAgentClients() {
+    return this.request<AdminAgentClient[]>("/admin/agents/clients");
+  }
+  /** Admin: agent use by app over the last `days`. */
+  adminAgentUsage(days = 30) {
+    return this.request<AdminAgentUsage>(`/admin/agents/usage?days=${days}`);
+  }
+  /** Admin: end one of an account's agent connections. */
+  adminRevokeUserAgent(id: string, grantId: string) {
+    return this.request<void>(`/admin/users/${id}/agents/${grantId}`, {
       method: "DELETE",
     });
   }

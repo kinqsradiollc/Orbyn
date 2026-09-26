@@ -1,0 +1,104 @@
+/* Admin → Agents. */
+.agents-admin {
+  padding-bottom: 20px;
+}
+.agents-admin > :not(.section-heading) {
+  margin-left: 21px;
+  margin-right: 21px;
+}
+.agents-admin .section-heading {
+  flex-wrap: wrap;
+}
+.agents-admin .section-heading h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.agents-admin-lead {
+  margin-top: -6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.agents-admin-switches {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.agents-admin-switch > span {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.agents-admin-switch small {
+  color: var(--color-muted);
+  font-weight: 400;
+  font-size: 12px;
+}
+.agents-admin-hosts {
+  display: grid;
+  gap: 8px;
+  max-width: 460px;
+  margin-bottom: 16px;
+}
+.agents-admin-hosts label {
+  font-size: 12px;
+  font-weight: 500;
+}
+.agents-admin-hosts textarea {
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.agents-admin-hosts .secondary {
+  justify-self: start;
+}
+.agents-admin .table-scroll {
+  overflow-x: auto;
+}
+.agents-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.agents-admin-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+.agents-admin-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--color-divider);
+  vertical-align: top;
+}
+.agents-admin-table td strong,
+.agents-admin-table td small {
+  display: block;
+}
+.agents-admin-table tr.is-blocked td {
+  color: var(--color-faint);
+}
+.agents-admin-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 16px;
+}
+.agents-admin-limits label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.agents-admin-limits input {
+  padding: 9px 12px;
+}
+.agents-admin-save {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}

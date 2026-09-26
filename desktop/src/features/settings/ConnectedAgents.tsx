@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bot, Copy, KeyRound, Plus, Terminal } from "lucide-react";
+import { Bot, Copy, Globe, KeyRound, Plus, Terminal } from "lucide-react";
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
   AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
   AGENT_SETUP_LABELS,
-  AGENT_SOON_CLIENTS,
+  AGENT_SIGN_IN_STEPS,
   agentExpiryText,
   agentSetup,
+  isSignInClient,
   type AgentAccess,
   type AgentActivity,
   type AgentGrant,
@@ -40,7 +41,14 @@ const EXPIRY_CHOICES = [7, 30, 90, 365];
 function clientLabel(g: AgentGrant) {
   if (g.kind === "legacy") return "API key";
   if (g.kind === "key") return "Agent key";
-  return g.client_name || "App";
+  return "Signed in";
+}
+
+/** A connection's title in the list. */
+function grantTitle(g: AgentGrant) {
+  if (g.kind === "legacy") return `API key “${g.name}”`;
+  if (g.kind === "key") return `Agent key “${g.name}”`;
+  return g.client_name || "An app";
 }
 
 /** "Personal, Design team" for a connection's spaces. */
@@ -114,12 +122,15 @@ export function ConnectedAgents({ report }: Props) {
 
   const revoke = async (g: AgentGrant) => {
     const legacy = g.kind === "legacy";
+    const app = g.kind === "oauth";
     if (
       !(await ask({
         title: legacy
           ? `Disconnect “${g.name}” from agents? It keeps working with the API and CalDAV.`
-          : `Revoke “${g.name}”? The agent using it stops working at once.`,
-        confirmLabel: legacy ? "Disconnect" : "Revoke",
+          : app
+            ? `Disconnect ${grantTitle(g)}? It stops working at once, and has to ask you again to reconnect.`
+            : `Revoke “${g.name}”? The agent using it stops working at once.`,
+        confirmLabel: legacy || app ? "Disconnect" : "Revoke",
         destructive: true,
       }))
     )
@@ -127,7 +138,9 @@ export function ConnectedAgents({ report }: Props) {
     void action.run(async () => {
       await client.revokeAgent(g.id);
       await load();
-      return legacy ? `Disconnected “${g.name}”.` : `Revoked “${g.name}”.`;
+      return legacy || app
+        ? `Disconnected ${app ? grantTitle(g) : `“${g.name}”`}.`
+        : `Revoked “${g.name}”.`;
     });
   };
 
@@ -162,9 +175,10 @@ export function ConnectedAgents({ report }: Props) {
       </h2>
       <div className="agents-head">
         <p className="muted">
-          AI agents you’ve let into Orbyn, like Claude Code, Codex and Cursor.
-          They can only see what you can, in the spaces you choose. Each one
-          uses its own AI: Orbyn sends it only what it asks for.
+          AI agents you’ve let into Orbyn, like Claude, ChatGPT, Claude Code,
+          Codex and Cursor. They can only see what you can, in the spaces you
+          choose. Each one uses its own AI: Orbyn sends it only what it asks
+          for.
         </p>
         <button type="button" className="primary" onClick={openConnect}>
           <Plus size={14} /> Connect an agent
@@ -184,15 +198,21 @@ export function ConnectedAgents({ report }: Props) {
                 <span className="agents-icon" aria-hidden="true">
                   {g.kind === "legacy" ? (
                     <KeyRound size={15} />
+                  ) : g.kind === "oauth" ? (
+                    <Globe size={15} />
                   ) : (
                     <Terminal size={15} />
                   )}
                 </span>
                 <div className="agents-main">
                   <strong>
-                    {g.kind === "legacy"
-                      ? `API key “${g.name}”`
-                      : `Agent key “${g.name}”`}
+                    {grantTitle(g)}
+                    {g.client_host && (
+                      <span className="agents-host muted">
+                        {" "}
+                        · {g.client_host}
+                      </span>
+                    )}
                   </strong>
                   <div className="agents-tags">
                     <span className="agents-tag is-read">See</span>
@@ -275,7 +295,7 @@ export function ConnectedAgents({ report }: Props) {
                       disabled={action.pending}
                       onClick={() => void revoke(g)}
                     >
-                      {g.kind === "legacy" ? "Disconnect" : "Revoke"}
+                      {g.kind === "key" ? "Revoke" : "Disconnect"}
                     </button>
                   </div>
                   {open !== undefined && (
@@ -305,8 +325,9 @@ export function ConnectedAgents({ report }: Props) {
         </ul>
       ) : (
         <p className="muted agents-empty">
-          No agents yet. Connect one below: it gets an agent key that you can
-          revoke at any time.
+          No agents yet. Connect one below: Claude and ChatGPT sign in with
+          Orbyn and ask you what they may do; other apps get an agent key.
+          Disconnect any of them at any time.
         </p>
       )}
       {overview &&
@@ -353,7 +374,8 @@ function ConnectAgent({
   onCreated: () => void;
   report: (e: unknown) => void;
 }) {
-  const [tab, setTab] = useState<AgentSetupClient>("claude-code");
+  const [tab, setTab] = useState<AgentSetupClient>("claude");
+  const signIn = isSignInClient(tab);
   const [name, setName] = useState("");
   const [access, setAccess] = useState<AgentAccess>("read");
   const [personal, setPersonal] = useState(true);
@@ -415,167 +437,189 @@ function ConnectAgent({
             {AGENT_SETUP_LABELS[c]}
           </button>
         ))}
-        {AGENT_SOON_CLIENTS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            role="tab"
-            aria-selected={false}
-            disabled
-            title="Coming soon"
-          >
-            {c} <span className="agents-soon">Soon</span>
-          </button>
-        ))}
       </div>
 
-      <ol className="agents-steps">
-        <li>
-          <span className="agents-step-title">Make an agent key</span>
-          {fresh ? (
-            <div className="secret-box" role="status">
-              <strong>Your new agent key</strong>
-              <div className="secret-row">
-                <code>{fresh}</code>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => copy(fresh, "key")}
-                >
-                  <Copy size={13} /> {copied === "key" ? "Copied" : "Copy"}
-                </button>
-              </div>
-              <small>
-                Copy it now. For your safety it won’t be shown again. It’s
-                filled in below.
-              </small>
+      {signIn ? (
+        <ol className="agents-steps">
+          <li>
+            <span className="agents-step-title">{setup.where}</span>
+            <div className="agents-snippet">
+              <pre>
+                <code>{setup.snippet}</code>
+              </pre>
               <button
                 type="button"
-                className="link-button agents-another"
-                onClick={() => setFresh(null)}
+                className="secondary"
+                onClick={() => copy(setup.snippet, "snippet")}
               >
-                Make another key
+                <Copy size={13} /> {copied === "snippet" ? "Copied" : "Copy"}
               </button>
             </div>
-          ) : !open ? (
-            <button type="button" className="secondary" onClick={onOpen}>
-              <KeyRound size={14} /> Make a key
-            </button>
-          ) : (
-            <form className="agents-form" onSubmit={create}>
-              <div className="settings-field">
-                <label htmlFor="agent-key-name">Name</label>
-                <input
-                  id="agent-key-name"
-                  maxLength={80}
-                  placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div className="settings-field">
-                <label htmlFor="agent-key-access">What it may do</label>
-                <Select
-                  id="agent-key-access"
-                  value={access}
-                  onChange={(e) => setAccess(e.target.value as AgentAccess)}
-                >
-                  {AGENT_ACCESS.map((a) => (
-                    <option key={a} value={a}>
-                      {AGENT_ACCESS_LABELS[a].name}
-                    </option>
-                  ))}
-                </Select>
-                <small className="muted">
-                  {AGENT_ACCESS_LABELS[access].blurb}
-                  {access !== "read" &&
-                    " For now agents can only read; changes arrive soon."}
+          </li>
+          {AGENT_SIGN_IN_STEPS[tab as keyof typeof AGENT_SIGN_IN_STEPS].map(
+            (step) => (
+              <li key={step}>
+                <span className="agents-step-title">{step}</span>
+              </li>
+            ),
+          )}
+          <li className="agents-step-note">
+            <small className="muted">
+              No key needed: {AGENT_SETUP_LABELS[tab]} signs in with Orbyn, and
+              Orbyn asks you what it may do and in which spaces. Giving it write
+              access asks for your password or passkey again.
+            </small>
+          </li>
+        </ol>
+      ) : (
+        <ol className="agents-steps">
+          <li>
+            <span className="agents-step-title">Make an agent key</span>
+            {fresh ? (
+              <div className="secret-box" role="status">
+                <strong>Your new agent key</strong>
+                <div className="secret-row">
+                  <code>{fresh}</code>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => copy(fresh, "key")}
+                  >
+                    <Copy size={13} /> {copied === "key" ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <small>
+                  Copy it now. For your safety it won’t be shown again. It’s
+                  filled in below.
                 </small>
+                <button
+                  type="button"
+                  className="link-button agents-another"
+                  onClick={() => setFresh(null)}
+                >
+                  Make another key
+                </button>
               </div>
-              <fieldset className="check-group">
-                <legend>In these spaces</legend>
-                <div className="check-grid">
-                  <label className="check-line">
-                    <input
-                      type="checkbox"
-                      checked={personal}
-                      onChange={(e) => setPersonal(e.target.checked)}
-                    />
-                    Personal
-                  </label>
-                  {teams.map((t) => (
-                    <label key={t.id} className="check-line">
+            ) : !open ? (
+              <button type="button" className="secondary" onClick={onOpen}>
+                <KeyRound size={14} /> Make a key
+              </button>
+            ) : (
+              <form className="agents-form" onSubmit={create}>
+                <div className="settings-field">
+                  <label htmlFor="agent-key-name">Name</label>
+                  <input
+                    id="agent-key-name"
+                    maxLength={80}
+                    placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="agent-key-access">What it may do</label>
+                  <Select
+                    id="agent-key-access"
+                    value={access}
+                    onChange={(e) => setAccess(e.target.value as AgentAccess)}
+                  >
+                    {AGENT_ACCESS.map((a) => (
+                      <option key={a} value={a}>
+                        {AGENT_ACCESS_LABELS[a].name}
+                      </option>
+                    ))}
+                  </Select>
+                  <small className="muted">
+                    {AGENT_ACCESS_LABELS[access].blurb}
+                    {access !== "read" &&
+                      " For now agents can only read; changes arrive soon."}
+                  </small>
+                </div>
+                <fieldset className="check-group">
+                  <legend>In these spaces</legend>
+                  <div className="check-grid">
+                    <label className="check-line">
                       <input
                         type="checkbox"
-                        checked={teamIds.includes(t.id)}
-                        onChange={(e) =>
-                          setTeamIds((ids) =>
-                            e.target.checked
-                              ? [...ids, t.id]
-                              : ids.filter((x) => x !== t.id),
-                          )
-                        }
+                        checked={personal}
+                        onChange={(e) => setPersonal(e.target.checked)}
                       />
-                      {t.name}
+                      Personal
                     </label>
-                  ))}
+                    {teams.map((t) => (
+                      <label key={t.id} className="check-line">
+                        <input
+                          type="checkbox"
+                          checked={teamIds.includes(t.id)}
+                          onChange={(e) =>
+                            setTeamIds((ids) =>
+                              e.target.checked
+                                ? [...ids, t.id]
+                                : ids.filter((x) => x !== t.id),
+                            )
+                          }
+                        />
+                        {t.name}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <label className="switch-line">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    className="ai-switch"
+                    checked={hideOutside}
+                    onChange={(e) => setHideOutside(e.target.checked)}
+                  />
+                  <span>
+                    Hide outside content
+                    <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
+                  </span>
+                </label>
+                <div className="settings-field">
+                  <label htmlFor="agent-key-days">Lasts</label>
+                  <Select
+                    id="agent-key-days"
+                    value={days}
+                    onChange={(e) => setDays(Number(e.target.value))}
+                  >
+                    {EXPIRY_CHOICES.map((d) => (
+                      <option key={d} value={d}>
+                        {d === 365 ? "A year" : `${d} days`}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
-              </fieldset>
-              <label className="switch-line">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  className="ai-switch"
-                  checked={hideOutside}
-                  onChange={(e) => setHideOutside(e.target.checked)}
-                />
-                <span>
-                  Hide outside content
-                  <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
-                </span>
-              </label>
-              <div className="settings-field">
-                <label htmlFor="agent-key-days">Lasts</label>
-                <Select
-                  id="agent-key-days"
-                  value={days}
-                  onChange={(e) => setDays(Number(e.target.value))}
-                >
-                  {EXPIRY_CHOICES.map((d) => (
-                    <option key={d} value={d}>
-                      {d === 365 ? "A year" : `${d} days`}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <button className="primary" disabled={action.pending}>
-                <KeyRound size={14} /> Make key
+                <button className="primary" disabled={action.pending}>
+                  <KeyRound size={14} /> Make key
+                </button>
+              </form>
+            )}
+            <OutcomeNote outcome={action.outcome} />
+          </li>
+          <li>
+            <span className="agents-step-title">{setup.where}</span>
+            <div className="agents-snippet">
+              <pre>
+                <code>{setup.snippet}</code>
+              </pre>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => copy(setup.snippet, "snippet")}
+              >
+                <Copy size={13} /> {copied === "snippet" ? "Copied" : "Copy"}
               </button>
-            </form>
-          )}
-          <OutcomeNote outcome={action.outcome} />
-        </li>
-        <li>
-          <span className="agents-step-title">{setup.where}</span>
-          <div className="agents-snippet">
-            <pre>
-              <code>{setup.snippet}</code>
-            </pre>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => copy(setup.snippet, "snippet")}
-            >
-              <Copy size={13} /> {copied === "snippet" ? "Copied" : "Copy"}
-            </button>
-          </div>
-          <small className="muted">
-            The address is <code>{url || "https://mcp.orbyn.dev/mcp"}</code>.
-            Keep the key private, and revoke it here when you stop using the
-            agent.
-          </small>
-        </li>
-      </ol>
+            </div>
+            <small className="muted">
+              The address is <code>{url || "https://mcp.orbyn.dev/mcp"}</code>.
+              Keep the key private, and revoke it here when you stop using the
+              agent.
+            </small>
+          </li>
+        </ol>
+      )}
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
   authenticate,
   isApiKeyRequest,
   isMcpPath,
+  isOAuthOpenPath,
 } from "../lib/auth.js";
 import { mcpOriginAllowed } from "../lib/mcp-origins.js";
 import { cachedSettings, settings } from "../lib/settings.js";
@@ -138,9 +139,25 @@ export async function createService(
     ],
     maxAge: 600,
   };
+  // The OAuth endpoints apps call themselves (metadata, token, revoke,
+  // register) answer any page: browser-based agents sign in from their own
+  // origin, and nothing there uses cookies.
+  const oauthCors = {
+    origin: "*",
+    methods: ["GET", "POST"],
+    exposedHeaders: ["WWW-Authenticate", "Retry-After"],
+    maxAge: 600,
+  };
   await app.register(cors, {
     delegator: (req, cb) => {
-      cb(null, isMcpPath(req.url) ? mcpCors : appCors);
+      cb(
+        null,
+        isMcpPath(req.url)
+          ? mcpCors
+          : isOAuthOpenPath(req.url)
+            ? oauthCors
+            : appCors,
+      );
     },
   });
   // Sign-in and AI routes set their own stricter limits, which always apply.

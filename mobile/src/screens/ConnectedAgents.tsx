@@ -6,9 +6,10 @@ import {
   AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
   AGENT_SETUP_LABELS,
-  AGENT_SOON_CLIENTS,
+  AGENT_SIGN_IN_STEPS,
   agentExpiryText,
   agentSetup,
+  isSignInClient,
   type AgentAccess,
   type AgentActivity,
   type AgentGrant,
@@ -46,6 +47,14 @@ const spacesText = (g: AgentGrant) =>
         ", ",
       ) || "No spaces";
 
+/** A connection's title in the list. */
+const grantTitle = (g: AgentGrant) =>
+  g.kind === "legacy"
+    ? `API key “${g.name}”`
+    : g.kind === "key"
+      ? `Agent key “${g.name}”`
+      : g.client_name || "An app";
+
 /**
  * Settings → Connections → Connected agents, on the phone: the AI agents
  * let into Orbyn over MCP (agent keys, and old API keys used there), what
@@ -63,7 +72,7 @@ export function ConnectedAgentsCard({
   const [activity, setActivity] = useState<
     Record<string, AgentActivity[] | null>
   >({});
-  const [tab, setTab] = useState<AgentSetupClient>("claude-code");
+  const [tab, setTab] = useState<AgentSetupClient>("claude");
   const [making, setMaking] = useState(false);
   const [name, setName] = useState("");
   const [access, setAccess] = useState<AgentAccess>("read");
@@ -100,13 +109,20 @@ export function ConnectedAgentsCard({
 
   const revoke = (g: AgentGrant) => {
     const legacy = g.kind === "legacy";
+    const app = g.kind === "oauth";
     // Asked in a way that also works in the web build (Alert doesn't there).
     confirmAction(
-      legacy ? `Disconnect ${g.name} from agents?` : `Revoke ${g.name}?`,
+      legacy
+        ? `Disconnect ${g.name} from agents?`
+        : app
+          ? `Disconnect ${grantTitle(g)}?`
+          : `Revoke ${g.name}?`,
       legacy
         ? "It keeps working with the API and CalDAV."
-        : "The agent using it stops working at once.",
-      legacy ? "Disconnect" : "Revoke",
+        : app
+          ? "It stops working at once, and has to ask you again to reconnect."
+          : "The agent using it stops working at once.",
+      legacy || app ? "Disconnect" : "Revoke",
       () =>
         void run(async () => {
           await client.revokeAgent(g.id);
@@ -148,8 +164,8 @@ export function ConnectedAgentsCard({
       <Text style={[shared.eyebrow, s.eyebrow]}>CONNECTED AGENTS</Text>
       <View style={shared.card}>
         <Text style={[shared.small, s.gap]}>
-          AI agents you’ve let into Orbyn, like Claude Code, Codex and Cursor.
-          They can only see what you can, in the spaces you choose.
+          AI agents you’ve let into Orbyn, like Claude, ChatGPT, Claude Code and
+          Codex. They can only see what you can, in the spaces you choose.
         </Text>
         {overview === null ? (
           <Text style={shared.small}>Loading…</Text>
@@ -160,9 +176,10 @@ export function ConnectedAgentsCard({
             return (
               <View key={g.id} style={s.row}>
                 <Text style={s.rowTitle}>
-                  {g.kind === "legacy"
-                    ? `API key “${g.name}”`
-                    : `Agent key “${g.name}”`}
+                  {grantTitle(g)}
+                  {g.client_host ? (
+                    <Text style={shared.small}> · {g.client_host}</Text>
+                  ) : null}
                 </Text>
                 <View style={s.tags}>
                   <Pill label="See" tone="accent" />
@@ -268,153 +285,171 @@ export function ConnectedAgentsCard({
               onPress={() => setTab(c)}
             />
           ))}
-          {AGENT_SOON_CLIENTS.map((c) => (
-            <Chip
-              key={c}
-              label={`${c} · soon`}
-              selected={false}
-              disabled
-              onPress={() => {}}
-            />
-          ))}
         </ChipRow>
 
-        <Text style={[shared.label, s.step]}>1. Make an agent key</Text>
-        {fresh ? (
-          <FadeIn style={s.secret}>
-            <Text style={shared.label}>
-              Copy it now, it won’t be shown again
-            </Text>
-            <Text selectable style={s.code}>
-              {fresh}
-            </Text>
-            <View style={s.actions}>
-              <Button
-                title="Copy or share"
-                icon="share"
-                style={s.flexButton}
-                onPress={() => void shareText(fresh)}
-              />
-              <Button
-                secondary
-                title="Done"
-                style={s.flexButton}
-                onPress={() => setFresh(null)}
-              />
-            </View>
-          </FadeIn>
-        ) : making ? (
+        {isSignInClient(tab) ? (
           <>
-            <Field label="Name">
-              <TextInput
-                style={shared.input}
-                value={name}
-                onChangeText={setName}
-                maxLength={80}
-                placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
-                placeholderTextColor={colors.faint}
-                accessibilityLabel="Agent key name"
-              />
-            </Field>
-            <Field
-              label="What it may do"
-              hint={
-                AGENT_ACCESS_LABELS[access].blurb +
-                (access === "read"
-                  ? ""
-                  : " For now agents can only read; changes arrive soon.")
-              }
-            >
-              <ChipRow label="What it may do">
-                {AGENT_ACCESS.map((a) => (
-                  <Chip
-                    key={a}
-                    label={AGENT_ACCESS_LABELS[a].name}
-                    selected={access === a}
-                    onPress={() => setAccess(a)}
-                  />
-                ))}
-              </ChipRow>
-            </Field>
-            <Field label="In these spaces">
-              <ChipRow label="Spaces" multi>
-                <Chip
-                  multi
-                  label="Personal"
-                  selected={personal}
-                  onPress={() => setPersonal(!personal)}
-                />
-                {teams.map((t) => {
-                  const on = teamIds.includes(t.id);
-                  return (
-                    <Chip
-                      key={t.id}
-                      multi
-                      label={t.name}
-                      selected={on}
-                      onPress={() =>
-                        setTeamIds(
-                          on
-                            ? teamIds.filter((x) => x !== t.id)
-                            : [...teamIds, t.id],
-                        )
-                      }
-                    />
-                  );
-                })}
-              </ChipRow>
-            </Field>
-            <Field label="Lasts">
-              <ChipRow label="Lasts">
-                {EXPIRY_CHOICES.map((d) => (
-                  <Chip
-                    key={d}
-                    label={d === 365 ? "A year" : `${d} days`}
-                    selected={days === d}
-                    onPress={() => setDays(d)}
-                  />
-                ))}
-              </ChipRow>
-            </Field>
-            <View style={s.switchRow}>
-              <View style={s.flex}>
-                <Text style={shared.label}>Hide outside content</Text>
-                <Text style={shared.small}>{AGENT_HIDE_OUTSIDE_TEXT}</Text>
-              </View>
-              <Switch
-                value={hideOutside}
-                onValueChange={setHideOutside}
-                trackColor={{ true: colors.accent }}
-                accessibilityLabel="Hide outside content"
-              />
-            </View>
-            <Button
-              title="Make key"
-              icon="key"
-              style={s.last}
-              disabled={busy}
-              onPress={make}
+            <Text style={[shared.label, s.step]}>1. {setup.where}</Text>
+            <Text selectable style={s.code}>
+              {setup.snippet}
+            </Text>
+            <SmallAction
+              label="Copy or share"
+              disabled={false}
+              onPress={() => void shareText(setup.snippet)}
             />
+            {AGENT_SIGN_IN_STEPS[tab as keyof typeof AGENT_SIGN_IN_STEPS].map(
+              (step, i) => (
+                <Text key={step} style={[shared.small, s.step]}>
+                  {i + 2}. {step}
+                </Text>
+              ),
+            )}
+            <Text style={[shared.small, s.step]}>
+              No key needed: Orbyn asks you what it may do and in which spaces.
+              Giving it write access asks for your password or passkey again.
+            </Text>
           </>
         ) : (
-          <Button
-            secondary
-            title="Make a key"
-            icon="key"
-            style={s.last}
-            onPress={() => setMaking(true)}
-          />
-        )}
+          <>
+            <Text style={[shared.label, s.step]}>1. Make an agent key</Text>
+            {fresh ? (
+              <FadeIn style={s.secret}>
+                <Text style={shared.label}>
+                  Copy it now, it won’t be shown again
+                </Text>
+                <Text selectable style={s.code}>
+                  {fresh}
+                </Text>
+                <View style={s.actions}>
+                  <Button
+                    title="Copy or share"
+                    icon="share"
+                    style={s.flexButton}
+                    onPress={() => void shareText(fresh)}
+                  />
+                  <Button
+                    secondary
+                    title="Done"
+                    style={s.flexButton}
+                    onPress={() => setFresh(null)}
+                  />
+                </View>
+              </FadeIn>
+            ) : making ? (
+              <>
+                <Field label="Name">
+                  <TextInput
+                    style={shared.input}
+                    value={name}
+                    onChangeText={setName}
+                    maxLength={80}
+                    placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Agent key name"
+                  />
+                </Field>
+                <Field
+                  label="What it may do"
+                  hint={
+                    AGENT_ACCESS_LABELS[access].blurb +
+                    (access === "read"
+                      ? ""
+                      : " For now agents can only read; changes arrive soon.")
+                  }
+                >
+                  <ChipRow label="What it may do">
+                    {AGENT_ACCESS.map((a) => (
+                      <Chip
+                        key={a}
+                        label={AGENT_ACCESS_LABELS[a].name}
+                        selected={access === a}
+                        onPress={() => setAccess(a)}
+                      />
+                    ))}
+                  </ChipRow>
+                </Field>
+                <Field label="In these spaces">
+                  <ChipRow label="Spaces" multi>
+                    <Chip
+                      multi
+                      label="Personal"
+                      selected={personal}
+                      onPress={() => setPersonal(!personal)}
+                    />
+                    {teams.map((t) => {
+                      const on = teamIds.includes(t.id);
+                      return (
+                        <Chip
+                          key={t.id}
+                          multi
+                          label={t.name}
+                          selected={on}
+                          onPress={() =>
+                            setTeamIds(
+                              on
+                                ? teamIds.filter((x) => x !== t.id)
+                                : [...teamIds, t.id],
+                            )
+                          }
+                        />
+                      );
+                    })}
+                  </ChipRow>
+                </Field>
+                <Field label="Lasts">
+                  <ChipRow label="Lasts">
+                    {EXPIRY_CHOICES.map((d) => (
+                      <Chip
+                        key={d}
+                        label={d === 365 ? "A year" : `${d} days`}
+                        selected={days === d}
+                        onPress={() => setDays(d)}
+                      />
+                    ))}
+                  </ChipRow>
+                </Field>
+                <View style={s.switchRow}>
+                  <View style={s.flex}>
+                    <Text style={shared.label}>Hide outside content</Text>
+                    <Text style={shared.small}>{AGENT_HIDE_OUTSIDE_TEXT}</Text>
+                  </View>
+                  <Switch
+                    value={hideOutside}
+                    onValueChange={setHideOutside}
+                    trackColor={{ true: colors.accent }}
+                    accessibilityLabel="Hide outside content"
+                  />
+                </View>
+                <Button
+                  title="Make key"
+                  icon="key"
+                  style={s.last}
+                  disabled={busy}
+                  onPress={make}
+                />
+              </>
+            ) : (
+              <Button
+                secondary
+                title="Make a key"
+                icon="key"
+                style={s.last}
+                onPress={() => setMaking(true)}
+              />
+            )}
 
-        <Text style={[shared.label, s.step]}>2. {setup.where}</Text>
-        <Text selectable style={s.code}>
-          {setup.snippet}
-        </Text>
-        <SmallAction
-          label="Copy or share"
-          disabled={false}
-          onPress={() => void shareText(setup.snippet)}
-        />
+            <Text style={[shared.label, s.step]}>2. {setup.where}</Text>
+            <Text selectable style={s.code}>
+              {setup.snippet}
+            </Text>
+            <SmallAction
+              label="Copy or share"
+              disabled={false}
+              onPress={() => void shareText(setup.snippet)}
+            />
+          </>
+        )}
       </View>
     </>
   );

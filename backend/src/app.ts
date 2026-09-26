@@ -6,6 +6,7 @@ import { userRoutes } from "./modules/users/routes.js";
 import { inboundRoutes } from "./modules/inbound/routes.js";
 import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
 import { agentRoutes } from "./modules/agents/routes.js";
+import { oauthRoutes } from "./modules/oauth/routes.js";
 import { davRoutes } from "./modules/dav/routes.js";
 import { itemRoutes } from "./modules/items/routes.js";
 import { deviceRoutes } from "./modules/devices/routes.js";
@@ -63,6 +64,9 @@ export const serviceModules: Record<
     importRoutes,
     inboundRoutes,
     agentRoutes,
+    // Signing in with Orbyn for outside agents (OAuth): the authorization
+    // server, its metadata and the consent page's routes.
+    oauthRoutes,
     davRoutes,
     itemRoutes,
     deviceRoutes,

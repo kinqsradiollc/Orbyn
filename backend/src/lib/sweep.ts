@@ -218,6 +218,17 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "agent_grants",
+    label: "Unfinished agent sign-ins",
+    detail:
+      "Agent sign-ins that were allowed but never finished by the app, after a day.",
+    table: "agent_grants",
+    where: `kind = 'oauth' AND authorized_at IS NULL
+      AND created_at < now() - interval '1 day'`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "mcp_request_state",
     label: "Agent request seals",
     detail: "Single-use handles and replay records for agent calls.",

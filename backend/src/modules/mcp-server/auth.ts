@@ -1,7 +1,9 @@
 import { getOAuthProtectedResourceMetadataUrl } from "@modelcontextprotocol/server";
 import {
+  AGENT_ACCESS_RANK,
   AGENT_TOOLSETS,
   LEGACY_KEY_CLIENT_ID,
+  grantedScopes,
   type AgentAccess,
   type AgentGrantKind,
   type AgentToolset,
@@ -11,15 +13,18 @@ import { pool } from "../../db/pool.js";
 import { DISABLED_MESSAGE, apiKeyOwner, digest } from "../../lib/auth.js";
 import type { LiveSettings } from "../../lib/settings.js";
 import {
+  policy,
   reachableTeams,
   type Principal,
   type Via,
 } from "../../capabilities/policy.js";
+import type { Capability } from "../../capabilities/registry.js";
 import { legacyGrant } from "../agents/service.js";
+import { hostAllowed } from "../oauth/clients.js";
 
 /**
  * Who is calling the MCP address: an agent key (oak_), an agent access
- * token (oat_, from phase A2's sign-in), or an old personal API key (ok_)
+ * token (oat_, from signing in with Orbyn), or an old personal API key (ok_)
  * for its 90 days. Everything else, an app's own session included, is
  * refused with 401 and a challenge naming where to sign in (RFC 9728).
  * The principal is built from live data on every call, so a revoked key,
@@ -41,7 +46,7 @@ export class McpAuthError extends Error {
 export const resourceMetadataUrl = () =>
   getOAuthProtectedResourceMetadataUrl(new URL(env.MCP_PUBLIC_URL));
 
-/** The scopes an agent can ask for (shown to clients, used from phase A2). */
+/** The scopes an agent can ask for here (RFC 9728 scopes_supported). */
 export const SCOPES = [
   "orbyn:read",
   "orbyn:propose",
@@ -75,6 +80,8 @@ type GrantRow = {
   personal: boolean;
   toolsets: AgentToolset[];
   flags: { notify_teammates?: boolean; hide_outside_content?: boolean };
+  client_blocked: boolean | null;
+  client_host: string | null;
   expires_at: Date | null;
   token_expires_at: Date | null;
   resource: string | null;
@@ -139,10 +146,12 @@ async function principalFor(
 const GRANT_SELECT = `SELECT g.id AS grant_id, g.kind, g.client_id, g.client_name, g.name,
     g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
     t.expires_at AS token_expires_at, t.resource, g.last_write_at,
-    g.suspended_at, g.revoked_at, u.id AS user_id, u.name AS user_name, u.disabled
+    g.suspended_at, g.revoked_at, u.id AS user_id, u.name AS user_name, u.disabled,
+    c.blocked AS client_blocked, c.host AS client_host
   FROM agent_tokens t
   JOIN agent_grants g ON g.id = t.grant_id
-  JOIN users u ON u.id = g.user_id`;
+  JOIN users u ON u.id = g.user_id
+  LEFT JOIN oauth_clients c ON c.id = g.client_id`;
 
 /** Checks shared by every kind of connection. */
 function check(row: GrantRow, s: LiveSettings) {
@@ -157,10 +166,21 @@ function check(row: GrantRow, s: LiveSettings) {
       403,
       "This connection is suspended. Its owner can restore it in Settings → Connected agents.",
     );
-  if (row.client_id && s.agents.blocked_client_ids.includes(row.client_id))
+  if (
+    row.client_blocked ||
+    (row.client_id && s.agents.blocked_client_ids.includes(row.client_id))
+  )
     throw new McpAuthError(
       403,
       "This app has been blocked by the administrator of this Orbyn.",
+    );
+  if (
+    row.kind === "oauth" &&
+    !hostAllowed(row.client_host ?? "", s.agents.allowed_client_hosts)
+  )
+    throw new McpAuthError(
+      403,
+      "Apps from this website can't connect to this Orbyn any more.",
     );
 }
 
@@ -179,7 +199,7 @@ export async function resolveCaller(
       : undefined;
   if (!token)
     throw unauthorized(
-      "Send an agent key as Authorization: Bearer oak_… (make one in Settings → Connected agents).",
+      "Sign in with Orbyn (OAuth), or send an agent key as Authorization: Bearer oak_… (make one in Settings → Connected agents).",
     );
 
   if (token.startsWith("oak_") || token.startsWith("oat_")) {
@@ -265,7 +285,8 @@ export async function resolveCaller(
                 g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
                 NULL::timestamptz AS token_expires_at, NULL AS resource,
                 g.last_write_at, g.suspended_at, g.revoked_at,
-                u.id AS user_id, u.name AS user_name, u.disabled
+                u.id AS user_id, u.name AS user_name, u.disabled,
+                NULL::boolean AS client_blocked, NULL AS client_host
            FROM agent_grants g JOIN users u ON u.id = g.user_id
           WHERE g.id = $1`,
         [grant.id],
@@ -286,7 +307,61 @@ export async function resolveCaller(
   }
 
   throw unauthorized(
-    "This address takes an agent key, not an app sign-in. Make one in Settings → Connected agents.",
+    "This address takes an agent's own sign-in or an agent key, not the app's. Sign in with Orbyn from the agent, or make a key in Settings → Connected agents.",
     "invalid_token",
   );
+}
+
+/** Whether a principal signed in with Orbyn (OAuth), so it can be asked for more. */
+export const signedIn = (p: Principal) => p.via === "oauth";
+
+/**
+ * The scopes a signed-in connection needs to call `cap`, when it can't now
+ * only because it was given less (step-up): every scope in one challenge,
+ * so the app asks once. Null when more scope wouldn't help (a toolset left
+ * out on the consent page, a call narrowed to read only, an old tool), or
+ * when it can already call it.
+ */
+export function stepUpScope(p: Principal, cap: Capability): string | null {
+  if (!signedIn(p) || cap.legacyOnly || p.flags.readonly) return null;
+  if (policy.allows(p, cap)) return null;
+  const bookings = cap.toolset === "booking";
+  if (!bookings && !p.toolsets.includes(cap.toolset)) return null;
+  const access =
+    AGENT_ACCESS_RANK[cap.access] > AGENT_ACCESS_RANK[p.access]
+      ? cap.access
+      : p.access;
+  return grantedScopes(access, bookings || p.toolsets.includes("booking"));
+}
+
+/** The 403 challenge asking for more scope (RFC 6750 §3.1, MCP step-up). */
+export const insufficientScope = (scope: string) =>
+  `Bearer error="insufficient_scope", scope="${scope}", resource_metadata="${resourceMetadataUrl()}", error_description="This connection needs more access for that. Sign in again to allow it."`;
+
+/** Hosted by OpenAI (ChatGPT), whose step-up rides on the tool result. */
+export function isChatGpt(p: Principal): boolean {
+  const id = p.client.id ?? "";
+  let host = "";
+  try {
+    host = new URL(id).hostname;
+  } catch {
+    host = "";
+  }
+  return (
+    /(^|\.)(openai\.com|chatgpt\.com)$/i.test(host) ||
+    /\b(chatgpt|openai)\b/i.test(p.client.name)
+  );
+}
+
+/** The scope a tool needs, as ChatGPT's securitySchemes list it. */
+export function toolScopes(cap: Capability): string[] {
+  const scopes = [
+    cap.access === "write"
+      ? "orbyn:write"
+      : cap.access === "suggest"
+        ? "orbyn:propose"
+        : "orbyn:read",
+  ];
+  if (cap.toolset === "booking") scopes.push("orbyn:bookings");
+  return scopes;
 }

@@ -190,6 +190,25 @@ export class Registry {
   for(p: Principal): Capability[] {
     return this.all.filter((c) => policy.allows(p, c));
   }
+  /**
+   * Adds capabilities for a while (tests of tools a later phase brings):
+   * returns a function that takes them away again.
+   */
+  extend(caps: Capability[]): () => void {
+    for (const c of caps) {
+      if (this.byName.has(c.name))
+        throw new Error(`Two capabilities are called ${c.name}`);
+      this.byName.set(c.name, c);
+      this.all.push(c);
+    }
+    return () => {
+      for (const c of caps) {
+        this.byName.delete(c.name);
+        const at = this.all.indexOf(c);
+        if (at >= 0) this.all.splice(at, 1);
+      }
+    };
+  }
 }
 
 /** A short, stable digest of arguments, for idempotency and activity. */

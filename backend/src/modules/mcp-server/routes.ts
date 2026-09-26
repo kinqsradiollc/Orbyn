@@ -15,9 +15,23 @@ import {
 } from "../../lib/request-log.js";
 import { settings } from "../../lib/settings.js";
 import { registry } from "../../capabilities/index.js";
-import { McpAuthError, SCOPES, resolveCaller, type Caller } from "./auth.js";
+import {
+  McpAuthError,
+  SCOPES,
+  insufficientScope,
+  isChatGpt,
+  resolveCaller,
+  stepUpScope,
+  type Caller,
+} from "./auth.js";
 import { Limiter, Strikes, type LimitKind } from "./limits.js";
-import { suspendGrant, type SuspendReason } from "../agents/service.js";
+import {
+  noticeAgentEvent,
+  suspendGrant,
+  type SuspendReason,
+} from "../agents/service.js";
+import { listenAuthChanges } from "../../lib/auth-events.js";
+import type { Principal } from "../../capabilities/policy.js";
 import { ActivityRecorder } from "./recorder.js";
 import { serve, type CallContext } from "./server.js";
 
@@ -203,6 +217,45 @@ const probing = (exec: { result: { _meta?: Record<string, unknown> } }) => {
 /** The last write per connection on this copy (the database has it too). */
 const wrote = new Map<string, number>();
 
+/** Teams this copy knows an agent has already used (their owners were told). */
+const teamsUsed = new Set<string>();
+
+/**
+ * The first time any outside agent uses a team's data, the team's owners
+ * and admins are told once (not the person whose agent it is). Off the
+ * request path.
+ */
+export async function noteTeamUse(p: Principal): Promise<void> {
+  const fresh = p.teams.filter((t) => !teamsUsed.has(t.id)).map((t) => t.id);
+  if (!fresh.length) return;
+  await transaction(async (db) => {
+    const first = (
+      await db.query<{ id: string; name: string }>(
+        `UPDATE teams SET agent_first_used_at = now()
+          WHERE id = ANY ($1::uuid[]) AND agent_first_used_at IS NULL
+          RETURNING id, name`,
+        [fresh],
+      )
+    ).rows;
+    for (const team of first) {
+      const managers = (
+        await db.query<{ user_id: string }>(
+          `SELECT user_id FROM team_members
+            WHERE team_id = $1 AND role IN ('owner', 'admin') AND user_id <> $2`,
+          [team.id, p.user.id],
+        )
+      ).rows;
+      for (const m of managers)
+        await noticeAgentEvent(db, m.user_id, {
+          ref: `team:${team.id}`,
+          title: `An outside agent used ${team.name} for the first time`,
+          body: `${p.user.name} connected ${p.client.name}, which can now reach ${team.name}'s tasks, pages and projects as far as ${p.user.name}'s role allows. You can cap or turn off outside agents in ${team.name}'s settings → Outside agents.`,
+        });
+    }
+  });
+  for (const id of fresh) teamsUsed.add(id);
+}
+
 export async function mcpServerRoutes(app: FastifyInstance) {
   /** Pauses a misbehaving connection (off the request path; audited). */
   const suspend = (grantId: string, reason: SuspendReason) =>
@@ -214,9 +267,17 @@ export async function mcpServerRoutes(app: FastifyInstance) {
     );
 
   recorder.start();
+  // Hear revocations from every copy (orbyn_auth) while serving.
+  let stopListening: (() => Promise<void>) | null = null;
+  app.addHook("onReady", async () => {
+    stopListening = await listenAuthChanges((err) =>
+      app.log.warn({ err }, "Listening for agent access changes failed"),
+    );
+  });
   app.addHook("onClose", async () => {
     recorder.stop();
     await recorder.flush();
+    await stopListening?.();
   });
 
   app.post(
@@ -269,6 +330,10 @@ export async function mcpServerRoutes(app: FastifyInstance) {
       const p = caller.principal;
       requestUser.set(r, p.user.id);
       legacyHeaders(caller, reply);
+      if (p.teams.length)
+        void noteTeamUse(p).catch((err) =>
+          r.log.error({ err }, "Telling a team about its first agent failed"),
+        );
 
       const body = r.body as unknown;
       if (Array.isArray(body))
@@ -337,6 +402,39 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         );
       const cap = toolName ? registry.get(toolName) : undefined;
       routeLabels.set(r, routeLabel(method, toolName, cap?.name));
+
+      // Step-up: a signed-in connection asking for a tool it was given too
+      // little for gets 403 insufficient_scope naming every scope it needs,
+      // so its app asks the person once (with re-authentication for write).
+      // ChatGPT takes the same challenge on the tool result instead.
+      const scope = cap ? stepUpScope(p, cap) : null;
+      if (cap && scope && !isChatGpt(p)) {
+        recorder.add({
+          userId: p.user.id,
+          grantId: p.grant_id!,
+          clientName: p.client.name,
+          tool: cap.name,
+          tier: cap.tier,
+          outcome: "denied",
+          targets: [],
+          argsDigest: null,
+          summary: `${cap.title} · needs more access`,
+          requestId: String(r.id),
+          latencyMs: 0,
+          write: false,
+        });
+        return reply
+          .code(403)
+          .header("WWW-Authenticate", insufficientScope(scope))
+          .send(
+            rpcError(
+              id,
+              ERR.forbidden,
+              `This connection needs more access for ${cap.name}. Sign in again to allow it.`,
+              { scope },
+            ),
+          );
+      }
 
       // Maintenance: reads go on; changes get a JSON-RPC error.
       if (cap && cap.mode !== "read" && s.maintenance.enabled)

@@ -63,6 +63,9 @@ export const COVERED: Record<string, string[]> = {
 export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /admin/agents": "admin",
   "PUT /admin/agents": "admin",
+  "GET /admin/agents/clients": "admin",
+  "GET /admin/agents/usage": "admin",
+  "DELETE /admin/users/:id/agents/:grantId": "admin",
   "GET /admin/analytics": "admin",
   "PUT /admin/announcement": "admin",
   "GET /admin/audit": "admin",
@@ -143,6 +146,10 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /me/agents/:id": "credentials",
   "GET /me/agents/:id/activity": "credentials",
   "POST /me/agents/:id/restore": "credentials",
+  // Connecting an agent (the consent page) and confirming it's you first.
+  "POST /oauth/authorize": "credentials",
+  "POST /me/reauth": "sign_in",
+  "POST /me/reauth/options": "sign_in",
   "GET /me/api-keys": "credentials",
   "POST /me/api-keys": "credentials",
   "DELETE /me/api-keys/:id": "credentials",
@@ -195,6 +202,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /teams/:id": "team_admin",
   "PUT /teams/:id": "team_admin",
   "PUT /teams/:id/agent-access": "team_admin",
+  "GET /teams/:id/agents": "team_admin",
   "PUT /teams/:id/attention": "team_admin",
   "POST /teams/:id/members": "team_admin",
   "DELETE /teams/:id/members/:userId": "team_admin",
@@ -402,5 +410,15 @@ export const PUBLIC: string[] = [
   "DELETE /mcp",
   "GET /.well-known/oauth-protected-resource",
   "GET /.well-known/oauth-protected-resource/mcp",
+  // Signing in with Orbyn: the authorization server's metadata and the
+  // endpoints apps call themselves, and the consent page's check and
+  // decline (which only ever send the browser back to an app's own
+  // declared address).
+  "GET /.well-known/oauth-authorization-server",
+  "GET /oauth/authorize/check",
+  "POST /oauth/authorize/deny",
+  "POST /oauth/token",
+  "POST /oauth/revoke",
+  "POST /oauth/register",
   "GET /.well-known/*",
 ];
