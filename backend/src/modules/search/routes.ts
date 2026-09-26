@@ -78,7 +78,7 @@ export async function searchPages(
          LEFT JOIN projects p ON p.id = d.project_id
          CROSS JOIN q
         WHERE ${docVisibleTo("$1")}
-          AND (d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
+          AND ($2::text = '' OR d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
           AND ($3::text IS NULL OR d.kind = $3)
           AND ($4::uuid IS NULL OR d.project_id = $4)
           AND ($5::uuid IS NULL OR EXISTS (
@@ -158,7 +158,7 @@ export async function searchRoutes(app: FastifyInstance) {
                LEFT JOIN projects p ON p.id = i.project_id
                CROSS JOIN q
               WHERE ${VISIBLE_ITEMS}
-                AND (i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
+                AND ($2::text = '' OR i.search @@ q.tsq OR similarity(i.title, $2) > 0.25)
                 AND ($3::uuid IS NULL OR i.project_id = $3)
                 AND ($4::uuid IS NULL OR i.team_id = $4)
                 AND ($5::timestamptz IS NULL OR i.updated_at >= $5)
@@ -188,7 +188,7 @@ export async function searchRoutes(app: FastifyInstance) {
               WHERE ((w.team_id IS NULL AND w.created_by = $1)
                      OR w.team_id IN (SELECT team_id FROM team_members
                                        WHERE user_id = $1))
-                AND (to_tsvector('english', w.title || ' ' || w.details) @@ q.tsq
+                AND ($2::text = '' OR to_tsvector('english', w.title || ' ' || w.details) @@ q.tsq
                      OR similarity(w.title, $2) > 0.25)
                 AND ($3::uuid IS NULL OR w.project_id = $3)
                 AND ($4::uuid IS NULL OR w.team_id = $4)
@@ -217,7 +217,7 @@ export async function searchRoutes(app: FastifyInstance) {
                FROM projects p
                CROSS JOIN q
               WHERE ${visibleProjects("p")}
-                AND (to_tsvector('english', p.name || ' ' || p.summary) @@ q.tsq
+                AND ($2::text = '' OR to_tsvector('english', p.name || ' ' || p.summary) @@ q.tsq
                      OR similarity(p.name, $2) > 0.25)
                 AND ($3::uuid IS NULL OR p.id = $3)
                 AND ($4::uuid IS NULL OR p.team_id = $4)
@@ -230,8 +230,11 @@ export async function searchRoutes(app: FastifyInstance) {
       : [];
 
     // The lists are ranked on the same scale, so they interleave honestly.
+    // With no words every rank is level, so the newest leads.
     const found = [...docs, ...items, ...records, ...projects].sort(
-      (a, b) => Number(b.rank) - Number(a.rank),
+      (a, b) =>
+        Number(b.rank) - Number(a.rank) ||
+        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
     );
 
     /**
@@ -241,7 +244,8 @@ export async function searchRoutes(app: FastifyInstance) {
      * semantic search on can improve an order but not overturn it, and
      * turning it off changes nothing anyone was relying on.
      */
-    if (wantsDocs) {
+    // Meaning needs words to go on.
+    if (wantsDocs && q.q) {
       const near = await nearest(u.id, q.q, q.limit, q.project);
       if (near.length) {
         const byId = new Map(found.map((h) => [h.id, h]));

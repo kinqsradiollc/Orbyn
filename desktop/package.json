@@ -36,7 +36,16 @@
     "productName": "Orbyn",
     "files": [
       "dist/**/*",
-      "electron.cjs"
+      "electron.cjs",
+      "preload.cjs"
+    ],
+    "protocols": [
+      {
+        "name": "Orbyn link",
+        "schemes": [
+          "orbyn"
+        ]
+      }
     ],
     "directories": {
       "output": "release"

@@ -62,6 +62,8 @@ import { Linkify, hostOf } from "../../components/Linkify";
 import "./task.css";
 import { errorText } from "../../lib/errors";
 import { ShareLinkButton } from "../../components/ShareButton";
+import { useToast } from "../../components/Toast";
+import { copyLink } from "../../lib/links";
 
 type Props = {
   /** The task as listed; the panel loads its checklist and timeline. */
@@ -142,6 +144,11 @@ export function TaskDetail({
   onOpenDoc,
 }: Props) {
   const { ask, tell } = useConfirm();
+  const toast = useToast();
+  // Opened: it leads the quick switcher's recent list, on every device.
+  useEffect(() => {
+    void client.recordRecent("task", item.id).catch(() => {});
+  }, [item.id]);
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [context, setContext] = useState<ItemContext | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -446,6 +453,20 @@ export function TaskDetail({
                 {team}
               </span>
             )}
+            <button
+              className="icon-button drawer-share"
+              aria-label="Copy link"
+              title="Copy link"
+              onClick={() =>
+                void copyLink({ kind: "task", id: current.id }).then((ok) =>
+                  toast({
+                    text: ok ? "Link copied" : "Couldn't copy the link",
+                  }),
+                )
+              }
+            >
+              <Link2 size={15} />
+            </button>
             <ShareLinkButton
               className="drawer-share"
               target={{ kind: "task", id: current.id }}

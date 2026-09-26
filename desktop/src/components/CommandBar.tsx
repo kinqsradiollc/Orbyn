@@ -8,56 +8,89 @@ import {
 } from "react";
 import {
   ArrowLeft,
-  CalendarCheck,
+  ArrowUpRight,
+  Boxes,
   CalendarDays,
   CalendarPlus,
+  ChevronDown,
   CircleCheck,
+  Copy,
+  Crosshair,
+  Download,
+  FilePlus,
+  FileText,
+  History,
   Keyboard,
-  ListChecks,
+  LayoutTemplate,
+  Link2,
   ListTodo,
+  PanelLeft,
+  Pin,
+  PinOff,
   Plus,
   Repeat,
   Search,
   Settings,
+  ShieldCheck,
   Sparkles,
-  Users,
   Wand2,
   type LucideIcon,
-  FileText,
-  Boxes,
 } from "lucide-react";
 import {
   dateLabel,
   describeRrule,
+  editedSince,
+  findNamed,
+  formatSearch,
+  hasSearchFilters,
   parseQuickAdd,
-  searchItems,
+  parseSearch,
+  searchSummary,
+  SEARCH_DATE_CHIPS,
+  SEARCH_KIND_CHIPS,
+  snippetRuns,
   type CalendarSearchResult,
   type Doc,
-  type DocSummary,
+  type DocSource,
+  type FindHit,
   type Item,
-  type Project,
+  type LinkTarget,
   type Plan,
+  type Project,
   type Proposal,
   type QuickAddChip,
   type QuickAddMember,
-  type DocSource,
+  type SearchFilters,
   type SearchHit,
-  snippetRuns,
   type Team,
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { celebrate } from "../lib/celebrate";
+import { openBeside } from "../lib/links";
 import { usePlanning } from "../app/planning";
-import type { View } from "../app/views";
+import { NAV, type View } from "../app/views";
+import {
+  EMPTY_MEMORY,
+  keysFor,
+  orderCommands,
+  readMemory,
+  recordCommand,
+  togglePinned,
+  type CommandDef,
+  type CommandIcon,
+  type CommandMemory,
+} from "../app/commands";
+import { openPageCommands } from "../app/page-commands";
 import {
   deviceTimeZone,
   errorText,
   fromDayKey,
   minutesLabel,
-  nextUp,
 } from "../lib/planning";
+import { Popover } from "./Popover";
 import { ProposalReview } from "./ProposalReview";
 import "./event-fields.css";
+import "./command-bar.css";
 
 type Props = {
   items: Item[];
@@ -65,10 +98,27 @@ type Props = {
   teams: Team[];
   /** You, so quick add can assign you but never invites you. */
   userId?: string;
+  /** Whether the Admin screen is yours to open. */
+  isAdmin?: boolean;
+  /** The screen behind the bar: Shift+Enter makes a task on the task screens. */
+  view?: View;
+  /** Words to start with (a quick-add link, orbyn://search). */
+  initialQuery?: string;
   onClose: () => void;
   onOpenItem: (item: Item) => void;
+  /** Opens a task or event by id (from the switcher). */
+  onOpenItemById: (id: string) => void;
   onNewItem: () => void;
+  onNewEvent: () => void;
+  /** Makes a page (with this title) and opens it. */
+  onNewPage: (title?: string) => void;
+  onNewPageFromTemplate: () => void;
+  onNewProject: () => void;
   onPlanDay: () => void;
+  onStartFocus: () => void;
+  onShowToday: () => void;
+  onToggleSidebar: () => void;
+  onOpenSecurity: () => void;
   onNavigate: (view: View) => void;
   /** Opens a document found by search. */
   onOpenDoc?: (doc: Doc, blockId?: string | null) => void;
@@ -94,12 +144,16 @@ type Props = {
 type Command = {
   id: string;
   label: ReactNode;
-  /** Words matched against the query. */
-  text: string;
   hint?: string;
   icon: LucideIcon;
   /** A heading shown above the first command of a group. */
   group?: string;
+  /** Keys that run it from anywhere, shown on the row. */
+  keys?: string[];
+  /** A command from the list, which can be pinned. */
+  pinnable?: boolean;
+  /** What ⌘Enter opens beside. */
+  target?: LinkTarget;
   run: () => void;
 };
 
@@ -113,6 +167,39 @@ type Ask = {
 /** The longest text event search and quick add take (the assistant takes 4000). */
 const SEARCH_MAX = 100;
 const QUICK_MAX = 500;
+const MEMORY_KEY = "orbyn-commands";
+const MAC =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+const ICONS: Record<CommandIcon, LucideIcon> = {
+  view: ArrowUpRight,
+  plus: Plus,
+  calendarPlus: CalendarPlus,
+  filePlus: FilePlus,
+  template: LayoutTemplate,
+  boxes: Boxes,
+  wand: Wand2,
+  focus: Crosshair,
+  calendar: CalendarDays,
+  keyboard: Keyboard,
+  panel: PanelLeft,
+  search: Search,
+  link: Link2,
+  copy: Copy,
+  download: Download,
+  history: History,
+  sparkles: Sparkles,
+  shield: ShieldCheck,
+};
+
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  doc: FileText,
+  task: ListTodo,
+  event: CalendarDays,
+  project: Boxes,
+  record: CircleCheck,
+};
 
 /** A quick-add chip as a short readable label. */
 function chipLabel(c: QuickAddChip) {
@@ -144,49 +231,96 @@ function chipLabel(c: QuickAddChip) {
   }
 }
 
-/**
- * ⌘K / Ctrl+K: find a task or an event, jump somewhere, add something from
- * one line ("Lunch with @anna fri 1pm ;Cafe Roma"), or ask the assistant.
- * Arrow keys move through results, Enter runs one, Escape closes.
- */
 /** A snippet as one line of plain words, with the match markers taken out. */
-const plainSnippet = (snippet: string) =>
-  snippetRuns(snippet)
+const plainSnippet = (snippet: string | null | undefined) =>
+  snippetRuns(snippet ?? "")
     .map((r) => r.text)
     .join("")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 90);
 
+const loadMemory = (): CommandMemory => {
+  try {
+    return readMemory(localStorage.getItem(MEMORY_KEY));
+  } catch {
+    return EMPTY_MEMORY;
+  }
+};
+const saveMemory = (memory: CommandMemory) => {
+  try {
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(memory));
+  } catch {
+    // A private window can refuse storage; the order lasts this visit.
+  }
+};
+
+/** Where a switcher or search result opens, for ⌘Enter. */
+const targetOf = (type: string, id: string): LinkTarget | undefined =>
+  type === "doc"
+    ? { kind: "doc", id }
+    : type === "project"
+      ? { kind: "project", id }
+      : type === "task" || type === "event"
+        ? { kind: "task", id }
+        : undefined;
+
+/**
+ * ⌘K / Ctrl+K: jump to a page, task or project by name (recent ones first),
+ * run any command, search with filters, add something from one line
+ * ("Lunch with @anna fri 1pm ;Cafe Roma"), or ask the assistant.
+ *
+ * Enter opens, Shift+Enter makes what was typed (a page, or a task on the
+ * task screens), ⌘Enter opens a result in a new tab. Arrow keys move,
+ * Escape closes.
+ */
 export function CommandBar({
   items,
-  onOpenDoc,
-  onGoToProjects,
   teams,
   userId,
+  isAdmin = false,
+  view,
+  initialQuery = "",
   onClose,
   onOpenItem,
+  onOpenItemById,
   onNewItem,
+  onNewEvent,
+  onNewPage,
+  onNewPageFromTemplate,
+  onNewProject,
   onPlanDay,
+  onStartFocus,
+  onShowToday,
+  onToggleSidebar,
+  onOpenSecurity,
   onNavigate,
+  onOpenDoc,
+  onGoToProjects,
   onJumpToDate,
   onApplyPlan,
   onOpenPlan,
   onShowOnCalendar,
-  onOpenSource,
-  onKeptNote,
   onApplied,
   onShowShortcuts,
   report,
 }: Props) {
   const { lists, tags } = usePlanning();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [members, setMembers] = useState<QuickAddMember[]>([]);
   const [events, setEvents] = useState<CalendarSearchResult[]>([]);
+  const [found, setFound] = useState<FindHit[]>([]);
+  const [searched, setSearched] = useState<SearchHit[] | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [memory, setMemory] = useState<CommandMemory>(loadMemory);
+  const [picking, setPicking] = useState<{
+    kind: "project" | "tag" | "team" | "date";
+    anchor: DOMRect;
+  } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
 
@@ -225,27 +359,107 @@ export function CommandBar({
     };
   }, [teams]);
 
+  // Projects by name, for the Project filter.
+  useEffect(() => {
+    void client.listProjects().then(setProjects, () => setProjects([]));
+  }, []);
+
   const go = (fn: () => void) => () => {
     onClose();
     fn();
   };
   const q = query.trim();
+  const filters = useMemo(() => parseSearch(query), [query]);
+  const filtering = hasSearchFilters(filters);
+  const words = filters.words;
 
-  // Documents and projects, loaded once the bar is open so a search can reach
-  // them; they are small lists, so filtering happens here rather than round
-  // tripping for every keystroke.
-  const [docs, setDocs] = useState<DocSummary[]>([]);
-  /** What the server found for what has been typed, ranked. */
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  // The names a filter was typed with, as the lists hold them.
+  const named = {
+    project: findNamed(projects, filters.project),
+    tag: findNamed(tags, filters.tag),
+    team: findNamed(teams, filters.team),
+  };
+  const unknown =
+    filters.project && !named.project
+      ? `No project called “${filters.project}”.`
+      : filters.tag && !named.tag
+        ? `No tag called “${filters.tag}”.`
+        : filters.team && !named.team
+          ? `No team called “${filters.team}”.`
+          : "";
+
+  // The quick switcher: names from the first letter; with nothing typed,
+  // what was opened last.
   useEffect(() => {
-    void client.listDocs().then(setDocs, () => setDocs([]));
-    void client.listProjects().then(setProjects, () => setProjects([]));
-  }, []);
+    if (filtering || q.length > 200) {
+      setFound([]);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(
+      () =>
+        void client.find(q, { limit: q ? 8 : 10 }).then(
+          (hits) => alive && setFound(hits),
+          () => alive && setFound([]),
+        ),
+      q ? 120 : 0,
+    );
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [q, filtering]);
+
+  // A search with filters goes to the server's search, filters and all.
+  const searchKey = filtering
+    ? JSON.stringify([
+        words,
+        filters.type,
+        named.project?.id,
+        named.tag?.id,
+        named.team?.id,
+        filters.date,
+        unknown,
+      ])
+    : "";
+  useEffect(() => {
+    if (!filtering) {
+      setSearched(null);
+      return;
+    }
+    if (unknown) {
+      setSearched([]);
+      return;
+    }
+    let alive = true;
+    const timer = setTimeout(() => {
+      void client
+        .search(words.slice(0, 200), {
+          type: filters.type ?? undefined,
+          project: named.project?.id,
+          tag: named.tag?.id,
+          team: named.team?.id,
+          updated_after: filters.date ? editedSince(filters.date) : undefined,
+          limit: 20,
+        })
+        .then(
+          (hits) => alive && setSearched(hits),
+          (e) => {
+            if (!alive) return;
+            setSearched([]);
+            setNotice(errorText(e));
+          },
+        );
+    }, 180);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [searchKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Events, past and future, once there's something to look for.
   useEffect(() => {
-    if (q.length < 2 || q.length > SEARCH_MAX) {
+    if (filtering || q.length < 2 || q.length > SEARCH_MAX) {
       setEvents([]);
       return;
     }
@@ -260,11 +474,11 @@ export function CommandBar({
       alive = false;
       clearTimeout(id);
     };
-  }, [q]);
+  }, [q, filtering]);
 
   // What the text would make as an item, parsed here without AI.
   const quick = useMemo(() => {
-    if (!q || q.length > QUICK_MAX) return null;
+    if (!q || filtering || q.length > QUICK_MAX) return null;
     try {
       return parseQuickAdd(q, {
         timeZone: deviceTimeZone(),
@@ -280,7 +494,7 @@ export function CommandBar({
     } catch {
       return null;
     }
-  }, [q, lists, tags, members, userId]);
+  }, [q, filtering, lists, tags, members, userId]);
 
   const createQuick = async () => {
     if (q.length > QUICK_MAX) return;
@@ -301,155 +515,114 @@ export function CommandBar({
     }
   };
 
-  const actions: Command[] = [
-    {
-      id: "new",
-      text: "new task item add create",
-      label: "New task",
-      icon: Plus,
-      run: go(onNewItem),
-    },
-    {
-      id: "plan",
-      text: "plan my day planner schedule",
-      label: "Plan my day",
-      hint: "Preview a plan for today",
-      icon: Wand2,
-      run: go(onPlanDay),
-    },
-    {
-      id: "calendar",
-      text: "go calendar",
-      label: "Go to Calendar",
-      icon: CalendarDays,
-      run: go(() => onNavigate("Calendar")),
-    },
-    {
-      id: "tasks",
-      text: "go my tasks",
-      label: "Go to My tasks",
-      icon: ListTodo,
-      run: go(() => onNavigate("My tasks")),
-    },
-    {
-      id: "lists",
-      text: "go lists",
-      label: "Go to Lists",
-      icon: ListChecks,
-      run: go(() => onNavigate("Lists")),
-    },
-    {
-      id: "booking",
-      text: "go booking pages",
-      label: "Go to Booking",
-      icon: CalendarCheck,
-      run: go(() => onNavigate("Booking")),
-    },
-    {
-      id: "teams",
-      text: "go teams",
-      label: "Go to Teams",
-      icon: Users,
-      run: go(() => onNavigate("Teams")),
-    },
-    {
-      id: "settings",
-      text: "go settings preferences",
-      label: "Go to Settings",
-      icon: Settings,
-      run: go(() => onNavigate("Settings")),
-    },
-    {
-      id: "shortcuts",
-      text: "keyboard shortcuts keys help",
-      label: "Keyboard shortcuts",
-      hint: "?",
-      icon: Keyboard,
-      run: go(onShowShortcuts),
-    },
-  ];
-  // Searching is a round trip, so it waits for a pause in the typing.
-  useEffect(() => {
-    if (q.trim().length < 2) {
-      setHits([]);
-      return;
-    }
-    const timer = setTimeout(() => {
+  /** Open a page, task or project the switcher or search found. */
+  const openFound = (type: string, id: string, blockId?: string | null) => {
+    onClose();
+    if (type === "doc")
       void client
-        .search(q.trim(), { type: "doc", limit: 5 })
-        .then(setHits, () => setHits([]));
-    }, 180);
-    return () => clearTimeout(timer);
-  }, [q]);
+        .getDoc(id)
+        .then((full) => onOpenDoc?.(full, blockId))
+        .catch(report);
+    else if (type === "project") onGoToProjects?.(id);
+    else if (type === "task" || type === "event") onOpenItemById(id);
+  };
 
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const matchingActions = words.length
-    ? actions.filter((a) => words.every((w) => a.text.includes(w)))
-    : actions;
-  const tasks = (
-    q ? searchItems(items, q).slice(0, 6) : nextUp(items, undefined, 4)
-  ).map((i): Command => ({
-    id: "item-" + i.id,
-    text: i.title,
-    label: i.title,
-    hint: i.due_at
-      ? dateLabel(i.due_at)
-      : i.kind === "event"
-        ? "Event"
-        : "Task",
-    icon: i.status === "done" ? CircleCheck : Search,
-    group: q ? "Tasks" : "Next up",
-    run: go(() => onOpenItem(i)),
+  // ------------------------------------------------------------ commands
+  const pageOpen = openPageCommands();
+  const runDef = (def: CommandDef) => {
+    const next = recordCommand(memory, def.id);
+    setMemory(next);
+    saveMemory(next);
+    onClose();
+    if (def.view) return onNavigate(def.view);
+    if (def.needs === "page") return pageOpen?.run[def.id]?.();
+    const actions: Record<string, () => void> = {
+      "new.task": onNewItem,
+      "new.event": onNewEvent,
+      "new.page": () => onNewPage(),
+      "new.from-template": onNewPageFromTemplate,
+      "new.project": onNewProject,
+      "plan.day": onPlanDay,
+      "plan.focus": onStartFocus,
+      "plan.today": onShowToday,
+      "app.shortcuts": onShowShortcuts,
+      "app.sidebar": onToggleSidebar,
+      "app.security": onOpenSecurity,
+    };
+    actions[def.id]?.();
+  };
+  const pin = (id: string) => {
+    const next = togglePinned(memory, id);
+    setMemory(next);
+    saveMemory(next);
+  };
+  const listed = filtering
+    ? []
+    : orderCommands(
+        words,
+        memory,
+        (c) =>
+          c.id !== "app.search" &&
+          (c.needs !== "admin" || isAdmin) &&
+          (c.needs !== "page" || !!pageOpen?.run[c.id]),
+      );
+  // With nothing typed, the pinned and recent commands lead and the rest
+  // wait below what was opened last; typed, they follow what was found.
+  const commandRows = listed.map((c): Command => ({
+    id: "cmd-" + c.id,
+    label:
+      c.needs === "page" && pageOpen ? (
+        <>
+          {c.label} <em className="command-page">· {pageOpen.title}</em>
+        </>
+      ) : (
+        c.label
+      ),
+    icon: c.view
+      ? c.view === "Settings"
+        ? Settings
+        : (NAV.find((n) => n.label === c.view)?.icon ?? ArrowUpRight)
+      : ICONS[c.icon],
+    group: c.section,
+    keys: keysFor(c, MAC),
+    pinnable: true,
+    run: () => runDef(c),
   }));
-  const matches = (text: string) =>
-    words.length > 0 && words.every((w) => text.toLowerCase().includes(w));
+  const leading = q
+    ? []
+    : commandRows.filter(
+        (c) => c.group === "Pinned" || c.group === "Recent commands",
+      );
+  const trailing = q
+    ? commandRows
+    : commandRows.filter(
+        (c) => c.group !== "Pinned" && c.group !== "Recent commands",
+      );
 
-  /**
-   * Pages come from the server's search rather than from matching the
-   * words of the first two hundred loaded here: it ranks, it looks inside
-   * the body, and it still finds a page whose title was mistyped.
-   */
-  const docCommands = hits.map((h): Command => ({
-    id: "doc-" + h.id,
-    text: h.title,
+  const foundRows = found.map((h): Command => ({
+    id: `find-${h.type}-${h.id}`,
+    label: h.title,
+    hint: h.hint ?? undefined,
+    icon: TYPE_ICONS[h.type] ?? Search,
+    group: q ? "Jump to" : "Recent",
+    target: targetOf(h.type, h.id),
+    run: () => openFound(h.type, h.id),
+  }));
+
+  const searchRows = (searched ?? []).map((h): Command => ({
+    id: `search-${h.type}-${h.id}`,
     label: h.title || "Untitled",
     hint:
       plainSnippet(h.snippet) ||
-      (h.kind === "note"
-        ? "Note"
-        : h.kind === "agenda"
-          ? "Agenda"
-          : h.kind === "meeting"
-            ? "Meeting note"
-            : "Document"),
-    icon: FileText,
-    group: "Documents",
-    run: go(() => {
-      void client
-        .getDoc(h.id)
-        .then((full) => onOpenDoc?.(full, h.block_id))
-        .catch(() => {});
-    }),
+      (h.project_name && h.type !== "project" ? h.project_name : undefined),
+    icon: TYPE_ICONS[h.type] ?? Search,
+    group: "Results",
+    target: targetOf(h.type, h.id),
+    run: () => openFound(h.type, h.id, h.block_id),
   }));
 
-  const projectCommands = q
-    ? projects
-        .filter((pr) => matches(`${pr.name} ${pr.summary}`))
-        .slice(0, 4)
-        .map((pr): Command => ({
-          id: "project-" + pr.id,
-          text: pr.name,
-          label: pr.name,
-          hint: `${pr.done_count} of ${pr.task_count} done`,
-          icon: Boxes,
-          group: "Projects",
-          run: go(() => onGoToProjects?.(pr.id)),
-        }))
-    : [];
-
-  const eventCommands = events.map((e, n): Command => ({
+  const eventRows = events.map((e, n): Command => ({
     id: "event-" + n,
-    text: e.title,
     label: e.title,
     hint:
       dateLabel(e.start_at) + (e.source === "external" ? ` · ${e.name}` : ""),
@@ -462,7 +635,6 @@ export function CommandBar({
     quick && quick.input.title
       ? {
           id: "quick",
-          text: q,
           label: (
             <>
               {quick.habit
@@ -490,35 +662,50 @@ export function CommandBar({
           run: () => void createQuick(),
         }
       : null;
-  const askCommand: Command | null = q
-    ? {
-        id: "ask",
-        text: q,
-        label: (
-          <>
-            Ask the assistant: <em>“{q}”</em>
-          </>
-        ),
-        icon: Sparkles,
-        run: () => void startAsk(q),
-      }
-    : null;
+  const askCommand: Command | null =
+    q && !filtering
+      ? {
+          id: "ask",
+          label: (
+            <>
+              Ask the assistant: <em>“{q}”</em>
+            </>
+          ),
+          icon: Sparkles,
+          run: () => void startAsk(q),
+        }
+      : null;
   // Questions go to the assistant first; text quick add understood makes
   // the item first; short words look for things.
-  const question = /\?$/.test(q) || (!chips.length && words.length >= 4);
+  const wordCount = q.split(/\s+/).filter(Boolean).length;
+  const question = /\?$/.test(q) || (!chips.length && wordCount >= 4);
   const quickFirst = !!quickCommand && !question && chips.length > 0;
-  const commands = [
-    ...(askCommand && question ? [askCommand] : []),
-    ...(quickCommand && quickFirst ? [quickCommand] : []),
-    ...tasks,
-    ...docCommands,
-    ...projectCommands,
-    ...eventCommands,
-    ...matchingActions,
-    ...(quickCommand && !quickFirst ? [quickCommand] : []),
-    ...(askCommand && !question ? [askCommand] : []),
-  ];
+  // A link that brought words to add puts making them first, to confirm.
+  const addFirst =
+    !!quickCommand && !!initialQuery && q === initialQuery.trim();
+  const commands: Command[] = filtering
+    ? searchRows
+    : [
+        ...(askCommand && question && !addFirst ? [askCommand] : []),
+        ...(quickCommand && (quickFirst || addFirst) ? [quickCommand] : []),
+        ...leading,
+        ...foundRows,
+        ...eventRows,
+        ...trailing,
+        ...(quickCommand && !quickFirst && !addFirst ? [quickCommand] : []),
+        ...(askCommand && (!question || addFirst) ? [askCommand] : []),
+      ];
   const current = Math.min(active, Math.max(0, commands.length - 1));
+
+  /** Shift+Enter: make what was typed, a task on the task screens. */
+  const createTyped = () => {
+    if (!words) return;
+    if (view === "My tasks" || view === "Lists") void createQuick();
+    else {
+      onClose();
+      onNewPage(words.slice(0, 200));
+    }
+  };
 
   const startAsk = async (text: string) => {
     setAsk({ question: text, proposal: null, state: "info", error: "" });
@@ -566,10 +753,19 @@ export function CommandBar({
     }
   };
 
+  /** Change one filter, keeping the rest and the words. */
+  const setFilter = (change: Partial<SearchFilters>) => {
+    setQuery(formatSearch({ ...filters, ...change }));
+    setActive(0);
+    setPicking(null);
+    input.current?.focus();
+  };
+
   // Escape closes; Tab stays inside.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (document.querySelector(".popover")) return;
         e.preventDefault();
         onClose();
       }
@@ -591,6 +787,64 @@ export function CommandBar({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const pickOptions: { label: string; pick: () => void; on: boolean }[] =
+    picking?.kind === "project"
+      ? projects
+          .filter((p) => p.status !== "archived")
+          .map((p) => ({
+            label: p.name,
+            on: named.project?.id === p.id,
+            pick: () =>
+              setFilter({
+                project: named.project?.id === p.id ? null : p.name,
+              }),
+          }))
+      : picking?.kind === "tag"
+        ? tags.map((t) => ({
+            label: t.name,
+            on: named.tag?.id === t.id,
+            pick: () =>
+              setFilter({ tag: named.tag?.id === t.id ? null : t.name }),
+          }))
+        : picking?.kind === "team"
+          ? teams.map((t) => ({
+              label: t.name,
+              on: named.team?.id === t.id,
+              pick: () =>
+                setFilter({ team: named.team?.id === t.id ? null : t.name }),
+            }))
+          : picking?.kind === "date"
+            ? SEARCH_DATE_CHIPS.map((d) => ({
+                label: d.label,
+                on: filters.date === d.date,
+                pick: () =>
+                  setFilter({
+                    date: filters.date === d.date ? null : d.date,
+                  }),
+              }))
+            : [];
+  const dropChip = (
+    kind: "project" | "tag" | "team" | "date",
+    label: string,
+    value: string | null,
+  ) => (
+    <button
+      type="button"
+      className={value ? "active" : ""}
+      aria-haspopup="menu"
+      aria-expanded={picking?.kind === kind}
+      onClick={(e) =>
+        setPicking(
+          picking?.kind === kind
+            ? null
+            : { kind, anchor: e.currentTarget.getBoundingClientRect() },
+        )
+      }
+    >
+      {value ?? label} <ChevronDown size={12} aria-hidden="true" />
+    </button>
+  );
 
   return (
     <div
@@ -665,7 +919,8 @@ export function CommandBar({
                 }
                 aria-autocomplete="list"
                 aria-label="Search, add something, or ask the assistant"
-                placeholder="Search, add “Lunch fri 1pm”, or ask…"
+                aria-describedby="command-summary"
+                placeholder="Jump to, search, add “Lunch fri 1pm”, or ask…"
                 value={query}
                 maxLength={4000}
                 disabled={busy}
@@ -686,12 +941,87 @@ export function CommandBar({
                     );
                   } else if (e.key === "Enter" && !e.nativeEvent.isComposing) {
                     e.preventDefault();
-                    commands[current]?.run();
+                    const chosen = commands[current];
+                    if (e.shiftKey) createTyped();
+                    else if ((e.metaKey || e.ctrlKey) && chosen?.target) {
+                      openBeside(chosen.target);
+                    } else chosen?.run();
                   }
                 }}
               />
               <kbd>Esc</kbd>
             </div>
+            <div
+              className="filter-chips command-filters"
+              role="group"
+              aria-label="Narrow the search"
+            >
+              {SEARCH_KIND_CHIPS.map((chip) => (
+                <button
+                  key={chip.kind}
+                  type="button"
+                  className={filters.type === chip.kind ? "active" : ""}
+                  aria-pressed={filters.type === chip.kind}
+                  onClick={() =>
+                    setFilter({
+                      type: filters.type === chip.kind ? null : chip.kind,
+                    })
+                  }
+                >
+                  {chip.label}
+                </button>
+              ))}
+              {dropChip("project", "Project", named.project?.name ?? null)}
+              {dropChip("tag", "Tag", named.tag?.name ?? null)}
+              {teams.length > 0 &&
+                dropChip("team", "Team", named.team?.name ?? null)}
+              {dropChip(
+                "date",
+                "Date",
+                SEARCH_DATE_CHIPS.find((d) => d.date === filters.date)?.label ??
+                  null,
+              )}
+            </div>
+            {picking && (
+              <Popover
+                anchor={picking.anchor}
+                label={`Choose a ${picking.kind}`}
+                onClose={() => setPicking(null)}
+                width={240}
+              >
+                <div className="doc-menu" role="menu">
+                  {pickOptions.length ? (
+                    pickOptions.map((o) => (
+                      <button
+                        key={o.label}
+                        className={"doc-menu-item" + (o.on ? " is-on" : "")}
+                        role="menuitemcheckbox"
+                        aria-checked={o.on}
+                        onClick={o.pick}
+                      >
+                        {o.label}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="muted command-pick-empty">
+                      Nothing to choose yet.
+                    </p>
+                  )}
+                </div>
+              </Popover>
+            )}
+            <p
+              id="command-summary"
+              className={"command-summary" + (filtering ? "" : " is-keys")}
+              role="status"
+              aria-live="polite"
+            >
+              {filtering
+                ? unknown || searchSummary(filters)
+                : q
+                  ? `Enter opens · Shift+Enter makes it · ${MAC ? "⌘" : "Ctrl+"}Enter opens in a new tab`
+                  : "Recent first · type to jump anywhere, or use tag: project: is:"}
+            </p>
             {notice && (
               <div className="error" role="alert">
                 {notice}
@@ -709,6 +1039,7 @@ export function CommandBar({
                   c.group && c.group !== commands[n - 1]?.group
                     ? c.group
                     : null;
+                const pinned = memory.pinned.includes(c.id.slice(4));
                 return (
                   <Fragment key={c.id}>
                     {heading && (
@@ -728,13 +1059,37 @@ export function CommandBar({
                       <Icon size={15} aria-hidden="true" />
                       <span className="command-label">{c.label}</span>
                       {c.hint && <small>{c.hint}</small>}
+                      {c.keys?.map((k) => (
+                        <kbd key={k}>{k}</kbd>
+                      ))}
+                      {c.pinnable && (
+                        <button
+                          type="button"
+                          className={
+                            "icon-button command-pin" + (pinned ? " is-on" : "")
+                          }
+                          tabIndex={-1}
+                          aria-label={pinned ? "Unpin" : "Pin to the top"}
+                          title={pinned ? "Unpin" : "Pin to the top"}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            pin(c.id.slice(4));
+                          }}
+                        >
+                          {pinned ? <PinOff size={13} /> : <Pin size={13} />}
+                        </button>
+                      )}
                     </li>
                   </Fragment>
                 );
               })}
               {!commands.length && (
                 <li role="presentation" className="command-empty">
-                  Nothing matches. Type a question to ask the assistant.
+                  {filtering
+                    ? searched === null
+                      ? "Looking…"
+                      : "Nothing matches these filters."
+                    : "Nothing matches. Type a question to ask the assistant."}
                 </li>
               )}
             </ul>

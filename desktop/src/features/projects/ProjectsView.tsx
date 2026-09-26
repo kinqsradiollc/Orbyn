@@ -39,6 +39,7 @@ export function ProjectsView({
   onOpenPlan,
   onAskProject,
   userId,
+  startNew,
 }: {
   items: Item[];
   /** For starting a template's project in a team. */
@@ -62,6 +63,8 @@ export function ProjectsView({
   onOpenPlan: (plan: Plan) => void;
   onAskProject?: (project: Project, question?: string) => void;
   userId: string;
+  /** Changes to start a new project (from ⌘K). */
+  startNew?: number;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
@@ -78,6 +81,13 @@ export function ProjectsView({
     setTemplates(true);
     onTemplateOpened?.();
   }, [openTemplate, onTemplateOpened]);
+
+  useEffect(() => {
+    if (startNew) {
+      setOpen(null);
+      setCreating(true);
+    }
+  }, [startNew]);
 
   const load = () =>
     client.listProjects().then(setProjects, (e) => {

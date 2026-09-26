@@ -1,19 +1,20 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { commandShortcuts } from "../app/commands";
 
-const MOD = /Mac|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+const MOD = MAC ? "⌘" : "Ctrl";
 
-/** Every keyboard shortcut in the app, grouped by where it works. */
+/**
+ * Every keyboard shortcut in the app, grouped by where it works. The
+ * "Anywhere" ones come from the command list (app/commands.ts), which ⌘K
+ * shows too, so the two never disagree.
+ */
 const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
   {
     title: "Anywhere",
     keys: [
-      {
-        keys: [MOD, "K"],
-        label: "Search, jump somewhere, or ask the assistant",
-      },
-      { keys: ["N"], label: "New item" },
-      { keys: ["?"], label: "Show these shortcuts" },
+      ...commandShortcuts(MAC),
       { keys: ["Esc"], label: "Close a dialog, panel or menu" },
     ],
   },
@@ -66,7 +67,17 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
     title: "Command bar",
     keys: [
       { keys: ["↑", "↓"], label: "Move through results" },
-      { keys: ["Enter"], label: "Run the highlighted result" },
+      { keys: ["Enter"], label: "Open or run the highlighted result" },
+      {
+        keys: ["⇧", "Enter"],
+        label: "Make what you typed: a page, or a task on My tasks and Lists",
+      },
+      { keys: [MOD, "Enter"], label: "Open the result in a new tab" },
+      { keys: ["tag:"], label: "Pages with a tag: tag:physics" },
+      { keys: ["project:"], label: 'In a project: project:"Big launch"' },
+      { keys: ["team:"], label: "In a team: team:lab" },
+      { keys: ["is:"], label: "One kind: is:page, is:task, is:project" },
+      { keys: ["edited:"], label: "Changed lately: edited:today, week, month" },
     ],
   },
 ];

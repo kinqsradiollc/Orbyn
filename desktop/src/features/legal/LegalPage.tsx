@@ -75,6 +75,9 @@ export function LegalPage({ doc, signedIn, onNavigate, onHome }: Props) {
           >
             Privacy Policy
           </a>
+          <a href="/security" onClick={go("/security")}>
+            Security and data
+          </a>
         </nav>
         {error ? (
           <p className="legal-error">{error}</p>

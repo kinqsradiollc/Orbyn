@@ -67,6 +67,7 @@ export function DocsView({
   initialBlockId,
   onInitialDocShown,
   onOpenProject,
+  openTemplates,
 }: {
   report: (e: unknown) => void;
   userId?: string;
@@ -79,6 +80,8 @@ export function DocsView({
   initialBlockId?: string | null;
   onInitialDocShown?: () => void;
   onOpenProject?: (id: string) => void;
+  /** Changes to open "New page from template" (from ⌘K). */
+  openTemplates?: number;
 }) {
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -229,6 +232,10 @@ export function DocsView({
   useEffect(() => {
     void load();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (openTemplates) setTemplating(true);
+  }, [openTemplates]);
 
   // Opening a note from its event hands the document straight to the editor.
   useEffect(() => {

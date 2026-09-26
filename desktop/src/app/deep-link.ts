@@ -7,6 +7,11 @@
  *   /app/today                the Today list (on Overview)
  *   /app/view/<id>            (reserved: saved views arrive later)
  *   /app/review/<id>          (reserved: the Review inbox arrives later)
+ *   /app/add?text=<words>     Quick add, filled in, to confirm (never adds)
+ *   /app/search?q=<words>     ⌘K with the words typed
+ *
+ * The desktop app opens the same links as orbyn://task/<id> and so on
+ * (fromAppLink), handed over by its main process.
  *
  * A link followed while signed out is kept for this tab (and in the sign-in
  * page's ?next=) through every sign-in step, two-step and passkeys
@@ -14,13 +19,17 @@
  * followed, so ?next= can't send anyone elsewhere.
  */
 
+import type { AppLink } from "@orbyn/core";
+
 export type DeepLink =
   | { kind: "task"; id: string }
   | { kind: "doc"; id: string; block: string | null }
   | { kind: "project"; id: string }
   | { kind: "today" }
   | { kind: "view"; id: string }
-  | { kind: "review"; id: string };
+  | { kind: "review"; id: string }
+  | { kind: "add"; text: string }
+  | { kind: "search"; q: string };
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const WITH_ID = new RegExp(
@@ -30,9 +39,21 @@ const WITH_ID = new RegExp(
 const BLOCK = /^#([A-Za-z0-9_-]{1,64})$/;
 const KEY = "orbyn-open-link";
 
-/** The link in a path (and hash), or null for any other path. */
-export function deepLinkOf(path: string, hash = ""): DeepLink | null {
+/** The words a link carries (?text= or ?q=), trimmed and kept short. */
+const wordsIn = (search: string, key: string, max: number) =>
+  (new URLSearchParams(search).get(key) ?? "").trim().slice(0, max);
+
+/** The link in a path (and hash and query), or null for any other path. */
+export function deepLinkOf(
+  path: string,
+  hash = "",
+  search = "",
+): DeepLink | null {
   if (/^\/app\/today\/?$/i.test(path)) return { kind: "today" };
+  if (/^\/app\/add\/?$/i.test(path))
+    return { kind: "add", text: wordsIn(search, "text", 500) };
+  if (/^\/app\/search\/?$/i.test(path))
+    return { kind: "search", q: wordsIn(search, "q", 200) };
   const m = WITH_ID.exec(path);
   if (!m) return null;
   const kind = m[1].toLowerCase() as
@@ -45,6 +66,14 @@ export function deepLinkOf(path: string, hash = ""): DeepLink | null {
 /** The path (and hash) that opens a link. */
 export function deepLinkPath(link: DeepLink): string {
   if (link.kind === "today") return "/app/today";
+  if (link.kind === "add")
+    return link.text
+      ? `/app/add?${new URLSearchParams({ text: link.text })}`
+      : "/app/add";
+  if (link.kind === "search")
+    return link.q
+      ? `/app/search?${new URLSearchParams({ q: link.q })}`
+      : "/app/search";
   if (link.kind === "doc")
     return `/app/doc/${link.id}${link.block ? `#${link.block}` : ""}`;
   return `/app/${link.kind}/${link.id}`;
@@ -61,10 +90,18 @@ export const deepLinkKey = (link: DeepLink | null) =>
 export function safeNext(search: string): DeepLink | null {
   const next = new URLSearchParams(search).get("next");
   if (!next || !next.startsWith("/app/") || next.startsWith("//")) return null;
-  const hashAt = next.indexOf("#");
-  const path = hashAt < 0 ? next : next.slice(0, hashAt);
-  const hash = hashAt < 0 ? "" : next.slice(hashAt);
-  return deepLinkOf(path, hash);
+  return linkAt(next);
+}
+
+/** A kept "/app/…?…#…" read back into its link. */
+function linkAt(kept: string): DeepLink | null {
+  const hashAt = kept.indexOf("#");
+  const beforeHash = hashAt < 0 ? kept : kept.slice(0, hashAt);
+  const hash = hashAt < 0 ? "" : kept.slice(hashAt);
+  const queryAt = beforeHash.indexOf("?");
+  const path = queryAt < 0 ? beforeHash : beforeHash.slice(0, queryAt);
+  const search = queryAt < 0 ? "" : beforeHash.slice(queryAt);
+  return deepLinkOf(path, hash, search);
 }
 
 /** Keep a link to open after signing in (this tab only). */
@@ -86,11 +123,7 @@ export function takeDeepLink(search = ""): DeepLink | null {
     // Fall back to ?next= below.
   }
   if (kept) {
-    const hashAt = kept.indexOf("#");
-    const link = deepLinkOf(
-      hashAt < 0 ? kept : kept.slice(0, hashAt),
-      hashAt < 0 ? "" : kept.slice(hashAt),
-    );
+    const link = linkAt(kept);
     if (link) return link;
   }
   return safeNext(search);
@@ -113,4 +146,35 @@ export function focusDocBlock(blockId: string, tries = 40) {
     window.setTimeout(() => el.classList.remove("deep-linked-block"), 2600);
   };
   look(tries);
+}
+
+/**
+ * An orbyn:// link (or a web one) as the web app's link, for the desktop
+ * app: the same things open the same way. The phone's own links (the
+ * agenda, the camera, the assistant) open their nearest screen here.
+ */
+export function fromAppLink(link: AppLink): DeepLink | null {
+  switch (link.kind) {
+    case "task":
+    case "project":
+      return { kind: link.kind, id: link.id };
+    case "doc":
+      return { kind: "doc", id: link.id, block: null };
+    case "today":
+    case "agenda":
+      return { kind: "today" };
+    case "review":
+      return link.id ? { kind: "review", id: link.id } : { kind: "today" };
+    case "add":
+      return { kind: "add", text: link.text ?? "" };
+    case "search":
+      return { kind: "search", q: link.q };
+    case "share":
+      return {
+        kind: "add",
+        text: [link.text, link.url].filter(Boolean).join(" ").slice(0, 500),
+      };
+    default:
+      return null;
+  }
 }

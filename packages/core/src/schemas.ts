@@ -529,7 +529,12 @@ export const docAskRequest = z
 /** What to look for, and how to narrow it. */
 export const searchQuery = z
   .object({
-    q: z.string().trim().min(1).max(200),
+    /**
+     * The words. They may be left out when something else narrows the
+     * search (a kind, a tag, a project, a team or a date): it then lists
+     * what fits, newest first.
+     */
+    q: z.string().trim().max(200).default(""),
     /**
      * "doc" searches pages only, "task" tasks only, "project" projects only,
      * "record" work records (decisions and the like) only. By default pages,
@@ -543,7 +548,20 @@ export const searchQuery = z
     updated_after: z.iso.datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
   })
-  .strict();
+  .strict()
+  .refine(
+    (s) =>
+      !!(
+        s.q ||
+        s.type ||
+        s.kind ||
+        s.project ||
+        s.tag ||
+        s.team ||
+        s.updated_after
+      ),
+    { message: "Type something to search for.", path: ["q"] },
+  );
 
 /**
  * The quick switcher (NAV-02): things by name, from the first letter typed.

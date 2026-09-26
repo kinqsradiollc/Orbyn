@@ -7,6 +7,13 @@ import {
 } from "lucide-react";
 import { hasSystemPermission, type User } from "@orbyn/core";
 import { NAV_GROUPS, type View } from "../app/views";
+import { commandById, keysFor } from "../app/commands";
+
+/** The sidebar's keys, as the command list has them. */
+const SIDEBAR_KEYS = keysFor(
+  commandById("app.sidebar"),
+  /Mac|iPhone|iPad/.test(navigator.userAgent),
+).join(" ");
 
 type Props = {
   open: boolean;
@@ -78,7 +85,7 @@ export function Sidebar({
         <button
           className="settings-link rail-toggle"
           aria-label={railed ? "Expand sidebar" : "Collapse sidebar"}
-          title={`${railed ? "Expand" : "Collapse"} sidebar (⌘\\)`}
+          title={`${railed ? "Expand" : "Collapse"} sidebar (${SIDEBAR_KEYS})`}
           aria-expanded={!railed}
           onClick={onToggleRail}
         >

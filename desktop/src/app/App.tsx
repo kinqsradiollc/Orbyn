@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
   deadlineOf,
   hasSystemPermission,
+  parseAppLink,
   hasTeamPermission,
   planDayPrompt,
   type Item,
@@ -27,6 +28,7 @@ import {
   deepLinkOf,
   deepLinkPath,
   focusDocBlock,
+  fromAppLink,
   rememberDeepLink,
   takeDeepLink,
   type DeepLink,
@@ -48,11 +50,13 @@ import { ShortcutSheet } from "../components/ShortcutSheet";
 import { celebrate } from "../lib/celebrate";
 import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
+import { nextUp } from "../lib/planning";
 import { HomePage } from "../features/home/HomePage";
 import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
 import { ConsentGate } from "../features/legal/ConsentGate";
 import { StatusPage } from "../features/status/StatusPage";
+import { SecurityPage } from "../features/legal/SecurityPage";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -188,6 +192,15 @@ export function App() {
   >(null);
   const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  /** Words ⌘K opens with (a quick-add or search link). */
+  const [commandQuery, setCommandQuery] = useState("");
+  const openCommand = (words = "") => {
+    setCommandQuery(words);
+    setCommandOpen(true);
+  };
+  /** Bumped to open "New page from template" or a new project from ⌘K. */
+  const [templatesAsked, setTemplatesAsked] = useState(0);
+  const [projectAsked, setProjectAsked] = useState(0);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -238,7 +251,11 @@ export function App() {
   // /app/project/<id>, /app/today) opens it over the app. Signed out, it
   // waits through every sign-in step (two-step and passkeys included), kept
   // for this tab and in the sign-in page's ?next=, and opens after.
-  const linked = deepLinkOf(path, nativeDesktop ? "" : location.hash);
+  const linked = deepLinkOf(
+    path,
+    nativeDesktop ? "" : location.hash,
+    nativeDesktop ? "" : location.search,
+  );
   // Read now: the sign-in redirect below replaces the address before effects.
   const signInSearch = nativeDesktop ? "" : location.search;
   const openDeepLink = (link: DeepLink) => {
@@ -252,8 +269,27 @@ export function App() {
     else if (link.kind === "project") {
       setProjectToOpen(link.id);
       setView("Projects");
-    } else setView("Overview");
+    } else if (link.kind === "add" || link.kind === "search")
+      // Words to add open Quick add filled in, to confirm: never added
+      // silently, whoever sent the link.
+      openCommand(link.kind === "add" ? link.text : link.q);
+    else if (link.kind === "review") setView("Notifications");
+    else setView("Overview");
   };
+  // The desktop app hands over orbyn:// links it was opened with. Signed
+  // out, a link waits for sign-in, like a web link does.
+  const openLinkRef = useRef<(url: string) => void>(() => {});
+  openLinkRef.current = (url) => {
+    const app = parseAppLink(url);
+    const link = app && fromAppLink(app);
+    if (!link) return;
+    if (token) openDeepLink(link);
+    else rememberDeepLink(link);
+  };
+  useEffect(
+    () => window.orbynDesktop?.onOpenLink((url) => openLinkRef.current(url)),
+    [],
+  );
   useEffect(() => {
     if (!linked) return;
     if (!token) {
@@ -287,38 +323,49 @@ export function App() {
             description: `${app} Orbyn plans your day around them, with an AI assistant that asks first. Web, desktop, iOS and Android.`,
             index: true,
           }
-        : path === "/terms" || path === "/privacy"
+        : path === "/security"
           ? {
-              title:
-                (path === "/terms" ? "Terms of Service" : "Privacy Policy") +
-                " · Orbyn",
+              title: "Security and data · Orbyn",
               description:
-                path === "/terms"
-                  ? "The terms for using Orbyn."
-                  : "What Orbyn collects, why, how long it's kept, and your rights.",
+                "How Orbyn keeps your account and your plans safe, and how you can take your data with you.",
               index: true,
             }
-          : isOAuth
+          : path === "/terms" || path === "/privacy"
             ? {
-                title: "Connect an app · Orbyn",
-                description: app,
-                index: false,
+                title:
+                  (path === "/terms" ? "Terms of Service" : "Privacy Policy") +
+                  " · Orbyn",
+                description:
+                  path === "/terms"
+                    ? "The terms for using Orbyn."
+                    : "What Orbyn collects, why, how long it's kept, and your rights.",
+                index: true,
               }
-            : path === "/status"
+            : isOAuth
               ? {
-                  title: "Service status · Orbyn",
-                  description: "Whether every part of Orbyn is up right now.",
+                  title: "Connect an app · Orbyn",
+                  description: app,
                   index: false,
                 }
-              : token
-                ? { title: view + " · Orbyn", description: app, index: false }
-                : path === "/login"
-                  ? { title: "Sign in · Orbyn", description: app, index: false }
-                  : {
-                      title: "Create your space · Orbyn",
-                      description: app,
-                      index: false,
-                    },
+              : path === "/status"
+                ? {
+                    title: "Service status · Orbyn",
+                    description: "Whether every part of Orbyn is up right now.",
+                    index: false,
+                  }
+                : token
+                  ? { title: view + " · Orbyn", description: app, index: false }
+                  : path === "/login"
+                    ? {
+                        title: "Sign in · Orbyn",
+                        description: app,
+                        index: false,
+                      }
+                    : {
+                        title: "Create your space · Orbyn",
+                        description: app,
+                        index: false,
+                      },
     );
   }, [path, token, view, isPublicBooking]);
 
@@ -345,6 +392,7 @@ export function App() {
     path === "/status" ||
     path === "/terms" ||
     path === "/privacy" ||
+    path === "/security" ||
     (!nativeDesktop && path === "/")
   );
   useEffect(() => {
@@ -352,6 +400,7 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        setCommandQuery("");
         setCommandOpen((open) => !open);
         return;
       }
@@ -385,6 +434,22 @@ export function App() {
     setDraftTeamId(teamId ?? prefill?.team_id ?? null);
     setDraft(prefill);
     setEditing("new");
+  };
+
+  /** A new page (titled when ⌘K's Shift+Enter named it), opened. */
+  const newPage = async (title = "") => {
+    try {
+      const doc = await client.createDoc({
+        title,
+        kind: "doc",
+        content: [{ type: "paragraph", text: "" }],
+      });
+      setNoteBlockId(null);
+      setNoteDoc(doc);
+      navigate("Docs");
+    } catch (e) {
+      report(e);
+    }
   };
 
   const openPage = (docId: string, blockId?: string | null) =>
@@ -616,6 +681,16 @@ export function App() {
     });
   };
 
+  // Security and data: public, signed in or not.
+  if (path === "/security")
+    return (
+      <SecurityPage
+        signedIn={!!token}
+        onNavigate={navigatePath}
+        onHome={nativeDesktop ? undefined : () => navigatePath("/")}
+      />
+    );
+
   // Public status page, signed in or not. The native app routes in memory.
   if (path === "/status")
     return (
@@ -786,7 +861,7 @@ export function App() {
             view={view}
             onToggleMenu={() => setMobileNav(!mobileNav)}
             onOpenNotifications={() => navigate("Notifications")}
-            onOpenCommand={() => setCommandOpen(true)}
+            onOpenCommand={() => openCommand()}
           />
           <main className="content">
             {error && (
@@ -886,6 +961,7 @@ export function App() {
                   onItemsChanged={() => void refresh()}
                   initialDoc={noteDoc}
                   initialBlockId={noteBlockId}
+                  openTemplates={templatesAsked}
                   onInitialDocShown={() => {
                     setNoteDoc(null);
                     setNoteBlockId(null);
@@ -923,6 +999,7 @@ export function App() {
                   onRefresh={() => void refresh()}
                   onOpenItem={openItem}
                   onOpenPlan={openPlan}
+                  startNew={projectAsked}
                   onAskProject={(project, question) => {
                     assistant.setScope({
                       kind: "project",
@@ -1035,6 +1112,7 @@ export function App() {
                   report={report}
                   onEmailReminders={planner.setEmailReminders}
                   onOpenStatus={() => navigatePath("/status")}
+                  onOpenSecurity={() => navigatePath("/security")}
                   onAccountDeleted={() => {
                     planner.clearSession();
                     navigatePath("/", true);
@@ -1143,8 +1221,12 @@ export function App() {
         {commandOpen && (
           <CommandBar
             items={items}
+            isAdmin={isAdmin}
+            view={view}
+            initialQuery={commandQuery}
             onClose={() => setCommandOpen(false)}
             onOpenItem={openItem}
+            onOpenItemById={openItemById}
             onOpenDoc={(found, blockId) => {
               setNoteDoc(found);
               setNoteBlockId(blockId ?? null);
@@ -1155,7 +1237,29 @@ export function App() {
               setView("Projects");
             }}
             onNewItem={() => newItem()}
+            onNewEvent={() => newItem(null, { kind: "event" })}
+            onNewPage={(title) => void newPage(title)}
+            onNewPageFromTemplate={() => {
+              navigate("Docs");
+              setTemplatesAsked(Date.now());
+            }}
+            onNewProject={() => {
+              navigate("Projects");
+              setProjectAsked(Date.now());
+            }}
             onPlanDay={planMyDay}
+            onStartFocus={() => {
+              const next = nextUp(items, undefined, 1)[0];
+              if (next) startFocus(next);
+              else planner.setError("Nothing is next up to focus on.");
+            }}
+            onShowToday={() => {
+              navigate("Calendar");
+              setCalendarDate(new Date());
+              setCalendarMode("day");
+            }}
+            onToggleSidebar={toggleRail}
+            onOpenSecurity={() => navigatePath("/security")}
             onNavigate={navigate}
             onApplyPlan={applyPlan}
             onOpenPlan={openPlan}

@@ -280,6 +280,30 @@ test("search finds projects too, and narrows to them", async () => {
   );
 });
 
+test("a search with only filters lists what fits, newest first", async () => {
+  const projects = (await call(me, "GET", "/search?type=project")).json();
+  assert.ok(ids(projects).includes(projectId));
+  assert.ok(ids(projects).includes(teamProjectId));
+  assert.ok(projects.every((h: { type: string }) => h.type === "project"));
+  const inProject = (
+    await call(me, "GET", `/search?project=${projectId}`)
+  ).json();
+  assert.deepEqual(inProject, []);
+  const task = (
+    await call(me, "POST", "/items", {
+      title: "Order the tiles",
+      project_id: projectId,
+    })
+  ).json().id;
+  assert.deepEqual(
+    ids((await call(me, "GET", `/search?project=${projectId}`)).json()),
+    [task],
+  );
+  // Nothing to go on at all is still a mistake.
+  assert.equal((await call(me, "GET", "/search")).statusCode, 422);
+  assert.equal((await call(me, "GET", "/search?q=%20")).statusCode, 422);
+});
+
 test("the phone link files are served, empty until the app ids are set", async () => {
   const apple = await app.inject({
     method: "GET",

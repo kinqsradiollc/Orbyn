@@ -11,7 +11,7 @@ import {
   Tags,
   UserRound,
 } from "lucide-react";
-import type { Team, User } from "@orbyn/core";
+import { securityPageDate, type Team, type User } from "@orbyn/core";
 import { useTheme, type ThemeChoice } from "../../lib/theme";
 import { PlanningSettings } from "./PlanningSettings";
 import { TagSettings } from "./TagSettings";
@@ -47,6 +47,8 @@ type Props = {
   onEmailReminders: (checked: boolean) => void;
   /** Opens the public status page. */
   onOpenStatus?: () => void;
+  /** Opens the public Security and data page. */
+  onOpenSecurity?: () => void;
   report: (e: unknown) => void;
   initialTab?: SettingsTab;
   /** After deleting your own account. */
@@ -59,6 +61,7 @@ export function SettingsView({
   busy,
   onEmailReminders,
   onOpenStatus,
+  onOpenSecurity,
   report,
   initialTab = "account",
   onAccountDeleted,
@@ -178,6 +181,18 @@ export function SettingsView({
         )}
         {tab === "tags" && <TagSettings teams={teams} report={report} />}
         {tab === "connections" && <ConnectionsSettings report={report} />}
+        {tab === "privacy" && onOpenSecurity && (
+          <SettingsSection className="card settings-card">
+            <h2>Security and data</h2>
+            <p className="muted">
+              How Orbyn keeps your account safe and how to take your data with
+              you. Last checked {securityPageDate()}.
+            </p>
+            <button className="secondary" onClick={onOpenSecurity}>
+              <ShieldCheck size={14} /> Security and data
+            </button>
+          </SettingsSection>
+        )}
         {tab === "privacy" && (
           <PrivacySettings
             user={user}

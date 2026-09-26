@@ -42,6 +42,8 @@ import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
 import { DateField } from "../../components/DateField";
 import { ShareLinkButton } from "../../components/ShareButton";
+import { useToast } from "../../components/Toast";
+import { copyLink } from "../../lib/links";
 import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
 
@@ -157,6 +159,11 @@ export function ProjectDetail({
   canWrite: boolean;
 }) {
   const { ask, tell } = useConfirm();
+  const toast = useToast();
+  // Opened: it leads the quick switcher's recent list, on every device.
+  useEffect(() => {
+    void client.recordRecent("project", project.id).catch(() => {});
+  }, [project.id]);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   /** Unassigned team tasks ticked to claim with "Plan this project". */
@@ -704,75 +711,90 @@ export function ProjectDetail({
             <Sparkles size={15} aria-hidden="true" /> Ask
           </button>
         )}
-        {canWrite && (
-          <div className="project-manage">
-            <button
-              className="icon-button"
-              aria-label="Project options"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((value) => !value)}
-            >
-              <Ellipsis size={18} />
-            </button>
-            {menuOpen && (
-              <div className="project-manage-menu">
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setEditing({ kind: "rename", text: project.name });
-                  }}
-                >
-                  Rename
-                </button>
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setEditing({ kind: "summary", text: project.summary });
-                  }}
-                >
-                  Summary & brief
-                </button>
-                {(["active", "done", "archived"] as const).map((status) => (
+        <div className="project-manage">
+          <button
+            className="icon-button"
+            aria-label="Project options"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            <Ellipsis size={18} />
+          </button>
+          {menuOpen && (
+            <div className="project-manage-menu">
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  void copyLink({ kind: "project", id: project.id }).then(
+                    (ok) =>
+                      toast({
+                        text: ok ? "Link copied" : "Couldn't copy the link",
+                      }),
+                  );
+                }}
+              >
+                Copy link
+              </button>
+              {canWrite && (
+                <>
                   <button
-                    key={status}
-                    disabled={status === project.status}
                     onClick={() => {
                       setMenuOpen(false);
-                      save({ status });
+                      setEditing({ kind: "rename", text: project.name });
                     }}
                   >
-                    Mark {status}
+                    Rename
                   </button>
-                ))}
-                <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void client
-                      .templateFromProject(project.id)
-                      .then((template) =>
-                        tell({
-                          title: `Saved “${template.name}” as a template.`,
-                          body: "Start a project from it with Templates, on the projects page.",
-                        }),
-                      )
-                      .catch(report);
-                  }}
-                >
-                  Save as template
-                </button>
-                <button
-                  className="is-destructive"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void remove();
-                  }}
-                >
-                  Delete project
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setEditing({ kind: "summary", text: project.summary });
+                    }}
+                  >
+                    Summary & brief
+                  </button>
+                  {(["active", "done", "archived"] as const).map((status) => (
+                    <button
+                      key={status}
+                      disabled={status === project.status}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        save({ status });
+                      }}
+                    >
+                      Mark {status}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void client
+                        .templateFromProject(project.id)
+                        .then((template) =>
+                          tell({
+                            title: `Saved “${template.name}” as a template.`,
+                            body: "Start a project from it with Templates, on the projects page.",
+                          }),
+                        )
+                        .catch(report);
+                    }}
+                  >
+                    Save as template
+                  </button>
+                  <button
+                    className="is-destructive"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void remove();
+                    }}
+                  >
+                    Delete project
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {editing && (

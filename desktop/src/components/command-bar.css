@@ -1,0 +1,50 @@
+/* ⌘K's filters, summary and command rows (NAV-01, NAV-02, SRCH-01). */
+.command-filters {
+  padding: 10px 16px 2px;
+  gap: 6px;
+  scrollbar-width: none;
+}
+.command-filters::-webkit-scrollbar {
+  display: none;
+}
+.command-filters button {
+  padding: 5px 10px;
+}
+.command-summary {
+  margin: 0;
+  padding: 8px 18px 0;
+  font-size: 11px;
+  color: var(--color-textSoft);
+}
+.command-list .command-page {
+  font-style: normal;
+  color: var(--color-textSoft);
+}
+.command-list kbd {
+  flex: none;
+}
+.command-pin {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+}
+.command-list li[role="option"]:hover .command-pin,
+.command-list li[role="option"].active .command-pin,
+.command-pin.is-on {
+  opacity: 1;
+}
+.command-pick-empty {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+@media (hover: none) {
+  .command-pin {
+    opacity: 1;
+  }
+  /* Keys mean nothing on a touch screen. */
+  .command-summary.is-keys {
+    display: none;
+  }
+}

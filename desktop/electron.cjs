@@ -3,6 +3,7 @@ const {
   BrowserWindow,
   Tray,
   Menu,
+  ipcMain,
   nativeImage,
   shell,
 } = require("electron");
@@ -16,6 +17,60 @@ const path = require("node:path");
 let win = null;
 let tray = null;
 let quitting = false;
+
+// orbyn:// links (orbyn://task/<id>, orbyn://add?text=…): Orbyn registers
+// the scheme, and a link opens the one running copy, which hands it to the
+// page. Links wait until the page is listening; the page itself decides
+// what each one opens, and a link that adds something only fills in Quick
+// add for the person to confirm.
+const SCHEME = "orbyn";
+const waiting = [];
+let pageListening = false;
+
+const isOurLink = (value) =>
+  typeof value === "string" &&
+  value.length <= 2048 &&
+  value.toLowerCase().startsWith(`${SCHEME}://`);
+
+const deliver = (url) => {
+  if (!isOurLink(url)) return;
+  if (win && pageListening) win.webContents.send("orbyn:open-link", url);
+  else waiting.push(url);
+  if (win) reveal();
+};
+
+// Windows and Linux pass the link on the command line.
+const linkIn = (argv) => argv.find(isOurLink);
+
+if (process.defaultApp && process.argv.length >= 2)
+  app.setAsDefaultProtocolClient(SCHEME, process.execPath, [
+    path.resolve(process.argv[1]),
+  ]);
+else app.setAsDefaultProtocolClient(SCHEME);
+
+// One copy of Orbyn: a second launch (a link clicked on Windows or Linux)
+// hands its link to the first and quits.
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
+app.on("second-instance", (_event, argv) => {
+  const url = linkIn(argv);
+  if (url) deliver(url);
+  else reveal();
+});
+// macOS delivers links as an event, even before the app is ready.
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  deliver(url);
+});
+const launchedWith = linkIn(process.argv);
+if (launchedWith) waiting.push(launchedWith);
+
+ipcMain.on("orbyn:links-ready", (event) => {
+  if (!win || event.sender !== win.webContents) return;
+  pageListening = true;
+  while (waiting.length)
+    win.webContents.send("orbyn:open-link", waiting.shift());
+});
 
 const showWindow = () => {
   if (!win) return create();
@@ -35,7 +90,12 @@ const create = () => {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
+  });
+  // A reload starts a new page, which asks for links again.
+  win.webContents.on("did-start-loading", () => {
+    pageListening = false;
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) shell.openExternal(url);
@@ -85,6 +145,7 @@ const buildTray = () => {
 };
 
 app.whenReady().then(() => {
+  if (!primary) return;
   create();
   buildTray();
   app.on("activate", () => {

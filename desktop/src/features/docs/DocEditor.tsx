@@ -18,6 +18,7 @@ import {
   Italic,
   LayoutTemplate,
   Link,
+  Link2,
   ListChecks,
   ListPlus,
   Loader2,
@@ -78,6 +79,8 @@ import {
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
 import { SharePageButton } from "../../components/ShareButton";
+import { usePageCommands } from "../../app/page-commands";
+import { copyLink } from "../../lib/links";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
@@ -1636,6 +1639,35 @@ export function DocEditor({
     }
   };
 
+  /** Copy this page's link, and say whether it worked. */
+  const copyPageLink = () =>
+    void copyLink({ kind: "doc", id: doc.id }).then((ok) =>
+      toast({ text: ok ? "Link copied" : "Couldn't copy the link" }),
+    );
+  const copyMarkdown = () =>
+    void navigator.clipboard
+      .writeText(`# ${title}\n\n${markdown}`)
+      .then(() => toast({ text: "Copied as Markdown" }), report);
+
+  // ⌘K's Page commands act on this page while it's open.
+  // Opened: it leads the quick switcher's recent list, on every device.
+  useEffect(() => {
+    void client.recordRecent("doc", doc.id).catch(() => {});
+  }, [doc.id]);
+  usePageCommands({
+    docId: doc.id,
+    title: title || "Untitled",
+    run: {
+      "page.link": copyPageLink,
+      "page.markdown": copyMarkdown,
+      "page.download-md": () => void download("md"),
+      "page.download-pdf": () => void download("pdf"),
+      "page.history": () => setShowHistory(true),
+      "page.template": () => setSavingTemplate(true),
+      "page.ask": () => setChat(true),
+    },
+  });
+
   // Lines already tied to a task are not offered again. The server says
   // which: every line gets an id once it's remarked on, so an id alone
   // doesn't make a line a task. An agenda's lines copy tasks you already
@@ -1788,11 +1820,15 @@ export function DocEditor({
           </button>
           <button
             className="icon-button"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(`# ${title}\n\n${markdown}`)
-                .then(() => toast({ text: "Copied as Markdown" }), report)
-            }
+            onClick={copyPageLink}
+            aria-label="Copy link"
+            title="Copy link"
+          >
+            <Link2 size={15} />
+          </button>
+          <button
+            className="icon-button"
+            onClick={copyMarkdown}
             aria-label="Copy as Markdown"
             title="Copy as Markdown"
           >
