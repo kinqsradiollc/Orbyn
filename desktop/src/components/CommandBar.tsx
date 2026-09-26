@@ -1023,7 +1023,12 @@ export function CommandBar({
                 aria-autocomplete="list"
                 aria-label="Search, add something, or ask the assistant"
                 aria-describedby="command-summary"
-                placeholder="Jump to, search, add “Lunch fri 1pm”, or ask…"
+                placeholder={
+                  // The full hint doesn't fit a phone's width.
+                  window.matchMedia?.("(max-width: 520px)").matches
+                    ? "Search, add or ask…"
+                    : "Jump to, search, add “Lunch fri 1pm”, or ask…"
+                }
                 value={query}
                 maxLength={4000}
                 disabled={busy}
