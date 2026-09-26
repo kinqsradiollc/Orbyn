@@ -14,6 +14,7 @@ import { audit } from "../../lib/audit.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
+import { syncTeamPages } from "../study/service.js";
 
 const ROLE_ORDER = `CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END`;
 
@@ -196,6 +197,8 @@ export async function teamRoutes(app: FastifyInstance) {
       );
       return member(id, target.id, db);
     });
+    // Study: the team's pages' cards are theirs to learn now.
+    await syncTeamPages(id);
     reply.code(201);
     return added;
   });
@@ -271,6 +274,7 @@ export async function teamRoutes(app: FastifyInstance) {
         db,
       );
     });
+    await syncTeamPages(id);
     return reply.code(204).send();
   });
 }

@@ -69,10 +69,11 @@ import { hasVectors } from "../search/semantic.js";
 import {
   agendaDayOf,
   agendaOn,
-  todaysAgenda,
   writeAgendaOn,
+  writeTodaysAgenda,
 } from "./agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
+import { syncSavedPages } from "../study/service.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
 import {
@@ -123,6 +124,9 @@ const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.bo
                      FROM doc_comment_mentions m JOIN users mu ON mu.id = m.user_id
                     WHERE m.comment_id = c.id), '[]'::json) AS mentions
     FROM doc_comments c JOIN users u ON u.id = c.user_id`;
+
+/** When GET /agenda/today (it writes) gave way to POST /agenda/today. */
+const AGENDA_GET_DEPRECATED = Date.UTC(2026, 8, 26);
 
 /** Documents `$1` could see if they weren't in Trash: their own, and their teams'. */
 const SEES = readableDocs("d");
@@ -940,6 +944,7 @@ export async function addToPage(
   await announceDocChange(pool, saved.id, saved.version, "share").catch(
     () => {},
   );
+  await syncSavedPages(saved.id);
   return saved;
 }
 
@@ -1002,6 +1007,7 @@ export async function docRoutes(app: FastifyInstance) {
         )
       ).rows[0];
     });
+    await syncSavedPages(doc.id);
     reply.code(201);
     return doc;
   });
@@ -1167,6 +1173,8 @@ export async function docRoutes(app: FastifyInstance) {
     // Announced after the transaction commits, so anyone who comes running
     // to re-read the document finds the new version already there.
     await announceDocChange(pool, id, saved.version, editorOf(r));
+    // Study follows the page (its card lines, and who can read it).
+    await syncSavedPages(id);
     return saved;
   });
 
@@ -1313,6 +1321,7 @@ export async function docRoutes(app: FastifyInstance) {
       return readDoc(db, id);
     });
     await announceDocChange(pool, id, restored.version, editorOf(r));
+    await syncSavedPages(id);
     return restored;
   });
 
@@ -1325,15 +1334,36 @@ export async function docRoutes(app: FastifyInstance) {
    * the same day returns the same page rather than overwriting what you
    * wrote. It never waits on the AI provider: the worker writes the morning's
    * page with the assistant's summary, and "Rewrite" asks for one.
+   *
+   * Writing it is a POST (201 when it was written just now, 200 when it was
+   * already there). `timezone` is the device's, adopted when the person
+   * hasn't picked one, so their first agenda isn't written in UTC (see
+   * planner/timezone.ts).
    */
-  app.get("/agenda/today", async (r) => {
+  app.post("/agenda/today", async (r, reply) => {
     const u = await authenticate(r);
-    // The device's zone, so the first agenda of someone who never set one
-    // isn't written in UTC (see planner/timezone.ts).
+    const zone = (r.body as { timezone?: unknown } | null)?.timezone;
+    if (typeof zone === "string")
+      await adoptDeviceZone(u.id, zone.slice(0, 64));
+    const made = await writeTodaysAgenda(u.id);
+    if (made.created) await syncSavedPages(made.doc.id);
+    reply.code(made.created ? 201 : 200);
+    return made.doc;
+  });
+
+  /**
+   * The same for app builds from before 26 Sep 2026, which asked with a GET.
+   * It still writes, so it is marked deprecated (RFC 9745) and goes once
+   * those builds have been replaced; everything current uses the POST.
+   */
+  app.get("/agenda/today", async (r, reply) => {
+    const u = await authenticate(r);
     const zone = (r.query as { timezone?: unknown }).timezone;
     if (typeof zone === "string")
       await adoptDeviceZone(u.id, zone.slice(0, 64));
-    return todaysAgenda(u.id);
+    reply.header("Deprecation", `@${Math.floor(AGENDA_GET_DEPRECATED / 1000)}`);
+    reply.header("Link", '</api/agenda/today>; rel="successor-version"');
+    return (await writeTodaysAgenda(u.id)).doc;
   });
 
   /** A day for the agenda routes: "2026-09-24", or a 422 answer. */
@@ -1344,18 +1374,15 @@ export async function docRoutes(app: FastifyInstance) {
   };
 
   /**
-   * One day's agenda, for stepping back and forward from today's. Today's
-   * is written on the spot, as `/agenda/today` does; another day's page is
-   * there only if it was written, and otherwise `doc` is null and the app
-   * offers to write it. Days more than a year back or two months ahead are
-   * out of reach.
+   * One day's agenda, for stepping back and forward from today's. It only
+   * reads: a day's page is there only if it was written, and otherwise
+   * `doc` is null and the app writes it (today's) or offers to (another
+   * day's) with the POST below. Days more than a year back or two months
+   * ahead are out of reach.
    */
   app.get("/agenda/:date", async (r) => {
     const u = await authenticate(r);
     const date = dateParam(r);
-    const zone = (r.query as { timezone?: unknown }).timezone;
-    if (typeof zone === "string")
-      await adoptDeviceZone(u.id, zone.slice(0, 64));
     const day = await agendaDayOf(u.id, date);
     if (!day) fail(422, "The agenda goes back a year and ahead two months.");
     return {
@@ -1370,7 +1397,11 @@ export async function docRoutes(app: FastifyInstance) {
   app.post("/agenda/:date", async (r, reply) => {
     const u = await authenticate(r);
     const date = dateParam(r);
+    const zone = (r.body as { timezone?: unknown } | null)?.timezone;
+    if (typeof zone === "string")
+      await adoptDeviceZone(u.id, zone.slice(0, 64));
     const made = await writeAgendaOn(u.id, date);
+    if (made?.created) await syncSavedPages(made.doc.id);
     if (!made) fail(422, "The agenda goes back a year and ahead two months.");
     reply.code(made.created ? 201 : 200);
     return made.doc;
@@ -1452,6 +1483,7 @@ export async function docRoutes(app: FastifyInstance) {
       };
     });
     if (made.created) reply.code(201);
+    if (made.created) await syncSavedPages(made.doc.id);
     return made.doc;
   });
 
@@ -1486,6 +1518,7 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     await announceDocChange(pool, id, updated.version, editorOf(r));
+    await syncSavedPages(id);
     return {
       created: made.length,
       items: made,
@@ -1918,6 +1951,7 @@ export async function docRoutes(app: FastifyInstance) {
       return readDoc(db, id);
     });
     if (out) await announceDocChange(pool, id, out.version, editorOf(r));
+    if (out) await syncSavedPages(id);
     return { doc: out };
   });
 
@@ -2047,6 +2081,7 @@ export async function docRoutes(app: FastifyInstance) {
       return { ...doc, content: await withTaskState(db, id, doc.content) };
     });
     await announceDocChange(pool, id, back.version, editorOf(r));
+    await syncSavedPages(id);
     return back;
   });
 

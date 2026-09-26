@@ -17,7 +17,6 @@ import { externalEntries } from "../../planner/subscriptions.js";
 import {
   LIVE_CARDS,
   studyOverview,
-  syncCards,
   upcomingExams,
 } from "../../study/service.js";
 import {
@@ -738,7 +737,6 @@ export async function calendarMatches(ctx: AgentContext, words: string[]) {
  * overview stays small for everyone else.
  */
 export async function studyGlance(ctx: AgentContext) {
-  await syncCards(pool, ctx.user.id);
   const counts = (
     await pool.query<{ cards: number; due: number }>(
       `SELECT count(*)::int AS cards,

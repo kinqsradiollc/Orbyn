@@ -171,8 +171,8 @@ test("an empty day says so instead of showing empty headings", () => {
 });
 
 test("the agenda is written once a day and then kept", async () => {
-  const first = await call("GET", "/agenda/today");
-  assert.equal(first.statusCode, 200, first.body);
+  const first = await call("POST", "/agenda/today");
+  assert.ok([200, 201].includes(first.statusCode), first.body);
   const doc = first.json();
   assert.equal(doc.kind, "agenda");
   assert.equal(doc.title, agendaTitle(new Date(), TZ));
@@ -182,7 +182,8 @@ test("the agenda is written once a day and then kept", async () => {
     content: [{ type: "paragraph", text: "My own words" }],
     version: doc.version,
   });
-  const again = await call("GET", "/agenda/today");
+  const again = await call("POST", "/agenda/today");
+  assert.equal(again.statusCode, 200, "already written");
   assert.equal(again.json().id, doc.id, "same document");
   assert.equal(again.json().content[0].text, "My own words");
 });

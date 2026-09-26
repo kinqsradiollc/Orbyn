@@ -20,6 +20,7 @@ import { scanDigests } from "./digest.js";
 import { scanBlocksStarted, scanEventStarting } from "./webhookEvents.js";
 import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
 import { scanMorningAgendas } from "./agenda.js";
+import { drainStudyQueue } from "../modules/study/service.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -103,6 +104,14 @@ export async function runWorker() {
             // Housekeeping: a failed sweep waits for the next hour.
           }
           lastSwept = Date.now();
+        }
+        // Study cards for pages changed outside the API's own saves (imports,
+        // templates, the assistant, team changes): the API syncs what it
+        // saves at once, and this takes whatever is left.
+        try {
+          await drainStudyQueue();
+        } catch {
+          // Left in the queue for the next cycle.
         }
         // Subscribed calendars: new ones within a cycle, the rest hourly,
         // and reminders for the ones that ask for them.

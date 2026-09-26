@@ -363,11 +363,7 @@ test("the agenda has a Study section for someone with cards", async () => {
   const me = await student();
   await page(me.token, "Chemistry", lines("pH of water? :: 7"));
   const agenda = (
-    await call(
-      me.token,
-      "GET",
-      `/agenda/today?timezone=${encodeURIComponent(TZ)}`,
-    )
+    await call(me.token, "POST", "/agenda/today", { timezone: TZ })
   ).body;
   const text = agenda.content.map((b: Json) => b.text ?? "");
   assert.ok(text.includes("Study"), text.join(" | "));
@@ -489,4 +485,135 @@ test("the assistant suggests cards from the page alone, and they're only added w
     ).status,
     200,
   );
+});
+
+test("reading Study never writes: cards follow pages when they're saved, and team changes", async () => {
+  const { drainStudyQueue } = await import("../src/modules/study/service.js");
+  const owner = await student("Keeper");
+  const mate = await student("Joiner");
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams (name, created_by) VALUES ('Card club', $1) RETURNING id",
+      [owner.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'owner')",
+    [team, owner.id],
+  );
+  const shared = await page(
+    owner.token,
+    "Club notes",
+    lines("Quorum? :: A majority"),
+    { team_id: team },
+  );
+  const cards = async (userId: string) =>
+    (
+      await pool.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM study_cards WHERE user_id = $1 AND doc_id = $2",
+        [userId, shared.id],
+      )
+    ).rows[0].n;
+  // Saved through the API: synced at once.
+  assert.equal(await cards(owner.id), 1);
+
+  // A page written behind the API's back (an import, a template) waits for
+  // the notifier; opening Study doesn't write it.
+  const behind = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO docs (user_id, title, kind, content)
+       VALUES ($1, 'Imported deck', 'doc', $2::jsonb) RETURNING id`,
+      [
+        owner.id,
+        JSON.stringify([
+          { id: "bq", type: "paragraph", text: "Lease? :: A timed lock" },
+        ]),
+      ],
+    )
+  ).rows[0].id;
+  const writes = async () =>
+    (
+      await pool.query<{ n: string | null }>(
+        `SELECT string_agg(c.id || c.question || c.answer || c.due_at, ',' ORDER BY c.id) AS n
+           FROM study_cards c WHERE c.user_id = $1`,
+        [owner.id],
+      )
+    ).rows[0].n;
+  const before = await writes();
+  for (const url of ["/study", "/study/queue", `/study/queue?doc_id=${behind}`])
+    assert.equal((await call(owner.token, "GET", url)).status, 200);
+  assert.equal(await writes(), before, "GET /study and /study/queue wrote");
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM study_card_queue WHERE doc_id = $1", [
+        behind,
+      ])
+    ).rowCount,
+    1,
+    "still waiting for the notifier",
+  );
+  assert.equal(
+    (await call(owner.token, "GET", `/study/queue?doc_id=${behind}`)).body
+      .length,
+    0,
+  );
+  // The notifier's drain syncs it.
+  assert.ok((await drainStudyQueue()) >= 1);
+  assert.equal(
+    (await call(owner.token, "GET", `/study/queue?doc_id=${behind}`)).body
+      .length,
+    1,
+  );
+
+  // Joining the team through the app brings its cards; leaving takes them.
+  const r = await app.inject({
+    method: "POST",
+    url: `/teams/${team}/members`,
+    remoteAddress: address(),
+    headers: { authorization: `Bearer ${owner.token}` },
+    payload: {
+      email: (
+        await pool.query<{ email: string }>(
+          "SELECT email FROM users WHERE id = $1",
+          [mate.id],
+        )
+      ).rows[0].email,
+      role: "member",
+    },
+  });
+  assert.equal(r.statusCode, 201, r.body);
+  assert.equal(await cards(mate.id), 1);
+  const out = await app.inject({
+    method: "DELETE",
+    url: `/teams/${team}/members/${mate.id}`,
+    remoteAddress: address(),
+    headers: { authorization: `Bearer ${mate.token}` },
+  });
+  assert.equal(out.statusCode, 204, out.body);
+  assert.equal(await cards(mate.id), 0);
+
+  // Editing the line updates the card and keeps its review state.
+  const [card] = (
+    await call(owner.token, "GET", `/study/queue?doc_id=${shared.id}`)
+  ).body;
+  await call(owner.token, "POST", `/study/cards/${card.id}/review`, {
+    rating: "good",
+  });
+  const doc = (await call(owner.token, "GET", `/docs/${shared.id}`)).body;
+  const saved = await call(owner.token, "PUT", `/docs/${shared.id}`, {
+    version: doc.version,
+    content: doc.content.map((b: Json) =>
+      b.text?.startsWith("Quorum?")
+        ? { ...b, text: "Quorum? :: More than half the members" }
+        : b,
+    ),
+  });
+  assert.equal(saved.status, 200, saved.raw.body);
+  const after = (
+    await pool.query<{ answer: string; reps: number }>(
+      "SELECT answer, reps FROM study_cards WHERE id = $1",
+      [card.id],
+    )
+  ).rows[0];
+  assert.deepEqual(after, { answer: "More than half the members", reps: 1 });
 });

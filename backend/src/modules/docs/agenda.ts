@@ -319,7 +319,7 @@ async function writeDay(
   userId: string,
   date: string,
   content: DocBlock[],
-): Promise<string> {
+): Promise<{ id: string; created: boolean }> {
   return transaction(async (db) => {
     await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       `agenda:${userId}`,
@@ -332,14 +332,15 @@ async function writeDay(
         [userId, date],
       )
     ).rows[0]?.id;
-    if (again) return again;
-    return (
+    if (again) return { id: again, created: false };
+    const id = (
       await db.query<{ id: string }>(
         `INSERT INTO docs (user_id, title, kind, content, agenda_date)
            VALUES ($1,$2,'agenda',$3::jsonb,$4::date) RETURNING id`,
         [userId, agendaTitleOn(date), JSON.stringify(content), date],
       )
     ).rows[0].id;
+    return { id, created: true };
   });
 }
 
@@ -357,12 +358,20 @@ export async function todaysAgenda(
   userId: string,
   options: { withBrief?: boolean; now?: Date } = {},
 ): Promise<Doc> {
+  return (await writeTodaysAgenda(userId, options)).doc;
+}
+
+/** {@link todaysAgenda}, saying whether the page was written just now. */
+export async function writeTodaysAgenda(
+  userId: string,
+  options: { withBrief?: boolean; now?: Date } = {},
+): Promise<{ doc: Doc; created: boolean }> {
   const now = options.now ?? new Date();
   const tz = await zoneOf(userId);
   const date = localDateKey(now, tz);
   const found = await findAgenda(userId, date, tz);
   if (found && !(found.written_early && found.version === 1))
-    return readDoc(found.id);
+    return { doc: await readDoc(found.id), created: false };
   const { content } = await contentFor(userId, now, !!options.withBrief);
   if (found) {
     const version = (
@@ -377,9 +386,25 @@ export async function todaysAgenda(
       await announceDocChange(pool, found.id, version, "agenda").catch(
         () => {},
       );
-    return readDoc(found.id);
+    return { doc: await readDoc(found.id), created: false };
   }
-  return readDoc(await writeDay(userId, date, content));
+  const made = await writeDay(userId, date, content);
+  return { doc: await readDoc(made.id), created: made.created };
+}
+
+/**
+ * Today's agenda as it stands, without writing anything: null until today's
+ * page is written (or while a page written ahead waits to be brought up to
+ * date on its day, which {@link writeTodaysAgenda} does).
+ */
+export async function todaysAgendaIfWritten(
+  userId: string,
+  now = new Date(),
+): Promise<Doc | null> {
+  const tz = await zoneOf(userId);
+  const found = await findAgenda(userId, localDateKey(now, tz), tz);
+  if (!found || (found.written_early && found.version === 1)) return null;
+  return readDoc(found.id);
 }
 
 /** How far back and ahead the agenda steps: a year back, two months ahead. */
@@ -408,8 +433,9 @@ export async function agendaDayOf(
 }
 
 /**
- * One day's agenda, if it has been written: today's is written on the spot
- * as ever; any other day's only when someone asks for it (`writeAgendaOn`).
+ * One day's agenda, if it has been written. It only reads: any day's page,
+ * today's included, is written when someone asks for it (`writeAgendaOn`,
+ * or `writeTodaysAgenda`).
  */
 export async function agendaOn(
   userId: string,
@@ -418,7 +444,7 @@ export async function agendaOn(
 ): Promise<Doc | null> {
   const day = await agendaDayOf(userId, date, now);
   if (!day) return null;
-  if (day.when === "today") return todaysAgenda(userId, { now });
+  if (day.when === "today") return todaysAgendaIfWritten(userId, now);
   const found = await findAgenda(userId, date, day.tz);
   return found ? readDoc(found.id) : null;
 }
@@ -435,8 +461,7 @@ export async function writeAgendaOn(
 ): Promise<{ doc: Doc; created: boolean } | null> {
   const day = await agendaDayOf(userId, date, now);
   if (!day) return null;
-  if (day.when === "today")
-    return { doc: await todaysAgenda(userId, { now }), created: false };
+  if (day.when === "today") return writeTodaysAgenda(userId, { now });
   const found = await findAgenda(userId, date, day.tz);
   if (found) return { doc: await readDoc(found.id), created: false };
   const start = dayStartOf(date, day.tz);
@@ -447,10 +472,8 @@ export async function writeAgendaOn(
     }),
     past: day.when === "past",
   });
-  return {
-    doc: await readDoc(await writeDay(userId, date, content)),
-    created: true,
-  };
+  const made = await writeDay(userId, date, content);
+  return { doc: await readDoc(made.id), created: made.created };
 }
 
 /**

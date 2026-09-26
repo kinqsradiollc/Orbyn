@@ -802,30 +802,33 @@ export class OrbynClient {
     });
   }
   /**
-   * Today's agenda document, generated on first ask each day. `timezone` is
-   * the device's, adopted when you haven't picked one in settings.
+   * Today's agenda document, written on first ask each day (a POST: asking
+   * writes it). `timezone` is the device's, adopted when you haven't picked
+   * one in settings.
    */
   agendaToday(timezone?: string) {
-    return this.request<Doc>(
-      timezone
-        ? `/agenda/today?timezone=${encodeURIComponent(timezone)}`
-        : "/agenda/today",
-    );
+    return this.request<Doc>("/agenda/today", {
+      method: "POST",
+      body: timezone ? { timezone } : {},
+    });
   }
   /**
-   * One day's agenda, for stepping back and forward: today's is written on
-   * the spot; another day's `doc` is null until `writeAgenda` writes it.
+   * One day's agenda, for stepping back and forward. Reading never writes:
+   * today's page is written on the spot here when it isn't there yet (as
+   * `agendaToday` does); another day's `doc` is null until `writeAgenda`
+   * writes it.
    */
-  agendaOn(date: string, timezone?: string) {
-    return this.request<AgendaDay>(
-      timezone
-        ? `/agenda/${date}?timezone=${encodeURIComponent(timezone)}`
-        : `/agenda/${date}`,
-    );
+  async agendaOn(date: string, timezone?: string) {
+    const day = await this.request<AgendaDay>(`/agenda/${date}`);
+    if (day.doc || date !== day.today) return day;
+    return { ...day, doc: await this.writeAgenda(date, timezone) };
   }
   /** Write one day's agenda from the calendar (or get the one written). */
-  writeAgenda(date: string) {
-    return this.request<Doc>(`/agenda/${date}`, { method: "POST" });
+  writeAgenda(date: string, timezone?: string) {
+    return this.request<Doc>(`/agenda/${date}`, {
+      method: "POST",
+      body: timezone ? { timezone } : {},
+    });
   }
   /** Tell the server the device's zone; adopted unless you picked one. */
   reportTimeZone(timezone: string) {

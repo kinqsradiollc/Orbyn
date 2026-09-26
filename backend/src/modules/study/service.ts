@@ -15,7 +15,7 @@ import {
   type StudyExam,
   type StudyOverview,
 } from "@orbyn/core";
-import { pool, type Queryable as Db } from "../../db/pool.js";
+import { pool, transaction, type Queryable as Db } from "../../db/pool.js";
 import {
   agendaEntries,
   busyIntervals,
@@ -93,52 +93,127 @@ export const CARD_SELECT = `SELECT c.id, c.doc_id, d.title AS doc_title, c.card_
   FROM ${LIVE_CARDS}`;
 
 /**
- * Bring `userId`'s cards in line with the pages they can see: new lines
- * become new cards (due now), edited lines update theirs, and cards whose
- * line, page or access is gone are dropped. Review state is kept for any
- * card whose line survives.
+ * Bring one page's cards in line with the page and who can read it: each
+ * reader (its author for a personal page, every member for a team page)
+ * has a card per line; new lines become new cards (due now), edited lines
+ * update theirs, and cards whose line is gone, or whose person can no
+ * longer read the page, are dropped. Review state is kept for any card
+ * whose line survives. A page in the Trash keeps its cards and their
+ * review history, hidden, so restoring it brings them back as they were.
+ *
+ * This is the write side of Study: pages are synced when they are saved
+ * (see {@link drainStudyQueue}), so reading Study never writes.
  */
-export async function syncCards(db: Db, userId: string) {
-  const pages = (
-    await db.query<{ id: string; content: DocBlock[] }>(
-      `SELECT d.id, d.content FROM docs d
-        WHERE ${VISIBLE_DOC}
-          AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '% ::: %'
-               OR d.content::text LIKE '%{{%}}%')
-        ORDER BY d.updated_at DESC LIMIT 500`,
-      [userId],
+export async function syncDocCards(db: Db, docId: string): Promise<void> {
+  const doc = (
+    await db.query<{
+      id: string;
+      user_id: string;
+      team_id: string | null;
+      deleted_at: Date | null;
+      content: DocBlock[];
+    }>(
+      "SELECT id, user_id, team_id, deleted_at, content FROM docs WHERE id = $1",
+      [docId],
     )
-  ).rows;
-  const keep: { doc: string; key: string }[] = [];
-  for (const page of pages) {
-    const cards = cardsInBlocks(page.content ?? []);
-    if (!cards.length) continue;
+  ).rows[0];
+  // A page deleted for good takes its cards with it (ON DELETE CASCADE).
+  if (!doc || doc.deleted_at) return;
+  const readers = doc.team_id
+    ? (
+        await db.query<{ user_id: string }>(
+          "SELECT user_id FROM team_members WHERE team_id = $1",
+          [doc.team_id],
+        )
+      ).rows.map((r) => r.user_id)
+    : [doc.user_id];
+  const cards = cardsInBlocks(doc.content ?? []);
+  if (cards.length && readers.length)
     await db.query(
       // Page order is kept as each card's creation order, so new cards are
       // learnt top to bottom.
       `INSERT INTO study_cards (user_id, doc_id, card_key, block_id, question, answer, created_at)
-       SELECT $1, $2, x.key, x.block_id, x.question, x.answer,
+       SELECT u.id, $1, x.key, x.block_id, x.question, x.answer,
               now() + (x.ord * interval '1 millisecond')
-         FROM jsonb_to_recordset($3::jsonb)
+         FROM unnest($2::uuid[]) AS u(id)
+        CROSS JOIN jsonb_to_recordset($3::jsonb)
            AS x(key text, block_id text, question text, answer text, ord int)
        ON CONFLICT (user_id, doc_id, card_key) DO UPDATE
          SET question = EXCLUDED.question, answer = EXCLUDED.answer, block_id = EXCLUDED.block_id
          WHERE study_cards.question IS DISTINCT FROM EXCLUDED.question
-            OR study_cards.answer IS DISTINCT FROM EXCLUDED.answer`,
-      [userId, page.id, JSON.stringify(cards.map((c, ord) => ({ ...c, ord })))],
+            OR study_cards.answer IS DISTINCT FROM EXCLUDED.answer
+            OR study_cards.block_id IS DISTINCT FROM EXCLUDED.block_id`,
+      [doc.id, readers, JSON.stringify(cards.map((c, ord) => ({ ...c, ord })))],
     );
-    for (const c of cards) keep.push({ doc: page.id, key: c.key });
-  }
-  // A page in Trash keeps its cards and their review history, hidden, so
-  // restoring it brings them back as they were.
   await db.query(
-    `DELETE FROM study_cards c WHERE c.user_id = $1
-       AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset($2::jsonb) AS k(doc uuid, key text)
-                        WHERE k.doc = c.doc_id AND k.key = c.card_key)
-       AND NOT EXISTS (SELECT 1 FROM docs t
-                        WHERE t.id = c.doc_id AND t.deleted_at IS NOT NULL)`,
-    [userId, JSON.stringify(keep)],
+    `DELETE FROM study_cards
+      WHERE doc_id = $1
+        AND (NOT (user_id = ANY ($2::uuid[])) OR NOT (card_key = ANY ($3::text[])))`,
+    [doc.id, readers, cards.map((c) => c.key)],
   );
+}
+
+/** Pages synced per drain, at most (the notifier drains again next cycle). */
+const DRAIN_LIMIT = 200;
+
+/**
+ * Sync the pages waiting in the study queue (migration 150 queues a page
+ * when its card lines, its space or its Trash state change, and a team's
+ * pages when someone joins or leaves it). The API calls this with the ids
+ * it just saved, so Study is current at once; the notifier calls it with
+ * none, to take whatever is left. Several callers never sync one page at
+ * the same time (SKIP LOCKED). Returns how many pages were synced.
+ */
+export async function drainStudyQueue(
+  only: { docIds?: string[]; teamId?: string } = {},
+  limit = DRAIN_LIMIT,
+): Promise<number> {
+  if (only.docIds && !only.docIds.length) return 0;
+  return transaction(async (db) => {
+    const queued = (
+      await db.query<{ doc_id: string }>(
+        `SELECT q.doc_id FROM study_card_queue q
+          WHERE ($1::uuid[] IS NULL OR q.doc_id = ANY ($1::uuid[]))
+            AND ($2::uuid IS NULL OR EXISTS (
+                  SELECT 1 FROM docs d WHERE d.id = q.doc_id AND d.team_id = $2))
+          ORDER BY q.queued_at LIMIT $3
+          FOR UPDATE OF q SKIP LOCKED`,
+        [only.docIds ?? null, only.teamId ?? null, limit],
+      )
+    ).rows.map((r) => r.doc_id);
+    for (const id of queued) await syncDocCards(db, id);
+    if (queued.length)
+      await db.query(
+        "DELETE FROM study_card_queue WHERE doc_id = ANY ($1::uuid[])",
+        [queued],
+      );
+    return queued.length;
+  });
+}
+
+/**
+ * {@link drainStudyQueue} for pages just saved, after the answer is ready:
+ * a failure here never fails the save (the notifier syncs the page later).
+ */
+export async function syncSavedPages(...docIds: string[]): Promise<void> {
+  try {
+    await drainStudyQueue({ docIds });
+  } catch {
+    // Left in the queue for the notifier.
+  }
+}
+
+/**
+ * The same for a team whose members changed: its pages' cards now belong to
+ * the new set of members (someone who joined studies them; someone who left
+ * no longer does).
+ */
+export async function syncTeamPages(teamId: string): Promise<void> {
+  try {
+    await drainStudyQueue({ teamId }, 1000);
+  } catch {
+    // Left in the queue for the notifier.
+  }
 }
 
 /** Upcoming exams: subscribed "exams" calendars, and events named like an exam. */
@@ -176,7 +251,6 @@ export async function studyOverview(
   userId: string,
   now = new Date(),
 ): Promise<StudyOverview> {
-  await syncCards(pool, userId);
   const tz = (await loadPrefs(pool, userId)).timezone || "UTC";
   const todayEnd = endOfToday(now, tz);
   const todayStart = dayTime(localDateKey(now, tz), 0, tz);
@@ -334,7 +408,6 @@ export async function reviewQueue(
   options: { docId?: string; limit: number; ahead: boolean },
   now = new Date(),
 ): Promise<StudyCard[]> {
-  await syncCards(pool, userId);
   const tz = (await loadPrefs(pool, userId)).timezone || "UTC";
   const todayStart = dayTime(localDateKey(now, tz), 0, tz);
   const newToday = (

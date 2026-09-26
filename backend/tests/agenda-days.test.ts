@@ -358,7 +358,7 @@ test("another day's opening line names the day, not today", () => {
 });
 
 test("today's agenda knows its day, and stepping to it answers the same page", async () => {
-  const doc = (await call("GET", "/agenda/today")).json();
+  const doc = (await call("POST", "/agenda/today")).json();
   assert.equal(doc.agenda_date, today());
   const day = await call("GET", `/agenda/${today()}`);
   assert.equal(day.statusCode, 200, day.body);
@@ -424,7 +424,7 @@ test("a page written ahead is brought up to date on its day, unless it was chang
 });
 
 test("Rewrite from my calendar keeps your notes", async () => {
-  const doc = (await call("GET", "/agenda/today")).json();
+  const doc = (await call("POST", "/agenda/today")).json();
   const at = agendaNotesAt(doc.content);
   const content: DocBlock[] = doc.content.slice();
   content.splice(at + 1, 1, {
@@ -482,7 +482,7 @@ test("another day's page leaves out what is worked out from today", async () => 
   const headings = (blocks: DocBlock[]) =>
     blocks.flatMap((b) => (b.type === "heading" ? [b.text] : []));
   // Today's page has them...
-  const todays = (await call("GET", "/agenda/today", undefined, other)).json();
+  const todays = (await call("POST", "/agenda/today", undefined, other)).json();
   assert.ok(headings(todays.content).includes("Top priorities"));
   assert.ok(headings(todays.content).includes("Study"));
   assert.ok(
@@ -505,6 +505,43 @@ test("another day's page leaves out what is worked out from today", async () => 
       ),
     );
   }
+});
+
+test("reading an agenda never writes one: today's is written by the POST, and the old GET says it's deprecated", async () => {
+  const r = await app.inject({
+    method: "POST",
+    url: "/auth/register",
+    payload: {
+      email: `agenda-read-${Date.now()}@example.com`,
+      password: "a-long-test-password",
+      name: "Reader",
+    },
+  });
+  const fresh = r.json().token as string;
+  const count = async () =>
+    (
+      await pool.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM docs WHERE kind = 'agenda' AND user_id = $1",
+        [r.json().user.id],
+      )
+    ).rows[0].n;
+  const day = (
+    await call("GET", `/agenda/${today()}`, undefined, fresh)
+  ).json();
+  assert.equal(day.doc, null, "GET /agenda/:date only reads");
+  assert.equal(await count(), 0);
+  const made = await call("POST", "/agenda/today", { timezone: TZ }, fresh);
+  assert.equal(made.statusCode, 201, made.body);
+  assert.equal(await count(), 1);
+  const again = await call("POST", "/agenda/today", {}, fresh);
+  assert.equal(again.statusCode, 200);
+  assert.equal(again.json().id, made.json().id);
+  // Older app builds still get their page, told the GET is deprecated.
+  const legacy = await call("GET", "/agenda/today", undefined, fresh);
+  assert.equal(legacy.statusCode, 200);
+  assert.equal(legacy.json().id, made.json().id);
+  assert.match(String(legacy.headers.deprecation), /^@\d+$/);
+  assert.equal((await call("POST", "/agenda/today", {}, null)).statusCode, 401);
 });
 
 test("the agenda steps only to real days within reach", async () => {
