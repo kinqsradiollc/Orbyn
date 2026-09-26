@@ -1,8 +1,10 @@
 // Shared by the popup, the options page and the service worker: settings,
 // site rules, and calls to Orbyn. The Clipper signs in with a Clipper key
 // (ocl_…), made in Orbyn under Settings → Connections → Orbyn Clipper. It
-// can only save clips and list where they may go; it can't read your pages
-// or change your account.
+// can only save clips (a new page, or lines added to the end of a page the
+// person can edit) and list where they may go: folders, projects, teams and
+// the titles of pages with a Cards heading. It can't open what's in a page or
+// change the account.
 
 /** Where Orbyn's API is, unless the options say otherwise. */
 export const DEFAULT_API = "https://orbyn.dev/api";

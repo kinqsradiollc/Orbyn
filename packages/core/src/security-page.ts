@@ -52,7 +52,7 @@ export const SECURITY_PAGE: SecuritySection[] = [
       "The assistant suggests changes and waits for you to approve them.",
       "Outside AI agents see only what you grant when you connect them, and you can disconnect them in Settings at any time.",
       "Team owners and admins can turn off publishing to the web, the assistant on team pages, and booking pages for people outside, for the whole team.",
-      "The Orbyn Clipper browser extension signs in with a key that can only save clips: it can't read your pages or change your account.",
+      "The Orbyn Clipper browser extension signs in with a key that can only save clips and list where they can go: your folders, projects and teams, and the titles of your pages with a Cards heading. It can add a clip to the end of a page you can edit, but it can't open what's in your pages, see your tasks or change your account.",
     ],
   },
   {

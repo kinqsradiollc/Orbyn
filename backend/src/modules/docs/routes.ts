@@ -707,7 +707,7 @@ export async function makeLineTasks(
  * Tags a page may carry: its own space's — your personal tags on a personal
  * page, the team's on a team page. `$2` is the reader, `$3` the page's team.
  */
-const TAG_IN_SPACE = `(($3::uuid IS NULL AND g.team_id IS NULL AND g.user_id = $2)
+export const TAG_IN_SPACE = `(($3::uuid IS NULL AND g.team_id IS NULL AND g.user_id = $2)
   OR ($3::uuid IS NOT NULL AND g.team_id = $3::uuid))`;
 
 /** A page's tags as its tag row shows them, by name. */

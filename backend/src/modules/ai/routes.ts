@@ -20,7 +20,7 @@ import { pool, transaction } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
-import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { assistantMayRead, docVisibleTo } from "../../lib/doc-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -142,6 +142,7 @@ async function scopeOverview(
       `SELECT d.id AS doc_id, d.title, l.block_id, d.content
          FROM doc_task_links l JOIN docs d ON d.id = l.doc_id
         WHERE l.item_id = $2 AND ${docVisibleTo("$1")}
+          AND ${assistantMayRead("d")}
         ORDER BY l.created_at LIMIT 1`,
       [u.id, scope.id],
     ),

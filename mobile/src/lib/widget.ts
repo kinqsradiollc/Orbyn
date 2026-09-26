@@ -111,6 +111,19 @@ function savePending(queue: PendingQueue) {
   } else if (Platform.OS === "android") setAndroidPending(json);
 }
 
+const statusOf = (e: unknown) => (e as { status?: number }).status;
+
+/**
+ * The server will never take this one: a bad request, no longer allowed, or
+ * the task is gone. Anything else (offline, 409, 429, 5xx) is tried again.
+ */
+export const refusedForGood = (status: number | undefined) =>
+  status === 400 ||
+  status === 403 ||
+  status === 404 ||
+  status === 410 ||
+  status === 422;
+
 /**
  * Send what was ticked in a widget or said to Siri while the app was away
  * (CAP-05..07, CAP-09): each tick as the task done, each capture as a task
@@ -139,9 +152,11 @@ export async function flushPending(): Promise<number> {
       else await client.quickAdd(c.text, zone);
       sent.captures.push(c.id);
     } catch (e) {
-      // Offline: try again next time. Refused for good: drop it.
-      const status = (e as { status?: number }).status;
-      if (status && status >= 400 && status < 500) sent.captures.push(c.id);
+      // Refused for good: drop it. Offline, busy (429) or a server fault:
+      // keep it for next time, and stop once the server says slow down.
+      const status = statusOf(e);
+      if (refusedForGood(status)) sent.captures.push(c.id);
+      else if (status === 429) break;
     }
   }
   for (const t of queue.ticks) {
@@ -149,8 +164,9 @@ export async function flushPending(): Promise<number> {
       await client.postItemUpdate(t.item, { status: "done" });
       sent.ticks.push(t.item);
     } catch (e) {
-      const status = (e as { status?: number }).status;
-      if (status && status >= 400 && status < 500) sent.ticks.push(t.item);
+      const status = statusOf(e);
+      if (refusedForGood(status)) sent.ticks.push(t.item);
+      else if (status === 429) break;
     }
   }
   try {

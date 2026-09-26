@@ -7,7 +7,7 @@ import { idParam, writeRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { audit } from "../../lib/audit.js";
 import { announceDocChange } from "./live.js";
-import { checkLinks, readDoc, requireDoc } from "./routes.js";
+import { TAG_IN_SPACE, checkLinks, readDoc, requireDoc } from "./routes.js";
 
 /**
  * Tidying the library (SRCH-03, ORG-03).
@@ -110,10 +110,11 @@ export async function libraryRoutes(app: FastifyInstance) {
           if (b.folder_id)
             await checkLinks(db, u, doc.team_id, { folder_id: b.folder_id });
           if (b.tag_id) {
+            // The same rule as PUT /docs/:id/tags: personal tags on
+            // personal pages, a team's tags on that team's pages.
             const tag = (
               await db.query(
-                `SELECT 1 FROM tags WHERE id = $1
-                   AND (user_id = $2 OR (team_id IS NOT NULL AND team_id = $3))`,
+                `SELECT 1 FROM tags g WHERE g.id = $1 AND ${TAG_IN_SPACE}`,
                 [b.tag_id, u.id, doc.team_id],
               )
             ).rowCount;

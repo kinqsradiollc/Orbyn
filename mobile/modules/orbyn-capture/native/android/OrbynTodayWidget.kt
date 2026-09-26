@@ -117,9 +117,49 @@ class OrbynTodayWidget : AppWidgetProvider() {
       return views
     }
 
-    /** A task ticked here: off the widget now, sent by the app later. */
+    /** The due time the glance carries, in either ISO shape the app writes. */
+    private fun parse(iso: String): Date? {
+      for (pattern in listOf("yyyy-MM-dd'T'HH:mm:ss.SSSX", "yyyy-MM-dd'T'HH:mm:ssX")) {
+        try {
+          return SimpleDateFormat(pattern, Locale.US).parse(iso)
+        } catch (e: Exception) {
+          // Try the next shape.
+        }
+      }
+      return null
+    }
+
+    private fun isToday(iso: String?): Boolean {
+      val date = iso?.takeIf { it.isNotEmpty() }?.let { parse(it) } ?: return false
+      val day = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+      return day.format(date) == day.format(Date())
+    }
+
+    /**
+     * A task ticked here: off the widget now, sent by the app later. Only a
+     * task the widget is showing is queued, so a broadcast naming anything
+     * else (from another app) does nothing. The counts move as on iOS.
+     */
     fun tick(context: Context, item: String) {
       val p = prefs(context)
+      val g = glance(context) ?: return
+      val tasks = g.optJSONArray("tasks") ?: return
+      var ticked: JSONObject? = null
+      val kept = JSONArray()
+      for (i in 0 until tasks.length()) {
+        val t = tasks.getJSONObject(i)
+        if (ticked == null && t.optString("id") == item) ticked = t else kept.put(t)
+      }
+      val task = ticked ?: return
+      g.put("tasks", kept)
+      val overdue = task.optBoolean("overdue", false)
+      val due = if (task.isNull("due")) null else task.optString("due")
+      if (!overdue && isToday(due)) {
+        g.put("todayOpen", maxOf(0, g.optInt("todayOpen", 0) - 1))
+        g.put("todayDone", g.optInt("todayDone", 0) + 1)
+      } else if (overdue) {
+        g.put("overdue", maxOf(0, g.optInt("overdue", 0) - 1))
+      }
       val queue = p.getString("pending", null)?.let {
         try { JSONObject(it) } catch (e: Exception) { null }
       } ?: JSONObject()
@@ -127,20 +167,15 @@ class OrbynTodayWidget : AppWidgetProvider() {
       var seen = false
       for (i in 0 until ticks.length()) if (ticks.getJSONObject(i).optString("item") == item) seen = true
       if (!seen) ticks.put(JSONObject().put("item", item).put("at", now()))
-      queue.put("ticks", ticks)
+      // At most 50 waiting, as on iOS.
+      val recent = JSONArray()
+      for (i in maxOf(0, ticks.length() - 50) until ticks.length()) recent.put(ticks.get(i))
+      queue.put("ticks", recent)
       if (!queue.has("captures")) queue.put("captures", JSONArray())
-      val g = glance(context)
-      if (g != null) {
-        val tasks = g.optJSONArray("tasks") ?: JSONArray()
-        val kept = JSONArray()
-        for (i in 0 until tasks.length()) {
-          val t = tasks.getJSONObject(i)
-          if (t.optString("id") != item) kept.put(t)
-        }
-        g.put("tasks", kept)
-        p.edit().putString("glance", g.toString()).apply()
-      }
-      p.edit().putString("pending", queue.toString()).apply()
+      p.edit()
+        .putString("glance", g.toString())
+        .putString("pending", queue.toString())
+        .apply()
     }
 
     /** A task added from outside the app (the tile), waiting for the app. */

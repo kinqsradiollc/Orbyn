@@ -513,6 +513,59 @@ test("an archived folder takes its pages out of lists; several pages move, archi
   assert.equal(still.folder_id, null);
 });
 
+test("bulk tagging takes only a tag from the page's own space, as a page's tag row does", async () => {
+  const teamPage = await page(mate, "Team reading", [p("r")], {
+    team_id: teamId,
+  });
+  const own = await page(mate, "My reading", [p("m")]);
+  const personal = (
+    await call(mate, "POST", "/tags", { name: "just-mine" })
+  ).json().id as string;
+  const elsewhere = (
+    await call(mate, "POST", "/teams", { name: "Other space" })
+  ).json().id as string;
+  const otherTeamTag = (
+    await call(mate, "POST", "/tags", {
+      name: "other-team",
+      team_id: elsewhere,
+    })
+  ).json().id as string;
+  const teamTag = (
+    await call(mate, "POST", "/tags", { name: "physics", team_id: teamId })
+  ).json().id as string;
+  for (const [tag, ids] of [
+    [personal, [teamPage.id]],
+    [otherTeamTag, [teamPage.id, own.id]],
+    [teamTag, [own.id]],
+  ] as const) {
+    const res = await call(mate, "POST", "/docs/bulk", {
+      ids,
+      tag_id: tag,
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.deepEqual(res.json().done, []);
+    for (const s of res.json().skipped)
+      assert.match(s.reason, /isn't in this page's space/);
+  }
+  const tags = (d: { id: string }) =>
+    call(mate, "GET", `/docs/${d.id}`).then((r) =>
+      (r.json().tags as { id: string }[]).map((t) => t.id),
+    );
+  assert.deepEqual(await tags(teamPage), []);
+  assert.deepEqual(await tags(own), []);
+  const ok = await call(mate, "POST", "/docs/bulk", {
+    ids: [teamPage.id, own.id],
+    tag_id: teamTag,
+  });
+  assert.deepEqual(ok.json().done, [teamPage.id]);
+  assert.deepEqual(await tags(teamPage), [teamTag]);
+  const mine = await call(mate, "POST", "/docs/bulk", {
+    ids: [own.id],
+    tag_id: personal,
+  });
+  assert.deepEqual(mine.json().done, [own.id]);
+});
+
 test("archive and bulk: 401, 422, 404 not yours, 403 a viewer, 429", async () => {
   const who = await register("Arc Guard");
   const doc = await page(who, "Mine", [p("x")]);
@@ -751,6 +804,46 @@ test("a team's switches: members read them, owners change them, and each one tak
   ).rows.map((r) => r.action);
   assert.ok(audited.includes("team.assistant_off"));
   assert.ok(audited.includes("team.booking_on"));
+});
+
+test("a task made from a team page's line keeps that line out of the assistant when the team has it off", async () => {
+  const team = (
+    await call(owner, "POST", "/teams", { name: "Quiet team" })
+  ).json().id as string;
+  await call(owner, "POST", `/teams/${team}/members`, {
+    email: mate.email,
+    role: "member",
+  });
+  const source = await page(
+    mate,
+    "Quiet notes",
+    [p("Zebra budget figure", "zq1")],
+    { team_id: team },
+  );
+  const made = await task(mate, "Follow up on the figure");
+  await pool.query(
+    "INSERT INTO doc_task_links (doc_id, block_id, item_id, done) VALUES ($1, 'zq1', $2, false)",
+    [source.id, made.id],
+  );
+  const ask = async () => {
+    asked.length = 0;
+    replies = ["Here is where it stands."];
+    const res = await call(mate, "POST", "/ai/chat", {
+      message: "Where does this stand?",
+      timezone: "UTC",
+      scope: { kind: "task", id: made.id },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.ok(asked.length >= 1);
+    return asked.join("\n");
+  };
+  // With the assistant on, the line the task came from is part of the context.
+  assert.match(await ask(), /Zebra budget figure/);
+  await call(owner, "PUT", `/teams/${team}/policies`, { assistant: false });
+  const sent = await ask();
+  assert.doesNotMatch(sent, /Zebra budget figure/);
+  assert.doesNotMatch(sent, /Quiet notes/);
+  assert.match(sent, /Follow up on the figure/);
 });
 
 test("team switches: 401, 422, 404 not a member, 403 for an API key", async () => {

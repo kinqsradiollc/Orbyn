@@ -8,8 +8,10 @@ import { SettingsSection } from "./SettingsSection";
 /**
  * The Orbyn Clipper (CAP-02): the browser extension that saves articles,
  * papers, assignments and highlights into Orbyn. It signs in with a
- * Clipper key made here, which can only save clips: it can't read your
- * pages, see your tasks or change your account. A key is shown once.
+ * Clipper key made here, which can only save clips and list where they can
+ * go (folders, projects, teams and the titles of pages with a Cards
+ * heading): it can't open what's in your pages, see your tasks or change
+ * your account. A key is shown once.
  */
 export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
   const { ask } = useConfirm();
@@ -52,7 +54,8 @@ export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
         Save what you're reading from your browser: an article or a paper as a
         page, an assignment or a long read as a task, and highlights as quotes
         or study cards. Paste a Clipper key into the extension's options to
-        connect it. A Clipper key can only save clips.
+        connect it. A Clipper key can only save clips and list where they can
+        go; it can't open what's in your pages.
       </p>
       {made && (
         <div className="clip-key-made" role="status">
