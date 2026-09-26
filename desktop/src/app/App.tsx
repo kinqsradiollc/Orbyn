@@ -95,6 +95,9 @@ import { PublicInvitePage } from "../features/booking/PublicInvite";
 import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
 import type { View } from "./views";
+import { ReviewView } from "../features/review/ReviewView";
+import { onOpenReview } from "../lib/review";
+import { onLive } from "../lib/live";
 import "../styles/planning.css";
 
 export function App() {
@@ -183,6 +186,9 @@ export function App() {
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
   const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
   const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  /** A proposal to open in Review (a link, a notice, an agent's activity). */
+  const [reviewToOpen, setReviewToOpen] = useState<string | null>(null);
+  const [reviewPending, setReviewPending] = useState(0);
   const [projectSectionToOpen, setProjectSectionToOpen] = useState<
     "decisions" | "history" | null
   >(null);
@@ -252,8 +258,34 @@ export function App() {
     else if (link.kind === "project") {
       setProjectToOpen(link.id);
       setView("Projects");
+    } else if (link.kind === "review") {
+      setReviewToOpen(link.id);
+      setView("Review");
     } else setView("Overview");
   };
+  // How many proposals wait, for the sidebar: read when signed in and again
+  // whenever the inbox changes (an agent proposed, or another device decided).
+  useEffect(() => {
+    if (!token) return;
+    const count = () =>
+      client.reviewCount().then(
+        (r) => setReviewPending(r.pending),
+        () => {},
+      );
+    void count();
+    const stop = onLive(
+      (news) =>
+        news.kind === "changed" && news.area === "review" && void count(),
+    );
+    const stopOpen = onOpenReview((id) => {
+      setReviewToOpen(id);
+      setView("Review");
+    });
+    return () => {
+      stop();
+      stopOpen();
+    };
+  }, [token]);
   useEffect(() => {
     if (!linked) return;
     if (!token) {
@@ -765,6 +797,7 @@ export function App() {
           view={view}
           user={user}
           hasUnread={notices.some((n) => !n.read)}
+          reviewPending={reviewPending}
           onNavigate={navigate}
           onSignOut={() => void planner.logout()}
         />
@@ -1025,6 +1058,18 @@ export function App() {
                       navigate("Docs");
                     }, report)
                   }
+                  onOpenReview={(id) => {
+                    setReviewToOpen(id);
+                    navigate("Review");
+                  }}
+                />
+              )}
+              {view === "Review" && (
+                <ReviewView
+                  report={report}
+                  focusId={reviewToOpen}
+                  onFocused={() => setReviewToOpen(null)}
+                  onCount={setReviewPending}
                 />
               )}
               {view === "Settings" && (

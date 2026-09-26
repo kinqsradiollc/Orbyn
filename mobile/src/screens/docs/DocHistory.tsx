@@ -205,7 +205,8 @@ export function DocHistory({
                 <View style={styles.itemMetaRow}>
                   <Text style={styles.initials}>{initials(v.author)}</Text>
                   <Text style={styles.itemMeta}>
-                    {v.author ?? "Someone"} · {v.blocks}{" "}
+                    {v.author ?? "Someone"}
+                    {v.via_agent ? ` via ${v.via_agent}` : ""} · {v.blocks}{" "}
                     {v.blocks === 1 ? "block" : "blocks"}
                   </Text>
                 </View>

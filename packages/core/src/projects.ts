@@ -76,6 +76,8 @@ export type ProjectActivity = {
   project_id: string;
   actor_id: string | null;
   actor_name: string | null;
+  /** The outside agent that made the change for them, if one did. */
+  via_agent?: string | null;
   kind:
     | "project_created"
     | "project_changed"

@@ -321,7 +321,9 @@ export async function projectRoutes(app: FastifyInstance) {
                   a.before_state,
                   (a.after_state - 'baseline_tasks' - 'baseline_notes'
                     - 'baseline_records' - 'baseline_stages') AS after_state,
-                  a.created_at
+                  a.created_at,
+                  (SELECT coalesce(nullif(g.client_name, ''), g.name)
+                     FROM agent_grants g WHERE g.id = a.via_grant_id) AS via_agent
              FROM project_activity a LEFT JOIN users u ON u.id = a.actor_id
             WHERE a.project_id = $1 AND ${visibleProjectActivity("$3")}
             ORDER BY a.event_order DESC LIMIT $2`,

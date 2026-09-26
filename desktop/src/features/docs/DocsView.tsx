@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { onLive } from "../../lib/live";
 import {
   FileText,
   FolderInput,
@@ -228,6 +229,23 @@ export function DocsView({
 
   useEffect(() => {
     void load();
+    // Pages and folders changed elsewhere (another device, a teammate, or
+    // a connected agent): read the list again, a moment later so a burst of
+    // changes is one read.
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area && news.area !== "docs" && news.area !== "organize")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void load(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opening a note from its event hands the document straight to the editor.

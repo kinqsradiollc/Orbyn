@@ -119,6 +119,10 @@ import {
   type User,
   type ApiKey,
   type AgentActivity,
+  type ReviewApplied,
+  type ReviewApproveInput,
+  type ReviewInbox,
+  type ReviewItem,
   type AgentKeyInput,
   type AgentSettings,
   type AgentSettingsUpdate,
@@ -2086,6 +2090,37 @@ export class OrbynClient {
   /** What one connection did, newest first. */
   agentActivity(id: string) {
     return this.request<AgentActivity[]>(`/me/agents/${id}/activity`);
+  }
+  /** Undo one change an agent made directly (from its activity). */
+  undoAgentChange(activityId: string) {
+    return this.request<{ undone: true; summary: string }>(
+      `/me/agents/activity/${activityId}/undo`,
+      { method: "POST" },
+    );
+  }
+  // ---- The Review inbox ----
+  /** What waits for approval, and what was decided lately. */
+  reviewInbox() {
+    return this.request<ReviewInbox>("/proposals");
+  }
+  /** How many proposals wait, for the badge. */
+  reviewCount() {
+    return this.request<{ pending: number }>("/proposals/count");
+  }
+  /** One proposal, each change checked against what is there now. */
+  reviewItem(id: string) {
+    return this.request<ReviewItem>(`/proposals/${id}`);
+  }
+  /** Approve a proposal (all of it, or `only` some of its changes). */
+  approveReview(id: string, input: ReviewApproveInput = {}) {
+    return this.request<ReviewApplied>(`/proposals/${id}/apply`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Decline a proposal: nothing changes. */
+  declineReview(id: string) {
+    return this.request<void>(`/proposals/${id}/decline`, { method: "POST" });
   }
   /** Team settings → Outside agents: the policy, and (managers) who connects. */
   teamAgents(teamId: string) {

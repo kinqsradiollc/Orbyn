@@ -1467,6 +1467,7 @@ export function ProjectDetail({
                         </div>
                         <small className="muted">
                           {event.actor_name ?? "Workspace activity"}
+                          {event.via_agent ? ` via ${event.via_agent}` : ""}
                         </small>
                         {!!changes.length && (
                           <ul className="project-history-diff">

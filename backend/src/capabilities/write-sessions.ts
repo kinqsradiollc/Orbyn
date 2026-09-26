@@ -37,7 +37,6 @@ import {
   finishWrite,
   isoTime,
   idField,
-  emailField,
   writeOutput,
   type DoneEntry,
 } from "./write.js";

@@ -33,7 +33,6 @@ import {
   finishWrite,
   refuseSecrets,
   idField,
-  emailField,
   writeOutput,
   type DoneEntry,
 } from "./write.js";

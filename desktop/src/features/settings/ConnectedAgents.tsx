@@ -20,13 +20,18 @@ import {
 import { client } from "../../lib/api";
 import { copyText } from "../../lib/planning";
 import { timeAgo } from "../../lib/tasks";
+import { openReview } from "../../lib/review";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";
 import { SettingsSection } from "./SettingsSection";
 import "./agents.css";
 
-type Props = { report: (e: unknown) => void };
+type Props = {
+  report: (e: unknown) => void;
+  /** Opens a proposal an agent made in the Review inbox. */
+  onOpenReview?: (proposalId: string) => void;
+};
 
 /** Short names for the access levels, as tags. */
 const ACCESS_TAG: Record<AgentAccess, string> = {
@@ -83,7 +88,7 @@ function activityText(a: AgentActivity) {
  * over MCP (agent keys, and old API keys used there), what each did, and how
  * to connect one. Agents see only what their person can.
  */
-export function ConnectedAgents({ report }: Props) {
+export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
   const { ask } = useConfirm();
   const [overview, setOverview] = useState<AgentsOverview | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -118,6 +123,25 @@ export function ConnectedAgents({ report }: Props) {
         report(e);
       },
     );
+  };
+
+  // Take back one change an agent made directly (its activity keeps the
+  // steps for 30 days, and refuses if the thing changed since).
+  const undo = async (g: AgentGrant, a: AgentActivity) => {
+    if (
+      !(await ask({
+        title: `Undo “${a.summary}”?`,
+        body: "Orbyn puts things back as they were before this change. If something changed since, it stays as it is.",
+        confirmLabel: "Undo",
+      }))
+    )
+      return;
+    await action.run(async () => {
+      await client.undoAgentChange(a.id);
+      const list = await client.agentActivity(g.id);
+      setActivity((all) => ({ ...all, [g.id]: list }));
+      return `Undid “${a.summary}”.`;
+    });
   };
 
   const revoke = async (g: AgentGrant) => {
@@ -309,7 +333,29 @@ export function ConnectedAgents({ report }: Props) {
                               <span className="agents-activity-time">
                                 {timeAgo(a.at)}
                               </span>
-                              <span>{activityText(a)}</span>
+                              <span>
+                                {activityText(a)}
+                                {a.undone_at && (
+                                  <span className="muted"> · undone</span>
+                                )}
+                              </span>
+                              {a.proposal_id && onOpenReview && (
+                                <button
+                                  className="link-button"
+                                  onClick={() => onOpenReview(a.proposal_id!)}
+                                >
+                                  Review
+                                </button>
+                              )}
+                              {a.undoable && (
+                                <button
+                                  className="link-button"
+                                  disabled={action.pending}
+                                  onClick={() => void undo(g, a)}
+                                >
+                                  Undo
+                                </button>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -532,7 +578,7 @@ function ConnectAgent({
                   <small className="muted">
                     {AGENT_ACCESS_LABELS[access].blurb}
                     {access !== "read" &&
-                      " For now agents can only read; changes arrive soon."}
+                      " Risky changes wait for you in Review; you can undo the rest from its activity."}
                   </small>
                 </div>
                 <fieldset className="check-group">

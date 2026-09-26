@@ -16,6 +16,8 @@ type Props = {
   view: View;
   user: User | null;
   hasUnread: boolean;
+  /** Proposals waiting in Review. */
+  reviewPending?: number;
   onNavigate: (view: View) => void;
   onSignOut: () => void;
 };
@@ -33,6 +35,7 @@ export function Sidebar({
   view,
   user,
   hasUnread,
+  reviewPending = 0,
   onNavigate,
   onSignOut,
 }: Props) {
@@ -67,6 +70,9 @@ export function Sidebar({
                   <Icon size={17} />
                   <span>{label}</span>
                   {label === "Notifications" && hasUnread && <i />}
+                  {label === "Review" && reviewPending > 0 && (
+                    <i aria-label={`${reviewPending} waiting`} />
+                  )}
                 </button>
               ))}
             </div>

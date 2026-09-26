@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { onLive } from "../../lib/live";
 import {
   AppState,
   Pressable,
@@ -270,6 +271,28 @@ export function DocsSheet({
         setError(errorText(e));
       },
     );
+
+  // Pages changed elsewhere (another device, a teammate, a connected agent)
+  // while the list is open: read it again, once for a burst of changes.
+  const listRef = useRef(loadList);
+  listRef.current = loadList;
+  useEffect(() => {
+    if (!visible) return;
+    let soon: ReturnType<typeof setTimeout> | undefined;
+    const stop = onLive((news) => {
+      if (
+        news.kind !== "changed" ||
+        (news.area && news.area !== "docs" && news.area !== "organize")
+      )
+        return;
+      clearTimeout(soon);
+      soon = setTimeout(() => void listRef.current(), 400);
+    });
+    return () => {
+      clearTimeout(soon);
+      stop();
+    };
+  }, [visible]);
 
   const imports = useImports(
     (m) => setError(m),

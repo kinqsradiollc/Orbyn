@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Inbox,
   AlertTriangle,
   Bell,
   CalendarCheck,
@@ -36,6 +37,8 @@ type Props = {
   onOpenProject?: (projectId: string) => void;
   /** Opens a page in Docs (an imported file that's ready: "import" notices). */
   onOpenDoc?: (docId: string) => void;
+  /** Opens Review on the proposal in a "review" notice's `ref`. */
+  onOpenReview?: (proposalId: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -49,6 +52,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   template: LayoutTemplate,
   project: CalendarDays,
   import: FileText,
+  review: Inbox,
 };
 
 export function NotificationsView({
@@ -63,6 +67,7 @@ export function NotificationsView({
   onOpenTemplate,
   onOpenProject,
   onOpenDoc,
+  onOpenReview,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -148,6 +153,19 @@ export function NotificationsView({
                 <LayoutTemplate size={14} /> Review
               </button>
             )}
+            {n.kind === "review" &&
+              n.ref?.startsWith("proposal:") &&
+              onOpenReview && (
+                <button
+                  className="secondary notice-action"
+                  onClick={() => {
+                    if (!n.read) onRead(n);
+                    onOpenReview(n.ref!.slice("proposal:".length));
+                  }}
+                >
+                  <Inbox size={14} /> Review
+                </button>
+              )}
             {n.kind === "project" && n.ref && onOpenProject && (
               <button
                 className="secondary notice-action"

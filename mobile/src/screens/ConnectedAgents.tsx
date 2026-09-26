@@ -24,6 +24,7 @@ import { Pill } from "../components/Pill";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
+import { openReview } from "../lib/review";
 import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
@@ -63,9 +64,12 @@ const grantTitle = (g: AgentGrant) =>
 export function ConnectedAgentsCard({
   busy,
   run,
+  onOpenReview = openReview,
 }: {
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<unknown>;
+  /** Opens a proposal an agent made in Review. */
+  onOpenReview?: (proposalId: string) => void;
 }) {
   const [overview, setOverview] = useState<AgentsOverview | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -106,6 +110,23 @@ export function ConnectedAgentsCard({
       setActivity((a) => ({ ...a, [g.id]: list }));
     });
   };
+
+  // Take back one change an agent made directly (kept 30 days; refused if
+  // the thing changed since).
+  const undo = (g: AgentGrant, a: AgentActivity) =>
+    confirmAction(
+      `Undo “${a.summary}”?`,
+      "Orbyn puts things back as they were before this change. If something changed since, it stays as it is.",
+      "Undo",
+      () =>
+        void run(async () => {
+          await client.undoAgentChange(a.id);
+          const list = await client.agentActivity(g.id);
+          animateLayout();
+          setActivity((all) => ({ ...all, [g.id]: list }));
+        }),
+      false,
+    );
 
   const revoke = (g: AgentGrant) => {
     const legacy = g.kind === "legacy";
@@ -258,7 +279,22 @@ export function ConnectedAgentsCard({
                               : a.outcome === "denied"
                                 ? " · refused"
                                 : ` · ${a.outcome}`}
+                            {a.undone_at ? " · undone" : ""}
                           </Text>
+                          {a.proposal_id && onOpenReview && (
+                            <SmallAction
+                              label="Review"
+                              disabled={busy}
+                              onPress={() => onOpenReview(a.proposal_id!)}
+                            />
+                          )}
+                          {a.undoable && (
+                            <SmallAction
+                              label="Undo"
+                              disabled={busy}
+                              onPress={() => undo(g, a)}
+                            />
+                          )}
                         </View>
                       ))
                     ) : (
@@ -355,7 +391,7 @@ export function ConnectedAgentsCard({
                     AGENT_ACCESS_LABELS[access].blurb +
                     (access === "read"
                       ? ""
-                      : " For now agents can only read; changes arrive soon.")
+                      : " Risky changes wait for you in Review; you can undo the rest from its activity.")
                   }
                 >
                   <ChipRow label="What it may do">
@@ -478,7 +514,7 @@ const s = themed(() =>
       padding: 10,
       gap: 6,
     },
-    activityRow: { flexDirection: "row", gap: 10 },
+    activityRow: { flexDirection: "row", gap: 10, alignItems: "center" },
     activityTime: { width: 64, color: colors.muted },
     flex: { flex: 1 },
     switchRow: {

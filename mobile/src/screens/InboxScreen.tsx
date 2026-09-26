@@ -17,6 +17,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   rsvp: "users",
   template: "layoutGrid",
   project: "calendar",
+  review: "inbox",
 };
 
 /**
@@ -38,6 +39,8 @@ export function InboxScreen({
   onOpenProject,
   onOpenItemById,
   onOpenDoc,
+  reviewPending = 0,
+  onOpenReview,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -59,8 +62,44 @@ export function InboxScreen({
   onOpenItemById?: (itemId: string) => void;
   /** Open the page an "import" notice is about (`ref` = "doc:<id>"). */
   onOpenDoc?: (notice: Notice, docId: string) => void;
+  /** Proposals waiting in Review (agents' and the assistant's). */
+  reviewPending?: number;
+  /** Open Review, on one proposal (a "review" notice) or the whole inbox. */
+  onOpenReview?: (proposalId: string | null, notice?: Notice) => void;
 }) {
-  const asks = onOpenItemById ? <AsksList onOpenItem={onOpenItemById} /> : null;
+  const review =
+    reviewPending > 0 && onOpenReview ? (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => onOpenReview(null)}
+        style={({ pressed }) => [
+          shared.card,
+          s.review,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <View style={s.icon}>
+          <Icon name="inbox" size={16} color={colors.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.reviewTitle}>
+            {reviewPending === 1
+              ? "1 suggestion waits for you"
+              : `${reviewPending} suggestions wait for you`}
+          </Text>
+          <Text style={shared.small}>
+            Approve or decline what your agents suggest.
+          </Text>
+        </View>
+        <Icon name="chevronRight" size={16} color={colors.muted} />
+      </Pressable>
+    ) : null;
+  const asks = (
+    <>
+      {review}
+      {onOpenItemById ? <AsksList onOpenItem={onOpenItemById} /> : null}
+    </>
+  );
   if (!notices.length)
     return (
       <>
@@ -86,25 +125,34 @@ export function InboxScreen({
           n.kind === "import" && n.ref?.startsWith("doc:")
             ? n.ref.slice(4).split(":")[0]
             : null;
+        const proposal =
+          n.kind === "review" && n.ref?.startsWith("proposal:")
+            ? n.ref.slice("proposal:".length)
+            : null;
         const action =
-          n.kind === "conflict" && n.ref
-            ? { label: "Reschedule", run: onReschedule }
-            : n.kind === "rollforward"
-              ? { label: "Roll forward", run: onRollForward }
-              : n.kind === "at_risk" || n.kind === "deadline"
-                ? { label: "Plan it", run: onPlanIt }
-                : n.kind === "rsvp" && n.item_id
-                  ? { label: "Open event", run: onOpenItem }
-                  : n.kind === "template" && n.ref && onOpenTemplate
-                    ? { label: "Review", run: onOpenTemplate }
-                    : n.kind === "project" && n.ref && onOpenProject
-                      ? { label: "Open project", run: onOpenProject }
-                      : docId && onOpenDoc
-                        ? {
-                            label: "Open page",
-                            run: (x: Notice) => onOpenDoc(x, docId),
-                          }
-                        : null;
+          proposal && onOpenReview
+            ? {
+                label: "Review",
+                run: (x: Notice) => onOpenReview(proposal, x),
+              }
+            : n.kind === "conflict" && n.ref
+              ? { label: "Reschedule", run: onReschedule }
+              : n.kind === "rollforward"
+                ? { label: "Roll forward", run: onRollForward }
+                : n.kind === "at_risk" || n.kind === "deadline"
+                  ? { label: "Plan it", run: onPlanIt }
+                  : n.kind === "rsvp" && n.item_id
+                    ? { label: "Open event", run: onOpenItem }
+                    : n.kind === "template" && n.ref && onOpenTemplate
+                      ? { label: "Review", run: onOpenTemplate }
+                      : n.kind === "project" && n.ref && onOpenProject
+                        ? { label: "Open project", run: onOpenProject }
+                        : docId && onOpenDoc
+                          ? {
+                              label: "Open page",
+                              run: (x: Notice) => onOpenDoc(x, docId),
+                            }
+                          : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
@@ -179,6 +227,18 @@ const s = themed(() =>
       overflow: "hidden",
     },
     row: { flexDirection: "row", gap: 12, padding: 16 },
+    review: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 12,
+    },
+    reviewTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+      marginBottom: 2,
+    },
     actions: {
       flexDirection: "row",
       paddingLeft: 62,
