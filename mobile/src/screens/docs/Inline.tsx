@@ -3,11 +3,13 @@ import { Linking, StyleSheet, Text } from "react-native";
 import {
   mathToText,
   parseDocInline,
+  parseObjectHref,
   tagRuns,
   type TaggedRun,
 } from "@orbyn/core";
 import { colors, fonts, themed } from "../../theme";
 import type { Mark } from "./marks";
+import { LinkPillText } from "./links";
 
 /**
  * One line of text with its inline styling applied.
@@ -41,6 +43,17 @@ export function Inline({
           (m) => m.start < run.start + run.text.length && m.end > run.start,
         );
         const shown = run.math ? mathToText(run.text) : run.text;
+        // A link made with the picker reads as a pill with the thing's
+        // live title, and opens it in the app rather than the browser.
+        if (run.link && parseObjectHref(run.link))
+          return (
+            <LinkPillText
+              key={i}
+              href={run.link}
+              label={run.text}
+              style={style}
+            />
+          );
         return (
           <Text
             key={i}

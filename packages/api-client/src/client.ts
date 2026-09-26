@@ -51,6 +51,11 @@ import {
   type Proposed,
   type SearchHit,
   type FindHit,
+  type LinkedHereList,
+  type LinkOption,
+  type LinkPill,
+  type ObjectRef,
+  resolveRefs,
   type DocSummary,
   type EventNoteRef,
   type DocVersion,
@@ -1201,6 +1206,29 @@ export class OrbynClient {
     for (const [k, v] of Object.entries(filter))
       if (v !== undefined) params.set(k, String(v));
     return this.request<FindHit[]>(`/find?${params}`);
+  }
+
+  /**
+   * What the link picker offers for the words typed after [[: pages, tasks,
+   * events, projects and people (dates are worked out by the app).
+   */
+  pickLinks(q: string, limit?: number) {
+    const params = new URLSearchParams({ q });
+    if (limit !== undefined) params.set("limit", String(limit));
+    return this.request<LinkOption[]>(`/links/pick?${params}`);
+  }
+
+  /** Link pills as they stand now: live titles, ticks, deadlines, deletions. */
+  resolveLinks(refs: ObjectRef[]) {
+    if (!refs.length) return Promise.resolve([] as LinkPill[]);
+    const params = new URLSearchParams({ refs: resolveRefs(refs) });
+    return this.request<LinkPill[]>(`/links/resolve?${params}`);
+  }
+
+  /** "Linked here": the places that link to a page, task, project or person. */
+  linksHere(kind: "doc" | "task" | "event" | "project" | "person", id: string) {
+    const params = new URLSearchParams({ kind, id });
+    return this.request<LinkedHereList>(`/links/here?${params}`);
   }
 
   /** Something was opened: it leads the quick switcher's recent list. */

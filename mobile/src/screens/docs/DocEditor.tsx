@@ -38,6 +38,10 @@ import {
   stylesAt,
   textToBlocks,
   toolbarLink,
+  insertLink,
+  linkMarkdown,
+  linkQueryAt,
+  type ObjectRef,
   toolbarStyle,
   undoStep,
   withDepth,
@@ -81,6 +85,7 @@ import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
 import { LineToolbar, kindKey, type LineKind } from "./LineToolbar";
 import { PageInfo } from "./PageInfo";
+import { LinkedHere, LinkPillProvider, useLinkPills } from "./links";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
@@ -780,6 +785,79 @@ export function DocEditor({
     return true;
   };
 
+  /**
+   * "[[" typed before the caret in the open line: the picker searches the
+   * words after it, and picking replaces them with the link.
+   */
+  const openKind = focused !== null ? blocks[focused]?.type : undefined;
+  const bracket =
+    focused !== null && openKind !== "code" && openKind !== "math"
+      ? linkQueryAt(draft, selection.start)
+      : null;
+
+  /**
+   * Put a link in the open line: where "[[words" was typed, or at the caret
+   * (over the chosen words) from the toolbar's Link.
+   */
+  const insertPicked = (ref: ObjectRef, name: string) => {
+    const { start, end } = sel.current;
+    const next = bracket
+      ? insertLink(draft, bracket.start, start, ref, name)
+      : (() => {
+          const link = linkMarkdown(ref, name);
+          const rest = draft.slice(end);
+          const space = rest.startsWith(" ") || !rest ? "" : " ";
+          const text = draft.slice(0, start) + link + space + rest;
+          return { text, caret: start + link.length + space.length };
+        })();
+    applyEdit({ text: next.text, start: next.caret, end: next.caret });
+  };
+
+  /** "Create page X" / "Create task X": made first, then linked. */
+  const createAndLink = async (kind: "doc" | "task", name: string) => {
+    try {
+      if (kind === "doc") {
+        const made = await client.createDoc({
+          title: name,
+          team_id: doc.team_id,
+          project_id: doc.project_id,
+        });
+        insertPicked({ kind: "doc", id: made.id }, made.title);
+      } else {
+        const made = await client.createItem({
+          title: name,
+          ...(doc.team_id ? { team_id: doc.team_id } : {}),
+          ...(doc.project_id ? { project_id: doc.project_id } : {}),
+        });
+        insertPicked({ kind: "task", id: made.id }, made.title);
+        onItemsChanged?.();
+      }
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  /** Live titles, ticks and deletions for the page's links. */
+  const { pills, reload: reloadPills } = useLinkPills(blocks, report);
+  const pillActions = useMemo(
+    () => ({
+      pills,
+      onToggle: (id: string, done: boolean) =>
+        void client
+          .postItemUpdate(id, { status: done ? "done" : "todo" })
+          .then(() => {
+            reloadPills();
+            onItemsChanged?.();
+          }, report),
+      onRestore: (id: string) =>
+        void client.restoreDoc(id).then(() => reloadPills(), report),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pills],
+  );
+  /** How many places link to this page, for the line at its end. */
+  const [linkedCount, setLinkedCount] = useState(0);
+
   /** Open a line for editing, showing the Markdown behind it. */
   const openLine = (index: number) => openWith(sourceOf(blocks, index), index);
 
@@ -1321,6 +1399,11 @@ export function DocEditor({
         onKind={(kind: LineKind) => turnInto(kind)}
         onStyle={styleLine}
         onLink={linkLine}
+        linkQuery={bracket ? bracket.query : null}
+        projectName={doc.project_name}
+        onPickLink={insertPicked}
+        onCreateLink={(kind, name) => void createAndLink(kind, name)}
+        report={report}
         onTodo={todoLine}
         onIndent={indentLine}
         onComment={commentOnLine}
@@ -1373,7 +1456,13 @@ export function DocEditor({
       onPress: () => void downloadDoc(doc.id, format).catch(report),
     }),
   );
-  const facts = pageFooter({ ...docStats(blocks), savedAt, saving, now });
+  const facts = pageFooter({
+    ...docStats(blocks),
+    savedAt,
+    saving,
+    now,
+    linked: linkedCount,
+  });
 
   return (
     <View style={styles.page}>
@@ -1482,89 +1571,91 @@ export function DocEditor({
           sendTarget();
         }}
       >
-        <DocBody
-          content={blocks}
-          targetBlockId={initialBlockId}
-          onTargetLayout={(y) => {
-            targetOffset.current = y;
-            sendTarget();
-          }}
-          tasks={linked}
-          editing={focused}
-          draft={draft}
-          onDraftChange={changeDraft}
-          onCommit={commit}
-          onBlurLine={syncDraft}
-          selection={caret}
-          onSelectionChange={onSelect}
-          inputRef={lineInput}
-          counts={comments.counts}
-          marks={markRanges(comments.anchored)}
-          onOpenComments={(blockId) =>
-            setOpenThread((open) => (open === blockId ? null : blockId))
-          }
-          renderUnder={(blockId) => {
-            const list = comments.anchored.get(blockId) ?? [];
-            const waiting = pending?.blockId === blockId;
-            if (picking?.blockId === blockId)
+        <LinkPillProvider value={pillActions}>
+          <DocBody
+            content={blocks}
+            targetBlockId={initialBlockId}
+            onTargetLayout={(y) => {
+              targetOffset.current = y;
+              sendTarget();
+            }}
+            tasks={linked}
+            editing={focused}
+            draft={draft}
+            onDraftChange={changeDraft}
+            onCommit={commit}
+            onBlurLine={syncDraft}
+            selection={caret}
+            onSelectionChange={onSelect}
+            inputRef={lineInput}
+            counts={comments.counts}
+            marks={markRanges(comments.anchored)}
+            onOpenComments={(blockId) =>
+              setOpenThread((open) => (open === blockId ? null : blockId))
+            }
+            renderUnder={(blockId) => {
+              const list = comments.anchored.get(blockId) ?? [];
+              const waiting = pending?.blockId === blockId;
+              if (picking?.blockId === blockId)
+                return (
+                  <WordPicker
+                    source={picking.source}
+                    onCancel={() => setPicking(null)}
+                    onAsk={(range) => {
+                      setPicking(null);
+                      setAsking({ blockId, ...range });
+                    }}
+                    onPick={(range) => {
+                      setPicking(null);
+                      setPending({
+                        blockId,
+                        quote: range.quote.slice(0, 400),
+                        range_start: range.start,
+                        range_end: range.end,
+                      });
+                      setOpenThread(blockId);
+                    }}
+                  />
+                );
+              if (asking?.blockId === blockId)
+                return (
+                  <AskSheet
+                    quote={asking.quote}
+                    busy={deciding}
+                    onCancel={() => setAsking(null)}
+                    onAsk={(action, instruction) =>
+                      void assist(action, instruction)
+                    }
+                  />
+                );
+              if (openThread !== blockId && !waiting) return null;
               return (
-                <WordPicker
-                  source={picking.source}
-                  onCancel={() => setPicking(null)}
-                  onAsk={(range) => {
-                    setPicking(null);
-                    setAsking({ blockId, ...range });
+                <DocThread
+                  comments={list}
+                  state={comments}
+                  userId={userId}
+                  quote={list[0]?.quote ?? pending?.quote}
+                  placeholder="Comment on this line…"
+                  autoFocus={waiting}
+                  anchor={{
+                    block_id: blockId,
+                    quote: pending?.quote ?? list[0]?.quote ?? "",
+                    range_start: pending?.range_start,
+                    range_end: pending?.range_end,
                   }}
-                  onPick={(range) => {
-                    setPicking(null);
-                    setPending({
-                      blockId,
-                      quote: range.quote.slice(0, 400),
-                      range_start: range.start,
-                      range_end: range.end,
-                    });
+                  // Stay open on the line just commented on, so the remark
+                  // that was written is there to read rather than folding away.
+                  onDone={() => {
+                    setPending(null);
                     setOpenThread(blockId);
                   }}
                 />
               );
-            if (asking?.blockId === blockId)
-              return (
-                <AskSheet
-                  quote={asking.quote}
-                  busy={deciding}
-                  onCancel={() => setAsking(null)}
-                  onAsk={(action, instruction) =>
-                    void assist(action, instruction)
-                  }
-                />
-              );
-            if (openThread !== blockId && !waiting) return null;
-            return (
-              <DocThread
-                comments={list}
-                state={comments}
-                userId={userId}
-                quote={list[0]?.quote ?? pending?.quote}
-                placeholder="Comment on this line…"
-                autoFocus={waiting}
-                anchor={{
-                  block_id: blockId,
-                  quote: pending?.quote ?? list[0]?.quote ?? "",
-                  range_start: pending?.range_start,
-                  range_end: pending?.range_end,
-                }}
-                // Stay open on the line just commented on, so the remark
-                // that was written is there to read rather than folding away.
-                onDone={() => {
-                  setPending(null);
-                  setOpenThread(blockId);
-                }}
-              />
-            );
-          }}
-          onEditBlock={reading && !suggesting ? undefined : openLine}
-          onToggleTodo={reading || !structural ? undefined : toggle}
-        />
+            }}
+            onEditBlock={reading && !suggesting ? undefined : openLine}
+            onToggleTodo={reading || !structural ? undefined : toggle}
+          />
+        </LinkPillProvider>
       </View>
 
       {/* The toolbar rides on the keyboard (the sheet docks it there); a
@@ -1596,6 +1687,12 @@ export function DocEditor({
 
       {/* One quiet line at the end of the page. */}
       <Text style={styles.footer}>{facts}</Text>
+      <LinkedHere
+        kind="doc"
+        id={doc.id}
+        onCount={setLinkedCount}
+        report={report}
+      />
 
       {openTodos > 0 && (
         <View style={styles.pageActions}>

@@ -19,6 +19,7 @@ import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
 import { docRoutes } from "./modules/docs/routes.js";
 import { searchRoutes } from "./modules/search/routes.js";
+import { linkRoutes } from "./modules/links/routes.js";
 import { appLinkRoutes } from "./modules/app-links/routes.js";
 import { aiDocRoutes } from "./modules/ai/docs.js";
 import { folderRoutes } from "./modules/organize/folders.js";
@@ -82,6 +83,8 @@ export const serviceModules: Record<
     docRoutes,
     captureRoutes,
     searchRoutes,
+    // Links between things: the link picker, pills and "Linked here".
+    linkRoutes,
     aiDocRoutes,
     folderRoutes,
     projectRoutes,

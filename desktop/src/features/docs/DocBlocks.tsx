@@ -1,12 +1,14 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
   parseDocInline,
+  parseObjectHref,
   tagRuns,
   type DocBlock,
   type DocInline,
   type TaggedRun,
 } from "@orbyn/core";
 import { Math } from "./Math";
+import { LinkPillView } from "./DocLinks";
 import { cut, touches, type Mark } from "./marks";
 
 /**
@@ -82,6 +84,17 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
             <code key={i} data-src={run.start}>
               {shade(run.text)}
             </code>
+          );
+        // A link made with the picker reads as a pill with the thing's
+        // live title, and opens it in the app rather than the browser.
+        if (run.link && parseObjectHref(run.link))
+          return (
+            <LinkPillView
+              key={i}
+              href={run.link}
+              label={run.text}
+              start={run.start}
+            />
           );
         if (run.link)
           return (

@@ -19,6 +19,7 @@ import {
   Code,
   Type,
   CalendarDays,
+  Link2,
   ListChecks,
   ListIndentDecrease,
   ListIndentIncrease,
@@ -225,7 +226,8 @@ export function DocBlockMenu({
 export type SlashItem =
   | { kind: "block"; block: (typeof BLOCK_KINDS)[number] }
   | { kind: "task" }
-  | { kind: "date" };
+  | { kind: "date" }
+  | { kind: "link" };
 
 type SlashEntry = {
   item: SlashItem;
@@ -273,16 +275,26 @@ const slashEntries = (): SlashEntry[] => {
     icon: CalendarDays,
     words: "date today day",
   };
-  // "New task" sits with the checklist it is a kind of; the date comes last.
+  const link: SlashEntry = {
+    item: { kind: "link" },
+    key: "link",
+    label: "Link",
+    hint: "A page, task, project, person or date",
+    shorthand: "[[",
+    icon: Link2,
+    words: "link page connect mention",
+  };
+  // "New task" sits with the checklist it is a kind of; links and the date
+  // come last.
   const at = blocks.findIndex((e) => e.key === "todo") + 1;
-  return [...blocks.slice(0, at), task, ...blocks.slice(at), date];
+  return [...blocks.slice(0, at), task, ...blocks.slice(at), link, date];
 };
 
 /**
  * The menu that opens when a line starts with "/": pick a kind of block by
  * name, or something to put in the line. Typing narrows it; Enter takes the
  * highlighted one; Escape leaves the slash as ordinary text. Partway through
- * a line only what goes into a line is offered (the date).
+ * a line only what goes into a line is offered (a link, the date).
  */
 export function SlashMenu({
   anchor,
@@ -302,7 +314,7 @@ export function SlashMenu({
     const q = query.trim().toLowerCase();
     return slashEntries().filter(
       (e) =>
-        (!insertsOnly || e.item.kind === "date") &&
+        (!insertsOnly || e.item.kind === "date" || e.item.kind === "link") &&
         (!q ||
           e.label.toLowerCase().includes(q) ||
           e.words.includes(q) ||

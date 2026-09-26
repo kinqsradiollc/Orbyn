@@ -286,6 +286,8 @@ export function pageFooter(o: {
   saving?: boolean;
   failed?: boolean;
   now?: Date;
+  /** How many places link to the page ("3 linked here"); left out at 0. */
+  linked?: number;
 }): string {
   const parts = [
     o.selected
@@ -293,6 +295,7 @@ export function pageFooter(o: {
       : `${figure(o.words)} ${o.words === 1 ? "word" : "words"}`,
   ];
   if (o.minutes) parts.push(`${o.minutes} min read`);
+  if (o.linked) parts.push(`${figure(o.linked)} linked here`);
   if (o.saving) parts.push("Saving…");
   else if (o.failed) parts.push("Not saved");
   else if (o.savedAt) parts.push(`Saved ${savedAgo(o.savedAt, o.now)}`);

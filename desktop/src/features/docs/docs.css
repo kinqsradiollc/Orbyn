@@ -2616,3 +2616,202 @@ h4.doc-heading {
   flex: none;
   color: var(--color-muted);
 }
+
+/* ---- links between things (LNK-01, LNK-02, LNK-05) ---- */
+
+/* A picker link: the thing's icon and live title on a quiet chip. */
+.link-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 0.94em;
+  line-height: 1.5;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+.link-pill > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.link-pill.is-openable {
+  cursor: pointer;
+}
+.link-pill.is-openable:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.link-pill.is-openable:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.link-pill-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.link-pill.is-done .link-pill-title {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.link-pill-due {
+  color: var(--color-muted);
+  font-size: 0.86em;
+}
+.link-pill-tick {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.link-pill-tick:hover,
+.link-pill.is-done .link-pill-tick {
+  color: var(--color-accent);
+}
+/* A deleted page, or something that isn't there: muted, never a title. */
+.link-pill.is-gone {
+  background: var(--color-surfaceMuted);
+  color: var(--color-faint);
+  font-style: italic;
+}
+.link-pill-action {
+  padding: 0 0 0 4px;
+  border: 0;
+  background: none;
+  color: var(--color-accentText);
+  font: inherit;
+  font-style: normal;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.link-pill-action:hover {
+  text-decoration: underline;
+}
+
+/* The picker: grouped rows, one list, a hint at the foot. */
+.link-picker-rows {
+  display: grid;
+  gap: 1px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.link-picker-group {
+  display: grid;
+  gap: 2px;
+}
+.link-picker-group > .doc-menu-label {
+  padding-top: 6px;
+}
+.link-picker-item .link-pill-due {
+  margin-left: auto;
+}
+.link-picker-item.is-highlight {
+  background: var(--color-selected);
+}
+.link-picker-item.is-create > svg,
+.link-picker-item.is-create strong {
+  color: var(--color-accentText);
+}
+.link-picker-hint {
+  margin: 0;
+  padding: 6px 6px 0;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.link-picker-hint kbd {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+/* "Linked here": below a page's last line, and in task and project panels. */
+.linked-here {
+  margin-top: 16px;
+}
+.linked-here-title {
+  margin: 0 0 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.linked-here ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.linked-here-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.linked-here-row:hover {
+  background: var(--color-hover);
+}
+.linked-here-row > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-muted);
+}
+.linked-here-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.linked-here-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.linked-here-head strong {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linked-here-head small {
+  flex: none;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.linked-here-context {
+  overflow: hidden;
+  color: var(--color-textSoft);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.linked-here-context b {
+  color: var(--color-text);
+  font-weight: 500;
+}
+.linked-here.is-compact {
+  margin-top: 12px;
+}
+.linked-here.is-compact .linked-here-row {
+  padding: 6px;
+}
+@media (max-width: 600px) {
+  .linked-here-context {
+    white-space: normal;
+  }
+}

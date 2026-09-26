@@ -22,6 +22,7 @@ import { useAssistant } from "../hooks/useAssistant";
 import { useNewVersion } from "../hooks/useNewVersion";
 import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
+import { OPEN_LINK_EVENT } from "../features/docs/DocLinks";
 import {
   deepLinkKey,
   deepLinkOf,
@@ -295,6 +296,15 @@ export function App() {
     () => window.orbynDesktop?.onOpenLink((url) => openLinkRef.current(url)),
     [],
   );
+  // Link pills and "Linked here" ask for things to open the same way.
+  useEffect(() => {
+    const open = (e: Event) => {
+      const url = (e as CustomEvent<unknown>).detail;
+      if (typeof url === "string") openLinkRef.current(url);
+    };
+    window.addEventListener(OPEN_LINK_EVENT, open);
+    return () => window.removeEventListener(OPEN_LINK_EVENT, open);
+  }, []);
   useEffect(() => {
     if (!linked) return;
     if (!token) {

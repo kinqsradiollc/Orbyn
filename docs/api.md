@@ -1064,6 +1064,44 @@ your recent list. The apps call it when a page, task or project opens. Only the 
 per person, and the sweeper clears entries untouched for 90 days (`recent_opens`). An id you can't see
 is never listed.
 
+## Links between things
+
+A link made with the link picker (`[[` in a page, "Link" in the `/` menu and on the phone's
+toolbar) is kept in the page as an ordinary Markdown link to `orbyn://<kind>/<id>` — `doc`, `task`,
+`event`, `project`, `person` or `date` (`orbyn://date/2026-09-26`). The words in the brackets are
+only what it said when it was made: the apps show the thing's live title, so renaming never breaks a
+link. Exports (`/docs/:id/export`, `/docs/:id/markdown`) turn pages, tasks and projects into web app
+links (`APP_URL/app/<kind>/<id>`) and people and dates into their words.
+
+Saving a page (any way: the editor, a restore, a suggestion, an import) fills the `object_links`
+index, beside the fixed connections: a checklist line that became a task, a meeting note, a page in
+a project, a task that waits for another and a person mentioned in a comment. Nothing is shown to
+someone who can't open both ends.
+
+### `GET /links/here?kind=&id=` (auth)
+
+"Linked here" for a page, task, event, project or person (`kind` `doc`, `task`, `event`, `project`
+or `person`). → `{ "count", "items": [ { "kind": "doc" | "task", "id", "title", "hint", "source",
+"block_id", "context": { "before", "linked", "after" } } ] }`, one entry per place, newest first (at
+most 100). `source` is `link`, `mention`, `task_line`, `dependency`, `project` or `meeting`;
+`block_id` opens a page at the line. Places you can't open are neither listed nor counted. 404 when
+the thing itself isn't yours to open.
+
+### `GET /links/resolve?refs=` (auth)
+
+Link pills as they stand now. `refs` is up to 60 `kind:id` pairs, comma separated. → one
+`{ "kind", "id", "state", "title", "done"?, "due_at"?, "can_restore"? }` per ref, in order.
+`state` is `ok`; `deleted` for a page in the Trash you could open (`can_restore` when you may restore
+it); or `missing`, with no title, for anything gone for good or not yours to see (the two look
+alike). Tasks carry their tick and deadline.
+
+### `GET /links/pick?q=&limit=` (auth)
+
+What the link picker offers for the words typed: pages, tasks, events and projects by name (the
+quick switcher's ranking; with no `q`, what you opened last) with each task's `done` and `due_at`,
+then teammates by name. → `[ { "kind", "id", "title", "hint", "done"?, "due_at"? } ]`. `limit`
+1–30 (default 12). Dates are the app's own.
+
 ## Links into the apps
 
 ### `GET /.well-known/apple-app-site-association`, `GET /.well-known/assetlinks.json` (public)

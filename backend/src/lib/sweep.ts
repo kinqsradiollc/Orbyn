@@ -146,6 +146,21 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 7,
   },
   {
+    // Links are kept in step by triggers (migration 111); this clears any a
+    // page or task left behind when it was removed some other way.
+    key: "object_links",
+    label: "Links between things",
+    detail:
+      'The index behind "Linked here": links whose page or task no longer exists.',
+    table: "object_links",
+    where: `(source_kind = 'doc' AND NOT EXISTS
+               (SELECT 1 FROM docs WHERE docs.id = object_links.source_id))
+         OR (source_kind = 'task' AND NOT EXISTS
+               (SELECT 1 FROM items WHERE items.id = object_links.source_id))`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "audit_log",
     label: "Audit log",
     detail: "Admin and security actions.",

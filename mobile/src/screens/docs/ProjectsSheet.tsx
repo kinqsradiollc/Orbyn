@@ -56,6 +56,7 @@ import { useImports } from "./Uploads";
 import { PromiseTracker } from "./PromiseTracker";
 import { colors, fonts, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
+import { LinkedHere } from "./links";
 import { deviceTimeZone } from "../../lib/planning";
 
 /** "Fri 16 Oct, 5 pm", or just the day. */
@@ -1581,6 +1582,12 @@ export function ProjectsSheet({
                       />
                     </View>
                   )}
+                  {/* Pages in the project and pages that link to it. */}
+                  <LinkedHere
+                    kind="project"
+                    id={open.id}
+                    report={(e) => setError(errorText(e as Error))}
+                  />
                 </View>
               )}
               {section === "timeline" && (

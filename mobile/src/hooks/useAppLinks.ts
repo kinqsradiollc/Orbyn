@@ -6,6 +6,18 @@ import {
   takeInitialQuickAction,
 } from "../../modules/orbyn-quick-actions";
 
+/** Everyone listening for links opened from inside the app. */
+const inside = new Set<(url: string) => void>();
+
+/**
+ * Open one of the app's own links from inside it (a link pill, "Linked
+ * here"): it goes the same way as a link from outside, without leaving the
+ * app, on the web too.
+ */
+export function openAppUrl(url: string): void {
+  for (const take of inside) take(url);
+}
+
 /**
  * Links into the app, one listener for all of them: orbyn:// links (from
  * Shortcuts, Android's app shortcuts and the share sheet), the app icon's
@@ -38,10 +50,12 @@ export function useAppLinks(
     take(takeInitialQuickAction());
     const sub = Linking.addEventListener("url", (e) => take(e.url));
     const stop = onQuickAction(take);
+    inside.add(take);
     return () => {
       alive = false;
       sub.remove();
       stop();
+      inside.delete(take);
     };
   }, []);
 

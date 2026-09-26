@@ -41,6 +41,10 @@ export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 export const COVERED: Record<string, string[]> = {
   "GET /search": ["search"],
   "GET /find": ["search"],
+  // The link picker finds names as /find does; pills are titles and states
+  // that fetch returns.
+  "GET /links/pick": ["search"],
+  "GET /links/resolve": ["fetch"],
   "GET /items": ["query"],
   "GET /items/:id": ["fetch"],
   "GET /docs": ["query"],
@@ -222,6 +226,8 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
  * shrink: the inventory test holds its length.
  */
 export const PENDING: string[] = [
+  // "Linked here" (D3a) waits for the agents' get_links (A4, M4.md).
+  "GET /links/here",
   // Built alongside A1–A2 on the planning and pages tracks (merged in the
   // M1–M4 integration); agents reach them in A3–A5.
   "GET /items/:id/context",

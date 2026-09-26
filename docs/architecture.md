@@ -191,6 +191,7 @@ rate limited separately from the rest of the API.
 | `item_links`                                                   | Web links on a task, in order.                                                                  |
 | `deleted_items`                                                | Items deleted in the last 90 days and who could see them, for incremental sync.                 |
 | `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.      |
+| `object_links`                                                 | Links between things, for "Linked here": picker links, mentions and fixed connections.          |
 | `migrations`                                                   | Applied migration file names.                                                                   |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns

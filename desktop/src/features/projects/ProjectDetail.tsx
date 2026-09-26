@@ -46,6 +46,7 @@ import { useToast } from "../../components/Toast";
 import { copyLink } from "../../lib/links";
 import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
+import { LinkedHere } from "../docs/DocLinks";
 
 /** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
 function dayLabel(iso: string, withTime = false) {
@@ -1385,6 +1386,8 @@ export function ProjectDetail({
               </button>
             </section>
           )}
+          {/* Pages in the project and pages that link to it. */}
+          <LinkedHere kind="project" id={project.id} report={report} compact />
         </div>
       ) : mode === "notes" && onOpenNote ? (
         <ProjectNotes

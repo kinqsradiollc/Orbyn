@@ -47,7 +47,9 @@ import {
   type DocVersion,
   type DocVersionChanges,
   type Item,
+  blocksWithWebLinks,
 } from "@orbyn/core";
+import { env } from "../../config/env.js";
 import {
   pool,
   reader,
@@ -1038,11 +1040,11 @@ export async function docRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!doc) fail(404, "Document not found");
     const title = doc.title || "Untitled";
-    // Ticks as the tasks stand, the same as the page reads.
-    const blocks = await withTaskState(
-      reader(r.headers),
-      id,
-      doc.content ?? [],
+    // Ticks as the tasks stand, the same as the page reads, and links to
+    // pages, tasks and projects as web links anyone with access can open.
+    const blocks = blocksWithWebLinks(
+      await withTaskState(reader(r.headers), id, doc.content ?? []),
+      env.APP_URL,
     );
     const body =
       format === "docx"
@@ -1076,10 +1078,9 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    const blocks = await withTaskState(
-      reader(r.headers),
-      id,
-      doc.content ?? [],
+    const blocks = blocksWithWebLinks(
+      await withTaskState(reader(r.headers), id, doc.content ?? []),
+      env.APP_URL,
     );
     return reply
       .type("text/markdown; charset=utf-8")

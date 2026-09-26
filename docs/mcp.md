@@ -216,4 +216,4 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 
 Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.
 
-Routes: 20 of the app's signed-in routes are covered by tools, 150 are never for agents, and 177 are still to come.
+Routes: 22 of the app's signed-in routes are covered by tools, 150 are never for agents, and 178 are still to come.

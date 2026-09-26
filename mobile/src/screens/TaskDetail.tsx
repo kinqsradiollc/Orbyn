@@ -79,6 +79,7 @@ import {
 } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
+import { LinkedHere } from "./docs/links";
 import { tap } from "../lib/haptics";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
@@ -753,6 +754,13 @@ function Body({
               onShowOnCalendar={onShowOnCalendar}
             />
           )}
+
+          {/* The pages that link here, and the one this task came from. */}
+          <LinkedHere
+            kind={item.kind === "event" ? "event" : "task"}
+            id={item.id}
+            report={(e) => setError(errorText(e as Error))}
+          />
 
           {readOnly && (
             <View style={s.viewOnly}>

@@ -64,6 +64,7 @@ import { errorText } from "../../lib/errors";
 import { ShareLinkButton } from "../../components/ShareButton";
 import { useToast } from "../../components/Toast";
 import { copyLink } from "../../lib/links";
+import { LinkedHere } from "../docs/DocLinks";
 
 type Props = {
   /** The task as listed; the panel loads its checklist and timeline. */
@@ -820,6 +821,14 @@ export function TaskDetail({
               </ul>
             </section>
           )}
+
+          {/* The pages that link here, and the one this task came from. */}
+          <LinkedHere
+            kind={current.kind === "event" ? "event" : "task"}
+            id={current.id}
+            report={onError}
+            compact
+          />
 
           {current.kind === "task" && (
             <ProofSection itemId={current.id} canWrite={canWrite} />
