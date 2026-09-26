@@ -72,6 +72,17 @@ test("Bold, Italic and Highlight act on the words, not the marker", () => {
     start: 9,
     end: 9,
   });
+  // Pressed again before typing, the empty markers come out.
+  assert.deepEqual(toolbarStyle("Plan ****", 7, 7, "bold"), {
+    text: "Plan ",
+    start: 5,
+    end: 5,
+  });
+  assert.deepEqual(toolbarStyle("Plan ====", 7, 7, "highlight"), {
+    text: "Plan ",
+    start: 5,
+    end: 5,
+  });
   // A caret on the marker lands at the start of the words.
   assert.deepEqual(toolbarStyle("> quote", 0, 0, "highlight"), {
     text: "> ====quote",
@@ -117,6 +128,12 @@ test("Link turns chosen words into a link, or puts the address in", () => {
     text: "Notes [example.com/x](https://www.example.com/x/)",
     start: 49,
     end: 49,
+  });
+  // Empty markers left at the caret go, since a style can't hold a link.
+  assert.deepEqual(toolbarLink("quiz.****", 7, 7, "https://a.io"), {
+    text: "quiz. [a.io](https://a.io)",
+    start: 26,
+    end: 26,
   });
   // An address chosen becomes a link to itself.
   assert.deepEqual(toolbarLink("https://a.io", 0, 12, "https://a.io"), {

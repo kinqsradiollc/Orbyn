@@ -38,7 +38,8 @@ info:
 
     **Automation recipes.** Triggers: the `item.created`, `item.completed`
     and `event.starting` webhooks. Actions: create a task or event
-    (`POST /items`, or `POST /items/quick` for one line of text), and find
+    (`POST /items`, or `POST /items/quick` for one line of text), save a
+    link (`POST /capture`), and find
     events (`GET /calendar/search`). Polling tools use incremental sync
     (`GET /items?updated_after=…`).
   license:
@@ -312,6 +313,92 @@ paths:
                         text: { type: string }
                         value: {}
         "200": { description: "A preview: `{ input, chips }`" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /capture:
+    post:
+      tags: [Items]
+      summary: Save a link or some text where you choose
+      description: |
+        What the phone's "Save to Orbyn" share sheet sends. A link becomes an
+        Inbox task "Read: <title>" with the link on it (`inbox`), a task in a
+        project's first stage (`project`), lines at the end of today's
+        agenda's Notes (`agenda`) or of a page (`page`), or a new page in a
+        folder (`new_page`, `folder_id` null for unfiled). Text alone works
+        the same way. Without `title`, the link's title is looked up.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                url: { type: [string, "null"], maxLength: 2000 }
+                text: { type: string, maxLength: 10000 }
+                title: { type: [string, "null"], maxLength: 300 }
+                timezone: { type: string, description: IANA zone, for "today" }
+                to:
+                  oneOf:
+                    - { type: object, properties: { kind: { const: inbox } } }
+                    - { type: object, properties: { kind: { const: agenda } } }
+                    - type: object
+                      properties:
+                        kind: { const: page }
+                        doc_id: { type: string, format: uuid }
+                    - type: object
+                      properties:
+                        kind: { const: new_page }
+                        folder_id: { type: [string, "null"], format: uuid }
+                    - type: object
+                      properties:
+                        kind: { const: project }
+                        project_id: { type: string, format: uuid }
+      responses:
+        "201":
+          description: Where it went, in a sentence, and the task or page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  to: { type: string }
+                  note: { type: string }
+                  item: { $ref: "#/components/schemas/Item" }
+                  doc:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      title: { type: string }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Invalid" }
+  /capture/preview:
+    post:
+      tags: [Items]
+      summary: A link's title and site (30 a minute)
+      description: |
+        Reads the start of the page over https, at public addresses only.
+        A link that can't be read gives `title: null` and the site's name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, maxLength: 2000 }
+      responses:
+        "200":
+          description: The title and site
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+                  title: { type: [string, "null"] }
+                  site: { type: string }
         "422": { $ref: "#/components/responses/Invalid" }
   /items/{id}:
     parameters: [{ $ref: "#/components/parameters/Id" }]

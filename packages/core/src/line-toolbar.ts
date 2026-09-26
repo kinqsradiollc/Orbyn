@@ -9,6 +9,7 @@ import { parseDocInline } from "./docs.js";
 import {
   isUrl,
   linkTarget,
+  STYLE_MARKERS,
   styleRange,
   type InlineStyle,
   type Restyled,
@@ -45,6 +46,32 @@ function intoWords(source: string, start: number, end: number) {
   return {
     start: Math.min(Math.max(start, from), source.length),
     end: Math.min(Math.max(end, from), source.length),
+  };
+}
+
+/**
+ * The style whose two markers sit empty either side of the caret, as Bold
+ * leaves them when nothing was chosen ("**|**"), or null.
+ */
+function emptyPairAt(source: string, caret: number): InlineStyle | null {
+  // Longest first, so "**|**" isn't read as italic.
+  for (const style of ["bold", "highlight", "italic", "code"] as const) {
+    const m = STYLE_MARKERS[style];
+    if (
+      source.slice(caret - m.length, caret) === m &&
+      source.slice(caret, caret + m.length) === m
+    )
+      return style;
+  }
+  return null;
+}
+
+/** The line with an empty pair of markers around the caret taken out. */
+function dropEmptyPair(source: string, caret: number, style: InlineStyle) {
+  const m = STYLE_MARKERS[style];
+  return {
+    text: source.slice(0, caret - m.length) + source.slice(caret + m.length),
+    at: caret - m.length,
   };
 }
 
@@ -102,6 +129,11 @@ export function toolbarStyle(
 ): Restyled | null {
   if (!canStyleLine(source)) return null;
   const at = intoWords(source, start, end);
+  // Pressed again before typing: the empty markers come out again.
+  if (at.start === at.end && emptyPairAt(source, at.start) === style) {
+    const dropped = dropEmptyPair(source, at.start, style);
+    return { text: dropped.text, start: dropped.at, end: dropped.at };
+  }
   return styleRange(source, at.start, at.end, style);
 }
 
@@ -132,7 +164,14 @@ export function toolbarLink(
   if (!canStyleLine(source)) return null;
   const target = linkTarget(url);
   if (!target) return null;
-  const at = intoWords(source, start, end);
+  let at = intoWords(source, start, end);
+  // Styles don't hold links: empty markers waiting at the caret go first.
+  const pair = at.start === at.end ? emptyPairAt(source, at.start) : null;
+  if (pair) {
+    const dropped = dropEmptyPair(source, at.start, pair);
+    source = dropped.text;
+    at = { start: dropped.at, end: dropped.at };
+  }
   const picked = source.slice(at.start, at.end);
   if (picked.trim() && !isUrl(picked)) {
     const words = picked.replace(/[[\]]/g, "");

@@ -99,11 +99,10 @@ export function PageInfo({
           )}
         </Section>
         {doc.kind === "doc" && <PageFreshness doc={doc} canWrite={canWrite} />}
-        <Section label="Here now">
-          <View style={s.row}>
-            <DocViewers docId={doc.id} register={false} />
-            <Text style={s.small}>{facts}</Text>
-          </View>
+        <Section label="This page">
+          <Text style={s.small}>{facts}</Text>
+          {/* Who else has it open, when anyone has. */}
+          <DocViewers docId={doc.id} register={false} />
         </Section>
         <View style={s.actions}>
           <SmallAction
@@ -145,7 +144,6 @@ const s = themed(() =>
     },
     text: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
     small: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    row: { flexDirection: "row", alignItems: "center", gap: 10 },
     actions: { flexDirection: "row", gap: 8 },
   }),
 );

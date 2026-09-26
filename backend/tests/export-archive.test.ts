@@ -164,9 +164,10 @@ test("the archive holds every page in its folder, and everything beside them", a
     }),
   ]);
   await pool.query(
-    `INSERT INTO imports (user_id, file_name, file_type, bytes, status, pages, doc_id)
-     VALUES ($1, 'lab3.pdf', 'pdf', 2048, 'ready', 4, $2),
-            ($1, 'blurry.jpg', 'jpeg', 1024, 'failed', NULL, NULL)`,
+    // A minute apart, so their order in the archive is fixed.
+    `INSERT INTO imports (user_id, file_name, file_type, bytes, status, pages, doc_id, created_at)
+     VALUES ($1, 'lab3.pdf', 'pdf', 2048, 'ready', 4, $2, now() - interval '1 minute'),
+            ($1, 'blurry.jpg', 'jpeg', 1024, 'failed', NULL, NULL, now())`,
     [userId, filed.id],
   );
   await call("PUT", "/me/privacy", { analytics_opt_out: true });

@@ -6,6 +6,7 @@ import {
   choiceLabel,
   readChoices,
   rememberChoice,
+  shortAddress,
   siteOf,
   type CaptureDestination,
   type CaptureResult,
@@ -251,7 +252,7 @@ export function ShareIntoSheet({
                   {title || site || shared.url}
                 </Text>
                 <Text style={s.cardSite} numberOfLines={1}>
-                  {site || shared.url}
+                  {title ? site : shortAddress(shared.url)}
                 </Text>
               </>
             ) : null}

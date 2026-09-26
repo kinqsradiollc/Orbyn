@@ -238,7 +238,12 @@ export function DocEditor({
    * Undo and Redo for the page (the keyboard's own undo only knows the line
    * being typed): the lines, which one is open, and what it holds.
    */
-  type Snap = { blocks: DocBlock[]; focused: number | null; draft: string };
+  type Snap = {
+    title: string;
+    blocks: DocBlock[];
+    focused: number | null;
+    draft: string;
+  };
   const history = useRef<UndoStack<Snap>>(emptyUndo());
   const [, setHistoryShown] = useState(0);
 
@@ -517,7 +522,7 @@ export function DocEditor({
   const remember = (kind?: string) => {
     history.current = recordUndo(
       history.current,
-      { blocks, focused, draft },
+      { title, blocks, focused, draft },
       { kind, now: Date.now() },
     );
     setHistoryShown((n) => n + 1);
@@ -526,9 +531,10 @@ export function DocEditor({
   /** Show a state Undo or Redo came back to, and save it. */
   const restore = (to: Snap) => {
     const next = to.blocks.length ? to.blocks : [EMPTY];
-    if (next !== blocks) {
+    if (next !== blocks || to.title !== title) {
       setBlocks(next);
-      if (structural && canWrite) queueSave(title, next);
+      setTitle(to.title);
+      if (structural && canWrite) queueSave(to.title, next);
     }
     if (to.focused !== null && next[to.focused]) {
       setDraft(to.draft);
@@ -540,13 +546,13 @@ export function DocEditor({
     setHistoryShown((n) => n + 1);
   };
   const undo = () => {
-    const step = undoStep(history.current, { blocks, focused, draft });
+    const step = undoStep(history.current, { title, blocks, focused, draft });
     if (!step) return;
     history.current = step.stack;
     restore(step.state);
   };
   const redo = () => {
-    const step = redoStep(history.current, { blocks, focused, draft });
+    const step = redoStep(history.current, { title, blocks, focused, draft });
     if (!step) return;
     history.current = step.stack;
     restore(step.state);

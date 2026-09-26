@@ -27,6 +27,7 @@ import {
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
 import { DateField } from "../../components/DateField";
+import { ShareLinkButton } from "../../components/ShareButton";
 
 const HISTORY_FIELDS: Record<string, string> = {
   name: "Name",
@@ -307,6 +308,11 @@ export function ProjectDetail({
             <History size={14} /> History
           </button>
         </div>
+        <ShareLinkButton
+          target={{ kind: "project", id: project.id }}
+          title={project.name}
+          onError={report}
+        />
         <button
           className="icon-button"
           title="Save as template"

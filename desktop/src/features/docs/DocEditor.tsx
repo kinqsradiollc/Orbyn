@@ -73,6 +73,7 @@ import {
 } from "@orbyn/core";
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
+import { SharePageButton } from "../../components/ShareButton";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
@@ -1643,6 +1644,12 @@ export function DocEditor({
           >
             <Copy size={15} />
           </button>
+          {/* On a phone's browser: the system share sheet (SHR-07). */}
+          <SharePageButton
+            docId={doc.id}
+            title={title || "Untitled"}
+            onError={report}
+          />
           <span className="doc-download">
             <button
               className={"icon-button" + (downloadMenu ? " is-on" : "")}

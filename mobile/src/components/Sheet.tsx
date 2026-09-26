@@ -83,7 +83,7 @@ export function Sheet({
                   pointerEvents="none"
                 >
                   <Text
-                    style={[s.title, s.centeredTitle]}
+                    style={s.centeredTitle}
                     numberOfLines={1}
                     accessibilityRole="header"
                   >
@@ -181,9 +181,17 @@ const s = themed(() =>
     centered: {
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: 112,
+      // Clear of Back on one side and two buttons on the other.
+      paddingHorizontal: 124,
     },
-    centeredTitle: { flex: 0, fontSize: 15, textAlign: "center" },
+    centeredTitle: {
+      maxWidth: "100%",
+      fontFamily: fonts.display,
+      fontSize: 15,
+      letterSpacing: -0.2,
+      textAlign: "center",
+      color: colors.text,
+    },
     title: {
       flex: 1,
       fontFamily: fonts.display,

@@ -529,6 +529,40 @@ An optional body `{ "block_ids": ["b1"] }` (1–200 line ids) turns only those l
 "Make task" on selected words and "New task" in the `/` menu use it. Anything else in the body
 answers `422`; a page in Trash answers `404`.
 
+## Sharing into Orbyn
+
+What the phone's share sheet sends ("Save to Orbyn"): a link or some text, and where it goes
+(`packages/core/src/share.ts`, `backend/src/modules/capture/`).
+
+### `POST /capture/preview` (auth, 30/min)
+
+`{ "url": "https://…" }` → `{ url, title, site }`. The start of the page (up to 256 KB of HTML)
+is read over https at public addresses only (netguard, every redirect checked, 5 s), for its
+`og:title` or `<title>` and its `og:site_name` or host. An `http` link is read at its `https`
+address. A link that can't be read — private, slow, not a web page, an error — is not an error:
+`title` is `null` and `site` is the host. `422` for anything but an http(s) link.
+
+### `POST /capture` (auth)
+
+`{ url?, text?, title?, to, timezone? }` → `201 { to, note, item?, doc? }`, where `note` says
+where it went, in a sentence. At least one of `url` and `text`; without `title` the server looks
+it up as above. `to` is one of:
+
+- `{ "kind": "inbox" }`: a task of your own, "Read: <title>" with the link on it and any text
+  as its notes (text alone: its first line is the title, the rest the notes).
+- `{ "kind": "project", "project_id": "…" }`: the same task in the project's first stage (a team
+  project's task is the team's).
+- `{ "kind": "agenda" }`: list lines (the link, then the text) at the end of today's agenda's
+  Notes, before the end-of-day questions; `timezone` is adopted like `GET /agenda/today`'s.
+- `{ "kind": "page", "doc_id": "…" }`: the lines at the end of a page (a page that is one empty
+  line takes them in its place). Saved as any edit is: a new version, kept in history, and open
+  editors are told.
+- `{ "kind": "new_page", "folder_id": "…" | null }`: a new page titled after the link, in the
+  folder's space (a team folder makes a team page).
+
+`403` where you may only read (a team viewer), `404` for a page, folder or project you can't see
+(or a page in Trash), `422` for a bad body.
+
 ## Projects
 
 A project groups planner tasks into a named piece of work with ordered stages. Tasks are not

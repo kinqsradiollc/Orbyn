@@ -56,6 +56,7 @@ import { minutesLabel, spanLabel } from "../../lib/planning";
 import { Linkify, hostOf } from "../../components/Linkify";
 import "./task.css";
 import { errorText } from "../../lib/errors";
+import { ShareLinkButton } from "../../components/ShareButton";
 
 /** How far ahead "Booked time" looks. */
 const BOOKED_DAYS = 30;
@@ -451,6 +452,12 @@ export function TaskDetail({
                 {team}
               </span>
             )}
+            <ShareLinkButton
+              className="drawer-share"
+              target={{ kind: "task", id: current.id }}
+              title={current.title}
+              onError={(e) => setError(errorText(e))}
+            />
             <button
               ref={closeButton}
               className="icon-button drawer-close"
