@@ -46,6 +46,12 @@ export const EXCLUSION_REASONS = {
     "A team's Recent changes list, for people catching up after time away; agents read what changed through the page and task tools.",
   bring_in:
     "Bringing in another app's export (a Markdown or Notion zip): people choose the file and read the dry run.",
+  navigation:
+    "How a person arranges their own app (stars, the sidebar, shortcuts, view choices): not data an agent needs.",
+  library:
+    "Tidying the library (archiving, moving or tagging several pages at once): agents file and change pages with their own page tools, under review.",
+  clipper:
+    "The Orbyn Clipper browser extension's own routes, signed in with a Clipper key that works nowhere else.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
@@ -271,6 +277,22 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /docs/files/:id": "file_bytes",
   "DELETE /docs/files/:id": "file_bytes",
   "GET /files/usage": "file_bytes",
+  // D5: later page, navigation and mobile features.
+  "GET /me/prefs": "navigation",
+  "PUT /me/prefs": "navigation",
+  "DELETE /me/prefs": "navigation",
+  "GET /starred": "navigation",
+  "PUT /docs/:id/archive": "library",
+  "PUT /folders/:id/archive": "library",
+  "POST /docs/bulk": "library",
+  "GET /teams/:id/policies": "team_admin",
+  "PUT /teams/:id/policies": "team_admin",
+  "GET /me/clip-keys": "credentials",
+  "POST /me/clip-keys": "credentials",
+  "DELETE /me/clip-keys/:id": "credentials",
+  "GET /clips/destinations": "clipper",
+  "POST /clips": "clipper",
+  "POST /ai/recordings/:id/summary": "hosted_ai",
 };
 
 /**
@@ -281,6 +303,9 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
 export const PENDING: string[] = [
   // "Linked here" (D3a) waits for the agents' get_links (A4, M4.md).
   "GET /links/here",
+  // The Connections map (D5, CNV-02) reads the same index; get_links (A4)
+  // covers it with "Linked here".
+  "GET /links/map",
   // Saved views and your own fields (D4a). The agents' save_view and query
   // (A4) run the same definition (@orbyn/core views.ts) and cover these.
   "GET /views",

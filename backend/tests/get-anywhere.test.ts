@@ -446,7 +446,7 @@ test("an add link fills the phone's quick add once, not on every return to Today
 
 test("the Security and data page is dated and plain", () => {
   assert.match(SECURITY_PAGE_UPDATED, /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(securityPageDate("en-GB"), "26 September 2026");
+  assert.equal(securityPageDate("en-GB"), "27 September 2026");
   assert.ok(SECURITY_PAGE.length >= 4);
   const text = JSON.stringify(SECURITY_PAGE).toLowerCase();
   for (const word of ["passkeys", "export", "https", "confirm"])

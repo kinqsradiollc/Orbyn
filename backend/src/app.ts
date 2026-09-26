@@ -59,6 +59,11 @@ import { firstRunRoutes } from "./modules/users/first-run.js";
 import { publishRoutes } from "./modules/publish/routes.js";
 import { pageImportRoutes } from "./modules/imports/pages.js";
 import { aiCaptureRoutes } from "./modules/ai/capture.js";
+import { aiRecordingRoutes } from "./modules/ai/recording.js";
+import { prefRoutes } from "./modules/users/prefs.js";
+import { libraryRoutes } from "./modules/docs/library.js";
+import { teamPolicyRoutes } from "./modules/teams/policies.js";
+import { clipRoutes } from "./modules/clip/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -129,12 +134,27 @@ export const serviceModules: Record<
     publishRoutes,
     // Markdown and Notion exports into pages (DATA-08).
     pageImportRoutes,
+    // Choices that follow the account: Arrange, shortcuts, view choices (D5).
+    prefRoutes,
+    // Archiving, and moving or tagging several pages at once (D5).
+    libraryRoutes,
+    // A team's switches for publishing, the assistant and booking (OTH-04).
+    teamPolicyRoutes,
+    // The Orbyn Clipper browser extension (CAP-02..04).
+    clipRoutes,
     // Older apps' live-document path, for ingresses that send only /events
     // to the realtime service.
     legacyDocStreamRoutes,
   ],
   /** The assistant (chat, applying proposals) and admin provider settings. */
-  ai: [aiRoutes, aiAdminRoutes, aiStudyRoutes, aiCaptureRoutes],
+  ai: [
+    aiRoutes,
+    aiAdminRoutes,
+    aiStudyRoutes,
+    aiCaptureRoutes,
+    // A recording's summary and action items (CAP-10).
+    aiRecordingRoutes,
+  ],
   /** The public status report. */
   status: [statusRoutes],
   /**

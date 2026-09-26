@@ -13,7 +13,17 @@ export type SecuritySection = {
 };
 
 /** When the page was last checked against the product (YYYY-MM-DD). */
-export const SECURITY_PAGE_UPDATED = "2026-09-26";
+export const SECURITY_PAGE_UPDATED = "2026-09-27";
+
+/**
+ * The one plain answer on data handling (OTH-03): what Orbyn keeps, what
+ * the assistant sees, and what is never done with it. The homepage's FAQ
+ * and the Security page both show it.
+ */
+export const DATA_ANSWER = {
+  q: "What does Orbyn do with my data?",
+  a: "Orbyn keeps what you put into it (your tasks, calendar, pages, files and recordings) on its own servers so your apps stay in step, and nothing else about you beyond what your account needs. The assistant sees only what a request needs, when you ask, and it is sent to the AI service that answers; a team can keep its pages out of it. Your data is never sold or used for ads, the web app loads no third-party trackers, and you can export everything or delete your account at any time. The Security page and the Privacy Policy say exactly how.",
+};
 
 export const SECURITY_PAGE: SecuritySection[] = [
   {
@@ -41,6 +51,8 @@ export const SECURITY_PAGE: SecuritySection[] = [
       "Teammates can see when you are busy, never what you are doing.",
       "The assistant suggests changes and waits for you to approve them.",
       "Outside AI agents see only what you grant when you connect them, and you can disconnect them in Settings at any time.",
+      "Team owners and admins can turn off publishing to the web, the assistant on team pages, and booking pages for people outside, for the whole team.",
+      "The Orbyn Clipper browser extension signs in with a key that can only save clips: it can't read your pages or change your account.",
     ],
   },
   {

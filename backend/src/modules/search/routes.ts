@@ -5,7 +5,11 @@ import { authenticate } from "../../lib/auth.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { nearest } from "./semantic.js";
 import { readableLinks } from "../links/privacy.js";
-import { docVisibleTo } from "../../lib/doc-visibility.js";
+import {
+  assistantMayRead,
+  docArchived,
+  docVisibleTo,
+} from "../../lib/doc-visibility.js";
 import { visibleProjects } from "../../lib/visibility.js";
 import { findRoutes } from "./find.js";
 
@@ -59,6 +63,10 @@ export type PageSearch = {
   limit: number;
   /** How matched words are wrapped in snippets (none for the assistant). */
   marks?: string;
+  /** Archived pages too (SRCH-03's "Include archived"). */
+  archived?: boolean;
+  /** The assistant is asking: teams that keep pages out of it are left out. */
+  forAssistant?: boolean;
 };
 
 /**
@@ -98,6 +106,8 @@ export async function searchPages(
           AND ($9::uuid IS NULL OR d.item_id = $9 OR EXISTS (
                 SELECT 1 FROM doc_task_links l
                  WHERE l.doc_id = d.id AND l.item_id = $9))
+          ${o.archived ? "" : `AND NOT ${docArchived("d")}`}
+          ${o.forAssistant ? `AND ${assistantMayRead("d")}` : ""}
         ORDER BY rank DESC, d.updated_at DESC
         LIMIT $8`,
       [
@@ -153,6 +163,7 @@ export async function searchRoutes(app: FastifyInstance) {
           team: q.team,
           updatedAfter: q.updated_after,
           limit: q.limit,
+          archived: q.include_archived,
         })
       : [];
 
@@ -279,7 +290,8 @@ export async function searchRoutes(app: FastifyInstance) {
                 WHERE d.id = $1
                   AND ($2::text IS NULL OR d.kind = $2)
                   AND ($3::uuid IS NULL OR d.project_id = $3)
-                  AND ${docVisibleTo("$4")}`,
+                  AND ${docVisibleTo("$4")}
+                  ${q.include_archived ? "" : `AND NOT ${docArchived("d")}`}`,
               [hit.id, q.kind ?? null, q.project ?? null, u.id],
             )
           ).rows[0];

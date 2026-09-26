@@ -13,7 +13,7 @@ import {
 import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { requireTeam } from "../../lib/teams.js";
+import { requireAssistantAllowed, requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
@@ -58,6 +58,8 @@ export async function aiDocRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
+    // A team can keep its pages out of the assistant (OTH-04).
+    await requireAssistantAllowed(doc.team_id);
     // The words of links to what this reader can't open are not theirs to
     // send anywhere (D3aF); `links` carries places back to the stored lines.
     const links = await linkPrivacy(db, userId, doc.content);

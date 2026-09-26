@@ -34,6 +34,13 @@ export const PAGE_FILE_TYPES: Record<string, string> = {
   "text/plain": "Text",
   "text/csv": "CSV",
   "text/markdown": "Markdown",
+  // Recordings made in a page (CAP-10).
+  "audio/webm": "Recording",
+  "audio/mp4": "Recording",
+  "audio/mpeg": "Recording",
+  "audio/ogg": "Recording",
+  "audio/wav": "Recording",
+  "audio/aac": "Recording",
 };
 
 const BY_EXTENSION: Record<string, string> = {
@@ -49,6 +56,13 @@ const BY_EXTENSION: Record<string, string> = {
   txt: "text/plain",
   csv: "text/csv",
   md: "text/markdown",
+  weba: "audio/webm",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  wav: "audio/wav",
+  aac: "audio/aac",
 };
 
 /** The type a file is kept as, from its name (and the type it says it is). */
@@ -95,6 +109,35 @@ export function sniffPageFile(head: Uint8Array, mime: string): boolean {
     case "text/csv":
     case "text/markdown":
       return !head.slice(0, 4096).includes(0);
+    case "audio/webm":
+      // EBML, the container WebM and Matroska share.
+      return starts(0x1a, 0x45, 0xdf, 0xa3);
+    case "audio/mp4":
+      // An ISO media file: "ftyp" after the first box's size.
+      return (
+        head[4] === 0x66 &&
+        head[5] === 0x74 &&
+        head[6] === 0x79 &&
+        head[7] === 0x70
+      );
+    case "audio/mpeg":
+      // An ID3 tag, or an MPEG audio frame's sync bits.
+      return (
+        starts(0x49, 0x44, 0x33) ||
+        (head[0] === 0xff && (head[1] & 0xe0) === 0xe0)
+      );
+    case "audio/ogg":
+      return starts(0x4f, 0x67, 0x67, 0x53);
+    case "audio/wav":
+      return (
+        starts(0x52, 0x49, 0x46, 0x46) &&
+        head[8] === 0x57 &&
+        head[9] === 0x41 &&
+        head[10] === 0x56 &&
+        head[11] === 0x45
+      );
+    case "audio/aac":
+      return head[0] === 0xff && (head[1] & 0xf6) === 0xf0;
     default:
       return false;
   }

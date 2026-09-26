@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import {
+  connectionMapQuery,
+  type ConnectionMap,
   headingsQuery,
   linkCardQuery,
   linkMentionInput,
@@ -25,6 +27,7 @@ import {
 } from "./more.js";
 import { authenticate } from "../../lib/auth.js";
 import { linksHere, pickOptions, resolveLinks } from "./service.js";
+import { connectionMap } from "./map.js";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05): what the link picker
@@ -81,6 +84,17 @@ export async function linkRoutes(app: FastifyInstance) {
     const q = headingsQuery.parse(r.query ?? {});
     return pageHeadings(reader(r.headers), u.id, q.doc, q.q);
   });
+
+  /** The Connections map around a page or project (CNV-02). */
+  app.get(
+    "/links/map",
+    { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (r): Promise<ConnectionMap> => {
+      const u = await authenticate(r);
+      const q = connectionMapQuery.parse(r.query ?? {});
+      return connectionMap(reader(r.headers), u.id, q);
+    },
+  );
 
   /** What the link picker offers for the words typed after [[. */
   app.get("/links/pick", async (r): Promise<LinkOption[]> => {

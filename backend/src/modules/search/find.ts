@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { findQuery, recentOpenInput, type FindHit } from "@orbyn/core";
 import { pool, reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
-import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { docArchived, docVisibleTo } from "../../lib/doc-visibility.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 
 /**
@@ -72,12 +72,17 @@ const recentJoin = (kind: string, id: string) =>
   `LEFT JOIN recent_opens ro
      ON ro.user_id = $1 AND ro.kind = '${kind}' AND ro.target_id = ${id}`;
 
+/** Archived pages are left out unless asked for (SRCH-03). */
+const live = (archived: boolean) =>
+  archived ? "" : `AND NOT ${docArchived("d")}`;
+
 async function byName(
   db: Queryable,
   userId: string,
   q: string,
   type: string | undefined,
   limit: number,
+  archived = false,
 ): Promise<Row[]> {
   const params = [userId, q, likeEscape(q), limit];
   const parts: Promise<Row[]>[] = [];
@@ -96,7 +101,7 @@ async function byName(
              FROM docs d
              LEFT JOIN projects p ON p.id = d.project_id
              ${recentJoin("doc", "d.id")}
-            WHERE ${docVisibleTo("$1")}
+            WHERE ${docVisibleTo("$1")} ${live(archived)}
               AND (${nameMatch("d.title")}
                 OR orbyn_aliases(d.aliases) ILIKE '%' || $3::text || '%')
             ORDER BY score DESC, d.updated_at DESC
@@ -166,6 +171,7 @@ async function recentlyOpened(
   userId: string,
   type: string | undefined,
   limit: number,
+  archived = false,
 ): Promise<Row[]> {
   const parts: string[] = [];
   if (!type || type === "doc")
@@ -175,7 +181,8 @@ async function recentlyOpened(
                   FROM recent_opens ro
                   JOIN docs d ON d.id = ro.target_id
                   LEFT JOIN projects p ON p.id = d.project_id
-                 WHERE ro.user_id = $1 AND ro.kind = 'doc' AND ${docVisibleTo("$1")}`);
+                 WHERE ro.user_id = $1 AND ro.kind = 'doc' AND ${docVisibleTo("$1")}
+                   ${live(archived)}`);
   if (!type || type === "task")
     parts.push(`SELECT i.id, CASE WHEN i.kind = 'event' THEN 'event' ELSE 'task' END AS type,
                        i.title, COALESCE(p.name, CASE WHEN i.kind = 'event' THEN 'Event'
@@ -204,6 +211,7 @@ async function recentlyChanged(
   userId: string,
   type: string | undefined,
   limit: number,
+  archived = false,
 ): Promise<Row[]> {
   const parts: string[] = [];
   if (!type || type === "doc")
@@ -212,6 +220,7 @@ async function recentlyChanged(
                         d.updated_at, NULL::timestamptz AS opened_at
                    FROM docs d LEFT JOIN projects p ON p.id = d.project_id
                   WHERE ${docVisibleTo("$1")} AND d.kind <> 'agenda'
+                    ${live(archived)}
                   ORDER BY d.updated_at DESC LIMIT $2)`);
   if (!type || type === "task")
     parts.push(`(SELECT i.id, CASE WHEN i.kind = 'event' THEN 'event' ELSE 'task' END AS type,
@@ -251,15 +260,19 @@ const toHit = (r: Row): FindHit => ({
 export async function find(
   db: Queryable,
   userId: string,
-  o: { q: string; type?: string; limit: number },
+  o: { q: string; type?: string; limit: number; include_archived?: boolean },
 ): Promise<FindHit[]> {
-  if (o.q) return (await byName(db, userId, o.q, o.type, o.limit)).map(toHit);
-  const opened = await recentlyOpened(db, userId, o.type, o.limit);
+  const archived = !!o.include_archived;
+  if (o.q)
+    return (await byName(db, userId, o.q, o.type, o.limit, archived)).map(
+      toHit,
+    );
+  const opened = await recentlyOpened(db, userId, o.type, o.limit, archived);
   if (opened.length >= o.limit) return opened.map(toHit);
   const seen = new Set(opened.map((r) => `${r.type}:${r.id}`));
-  const more = (await recentlyChanged(db, userId, o.type, o.limit)).filter(
-    (r) => !seen.has(`${r.type}:${r.id}`),
-  );
+  const more = (
+    await recentlyChanged(db, userId, o.type, o.limit, archived)
+  ).filter((r) => !seen.has(`${r.type}:${r.id}`));
   return [...opened, ...more].slice(0, o.limit).map(toHit);
 }
 

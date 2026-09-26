@@ -49,7 +49,7 @@ import {
   rankTasks,
 } from "./workspace.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
-import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { assistantMayRead, docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/routes.js";
 import { linkPrivacy, readableLinks } from "../../links/privacy.js";
 
@@ -1926,6 +1926,7 @@ async function searchDocs(
       task: taskId ?? undefined,
       limit: a.limit,
       marks: "StartSel=, StopSel=, MaxWords=30, MinWords=12, MaxFragments=1",
+      forAssistant: true,
     })
   ).map((hit) => ({
     id: hit.id,
@@ -1969,7 +1970,7 @@ async function readDoc(
     }>(
       `SELECT d.id, d.title, d.kind, d.content, d.updated_at FROM docs d
         WHERE d.id = $2
-          AND ${docVisibleTo("$1")}
+          AND ${docVisibleTo("$1")} AND ${assistantMayRead("d")}
           AND ($3::uuid IS NULL OR d.project_id = $3)
           AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
             SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,
@@ -2133,7 +2134,7 @@ async function proposeDocEdit(
     await pool.query<{ id: string; content: DocBlock[]; title: string }>(
       `SELECT d.id, d.content, d.title FROM docs d
         WHERE d.id = $2
-          AND ${docVisibleTo("$1")}
+          AND ${docVisibleTo("$1")} AND ${assistantMayRead("d")}
           AND ($3::uuid IS NULL OR d.project_id = $3)
           AND ($4::uuid IS NULL OR d.item_id = $4 OR EXISTS (
             SELECT 1 FROM doc_task_links l WHERE l.doc_id = d.id AND l.item_id = $4))`,

@@ -380,6 +380,10 @@ export type Doc = {
    * find the page by them too.
    */
   aliases?: string[];
+  /** When the page itself was archived (SRCH-03), or null. */
+  archived_at?: string | null;
+  /** Archived, itself or through its folder: left out of lists and search. */
+  archived?: boolean;
 };
 
 /** A note an event has (`GET /docs/event-notes`): enough to mark the event. */

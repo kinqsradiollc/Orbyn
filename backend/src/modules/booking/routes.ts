@@ -110,7 +110,10 @@ const taken = (error: unknown) =>
 async function pageBySlug(db: Queryable, slug: string) {
   return (
     await db.query<PageRow>(
-      `SELECT ${PAGE_COLUMNS} FROM booking_pages p WHERE p.slug = $1 AND p.active`,
+      `SELECT ${PAGE_COLUMNS} FROM booking_pages p WHERE p.slug = $1 AND p.active
+         -- A team can pause its booking pages for people outside (OTH-04).
+         AND (p.team_id IS NULL OR EXISTS (
+           SELECT 1 FROM teams bt WHERE bt.id = p.team_id AND bt.booking_allowed))`,
       [slug.toLowerCase()],
     )
   ).rows[0];

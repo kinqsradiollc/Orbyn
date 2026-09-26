@@ -9,6 +9,11 @@
  */
 
 import type { ScreenName } from "./presentation.js";
+import {
+  effectiveKeys,
+  pressMatches,
+  type ShortcutOverrides,
+} from "./prefs.js";
 
 /** A screen a Go to command opens: the shared screens and the web's own. */
 export type CommandView =
@@ -48,7 +53,13 @@ export type CommandIcon =
   | "news"
   | "upload"
   | "activity"
-  | "settings";
+  | "settings"
+  | "present"
+  | "window"
+  | "archive"
+  | "folder"
+  | "star"
+  | "mic";
 
 export type CommandDef = {
   id: string;
@@ -210,6 +221,55 @@ export const COMMANDS: CommandDef[] = [
     icon: "sparkles",
     needs: "page",
   },
+  {
+    id: "page.present",
+    label: "Present this page",
+    group: "Page",
+    keywords: "slides slideshow presentation full screen standup class",
+    icon: "present",
+    needs: "page",
+  },
+  {
+    id: "page.window",
+    label: "Open this page in a new window",
+    group: "Page",
+    keywords: "pop out window tab second screen monitor",
+    icon: "window",
+    needs: "page",
+    on: "web",
+  },
+  {
+    id: "page.star",
+    label: "Star or unstar this page",
+    group: "Page",
+    keywords: "favourite favorite bookmark pin starred",
+    icon: "star",
+    needs: "page",
+  },
+  {
+    id: "page.show-in-library",
+    label: "Show this page in the library",
+    group: "Page",
+    keywords: "reveal folder find locate documents",
+    icon: "folder",
+    needs: "page",
+  },
+  {
+    id: "page.archive",
+    label: "Archive or bring back this page",
+    group: "Page",
+    keywords: "archive hide old unarchive restore search",
+    icon: "archive",
+    needs: "page",
+  },
+  {
+    id: "page.record",
+    label: "Record audio into this page",
+    group: "Page",
+    keywords: "record audio voice lecture meeting microphone summary",
+    icon: "mic",
+    needs: "page",
+  },
   // The planner.
   {
     id: "plan.day",
@@ -288,8 +348,12 @@ export const commandById = (id: string): CommandDef | undefined =>
   SETTING_COMMANDS.find((c) => c.id === id);
 
 /** A command's keys for this computer: ⌘ on a Mac, Ctrl elsewhere. */
-export function keysFor(command: CommandDef | undefined, mac: boolean) {
-  return (command?.keys ?? []).map((k) =>
+export function keysFor(
+  command: CommandDef | undefined,
+  mac: boolean,
+  overrides?: ShortcutOverrides | null,
+) {
+  return (command ? effectiveKeys(command, overrides) : []).map((k) =>
     k === "mod"
       ? mac
         ? "⌘"
@@ -298,7 +362,11 @@ export function keysFor(command: CommandDef | undefined, mac: boolean) {
         ? mac
           ? "⇧"
           : "Shift"
-        : k,
+        : k === "alt"
+          ? mac
+            ? "⌥"
+            : "Alt"
+          : k,
   );
 }
 
@@ -411,9 +479,12 @@ export function orderCommands(
 }
 
 /** The shortcut sheet's "Anywhere" list: every command that has keys. */
-export const commandShortcuts = (mac: boolean) =>
-  COMMANDS.filter((c) => c.keys?.length).map((c) => ({
-    keys: keysFor(c, mac),
+export const commandShortcuts = (
+  mac: boolean,
+  overrides?: ShortcutOverrides | null,
+) =>
+  COMMANDS.filter((c) => effectiveKeys(c, overrides).length).map((c) => ({
+    keys: keysFor(c, mac, overrides),
     label: c.label,
   }));
 
@@ -447,22 +518,13 @@ export type KeyPress = {
  * in the list above (so changing a command's keys changes what the key
  * does). "mod" is ⌘ or Ctrl; a single key needs no modifier held.
  */
-export function commandForKey(e: KeyPress): CommandDef | null {
-  const mod = e.metaKey || e.ctrlKey;
+export function commandForKey(
+  e: KeyPress,
+  overrides?: ShortcutOverrides | null,
+): CommandDef | null {
   for (const c of COMMANDS) {
-    const keys = c.keys;
-    if (!keys?.length) continue;
-    const wantsMod = keys[0] === "mod";
-    const wantsShift = keys.includes("shift");
-    const key = keys[keys.length - 1];
-    const size = 1 + (wantsMod ? 1 : 0) + (wantsShift ? 1 : 0);
-    if (keys.length !== size) continue;
-    if (wantsMod !== mod || e.altKey) continue;
-    // A shifted combination needs Shift; the others leave Shift to the
-    // character typed ("?" is Shift+/ on most keyboards).
-    if (wantsShift && !e.shiftKey) continue;
-    if (wantsMod && !wantsShift && e.shiftKey) continue;
-    if (e.key.toLowerCase() === key.toLowerCase()) return c;
+    const keys = effectiveKeys(c, overrides);
+    if (keys.length && pressMatches(keys, e)) return c;
   }
   return null;
 }
@@ -581,6 +643,42 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Reading",
     { section: "Reading" },
     "read mode reading view edit double tap default hide header full screen",
+  ),
+  setting(
+    "start",
+    "Open to",
+    "What opens when Orbyn starts on this device",
+    "account",
+    "Start",
+    { section: "Start" },
+    "start screen launch home default open first",
+  ),
+  setting(
+    "sidebar",
+    "Arrange",
+    "Show, hide and reorder what the sidebar lists",
+    "account",
+    "Arrange",
+    { section: "Arrange" },
+    "sidebar navigation menu hide reorder customise customize tabs",
+  ),
+  setting(
+    "shortcuts",
+    "Keyboard shortcuts",
+    "Change the keys a command uses",
+    "account",
+    "Keyboard shortcuts",
+    null,
+    "hotkeys keys keyboard bindings rebind",
+  ),
+  setting(
+    "clipper",
+    "Orbyn Clipper",
+    "Save articles, papers and highlights from your browser",
+    "connections",
+    "Orbyn Clipper",
+    null,
+    "browser extension web clipper chrome firefox save article highlight",
   ),
   setting(
     "email-reminders",

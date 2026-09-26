@@ -70,6 +70,7 @@ import {
 } from "../planner/calendar.js";
 import { mutate, recomputeProgress, setItemStatus } from "../items/service.js";
 import { announceDocChange } from "./live.js";
+import { docArchived } from "../../lib/doc-visibility.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import { carryRanges } from "./ranges.js";
 import { hasVectors } from "../search/semantic.js";
@@ -94,7 +95,10 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
   to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
-  d.aliases,
+  d.aliases, d.archived_at,
+  (d.archived_at IS NOT NULL OR EXISTS (
+     SELECT 1 FROM folders af WHERE af.id = d.folder_id
+        AND af.archived_at IS NOT NULL)) AS archived,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                               'color', tg.color)
                          ORDER BY lower(tg.name), tg.name)
@@ -144,7 +148,7 @@ export const VISIBLE = `(${SEES} AND d.deleted_at IS NULL)`;
  * Anything else is "not found" — the same answer as for an id that doesn't
  * exist, so ids from another space reveal nothing.
  */
-async function checkLinks(
+export async function checkLinks(
   db: Queryable,
   u: UserRow,
   teamId: string | null,
@@ -1000,6 +1004,13 @@ export async function docRoutes(app: FastifyInstance) {
             AND ($4::uuid IS NULL OR EXISTS (
                   SELECT 1 FROM doc_tags dt
                    WHERE dt.doc_id = d.id AND dt.tag_id = $4))
+            ${
+              q.archived === "include"
+                ? ""
+                : q.archived === "only"
+                  ? `AND ${docArchived("d")}`
+                  : `AND NOT ${docArchived("d")}`
+            }
           ORDER BY d.updated_at DESC
           LIMIT 200`,
         [u.id, q.kind ?? null, q.project ?? null, q.tag ?? null],

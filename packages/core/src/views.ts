@@ -207,8 +207,19 @@ export const VIEW_COLUMNS: Record<ViewSource, readonly string[]> = {
     "days_left",
     "overdue",
     "spent_vs_estimate",
+    "subtasks_done",
+    "last_touched",
   ],
-  pages: ["title", "kind", "folder", "project", "tags", "team", "updated"],
+  pages: [
+    "title",
+    "kind",
+    "folder",
+    "project",
+    "tags",
+    "team",
+    "updated",
+    "last_touched",
+  ],
   projects: [
     "title",
     "status",
@@ -218,14 +229,21 @@ export const VIEW_COLUMNS: Record<ViewSource, readonly string[]> = {
     "updated",
     "days_left",
     "overdue",
+    "last_touched",
   ],
 };
 
-/** The ready-made computed columns (no formula language). */
+/**
+ * The ready-made computed columns (DATA-06; no formula language): days
+ * left, overdue, time spent against the estimate, how much of a task's
+ * subtasks and checklist is done, and how long since it was last touched.
+ */
 export const COMPUTED_COLUMNS = [
   "days_left",
   "overdue",
   "spent_vs_estimate",
+  "subtasks_done",
+  "last_touched",
 ] as const;
 
 export const COLUMN_LABELS: Record<string, string> = {
@@ -248,6 +266,8 @@ export const COLUMN_LABELS: Record<string, string> = {
   days_left: "Days left",
   overdue: "Overdue",
   spent_vs_estimate: "Spent vs estimate",
+  subtasks_done: "Subtasks done",
+  last_touched: "Last touched",
 };
 
 /** The columns a new view starts with (the mockup's tick, Task, Due, Estimate, Spent, Tags). */
@@ -1089,9 +1109,46 @@ export function cellText(
       return isOverdue(row, ctx) ? "Overdue" : "";
     case "spent_vs_estimate":
       return spentVsEstimateText(row);
+    case "subtasks_done":
+      return subtasksDoneText(row);
+    case "last_touched":
+      return lastTouchedText(row.updated_at, ctx.now);
     default:
       return "";
   }
+}
+
+/**
+ * How much of a task's subtasks and checklist is done ("3 of 4 · 75%"), or
+ * "" for a task with neither.
+ */
+export function subtasksDone(
+  row: Pick<ViewRow, "item">,
+): { done: number; total: number } | null {
+  const i = row.item;
+  if (!i) return null;
+  const total = (i.child_count ?? 0) + (i.steps_total ?? 0);
+  if (!total) return null;
+  return { done: (i.children_done ?? 0) + (i.steps_done ?? 0), total };
+}
+
+export function subtasksDoneText(row: Pick<ViewRow, "item">): string {
+  const s = subtasksDone(row);
+  if (!s) return "";
+  return `${s.done} of ${s.total} · ${Math.round((s.done / s.total) * 100)}%`;
+}
+
+/** "Today", "Yesterday", "3 days ago", "5 weeks ago", "4 months ago". */
+export function lastTouchedText(updatedAt: string, now: Date): string {
+  const at = Date.parse(updatedAt);
+  if (Number.isNaN(at)) return "";
+  const days = Math.floor((now.getTime() - at) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.floor(days / 7)} weeks ago`;
+  if (days < 730) return `${Math.floor(days / 30)} months ago`;
+  return `${Math.floor(days / 365)} years ago`;
 }
 
 /** A column's heading. */

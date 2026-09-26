@@ -32,7 +32,7 @@ import { projectPlanning } from "../../projects/planning.js";
 import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
-import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { assistantMayRead, docVisibleTo } from "../../../lib/doc-visibility.js";
 import { readableLinks } from "../../links/privacy.js";
 
 /**
@@ -328,7 +328,7 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
                   ORDER BY b.pos LIMIT 4) x), '[]'::jsonb) AS lines
          FROM docs d
         WHERE d.project_id = $2
-          AND ${docVisibleTo("$1")}
+          AND ${docVisibleTo("$1")} AND ${assistantMayRead("d")}
         ORDER BY (d.id = $3) DESC, d.updated_at DESC LIMIT 20`,
       [ctx.user.id, a.project_id, project.doc_id],
     ),

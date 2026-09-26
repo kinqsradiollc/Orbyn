@@ -126,6 +126,13 @@ const schema = z.object({
   PAGE_FILES_QUOTA_MB: z.coerce.number().int().min(1).default(1024),
   PAGE_FILES_MAX_MB: z.coerce.number().int().min(1).max(200).default(25),
   /**
+   * The model that writes out recordings made in pages (CAP-10), on the
+   * assistant's own provider (its /audio/transcriptions). The ai service
+   * fetches a recording from the file store at FILES_URL with a read link
+   * it signs, so it needs FILES_SECRET too.
+   */
+  AI_TRANSCRIBE_MODEL: z.string().default("whisper-1"),
+  /**
    * The OCR service (Compose profile `ocr`) for scanned pages and photos.
    * Blank: Word files and PDFs with real text still import; scanned pages
    * are refused with a clear message.

@@ -17,7 +17,7 @@ import {
 } from "@orbyn/core";
 import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
-import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { docArchived, docVisibleTo } from "../../lib/doc-visibility.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { hasVectors, semanticOn } from "../search/semantic.js";
 import { announceDocChange } from "../docs/live.js";
@@ -337,7 +337,7 @@ export async function unlinkedMentions(
               ${writable("d")} AS can_link
          FROM docs d
          LEFT JOIN projects p ON p.id = d.project_id
-        WHERE ${docVisibleTo("$1")}
+        WHERE ${docVisibleTo("$1")} AND NOT ${docArchived("d")}
           AND d.id::text <> $2
           AND doc_words(d.content, NULL) ILIKE ANY ($3::text[])
           AND NOT EXISTS (

@@ -162,6 +162,12 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   { method: "POST", route: /^\/me\/first-run(?:\/skip)?$/ },
   // The hosted assistant: chat, drafts, study help, and applying proposals.
   { route: /^\/ai\// },
+  // Choices that follow the account, Clipper keys (more access), and a
+  // team's switches: people only.
+  { method: "PUT", route: /^\/me\/prefs$/ },
+  { method: "DELETE", route: /^\/me\/prefs$/ },
+  { route: /^\/me\/clip-keys(?:\/|$)/ },
+  { method: "PUT", route: /^\/teams\/:id\/policies$/ },
   { route: /^\/docs\/:id\/(?:assist|ask)$/ },
 ];
 
@@ -288,6 +294,9 @@ export async function agentLimitKey(r: FastifyRequest): Promise<string | null> {
   return id ? `agent:${id}` : null;
 }
 
+export const CLIP_KEY_MESSAGE =
+  "A Clipper key only saves clips from your browser. Sign in to Orbyn to do anything else.";
+
 export const AGENT_TOKEN_MESSAGE =
   "Agent keys and agent sign-ins work only with Orbyn's MCP address, not the API.";
 
@@ -302,6 +311,8 @@ export async function authenticate(r: FastifyRequest): Promise<UserRow> {
   const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) fail(401, "Please sign in");
   if (AGENT_TOKEN.test(token)) fail(401, AGENT_TOKEN_MESSAGE);
+  // A Clipper key saves clips and nothing else (see modules/clip).
+  if (token.startsWith("ocl_")) fail(401, CLIP_KEY_MESSAGE);
   if (token.startsWith("ok_")) return keyUser(r, token);
   const u = (
     await pool.query<UserRow>(

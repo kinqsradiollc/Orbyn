@@ -530,9 +530,21 @@ export const favouriteInput = z
   .object({
     kind: z.enum(FAVOURITE_KINDS),
     target_id: z.uuid(),
+    /** The line of the page, for a `heading` star (and only for one). */
+    block_id: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
     starred: z.boolean(),
   })
-  .strict();
+  .strict()
+  .refine((f) => (f.kind === "heading") === !!f.block_id, {
+    message: "A heading's star needs its line, and only a heading's does.",
+    path: ["block_id"],
+  });
 
 /** A remark on a document. One thread per document, so it survives edits. */
 export const docCommentInput = z
@@ -622,6 +634,11 @@ export const searchQuery = z
     team: z.union([z.uuid(), z.literal("personal")]).optional(),
     updated_after: z.iso.datetime({ offset: true }).optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
+    /** Archived pages too (SRCH-03). */
+    include_archived: z
+      .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+      .transform((v) => v === true || v === "true" || v === "1")
+      .optional(),
   })
   .strict()
   .refine(
@@ -647,6 +664,11 @@ export const findQuery = z
     q: z.string().trim().max(200).default(""),
     type: z.enum(["doc", "task", "project"]).optional(),
     limit: z.coerce.number().int().min(1).max(30).default(12),
+    /** Archived pages too (SRCH-03). */
+    include_archived: z
+      .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+      .transform((v) => v === true || v === "true" || v === "1")
+      .optional(),
   })
   .strict();
 
@@ -664,8 +686,16 @@ export const docListQuery = z
     kind: z.enum(DOC_KINDS).optional(),
     project: z.uuid().optional(),
     tag: z.uuid().optional(),
+    /**
+     * Archived pages (SRCH-03): left out by default, "include" lists them
+     * too and "only" lists nothing else.
+     */
+    archived: z.enum(["include", "only"]).optional(),
   })
   .strict();
+
+/** Archive a page or folder, or bring it back (SRCH-03). */
+export const archiveInput = z.object({ archived: z.boolean() }).strict();
 
 /**
  * Which time of a repeating event a note is for: the calendar entry's

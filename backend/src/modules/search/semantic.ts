@@ -1,4 +1,5 @@
 import { blockText, type DocBlock } from "@orbyn/core";
+import { assistantMayRead } from "../../lib/doc-visibility.js";
 import { pool, type Queryable } from "../../db/pool.js";
 import { embed } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
@@ -81,6 +82,9 @@ export async function measureQueued(limit = 5): Promise<number> {
         -- A page in Trash can't be searched: measuring it would be a call
         -- to the provider for nothing. It is queued again when restored.
         WHERE d.deleted_at IS NULL
+          -- A team that keeps its pages out of the assistant (OTH-04)
+          -- keeps them from its provider too.
+          AND ${assistantMayRead("d")}
         ORDER BY q.queued_at LIMIT $1`,
       [limit],
     )
@@ -156,7 +160,7 @@ export async function nearest(
         `SELECT e.doc_id AS id, e.block_id, e.quote,
                 1 - (e.embedding <=> $2::vector) AS nearness
            FROM doc_embeddings e JOIN docs d ON d.id = e.doc_id
-          WHERE d.deleted_at IS NULL
+          WHERE d.deleted_at IS NULL AND ${assistantMayRead("d")}
             AND ((d.team_id IS NULL AND d.user_id = $1)
                  OR d.team_id IN (SELECT team_id FROM team_members
                                    WHERE user_id = $1))

@@ -8,6 +8,7 @@ import {
   type DocBlock,
   type SuggestedCard,
 } from "@orbyn/core";
+import { requireAssistantAllowed } from "../../lib/teams.js";
 import { pool } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
 import { authenticate } from "../../lib/auth.js";
@@ -31,8 +32,13 @@ const PAGE_CHARS = 12_000;
 
 const pageOf = async (userId: string, docId: string) => {
   const doc = (
-    await pool.query<{ id: string; title: string; content: DocBlock[] }>(
-      `SELECT d.id, d.title, d.content FROM docs d WHERE d.id = $2
+    await pool.query<{
+      id: string;
+      title: string;
+      content: DocBlock[];
+      team_id: string | null;
+    }>(
+      `SELECT d.id, d.title, d.content, d.team_id FROM docs d WHERE d.id = $2
          AND d.deleted_at IS NULL
          AND ((d.team_id IS NULL AND d.user_id = $1)
            OR d.team_id IN (SELECT team_id FROM team_members WHERE user_id = $1))`,
@@ -40,6 +46,8 @@ const pageOf = async (userId: string, docId: string) => {
     )
   ).rows[0];
   if (!doc) fail(404, "Page not found");
+  // A team can keep its pages out of the assistant (OTH-04).
+  await requireAssistantAllowed(doc.team_id);
   // Links to what the reader can't open keep no title (D3aF).
   const content = await readableLinks(pool, userId, doc.content ?? []);
   return {

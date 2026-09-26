@@ -1,3 +1,5 @@
+import { DATA_ANSWER } from "@orbyn/core";
+
 /**
  * The questions the homepage answers. One list feeds both the page and the
  * FAQPage structured data written into index.html at build time, so what a
@@ -31,6 +33,8 @@ export const FAQ: { q: string; a: string }[] = [
     q: "Can I use Orbyn with a team?",
     a: "Yes. Share tasks, events and pages with a team, with roles that decide who can see and change what. See when people are free without seeing their private events, and share a booking page so others can find a time with you.",
   },
+  // The one plain answer on data handling (OTH-03), shared with Security.
+  DATA_ANSWER,
   {
     q: "Can I take my data with me?",
     a: "Any time. Export everything as a .zip: every page as Markdown in its folders, plus your projects, folders and tasks. You can also download any page as PDF, Word, Markdown, HTML or plain text.",
