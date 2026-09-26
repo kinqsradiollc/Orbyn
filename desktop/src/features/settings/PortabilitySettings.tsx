@@ -2,7 +2,7 @@ import { SettingsSection } from "./SettingsSection";
 import { FilePicker } from "../../components/FilePicker";
 import { Select } from "../../components/Select";
 import { useState } from "react";
-import { Download, Upload } from "lucide-react";
+import { Archive, Download, Upload } from "lucide-react";
 import type { ImportSummary } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
@@ -31,6 +31,19 @@ export function PortabilitySettings({
       a.click();
       URL.revokeObjectURL(url);
       return "Your archive was downloaded.";
+    });
+
+  /** Everything, pages included, as a .zip of Markdown and JSON. */
+  const downloadAll = () =>
+    void action.run(async () => {
+      const { blob, name } = await client.exportArchive();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+      return "Everything was downloaded.";
     });
 
   const onFile = (file: File) => {
@@ -62,16 +75,26 @@ export function PortabilitySettings({
     >
       <h2 id="portability-title">Import &amp; export</h2>
       <p className="muted">
-        Take your planner data with you, or bring it in from another app.
+        Take everything with you — every page as Markdown in its folders — or
+        bring tasks in from another app.
       </p>
 
-      <button
-        className="secondary"
-        disabled={action.pending}
-        onClick={download}
-      >
-        <Download size={14} /> Export my data (JSON)
-      </button>
+      <div className="portability-actions">
+        <button
+          className="secondary"
+          disabled={action.pending}
+          onClick={downloadAll}
+        >
+          <Archive size={14} /> Export everything (.zip)
+        </button>
+        <button
+          className="secondary"
+          disabled={action.pending}
+          onClick={download}
+        >
+          <Download size={14} /> Export my data (JSON)
+        </button>
+      </div>
 
       <h3 className="settings-subtitle">Import</h3>
       <p className="muted">

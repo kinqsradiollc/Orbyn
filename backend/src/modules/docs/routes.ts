@@ -24,7 +24,19 @@ import {
   meetingNoteTemplate,
   serializeDoc,
   TRASH_DAYS,
+  MAX_SITTINGS,
   docTasksInput,
+  docTagsInput,
+  docTagNamesInput,
+  isDateKey,
+  agendaTitleOn,
+  PAGE_TAG_LIMIT,
+  blankDate,
+  eventNotesQuery,
+  itemNoteInput,
+  type EventNoteRef,
+  type OccurrenceChanges,
+  type DocTag,
   type TrashedDoc,
   type Doc,
   type DocBlock,
@@ -32,6 +44,7 @@ import {
   type DocSuggestion,
   type DocSummary,
   type DocVersion,
+  type DocVersionChanges,
   type Item,
 } from "@orbyn/core";
 import {
@@ -44,11 +57,20 @@ import {
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam, VISIBLE_ITEMS } from "../../lib/teams.js";
-import { loadPrefs } from "../planner/calendar.js";
+import {
+  isOccurrence,
+  loadPrefs,
+  type SeriesRow,
+} from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "./live.js";
 import { hasVectors } from "../search/semantic.js";
-import { todaysAgenda } from "./agenda.js";
+import {
+  agendaDayOf,
+  agendaOn,
+  todaysAgenda,
+  writeAgendaOn,
+} from "./agenda.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { docToDocx } from "./docx.js";
 import { docToPdf } from "./pdf.js";
@@ -63,8 +85,10 @@ import { docToPdf } from "./pdf.js";
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
+  to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
   coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
-                                              'color', tg.color) ORDER BY tg.name)
+                                              'color', tg.color)
+                         ORDER BY lower(tg.name), tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
              WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
 
@@ -191,19 +215,33 @@ async function searchTrash(db: Db, docId: string, trashed: boolean) {
 }
 
 /**
- * Today's agenda brought back from Trash is the one Agenda opens. While it
- * was away, opening Agenda wrote a fresh copy under the same title; a copy
+ * A page that stands in for something — today's agenda, an event's meeting
+ * note — brought back from Trash is the one that opens again. While it was
+ * away, opening Agenda or the event wrote a fresh copy in its place; a copy
  * nobody has touched (never saved, nothing said or tasked on it) is let go
- * so the two don't sit side by side. One that was written in is kept.
+ * so the two don't sit side by side. One that was written in is kept (the
+ * event then opens whichever note was written in last). The note of a
+ * class that is gone (`class_was`) is nobody's copy but that class's, so
+ * bringing back the series' own note leaves it be.
  */
-async function dropAgendaCopy(db: Queryable, docId: string) {
+async function dropStandInCopy(db: Queryable, docId: string) {
   await db.query(
     `DELETE FROM docs c
       USING docs d
-      WHERE d.id = $1 AND d.kind = 'agenda'
-        AND c.id <> d.id AND c.kind = 'agenda' AND c.user_id = d.user_id
-        AND c.team_id IS NULL AND c.title = d.title
+      WHERE d.id = $1 AND c.id <> d.id AND c.kind = d.kind
         AND c.deleted_at IS NULL AND c.version = 1
+        AND (
+          (d.kind = 'agenda' AND c.user_id = d.user_id
+            AND c.team_id IS NULL AND c.title = d.title
+            AND c.agenda_date IS NOT DISTINCT FROM d.agenda_date)
+          OR (d.kind = 'meeting' AND d.item_id IS NOT NULL
+            AND c.item_id = d.item_id
+            AND c.occurrence IS NOT DISTINCT FROM d.occurrence
+            AND (c.class_was IS NULL
+              OR c.class_was IS NOT DISTINCT FROM d.class_was)
+            AND c.team_id IS NOT DISTINCT FROM d.team_id
+            AND (d.team_id IS NOT NULL OR c.user_id = d.user_id))
+        )
         AND NOT EXISTS (SELECT 1 FROM doc_comments m WHERE m.doc_id = c.id)
         AND NOT EXISTS (SELECT 1 FROM doc_task_links l WHERE l.doc_id = c.id)
         AND NOT EXISTS (SELECT 1 FROM doc_suggestions g WHERE g.doc_id = c.id)`,
@@ -389,6 +427,382 @@ function itemFromLine(text: string, teamId: string | null) {
     kind: "task",
     team_id: teamId,
   });
+}
+
+/**
+ * Turn a page's open checklist lines into real tasks, tying each line to
+ * its task so ticking one ticks the other. Only lines that aren't tasks
+ * already, and only `only` when it names some. With a project, the tasks go
+ * into it, in its first stage, the way a project template's tasks do. The
+ * page is read and written back under its lock; `doc` must come from
+ * `requireDoc` in the same transaction. Returns the tasks made, or null
+ * when there was nothing to make.
+ */
+export async function makeLineTasks(
+  db: Db,
+  u: UserRow,
+  doc: { id: string; team_id: string | null },
+  options: { only?: string[]; projectId?: string | null } = {},
+): Promise<Item[] | null> {
+  const id = doc.id;
+  const content =
+    (
+      await db.query<{ content: DocBlock[] | null }>(
+        "SELECT content FROM docs WHERE id = $1",
+        [id],
+      )
+    ).rows[0].content ?? [];
+  const only = options.only;
+  const wanted = content.filter(
+    (b): b is Extract<DocBlock, { type: "todo" }> =>
+      b.type === "todo" &&
+      !b.done &&
+      b.text.trim().length > 0 &&
+      (!only || (!!b.id && only.includes(b.id))),
+  );
+  // A line that is already tied to a task is not made again.
+  const linked = new Set(
+    (
+      await db.query<{ block_id: string }>(
+        "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
+        [id],
+      )
+    ).rows.map((r) => r.block_id),
+  );
+  const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
+  if (!lines.length) return null;
+  const stage = options.projectId
+    ? ((
+        await db.query<{ id: string }>(
+          `SELECT id FROM project_stages WHERE project_id = $1
+            ORDER BY position LIMIT 1`,
+          [options.projectId],
+        )
+      ).rows[0]?.id ?? null)
+    : null;
+
+  // Each line gets a stable id, so the link survives later edits.
+  const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
+  const out: Item[] = [];
+  for (const line of lines) {
+    const item = await mutate(db, u, {
+      operation: "create",
+      data: itemFromLine(line.text, doc.team_id),
+    });
+    if (!item) continue;
+    if (options.projectId) {
+      await db.query(
+        "UPDATE items SET project_id = $2, stage_id = $3 WHERE id = $1",
+        [item.id, options.projectId, stage],
+      );
+      item.project_id = options.projectId;
+    }
+    await db.query(
+      `INSERT INTO doc_task_links (doc_id, block_id, item_id)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3`,
+      [id, ids.get(line), item.id],
+    );
+    out.push(item);
+  }
+  // Write the ids back so the document knows which lines are tied.
+  const next = content.map((b) =>
+    ids.has(b as Extract<DocBlock, { type: "todo" }>)
+      ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
+      : b,
+  );
+  await db.query(
+    "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
+    [id, JSON.stringify(next)],
+  );
+  return out;
+}
+
+/**
+ * Tags a page may carry: its own space's — your personal tags on a personal
+ * page, the team's on a team page. `$2` is the reader, `$3` the page's team.
+ */
+const TAG_IN_SPACE = `(($3::uuid IS NULL AND g.team_id IS NULL AND g.user_id = $2)
+  OR ($3::uuid IS NOT NULL AND g.team_id = $3::uuid))`;
+
+/** A page's tags as its tag row shows them, by name. */
+export async function pageTags(
+  db: Queryable,
+  docId: string,
+): Promise<DocTag[]> {
+  return (
+    await db.query<DocTag>(
+      `SELECT g.id, g.name, g.color FROM doc_tags dt
+         JOIN tags g ON g.id = dt.tag_id
+        WHERE dt.doc_id = $1 ORDER BY lower(g.name), g.name`,
+      [docId],
+    )
+  ).rows;
+}
+
+/**
+ * Tell a page's other open editors and readers that its tags changed, so
+ * their tag row follows. Tags aren't the page's words, so its version stays;
+ * a failed notice only means they see the change on their next load.
+ */
+const announceTags = (docId: string, version: number, by: string) =>
+  announceDocChange(pool, docId, version, by, { tags: true }).catch(() => {});
+
+/**
+ * The tag called `name` in a page's space, if the space has one (names
+ * compare without case, as tags always have).
+ */
+async function findTagNamed(
+  db: Queryable,
+  u: UserRow,
+  teamId: string | null,
+  name: string,
+): Promise<string | undefined> {
+  return (
+    await db.query<{ id: string }>(
+      `SELECT g.id FROM tags g
+        WHERE lower(g.name) = lower($1) AND ${TAG_IN_SPACE}
+        ORDER BY g.created_at LIMIT 1`,
+      [name, u.id, teamId],
+    )
+  ).rows[0]?.id;
+}
+
+/**
+ * The tag called `name` in a page's space, made there if the space has no
+ * tag by that name yet.
+ */
+export async function tagNamed(
+  db: Queryable,
+  u: UserRow,
+  teamId: string | null,
+  name: string,
+): Promise<string> {
+  const find = () => findTagNamed(db, u, teamId, name);
+  const found = await find();
+  if (found) return found;
+  const made = (
+    await db.query<{ id: string }>(
+      `INSERT INTO tags (user_id, team_id, name) VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING RETURNING id`,
+      [u.id, teamId, name],
+    )
+  ).rows[0]?.id;
+  // Someone made the same tag a moment ago: theirs is the one.
+  return made ?? (await find())!;
+}
+
+/** The event columns finding its note needs: the series, for its classes. */
+export const EVENT_COLUMNS = `i.id, i.title, i.kind, i.due_at, i.end_at,
+  i.location, i.team_id, i.user_id, i.rrule, i.timezone, i.series_start,
+  i.exdates, i.all_day`;
+
+export type EventRow = {
+  id: string;
+  title: string;
+  kind: SeriesRow["kind"];
+  due_at: Date | null;
+  end_at: Date | null;
+  location: string;
+  team_id: string | null;
+  user_id: string;
+  rrule: string | null;
+  timezone: string;
+  series_start: Date | null;
+  exdates: Date[];
+  all_day: boolean;
+};
+
+/**
+ * Which time of an event a note is for. A repeating event keeps a note per
+ * class, known by the class's first start (`occurrence`, as the calendar
+ * gives it); `start` is when that class now starts, and `title` and
+ * `location` what it's called and where, for the note's first lines (a
+ * class moved on its own can have its own). An event that doesn't repeat,
+ * or a whole series (no time given), keeps one note: `occurrence` is null.
+ */
+export type EventTime = {
+  repeats: boolean;
+  occurrence: Date | null;
+  start: Date | null;
+  title: string;
+  location: string;
+};
+
+/**
+ * The time `at` of an event, as a note is kept for it. `at` is a class's
+ * first start or, for a class moved on its own, its new start too; anything
+ * that is neither is refused, so a note never hangs off a time the event
+ * doesn't have.
+ */
+export async function eventTime(
+  db: Queryable,
+  event: EventRow,
+  at: string | undefined,
+): Promise<EventTime> {
+  if (!event.rrule || !event.due_at)
+    return {
+      repeats: false,
+      occurrence: null,
+      start: event.due_at,
+      title: event.title,
+      location: event.location,
+    };
+  if (!at)
+    return {
+      repeats: true,
+      occurrence: null,
+      start: null,
+      title: event.title,
+      location: event.location,
+    };
+  const series = { ...event, due_at: event.due_at } as SeriesRow;
+  const when = new Date(at);
+  const changes = (
+    await db.query<{ occurrence: Date; data: OccurrenceChanges }>(
+      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1",
+      [event.id],
+    )
+  ).rows;
+  const own = (occurrence: Date) =>
+    changes.find((c) => c.occurrence.getTime() === occurrence.getTime())?.data;
+  const classAt = (occurrence: Date, c = own(occurrence)): EventTime => ({
+    repeats: true,
+    occurrence,
+    start: c?.due_at ? new Date(c.due_at) : occurrence,
+    title: c?.title?.trim() || event.title,
+    location: c?.location ?? event.location,
+  });
+  if (isOccurrence(series, when)) return classAt(when);
+  const moved = changes.find(
+    (c) =>
+      !!c.data.due_at &&
+      Date.parse(c.data.due_at) === when.getTime() &&
+      isOccurrence(series, c.occurrence),
+  );
+  if (moved) return classAt(moved.occurrence, moved.data);
+  return fail(422, "That isn't one of this event's times.");
+}
+
+/**
+ * Wait for anyone else finding or making the note for this time of this
+ * event, so two at once (two people, or a first open and a template) end up
+ * with one note.
+ */
+export async function lockEventNote(db: Db, itemId: string, when: EventTime) {
+  await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+    `event-note:${itemId}:${when.occurrence?.toISOString() ?? ""}`,
+  ]);
+}
+
+/**
+ * An event's own notes before the notes of classes it no longer has (which
+ * are kept as the event's, remembering their class in `class_was`).
+ */
+const OWN_NOTE_FIRST = "(d.occurrence IS NULL AND d.class_was IS NOT NULL)";
+
+/**
+ * The note an event already has, as opening the event finds it: a meeting
+ * page hanging off it in the event's own space, not in Trash — for a class
+ * of a repeating event, that class's own, and for a whole series, the
+ * series'. When there are several (written before an event kept to one),
+ * the latest edited — but a former class's note (its class skipped,
+ * deleted or dropped: `class_was`) only when the event has no note of its
+ * own, so the running note of a weekly one-to-one isn't swapped out.
+ */
+export async function eventNote(
+  db: Queryable,
+  u: UserRow,
+  itemId: string,
+  teamId: string | null,
+  when: EventTime,
+): Promise<Doc | undefined> {
+  return (
+    await db.query<Doc>(
+      `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
+        WHERE d.item_id = $2 AND d.kind = 'meeting'
+          AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
+          AND (NOT $4::boolean
+            OR d.occurrence IS NOT DISTINCT FROM $5::timestamptz)
+        ORDER BY ${OWN_NOTE_FIRST}, d.updated_at DESC, d.created_at LIMIT 1`,
+      [u.id, itemId, teamId, when.repeats, when.occurrence],
+    )
+  ).rows[0];
+}
+
+/**
+ * Keep the state a save is about to replace. Saves come every second or
+ * so while someone types, so a state is kept only when the last kept one
+ * is by someone else or older than a sitting; history then reads as a
+ * list of sittings, not keystrokes.
+ */
+const SITTING = "5 minutes";
+async function snapshot(db: Queryable, docId: string, byUser: string) {
+  const current = (
+    await db.query<{ version: number; title: string; content: unknown }>(
+      "SELECT version, title, content FROM docs WHERE id = $1",
+      [docId],
+    )
+  ).rows[0];
+  if (!current) return;
+  const last = (
+    await db.query<{ user_id: string | null; recent: boolean }>(
+      `SELECT user_id, created_at > now() - $2::interval AS recent
+         FROM doc_versions WHERE doc_id = $1
+         ORDER BY version DESC LIMIT 1`,
+      [docId, SITTING],
+    )
+  ).rows[0];
+  if (last && last.recent && last.user_id === byUser) return;
+  await db.query(
+    `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
+       VALUES ($1, $2, $3, $4::jsonb, $5)
+       ON CONFLICT (doc_id, version) DO NOTHING`,
+    [
+      docId,
+      current.version,
+      current.title,
+      JSON.stringify(current.content),
+      byUser,
+    ],
+  );
+}
+
+/**
+ * Add lines to a page as one save by `u`, under the page's lock: `place`
+ * gets the page's lines and gives back the page with the new ones in. The
+ * state before is kept for history as any save's is, and open editors are
+ * told, so a page open on another device takes the lines in. 404 for a
+ * page the person can't see, 403 for one they may only read.
+ */
+export async function addToPage(
+  u: UserRow,
+  docId: string,
+  place: (content: DocBlock[]) => DocBlock[],
+): Promise<{ id: string; title: string; version: number }> {
+  const saved = await transaction(async (db) => {
+    await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+    await requireDoc(db, docId, u, "items:write");
+    const current = (
+      await db.query<{ content: DocBlock[] | null }>(
+        "SELECT content FROM docs WHERE id = $1",
+        [docId],
+      )
+    ).rows[0].content;
+    await snapshot(db, docId, u.id);
+    return (
+      await db.query<{ id: string; title: string; version: number }>(
+        `UPDATE docs SET content = $2::jsonb, version = version + 1,
+           updated_at = now()
+         WHERE id = $1 RETURNING id, title, version`,
+        [docId, JSON.stringify(place(current ?? []))],
+      )
+    ).rows[0];
+  });
+  await announceDocChange(pool, saved.id, saved.version, "share").catch(
+    () => {},
+  );
+  return saved;
 }
 
 export async function docRoutes(app: FastifyInstance) {
@@ -597,44 +1011,6 @@ export async function docRoutes(app: FastifyInstance) {
     return saved;
   });
 
-  /**
-   * Keep the state a save is about to replace. Saves come every second or
-   * so while someone types, so a state is kept only when the last kept one
-   * is by someone else or older than a sitting; history then reads as a
-   * list of sittings, not keystrokes.
-   */
-  const SITTING = "5 minutes";
-  async function snapshot(db: Queryable, docId: string, byUser: string) {
-    const current = (
-      await db.query<{ version: number; title: string; content: unknown }>(
-        "SELECT version, title, content FROM docs WHERE id = $1",
-        [docId],
-      )
-    ).rows[0];
-    if (!current) return;
-    const last = (
-      await db.query<{ user_id: string | null; recent: boolean }>(
-        `SELECT user_id, created_at > now() - $2::interval AS recent
-           FROM doc_versions WHERE doc_id = $1
-           ORDER BY version DESC LIMIT 1`,
-        [docId, SITTING],
-      )
-    ).rows[0];
-    if (last && last.recent && last.user_id === byUser) return;
-    await db.query(
-      `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
-         VALUES ($1, $2, $3, $4::jsonb, $5)
-         ON CONFLICT (doc_id, version) DO NOTHING`,
-      [
-        docId,
-        current.version,
-        current.title,
-        JSON.stringify(current.content),
-        byUser,
-      ],
-    );
-  }
-
   const VERSION_COLUMNS = `v.version, v.title, v.created_at, v.user_id,
     us.name AS author, jsonb_array_length(v.content) AS blocks`;
 
@@ -681,6 +1057,49 @@ export async function docRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!row) fail(404, "That version is not kept");
     return row;
+  });
+
+  /**
+   * What "Show changes" reads for one version, in one request rather than
+   * one per version: the version, the one kept before it, and every one
+   * kept since (up to MAX_SITTINGS), each with its content and author.
+   */
+  app.get("/docs/:id/versions/:version/changes", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const n = Number((r.params as { version: string }).version);
+    if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
+    const db = reader(r.headers);
+    await mustSee(db, id, u);
+    // The one before, this one, and one more than can be named since, so
+    // "too many to name" is known without counting them all.
+    const rows = (
+      await db.query<Required<DocVersion>>(
+        `SELECT ${VERSION_COLUMNS}, v.content FROM doc_versions v
+           LEFT JOIN users us ON us.id = v.user_id
+          WHERE v.doc_id = $1
+            AND v.version >= coalesce(
+              (SELECT max(p.version) FROM doc_versions p
+                WHERE p.doc_id = $1 AND p.version < $2), $2)
+          ORDER BY v.version LIMIT $3`,
+        [id, n, MAX_SITTINGS + 2],
+      )
+    ).rows;
+    const at = rows.findIndex((v) => v.version === n);
+    if (at < 0) fail(404, "That version is not kept");
+    const newer = rows.slice(at + 1);
+    const answer: DocVersionChanges = {
+      version: rows[at],
+      older: at > 0 ? rows[at - 1] : null,
+      sittings:
+        newer.length < MAX_SITTINGS
+          ? [rows[at], ...newer].map((v) => ({
+              content: v.content,
+              author: v.author,
+            }))
+          : null,
+    };
+    return answer;
   });
 
   /**
@@ -763,66 +1182,119 @@ export async function docRoutes(app: FastifyInstance) {
     return todaysAgenda(u.id);
   });
 
+  /** A day for the agenda routes: "2026-09-24", or a 422 answer. */
+  const dateParam = (r: { params: unknown }) => {
+    const date = String((r.params as { date?: unknown }).date ?? "");
+    if (!isDateKey(date)) fail(422, "That isn't a date like 2026-09-24.");
+    return date;
+  };
+
+  /**
+   * One day's agenda, for stepping back and forward from today's. Today's
+   * is written on the spot, as `/agenda/today` does; another day's page is
+   * there only if it was written, and otherwise `doc` is null and the app
+   * offers to write it. Days more than a year back or two months ahead are
+   * out of reach.
+   */
+  app.get("/agenda/:date", async (r) => {
+    const u = await authenticate(r);
+    const date = dateParam(r);
+    const zone = (r.query as { timezone?: unknown }).timezone;
+    if (typeof zone === "string")
+      await adoptDeviceZone(u.id, zone.slice(0, 64));
+    const day = await agendaDayOf(u.id, date);
+    if (!day) fail(422, "The agenda goes back a year and ahead two months.");
+    return {
+      date,
+      title: agendaTitleOn(date),
+      today: day.today,
+      doc: await agendaOn(u.id, date),
+    };
+  });
+
+  /** Write one day's agenda from the calendar, if it isn't written yet. */
+  app.post("/agenda/:date", async (r, reply) => {
+    const u = await authenticate(r);
+    const date = dateParam(r);
+    const made = await writeAgendaOn(u.id, date);
+    if (!made) fail(422, "The agenda goes back a year and ahead two months.");
+    reply.code(made.created ? 201 : 200);
+    return made.doc;
+  });
+
   /**
    * The note for one event, created from a template the first time it's
    * opened. It belongs to whoever opened it, and to the event's team when it
-   * has one, so a shared meeting keeps one shared note.
+   * has one, so a shared meeting keeps one shared note. A repeating event
+   * keeps one per class: `occurrence` says which (without it, the note is
+   * the whole series').
    */
   app.post("/items/:id/note", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
+    const { occurrence } = itemNoteInput.parse(r.body ?? {});
     const event = (
-      await pool.query<{
-        id: string;
-        title: string;
-        due_at: Date | null;
-        location: string;
-        team_id: string | null;
-        user_id: string;
-      }>(
-        `SELECT i.id, i.title, i.due_at, i.location, i.team_id, i.user_id
-           FROM items i WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
+      await pool.query<EventRow>(
+        `SELECT ${EVENT_COLUMNS} FROM items i
+          WHERE i.id = $2 AND ${VISIBLE_ITEMS}`,
         [u.id, id],
       )
     ).rows[0];
     if (!event) fail(404, "Item not found");
+    const when = await eventTime(pool, event, occurrence);
 
-    const existing = (
-      await pool.query<Doc>(
-        `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
-          WHERE d.item_id = $2 AND d.kind = 'meeting'
-            AND d.team_id IS NOT DISTINCT FROM $3::uuid AND ${VISIBLE}
-          ORDER BY d.created_at LIMIT 1`,
-        [u.id, id, event.team_id],
-      )
-    ).rows[0];
+    const existing = await eventNote(pool, u, id, event.team_id, when);
     if (existing) return existing;
 
     const prefs = await loadPrefs(pool, u.id);
+    const timeZone = prefs.timezone || "UTC";
     const content = meetingNoteTemplate({
-      title: event.title,
-      due_at: event.due_at ? event.due_at.toISOString() : null,
-      location: event.location,
-      timeZone: prefs.timezone || "UTC",
+      title: when.title,
+      due_at: when.start ? when.start.toISOString() : null,
+      location: when.location,
+      timeZone,
     });
-    const doc = await transaction(async (db) => {
+    // A class's note says which class in its name, so a term of them reads
+    // apart in the library.
+    const title =
+      when.occurrence && when.start
+        ? `${when.title} · ${blankDate(when.start, timeZone)}`
+        : when.title;
+    const made = await transaction(async (db) => {
+      // Two first opens at once (or a note being made from a template) must
+      // not leave the event with two notes: the check is made again under
+      // the lock for this time of the event.
+      await lockEventNote(db, id, when);
+      const again = await eventNote(db, u, id, event.team_id, when);
+      if (again) return { doc: again, created: false };
       const newId = (
         await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id)
-             VALUES ($1,$2,$3,'meeting',$4::jsonb,$5) RETURNING id`,
-          [u.id, event.team_id, event.title, JSON.stringify(content), id],
+          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
+             occurrence)
+             VALUES ($1,$2,$3,'meeting',$4::jsonb,$5,$6) RETURNING id`,
+          [
+            u.id,
+            event.team_id,
+            title.slice(0, 200),
+            JSON.stringify(content),
+            id,
+            when.occurrence,
+          ],
         )
       ).rows[0].id;
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [newId],
-        )
-      ).rows[0];
+      return {
+        doc: (
+          await db.query<Doc>(
+            `SELECT ${COLUMNS}, d.content FROM docs d
+               ${JOINS} WHERE d.id = $1`,
+            [newId],
+          )
+        ).rows[0],
+        created: true,
+      };
     });
-    reply.code(201);
-    return doc;
+    if (made.created) reply.code(201);
+    return made.doc;
   });
 
   /**
@@ -841,60 +1313,7 @@ export async function docRoutes(app: FastifyInstance) {
       // lands meanwhile waits, then finds the version moved on and merges,
       // rather than being written over with the copy read here.
       const doc = await requireDoc(db, id, u, "items:read");
-      const content =
-        (
-          await db.query<{ content: DocBlock[] | null }>(
-            "SELECT content FROM docs WHERE id = $1",
-            [id],
-          )
-        ).rows[0].content ?? [];
-      const wanted = content.filter(
-        (b): b is Extract<DocBlock, { type: "todo" }> =>
-          b.type === "todo" &&
-          !b.done &&
-          b.text.trim().length > 0 &&
-          (!only || (!!b.id && only.includes(b.id))),
-      );
-      // A line that is already tied to a task is not made again.
-      const linked = new Set(
-        (
-          await db.query<{ block_id: string }>(
-            "SELECT block_id FROM doc_task_links WHERE doc_id = $1",
-            [id],
-          )
-        ).rows.map((r) => r.block_id),
-      );
-      const lines = wanted.filter((b) => !b.id || !linked.has(b.id));
-      if (!lines.length) return null;
-
-      // Each line gets a stable id, so the link survives later edits.
-      const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
-      const out = [];
-      for (const line of lines) {
-        const item = await mutate(db, u, {
-          operation: "create",
-          data: itemFromLine(line.text, doc.team_id),
-        });
-        if (!item) continue;
-        await db.query(
-          `INSERT INTO doc_task_links (doc_id, block_id, item_id)
-             VALUES ($1,$2,$3)
-             ON CONFLICT (doc_id, block_id) DO UPDATE SET item_id = $3`,
-          [id, ids.get(line), item.id],
-        );
-        out.push(item);
-      }
-      // Write the ids back so the document knows which lines are tied.
-      const next = content.map((b) =>
-        ids.has(b as Extract<DocBlock, { type: "todo" }>)
-          ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
-          : b,
-      );
-      await db.query(
-        "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
-        [id, JSON.stringify(next)],
-      );
-      return out;
+      return makeLineTasks(db, u, doc, { only });
     });
     if (!made) return { created: 0, items: [], doc: null };
     const updated = (
@@ -913,6 +1332,88 @@ export async function docRoutes(app: FastifyInstance) {
         content: await withTaskState(pool, id, updated.content ?? []),
       },
     };
+  });
+
+  /**
+   * Put exactly these tags on a page, from its own space's tags. A tag the
+   * page already carries may stay, wherever it came from; any other tag
+   * outside the page's space is "not found". Tags aren't the page's words,
+   * so this doesn't make a new version of it.
+   */
+  app.put("/docs/:id/tags", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { tags } = docTagsInput.parse(r.body);
+    const wanted = [...new Set(tags)];
+    const out = await transaction(async (db) => {
+      const doc = await requireDoc(db, id, u, "items:write");
+      const allowed = (
+        await db.query<{ id: string }>(
+          `SELECT g.id FROM tags g
+            WHERE g.id = ANY($1::uuid[])
+              AND (${TAG_IN_SPACE} OR EXISTS (SELECT 1 FROM doc_tags dt
+                     WHERE dt.doc_id = $4 AND dt.tag_id = g.id))`,
+          [wanted, u.id, doc.team_id, id],
+        )
+      ).rows.map((row) => row.id);
+      if (allowed.length !== wanted.length) fail(404, "Tag not found");
+      await db.query(
+        "DELETE FROM doc_tags WHERE doc_id = $1 AND NOT (tag_id = ANY($2::uuid[]))",
+        [id, allowed],
+      );
+      await db.query(
+        `INSERT INTO doc_tags (doc_id, tag_id)
+           SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+        [id, allowed],
+      );
+      return { tags: await pageTags(db, id), version: doc.version };
+    });
+    await announceTags(id, out.version, editorOf(r));
+    return { tags: out.tags };
+  });
+
+  /**
+   * Add tags to a page by name, as typing "#physics" in a line does. A name
+   * the page's space has no tag for yet makes one there. A page holds at
+   * most PAGE_TAG_LIMIT tags; names past that are left off, and the answer
+   * says which were added.
+   */
+  app.post("/docs/:id/tags", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const { names } = docTagNamesInput.parse(r.body);
+    const out = await transaction(async (db) => {
+      const doc = await requireDoc(db, id, u, "items:write");
+      const current = await pageTags(db, id);
+      const have = new Set(current.map((t) => t.id));
+      // A name the page already carries, from wherever, is already there.
+      const seen = new Set(current.map((t) => t.name.toLowerCase()));
+      const added: string[] = [];
+      for (const name of names) {
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const found = await findTagNamed(db, u, doc.team_id, name);
+        if (found && have.has(found)) continue;
+        // A full page takes no more, and a tag is only made when it will
+        // go on the page: a name left off here leaves nothing behind.
+        if (have.size >= PAGE_TAG_LIMIT) break;
+        const tag = found ?? (await tagNamed(db, u, doc.team_id, name));
+        await db.query(
+          "INSERT INTO doc_tags (doc_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [id, tag],
+        );
+        have.add(tag);
+        added.push(name);
+      }
+      return {
+        tags: await pageTags(db, id),
+        added,
+        version: doc.version,
+      };
+    });
+    if (out.added.length) await announceTags(id, out.version, editorOf(r));
+    return { tags: out.tags, added: out.added };
   });
 
   /** Everyone's remarks on a document, oldest first. */
@@ -1307,6 +1808,35 @@ export async function docRoutes(app: FastifyInstance) {
   });
 
   /**
+   * The notes these events have, to mark them: one row per note, with the
+   * class it is for on a repeating event (or, for a class that is gone, the
+   * class it was for), latest edited first after the event's own notes —
+   * the order eventNote keeps. Scoped to the events asked about
+   * (and, with `from`/`to`, a repeating event's classes to those times), so
+   * it holds however many pages someone has.
+   */
+  app.get("/docs/event-notes", async (r): Promise<EventNoteRef[]> => {
+    const u = await authenticate(r);
+    const q = eventNotesQuery.parse(r.query ?? {});
+    return (
+      await reader(r.headers).query<EventNoteRef>(
+        `SELECT d.id AS doc_id, d.title, d.item_id, d.occurrence, d.team_id,
+                d.class_was
+           FROM docs d JOIN items i ON i.id = d.item_id
+          WHERE d.item_id = ANY($2::uuid[]) AND d.kind = 'meeting'
+            AND d.team_id IS NOT DISTINCT FROM i.team_id AND ${VISIBLE}
+            AND ($3::timestamptz IS NULL OR d.occurrence IS NULL
+              OR d.occurrence >= $3)
+            AND ($4::timestamptz IS NULL OR d.occurrence IS NULL
+              OR d.occurrence < $4)
+          ORDER BY ${OWN_NOTE_FIRST}, d.updated_at DESC
+          LIMIT 5000`,
+        [u.id, q.items, q.from ?? null, q.to ?? null],
+      )
+    ).rows;
+  });
+
+  /**
    * The pages in Trash this reader can see, most recently deleted first:
    * their own, and their teams'. Viewers see a team's but can't act on them.
    */
@@ -1348,7 +1878,7 @@ export async function docRoutes(app: FastifyInstance) {
       );
       await noteTrash(db, id, u.id, false);
       await searchTrash(db, id, false);
-      await dropAgendaCopy(db, id);
+      await dropStandInCopy(db, id);
       const doc = (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS} WHERE d.id = $1`,

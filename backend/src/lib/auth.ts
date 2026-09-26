@@ -120,7 +120,8 @@ export const KEY_BLOCKED_MESSAGE =
 const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   { method: "POST", route: /^\/me\/api-keys$/ },
   { route: /^\/me\/(?:webhooks|chat|sessions|2fa|passkeys)(?:\/|$)/ },
-  { route: /^\/me\/export$/ },
+  // The account export, as JSON or as the .zip with every page in it.
+  { route: /^\/me\/export(?:\.zip)?$/ },
   // Account settings: email reminders, deleting the account, the public
   // profile, privacy choices, the time zone, agreeing to the Terms, the
   // email-to-task address and the calendar feed link. Reading them is fine.

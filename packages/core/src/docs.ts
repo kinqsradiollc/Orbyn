@@ -271,7 +271,99 @@ export type Doc = {
   imported_from?: DocImportSource | null;
   /** Imported and not filed yet: it shows in Uploads until it's moved. */
   in_uploads?: boolean;
+  /** For a daily agenda, the day it is for ("2026-09-24"). */
+  agenda_date?: string | null;
+  /**
+   * For the note of one class of a repeating event, which class: its first
+   * start, as the calendar's `occurrence`. Null for any other page.
+   */
+  occurrence?: string | null;
 };
+
+/** A note an event has (`GET /docs/event-notes`): enough to mark the event. */
+export type EventNoteRef = {
+  doc_id: string;
+  /** The note's title, to say which page opens. */
+  title: string;
+  item_id: string;
+  /** The class it is for, on a repeating event; null for the whole event. */
+  occurrence: string | null;
+  team_id: string | null;
+  /**
+   * For a note kept as the whole event's because its class is gone
+   * (skipped, deleted, not in a new pattern), the class it was for. Such a
+   * note stands in for the event's own only when it has none.
+   */
+  class_was?: string | null;
+};
+
+/**
+ * The first of `notes` that `matches`, the event's own notes before those
+ * of classes it no longer has — the order the server keeps.
+ */
+function ownNoteFirst(
+  notes: EventNoteRef[],
+  matches: (n: EventNoteRef) => boolean,
+): EventNoteRef | undefined {
+  return notes.find((n) => matches(n) && !n.class_was) ?? notes.find(matches);
+}
+
+/**
+ * The note an event on the calendar opens, of `notes` (latest edited
+ * first): for one time of a repeating event (a calendar entry's
+ * `occurrence`), that time's own; for a repeating event with no time
+ * given, the series' own; for any other event, its note. A note left by a
+ * class that is gone (`class_was`) is the event's only when it has no
+ * other. The same rule the server keeps when a note is opened or made.
+ */
+export function eventNoteFor(
+  notes: EventNoteRef[],
+  entry: {
+    item_id: string;
+    occurrence?: string | null;
+    rrule?: string | null;
+    team_id?: string | null;
+  },
+): EventNoteRef | undefined {
+  const at = entry.occurrence ? Date.parse(entry.occurrence) : null;
+  return ownNoteFirst(
+    notes,
+    (n) =>
+      n.item_id === entry.item_id &&
+      (n.team_id ?? null) === (entry.team_id ?? null) &&
+      (at !== null
+        ? n.occurrence !== null && Date.parse(n.occurrence) === at
+        : !entry.rrule || n.occurrence === null),
+  );
+}
+
+/**
+ * The note a repeating event keeps for the whole series, to point to when
+ * one class of it is open (a calendar entry with an `occurrence`): that
+ * class opens its own note, so the series' — the running note of a weekly
+ * one-to-one, and every note written before classes had their own — would
+ * otherwise go unseen from the calendar. A note left by a class that is
+ * gone stands in only when the series has none of its own. Undefined for
+ * an event that doesn't repeat, or with no class given (the series' note
+ * opens then).
+ */
+export function seriesNoteFor(
+  notes: EventNoteRef[],
+  entry: {
+    item_id: string;
+    occurrence?: string | null;
+    team_id?: string | null;
+  },
+): EventNoteRef | undefined {
+  if (!entry.occurrence) return undefined;
+  return ownNoteFirst(
+    notes,
+    (n) =>
+      n.item_id === entry.item_id &&
+      (n.team_id ?? null) === (entry.team_id ?? null) &&
+      n.occurrence === null,
+  );
+}
 
 /** Where an imported page came from. The file itself is not kept. */
 export type DocImportSource = {
@@ -1378,6 +1470,16 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const dayKey = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+/**
+ * When an agenda is filed: the day it is for, at noon in the reader's own
+ * zone, or when it was written for a page from before agendas knew their
+ * day. A page written today for last Tuesday files under last Tuesday.
+ */
+export const agendaDay = (doc: {
+  created_at: string;
+  agenda_date?: string | null;
+}) => (doc.agenda_date ? `${doc.agenda_date}T12:00:00` : doc.created_at);
+
 /** "2026-09" for a moment, in the reader's own zone. */
 export const agendaMonthKey = (iso: string) => {
   const d = new Date(iso);
@@ -1415,11 +1517,14 @@ export function agendaGroups(
 ): AgendaYear[] {
   const agendas = docs
     .filter((d) => d.kind === "agenda")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort(
+      (a, b) =>
+        new Date(agendaDay(b)).getTime() - new Date(agendaDay(a)).getTime(),
+    );
   const years: AgendaYear[] = [];
   for (const doc of agendas) {
-    const at = new Date(doc.created_at);
-    const key = agendaMonthKey(doc.created_at);
+    const at = new Date(agendaDay(doc));
+    const key = agendaMonthKey(agendaDay(doc));
     let year = years.find((y) => y.year === at.getFullYear());
     if (!year) years.push((year = { year: at.getFullYear(), months: [] }));
     let month = year.months.find((m) => m.key === key);

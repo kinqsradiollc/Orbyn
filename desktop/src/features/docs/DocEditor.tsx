@@ -1,4 +1,3 @@
-import { useConfirm } from "../../components/Confirm";
 import {
   useCallback,
   useEffect,
@@ -17,6 +16,7 @@ import {
   Highlighter,
   History,
   Italic,
+  LayoutTemplate,
   Link,
   ListChecks,
   ListPlus,
@@ -28,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  addedInlineTags,
   BLOCK_KINDS,
   blockDepth,
   blockToType,
@@ -72,6 +73,8 @@ import {
 } from "@orbyn/core";
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
+import { SharePageButton } from "../../components/ShareButton";
+import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { DocModeSwitch } from "./DocModeSwitch";
 import { DocViewers } from "./DocViewers";
@@ -89,8 +92,13 @@ import {
 } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
+import { PageTags } from "./PageTags";
+import { SaveTemplateDialog } from "./PageTemplates";
 
 type Kind = (typeof BLOCK_KINDS)[number];
+
+/** How soon after ⌘⇧V a paste counts as the plain paste it asked for. */
+const PLAIN_PASTE_MS = 1_000;
 
 /** How often "Saved 2 min ago" is brought up to date. */
 const CLOCK_MS = 30_000;
@@ -229,7 +237,6 @@ export function DocEditor({
   teamName?: string | null;
   report: (e: unknown) => void;
 }) {
-  const { tell } = useConfirm();
   const toast = useToast();
   /**
    * A page opens the way it was last worked on, and always read-only for
@@ -264,6 +271,10 @@ export function DocEditor({
   const base = useRef<DocBlock[]>(doc.content);
   /** Current state, readable from callbacks that were made earlier. */
   const live = useRef({ title: doc.title, blocks: [] as DocBlock[] });
+  /**
+   * What someone else's edits just did to the page, shown beside Saved as
+   * part of working together. Every other notice goes through the toast.
+   */
   const [note, setNote] = useState("");
   /** Which line is open for editing, readable from the live subscription. */
   const focusedRef = useRef<number | null>(null);
@@ -322,10 +333,25 @@ export function DocEditor({
   /** When the page was last saved, for the line at its end. */
   const [savedAt, setSavedAt] = useState(doc.updated_at);
   const [now, setNow] = useState(() => new Date());
-  /** The next paste came from ⌘⇧V: take the words exactly as they are. */
-  const plainPaste = useRef(false);
+  /**
+   * When ⌘⇧V was last pressed. The paste it makes follows at once, so only
+   * a paste within PLAIN_PASTE_MS of it is plain: a ⌘⇧V that pasted nothing
+   * (an empty clipboard, a paste the browser blocked) doesn't turn the next
+   * ordinary ⌘V plain.
+   */
+  const plainPaste = useRef(0);
   /** A line made by "New task" in the / menu, waiting for its words. */
   const pendingTask = useRef<string | null>(null);
+  /** The page's tags, as its tag row shows them. */
+  const [tags, setTags] = useState(doc.tags ?? []);
+  /**
+   * The page as it stood when its #tags were last looked at. A #tag typed
+   * since then is added to the page when the line is left; one that was
+   * already there is not, so a tag taken off isn't put straight back.
+   */
+  const tagBase = useRef<DocBlock[]>(doc.content);
+  /** Whether "Save as template" is open. */
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   // A different document replaces the editor's state entirely.
   useEffect(() => {
@@ -342,7 +368,32 @@ export function DocEditor({
     setSavedAt(doc.updated_at);
     setHistoryView(null);
     setLinking(null);
+    setTags(doc.tags ?? []);
+    tagBase.current = doc.content;
   }, [doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Add to the page the #tags typed into it since they were last looked at. */
+  const settleTags = useRef<() => void>(() => {});
+  /** Set once the page goes to Trash: there is nothing left to tag. */
+  const gone = useRef(false);
+  settleTags.current = () => {
+    if (gone.current) return;
+    const now = live.current.blocks;
+    const added = addedInlineTags(tagBase.current, now);
+    tagBase.current = now;
+    if (!added.length || !canWrite) return;
+    client
+      .addDocTags(doc.id, added)
+      .then(({ tags: next }) => setTags(next), report);
+  };
+  // Leaving a line — Enter, the arrows, a click elsewhere — is when a #tag
+  // typed in it counts, not every keystroke on the way to "#physics".
+  const lastFocused = useRef<number | null>(null);
+  useEffect(() => {
+    if (lastFocused.current !== null && lastFocused.current !== focused)
+      settleTags.current();
+    lastFocused.current = focused;
+  }, [focused]);
 
   // "Saved 2 min ago" keeps up with the clock.
   useEffect(() => {
@@ -461,6 +512,7 @@ export function DocEditor({
     return () => {
       if (timer.current) clearTimeout(timer.current);
       flushOnClose.current();
+      settleTags.current();
     };
   }, []);
 
@@ -469,18 +521,26 @@ export function DocEditor({
    * not on callbacks that are rebuilt each time the page is typed into.
    * Without this the stream was torn down and reopened on every keystroke.
    */
-  const onEvent = useRef<(version: number, trashed: boolean) => void>(() => {});
-  onEvent.current = (remote: number, trashed: boolean) => {
+  const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
+  onEvent.current = (remote: number, { trashed, tags: retagged }: DocNews) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed) {
       if (timer.current) clearTimeout(timer.current);
       dirty.current = false;
       flushOnClose.current = () => {};
+      gone.current = true;
       onDeleted(doc.id);
       toast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone changed the page's tags: the row follows, the words stay.
+    if (retagged) {
+      void client
+        .getDoc(doc.id)
+        .then((theirs) => setTags(theirs.tags ?? []), report);
       return;
     }
     if (remote && remote <= version.current) return;
@@ -491,6 +551,8 @@ export function DocEditor({
       if (!dirty.current && focusedRef.current === null) {
         version.current = theirs.version;
         base.current = theirs.content;
+        tagBase.current = theirs.content;
+        setTags(theirs.tags ?? []);
         setTitle(theirs.title);
         setBlocks(
           theirs.content.length
@@ -515,8 +577,7 @@ export function DocEditor({
    * in, so two people can work on the same page at once.
    */
   useEffect(
-    () =>
-      client.watchDoc(doc.id, (v, news) => onEvent.current(v, news.trashed)),
+    () => client.watchDoc(doc.id, (v, news) => onEvent.current(v, news)),
     [doc.id],
   );
 
@@ -652,7 +713,7 @@ export function DocEditor({
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
       setSuggestions((list) => [...list, ...made]);
-      setNote("Suggested. It waits for someone to take it.");
+      toast({ text: "Suggested. It waits for someone to take it." });
     } catch (e) {
       report(e);
     }
@@ -725,7 +786,7 @@ export function DocEditor({
     }
     setPicked(null);
     window.getSelection()?.removeAllRanges();
-    setNote("Asking the assistant…");
+    toast({ text: "Asking the assistant…" });
     try {
       const made = await client.assistDoc(doc.id, {
         block_id: words.blockId,
@@ -735,9 +796,8 @@ export function DocEditor({
         instruction,
       });
       setSuggestions((list) => [...list, made]);
-      setNote("Suggested. Take it or leave it.");
+      toast({ text: "Suggested. Take it or leave it." });
     } catch (e) {
-      setNote("");
       report(e);
     }
   };
@@ -773,7 +833,7 @@ export function DocEditor({
       linking.url,
     );
     if (!made) {
-      setNote("That doesn't look like a web address.");
+      toast({ text: "That doesn't look like a web address.", tone: "warn" });
       return;
     }
     const next = blocks.slice();
@@ -1130,6 +1190,21 @@ export function DocEditor({
     update(next);
   };
 
+  /** Flip the box of the checklist line being typed, keeping the caret. */
+  const tickLine = (el: HTMLTextAreaElement) => {
+    const box = /^(\s*[-*]\s+\[)( |x|X)\]/.exec(el.value);
+    if (!box) return;
+    const at = box[1].length;
+    typeInto(el, {
+      text:
+        el.value.slice(0, at) +
+        (box[2] === " " ? "x" : " ") +
+        el.value.slice(at + 1),
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    });
+  };
+
   /**
    * Restyle the words selected in the line being typed — bold, italic, a
    * link — through the same path as typing, so it can be undone with ⌘Z and
@@ -1141,7 +1216,7 @@ export function DocEditor({
   ) => {
     const made = change(el.value, el.selectionStart, el.selectionEnd);
     if (!made) {
-      setNote("Those words already have another style.");
+      toast({ text: "Those words already have another style.", tone: "warn" });
       return;
     }
     typeInto(el, made);
@@ -1190,11 +1265,13 @@ export function DocEditor({
         return;
       }
       // ⌘⇧V: the next paste keeps only the words.
-      if (key === "v" && e.shiftKey) plainPaste.current = true;
-      // ⌘⏎ ticks a checklist line, or unticks it.
+      if (key === "v" && e.shiftKey) plainPaste.current = Date.now();
+      // ⌘⏎ ticks a checklist line, or unticks it. The box is flipped in the
+      // line itself, as typing would, so the open line shows it, the next
+      // keystroke keeps it and ⌘Z takes it back.
       if (e.key === "Enter" && blocks[index].type === "todo") {
         e.preventDefault();
-        toggleTodo(index);
+        if (structural) tickLine(e.currentTarget);
         return;
       }
     }
@@ -1231,8 +1308,8 @@ export function DocEditor({
     e: React.ClipboardEvent<HTMLTextAreaElement>,
     index: number,
   ) => {
-    const plain = plainPaste.current;
-    plainPaste.current = false;
+    const plain = Date.now() - plainPaste.current < PLAIN_PASTE_MS;
+    plainPaste.current = 0;
     const block = blocks[index];
     if (block.type === "code" || block.type === "math") return;
     const el = e.currentTarget;
@@ -1408,7 +1485,7 @@ export function DocEditor({
    */
   const download = async (format: ExportFormat) => {
     setDownloadMenu(false);
-    setNote(`Making the ${EXPORT_LABELS[format].name} file…`);
+    toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
     try {
       const { blob, name } = await client.exportDoc(doc.id, format);
       const url = URL.createObjectURL(blob);
@@ -1417,9 +1494,8 @@ export function DocEditor({
       a.download = name;
       a.click();
       URL.revokeObjectURL(url);
-      setNote("");
+      toast({ text: `Downloaded “${name}”` });
     } catch (e) {
-      setNote("");
       report(e);
     }
   };
@@ -1436,8 +1512,8 @@ export function DocEditor({
         // The server ties each line to its task and hands back the document;
         // adopting it keeps the ids, so the lines now follow their tasks.
         const created = await linesToTasks();
-        await tell({
-          title:
+        toast({
+          text:
             created === 0
               ? "Every item here is already a task."
               : `Added ${created} task${created === 1 ? "" : "s"} to your planner. Ticking one here ticks it there.`,
@@ -1464,6 +1540,7 @@ export function DocEditor({
     }
     dirty.current = false;
     flushOnClose.current = () => {};
+    gone.current = true;
     onDeleted(doc.id);
     toast({
       text: `Moved “${title || "Untitled"}” to Trash`,
@@ -1548,16 +1625,31 @@ export function DocEditor({
           </button>
           <button
             className="icon-button"
+            onClick={() => setSavingTemplate(true)}
+            aria-label="Save as template"
+            aria-haspopup="dialog"
+            title="Save as template"
+          >
+            <LayoutTemplate size={15} />
+          </button>
+          <button
+            className="icon-button"
             onClick={() =>
               void navigator.clipboard
                 .writeText(`# ${title}\n\n${markdown}`)
-                .then(() => setNote("Copied as Markdown."), report)
+                .then(() => toast({ text: "Copied as Markdown" }), report)
             }
             aria-label="Copy as Markdown"
             title="Copy as Markdown"
           >
             <Copy size={15} />
           </button>
+          {/* On a phone's browser: the system share sheet (SHR-07). */}
+          <SharePageButton
+            docId={doc.id}
+            title={title || "Untitled"}
+            onError={report}
+          />
           <span className="doc-download">
             <button
               className={"icon-button" + (downloadMenu ? " is-on" : "")}
@@ -1809,6 +1901,15 @@ export function DocEditor({
                 }}
               />
             )}
+            <PageTags
+              docId={doc.id}
+              teamId={doc.team_id}
+              tags={tags}
+              canWrite={canWrite && !reading}
+              // The library reads tags afresh on the way back to it.
+              onChange={setTags}
+              report={report}
+            />
 
             <div className="doc-body" ref={bodyRef}>
               {blocks.map((block, index) =>
@@ -2036,12 +2137,25 @@ export function DocEditor({
                   ? restored.content
                   : [{ type: "paragraph", text: "" }],
               );
-              setNote("Restored an earlier version.");
+              toast({ text: "Restored an earlier version" });
               onChanged(restored);
             }}
           />
         )}
       </div>
+
+      {savingTemplate && (
+        <SaveTemplateDialog
+          doc={doc}
+          canShare={canWrite}
+          onClose={() => setSavingTemplate(false)}
+          onSaved={(t) =>
+            toast({
+              text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+            })
+          }
+        />
+      )}
 
       {chat && (
         <DocChat

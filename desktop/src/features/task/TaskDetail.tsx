@@ -28,8 +28,10 @@ import {
   freshItem,
   isClosed,
   sameDay,
+  seriesNoteFor,
   statusLabels,
   STATUSES,
+  type EventNoteRef,
   type HttpError,
   type Item,
   type ItemDetail,
@@ -54,6 +56,7 @@ import { minutesLabel, spanLabel } from "../../lib/planning";
 import { Linkify, hostOf } from "../../components/Linkify";
 import "./task.css";
 import { errorText } from "../../lib/errors";
+import { ShareLinkButton } from "../../components/ShareButton";
 
 /** How far ahead "Booked time" looks. */
 const BOOKED_DAYS = 30;
@@ -93,8 +96,13 @@ type Props = {
   onOpenItem?: (item: Item) => void;
   /** Planner error handler (signs out on 401). */
   onError: (e: unknown) => void;
-  /** Opens (or starts) the meeting note for an event. */
-  onOpenNote?: (item: Item) => void;
+  /**
+   * Opens (or starts) the meeting note for an event: the class it was
+   * opened on for a repeating one, or with `series`, the whole series'.
+   */
+  onOpenNote?: (item: Item, series?: boolean) => void;
+  /** The class of a repeating event the panel was opened on (its first start). */
+  occurrence?: string | null;
 };
 
 const SNAPS = [0, 25, 50, 75, 100];
@@ -129,6 +137,7 @@ export function TaskDetail({
   onChanged,
   onError,
   onOpenNote,
+  occurrence,
   items,
   onOpenItem,
 }: Props) {
@@ -172,6 +181,30 @@ export function TaskDetail({
       alive = false;
     };
   }, [reloadKey, item.id]);
+
+  // Opened on one class of a repeating event: that class opens its own
+  // note, so a note the series keeps for every class is pointed to here.
+  const [seriesNote, setSeriesNote] = useState<EventNoteRef | null>(null);
+  const noteKind = item.kind === "event" && !!item.rrule && !!onOpenNote;
+  useEffect(() => {
+    if (!noteKind || !occurrence) return;
+    let alive = true;
+    client.eventNotes([item.id]).then(
+      (notes) =>
+        alive &&
+        setSeriesNote(
+          seriesNoteFor(notes, {
+            item_id: item.id,
+            occurrence,
+            team_id: item.team_id,
+          }) ?? null,
+        ),
+      () => alive && setSeriesNote(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [item.id, item.team_id, noteKind, occurrence]);
 
   // Booked time: this task's time blocks over the next 30 days.
   const [booked, setBooked] = useState<TimeBlock[] | null>(null);
@@ -419,6 +452,12 @@ export function TaskDetail({
                 {team}
               </span>
             )}
+            <ShareLinkButton
+              className="drawer-share"
+              target={{ kind: "task", id: current.id }}
+              title={current.title}
+              onError={(e) => setError(errorText(e))}
+            />
             <button
               ref={closeButton}
               className="icon-button drawer-close"
@@ -477,6 +516,19 @@ export function TaskDetail({
                 <NotebookPen size={14} aria-hidden="true" /> Meeting note
               </button>
             )}
+            {current.kind === "event" &&
+              onOpenNote &&
+              occurrence &&
+              seriesNote && (
+                <button
+                  className="drawer-fact link-button"
+                  title="The note for every time of this event"
+                  onClick={() => onOpenNote(current, true)}
+                >
+                  <NotebookPen size={14} aria-hidden="true" /> Series note: “
+                  {seriesNote.title || "Untitled"}”
+                </button>
+              )}
           </div>
           <ItemFacts item={current} className="drawer-planning" />
           {canWrite ? (

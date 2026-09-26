@@ -34,6 +34,7 @@ import { subscriptionRoutes } from "./modules/planner/subscriptions.js";
 import { focusRoutes } from "./modules/focus/routes.js";
 import { teamCapacityRoutes } from "./modules/teams/capacity.js";
 import { templateRoutes } from "./modules/templates/routes.js";
+import { pageTemplateRoutes } from "./modules/templates/pages.js";
 import { followThroughRoutes } from "./modules/followthrough/routes.js";
 import {
   legacyDocStreamRoutes,
@@ -45,6 +46,7 @@ import { studyRoutes } from "./modules/study/routes.js";
 import { aiStudyRoutes } from "./modules/ai/study.js";
 import { importRoutes } from "./modules/imports/routes.js";
 import { filesRoutes } from "./modules/imports/store.js";
+import { captureRoutes } from "./modules/capture/routes.js";
 
 /**
  * Which route modules each service owns. The gateway sends each path to the
@@ -75,6 +77,7 @@ export const serviceModules: Record<
     adminRoutes,
     organizeRoutes,
     docRoutes,
+    captureRoutes,
     searchRoutes,
     aiDocRoutes,
     folderRoutes,
@@ -92,6 +95,7 @@ export const serviceModules: Record<
     presenceRoutes,
     teamCapacityRoutes,
     templateRoutes,
+    pageTemplateRoutes,
     followThroughRoutes,
     // Older apps' live-document path, for ingresses that send only /events
     // to the realtime service.

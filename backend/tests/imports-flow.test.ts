@@ -151,6 +151,22 @@ test("a Word file becomes a page in Uploads, with its equation, and the file is 
   const study = (await call(me.token, "GET", "/study")).body;
   assert.ok(study.decks.some((d: { doc_id: string }) => d.doc_id === doc.id));
   assert.equal(study.forecast.length, 7);
+  assert.equal(job.doc_in_trash, false);
+  // With its page in Trash the job has nothing to open, and says why.
+  assert.equal((await call(me.token, "DELETE", `/docs/${doc.id}`)).status, 204);
+  const trashed = (await call(me.token, "GET", `/imports/${id}`)).body;
+  assert.equal(trashed.doc_id, null);
+  assert.equal(trashed.doc_in_trash, true);
+  const { importStatusLine } = await import("@orbyn/core");
+  assert.equal(importStatusLine(trashed), "Ready · the page is in Trash");
+  const listed = (await call(me.token, "GET", "/imports")).body;
+  const inList = listed.find((j: { id: string }) => j.id === id);
+  assert.equal(inList.doc_id, null);
+  // Restored, it opens again.
+  await call(me.token, "POST", `/docs/${doc.id}/restore`);
+  const back = (await call(me.token, "GET", `/imports/${id}`)).body;
+  assert.equal(back.doc_id, doc.id);
+  assert.equal(back.doc_in_trash, false);
 });
 
 test("a PDF's own text is read without OCR; a wrong file type is refused", async () => {

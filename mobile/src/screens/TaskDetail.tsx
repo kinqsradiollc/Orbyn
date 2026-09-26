@@ -15,8 +15,10 @@ import {
   dateLabel,
   hasTeamPermission,
   isClosed,
+  seriesNoteFor,
   statusLabels,
   statusOrder,
+  type EventNoteRef,
   type Item,
   type ItemDetail,
   type Project,
@@ -39,7 +41,9 @@ import { StatusPill } from "../components/Pill";
 import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
 import { SchedulePanel } from "../components/SchedulePanel";
-import { Sheet, sheetStyles } from "../components/Sheet";
+import { HeaderButton, Sheet, sheetStyles } from "../components/Sheet";
+import { ActionSheet } from "../components/MoreMenu";
+import { shareLink } from "../lib/share";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
@@ -108,6 +112,7 @@ export function TaskDetail({
   onFocus,
   onChanged,
   onOpenNote,
+  occurrence,
   onOpenItem,
 }: {
   visible: boolean;
@@ -127,9 +132,16 @@ export function TaskDetail({
   onFocus: (item: Item) => void;
   /** Called after every change so lists and counts refresh. */
   onChanged: () => void;
-  /** Open (or start) the meeting note for an event. */
-  onOpenNote?: (event: Item) => void;
+  /**
+   * Open (or start) the meeting note for an event: the class it was opened
+   * on for a repeating one, or with `series`, the whole series'.
+   */
+  onOpenNote?: (event: Item, series?: boolean) => void;
+  /** The class of a repeating event the sheet was opened on (its first start). */
+  occurrence?: string | null;
 }) {
+  /** The ⋯ in the header: sharing the task's link. */
+  const [menu, setMenu] = useState(false);
   return (
     <Sheet
       avoidKeyboard={false}
@@ -137,6 +149,16 @@ export function TaskDetail({
       title={item?.kind === "event" ? "Event" : "Task"}
       onClose={onClose}
       onDismiss={onDismiss}
+      actions={
+        item ? (
+          <HeaderButton
+            icon="more"
+            label={item.kind === "event" ? "Event options" : "Task options"}
+            on={menu}
+            onPress={() => setMenu(true)}
+          />
+        ) : undefined
+      }
     >
       {item && (
         <Body
@@ -148,10 +170,26 @@ export function TaskDetail({
           onFocus={onFocus}
           onChanged={onChanged}
           onOpenNote={onOpenNote}
+          occurrence={occurrence}
           onOpenItem={onOpenItem}
         />
       )}
       <CelebrationHost />
+      {item && (
+        <ActionSheet
+          visible={menu}
+          label={item.kind === "event" ? "Event options" : "Task options"}
+          title={item.title}
+          actions={[
+            {
+              label: "Share link…",
+              onPress: () =>
+                void shareLink({ kind: "task", id: item.id }, item.title),
+            },
+          ]}
+          onClose={() => setMenu(false)}
+        />
+      )}
     </Sheet>
   );
 }
@@ -164,6 +202,7 @@ function Body({
   onFocus,
   onChanged,
   onOpenNote,
+  occurrence,
   onOpenItem,
 }: {
   seed: Item;
@@ -172,7 +211,8 @@ function Body({
   onEdit: (item: Item) => void;
   onFocus: (item: Item) => void;
   onChanged: () => void;
-  onOpenNote?: (event: Item) => void;
+  onOpenNote?: (event: Item, series?: boolean) => void;
+  occurrence?: string | null;
   onOpenItem: (item: Item) => void;
 }) {
   const [newSubtask, setNewSubtask] = useState("");
@@ -224,6 +264,29 @@ function Body({
   ]);
 
   const item: Item = detail ?? seed;
+  // Opened on one class of a repeating event: that class opens its own
+  // note, so a note the series keeps for every class is pointed to here.
+  const [seriesNote, setSeriesNote] = useState<EventNoteRef | null>(null);
+  const noteKind = seed.kind === "event" && !!seed.rrule && !!onOpenNote;
+  useEffect(() => {
+    if (!noteKind || !occurrence) return;
+    let alive = true;
+    client.eventNotes([seed.id]).then(
+      (notes) =>
+        alive &&
+        setSeriesNote(
+          seriesNoteFor(notes, {
+            item_id: seed.id,
+            occurrence,
+            team_id: seed.team_id,
+          }) ?? null,
+        ),
+      () => alive && setSeriesNote(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [seed.id, seed.team_id, noteKind, occurrence]);
   const team = item.team_id
     ? teams.find((t) => t.id === item.team_id)
     : undefined;
@@ -1008,6 +1071,19 @@ function Body({
               onPress={() => onOpenNote(item)}
             />
           )}
+          {item.kind === "event" &&
+            !readOnly &&
+            !!onOpenNote &&
+            !!occurrence &&
+            !!seriesNote && (
+              <Button
+                secondary
+                title={`Series note: “${seriesNote.title || "Untitled"}”`}
+                icon="fileText"
+                disabled={busy}
+                onPress={() => onOpenNote(item, true)}
+              />
+            )}
           {item.kind === "task" && !readOnly && !isClosed(item.status) && (
             <Button
               destructive

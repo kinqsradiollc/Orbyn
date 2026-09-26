@@ -20,6 +20,8 @@ type Listener = (payload: {
   by: string;
   /** Set when the page was moved to Trash. */
   trashed?: boolean;
+  /** Set when only the page's tags changed; its words are as they were. */
+  tags?: boolean;
 }) => void;
 
 /** Who is watching which document, in this copy of the API. */
@@ -62,14 +64,15 @@ async function ensureListening(): Promise<void> {
 /**
  * Tell everyone watching this document that it moved on, or with `trashed`
  * that it went to Trash, so an editor that has it open lets it go rather
- * than finding out from a save that fails.
+ * than finding out from a save that fails. With `tags`, only its tags
+ * changed: the version stays, and open editors refresh the tag row.
  */
 export async function announceDocChange(
   db: { query: pg.Pool["query"] },
   docId: string,
   version: number,
   by: string,
-  news: { trashed?: boolean } = {},
+  news: { trashed?: boolean; tags?: boolean } = {},
 ): Promise<void> {
   await db.query("SELECT pg_notify($1, $2)", [
     CHANNEL,
@@ -78,6 +81,7 @@ export async function announceDocChange(
       version,
       by,
       ...(news.trashed ? { trashed: true } : {}),
+      ...(news.tags ? { tags: true } : {}),
     }),
   ]);
 }

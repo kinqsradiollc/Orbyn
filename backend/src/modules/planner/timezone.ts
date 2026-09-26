@@ -1,4 +1,4 @@
-import { agendaTitle, isTimeZone } from "@orbyn/core";
+import { isTimeZone, localDateKey } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
 
 /**
@@ -36,13 +36,24 @@ export async function adoptDeviceZone(userId: string, timezone: string) {
      WHERE user_id = $1`,
     [userId],
   );
-  // Only today's page (as either zone names it), and only if untouched:
-  // earlier days' agendas are the diary and stay as they are.
+  // Only today's page (today as either zone has it), only if untouched,
+  // and never one in Trash: other days' agendas — the diary, and a page just
+  // asked for yesterday or tomorrow — stay as they are.
   const now = new Date();
+  const zoneBefore = isTimeZone(before) ? before : "UTC";
   await pool.query(
     `DELETE FROM docs WHERE user_id = $1 AND kind = 'agenda' AND version = 1
-       AND title = ANY ($2::text[]) AND created_at > now() - interval '36 hours'`,
-    [userId, [agendaTitle(now, before), agendaTitle(now, timezone)]],
+       AND team_id IS NULL AND deleted_at IS NULL
+       AND agenda_date = ANY ($2::date[])`,
+    [
+      userId,
+      [
+        ...new Set([
+          localDateKey(now, zoneBefore),
+          localDateKey(now, timezone),
+        ]),
+      ],
+    ],
   );
   return { adopted: true };
 }

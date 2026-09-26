@@ -1,5 +1,15 @@
 import {
   HttpError,
+  type AgendaDay,
+  type CaptureRequest,
+  type CaptureResult,
+  type LinkPreview,
+  type DocTag,
+  type PageTemplate,
+  type PageTemplateFromDoc,
+  type PageTemplateInput,
+  type PageTemplateUpdate,
+  type PageTemplateUse,
   type AdminOverview,
   type AdminAnalytics,
   type AdminUserDetail,
@@ -37,7 +47,9 @@ import {
   type Proposed,
   type SearchHit,
   type DocSummary,
+  type EventNoteRef,
   type DocVersion,
+  type DocVersionChanges,
   type Favourite,
   type FavouriteKind,
   type Folder,
@@ -221,7 +233,11 @@ export type LiveNews = {
  * What a document's stream says beyond its version: `trashed` when someone
  * moved it to Trash, so an editor that has it open can let it go.
  */
-export type DocNews = { trashed: boolean };
+export type DocNews = {
+  trashed: boolean;
+  /** Only the page's tags changed; its words and version are as they were. */
+  tags: boolean;
+};
 
 /** "?scope=this&occurrence=…" for edits to part of a repeating item. */
 const scopeQuery = (o: { scope?: EditScope; occurrence?: string }) => {
@@ -589,6 +605,20 @@ export class OrbynClient {
   exportData() {
     return this.request<unknown>("/me/export");
   }
+  /**
+   * Everything, pages included, as a .zip: every page as Markdown in its
+   * folders, projects, folders, imports, consent history and the planner
+   * file. Comes back as a blob with the name the server chose.
+   */
+  async exportArchive() {
+    const response = await this.raw("/me/export.zip");
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    return {
+      blob: await response.blob(),
+      name: named ?? "orbyn-export.zip",
+    };
+  }
   /** Bring items in from an Orbyn export or a CSV. Dry run by default. */
   importData(input: {
     format: "orbyn" | "csv";
@@ -766,6 +796,21 @@ export class OrbynClient {
         : "/agenda/today",
     );
   }
+  /**
+   * One day's agenda, for stepping back and forward: today's is written on
+   * the spot; another day's `doc` is null until `writeAgenda` writes it.
+   */
+  agendaOn(date: string, timezone?: string) {
+    return this.request<AgendaDay>(
+      timezone
+        ? `/agenda/${date}?timezone=${encodeURIComponent(timezone)}`
+        : `/agenda/${date}`,
+    );
+  }
+  /** Write one day's agenda from the calendar (or get the one written). */
+  writeAgenda(date: string) {
+    return this.request<Doc>(`/agenda/${date}`, { method: "POST" });
+  }
   /** Tell the server the device's zone; adopted unless you picked one. */
   reportTimeZone(timezone: string) {
     return this.request<{ adopted: boolean; timezone: string }>(
@@ -773,9 +818,43 @@ export class OrbynClient {
       { method: "POST", body: { timezone } },
     );
   }
-  /** The note for an event, created from a template the first time. */
-  itemNote(itemId: string) {
-    return this.request<Doc>(`/items/${itemId}/note`, { method: "POST" });
+  /**
+   * The note for an event, created from a template the first time. For a
+   * repeating event, `occurrence` (the calendar entry's) opens that class's
+   * own note; without it, the series' note.
+   */
+  itemNote(itemId: string, occurrence?: string | null) {
+    return this.request<Doc>(`/items/${itemId}/note`, {
+      method: "POST",
+      ...(occurrence ? { body: { occurrence } } : {}),
+    });
+  }
+  /**
+   * The notes these events have, to mark them (`eventNoteFor` finds an
+   * entry's). `from`/`to` keep a repeating event's class notes to the
+   * times shown.
+   */
+  async eventNotes(
+    itemIds: string[],
+    range: { from?: string; to?: string } = {},
+  ): Promise<EventNoteRef[]> {
+    const ids = [...new Set(itemIds)];
+    // The server takes 200 events at a time.
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 200)
+      chunks.push(ids.slice(i, i + 200));
+    const found = await Promise.all(
+      chunks.map((chunk) =>
+        this.request<EventNoteRef[]>(
+          `/docs/event-notes?${new URLSearchParams({
+            items: chunk.join(","),
+            ...(range.from ? { from: range.from } : {}),
+            ...(range.to ? { to: range.to } : {}),
+          })}`,
+        ),
+      ),
+    );
+    return found.flat();
   }
   /**
    * Turn a page's open checklist lines into tasks: every one that isn't a
@@ -1063,6 +1142,23 @@ export class OrbynClient {
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);
   }
+  /** Put exactly these tags (by id) on a page. */
+  setDocTags(id: string, tags: string[]) {
+    return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {
+      method: "PUT",
+      body: { tags },
+    });
+  }
+  /**
+   * Add tags to a page by name, as typing "#physics" in a line does; a name
+   * with no tag yet makes one. `added` says which names were new to it.
+   */
+  addDocTags(id: string, names: string[]) {
+    return this.request<{ tags: DocTag[]; added: string[] }>(
+      `/docs/${id}/tags`,
+      { method: "POST", body: { names } },
+    );
+  }
   createDoc(input: {
     title?: string;
     kind?: DocKind;
@@ -1113,6 +1209,15 @@ export class OrbynClient {
   getDocVersion(id: string, version: number) {
     return this.request<Required<DocVersion>>(
       `/docs/${id}/versions/${version}`,
+    );
+  }
+  /**
+   * One past state for "Show changes": the version, the one kept before it,
+   * and the sittings since (null when too many were kept since), in one read.
+   */
+  getDocVersionChanges(id: string, version: number) {
+    return this.request<DocVersionChanges>(
+      `/docs/${id}/versions/${version}/changes`,
     );
   }
   /** Put a past state back; it becomes a new version on top. */
@@ -1181,9 +1286,11 @@ export class OrbynClient {
                 const payload = JSON.parse(line.slice(5)) as {
                   version?: number;
                   trashed?: boolean;
+                  tags?: boolean;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
+                  tags: payload.tags === true,
                 });
               } catch {
                 // A half-written event: the next one will bring us up to date.
@@ -1929,6 +2036,23 @@ export class OrbynClient {
    * Create an item from one line of text ("Lunch with @anna tomorrow 1pm
    * ;Cafe Roma"), parsed on the server without AI.
    */
+  /** A shared link's title and site, looked up on the server for the share sheet. */
+  linkPreview(url: string) {
+    return this.request<LinkPreview>("/capture/preview", {
+      method: "POST",
+      body: { url },
+    });
+  }
+  /**
+   * Put a link or some text shared into Orbyn where it was sent: an Inbox
+   * task, today's agenda, a page, a new page in a folder, or a project.
+   */
+  capture(input: CaptureRequest) {
+    return this.request<CaptureResult>("/capture", {
+      method: "POST",
+      body: input,
+    });
+  }
   quickAdd(text: string, timezone?: string) {
     return this.request<QuickAddCreated>("/items/quick", {
       method: "POST",
@@ -2659,6 +2783,51 @@ export class OrbynClient {
       to: to.toISOString(),
     });
     return this.request<TeamCapacity>(`/teams/${teamId}/capacity?${q}`);
+  }
+
+  // ---- page templates ------------------------------------------------------
+
+  /** Your page templates, your teams', and the starters everyone has. */
+  listPageTemplates() {
+    return this.request<PageTemplate[]>("/page-templates");
+  }
+  createPageTemplate(input: PageTemplateInput) {
+    return this.request<PageTemplate>("/page-templates", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updatePageTemplate(id: string, input: PageTemplateUpdate) {
+    return this.request<PageTemplate>(`/page-templates/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deletePageTemplate(id: string) {
+    return this.request<void>(`/page-templates/${id}`, { method: "DELETE" });
+  }
+  /** Save a page as a template: its words, folder and tags, boxes unticked. */
+  savePageAsTemplate(docId: string, input: PageTemplateFromDoc = {}) {
+    return this.request<PageTemplate>(`/page-templates/from-doc/${docId}`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /**
+   * Make a page from a template, blanks filled in. With `make_tasks`, its
+   * to-do lines become tasks (in the project, when one is chosen). For an
+   * event that already has a note, that note comes back (`existing`) and
+   * nothing new is made.
+   */
+  usePageTemplate(id: string, input: PageTemplateUse = {}) {
+    return this.request<{
+      doc: Doc;
+      tasks_created: number;
+      existing: boolean;
+    }>(`/page-templates/${encodeURIComponent(id)}/use`, {
+      method: "POST",
+      body: input,
+    });
   }
 
   // ---- project templates ---------------------------------------------------

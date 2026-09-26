@@ -30,6 +30,7 @@ import {
   queueInvites,
   syncAttendees,
 } from "./attendees.js";
+import { carryEventNotes } from "./notes.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -577,6 +578,14 @@ export async function mutate(
   action: Action,
   /** For a create: the id the device already gave it (made offline). */
   createId?: string,
+  /**
+   * For an edit to a repeating item made from one of its times: that
+   * time's first start, which the edit's `due_at` is the new start of
+   * (else its current time is). Its classes' notes move by as much.
+   */
+  editedFrom?: Date,
+  /** For a create: the project (and its stage) the new task starts in. */
+  place?: { project_id: string; stage_id: string | null },
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
   await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
@@ -631,13 +640,15 @@ export async function mutate(
         `INSERT INTO items (id, title, notes, kind, status, priority, due_at, end_at,
            reminder_minutes, team_id, user_id, progress, estimate_minutes, list_id,
            assignee_id, location, meeting_url, rrule, timezone, series_start,
-           all_day, busy, color, alerts, parent_id, position)
+           all_day, busy, color, alerts, parent_id, position, project_id,
+           stage_id)
          VALUES (coalesce($24::uuid, gen_random_uuid()),
            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
            CASE WHEN $17::text IS NULL THEN NULL ELSE $6::timestamptz END,
            $19,$20,$21,$22::integer[],$23,
            (SELECT coalesce(max(x.position), -1) + 1 FROM items x
-            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}))
+            WHERE ${siblingsOf("$23", "$13", "$9", "$10")}),
+           $25::uuid, $26::uuid)
          RETURNING id`,
         [
           d.title,
@@ -664,6 +675,8 @@ export async function mutate(
           alerts,
           parentId,
           createId ?? null,
+          place?.project_id ?? null,
+          place?.stage_id ?? null,
         ],
       )
     ).rows[0];
@@ -766,6 +779,9 @@ export async function mutate(
       endAt,
       timezone,
     ));
+  // Where the edit put the item's current time, before completing a
+  // repeating task moves it on: its classes move by as much.
+  const movedTo = dueAt;
   let progress = d.progress ?? (d.status === "done" ? 100 : current.progress);
   let seriesStart = rrule ? (iso(current.series_start) ?? dueAt) : null;
   // A changed rule or a moved first date starts the series again from here.
@@ -884,12 +900,36 @@ export async function mutate(
   if (parentId !== current.parent_id || status !== current.status)
     await touch(db, [current.parent_id, parentId]);
 
-  // Changes to single occurrences stay only while they're still occurrences.
-  if (!rrule)
+  // Changes to single occurrences stay only while they're still
+  // occurrences; each class's note goes with its class.
+  const was: SeriesRow | null =
+    current.rrule && current.due_at
+      ? {
+          id: current.id,
+          kind: current.kind,
+          due_at: new Date(current.due_at),
+          end_at: current.end_at ? new Date(current.end_at) : null,
+          rrule: current.rrule,
+          timezone: current.timezone,
+          series_start: current.series_start
+            ? new Date(current.series_start)
+            : null,
+          exdates: current.exdates.map((x) => new Date(x)),
+          all_day: current.all_day,
+        }
+      : null;
+  if (!rrule) {
     await db.query("DELETE FROM item_overrides WHERE item_id = $1", [
       current.id,
     ]);
-  else if (
+    if (was)
+      await carryEventNotes(
+        db,
+        was,
+        { id: current.id, series: null },
+        { was: was.due_at, now: was.due_at },
+      );
+  } else if (
     rrule !== current.rrule ||
     seriesStart !== iso(current.series_start) ||
     timezone !== current.timezone
@@ -917,6 +957,13 @@ export async function mutate(
       await db.query(
         "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = ANY ($2::timestamptz[])",
         [current.id, stale],
+      );
+    if (was && movedTo)
+      await carryEventNotes(
+        db,
+        was,
+        { id: current.id, series },
+        { was: editedFrom ?? was.due_at, now: new Date(movedTo) },
       );
   }
 

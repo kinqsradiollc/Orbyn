@@ -1,12 +1,14 @@
 import {
   addDays,
-  agendaTitle,
+  agendaTitleOn,
   priorityScore,
   buildAgenda,
   dayTime,
+  keepAgendaNotes,
   localDateKey,
   type AgendaEntry,
   type Doc,
+  type DocBlock,
   type Item,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
@@ -22,7 +24,7 @@ import { freeSpans, workingSpans } from "../planner/plans.js";
 import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
 import { announceDocChange } from "./live.js";
-import { studyOverview, VISIBLE_DOC } from "../study/service.js";
+import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./routes.js";
 
 /**
@@ -40,7 +42,8 @@ type Day = {
   calendar: AgendaEntry[];
   setAside: { title: string; start_at: string; end_at: string }[];
   comingEvents: AgendaEntry[];
-  freeMinutes: number;
+  /** Free working time left; null for a day that has already gone. */
+  freeMinutes: number | null;
   freeStretches: { start_at: string; end_at: string }[];
   priorities: string[];
   study: {
@@ -54,7 +57,7 @@ type Day = {
 async function studyFor(userId: string) {
   // Anyone with cards, or pages with card lines not yet read.
   const has = await pool.query(
-    `SELECT 1 FROM study_cards WHERE user_id = $1
+    `SELECT 1 FROM ${LIVE_CARDS} WHERE c.user_id = $1
      UNION ALL SELECT 1 FROM docs d WHERE ${VISIBLE_DOC} AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '%{{%}}%')
      LIMIT 1`,
     [userId],
@@ -74,7 +77,18 @@ async function studyFor(userId: string) {
   };
 }
 
-async function readDay(userId: string, now: Date): Promise<Day> {
+/**
+ * The day as the calendar has it. `now` is a moment in the day to read:
+ * the present for today, the start of the day for any other. A day that has
+ * already gone has no free time left to offer.
+ */
+async function readDay(
+  userId: string,
+  now: Date,
+  past = false,
+  /** Study and priorities, which only today's page shows. */
+  extras = true,
+): Promise<Day> {
   const prefs = await loadPrefs(pool, userId);
   const tz = prefs.timezone || "UTC";
   const today = localDateKey(now, tz);
@@ -103,7 +117,9 @@ async function readDay(userId: string, now: Date): Promise<Day> {
       ),
     ]);
   const free =
-    now < dayEnd ? freeSpans(workingSpans(prefs, now, dayEnd), busy) : [];
+    now < dayEnd && !past
+      ? freeSpans(workingSpans(prefs, now, dayEnd), busy)
+      : [];
   return {
     tz,
     items: items.rows,
@@ -125,16 +141,16 @@ async function readDay(userId: string, now: Date): Promise<Day> {
     comingEvents: ahead
       .filter((e) => e.calendar_kind === "exams" || e.all_day)
       .slice(0, 8),
-    freeMinutes: Math.round(
-      free.reduce((n, s) => n + (s.end - s.start), 0) / 60_000,
-    ),
+    freeMinutes: past
+      ? null
+      : Math.round(free.reduce((n, s) => n + (s.end - s.start), 0) / 60_000),
     freeStretches: free
       .filter((f) => f.end - f.start >= 30 * 60_000)
       .map((f) => ({
         start_at: new Date(f.start).toISOString(),
         end_at: new Date(f.end).toISOString(),
       })),
-    study: await studyFor(userId),
+    study: extras ? await studyFor(userId) : null,
     // The app's own order (the same score the assistant ranks by).
     priorities: open.rows
       .map((i) => ({ title: i.title, score: priorityScore(i, now) }))
@@ -234,22 +250,32 @@ export async function briefFor(day: Day, now: Date): Promise<string | null> {
   }
 }
 
-async function contentFor(userId: string, now: Date, withBrief: boolean) {
-  const day = await readDay(userId, now);
-  const brief = withBrief ? await briefFor(day, now) : null;
+async function contentFor(
+  userId: string,
+  now: Date,
+  withBrief: boolean,
+  other: { dayName: string; past: boolean } | null = null,
+) {
+  const day = await readDay(userId, now, other?.past, !other);
+  // The assistant's words are about today; another day reads without them.
+  const brief = withBrief && !other ? await briefFor(day, now) : null;
   return {
     tz: day.tz,
     brief,
     content: buildAgenda(day.items, {
       now,
       timeZone: day.tz,
+      dayName: other?.dayName ?? null,
       calendar: day.calendar,
       setAside: day.setAside,
       comingEvents: day.comingEvents,
-      freeMinutes: day.freeMinutes,
+      freeMinutes: day.freeMinutes ?? undefined,
       freeStretches: day.freeStretches,
-      priorities: day.priorities,
-      study: day.study,
+      // Cards due, exam countdowns and top priorities are worked out from
+      // today, so they'd be wrong on last Tuesday's page or next Friday's:
+      // another day's page leaves them out.
+      priorities: other ? [] : day.priorities,
+      study: other ? null : day.study,
       brief,
     }),
   };
@@ -263,16 +289,59 @@ const readDoc = async (id: string) =>
     )
   ).rows[0];
 
-async function existing(userId: string, title: string) {
+/**
+ * The agenda page for one day, when there is one (Trash left out), and
+ * whether it was written before its day began.
+ */
+async function findAgenda(userId: string, date: string, tz: string) {
   return (
-    await pool.query<{ id: string }>(
-      `SELECT d.id FROM docs d
-        WHERE d.user_id = $1 AND d.kind = 'agenda' AND d.title = $2
-          AND d.deleted_at IS NULL
+    await pool.query<{ id: string; version: number; written_early: boolean }>(
+      `SELECT d.id, d.version,
+              d.created_at < $3::timestamptz AS written_early
+         FROM docs d
+        WHERE d.user_id = $1 AND d.kind = 'agenda' AND d.agenda_date = $2::date
+          AND d.team_id IS NULL AND d.deleted_at IS NULL
         ORDER BY d.created_at DESC LIMIT 1`,
-      [userId, title],
+      [userId, date, dayStartOf(date, tz)],
     )
-  ).rows[0]?.id;
+  ).rows[0];
+}
+
+const zoneOf = async (userId: string) =>
+  (await loadPrefs(pool, userId)).timezone || "UTC";
+
+const dayStartOf = (date: string, tz: string) => dayTime(date, 0, tz);
+
+/**
+ * Write one day's page, unless it is already there. Two first opens at once
+ * must not write two pages, so the check and the write share a lock.
+ */
+async function writeDay(
+  userId: string,
+  date: string,
+  content: DocBlock[],
+): Promise<string> {
+  return transaction(async (db) => {
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `agenda:${userId}`,
+    ]);
+    const again = (
+      await db.query<{ id: string }>(
+        `SELECT id FROM docs WHERE user_id = $1 AND kind = 'agenda'
+           AND agenda_date = $2::date AND team_id IS NULL
+           AND deleted_at IS NULL LIMIT 1`,
+        [userId, date],
+      )
+    ).rows[0]?.id;
+    if (again) return again;
+    return (
+      await db.query<{ id: string }>(
+        `INSERT INTO docs (user_id, title, kind, content, agenda_date)
+           VALUES ($1,$2,'agenda',$3::jsonb,$4::date) RETURNING id`,
+        [userId, agendaTitleOn(date), JSON.stringify(content), date],
+      )
+    ).rows[0].id;
+  });
 }
 
 /**
@@ -280,44 +349,116 @@ async function existing(userId: string, title: string) {
  * written now. `withBrief` asks the assistant for the opening sentences; the
  * API leaves it off so opening the agenda never waits on a provider (the
  * worker writes the morning's page with it, and "Rewrite" asks for it).
+ *
+ * A page written ahead of its day (from tomorrow's agenda, say) that nobody
+ * has touched since is written again on the day, so it opens on the
+ * calendar as it is now rather than as it was then.
  */
 export async function todaysAgenda(
   userId: string,
   options: { withBrief?: boolean; now?: Date } = {},
 ): Promise<Doc> {
   const now = options.now ?? new Date();
-  const prefs = await loadPrefs(pool, userId);
-  const title = agendaTitle(now, prefs.timezone || "UTC");
-  const found = await existing(userId, title);
-  if (found) return readDoc(found);
+  const tz = await zoneOf(userId);
+  const date = localDateKey(now, tz);
+  const found = await findAgenda(userId, date, tz);
+  if (found && !(found.written_early && found.version === 1))
+    return readDoc(found.id);
   const { content } = await contentFor(userId, now, !!options.withBrief);
-  const id = await transaction(async (db) => {
-    // Two first opens at once must not write two pages.
-    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      `agenda:${userId}`,
-    ]);
-    const again = (
-      await db.query<{ id: string }>(
-        `SELECT id FROM docs WHERE user_id = $1 AND kind = 'agenda' AND title = $2
-           AND deleted_at IS NULL LIMIT 1`,
-        [userId, title],
+  if (found) {
+    const version = (
+      await pool.query<{ version: number }>(
+        `UPDATE docs SET content = $2::jsonb, version = version + 1,
+           updated_at = now()
+         WHERE id = $1 AND version = 1 RETURNING version`,
+        [found.id, JSON.stringify(content)],
       )
-    ).rows[0]?.id;
-    if (again) return again;
-    return (
-      await db.query<{ id: string }>(
-        `INSERT INTO docs (user_id, title, kind, content)
-           VALUES ($1,$2,'agenda',$3::jsonb) RETURNING id`,
-        [userId, title, JSON.stringify(content)],
-      )
-    ).rows[0].id;
-  });
-  return readDoc(id);
+    ).rows[0]?.version;
+    if (version)
+      await announceDocChange(pool, found.id, version, "agenda").catch(
+        () => {},
+      );
+    return readDoc(found.id);
+  }
+  return readDoc(await writeDay(userId, date, content));
+}
+
+/** How far back and ahead the agenda steps: a year back, two months ahead. */
+const DAYS_BACK = 366;
+const DAYS_AHEAD = 62;
+
+/**
+ * Where a date sits against today, in the person's zone: "today", "past" or
+ * "future", or null for one too far away to step to.
+ */
+export async function agendaDayOf(
+  userId: string,
+  date: string,
+  now = new Date(),
+) {
+  const tz = await zoneOf(userId);
+  const today = localDateKey(now, tz);
+  if (date === today) return { tz, today, when: "today" as const };
+  if (date < addDays(today, -DAYS_BACK) || date > addDays(today, DAYS_AHEAD))
+    return null;
+  return {
+    tz,
+    today,
+    when: date < today ? ("past" as const) : ("future" as const),
+  };
 }
 
 /**
- * Write today's agenda again from the calendar as it is now, replacing the
- * page's content (the person asked, from "Rewrite"). Open editors reload.
+ * One day's agenda, if it has been written: today's is written on the spot
+ * as ever; any other day's only when someone asks for it (`writeAgendaOn`).
+ */
+export async function agendaOn(
+  userId: string,
+  date: string,
+  now = new Date(),
+): Promise<Doc | null> {
+  const day = await agendaDayOf(userId, date, now);
+  if (!day) return null;
+  if (day.when === "today") return todaysAgenda(userId, { now });
+  const found = await findAgenda(userId, date, day.tz);
+  return found ? readDoc(found.id) : null;
+}
+
+/**
+ * Write another day's agenda from the calendar: a past day as it stands now
+ * (what was on, and what was due), or a day ahead with what is planned so
+ * far. Asking again returns the page already there.
+ */
+export async function writeAgendaOn(
+  userId: string,
+  date: string,
+  now = new Date(),
+): Promise<{ doc: Doc; created: boolean } | null> {
+  const day = await agendaDayOf(userId, date, now);
+  if (!day) return null;
+  if (day.when === "today")
+    return { doc: await todaysAgenda(userId, { now }), created: false };
+  const found = await findAgenda(userId, date, day.tz);
+  if (found) return { doc: await readDoc(found.id), created: false };
+  const start = dayStartOf(date, day.tz);
+  const { content } = await contentFor(userId, start, false, {
+    dayName: start.toLocaleDateString("en-GB", {
+      timeZone: day.tz,
+      weekday: "long",
+    }),
+    past: day.when === "past",
+  });
+  return {
+    doc: await readDoc(await writeDay(userId, date, content)),
+    created: true,
+  };
+}
+
+/**
+ * Write today's agenda again from the calendar as it is now (the person
+ * asked, from "Rewrite"). Everything above Notes is replaced; Notes and what
+ * follows it — the end-of-day answers — are kept exactly as they were. Open
+ * editors reload.
  */
 export async function rewriteAgenda(
   userId: string,
@@ -330,13 +471,23 @@ export async function rewriteAgenda(
     now,
     options.withBrief ?? true,
   );
-  const version = (
-    await pool.query<{ version: number }>(
-      `UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now()
-        WHERE id = $1 RETURNING version`,
-      [doc.id, JSON.stringify(content)],
-    )
-  ).rows[0].version;
+  const version = await transaction(async (db) => {
+    // Read under the lock, so words typed into Notes a moment ago are the
+    // ones kept, not a copy from before them.
+    const current = (
+      await db.query<{ content: DocBlock[] }>(
+        "SELECT content FROM docs WHERE id = $1 FOR UPDATE",
+        [doc.id],
+      )
+    ).rows[0].content;
+    return (
+      await db.query<{ version: number }>(
+        `UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now()
+          WHERE id = $1 RETURNING version`,
+        [doc.id, JSON.stringify(keepAgendaNotes(current ?? [], content))],
+      )
+    ).rows[0].version;
+  });
   await announceDocChange(pool, doc.id, version, "agenda").catch(() => {});
   return { ...(await readDoc(doc.id)), brief: !!brief };
 }

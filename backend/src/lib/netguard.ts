@@ -108,6 +108,11 @@ const WORDING = {
     scheme: "An app's id must be an https:// address.",
     private: "An app's id must be on a public address, not a private network.",
   },
+  /** A link shared into Orbyn, whose title is looked up. */
+  link: {
+    scheme: "Only https links can be looked up.",
+    private: "Links on a private network aren't looked up.",
+  },
 };
 
 export type UrlKind = keyof typeof WORDING;

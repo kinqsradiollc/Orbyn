@@ -135,6 +135,20 @@ Called by the mail server, guarded by `X-Inbound-Secret: <MAIL_INBOUND_SECRET>` 
 
 Downloads a JSON archive of your personal data — lists, tags, habits and items — for keeping or moving.
 
+### `GET /me/export.zip` (auth, 10/min)
+
+Everything you own, pages included, as a `.zip` (`orbyn-export-YYYY-MM-DD.zip`): every personal
+page as Markdown in `pages/<folder>/` with front matter (title, kind, dates, folder, project, tags,
+the file it was imported from), agendas in `pages/Agendas/<date>.md`, pages in Trash in
+`pages/Trash/`, plus `planner.json` (the same archive as `/me/export`, importable),
+`projects.json`, `folders.json`, `attachments.json` (what was imported and which page it became;
+the files themselves are never kept) and `consent.json` (your terms and analytics decisions). Team
+pages stay with their team. Personal API keys get `403`, as for `/me/export`.
+
+The archive is streamed as it is written (no `content-length`): pages are read 200 at a time and
+each file is deflated off the main thread, so a large account never sits in memory whole. Past
+65,535 files or 4 GB it carries zip64 records.
+
 ### `POST /me/import` (auth)
 
 `{ "format": "orbyn" | "csv", "data": string, "dry_run"?: bool }`. Brings items in; lists and tags are matched by name and created when missing. CSV needs a `title` column (optional `notes`, `due`, `priority`, `list`, `tags`). `dry_run` (default true) returns `{ created, skipped, lists_added, tags_added, sample, errors }` without writing.
@@ -438,10 +452,24 @@ if untouched, is written again. `GET /agenda/today?timezone=` and `POST /ai/agen
 In the library, agendas have their own **Agendas** section, filed by year, month and week (Monday
 first), and are left out of "All documents" and "Unfiled".
 
+### `GET /agenda/:date` (auth)
+
+One day's agenda, for stepping back and forward (`date` like `2026-09-24`, at most a year back and
+two months ahead, else `422`). → `{ date, title, today, doc }`: today's page is written on the
+spot as `/agenda/today` does; any other day's `doc` is `null` until it is written. Every agenda
+carries `agenda_date`, the day it is for, and the library files it under that day.
+
+### `POST /agenda/:date` (auth)
+
+Writes that day's agenda from the calendar if it isn't there yet (`201`), or returns the one there
+(`200`). A past day reads as the calendar has it now, with no free time; a day ahead shows what's
+planned so far. A page written ahead that nobody changes is written again on its day.
+
 ### `POST /ai/agenda/today` (auth, 10/min)
 
-Writes today's agenda again from the calendar as it is now, replacing the page's content (the apps
-ask first), and opens it with the assistant's summary when a provider is connected. The provider is
+Writes today's agenda again from the calendar as it is now, replacing everything above its Notes
+heading (the apps ask first). Notes and everything under it — your notes and the end-of-day
+answers — are kept exactly as written. It opens with the assistant's summary when a provider is connected. The provider is
 sent the day as facts only (times already in your zone). → the document plus `brief`: whether the
 assistant wrote the summary.
 
@@ -449,7 +477,45 @@ assistant wrote the summary.
 
 The meeting note for an event, created from a template (Agenda, Notes, Decisions, Action items)
 the first time and returned as-is afterwards. → `201` when created, `200` when it already existed.
-A note for a team event belongs to the team, so one shared meeting keeps one shared note.
+A note for a team event belongs to the team, so one shared meeting keeps one shared note. A note in
+Trash doesn't count: the event gets a fresh one. If the old one is restored while the fresh one was
+written in, both are kept and the event opens the one written in last. Two first opens at once (or
+one and a page made from a template for the same event) still make only one note.
+
+A repeating event keeps a note per time (each lecture of a term, each standup): the body
+`{ "occurrence": "<start>" }` — a calendar entry's `occurrence`, or the new start of a time moved
+on its own — opens that time's note, titled with its day ("Physics lecture · 25 September 2026")
+and carrying `occurrence`, with that time's own title, start and location. Without a body the
+note is the whole series' own. `422` for a time the event doesn't have. A note's `occurrence` is
+`null` for any other page.
+
+A series' own note (`occurrence` `null`) is what the event opens from anywhere that doesn't name a
+time: Overview, ⌘K, notices. Every note written before times had their own is one, and so is a
+one-off event's note after the event starts repeating. Opening one time of the event from the
+calendar never opens it (that time gets its own note), so the apps point to it instead: the task
+panel shows "Series note: “…”" beside Meeting note, and New page from a template says so when a
+time is chosen (`seriesNoteFor(notes, entry)` in `packages/core/src/docs.ts`).
+
+Notes stay with their times when the series changes. A "this and following" edit moves the notes
+of the times from there on to the new series, each to the matching time (the n-th time after the
+edit is the n-th of the new series, so a move to another hour or day, or across a clock change,
+keeps them lined up). Moving or re-timing the whole series (`all`, a new start or time zone) moves
+each note to its time's new start the same way; with a new pattern (say weekly to daily) each moves
+by as much as the series did. A note whose time no longer exists (deleted, skipped, not in the
+new pattern, or the repeat taken off) is kept as a note of the whole event it was made on (not the
+new series of a split), rather than pointing at a time nothing opens. It remembers the time it was
+for, and it never outranks the series' own note: the event opens it (and the apps point to it as
+the series note) only when the series has no note of its own.
+
+### `GET /docs/event-notes?items=<id,id,…>&from=&to=` (auth)
+
+The notes some events have, to mark them:
+`[ { doc_id, title, item_id, occurrence, team_id, class_was } ]`, latest edited first, for at most
+200 event ids. `class_was` is the time a note was for when that time is gone (the note is then the
+whole event's, and `occurrence` is `null`); those come after the event's own notes. Only notes you can see in each event's own space,
+none in Trash. `from`/`to` keep a repeating event's per-time notes to those first starts (series
+notes always come back). `eventNoteFor(notes, entry)` in `packages/core/src/docs.ts` picks the one
+a calendar entry opens, by the same rule as the server. `422` for no ids, a bad id or more than 200.
 
 ### `POST /docs/:id/tasks` (auth)
 
@@ -462,6 +528,40 @@ being overwritten.
 An optional body `{ "block_ids": ["b1"] }` (1–200 line ids) turns only those lines into tasks:
 "Make task" on selected words and "New task" in the `/` menu use it. Anything else in the body
 answers `422`; a page in Trash answers `404`.
+
+## Sharing into Orbyn
+
+What the phone's share sheet sends ("Save to Orbyn"): a link or some text, and where it goes
+(`packages/core/src/share.ts`, `backend/src/modules/capture/`).
+
+### `POST /capture/preview` (auth, 30/min)
+
+`{ "url": "https://…" }` → `{ url, title, site }`. The start of the page (up to 256 KB of HTML)
+is read over https at public addresses only (netguard, every redirect checked, 5 s), for its
+`og:title` or `<title>` and its `og:site_name` or host. An `http` link is read at its `https`
+address. A link that can't be read — private, slow, not a web page, an error — is not an error:
+`title` is `null` and `site` is the host. `422` for anything but an http(s) link.
+
+### `POST /capture` (auth)
+
+`{ url?, text?, title?, to, timezone? }` → `201 { to, note, item?, doc? }`, where `note` says
+where it went, in a sentence. At least one of `url` and `text`; without `title` the server looks
+it up as above. `to` is one of:
+
+- `{ "kind": "inbox" }`: a task of your own, "Read: <title>" with the link on it and any text
+  as its notes (text alone: its first line is the title, the rest the notes).
+- `{ "kind": "project", "project_id": "…" }`: the same task in the project's first stage (a team
+  project's task is the team's).
+- `{ "kind": "agenda" }`: list lines (the link, then the text) at the end of today's agenda's
+  Notes, before the end-of-day questions; `timezone` is adopted like `GET /agenda/today`'s.
+- `{ "kind": "page", "doc_id": "…" }`: the lines at the end of a page (a page that is one empty
+  line takes them in its place). Saved as any edit is: a new version, kept in history, and open
+  editors are told.
+- `{ "kind": "new_page", "folder_id": "…" | null }`: a new page titled after the link, in the
+  folder's space (a team folder makes a team page).
+
+`403` where you may only read (a team viewer), `404` for a page, folder or project you can't see
+(or a page in Trash), `422` for a bad body.
 
 ## Projects
 
@@ -596,6 +696,50 @@ Each time someone sits down and changes a document, the state they started from 
 arrive every second or so while someone types, so a state is kept only when the previous kept one
 is by someone else or more than five minutes old — history reads as sittings, not keystrokes.
 
+### `PUT /docs/:id/tags` (auth, `items:write`)
+
+`{ "tags": ["<tag id>", …] }` (up to 20) → `{ tags }`. Sets exactly these tags on the page, from
+its own space: your personal tags on a personal page, the team's on a team page (a tag the page
+already carries may stay). Any other tag is `404`. Tags aren't the page's words, so its version
+doesn't change; the page's live stream (`/events/docs/:id`) sends `{ version, tags: true }` so
+other open editors refresh their tag row.
+
+### `POST /docs/:id/tags` (auth, `items:write`)
+
+`{ "names": ["physics", …] }` → `{ tags, added }`. Adds tags by name, as typing `#physics` in a
+line does; a name the page's space has no tag for yet makes one there. Names compare without case;
+past 20 tags the rest are left off, and a tag is only made when it goes on the page. The apps call
+this when a line with a new `#tag` is left (`addedInlineTags` in `packages/core/src/page-tags.ts`).
+When something was added, open editors hear `{ tags: true }` as for `PUT`.
+
+### Page templates (auth)
+
+A page kept to start the next one from (`packages/core/src/page-templates.ts`). Blanks `{date}`,
+`{title}`, `{project}` and `{event}` fill themselves in; double braces (cloze) and `::` are never
+touched. Starters: Lecture notes, Lab report, Essay plan, Meeting, Weekly review, One-to-one.
+
+- `GET /page-templates` → your templates, your teams', then the starters (`id` `starter:…`).
+- `POST /page-templates` `{ name, description?, team_id?, title?, content?, folder_id?, tags? }`
+  → `201`. Folder and tags must be in the template's space (`404` otherwise). Any team member who
+  can write may make a team's.
+- `PUT /page-templates/:id`, `DELETE /page-templates/:id` — its maker, or a team's owners and
+  admins (`403` otherwise).
+- `POST /page-templates/from-doc/:docId` `{ name?, description?, personal? }` → `201`. Saves a
+  page as a template with its folder and tags, boxes unticked. A team page makes a team template
+  unless `personal`.
+- `POST /page-templates/:id/use` `{ title?, team_id?, folder_id?, project_id?, event_id?,
+event_at?, occurrence?, make_tasks? }` → `201 { doc, tasks_created, existing: false }`. Any template (a starter
+  too) makes a page in your space or, with `team_id`, a team's you can write in (`403` for a
+  viewer); without `team_id` it goes where the event, else the template, is. Event, project and
+  folder must be in that space (`404`). With a project the page belongs to it; with `make_tasks`
+  its to-do lines become tasks in that project's first stage, tied to their lines. With an event
+  the page is that event's note and `{event}` is its title — unless the event already has a note:
+  then nothing is made and the answer is `200 { doc: <that note>, tasks_created: 0, existing:
+true }`, the same note `POST /items/:id/note` opens. For a repeating event, `occurrence` (else
+  `event_at`) says which time the page is the note for, so each lecture gets its own page; with
+  neither, it is the series' note. `422` for a time the event doesn't have. A line that only labels blanks left empty
+  (`Course: {project}` with no project) is left off the page.
+
 ### `GET /docs/:id/export?format=` (auth)
 
 `format` is `md` (the default), `txt`, `html`, `docx` or `pdf`; anything else is `422`. The reply
@@ -620,6 +764,15 @@ content. Empty until the document has been changed at least once.
 ### `GET /docs/:id/versions/:version` (auth)
 
 → the same fields plus `content`, the blocks as they were. `404` when that version is not kept.
+
+### `GET /docs/:id/versions/:version/changes` (auth)
+
+What "Show changes" reads, in one request: →
+`{ "version", "older", "sittings" }`. `version` is that version with `content`; `older` is the
+version kept before it (with `content`), or `null` for the first; `sittings` is
+`[ { "content", "author" } ]` from that version to the newest kept, oldest first, so the apps can
+say who changed each line since — or `null` when more than 20 versions were kept since. `404` when
+that version is not kept, `422` when it is not a version number.
 
 ### `POST /docs/:id/versions/:version/restore` (auth)
 
@@ -926,12 +1079,13 @@ moved to Trash" in the project's history, and it isn't measured for semantic sea
 
 Brings a page back from Trash, as it was → the full document. `404` for a page that isn't in
 Trash (or isn't yours to see), `403` for a team viewer. A project page shows as "Note restored" in
-the project's history. Today's agenda brought back replaces a copy that Agenda wrote meanwhile, if
-nobody wrote in that copy.
+the project's history. Today's agenda, or an event's meeting note, brought back replaces a copy
+that Agenda or the event wrote meanwhile, if nobody wrote in that copy.
 
 ### `DELETE /docs/:id/forever` (auth, `items:write`)
 
-Deletes a page that is already in Trash, for good → `204`. `404` for a page not in Trash.
+Deletes a page that is already in Trash, for good → `204`. `404` for a page not in Trash. A project
+page purged from Trash (here or by the 30-day sweep) adds nothing more to the project's history.
 
 ## Items
 

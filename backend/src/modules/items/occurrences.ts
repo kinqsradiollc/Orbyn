@@ -17,6 +17,7 @@ import {
   type SeriesRow,
 } from "../planner/calendar.js";
 import { queueInvites } from "./attendees.js";
+import { carryEventNotes, seriesRowOf } from "./notes.js";
 import {
   allDayTimes,
   loadItem,
@@ -266,12 +267,13 @@ export async function editFollowing(
     occurrence,
   );
   if (fromTheStart(item, series, when))
-    return mutate(db, actor, {
-      operation: "update",
-      item_id: id,
-      version,
-      data,
-    });
+    return mutate(
+      db,
+      actor,
+      { operation: "update", item_id: id, version, data },
+      undefined,
+      when,
+    );
   const tags = (
     await db.query<{ tag_id: string }>(
       "SELECT tag_id FROM item_tags WHERE item_id = $1",
@@ -334,7 +336,9 @@ export async function editFollowing(
     },
     newId,
   );
-  if (created && keepsTime && (later.length || moved.length)) {
+  if (!created) return created;
+  const carried = keepsTime && (later.length || moved.length);
+  if (carried) {
     await db.query(
       "UPDATE items SET exdates = $2::timestamptz[] WHERE id = $1",
       [created.id, later],
@@ -344,9 +348,16 @@ export async function editFollowing(
         "INSERT INTO item_overrides (item_id, occurrence, data) VALUES ($1, $2, $3)",
         [created.id, m.occurrence, JSON.stringify(m.data)],
       );
-    return loadItem(db, created.id);
   }
-  return created;
+  // The notes of the classes from here on go with them to the new series.
+  await carryEventNotes(
+    db,
+    series,
+    { id: created.id, series: await seriesRowOf(db, created.id) },
+    { was: when, now: start },
+    when,
+  );
+  return carried ? loadItem(db, created.id) : created;
 }
 
 /** Skip one occurrence: it joins the exdates and loses any changes of its own. */
@@ -362,6 +373,13 @@ async function cancelOne(db: Db, item: ItemRow, when: Date) {
   );
   await db.query(
     "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = $2",
+    [item.id, when],
+  );
+  // Its note, if it had one, stays the event's: the class is gone. It
+  // remembers the class, so it never outranks the series' own note.
+  await db.query(
+    `UPDATE docs SET occurrence = NULL, class_was = occurrence
+      WHERE item_id = $1 AND kind = 'meeting' AND occurrence = $2`,
     [item.id, when],
   );
   return changed(db, item);
@@ -405,5 +423,13 @@ export async function deleteOccurrences(
     return null;
   }
   await endSeries(db, item, series, when);
+  // The classes from here on are gone: their notes stay the event's.
+  await carryEventNotes(
+    db,
+    series,
+    { id: item.id, series: await seriesRowOf(db, item.id) },
+    { was: when, now: when },
+    when,
+  );
   return changed(db, item);
 }

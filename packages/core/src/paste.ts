@@ -638,3 +638,25 @@ export function textToBlocks(text: string, plain = false): DocBlock[] {
     .slice(0, 2000)
     .map((line) => ({ type: "paragraph", text: line }) as DocBlock);
 }
+
+/**
+ * Whether a line being typed went from `before` to `after` by taking in
+ * lines at once — a paste — rather than by Return, for an editor (the phone
+ * app's) that only sees the new text. Only the stretch that changed is
+ * looked at: Return puts in one line break with nothing after it, even over
+ * selected words or just after autocorrect fixed the word before it, while
+ * pasted lines have words after a break, however long the selection they
+ * replaced.
+ */
+export function pastedLines(before: string, after: string): boolean {
+  const most = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < most && before[start] === after[start]) start++;
+  let end = 0;
+  while (
+    end < most - start &&
+    before[before.length - 1 - end] === after[after.length - 1 - end]
+  )
+    end++;
+  return /\n[^]/.test(after.slice(start, after.length - end));
+}

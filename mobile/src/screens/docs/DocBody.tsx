@@ -21,6 +21,8 @@ export function DocBody({
   onCommit,
   onBlurLine,
   selection,
+  onSelectionChange,
+  inputRef,
   counts,
   marks = {},
   renderUnder,
@@ -49,6 +51,10 @@ export function DocBody({
    * typing after Return lands before the "- " the new list item begins with.
    */
   selection?: { start: number; end: number };
+  /** Where the caret or selection is in the open line, as it moves. */
+  onSelectionChange?: (range: { start: number; end: number }) => void;
+  /** The open line's field, so the keyboard toolbar can hand focus back. */
+  inputRef?: React.Ref<TextInput>;
   /** How many open remarks each named line carries. */
   counts?: Record<string, number>;
   /** What to show under a line — its remarks, when they are open. */
@@ -140,6 +146,7 @@ export function DocBody({
           return (
             <View key={index} style={[styles.editing, inset(index)]}>
               <TextInput
+                ref={inputRef}
                 style={styles.input}
                 value={draft}
                 multiline
@@ -149,6 +156,9 @@ export function DocBody({
                 onChangeText={onDraftChange}
                 onBlur={onBlurLine}
                 selection={selection}
+                onSelectionChange={(e) =>
+                  onSelectionChange?.(e.nativeEvent.selection)
+                }
                 accessibilityLabel="Line being edited"
               />
             </View>

@@ -1,6 +1,11 @@
 import React from "react";
 import { Linking, StyleSheet, Text } from "react-native";
-import { mathToText, parseDocInline } from "@orbyn/core";
+import {
+  mathToText,
+  parseDocInline,
+  tagRuns,
+  type TaggedRun,
+} from "@orbyn/core";
 import { colors, fonts, themed } from "../../theme";
 import type { Mark } from "./marks";
 
@@ -25,9 +30,13 @@ export function Inline({
   style?: object;
   marks?: Mark[];
 }) {
+  // A #tag stands apart from the words around it, on a quiet ground.
+  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
+    tagRuns(run, text),
+  );
   return (
     <>
-      {parseDocInline(text).map((run, i) => {
+      {runs.map((run, i) => {
         const lit = marks.some(
           (m) => m.start < run.start + run.text.length && m.end > run.start,
         );
@@ -42,6 +51,7 @@ export function Inline({
               (run.code || run.math) && s.code,
               !!run.link && s.link,
               run.highlight && s.highlight,
+              !!run.tag && s.tag,
               lit && s.marked,
             ]}
             onPress={
@@ -74,5 +84,7 @@ const s = themed(() =>
     },
     // ==Highlighted== words, on the same soft tint as the web.
     highlight: { backgroundColor: colors.warningSoft },
+    // A #tag, quiet like the chip the web draws.
+    tag: { backgroundColor: colors.surfaceMuted, color: colors.textSoft },
   }),
 );

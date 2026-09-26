@@ -1,4 +1,4 @@
-import type { DocBlock } from "./docs.js";
+import type { Doc, DocBlock } from "./docs.js";
 import { localDateKey } from "./time.js";
 import type { AgendaEntry, Item } from "./types.js";
 
@@ -29,6 +29,201 @@ export const agendaTitle = (now: Date, timeZone: string) =>
     month: "long",
   });
 
+/**
+ * The title of one day's agenda, from its date ("2026-09-24"). Noon is used
+ * so no time zone can tip it into the day before or after.
+ */
+export const agendaTitleOn = (date: string) =>
+  agendaTitle(new Date(`${date}T12:00:00Z`), "UTC");
+
+/**
+ * One day's agenda, as stepping back and forward reads it: the day, its
+ * title, today's date in your zone, and the page if one has been written.
+ */
+export type AgendaDay = {
+  date: string;
+  title: string;
+  /** Today, in your own zone ("2026-09-24"). */
+  today: string;
+  doc: Doc | null;
+};
+
+/** "2026-09-24", for a string that should be one. */
+export const isDateKey = (s: string) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(s) &&
+  !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) &&
+  new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
+/**
+ * The name of the Notes heading on an agenda. It is how "Rewrite from my
+ * calendar" finds the part of the page that is yours: everything from Notes
+ * down — your notes and the end-of-day answers — is kept as you wrote it.
+ */
+export const AGENDA_NOTES_ID = "agenda-notes";
+
+/**
+ * Where an agenda's Notes section starts: the heading named for it, or on a
+ * page written before headings had names, the last heading that reads
+ * "Notes". -1 when the page has none (someone took it out).
+ */
+export function agendaNotesAt(blocks: DocBlock[]): number {
+  const named = blocks.findIndex((b) => b.id === AGENDA_NOTES_ID);
+  if (named >= 0) return named;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.type === "heading" && b.text.trim().toLowerCase() === "notes")
+      return i;
+  }
+  return -1;
+}
+
+/**
+ * The headings the calendar writes on an agenda (`buildAgenda`), lower case.
+ * Everything under the last of them, from the next heading on, is yours.
+ */
+const WRITTEN_HEADINGS = new Set([
+  "top priorities",
+  "schedule",
+  "morning",
+  "afternoon",
+  "evening",
+  "focus time",
+  "study",
+  "due today",
+  "carried over",
+  "coming up",
+]);
+
+const headingText = (b: DocBlock) =>
+  b.type === "heading" ? b.text.trim().toLowerCase() : null;
+
+/**
+ * Where the part of an agenda that is yours starts, when its Notes heading
+ * can't be found (it was renamed on a page written before headings had
+ * names, or deleted): the first heading after the last section the
+ * calendar writes — or, on a day with none of those, the first heading
+ * after the opening line. `at` is -1 when there is no such heading either;
+ * `after` is where the calendar's last section starts (0 without one).
+ */
+function yoursAt(blocks: DocBlock[]): { at: number; after: number } {
+  let last = 0;
+  blocks.forEach((b, i) => {
+    const text = headingText(b);
+    if (text !== null && WRITTEN_HEADINGS.has(text)) last = i;
+  });
+  for (let i = last + 1; i < blocks.length; i++) {
+    const text = headingText(blocks[i]);
+    if (text !== null && !WRITTEN_HEADINGS.has(text))
+      return { at: i, after: last };
+  }
+  return { at: -1, after: last };
+}
+
+/**
+ * A line shaped like the ones the calendar writes under its sections: a
+ * time, "All day" or a day, then " · " ("09:00–10:00 · Lecture", "Fri 26
+ * Sept · Exam"), or the free time under Focus time.
+ */
+const CALENDAR_LINE =
+  /^(All day|\d{1,2}:\d{2}(–\d{1,2}:\d{2})?|[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2,3}) · /;
+
+/**
+ * A line shaped like the ones under Study: the cards to review ("3 cards
+ * to review · 2 new", or "2 new" alone) and the exams coming ("Physics in
+ * 3 days · 60% known well").
+ */
+const STUDY_LINE =
+  /^(\d+ cards? to review( · \d+ new)?|\d+ new|.+ in \d+ days?( · \d+% known well)?)$/;
+
+/** The sections whose lines are to-dos: one per task. */
+const TODO_SECTIONS = new Set(["top priorities", "due today", "carried over"]);
+
+/**
+ * Whether a line under the calendar's section `section` (its heading, lower
+ * case) is one the calendar wrote there: an unticked to-do under the task
+ * sections, a card or exam line under Study, and a time or day line (or
+ * the free time) under the rest.
+ */
+function calendarLine(section: string | null, b: DocBlock) {
+  if (section !== null && TODO_SECTIONS.has(section))
+    return b.type === "todo" && !b.done;
+  if (section === "study")
+    return b.type === "bullet" && STUDY_LINE.test(b.text.trim());
+  return (
+    (b.type === "bullet" && CALENDAR_LINE.test(b.text)) ||
+    (b.type === "paragraph" && b.text.startsWith("Free: "))
+  );
+}
+
+const hasWords = (b: DocBlock) => b.type !== "divider" && !!b.text.trim();
+const sameLine = (a: DocBlock, b: DocBlock) =>
+  a.type === b.type &&
+  (a.type === "divider" || (b.type !== "divider" && a.text === b.text));
+
+/**
+ * An agenda written again from the calendar, with its Notes section kept.
+ * Everything above Notes comes from `fresh`; Notes and everything under it
+ * — your notes and the end-of-day answers — comes from `current`,
+ * untouched.
+ *
+ * Nothing you wrote is ever dropped. When the Notes heading is gone, what
+ * follows the calendar's own sections is kept (from the first heading
+ * after them), and lines of yours left above that heading — after the
+ * calendar's lines in its last section, where Notes used to start — go
+ * under a new Notes heading in front of it. When even that can't be told
+ * apart, every line of yours that the fresh page doesn't already have is
+ * kept under a new Notes heading.
+ */
+export function keepAgendaNotes(
+  current: DocBlock[],
+  fresh: DocBlock[],
+): DocBlock[] {
+  const theirs = agendaNotesAt(fresh);
+  const top = theirs < 0 ? fresh : fresh.slice(0, theirs);
+  const notes: DocBlock = {
+    type: "heading",
+    level: 2,
+    text: "Notes",
+    id: AGENDA_NOTES_ID,
+  };
+  // Lines with words that the fresh page doesn't have, leaving out the
+  // calendar's own headings: what is yours among `blocks`.
+  const yours = (blocks: DocBlock[]) =>
+    blocks.filter((b) => {
+      if (!hasWords(b)) return false;
+      const text = headingText(b);
+      if (text !== null && WRITTEN_HEADINGS.has(text)) return false;
+      return !fresh.some((f) => sameLine(f, b));
+    });
+  const named = agendaNotesAt(current);
+  const found = named >= 0 ? { at: named, after: named } : yoursAt(current);
+  if (found.at >= 0) {
+    const kept = current.slice(found.at);
+    // Without its Notes heading, lines of yours can sit under the
+    // calendar's last section, above the heading kept from: they go under
+    // a Notes heading of their own, in front of it. The calendar's own
+    // lines at the top of that section, told by the section they're in,
+    // stay the calendar's.
+    const under = current.slice(found.after + 1, found.at);
+    const section = headingText(current[found.after]);
+    let from = 0;
+    while (from < under.length && calendarLine(section, under[from])) from++;
+    const stray = yours(under.slice(from));
+    if (stray.length) return [...top, notes, ...stray, ...kept];
+    // A heading with no name yet takes the Notes name, so the next rewrite
+    // finds it however it is renamed. One that already has a name keeps
+    // it: remarks may be pointing at it.
+    if (!kept[0].id) kept[0] = { ...kept[0], id: AGENDA_NOTES_ID };
+    return [...top, ...kept];
+  }
+  // No way to tell where the calendar's part ends: keep every line with
+  // words in it that the fresh page doesn't have, and none of the
+  // calendar's own headings, under a fresh Notes heading.
+  const left = yours(current);
+  if (!left.length) return fresh;
+  return [...top, notes, ...left];
+}
+
 export type AgendaOptions = {
   now?: Date;
   timeZone: string;
@@ -52,6 +247,11 @@ export type AgendaOptions = {
   priorities?: string[];
   /** A short summary of the day written by the assistant, when there is one. */
   brief?: string | null;
+  /**
+   * The day's name when the page is for a day other than today ("Friday"),
+   * so its opening line doesn't call it today.
+   */
+  dayName?: string | null;
   /** Flashcards to review today and exams coming up, for people who study. */
   study?: {
     due: number;
@@ -173,20 +373,29 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
     todayTasks.length ? `${plural(todayTasks.length, "task")} due` : "",
     overdue.length ? `${overdue.length} carried over` : "",
   ].filter(Boolean);
+  const other = opts.dayName?.trim() || null;
   const free =
     opts.freeMinutes == null || !parts.length
       ? ""
       : opts.freeMinutes >= 15
-        ? ` About ${hours(opts.freeMinutes)} of your working time is still free.`
-        : " Your working hours are full for the rest of today.";
+        ? other
+          ? ` About ${hours(opts.freeMinutes)} of your working time is free.`
+          : ` About ${hours(opts.freeMinutes)} of your working time is still free.`
+        : other
+          ? " Your working hours are full."
+          : " Your working hours are full for the rest of today.";
   line(
     opts.brief?.trim()
       ? opts.brief.trim()
       : parts.length
-        ? `Today: ${parts.join(", ")}.${free}`
+        ? `${other ?? "Today"}: ${parts.join(", ")}.${free}`
         : overdue.length
-          ? "Nothing is due today — a good moment to clear what slipped."
-          : "Nothing scheduled today. The page is yours.",
+          ? other
+            ? `Nothing is due on ${other} — a good moment to clear what slipped.`
+            : "Nothing is due today — a good moment to clear what slipped."
+          : other
+            ? `Nothing scheduled on ${other}. The page is yours.`
+            : "Nothing scheduled today. The page is yours.",
   );
 
   const priorities = (opts.priorities ?? []).slice(0, 3);
@@ -276,7 +485,13 @@ export function buildAgenda(items: Item[], opts: AgendaOptions): DocBlock[] {
     for (const c of coming) bullet(`${dayLabel(c.at, tz)} · ${c.text}`);
   }
 
-  head("Notes");
+  // Yours from here down: a rewrite never touches Notes or what follows it.
+  blocks.push({
+    type: "heading",
+    level: 2,
+    text: "Notes",
+    id: AGENDA_NOTES_ID,
+  });
   line("");
 
   head("End of day");
