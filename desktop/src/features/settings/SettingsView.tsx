@@ -33,6 +33,12 @@ import { DevicesSettings } from "./DevicesSettings";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { PasskeysSettings } from "./PasskeysSettings";
 import { PrivacySettings } from "./PrivacySettings";
+import {
+  ArrangeSettings,
+  ShortcutSettings,
+  StartSettings,
+} from "./LayoutSettings";
+import { ClipperSettings } from "./ClipperSettings";
 import "./settings.css";
 
 export type SettingsTab =
@@ -230,6 +236,9 @@ export function SettingsView({
             </label>
           </SettingsSection>
         )}
+        {tab === "account" && <StartSettings />}
+        {tab === "account" && <ArrangeSettings user={user} />}
+        {tab === "account" && <ShortcutSettings />}
         {tab === "account" && (
           <SettingsSection className="card settings-card">
             <h2>Stay in the loop</h2>
@@ -299,6 +308,7 @@ export function SettingsView({
         )}
         {tab === "tags" && <TagSettings teams={teams} report={report} />}
         {tab === "connections" && <ConnectionsSettings report={report} />}
+        {tab === "connections" && <ClipperSettings report={report} />}
         {tab === "privacy" && onOpenSecurity && (
           <SettingsSection className="card settings-card">
             <h2>Security and data</h2>

@@ -72,6 +72,16 @@ import {
   type DocVersionChanges,
   type Favourite,
   type FavouriteKind,
+  type StarredItem,
+  type AccountPrefs,
+  type AccountPrefsInput,
+  type ConnectionMap,
+  type TeamPolicies,
+  type RecordingSummary,
+  type ClipKey,
+  type ClipDestinations,
+  type ClipInput,
+  type ClipResult,
   type CustomField,
   type CustomFieldInput,
   type CustomFieldUpdate,
@@ -1200,11 +1210,113 @@ export class OrbynClient {
   listFavourites() {
     return this.request<Favourite[]>("/favourites");
   }
-  setFavourite(kind: FavouriteKind, targetId: string, starred: boolean) {
+  setFavourite(
+    kind: FavouriteKind,
+    targetId: string,
+    starred: boolean,
+    blockId?: string,
+  ) {
     return this.request<void>("/favourites", {
       method: "PUT",
-      body: { kind, target_id: targetId, starred },
+      body: {
+        kind,
+        target_id: targetId,
+        starred,
+        ...(blockId ? { block_id: blockId } : {}),
+      },
     });
+  }
+  /** The Starred group: every star with its live title (NAV-07). */
+  listStarred() {
+    return this.request<StarredItem[]>("/starred");
+  }
+
+  // Choices that follow the account (NAV-08, NAV-09, SHR-08)
+  getPrefs() {
+    return this.request<AccountPrefs>("/me/prefs");
+  }
+  savePrefs(input: AccountPrefsInput) {
+    return this.request<AccountPrefs>("/me/prefs", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  resetPrefs() {
+    return this.request<void>("/me/prefs", { method: "DELETE" });
+  }
+
+  // Archiving and tidying the library (SRCH-03, ORG-03)
+  archiveDoc(id: string, archived: boolean) {
+    return this.request<Doc>(`/docs/${id}/archive`, {
+      method: "PUT",
+      body: { archived },
+    });
+  }
+  archiveFolder(id: string, archived: boolean) {
+    return this.request<{ id: string; archived_at: string | null }>(
+      `/folders/${id}/archive`,
+      { method: "PUT", body: { archived } },
+    );
+  }
+  /** Move, archive or tag several pages at once. */
+  bulkDocs(input: {
+    ids: string[];
+    folder_id?: string | null;
+    archived?: boolean;
+    tag_id?: string;
+  }) {
+    return this.request<{
+      done: string[];
+      skipped: { id: string; reason: string }[];
+    }>("/docs/bulk", { method: "POST", body: input });
+  }
+
+  /** The Connections map around a page or project (CNV-02). */
+  connectionMap(kind: "doc" | "project", id: string, depth: 1 | 2 = 1) {
+    const q = new URLSearchParams({ kind, id, depth: String(depth) });
+    return this.request<ConnectionMap>(`/links/map?${q}`);
+  }
+
+  /** A team's switches for publishing, the assistant and booking (OTH-04). */
+  getTeamPolicies(teamId: string) {
+    return this.request<TeamPolicies>(`/teams/${teamId}/policies`);
+  }
+  setTeamPolicies(
+    teamId: string,
+    input: Partial<Pick<TeamPolicies, "publishing" | "assistant" | "booking">>,
+  ) {
+    return this.request<TeamPolicies>(`/teams/${teamId}/policies`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+
+  /** A recording's summary and action items, from the assistant (CAP-10). */
+  summariseRecording(fileId: string, transcript?: string) {
+    return this.request<RecordingSummary>(`/ai/recordings/${fileId}/summary`, {
+      method: "POST",
+      body: transcript ? { transcript } : {},
+    });
+  }
+
+  // The Orbyn Clipper (CAP-02)
+  listClipKeys() {
+    return this.request<ClipKey[]>("/me/clip-keys");
+  }
+  createClipKey(name?: string) {
+    return this.request<{ key: string; clip_key: ClipKey }>("/me/clip-keys", {
+      method: "POST",
+      body: name ? { name } : {},
+    });
+  }
+  deleteClipKey(id: string) {
+    return this.request<void>(`/me/clip-keys/${id}`, { method: "DELETE" });
+  }
+  clipDestinations() {
+    return this.request<ClipDestinations>("/clips/destinations");
+  }
+  clip(input: Partial<ClipInput> & Pick<ClipInput, "type" | "url">) {
+    return this.request<ClipResult>("/clips", { method: "POST", body: input });
   }
 
   // Saved views (DATA-01) and your own fields (ORG-02)
@@ -1311,6 +1423,7 @@ export class OrbynClient {
       tag?: string;
       team?: string;
       updated_after?: string;
+      include_archived?: boolean;
       limit?: number;
     } = {},
   ) {
@@ -1326,7 +1439,11 @@ export class OrbynClient {
    */
   find(
     q: string,
-    filter: { type?: "doc" | "task" | "project"; limit?: number } = {},
+    filter: {
+      type?: "doc" | "task" | "project";
+      limit?: number;
+      include_archived?: boolean;
+    } = {},
   ) {
     const params = new URLSearchParams({ q });
     for (const [k, v] of Object.entries(filter))
@@ -1520,7 +1637,15 @@ export class OrbynClient {
 
   // Documents
   /** Every page you can see, newest edit first, optionally narrowed. */
-  listDocs(filter: { kind?: DocKind; project?: string; tag?: string } = {}) {
+  listDocs(
+    filter: {
+      kind?: DocKind;
+      project?: string;
+      tag?: string;
+      /** Archived pages: "include" lists them too, "only" nothing else. */
+      archived?: "include" | "only";
+    } = {},
+  ) {
     const q = new URLSearchParams(
       Object.entries(filter).flatMap(([k, v]) => (v ? [[k, v]] : [])),
     ).toString();

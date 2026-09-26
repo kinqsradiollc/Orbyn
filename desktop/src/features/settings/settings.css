@@ -680,3 +680,136 @@
   box-shadow: 0 0 0 2px var(--color-accent);
   transition: box-shadow 400ms ease;
 }
+
+/* Arrange (NAV-08) and keyboard shortcuts (NAV-09). */
+.arrange-group {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.arrange-group h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.arrange-list,
+.shortcut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.arrange-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 8px 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: 13px;
+}
+.arrange-row.is-dragging {
+  opacity: 0.5;
+}
+.arrange-row.is-hidden .arrange-name {
+  color: var(--color-muted);
+}
+.arrange-grip {
+  color: var(--color-muted);
+  cursor: grab;
+  flex: none;
+}
+.arrange-name {
+  flex: 1;
+  min-width: 0;
+}
+.shortcut-search {
+  width: 100%;
+  margin: 4px 0 8px;
+}
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.shortcut-name {
+  display: grid;
+  min-width: 0;
+}
+.shortcut-name small {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.shortcut-keys {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+.shortcut-keys em {
+  font-size: 13px;
+  color: var(--color-accent);
+}
+.shortcut-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+@media (max-width: 640px) {
+  .shortcut-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+/* The Orbyn Clipper's keys (CAP-02). */
+.clip-key-made {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  margin: 8px 0;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-selected);
+  font-size: 13px;
+}
+.clip-key-made code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.clip-key-made button {
+  justify-self: start;
+}
+.clip-keys {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.clip-keys li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.clip-keys li span {
+  flex: 1;
+  display: grid;
+}
+.clip-keys small {
+  color: var(--color-muted);
+  font-size: 11px;
+}

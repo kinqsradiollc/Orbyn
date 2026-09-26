@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { commandShortcuts } from "../app/commands";
+import { usePrefs } from "../app/prefs";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 const MOD = MAC ? "⌘" : "Ctrl";
@@ -11,13 +12,6 @@ const MOD = MAC ? "⌘" : "Ctrl";
  * shows too, so the two never disagree.
  */
 const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
-  {
-    title: "Anywhere",
-    keys: [
-      ...commandShortcuts(MAC),
-      { keys: ["Esc"], label: "Close a dialog, panel or menu" },
-    ],
-  },
   {
     title: "Calendar",
     keys: [
@@ -88,6 +82,18 @@ type Props = { onClose: () => void };
 /** The "?" sheet. Escape, "?" or a click outside closes it. */
 export function ShortcutSheet({ onClose }: Props) {
   const closeButton = useRef<HTMLButtonElement>(null);
+  const { prefs } = usePrefs();
+  // "Anywhere" is the command list with your own changes (NAV-09).
+  const groups = [
+    {
+      title: "Anywhere",
+      keys: [
+        ...commandShortcuts(MAC, prefs.shortcuts),
+        { keys: ["Esc"], label: "Close a dialog, panel or menu" },
+      ],
+    },
+    ...GROUPS,
+  ];
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -135,7 +141,7 @@ export function ShortcutSheet({ onClose }: Props) {
           </button>
         </div>
         <div className="shortcut-groups">
-          {GROUPS.map((g) => (
+          {groups.map((g) => (
             <section key={g.title} className="shortcut-group">
               <h3>{g.title}</h3>
               <dl>
@@ -154,7 +160,8 @@ export function ShortcutSheet({ onClose }: Props) {
           ))}
         </div>
         <p className="shortcut-note">
-          Single-key shortcuts pause while you type in a field.
+          Single-key shortcuts pause while you type in a field. Change them in
+          Settings → Keyboard shortcuts.
         </p>
       </section>
     </div>

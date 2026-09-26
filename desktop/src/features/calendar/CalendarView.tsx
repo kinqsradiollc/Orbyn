@@ -36,6 +36,7 @@ import { client } from "../../lib/api";
 import { celebrate } from "../../lib/celebrate";
 import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
+import { usePrefs } from "../../app/prefs";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { errorText, fromDayKey } from "../../lib/planning";
 import { localDay } from "../../lib/drag";
@@ -264,10 +265,18 @@ export function CalendarView({
   // ---- calendar sets ----
   const sets = prefs?.calendar_sets ?? [];
   const [setId, setSetIdState] = useState(savedSet);
+  // The set shown follows the account (SHR-08); this browser keeps a copy.
+  const { viewChoice, setViewChoice } = usePrefs();
+  const accountSet = viewChoice("calendar")?.set;
+  useEffect(() => {
+    if (accountSet !== undefined)
+      setSetIdState(accountSet === "all" ? "" : accountSet);
+  }, [accountSet]);
   const activeSet: CalendarSet | null =
     sets.find((s) => s.id === setId) ?? null;
   const chooseSet = (id: string) => {
     setSetIdState(id);
+    setViewChoice("calendar", { set: id || "all" });
     try {
       localStorage.setItem(SET_KEY, id);
     } catch {

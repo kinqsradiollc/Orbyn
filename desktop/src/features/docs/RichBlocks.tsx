@@ -30,6 +30,7 @@ import {
   Lightbulb,
   Minus,
   Plus,
+  Sparkles,
   TriangleAlert,
   X,
   ZoomIn,
@@ -43,6 +44,7 @@ import {
   diagramKind,
   docObjectLinks,
   fileSize,
+  isAudio,
   isPageImage,
   PAGE_FILE_TYPES,
   parseEmbed,
@@ -811,6 +813,14 @@ function ImageViewer({
   );
 }
 
+/**
+ * What a page offers for its recordings (CAP-10): a summary from the
+ * assistant. The editor provides it; a page shown elsewhere has none.
+ */
+export const RecordingContext = createContext<{
+  summarise?: (fileId: string, name: string) => void;
+}>({});
+
 /** A file on a page: its name, kind and size, and a Download button. */
 export function FileCard({
   block,
@@ -819,6 +829,40 @@ export function FileCard({
 }) {
   const link = useFileLink(block.file);
   const file = link && link !== "gone" ? link.file : null;
+  const recording = useContext(RecordingContext);
+  // A recording plays in the page, with Summarise beside it.
+  if (link && link !== "gone" && file && isAudio(file.mime))
+    return (
+      <div className="doc-file doc-audio" onClick={(e) => e.stopPropagation()}>
+        <span className="doc-file-text">
+          <strong>{block.text || file.name}</strong>
+          <small>{["Recording", fileSize(file.bytes)].join(" · ")}</small>
+        </span>
+        <audio controls preload="none" src={link.url}>
+          <track kind="captions" />
+        </audio>
+        <span className="doc-audio-actions">
+          {recording.summarise && (
+            <button
+              type="button"
+              className="text-button"
+              onClick={() =>
+                recording.summarise?.(block.file, block.text || file.name)
+              }
+            >
+              <Sparkles size={14} aria-hidden="true" /> Summarise
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => void downloadFile(block.file)}
+          >
+            <Download size={14} aria-hidden="true" /> Download
+          </button>
+        </span>
+      </div>
+    );
   return (
     <div className="doc-file" onClick={(e) => e.stopPropagation()}>
       <FileText size={18} aria-hidden="true" />

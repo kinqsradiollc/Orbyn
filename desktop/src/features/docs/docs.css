@@ -3823,3 +3823,104 @@ input.doc-image-caption:focus {
 .doc-menu-item kbd {
   white-space: nowrap;
 }
+
+/* Stars on headings in a page's contents (NAV-07). */
+.page-info-outline li,
+.doc-outline li {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.page-info-outline li > button:first-child,
+.doc-outline li > button:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.doc-outline li button.doc-outline-star,
+.page-info-outline li button.doc-outline-star {
+  flex: none;
+  width: auto;
+  padding: 4px 6px;
+  border-left: 0;
+  border-radius: var(--radius-xs);
+  color: var(--color-muted);
+  opacity: 0;
+}
+.doc-outline li:hover .doc-outline-star,
+.page-info-outline li:hover .doc-outline-star,
+.doc-outline-star:focus-visible,
+.doc-outline-star.is-on {
+  opacity: 1;
+}
+.doc-outline li button.doc-outline-star.is-on,
+.page-info-outline li button.doc-outline-star.is-on {
+  color: var(--color-accent);
+}
+@media (hover: none) {
+  .doc-outline li button.doc-outline-star,
+  .page-info-outline li button.doc-outline-star {
+    opacity: 1;
+  }
+}
+
+/* The library's tidy-up (ORG-03): picking several pages at once. */
+.doc-pick {
+  flex: none;
+  align-self: center;
+  margin: 0 4px 0 8px;
+}
+.docs-bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-text) 8%, transparent);
+  font-size: 13px;
+}
+.docs-bulk-bar strong {
+  margin-right: auto;
+}
+.docs-move-search {
+  width: 100%;
+  margin: 6px 0;
+}
+.doc-row.is-flash {
+  animation: doc-flash 1.6s ease-out;
+}
+@keyframes doc-flash {
+  from {
+    background: var(--color-selected);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-row.is-flash {
+    animation: none;
+    background: var(--color-selected);
+  }
+}
+
+/* A page in a window of its own (NAV-06). */
+.page-window {
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+  background: var(--color-canvas, var(--color-surface));
+}
+.page-window > .doc-editor {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+/* A row with a pick box has one more column, at the start. */
+.docs-workspace .docs-list li:has(> .doc-pick) {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+.docs-workspace .docs-list li > .doc-pick {
+  margin: 0 0 0 12px;
+}

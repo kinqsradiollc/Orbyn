@@ -1,0 +1,84 @@
+/* Recording into a page and its summary (CAP-10). */
+.recorder {
+  width: min(480px, calc(100vw - 32px));
+}
+.recorder-note {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.recorder-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 36px;
+  font-variant-numeric: tabular-nums;
+  margin: 8px 0 16px;
+}
+.recorder-clock small {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.recorder-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border);
+  align-self: center;
+}
+.recorder-dot.is-on {
+  background: var(--color-danger);
+  animation: recorder-pulse 1.2s ease-in-out infinite;
+}
+.recorder-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.recorder-summary p {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.recorder-subhead {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.recorder-actions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.recorder-actions-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.recorder-actions-list small {
+  color: var(--color-muted);
+}
+.doc-audio {
+  display: grid;
+  gap: 8px;
+}
+.doc-audio audio {
+  width: 100%;
+}
+@keyframes recorder-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .recorder-dot.is-on {
+    animation: none;
+  }
+}

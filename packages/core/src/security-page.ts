@@ -94,6 +94,8 @@ export function securityPageMarkdown(locale?: string): string {
   return [
     "# Security and data",
     `Last checked ${securityPageDate(locale)}`,
+    `## ${DATA_ANSWER.q}`,
+    DATA_ANSWER.a,
     ...SECURITY_PAGE.flatMap((section) => [
       `## ${section.heading}`,
       section.lines.map((line) => `- ${line}`).join("\n"),

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Star } from "lucide-react";
 import type { OutlineEntry } from "@orbyn/core";
 
 /**
@@ -13,7 +14,13 @@ export function DocOutline({
   onMoveSection,
   label = "Contents",
   className = "doc-outline",
+  starred,
+  onStar,
 }: {
+  /** Starred headings, by block id (NAV-07). */
+  starred?: Set<string>;
+  /** Star or unstar a heading; left out, no stars are shown. */
+  onStar?: (entry: OutlineEntry) => void;
   outline: OutlineEntry[];
   /** The entry being read, or -1 above the first heading. */
   current: number;
@@ -68,9 +75,34 @@ export function DocOutline({
               aria-current={n === current ? "location" : undefined}
               onClick={() => onJump(entry)}
               title={entry.text}
+              dir="auto"
             >
               {entry.text}
             </button>
+            {onStar && (
+              <button
+                type="button"
+                className={
+                  "doc-outline-star" +
+                  (entry.id && starred?.has(entry.id) ? " is-on" : "")
+                }
+                aria-pressed={!!(entry.id && starred?.has(entry.id))}
+                aria-label={
+                  entry.id && starred?.has(entry.id)
+                    ? `Unstar ${entry.text}`
+                    : `Star ${entry.text}`
+                }
+                title="Star this heading"
+                onClick={() => onStar(entry)}
+              >
+                <Star
+                  size={12}
+                  fill={
+                    entry.id && starred?.has(entry.id) ? "currentColor" : "none"
+                  }
+                />
+              </button>
+            )}
           </li>
         ))}
       </ol>

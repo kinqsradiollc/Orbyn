@@ -47,6 +47,8 @@ import { copyLink } from "../../lib/links";
 import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
 import { FieldsPanel } from "../views/FieldsPanel";
+import { ConnectionsMap } from "../connections/ConnectionsMap";
+import { StarButton } from "../../components/StarButton";
 import { LinkedHere } from "../docs/DocLinks";
 import { AliasesField } from "../docs/AliasesField";
 
@@ -715,6 +717,7 @@ export function ProjectDetail({
           </button>
         )}
         <div className="project-manage">
+          <StarButton kind="project" id={project.id} name={project.name} />
           <button
             className="icon-button"
             aria-label="Project options"
@@ -1421,6 +1424,14 @@ export function ProjectDetail({
           />
           {/* Pages in the project and pages that link to it. */}
           <LinkedHere kind="project" id={project.id} report={report} compact />
+          {/* What the project is linked to, one or two steps out (CNV-02). */}
+          <ConnectionsMap
+            kind="project"
+            id={project.id}
+            revision={project.updated_at}
+            report={report}
+            className="project-home-section"
+          />
         </div>
       ) : mode === "notes" && onOpenNote ? (
         <ProjectNotes

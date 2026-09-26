@@ -31,6 +31,7 @@ import { PageTags } from "./PageTags";
 import { FieldsPanel } from "../views/FieldsPanel";
 import { AliasesField } from "./AliasesField";
 import { downloadFile } from "./RichBlocks";
+import { ConnectionsMap } from "../connections/ConnectionsMap";
 
 /**
  * A page's Info (NAV-04): one slim rail beside the page, opened with ⓘ,
@@ -51,6 +52,8 @@ export function PageInfo({
   revision,
   onTags,
   onJump,
+  starredHeadings,
+  onStarHeading,
   onOpenProject,
   onShowHistory,
   onShowLinked,
@@ -70,6 +73,9 @@ export function PageInfo({
   revision: string | number;
   onTags: (tags: DocTag[]) => void;
   onJump: (entry: OutlineEntry) => void;
+  /** Starred headings by block id, and starring one (NAV-07). */
+  starredHeadings?: Set<string>;
+  onStarHeading?: (entry: OutlineEntry) => void;
   onOpenProject?: (id: string) => void;
   onShowHistory: () => void;
   /** Scroll to "Linked here" under the page. */
@@ -202,12 +208,21 @@ export function PageInfo({
         </section>
       )}
 
+      <ConnectionsMap
+        kind="doc"
+        id={doc.id}
+        revision={revision}
+        report={report}
+      />
+
       {outline.length > 0 && (
         <section className="page-info-section">
           <DocOutline
             outline={outline}
             current={current}
             onJump={onJump}
+            starred={starredHeadings}
+            onStar={onStarHeading}
             className="page-info-outline"
           />
         </section>

@@ -1,0 +1,112 @@
+/* The Connections map (CNV-02), in the page and project Info panels. */
+.connections-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.connections-head h3 {
+  flex: 1;
+}
+.connections-depth {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--color-sunken);
+}
+.connections-depth button {
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.connections-depth button.is-on {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+.connections-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.connections-map {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.connections-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+.connections-dialog .connections-map {
+  max-height: calc(100vh - 160px);
+}
+.connections-edge {
+  stroke: var(--color-border);
+  stroke-width: 1.2;
+}
+.connections-edge.is-far {
+  stroke-dasharray: 3 3;
+}
+.connections-node {
+  cursor: pointer;
+  outline: none;
+}
+.connections-node.depth-0 {
+  cursor: default;
+}
+.connections-node circle {
+  fill: var(--color-surface);
+  stroke: var(--color-muted);
+  stroke-width: 2;
+}
+.connections-node text {
+  font-size: 11px;
+  fill: var(--color-text);
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.connections-node.depth-0 text {
+  font-weight: 600;
+}
+.connections-node.is-doc circle {
+  stroke: var(--color-accent);
+}
+.connections-node.depth-0 circle {
+  fill: var(--color-accent);
+  stroke: var(--color-accent);
+}
+.connections-node.is-task circle,
+.connections-node.is-event circle {
+  stroke: var(--color-info);
+}
+.connections-node.is-project circle {
+  stroke: var(--color-text);
+}
+.connections-node.is-person circle,
+.connections-node.is-date circle {
+  stroke: var(--color-muted);
+  stroke-dasharray: 2 2;
+}
+.connections-node.is-closed text {
+  fill: var(--color-muted);
+  text-decoration: line-through;
+}
+.connections-node:hover circle,
+.connections-node:focus-visible circle {
+  fill: var(--color-selected);
+  stroke-width: 3;
+}
+.connections-node:focus-visible text {
+  text-decoration: underline;
+}

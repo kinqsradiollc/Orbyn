@@ -1,20 +1,39 @@
 import {
+  Boxes,
+  FileText,
+  Hash,
+  ListTodo,
   LogOut,
   Orbit,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   Table2,
+  type LucideIcon,
 } from "lucide-react";
-import { hasSystemPermission, type SavedView, type User } from "@orbyn/core";
+import {
+  arrangeEntries,
+  hasSystemPermission,
+  type SavedView,
+  type StarredItem,
+  type User,
+} from "@orbyn/core";
 import { NAV_GROUPS, type View } from "../app/views";
 import { commandById, keysFor } from "../app/commands";
+import { usePrefs } from "../app/prefs";
 
-/** The sidebar's keys, as the command list has them. */
-const SIDEBAR_KEYS = keysFor(
-  commandById("app.sidebar"),
-  /Mac|iPhone|iPad/.test(navigator.userAgent),
-).join(" ");
+const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+/** How many starred things the sidebar lists; ⌘K has the rest. */
+const STARRED_SHOWN = 8;
+
+const STAR_ICONS: Record<StarredItem["kind"], LucideIcon> = {
+  doc: FileText,
+  heading: Hash,
+  task: ListTodo,
+  project: Boxes,
+  view: Table2,
+};
 
 type Props = {
   open: boolean;
@@ -29,6 +48,9 @@ type Props = {
   pinnedViews?: SavedView[];
   openView?: string | null;
   onOpenView?: (id: string) => void;
+  /** The Starred group (NAV-07), and opening one of them. */
+  starred?: StarredItem[];
+  onOpenStarred?: (item: StarredItem) => void;
   onSignOut: () => void;
 };
 
@@ -49,9 +71,18 @@ export function Sidebar({
   pinnedViews = [],
   openView = null,
   onOpenView,
+  starred = [],
+  onOpenStarred,
   onSignOut,
 }: Props) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
+  const { prefs } = usePrefs();
+  /** The sidebar's keys, as the command list (and your changes) have them. */
+  const sidebarKeys = keysFor(
+    commandById("app.sidebar"),
+    MAC,
+    prefs.shortcuts,
+  ).join(" ");
   return (
     <aside className={"sidebar " + (open ? "open" : "")}>
       <div className="sidebar-head">
@@ -65,7 +96,12 @@ export function Sidebar({
 
       <nav>
         {NAV_GROUPS.map((group) => {
-          const items = group.items.filter((n) => !n.adminOnly || isAdmin);
+          // Arrange (NAV-08): the order and what's hidden follow the account.
+          const items = arrangeEntries(
+            group.items.filter((n) => !n.adminOnly || isAdmin),
+            (n) => n.label,
+            prefs.sidebar,
+          );
           if (!items.length) return null;
           return (
             <div className="nav-group" key={group.label}>
@@ -87,6 +123,28 @@ export function Sidebar({
             </div>
           );
         })}
+        {starred.length > 0 &&
+          onOpenStarred &&
+          !prefs.sidebar.hidden.includes("Starred") && (
+            <div className="nav-group" aria-label="Starred">
+              <span className="nav-label">STARRED</span>
+              {starred.slice(0, STARRED_SHOWN).map((s) => {
+                const Icon = STAR_ICONS[s.kind];
+                return (
+                  <button
+                    key={`${s.kind}:${s.id}:${s.block_id}`}
+                    className={"nav-view" + (s.closed ? " is-closed" : "")}
+                    aria-label={railed ? s.title : undefined}
+                    title={s.hint ? `${s.title} · ${s.hint}` : s.title}
+                    onClick={() => onOpenStarred(s)}
+                  >
+                    <Icon size={17} />
+                    <span>{s.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         {pinnedViews.length > 0 && onOpenView && (
           <div className="nav-group" aria-label="Pinned views">
             <span className="nav-label">PINNED VIEWS</span>
@@ -114,7 +172,9 @@ export function Sidebar({
         <button
           className="settings-link rail-toggle"
           aria-label={railed ? "Expand sidebar" : "Collapse sidebar"}
-          title={`${railed ? "Expand" : "Collapse"} sidebar (${SIDEBAR_KEYS})`}
+          title={`${railed ? "Expand" : "Collapse"} sidebar${
+            sidebarKeys ? ` (${sidebarKeys})` : ""
+          }`}
           aria-expanded={!railed}
           onClick={onToggleRail}
         >

@@ -52,6 +52,7 @@ import {
   type ViewSource,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { announceStars } from "../../app/prefs";
 import { EmptyState } from "../../components/EmptyState";
 import { Popover } from "../../components/Popover";
 import { Select } from "../../components/Select";
@@ -285,7 +286,7 @@ export function ViewsView({
       else next.delete(id);
       return next;
     });
-    client.setFavourite("view", id, starred).catch((e) => {
+    client.setFavourite("view", id, starred).then(announceStars, (e) => {
       report(e);
       void loadViews();
     });

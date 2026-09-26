@@ -177,9 +177,10 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
       } catch {
         return reply.code(404).send({ message: "File not found" });
       }
+      // Pictures and recordings (CAP-10) play in the page; other files download.
       const download =
         (r.query as { download?: string }).download === "1" ||
-        row.kind !== "image";
+        (row.kind !== "image" && !row.mime.startsWith("audio/"));
       return reply
         .header("Content-Type", row.mime)
         .header(

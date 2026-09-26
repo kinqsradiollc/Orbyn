@@ -49,6 +49,13 @@ export function pageSlides(title: string, content: DocBlock[]): Slide[] {
     return [{ title: title.trim() || "Untitled", blocks: [] }];
   if (!slides[0].title && title.trim())
     slides[0] = { ...slides[0], title: title.trim() };
+  // A page that starts with its own top heading still opens on its title.
+  else if (
+    title.trim() &&
+    slides[0].title !== title.trim() &&
+    content.find((b) => !isEmpty(b))?.type === "heading"
+  )
+    slides.unshift({ title: title.trim(), blocks: [] });
   return slides;
 }
 

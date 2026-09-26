@@ -3513,3 +3513,12 @@ input[type="number"]::-webkit-outer-spin-button {
     animation: none;
   }
 }
+
+/* The Starred group (NAV-07): a finished task or closed project reads quiet. */
+.nav-group .nav-view.is-closed span {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.icon-button.is-starred {
+  color: var(--color-accent);
+}

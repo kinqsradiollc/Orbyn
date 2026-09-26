@@ -46,6 +46,7 @@ import { ItemRow } from "../../components/ItemRow";
 import { Popover } from "../../components/Popover";
 import { usePlanning } from "../../app/planning";
 import { usePlanned } from "../../app/planned";
+import { usePrefs } from "../../app/prefs";
 import { statusCounts } from "../../lib/tasks";
 import {
   byScore,
@@ -301,6 +302,41 @@ export function TasksView({
     ),
   );
   const [viewMenu, setViewMenu] = useState<DOMRect | null>(null);
+  // How the list was left follows the account (SHR-08): the layout, the
+  // grouping, the order and the pinned sections. This browser keeps a copy
+  // so the list opens as it was before the account's choices arrive.
+  const { viewChoice, setViewChoice } = usePrefs();
+  const account = viewChoice("tasks");
+  const accountBoard = viewChoice("tasks:board");
+  useEffect(() => {
+    if (!account) return;
+    if (account.layout === "list" || account.layout === "board")
+      setLayoutState(account.layout);
+    if (account.group && (LIST_GROUPS as string[]).includes(account.group))
+      setGroupState(account.group as Group);
+    if (account.sort && SORTS.some((x) => x.id === account.sort))
+      setSortState(account.sort as ItemSort);
+    if (account.pins)
+      setPinsState(
+        PINNABLE.map((p) => p.id).filter((id) => account.pins!.includes(id)),
+      );
+  }, [account?.layout, account?.group, account?.sort, account?.pins?.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const g = accountBoard?.group;
+    if (g && isBoardGroup(g as Group)) setBoardGroupState(g as BoardGroupBy);
+  }, [accountBoard?.group]);
+  const keepChoice = (change: {
+    layout?: Layout;
+    group?: Group;
+    sort?: ItemSort;
+    pins?: PinId[];
+  }) =>
+    setViewChoice("tasks", {
+      layout: change.layout ?? layout,
+      group: change.group ?? group,
+      sort: change.sort ?? sort,
+      pins: change.pins ?? pins,
+    });
   const [due, setDue] = useState<DueFilter>("any");
   const [priority, setPriority] = useState<Priority | "any">("any");
   const [listId, setListId] = useState("any");
@@ -316,16 +352,19 @@ export function TasksView({
   const setLayout = (next: Layout) => {
     setLayoutState(next);
     remember(LAYOUT_KEY, next);
+    keepChoice({ layout: next });
   };
   const setGroup = (next: Group) => {
     if (layout === "board") {
       if (!isBoardGroup(next)) return;
       setBoardGroupState(next);
       remember(BOARD_GROUP_KEY, next);
+      setViewChoice("tasks:board", { group: next });
       return;
     }
     setGroupState(next);
     remember(GROUP_KEY, next);
+    keepChoice({ group: next });
   };
   const setHideEmpty = (next: boolean) => {
     setHideEmptyState(next);
@@ -337,6 +376,7 @@ export function TasksView({
     );
     setPinsState(next);
     remember(PIN_KEY, JSON.stringify(next));
+    keepChoice({ pins: next });
   };
 
   // People team tasks are assigned to, for the assignee filter.
@@ -843,6 +883,7 @@ export function TasksView({
             onChange={(e) => {
               const next = e.target.value as ItemSort;
               setSortState(next);
+              keepChoice({ sort: next });
               remember(SORT_KEY, next);
             }}
           >

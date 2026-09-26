@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import { ArrowUpRight, Orbit } from "lucide-react";
-import { SECURITY_PAGE, securityPageDate } from "@orbyn/core";
+import { DATA_ANSWER, SECURITY_PAGE, securityPageDate } from "@orbyn/core";
 import "../status/status.css";
 import "./legal.css";
 
@@ -58,6 +58,11 @@ export function SecurityPage({ signedIn, onNavigate, onHome }: Props) {
         <article className="legal-text">
           <h1>Security and data</h1>
           <p>Last checked {securityPageDate()}</p>
+          {/* The one plain answer (OTH-03), before the details. */}
+          <section>
+            <h2>{DATA_ANSWER.q}</h2>
+            <p>{DATA_ANSWER.a}</p>
+          </section>
           {SECURITY_PAGE.map((section) => (
             <section key={section.heading}>
               <h2>{section.heading}</h2>

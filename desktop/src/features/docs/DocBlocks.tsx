@@ -205,7 +205,7 @@ export function BlockView({
     case "heading": {
       const H = (["h2", "h3", "h4"] as const)[block.level - 1];
       return (
-        <H className="doc-heading">
+        <H className="doc-heading" dir="auto">
           {<Inline text={block.text} marks={marks} />}
         </H>
       );
@@ -216,7 +216,7 @@ export function BlockView({
           <span className="doc-marker" aria-hidden="true">
             {BULLETS[depth % BULLETS.length]}
           </span>
-          <span>
+          <span dir="auto">
             <Inline text={block.text} marks={marks} />
           </span>
         </div>
@@ -227,7 +227,7 @@ export function BlockView({
           <span className="doc-marker is-number" aria-hidden="true">
             {number ?? block.start ?? 1}.
           </span>
-          <span>
+          <span dir="auto">
             <Inline text={block.text} marks={marks} />
           </span>
         </div>
@@ -244,7 +244,7 @@ export function BlockView({
             onClick={(e) => e.stopPropagation()}
             aria-label={block.text || "Checklist item"}
           />
-          <span className={block.done ? "doc-done" : undefined}>
+          <span className={block.done ? "doc-done" : undefined} dir="auto">
             <Inline text={block.text} marks={marks} />
             {/* A line tied to a task says so, so ticking it here is clearly
                 the same as ticking it in the planner. */}
@@ -261,7 +261,7 @@ export function BlockView({
       );
     case "quote":
       return (
-        <blockquote className="doc-quote">
+        <blockquote className="doc-quote" dir="auto">
           <Inline text={block.text} marks={marks} />
         </blockquote>
       );
@@ -315,7 +315,7 @@ export function BlockView({
       return <hr className="doc-divider" />;
     default:
       return (
-        <p className="doc-p">
+        <p className="doc-p" dir="auto">
           <Inline text={block.text} marks={marks} />
         </p>
       );

@@ -24,5 +24,11 @@ interface Window {
   orbynDesktop?: {
     /** Calls back with each link; returns a function that stops listening. */
     onOpenLink: (fn: (url: string) => void) => () => void;
+    /** Files opened with Orbyn (CAP-11): name, type and the bytes, base64. */
+    onOpenFile?: (
+      fn: (file: { name: string; type: string; data: string }) => void,
+    ) => () => void;
+    /** Open a page in a window of its own (NAV-06). */
+    openWindow?: (path: string) => Promise<boolean>;
   };
 }

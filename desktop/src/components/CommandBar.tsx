@@ -38,6 +38,12 @@ import {
   Newspaper,
   Upload,
   Activity,
+  Presentation,
+  AppWindow,
+  Archive,
+  Folder,
+  Star,
+  Mic,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -60,6 +66,7 @@ import {
   type Doc,
   type DocSource,
   type FindHit,
+  type StarredItem,
   type Item,
   type LinkTarget,
   type Plan,
@@ -90,6 +97,7 @@ import {
   type CommandMemory,
 } from "../app/commands";
 import { openPageCommands } from "../app/page-commands";
+import { usePrefs } from "../app/prefs";
 import {
   deviceTimeZone,
   errorText,
@@ -102,6 +110,9 @@ import "./event-fields.css";
 import "./command-bar.css";
 
 type Props = {
+  /** What's starred, shown first with nothing typed (NAV-07). */
+  starred?: StarredItem[];
+  onOpenStarred?: (item: StarredItem) => void;
   items: Item[];
   /** Your teams: quick add finds teammates by name ("@anna"). */
   teams: Team[];
@@ -214,6 +225,12 @@ const ICONS: Record<CommandIcon, LucideIcon> = {
   upload: Upload,
   activity: Activity,
   settings: Settings,
+  present: Presentation,
+  window: AppWindow,
+  archive: Archive,
+  folder: Folder,
+  star: Star,
+  mic: Mic,
 };
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
@@ -330,8 +347,13 @@ export function CommandBar({
   onOpenWhatsNew,
   onOpenChanges,
   onOpenSetting,
+  starred = [],
+  onOpenStarred,
   report,
 }: Props) {
+  const { prefs } = usePrefs();
+  /** Archived pages too (SRCH-03), for this search. */
+  const [withArchived, setWithArchived] = useState(false);
   const { lists, tags } = usePlanning();
   const [query, setQuery] = useState(initialQuery);
   const [active, setActive] = useState(0);
@@ -425,17 +447,22 @@ export function CommandBar({
     let alive = true;
     const timer = setTimeout(
       () =>
-        void client.find(q, { limit: q ? 8 : 10 }).then(
-          (hits) => alive && setFound(hits),
-          () => alive && setFound([]),
-        ),
+        void client
+          .find(q, {
+            limit: q ? 8 : 10,
+            ...(withArchived ? { include_archived: true } : {}),
+          })
+          .then(
+            (hits) => alive && setFound(hits),
+            () => alive && setFound([]),
+          ),
       q ? 120 : 0,
     );
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [q, filtering]);
+  }, [q, filtering, withArchived]);
 
   // A search with filters goes to the server's search, filters and all.
   const searchKey = filtering
@@ -447,6 +474,7 @@ export function CommandBar({
         named.team?.id,
         filters.date,
         unknown,
+        withArchived,
       ])
     : "";
   useEffect(() => {
@@ -468,6 +496,7 @@ export function CommandBar({
           team: named.team?.id,
           updated_after: filters.date ? editedSince(filters.date) : undefined,
           limit: 20,
+          ...(withArchived ? { include_archived: true } : {}),
         })
         .then(
           (hits) => alive && setSearched(hits),
@@ -615,14 +644,37 @@ export function CommandBar({
         : (NAV.find((n) => n.label === c.view)?.icon ?? ArrowUpRight)
       : ICONS[c.icon],
     group: c.section,
-    keys: keysFor(c, MAC),
+    keys: keysFor(c, MAC, prefs.shortcuts),
     pinnable: true,
     run: () => runDef(c),
   }));
+  // With nothing typed, what's starred comes first (NAV-07).
+  const starredRows: Command[] =
+    q || !onOpenStarred
+      ? []
+      : starred.slice(0, 6).map((s) => ({
+          id: `star-${s.kind}-${s.id}-${s.block_id}`,
+          label: s.title,
+          hint: s.hint ?? undefined,
+          icon:
+            s.kind === "heading"
+              ? Star
+              : s.kind === "view"
+                ? Pin
+                : (TYPE_ICONS[s.kind] ?? Star),
+          group: "Starred",
+          run: () => {
+            onClose();
+            onOpenStarred(s);
+          },
+        }));
   const leading = q
     ? []
-    : commandRows.filter(
-        (c) => c.group === "Pinned" || c.group === "Recent commands",
+    : [...starredRows, ...commandRows].filter(
+        (c) =>
+          c.group === "Starred" ||
+          c.group === "Pinned" ||
+          c.group === "Recent commands",
       );
   const trailing = q
     ? commandRows
@@ -1036,6 +1088,15 @@ export function CommandBar({
                 SEARCH_DATE_CHIPS.find((d) => d.date === filters.date)?.label ??
                   null,
               )}
+              <button
+                type="button"
+                className={withArchived ? "active" : ""}
+                aria-pressed={withArchived}
+                title="Find archived pages too"
+                onClick={() => setWithArchived((v) => !v)}
+              >
+                Include archived
+              </button>
             </div>
             {picking && (
               <Popover

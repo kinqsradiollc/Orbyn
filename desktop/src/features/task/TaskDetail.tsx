@@ -23,6 +23,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { StarButton } from "../../components/StarButton";
 import {
   dateLabel,
   dueLine,
@@ -468,6 +469,12 @@ export function TaskDetail({
             >
               <Link2 size={15} />
             </button>
+            <StarButton
+              kind="task"
+              id={current.id}
+              name={current.title}
+              className="icon-button drawer-share"
+            />
             <ShareLinkButton
               className="drawer-share"
               target={{ kind: "task", id: current.id }}

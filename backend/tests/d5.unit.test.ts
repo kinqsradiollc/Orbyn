@@ -215,6 +215,15 @@ test("a page splits into slides at dividers and top headings", () => {
   assert.equal(slides[2].title, null);
   assert.equal(slides[2].blocks[0].type, "heading");
   assert.deepEqual(pageSlides("Empty", []), [{ title: "Empty", blocks: [] }]);
+  // A page that starts with a top heading opens on a title slide.
+  const titled = pageSlides("Lab talk", [
+    { type: "heading", level: 1, text: "Aim" },
+    { type: "paragraph", text: "Measure g" },
+  ]);
+  assert.deepEqual(
+    titled.map((s) => s.title),
+    ["Lab talk", "Aim"],
+  );
   assert.equal(slideStep("ArrowRight", 0, 3), 1);
   assert.equal(slideStep("ArrowRight", 2, 3), 2);
   assert.equal(slideStep("ArrowLeft", 0, 3), 0);

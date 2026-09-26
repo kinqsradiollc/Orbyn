@@ -86,3 +86,10 @@
   gap: 6px;
   text-decoration: none;
 }
+.team-policies {
+  display: grid;
+  gap: 12px;
+}
+.team-policies h3 {
+  margin: 0;
+}

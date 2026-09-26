@@ -33,7 +33,7 @@ import { RoleBadge } from "../../components/RoleBadge";
 import { stagger } from "../../lib/motion";
 import { TeamPlanning } from "./TeamPlanning";
 import { TeamAgents } from "./TeamAgents";
-import { TeamPublishing } from "../publish/PublishDialog";
+import { TeamPolicies } from "./TeamPolicies";
 import { RecentChanges } from "../changes/RecentChanges";
 
 /** Planner plumbing shared by the Teams and Admin views. */
@@ -409,7 +409,7 @@ export function TeamDetail({
         />
       )}
 
-      {!override && <TeamPublishing teamId={team.id} />}
+      {!override && <TeamPolicies teamId={team.id} />}
 
       {!override && hasTeamPermission(team.role, "items:read") && (
         <RecentChanges teamId={team.id} showTeam={false} />
