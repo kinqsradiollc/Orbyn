@@ -3,10 +3,6 @@ import {
   type AgentGrant,
   type AgentToolset,
   type McpCatalog,
-  type SavedView,
-  type SavedViewInput,
-  type SavedViewRows,
-  type SavedViewUpdate,
   type AgendaDay,
   type CaptureRequest,
   type CaptureResult,
@@ -1190,28 +1186,6 @@ export class OrbynClient {
       method: "PUT",
       body: { kind, target_id: targetId, starred },
     });
-  }
-
-  // Saved views (shared with the agents' query and save_view)
-  listViews() {
-    return this.request<SavedView[]>("/views");
-  }
-  createView(input: SavedViewInput) {
-    return this.request<SavedView>("/views", { method: "POST", body: input });
-  }
-  updateView(id: string, input: SavedViewUpdate) {
-    return this.request<SavedView>(`/views/${id}`, {
-      method: "PUT",
-      body: input,
-    });
-  }
-  deleteView(id: string) {
-    return this.request<void>(`/views/${id}`, { method: "DELETE" });
-  }
-  viewRows(id: string, offset = 0, limit = 50) {
-    return this.request<SavedViewRows>(
-      `/views/${id}/rows?offset=${offset}&limit=${limit}`,
-    );
   }
 
   /**

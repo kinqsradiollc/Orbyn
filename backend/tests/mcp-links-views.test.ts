@@ -9,7 +9,7 @@ import { helpers, trapNetwork, type Person } from "./mcp-helpers.js";
  * (picker links, checklist tasks, dependencies, related links, filed pages)
  * with visibility at both ends; saved views (save_view, query with a view,
  * relative dates, grouping, links_to, fetch view:, search, the app's
- * /views routes); get_project reading the project page's planning panel;
+ * saved_views rows); get_project reading the project page's planning panel;
  * and the MCP resources, resource templates, completions and prompts.
  */
 
@@ -32,6 +32,13 @@ let otto: Person;
 let crew = "";
 let other = "";
 const keys: Record<string, string> = {};
+const make = async (
+  name: string,
+  who: Person,
+  body: Record<string, unknown>,
+) => {
+  keys[name] = (await h.agentKey(who, body)).key;
+};
 
 type Result = {
   content: { type: string; text: string }[];
@@ -89,13 +96,6 @@ before(async () => {
     [vi, "viewer"],
   ]);
   other = await h.team(olga, "Other");
-  const make = async (
-    name: string,
-    who: Person,
-    body: Record<string, unknown>,
-  ) => {
-    keys[name] = (await h.agentKey(who, body)).key;
-  };
   await make("write", olga, {
     access: "write",
     team_ids: [crew, other],
@@ -275,6 +275,33 @@ test("get_links drops links whose other end is out of reach, without counting th
   );
   assert.equal(narrow.links.length, 0, "private and other-team pages stay out");
   assert.doesNotMatch(JSON.stringify(narrow), /Private thoughts|Other team/);
+  // Orphans too: a crew project page that only a private page links to is
+  // an orphan to a connection without Personal, and not to one with it.
+  const crewProject = (
+    await h.call(olga.token, "POST", "/projects", {
+      name: "Crew orphans",
+      team_id: crew,
+    })
+  ).json();
+  const filed = await newDoc(olga, {
+    title: "Filed crew page",
+    team_id: crew,
+    project_id: crewProject.id,
+    content: [{ type: "paragraph", text: "filed" }],
+  });
+  await newDoc(olga, {
+    title: "Private pointer",
+    content: [{ type: "paragraph", text: `[filed](orbyn://doc/${filed.id})` }],
+  });
+  const orphansOf = async (key: string) =>
+    ok(
+      await tool(key, "get_links", {
+        of: `project:${crewProject.id}`,
+        include: ["orphans"],
+      }),
+    ).orphans.map((d: any) => d.id);
+  assert.ok((await orphansOf(keys.crewOnly)).includes(`doc:${filed.id}`));
+  assert.ok(!(await orphansOf(keys.write)).includes(`doc:${filed.id}`));
 });
 
 test("link related: made from either end, shown both ways, undone by unlinking", async () => {
@@ -420,9 +447,51 @@ test("link related: made from either end, shown both ways, undone by unlinking",
     ),
     "READ_ONLY",
   );
+  // A link made the other way round (from the crew task to Vi's own page)
+  // starts in the team: Vi's agent can't remove it by naming her page first.
+  const viDoc = await newDoc(vi, {
+    title: "Vi's page",
+    content: [{ type: "paragraph", text: "v" }],
+  });
+  await pool.query(
+    `INSERT INTO object_links (source_kind, source_id, target_kind, target_id, link_kind)
+     VALUES ('task', $1, 'doc', $2, 'related')`,
+    [crewTask.id, viDoc.id],
+  );
+  assert.equal(
+    code(
+      await tool(keys.vi, "link", {
+        action: "unlink",
+        kind: "related",
+        from: `doc:${viDoc.id}`,
+        to: `task:${crewTask.id}`,
+      }),
+    ),
+    "READ_ONLY",
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM object_links WHERE link_kind = 'related' AND source_id = $1 AND target_id = $2",
+        [crewTask.id, viDoc.id],
+      )
+    ).rowCount,
+    1,
+    "the link stays",
+  );
 });
 
-test("save_view and query: saved, run, changed, starred, and read by the app", async () => {
+/** A saved view as the app keeps it (the views track's table). */
+const viewRow = async (id: string) =>
+  (
+    await pool.query(
+      "SELECT id, user_id, team_id, name, source, definition FROM saved_views WHERE id = $1",
+      [id],
+    )
+  ).rows[0];
+
+test("save_view and query: saved, run, changed, starred, and kept as the app keeps views", async () => {
+  const { viewDefinition } = await import("@orbyn/core");
   const soon = new Date(Date.now() + 2 * 86_400_000).toISOString();
   const later = new Date(Date.now() + 20 * 86_400_000).toISOString();
   await newTask(olga, {
@@ -440,16 +509,36 @@ test("save_view and query: saved, run, changed, starred, and read by the app", a
     code(await tool(keys.read, "save_view", { name: "Nope" })),
     "FORBIDDEN",
   );
+  // The app's rules: a gallery is for pages, and groups follow the source.
+  assert.equal(
+    code(
+      await tool(keys.write, "save_view", {
+        name: "Bad",
+        source: "tasks",
+        layout: "gallery",
+      }),
+    ),
+    "INVALID",
+  );
+  assert.equal(
+    code(
+      await tool(keys.write, "save_view", {
+        name: "Bad",
+        source: "projects",
+        group_by: "priority",
+      }),
+    ),
+    "INVALID",
+  );
   const saved = ok(
     await tool(keys.write, "save_view", {
       name: "Due this week",
-      over: "tasks",
-      text: "View task",
-      due_before: "+7d",
-      sort: "due",
+      source: "tasks",
+      filters: { text: "View task", due_within_days: 7 },
+      sort: { by: "due" },
       group_by: "priority",
       layout: "board",
-      columns: ["due", "priority"],
+      columns: ["title", "due", "priority"],
       star: true,
     }),
   );
@@ -458,13 +547,23 @@ test("save_view and query: saved, run, changed, starred, and read by the app", a
   assert.match(viewId, /^view:[0-9a-f-]{36}$/);
   assert.match(saved.done[0].url, /\/app\/view\//);
   const id = viewId.slice(5);
-  // It runs: relative dates read today, grouped by priority.
+  // Kept as the app keeps views: source, and a definition the app reads.
+  const kept = await viewRow(id);
+  assert.equal(kept.source, "tasks");
+  assert.equal(kept.team_id, null);
+  const def = viewDefinition.parse(kept.definition);
+  assert.equal(def.filters.due_within_days, 7);
+  assert.equal(def.group_by, "priority");
+  assert.equal(def.layout, "board");
+  // It runs: days count from today, grouped by priority.
   const run = ok(await tool(keys.write, "query", { view: viewId }));
   assert.deepEqual(
     run.rows.map((r: any) => r.title),
     ["View task soon"],
   );
   assert.equal(run.view.layout, "board");
+  assert.equal(run.view.source, "tasks");
+  assert.deepEqual(run.view.not_applied, []);
   assert.equal(run.rows[0].group, "high");
   assert.deepEqual(run.groups, [{ key: "high", label: "high", count: 1 }]);
   // A filter given with the view replaces the view's own.
@@ -472,6 +571,11 @@ test("save_view and query: saved, run, changed, starred, and read by the app", a
     await tool(keys.write, "query", { view: viewId, due_before: "+30d" }),
   );
   assert.equal(wider.rows.length, 2);
+  // A view keeps its source.
+  assert.equal(
+    code(await tool(keys.write, "query", { view: viewId, over: "docs" })),
+    "INVALID",
+  );
   // Starred: in favourites.
   const fav = await pool.query(
     "SELECT 1 FROM favourites WHERE user_id = $1 AND kind = 'view' AND target_id = $2",
@@ -483,6 +587,8 @@ test("save_view and query: saved, run, changed, starred, and read by the app", a
   assert.equal(fetched.metadata.type, "view");
   assert.match(fetched.text, /\| Group \| Title \|/);
   assert.match(fetched.text, /View task soon/);
+  const version = fetched.metadata.version as number;
+  assert.equal(version, saved.done[0].version);
   const found = ok(
     await tool(keys.write, "search", {
       query: "Due this week",
@@ -497,28 +603,34 @@ test("save_view and query: saved, run, changed, starred, and read by the app", a
     name: "Renamed",
   });
   assert.equal(code(stale), "VERSION_CONFLICT");
+  assert.equal(
+    code(
+      await tool(keys.write, "save_view", {
+        view: viewId,
+        version,
+        source: "pages",
+      }),
+    ),
+    "INVALID",
+  );
   const changed = ok(
     await tool(keys.write, "save_view", {
       view: viewId,
-      version: 1,
+      version,
       name: "Due soon",
-      due_before: "+30d",
+      filters: { text: "View task", due_within_days: 30 },
     }),
   );
-  assert.equal(changed.done[0].version, 2);
-  // The app reads the same view.
-  const list = (await h.call(olga.token, "GET", "/views")).json();
-  const inApp = list.find((v: any) => v.id === id);
-  assert.equal(inApp.name, "Due soon");
-  assert.equal(inApp.definition.due_before, "+30d");
-  assert.equal(inApp.definition.group_by, "priority");
-  const rows = (await h.call(olga.token, "GET", `/views/${id}/rows`)).json();
-  assert.equal(rows.rows.length, 2);
-  // Someone else can't see it, from the app or an agent.
+  assert.ok(changed.done[0].version > version);
+  const now = await viewRow(id);
+  assert.equal(now.name, "Due soon");
+  assert.equal(now.definition.filters.due_within_days, 30);
+  assert.equal(now.definition.group_by, "priority", "the rest is kept");
   assert.equal(
-    (await h.call(otto.token, "GET", `/views/${id}/rows`)).statusCode,
-    404,
+    ok(await tool(keys.write, "query", { view: viewId })).rows.length,
+    2,
   );
+  // Someone else can't see it.
   assert.equal(
     code(await tool(keys.otto, "query", { view: viewId })),
     "NOT_FOUND",
@@ -535,10 +647,53 @@ test("save_view and query: saved, run, changed, starred, and read by the app", a
       .statusCode,
     200,
   );
-  const back = (await h.call(olga.token, "GET", "/views"))
-    .json()
-    .find((v: any) => v.id === id);
+  const back = await viewRow(id);
   assert.equal(back.name, "Due this week");
+  assert.equal(back.definition.filters.due_within_days, 7);
+});
+
+test("query runs a view the app saved, and says what only the app applies", async () => {
+  const { rows } = await pool.query<{ id: string }>(
+    `INSERT INTO saved_views (user_id, name, source, definition)
+     VALUES ($1, 'Pages by field', 'pages', $2::jsonb) RETURNING id`,
+    [
+      olga.id,
+      JSON.stringify({
+        source: "pages",
+        filters: {
+          fields: [
+            {
+              field: "00000000-0000-4000-8000-000000000001",
+              op: "not_empty",
+            },
+          ],
+        },
+        sort: { by: "title", dir: "desc" },
+        group_by: "folder",
+        layout: "gallery",
+      }),
+    ],
+  );
+  await newDoc(olga, { title: "Aardvark notes", content: [] });
+  await newDoc(olga, { title: "Zebra notes", content: [] });
+  const run = ok(
+    await tool(keys.write, "query", {
+      view: `view:${rows[0].id}`,
+      text: "notes",
+    }),
+  );
+  assert.equal(run.over, "docs");
+  assert.equal(run.view.layout, "gallery");
+  assert.equal(run.view.not_applied.length, 2);
+  const titles = run.rows.map((r: any) => r.title);
+  assert.ok(
+    titles.indexOf("Zebra notes") < titles.indexOf("Aardvark notes"),
+    "sorted by name, reversed",
+  );
+  const fetched = ok(
+    await tool(keys.write, "fetch", { id: `view:${rows[0].id}` }),
+  );
+  assert.match(fetched.text, /In the app, also:/);
 });
 
 test("team views: members share them, viewers' agents only read them", async () => {
@@ -546,17 +701,20 @@ test("team views: members share them, viewers' agents only read them", async () 
     await tool(keys.write, "save_view", {
       name: "Crew open work",
       space: crew,
-      team: crew,
-      over: "tasks",
+      filters: { team: crew },
     }),
   );
   const viewId = made.done[0].id;
-  const mine = (await h.call(mo.token, "GET", "/views")).json();
-  assert.ok(
-    mine.some((v: any) => `view:${v.id}` === viewId),
-    "a member sees it",
-  );
-  // A viewer's agent can run it but not change it or make a team view.
+  const idOnly = viewId.slice(5);
+  assert.equal((await viewRow(idOnly)).team_id, crew);
+  // A member's agent sees it; a viewer's agent can run it but not change
+  // it or make a team view.
+  await make("mo", mo, {
+    access: "write",
+    team_ids: [crew],
+    toolsets: ["core", "workspace"],
+  });
+  ok(await tool(keys.mo, "query", { view: viewId }));
   ok(await tool(keys.vi, "query", { view: viewId }));
   assert.equal(
     code(
@@ -568,66 +726,31 @@ test("team views: members share them, viewers' agents only read them", async () 
     code(await tool(keys.vi, "save_view", { name: "Vi's", space: crew })),
     "READ_ONLY",
   );
-  // The app's routes follow the same rules (403 for a viewer, 400 for a
-  // body that isn't an object, 422 for one that doesn't check out).
+  // A member who didn't make it can't change it (the app's rule: its maker
+  // or the team's owners and admins).
+  const version = ok(await tool(keys.mo, "fetch", { id: viewId })).metadata
+    .version;
   assert.equal(
-    (
-      await h.call(vi.token, "POST", "/views", {
-        name: "Nope",
-        team_id: crew,
-        definition: {},
-      })
-    ).statusCode,
-    403,
+    code(
+      await tool(keys.mo, "save_view", { view: viewId, version, name: "x" }),
+    ),
+    "FORBIDDEN",
   );
-  assert.equal(
-    (await h.call(olga.token, "POST", "/views", { name: "" })).statusCode,
-    422,
+  // Removing it goes through review, and follows the same rule.
+  const { deleteView } = await import("../src/capabilities/view-store.js");
+  const { transaction } = await import("../src/db/pool.js");
+  const moUser = (
+    await pool.query("SELECT * FROM users WHERE id = $1", [mo.id])
+  ).rows[0];
+  const olgaUser = (
+    await pool.query("SELECT * FROM users WHERE id = $1", [olga.id])
+  ).rows[0];
+  await assert.rejects(
+    transaction((db) => deleteView(db, moUser, idOnly)),
+    /Only whoever made this view/,
   );
-  const notJson = await app.inject({
-    method: "POST",
-    url: "/views",
-    headers: {
-      authorization: `Bearer ${olga.token}`,
-      "content-type": "application/json",
-    },
-    payload: "{not json",
-  });
-  assert.equal(notJson.statusCode, 400);
-  assert.equal((await h.call(null, "GET", "/views")).statusCode, 401);
-  // Only its maker or the team's owners and admins remove it.
-  const idOnly = viewId.slice(5);
-  assert.equal(
-    (await h.call(mo.token, "DELETE", `/views/${idOnly}`)).statusCode,
-    403,
-  );
-  assert.equal(
-    (await h.call(olga.token, "DELETE", `/views/${idOnly}`)).statusCode,
-    204,
-  );
-});
-
-test("view routes answer 429 past the per-minute limit", async () => {
-  const { settings, cachedSettings } = await import("../src/lib/settings.js");
-  await settings();
-  const live = cachedSettings();
-  const was = live.rate_limit_per_minute;
-  live.rate_limit_per_minute = 2;
-  const post = () =>
-    app.inject({
-      method: "POST",
-      url: "/views",
-      headers: { authorization: `Bearer ${olga.token}` },
-      remoteAddress: "10.74.0.9",
-      payload: { name: "Rate", definition: { over: "docs" } },
-    });
-  try {
-    assert.equal((await post()).statusCode, 201);
-    assert.equal((await post()).statusCode, 201);
-    assert.equal((await post()).statusCode, 429);
-  } finally {
-    live.rate_limit_per_minute = was;
-  }
+  await transaction((db) => deleteView(db, olgaUser, idOnly));
+  assert.equal(await viewRow(idOnly), undefined);
 });
 
 test("query: links_to and relative dates as ad-hoc filters", async () => {
@@ -732,7 +855,9 @@ test("resources: guides, days, views, templates, paging and completions", async 
     await rpc(keys.write, "resources/read", { uri: `orbyn://day/${day}` })
   ).body.result.contents[0];
   assert.match(dayRead.text, new RegExp(`Due ${day}`));
-  const views = (await h.call(olga.token, "GET", "/views")).json();
+  const views = (
+    await pool.query("SELECT id FROM saved_views WHERE user_id = $1", [olga.id])
+  ).rows;
   const viewRead = (
     await rpc(keys.write, "resources/read", {
       uri: `orbyn://view/${views[0].id}`,
@@ -754,6 +879,16 @@ test("resources: guides, days, views, templates, paging and completions", async 
     })
   ).body.result.completion;
   assert.deepEqual(done.values, ["Zeppelin launch"]);
+  // What is typed matches as written: % and _ are not wildcards.
+  for (const value of ["%", "_", "%%"]) {
+    const wild = (
+      await rpc(keys.write, "completion/complete", {
+        ref: { type: "ref/prompt", name: "catch_up_on_project" },
+        argument: { name: "project", value },
+      })
+    ).body.result.completion;
+    assert.deepEqual(wild.values, [], value);
+  }
   const ids = (
     await rpc(keys.write, "completion/complete", {
       ref: { type: "ref/resource", uri: "orbyn://project/{id}" },

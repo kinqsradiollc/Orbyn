@@ -1,18 +1,5 @@
 import { z } from "zod";
-import {
-  VIEW_COLUMNS,
-  VIEW_GROUPS,
-  VIEW_LAYOUTS,
-  VIEW_SORTS,
-  VIEW_SOURCES,
-  addDays,
-  dayTime,
-  localDateKey,
-  resolveViewDate,
-  viewDate,
-  type ViewDefinition,
-  type ViewGroup,
-} from "@orbyn/core";
+import { VIEW_LAYOUTS, addDays, dayTime, localDateKey } from "@orbyn/core";
 import {
   Params,
   scopeFor,
@@ -21,7 +8,17 @@ import {
   visibleProjects,
   visibleRecords,
 } from "../lib/visibility.js";
-import { findView } from "../modules/views/service.js";
+import {
+  QUERY_GROUPS,
+  QUERY_OVER,
+  QUERY_SORTS,
+  fromSavedView,
+  queryDate,
+  resolveQueryDate,
+  type QueryDef,
+  type QueryGroup,
+} from "./query-def.js";
+import { findView } from "./view-store.js";
 import {
   READ,
   cursorInput,
@@ -52,8 +49,8 @@ import { docEditorsSql, itemSourceSql } from "./sources.js";
  * team, list, tag, assignee, due range, overdue, folder, links and when
  * changed, sorted, grouped and paged with a cursor (25 by default, 100 at
  * most). It runs a saved view (`view`), an ad-hoc one, or a saved view with
- * some filters changed. The definition is the one the app's views and
- * save_view use (packages/core/src/views.ts).
+ * some filters changed. A saved view is the app's (packages/core/src/views.ts,
+ * made in the app or by save_view), read in these words (query-def.ts).
  */
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -83,13 +80,17 @@ export const viewInfo = z.object({
   id: z.string(),
   name: z.string(),
   url: z.string(),
+  source: z.enum(["tasks", "pages", "projects"]),
   layout: z.enum(VIEW_LAYOUTS),
-  group_by: z.enum(VIEW_GROUPS).nullable(),
-  columns: z.array(z.enum(VIEW_COLUMNS)),
+  group_by: z.string().nullable(),
+  columns: z.array(z.string()),
+  not_applied: z
+    .array(z.string())
+    .describe("Parts of the view only the app applies (your own fields)."),
 });
 
 export const queryOutput = z.object({
-  over: z.enum(VIEW_SOURCES),
+  over: z.enum(QUERY_OVER),
   view: viewInfo.nullable(),
   rows: z.array(row),
   groups: z.array(
@@ -100,7 +101,7 @@ export const queryOutput = z.object({
 
 /** The filters the query tool takes: a view definition with typed ids allowed. */
 export const filterFields = {
-  over: z.enum(VIEW_SOURCES).optional().describe("Default tasks."),
+  over: z.enum(QUERY_OVER).optional().describe("Default tasks."),
   text: z.string().trim().min(1).max(200).optional(),
   status: z.enum(["open", "done", "any"]).optional().describe("Default open."),
   project: projectInput,
@@ -109,10 +110,10 @@ export const filterFields = {
   list: z.uuid().optional(),
   tag: z.uuid().optional(),
   assignee: z.union([z.literal("me"), z.uuid()]).optional(),
-  due_after: viewDate.optional(),
-  due_before: viewDate.optional(),
+  due_after: queryDate.optional(),
+  due_before: queryDate.optional(),
   overdue: z.boolean().optional(),
-  updated_after: viewDate.optional(),
+  updated_after: queryDate.optional(),
   folder: z.uuid().optional(),
   kind: z.string().trim().min(1).max(40).optional(),
   links_to: z
@@ -123,14 +124,14 @@ export const filterFields = {
     .optional()
     .describe("Rows linking to doc:, task: or project:."),
   starred: z.boolean().optional(),
-  sort: z.enum(VIEW_SORTS).optional(),
-  group_by: z.enum(VIEW_GROUPS).optional(),
+  sort: z.enum(QUERY_SORTS).optional(),
+  group_by: z.enum(QUERY_GROUPS).optional(),
 };
 
 /** A definition from the query tool's arguments (ids normalised). */
 export function definitionFrom(
   a: Partial<Record<keyof typeof filterFields, unknown>>,
-): Partial<ViewDefinition> {
+): Partial<QueryDef> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(a))
     if (k in filterFields && v !== undefined) out[k] = v;
@@ -148,7 +149,7 @@ export function definitionFrom(
       );
     out.links_to = `${ref.type === "event" ? "task" : ref.type}:${ref.id}`;
   }
-  return out as Partial<ViewDefinition>;
+  return out as Partial<QueryDef>;
 }
 
 const LINK_TARGETS = new Set(["doc", "task", "project"]);
@@ -175,7 +176,7 @@ type Found = {
 
 /** The label of the group a row falls in. */
 function groupOf(
-  by: ViewGroup | undefined,
+  by: QueryGroup | undefined,
   r: Found,
   type: string,
   ctx: CapabilityContext,
@@ -214,14 +215,14 @@ function groupOf(
  */
 export async function runView(
   ctx: CapabilityContext,
-  d: ViewDefinition,
+  d: QueryDef,
   limit: number,
   offset: number,
 ): Promise<{ rows: ViewRow[]; more: boolean }> {
   const tz = ctx.timezone;
   const today = localDateKey(ctx.now, tz);
   const at = (raw: string, end = false) => {
-    const v = resolveViewDate(raw, today);
+    const v = resolveQueryDate(raw, today);
     return DAY.test(v) ? dayTime(end ? addDays(v, 1) : v, 0, tz) : new Date(v);
   };
   const p = new Params();
@@ -304,6 +305,7 @@ export async function runView(
       );
     if (d.due_after) where.push(`i.due_at >= ${p.add(at(d.due_after))}`);
     if (d.due_before) where.push(`i.due_at < ${p.add(at(d.due_before, true))}`);
+    if (d.no_due) where.push("i.due_at IS NULL");
     if (d.overdue)
       where.push(
         `i.due_at < ${p.add(ctx.now)} AND i.status NOT IN ('done', 'cancelled')`,
@@ -344,6 +346,7 @@ export async function runView(
       due_after: d.due_after,
       due_before: d.due_before,
       overdue: d.overdue,
+      no_due: d.no_due,
     }))
       if (v !== undefined) unsupported(k);
     select = `d.id, 'doc' AS type, d.title, d.kind AS status, NULL::timestamptz AS due_at,
@@ -372,6 +375,7 @@ export async function runView(
       where.push(`p.deadline < ${p.add(at(d.due_before, true))}`);
     if (d.overdue)
       where.push(`p.deadline < ${p.add(ctx.now)} AND p.status <> 'archived'`);
+    if (d.no_due) where.push("p.deadline IS NULL");
     for (const [k, v] of Object.entries({
       stage: d.stage,
       list: d.list,
@@ -408,6 +412,7 @@ export async function runView(
       );
     if (d.due_after) where.push(`w.due_at >= ${p.add(at(d.due_after))}`);
     if (d.due_before) where.push(`w.due_at < ${p.add(at(d.due_before, true))}`);
+    if (d.no_due) where.push("w.due_at IS NULL");
     if (d.overdue)
       where.push(
         `w.due_at < ${p.add(ctx.now)} AND w.status IN ('proposed', 'open')`,
@@ -433,6 +438,8 @@ export async function runView(
       title: "lower(w.title), w.id",
     }[d.sort ?? "due"];
   }
+
+  if (d.desc) order = reversed(order);
 
   const found = await ctx.db.query<Found>(
     `SELECT ${select} FROM ${from}
@@ -472,6 +479,20 @@ export async function runView(
     };
   });
   return { rows, more: found.rows.length > limit };
+}
+
+/**
+ * An ORDER BY with its first term the other way round (things without a
+ * value stay last, as in the app); the tie-breakers keep their order.
+ */
+function reversed(order: string): string {
+  const [first, ...rest] = order.split(", ");
+  const flipped = first.endsWith(" DESC")
+    ? first.slice(0, -5)
+    : first.endsWith(" NULLS LAST")
+      ? `${first.slice(0, -11)} DESC NULLS LAST`
+      : `${first} DESC`;
+  return [flipped, ...rest].join(", ");
 }
 
 /** The groups on a page of rows, in the order they first appear. */
@@ -527,17 +548,26 @@ export const query = defineCapability({
         );
     }
     const asked = definitionFrom(a);
-    const d: ViewDefinition = {
-      ...(saved?.definition ?? {}),
+    const base = saved ? fromSavedView(saved.definition) : null;
+    if (base && asked.over && asked.over !== base.query.over)
+      throw new CapabilityError(
+        "INVALID",
+        `This view lists ${saved!.source}; over can't change that.`,
+        "Leave over out, or query without the view.",
+      );
+    const d: QueryDef = {
+      ...(base?.query ?? {}),
       ...asked,
-      over: asked.over ?? saved?.definition.over ?? "tasks",
-      status: asked.status ?? saved?.definition.status ?? "open",
+      over: asked.over ?? base?.query.over ?? "tasks",
+      status: asked.status ?? base?.query.status ?? "open",
     };
+    // A sort given here reads the usual way round.
+    if (asked.sort) delete d.desc;
     const { rows, more } = await runView(ctx, d, a.limit, offset);
     const next = more ? await ctx.cursor.seal(offset + a.limit) : null;
     const what = d.over === "docs" ? "pages" : d.over;
     const head = saved
-      ? `${saved.name} (${saved.layout}): ${rows.length} ${what}`
+      ? `${saved.name} (${saved.definition.layout}): ${rows.length} ${what}`
       : `${rows.length} ${what}`;
     const markdown = rows.length
       ? [
@@ -546,6 +576,9 @@ export const query = defineCapability({
             (r) =>
               `- ${r.group ? `[${r.group}] ` : ""}${lineTitle(r.title, r.url, r.provenance, r.type)}${r.status ? ` (${r.status}${r.due ? `, due ${r.due.local}` : ""})` : ""} · ${r.team} · ${r.id}`,
           ),
+          ...(base?.notes.length
+            ? [`(In the app, also: ${base.notes.join("; ")}.)`]
+            : []),
         ].join("\n")
       : saved
         ? `${saved.name}: nothing matches right now.`
@@ -560,9 +593,11 @@ export const query = defineCapability({
                 id: viewRef.id,
                 name: cleanTitle(saved.name),
                 url: viewRef.url,
-                layout: saved.layout,
+                source: saved.source,
+                layout: saved.definition.layout,
                 group_by: d.group_by ?? null,
                 columns: saved.definition.columns ?? [],
+                not_applied: base?.notes ?? [],
               }
             : null,
         rows,

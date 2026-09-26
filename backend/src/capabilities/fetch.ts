@@ -10,8 +10,8 @@ import {
   visibleTemplates,
   visibleViews,
 } from "../lib/visibility.js";
-import { describeView } from "@orbyn/core";
-import { findView } from "../modules/views/service.js";
+import { describeSavedView, fromSavedView } from "./query-def.js";
+import { findView } from "./view-store.js";
 import { jobs } from "../modules/imports/service.js";
 import { runView } from "./query.js";
 import { READ, minutesText, spaceName } from "./common.js";
@@ -674,18 +674,20 @@ async function fetchProposal(
 async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   const view = await findView(ctx.db, ctx.spaces, ref.id);
   if (!view) throw notFound();
-  const { rows, more } = await runView(ctx, view.definition, 50, 0);
+  const { query, notes } = fromSavedView(view.definition);
+  const { rows, more } = await runView(ctx, query, 50, 0);
   const r = refs({ type: "view", id: view.id });
   const name = cleanTitle(view.name) || "Untitled view";
   const cell = (t: string) => t.replace(/\|/g, "/").replace(/\n/g, " ");
   const text = [
     `# ${name}`,
-    `${describeView(view.definition)} · ${view.layout} · ${spaceName(view.team_id, ctx.principal.teams)}`,
+    `${describeSavedView(view.definition)} · ${spaceName(view.team_id, ctx.principal.teams)}`,
+    ...(notes.length ? [`In the app, also: ${notes.join("; ")}.`] : []),
     "",
     ...(rows.length
       ? [
-          `| ${view.definition.group_by ? "Group | " : ""}Title | Status | Due | Id |`,
-          `|${view.definition.group_by ? " --- |" : ""} --- | --- | --- | --- |`,
+          `| ${query.group_by ? "Group | " : ""}Title | Status | Due | Id |`,
+          `|${query.group_by ? " --- |" : ""} --- | --- | --- | --- |`,
           ...rows.map(
             (row) =>
               `| ${row.group !== null ? `${cell(row.group)} | ` : ""}${cell(lineTitle(row.title, row.url, row.provenance, row.type))} | ${row.status ?? ""} | ${row.due?.local ?? ""} | ${row.id} |`,
@@ -704,8 +706,8 @@ async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
       uri: r.uri,
       team: spaceName(view.team_id, ctx.principal.teams),
       team_id: view.team_id,
-      project_id: view.definition.project ?? null,
-      status: view.layout,
+      project_id: view.definition.filters.project ?? null,
+      status: view.definition.layout,
       version: view.version,
       updated_at: view.updated_at,
       provenance:

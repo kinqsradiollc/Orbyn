@@ -5,6 +5,7 @@ import {
   VIEW_SORTS,
   VIEW_SOURCES,
 } from "@orbyn/core";
+import { QUERY_GROUPS, QUERY_OVER, QUERY_SORTS } from "./query-def.js";
 
 /**
  * The guides agents read before they write: Orbyn's Markdown, the saved
@@ -70,42 +71,44 @@ const list = (xs: readonly string[]) => xs.map((x) => `\`${x}\``).join(", ");
 
 export const VIEWS_SPEC = `# Saved views
 
-A saved view is a named filter, sort, grouping and layout, like an Obsidian Base. The same definition is used by the app's views, by query (run a view with \`view\`, or pass the filters ad hoc) and by save_view.
+A saved view is a named filter, sort, grouping and layout over tasks, pages or projects, like an Obsidian Base. It is the app's own: the Views screen, save_view and query (run a view with \`view\`) all use this one definition, so a view an agent saves opens in the app and the other way round.
 
-## Definition
+## Definition (save_view)
 
 | Field | Values |
 | --- | --- |
-| over | ${list(VIEW_SOURCES)} (default \`tasks\`; \`docs\` are pages) |
-| status | \`open\` (default), \`done\`, \`any\` |
-| text | words to match |
-| project, stage, list, tag, folder | ids (folder is for pages; stage, list and tag for tasks) |
-| team | \`personal\`, or a team id |
-| assignee | \`me\`, or a person's id |
-| due_after, due_before | \`YYYY-MM-DD\`, an ISO instant, or relative: \`today\`, \`tomorrow\`, \`yesterday\`, \`+7d\`, \`-3d\` |
-| overdue | true |
-| updated_after | as due_after |
-| kind | a task, page or record kind |
-| links_to | \`doc:<id>\`, \`task:<id>\` or \`project:<id>\`: rows that link there (or are related to it) |
-| starred | true: only what the person starred (pages and projects) |
-| sort | ${list(VIEW_SORTS)} |
-| group_by | ${list(VIEW_GROUPS)} |
-| columns | ${list(VIEW_COLUMNS)} (tables) |
-| layout | ${list(VIEW_LAYOUTS)} |
+| source | ${list(VIEW_SOURCES)} (a view keeps it) |
+| filters.text | words to match |
+| filters.status | \`open\`, \`done\`, \`any\` (open by default for tasks and projects, any for pages) |
+| filters.team | \`personal\`, or a team id |
+| filters.project, list, tag, folder | ids (folder is for pages; list for tasks) |
+| filters.assignee | \`me\`, or a person's id (tasks) |
+| filters.due_after, due_before | \`YYYY-MM-DD\` (both days included) |
+| filters.due_within_days | due from today through this many days ahead |
+| filters.overdue, no_due | true |
+| filters.kind | a page kind |
+| filters.updated_within_days | changed in the last this-many days |
+| filters.fields | your own fields: \`{"field": "<id>", "op": "is", "value": ...}\` (the app applies these) |
+| sort | \`{"by": ..., "dir": "asc" or "desc"}\`; by is ${list(VIEW_SORTS)} or \`field:<id>\` |
+| group_by | \`none\`; tasks: ${list(VIEW_GROUPS.tasks.filter((g) => g !== "none"))}; pages: ${list(VIEW_GROUPS.pages.filter((g) => g !== "none"))}; projects: ${list(VIEW_GROUPS.projects.filter((g) => g !== "none"))} |
+| columns | tasks: ${list(VIEW_COLUMNS.tasks)}; pages: ${list(VIEW_COLUMNS.pages)}; projects: ${list(VIEW_COLUMNS.projects)} |
+| layout | ${list(VIEW_LAYOUTS)} (gallery is for pages) |
 
-Relative dates are read in the person's time zone each time the view runs, so "due before +7d" is always the coming week.
+A view's version is the moment it last changed; send it back when changing the view.
 
 ## Examples
 
-- Due this week: \`{"over": "tasks", "due_before": "+7d", "sort": "due"}\`
-- Overdue in a team, by assignee: \`{"over": "tasks", "team": "<team id>", "overdue": true, "group_by": "assignee"}\`
-- A project's pages, newest first: \`{"over": "docs", "project": "<id>", "sort": "updated"}\`
-- Open decisions: \`{"over": "records", "kind": "decision"}\`
-- Everything linked to a page: \`{"over": "tasks", "status": "any", "links_to": "doc:<id>"}\`
+- Due this week: \`{"source": "tasks", "filters": {"due_within_days": 7}, "sort": {"by": "due"}}\`
+- Overdue in a team, by assignee: \`{"source": "tasks", "filters": {"team": "<team id>", "overdue": true}, "group_by": "assignee", "layout": "board"}\`
+- A project's pages, newest first: \`{"source": "pages", "filters": {"project": "<id>"}, "sort": {"by": "updated"}, "layout": "gallery"}\`
+
+## Running views and ad-hoc lists (query)
+
+query runs a saved view as the connection sees things, or lists without one: over ${list(QUERY_OVER)} (\`docs\` are pages), the filters above as flat arguments, plus stage, links_to (\`doc:<id>\`, \`task:<id>\` or \`project:<id>\`: rows that link there or are related to it), starred and updated_after. Its dates may be relative: \`today\`, \`tomorrow\`, \`yesterday\`, \`+7d\`, \`-3d\`, read in the person's time zone each time. It sorts by ${list(QUERY_SORTS)} and groups by ${list(QUERY_GROUPS)}. Filters given with a view replace its own. What only the app applies (your own fields, some groupings) is listed in the answer's not_applied.
 
 ## Where views live
 
-Personal views are the person's own. A team view is shared with the team: members see it and can change it; its maker and the team's owners and admins can remove it. Anyone running a view sees only rows they can open. Views can be starred (save_view with star) and appear in favourites.
+Personal views are the person's own. A team view is shared with the team: members see and run it; its maker and the team's owners and admins can change or remove it. Anyone running a view sees only rows they can open. Views can be starred (save_view with star) and appear in favourites.
 `;
 
 export const PLANNING_GUIDE = `# Planning in Orbyn

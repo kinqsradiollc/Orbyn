@@ -105,12 +105,14 @@ export async function completeValues(
   const p = new Params();
   const scope = scopeFor(ctx.spaces, p);
   const q = text ? p.add(text) : "";
+  // What was typed is matched as written: % and _ are not wildcards.
+  const like = text ? p.add(`%${text.replace(/[\\%_]/g, "\\$&")}%`) : "";
   const where = [
     VISIBLE[t.alias as keyof typeof VISIBLE](t.alias, scope),
     ...(t.where ? [t.where] : []),
     ...(text
       ? [
-          `(${t.name} ILIKE '%' || ${q} || '%' OR similarity(${t.name}, ${q}) > 0.3)`,
+          `(${t.name} ILIKE ${like} ESCAPE '\\' OR similarity(${t.name}, ${q}) > 0.3)`,
         ]
       : []),
   ];

@@ -30,7 +30,7 @@ import {
 import { createOpenInvite, withdrawOpenInvite } from "../booking/invites.js";
 import { importData } from "../organize/portability.js";
 import { deleteFolder, deleteList, deleteTag } from "../organize/service.js";
-import { deleteView } from "../views/service.js";
+import { deleteView } from "../../capabilities/view-store.js";
 import { deleteTemplate } from "../templates/service.js";
 import { deletePageTemplate } from "../templates/pages.js";
 import {

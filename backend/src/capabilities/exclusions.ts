@@ -224,12 +224,6 @@ export const COVERED: Record<string, string[]> = {
   "GET /work-records/:id/evidence": ["get_follow_through"],
   "POST /work-records/:id/respond": ["save_record"],
   "POST /me/import": ["import_tasks"],
-  // Links and saved views (A4).
-  "GET /views": ["search"],
-  "POST /views": ["save_view"],
-  "PUT /views/:id": ["save_view"],
-  "DELETE /views/:id": ["propose_changes"],
-  "GET /views/:id/rows": ["query", "fetch"],
   "DELETE /items/:id/steps/:stepId": ["propose_changes"],
   "POST /blocks": ["schedule_sessions"],
   "PUT /blocks/:id": ["reschedule_sessions"],

@@ -339,16 +339,20 @@ export const getLinks = defineCapability({
     const o = new Params();
     const os = scopeFor(ctx.spaces, o);
     const opid = o.add(subject.id);
+    const oteams = o.add(ctx.principal.teams.map((t) => t.id));
     const orphanIds = wantOrphans
       ? (
           await ctx.db.query<{ id: string }>(
             `SELECT d.id::text FROM docs d
               WHERE d.project_id = ${opid} AND ${visibleDocs("d", os)}
+                -- Only links whose other end this connection sees count.
                 AND NOT EXISTS (SELECT 1 FROM object_links l
                   WHERE l.source_kind = 'doc' AND l.source_id = d.id
-                    AND l.link_kind <> 'project')
+                    AND l.link_kind <> 'project'
+                    AND ${visibleEnd("l.target_kind", "l.target_id", os, oteams)})
                 AND NOT EXISTS (SELECT 1 FROM object_links l
-                  WHERE l.target_kind = 'doc' AND l.target_id = d.id::text)
+                  WHERE l.target_kind = 'doc' AND l.target_id = d.id::text
+                    AND ${visibleEnd("l.source_kind", "l.source_id::text", os, oteams)})
               ORDER BY d.updated_at DESC LIMIT 50`,
             o.values,
           )

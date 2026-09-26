@@ -12,13 +12,14 @@ import {
 } from "../modules/teams/planning.js";
 import { teamMembers, teamSummary } from "../modules/teams/service.js";
 import { READ, minutesText } from "./common.js";
-import { both, cleanTitle } from "./format.js";
+import { both, cleanTitle, provenanceOf, titleFor } from "./format.js";
 import { refs } from "./refs.js";
 import {
   CapabilityError,
   defineCapability,
   type CapabilityContext,
 } from "./registry.js";
+import { itemSourceSql } from "./sources.js";
 import { idField, isoTime } from "./write.js";
 
 /**
@@ -71,7 +72,17 @@ export const getTeam = defineCapability({
         capacity_minutes: z.number().nullable(),
         assigned_minutes: z.number().nullable(),
         load: z.number().nullable(),
-        at_risk: z.array(z.object({ task: z.string(), title: z.string() })),
+        at_risk: z.array(
+          z.object({
+            task: z.string(),
+            title: z.string(),
+            provenance: z
+              .string()
+              .describe(
+                'Who wrote it: "you", "teammate:<name>", or where it came from.',
+              ),
+          }),
+        ),
         free_by_day: z.array(
           z.object({
             day: z.string(),
@@ -124,6 +135,30 @@ export const getTeam = defineCapability({
     const wl = byUser(workload);
     const cap = byUser(capacity.members);
     const att = byUser(attention.members);
+    // Who wrote each task at risk, so its title is shown as every other
+    // read shows it (outside text by its neutral name, or hidden).
+    const riskIds = workload.flatMap((w) =>
+      (w.at_risk_items ?? []).map((t) => t.id),
+    );
+    const origin = new Map(
+      riskIds.length
+        ? (
+            await ctx.db.query<{
+              id: string;
+              kind: string;
+              user_id: string;
+              author_name: string | null;
+              source: string | null;
+            }>(
+              `SELECT i.id, i.kind, i.user_id, au.name AS author_name,
+                      ${itemSourceSql("i")} AS source
+                 FROM items i JOIN users au ON au.id = i.user_id
+                WHERE i.id = ANY ($1::uuid[])`,
+              [riskIds],
+            )
+          ).rows.map((r) => [r.id, r])
+        : [],
+    );
     const structured = {
       team: {
         id: team.id,
@@ -142,10 +177,21 @@ export const getTeam = defineCapability({
           capacity_minutes: w ? w.capacity_minutes : null,
           assigned_minutes: w ? w.assigned_minutes : null,
           load: w ? w.load : null,
-          at_risk: (w?.at_risk_items ?? []).map((t) => ({
-            task: refs({ type: "task", id: t.id }).id,
-            title: cleanTitle(t.title),
-          })),
+          at_risk: (w?.at_risk_items ?? []).map((t) => {
+            const o = origin.get(t.id);
+            const provenance = o ? provenanceOf(me, o) : "teammate:someone";
+            return {
+              task: refs({ type: "task", id: t.id }).id,
+              title:
+                titleFor(
+                  t.title,
+                  provenance,
+                  ctx.principal.flags.hide_outside_content,
+                  o?.kind,
+                ) || "Untitled",
+              provenance,
+            };
+          }),
           free_by_day: (c?.days ?? []).map((d) => ({
             day: d.day,
             level: d.level,

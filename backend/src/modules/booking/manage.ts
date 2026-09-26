@@ -187,6 +187,21 @@ export async function listBookingPages(db: Queryable, userId: string) {
   ).rows;
 }
 
+/**
+ * Narrowing to what an agent's connection reaches: bookings on these pages,
+ * and (with `invites`) those from open invites, which have no page.
+ */
+export type BookingReach = { pages: string[]; invites: boolean };
+
+/** SQL for `reach` over bookings `b`, its values at $n and $n+1. */
+const reachSql = (n: number) =>
+  `($${n}::uuid[] IS NULL OR b.page_id = ANY ($${n}::uuid[])
+    OR ($${n + 1}::boolean AND b.page_id IS NULL))`;
+const reachValues = (reach?: BookingReach) => [
+  reach ? reach.pages : null,
+  reach ? reach.invites : true,
+];
+
 /** One view of the bookings inbox, paged. */
 export async function listBookings(
   db: Queryable,
@@ -197,6 +212,7 @@ export async function listBookings(
     page_id?: string;
     limit: number;
     offset: number;
+    reach?: BookingReach;
   },
 ): Promise<{ rows: Booking[]; total: number }> {
   const view = VIEWS[q.view];
@@ -208,8 +224,16 @@ export async function listBookings(
        AND ($2::uuid IS NULL OR b.page_id = $2)
        AND NOT EXISTS (SELECT 1 FROM unnest($3::text[]) w
                        WHERE (b.name || ' ' || b.email) NOT ILIKE w)
+       AND ${reachSql(6)}
      ORDER BY ${view.order}, b.id LIMIT $4 OFFSET $5`,
-      [userId, q.page_id ?? null, words, q.limit, q.offset],
+      [
+        userId,
+        q.page_id ?? null,
+        words,
+        q.limit,
+        q.offset,
+        ...reachValues(q.reach),
+      ],
     )
   ).rows;
   return {
@@ -223,7 +247,9 @@ export async function bookingStats(
   db: Queryable,
   userId: string,
   pageId: string | null,
+  reach?: BookingReach,
 ): Promise<BookingStats> {
+  const within = reachValues(reach);
   const counts = (
     await db.query<Omit<BookingStats, "next" | "pages" | "cancellation_rate">>(
       `SELECT
@@ -235,17 +261,18 @@ export async function bookingStats(
        count(*) FILTER (WHERE status = 'declined')::int AS declined,
        count(*) FILTER (WHERE no_show)::int AS no_show,
        count(*) FILTER (WHERE created_at > now() - interval '30 days')::int AS last_30_days
-     FROM bookings b WHERE ${MINE} AND ($2::uuid IS NULL OR b.page_id = $2)`,
-      [userId, pageId],
+     FROM bookings b WHERE ${MINE} AND ($2::uuid IS NULL OR b.page_id = $2)
+       AND ${reachSql(3)}`,
+      [userId, pageId, ...within],
     )
   ).rows[0];
   const next =
     (
       await db.query<Booking>(
         `${BOOKING_SELECT} WHERE ${MINE} AND ($2::uuid IS NULL OR b.page_id = $2)
-         AND b.status = 'confirmed' AND b.start_at >= now()
+         AND b.status = 'confirmed' AND b.start_at >= now() AND ${reachSql(3)}
        ORDER BY b.start_at LIMIT 1`,
-        [userId, pageId],
+        [userId, pageId, ...within],
       )
     ).rows[0] ?? null;
   const pages = (
@@ -256,8 +283,9 @@ export async function bookingStats(
        count(b.id)::int AS total
      FROM booking_pages p LEFT JOIN bookings b ON b.page_id = p.id
      WHERE p.id IN (${MY_PAGES})
+       AND ($2::uuid[] IS NULL OR p.id = ANY ($2::uuid[]))
      GROUP BY p.id ORDER BY p.created_at DESC`,
-      [userId],
+      [userId, within[0]],
     )
   ).rows;
   const decided = counts.confirmed + counts.cancelled;

@@ -1,29 +1,148 @@
-import { z } from "zod";
-
 /**
- * Saved views: a named filter, sort, grouping and layout over tasks,
- * events, pages, projects or work records, like an Obsidian Base. One
- * definition serves the app's views screen, the agents' `query` (which runs
- * a saved view or an ad-hoc one) and `save_view`, so a view an agent saves
- * opens the same in the app, and the other way round.
+ * Saved views (DATA-01): a named filter, sort, grouping and layout over
+ * tasks, pages or projects, kept on the account and optionally shared with
+ * a team. One definition serves the apps' Views screen, the live list block
+ * in a page (SRCH-02) and the agents' query and save_view tools.
  *
- * Dates in a view can be relative ("today", "+7d", "-1d"), so "Due this
- * week" stays this week. They are read in the person's time zone.
+ * This is the contract the views track (D4a, track/pages) defines, and the
+ * parts of it the agents use: the same table (saved_views), the same JSON
+ * definition and the same names, so a view an agent saves opens in the app
+ * and the other way round. The views track's copy of this file adds the
+ * rules for rows, groups and totals; when the tracks meet, keep that copy
+ * (it is a superset of this one).
+ *
+ * The filter words are the agents' `query` words (text, status, project,
+ * team, list, tag, assignee, due_after, due_before, overdue, folder, kind),
+ * plus days relative to today and your own fields (ORG-02).
  */
+import { z } from "zod";
+import { DOC_KINDS } from "./docs.js";
 
-/** What a view lists. */
-export const VIEW_SOURCES = [
-  "tasks",
-  "events",
-  "docs",
-  "projects",
-  "records",
+/** How a task list can be grouped (the views track's task-groups.ts). */
+const TASK_GROUPS = [
+  "none",
+  "status",
+  "list",
+  "tag",
+  "size",
+  "priority",
+  "project",
+  "due_week",
+  "assignee",
 ] as const;
+
+export const VIEW_SOURCES = ["tasks", "pages", "projects"] as const;
 export type ViewSource = (typeof VIEW_SOURCES)[number];
 
-/** How a view is laid out. */
-export const VIEW_LAYOUTS = ["table", "list", "board", "calendar"] as const;
+export const VIEW_SOURCE_LABELS: Record<ViewSource, string> = {
+  tasks: "Tasks",
+  pages: "Pages",
+  projects: "Projects",
+};
+
+export const VIEW_LAYOUTS = [
+  "list",
+  "board",
+  "table",
+  "calendar",
+  "gallery",
+] as const;
 export type ViewLayout = (typeof VIEW_LAYOUTS)[number];
+
+export const VIEW_LAYOUT_LABELS: Record<ViewLayout, string> = {
+  list: "List",
+  board: "Board",
+  table: "Table",
+  calendar: "Calendar",
+  gallery: "Gallery",
+};
+
+/** The layouts a source can be shown in: Gallery is for pages (DATA-05). */
+export const layoutsFor = (source: ViewSource): ViewLayout[] =>
+  source === "pages"
+    ? [...VIEW_LAYOUTS]
+    : VIEW_LAYOUTS.filter((l) => l !== "gallery");
+
+/** The most saved views one person may keep (their own and their teams'). */
+export const MAX_SAVED_VIEWS = 200;
+/** The most rows a view returns; a view past it says it was cut short. */
+export const VIEW_ROW_LIMIT = 500;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const FIELD_KEY = /^field:([0-9a-f-]{36})$/i;
+
+/** "field:<id>" as the field's id, or null for anything else. */
+export const fieldKeyId = (key: string): string | null => {
+  const m = FIELD_KEY.exec(key);
+  return m && UUID.test(m[1]) ? m[1].toLowerCase() : null;
+};
+export const fieldKey = (id: string) => `field:${id}`;
+
+const fieldRef = z
+  .string()
+  .regex(FIELD_KEY, "Use field:<id>.")
+  .transform((v) => v.toLowerCase());
+const day = z.string().regex(DAY, "Use YYYY-MM-DD.");
+
+export const FIELD_FILTER_OPS = [
+  "is",
+  "is_not",
+  "empty",
+  "not_empty",
+  "before",
+  "after",
+  "contains",
+] as const;
+export type FieldFilterOp = (typeof FIELD_FILTER_OPS)[number];
+
+export const FIELD_FILTER_LABELS: Record<FieldFilterOp, string> = {
+  is: "is",
+  is_not: "is not",
+  empty: "is empty",
+  not_empty: "is set",
+  before: "is before",
+  after: "is after",
+  contains: "contains",
+};
+
+const fieldFilter = z
+  .object({
+    field: z.uuid(),
+    op: z.enum(FIELD_FILTER_OPS),
+    value: z.union([z.string().max(500), z.number(), z.boolean()]).optional(),
+  })
+  .strict();
+export type FieldFilter = z.output<typeof fieldFilter>;
+
+export const viewFilters = z
+  .object({
+    /** Words in the title (and a task's notes or a page's opening). */
+    text: z.string().trim().min(1).max(200).optional(),
+    /** Open (the default for tasks and projects), done, or any. */
+    status: z.enum(["open", "done", "any"]).optional(),
+    /** "personal" for your own things only, or a team's id. */
+    team: z.union([z.literal("personal"), z.uuid()]).optional(),
+    project: z.uuid().optional(),
+    list: z.uuid().optional(),
+    tag: z.uuid().optional(),
+    /** "me" or a person's id (tasks). */
+    assignee: z.union([z.literal("me"), z.uuid()]).optional(),
+    due_after: day.optional(),
+    due_before: day.optional(),
+    /** Due from today through this many days ahead. */
+    due_within_days: z.number().int().min(0).max(365).optional(),
+    overdue: z.boolean().optional(),
+    /** Only things without a deadline. */
+    no_due: z.boolean().optional(),
+    folder: z.uuid().optional(),
+    kind: z.enum(DOC_KINDS).optional(),
+    /** Changed in the last this-many days. */
+    updated_within_days: z.number().int().min(1).max(365).optional(),
+    fields: z.array(fieldFilter).max(10).optional(),
+  })
+  .strict();
+export type ViewFilters = z.output<typeof viewFilters>;
 
 export const VIEW_SORTS = [
   "due",
@@ -31,121 +150,216 @@ export const VIEW_SORTS = [
   "created",
   "priority",
   "title",
+  "estimate",
+  "days_left",
 ] as const;
-export type ViewSort = (typeof VIEW_SORTS)[number];
+export type ViewSortBy = (typeof VIEW_SORTS)[number] | `field:${string}`;
 
-/** What a board or grouped table groups rows by. */
-export const VIEW_GROUPS = [
-  "status",
-  "priority",
-  "project",
-  "stage",
-  "assignee",
-  "team",
-  "kind",
-  "due",
+export const VIEW_SORT_LABELS: Record<(typeof VIEW_SORTS)[number], string> = {
+  due: "Deadline",
+  updated: "Last changed",
+  created: "Newest",
+  priority: "Priority",
+  title: "Name",
+  estimate: "Estimate",
+  days_left: "Days left",
+};
+
+/** What each source can be grouped by. */
+export const VIEW_GROUPS: Record<ViewSource, readonly string[]> = {
+  tasks: TASK_GROUPS,
+  pages: ["none", "kind", "folder", "project", "team", "tag"],
+  projects: ["none", "status", "team"],
+};
+
+export const VIEW_GROUP_LABELS: Record<string, string> = {
+  none: "No grouping",
+  status: "Status",
+  list: "List",
+  tag: "Tag",
+  size: "Size",
+  priority: "Priority",
+  project: "Project",
+  due_week: "Due week",
+  assignee: "Assignee",
+  kind: "Kind",
+  folder: "Folder",
+  team: "Team",
+};
+
+/** Built-in columns, by source. Your own fields are `field:<id>`. */
+export const VIEW_COLUMNS: Record<ViewSource, readonly string[]> = {
+  tasks: [
+    "done",
+    "title",
+    "status",
+    "due",
+    "estimate",
+    "spent",
+    "priority",
+    "project",
+    "list",
+    "tags",
+    "assignee",
+    "team",
+    "days_left",
+    "overdue",
+    "spent_vs_estimate",
+  ],
+  pages: ["title", "kind", "folder", "project", "tags", "team", "updated"],
+  projects: [
+    "title",
+    "status",
+    "due",
+    "progress",
+    "team",
+    "updated",
+    "days_left",
+    "overdue",
+  ],
+};
+
+/** The ready-made computed columns (no formula language). */
+export const COMPUTED_COLUMNS = [
+  "days_left",
+  "overdue",
+  "spent_vs_estimate",
 ] as const;
-export type ViewGroup = (typeof VIEW_GROUPS)[number];
 
-/** Columns a table can show (title is always first). */
-export const VIEW_COLUMNS = [
-  "status",
-  "due",
-  "priority",
-  "project",
-  "assignee",
-  "team",
-  "updated",
-  "provenance",
-] as const;
-export type ViewColumn = (typeof VIEW_COLUMNS)[number];
+export const COLUMN_LABELS: Record<string, string> = {
+  done: "Done",
+  title: "Name",
+  status: "Status",
+  due: "Due",
+  estimate: "Estimate",
+  spent: "Spent",
+  priority: "Priority",
+  project: "Project",
+  list: "List",
+  tags: "Tags",
+  assignee: "Assignee",
+  team: "Team",
+  kind: "Kind",
+  folder: "Folder",
+  updated: "Last changed",
+  progress: "Progress",
+  days_left: "Days left",
+  overdue: "Overdue",
+  spent_vs_estimate: "Spent vs estimate",
+};
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const RELATIVE = /^(today|tomorrow|yesterday|[+-]\d{1,3}d)$/;
+/** The columns a new view starts with (the mockup's tick, Task, Due, Estimate, Spent, Tags). */
+export const DEFAULT_COLUMNS: Record<ViewSource, string[]> = {
+  tasks: ["done", "title", "due", "estimate", "spent", "tags"],
+  pages: ["title", "kind", "folder", "tags", "updated"],
+  projects: ["title", "status", "due", "progress", "days_left"],
+};
 
-/** A date in a filter: YYYY-MM-DD, an ISO instant, or relative to today. */
-export const viewDate = z
+/** Columns edited in place in the table (DATA-02); fields always are. */
+export const EDITABLE_COLUMNS: Record<ViewSource, readonly string[]> = {
+  tasks: ["done", "title", "status", "due", "estimate", "priority"],
+  pages: ["title"],
+  projects: ["title", "status", "due"],
+};
+
+export const isEditableColumn = (source: ViewSource, column: string) =>
+  EDITABLE_COLUMNS[source].includes(column) ||
+  (source !== "tasks" && fieldKeyId(column) !== null);
+
+const columnKey = z
   .string()
-  .trim()
-  .max(40)
+  .max(60)
   .refine(
-    (v) => DAY.test(v) || RELATIVE.test(v) || !Number.isNaN(Date.parse(v)),
-    {
-      message:
-        'Use YYYY-MM-DD, an ISO 8601 instant, or "today", "tomorrow", "yesterday", "+7d", "-3d".',
-    },
+    (c) =>
+      fieldKeyId(c) !== null ||
+      Object.values(VIEW_COLUMNS).some((cols) => cols.includes(c)),
+    "Not a column.",
   );
 
-/** Whether a filter date is relative to today (and so moves with it). */
-export const isRelativeDate = (v: string) => RELATIVE.test(v);
-
-/**
- * The day a relative date names, as YYYY-MM-DD, given today's date in the
- * person's time zone. Other values come back unchanged.
- */
-export function resolveViewDate(v: string, today: string): string {
-  if (!RELATIVE.test(v)) return v;
-  const shift =
-    v === "today"
-      ? 0
-      : v === "tomorrow"
-        ? 1
-        : v === "yesterday"
-          ? -1
-          : Number(v.slice(0, -1));
-  const d = new Date(`${today}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + shift);
-  return d.toISOString().slice(0, 10);
-}
-
-/**
- * The filters: the same words the agents' query tool takes. Ids are plain
- * ids here (the tool also accepts typed ids and links).
- */
-export const viewFilters = z
+export const viewDefinition = z
   .object({
-    over: z.enum(VIEW_SOURCES).default("tasks"),
-    text: z.string().trim().min(1).max(200).optional(),
-    status: z.enum(["open", "done", "any"]).default("open"),
-    project: z.uuid().optional(),
-    stage: z.uuid().optional(),
-    /** "personal", or a team id. */
-    team: z.union([z.literal("personal"), z.uuid()]).optional(),
-    list: z.uuid().optional(),
-    tag: z.uuid().optional(),
-    /** "me", or a person's id. */
-    assignee: z.union([z.literal("me"), z.uuid()]).optional(),
-    due_after: viewDate.optional(),
-    due_before: viewDate.optional(),
-    overdue: z.boolean().optional(),
-    updated_after: viewDate.optional(),
-    folder: z.uuid().optional(),
-    kind: z.string().trim().min(1).max(40).optional(),
-    /** Only rows that link to this (a typed id: doc:, task:, project:). */
-    links_to: z.string().trim().min(1).max(120).optional(),
-    /** Only what the person starred (pages and projects). */
-    starred: z.boolean().optional(),
-    sort: z.enum(VIEW_SORTS).optional(),
+    source: z.enum(VIEW_SOURCES),
+    filters: viewFilters.default({}),
+    sort: z
+      .object({
+        by: z.union([z.enum(VIEW_SORTS), fieldRef]).default("due"),
+        dir: z.enum(["asc", "desc"]).default("asc"),
+      })
+      .strict()
+      .default({ by: "due", dir: "asc" }),
+    group_by: z
+      .union([
+        z.enum([
+          ...new Set([
+            ...VIEW_GROUPS.tasks,
+            ...VIEW_GROUPS.pages,
+            ...VIEW_GROUPS.projects,
+          ]),
+        ] as [string, ...string[]]),
+        fieldRef,
+      ])
+      .default("none"),
+    layout: z.enum(VIEW_LAYOUTS).default("table"),
+    columns: z.array(columnKey).max(20).optional(),
+    /** Which date a calendar puts things on: the deadline or a date field. */
+    date_by: z.union([z.literal("due"), fieldRef]).optional(),
   })
-  .strict();
-export type ViewFilters = z.output<typeof viewFilters>;
-
-/** A whole view definition: its filters plus how it is shown. */
-export const viewDefinition = viewFilters
-  .extend({
-    group_by: z.enum(VIEW_GROUPS).optional(),
-    columns: z.array(z.enum(VIEW_COLUMNS)).max(VIEW_COLUMNS.length).optional(),
-  })
-  .strict();
+  .strict()
+  .superRefine((v, ctx) => {
+    const group = v.group_by;
+    if (fieldKeyId(group) === null && !VIEW_GROUPS[v.source].includes(group))
+      ctx.addIssue({
+        code: "custom",
+        path: ["group_by"],
+        message: `${VIEW_SOURCE_LABELS[v.source]} can't be grouped by ${group}.`,
+      });
+    if (!layoutsFor(v.source).includes(v.layout))
+      ctx.addIssue({
+        code: "custom",
+        path: ["layout"],
+        message: "Only pages can be shown as a gallery.",
+      });
+    if (v.source === "tasks" && fieldKeyId(group) !== null)
+      ctx.addIssue({
+        code: "custom",
+        path: ["group_by"],
+        message: "Tasks don't have your own fields.",
+      });
+    for (const c of v.columns ?? [])
+      if (fieldKeyId(c) === null && !VIEW_COLUMNS[v.source].includes(c))
+        ctx.addIssue({
+          code: "custom",
+          path: ["columns"],
+          message: `${VIEW_SOURCE_LABELS[v.source]} have no ${c} column.`,
+        });
+  });
 export type ViewDefinition = z.output<typeof viewDefinition>;
+export type ViewDefinitionInput = z.input<typeof viewDefinition>;
 
-/** Making or changing a saved view. */
+export type SavedView = {
+  id: string;
+  user_id: string;
+  /** The team it is shared with; null when it is only yours. */
+  team_id: string | null;
+  team_name?: string | null;
+  owner_name?: string | null;
+  name: string;
+  source: ViewSource;
+  definition: ViewDefinition;
+  /** Pinned to your sidebar (each person pins their own). */
+  pinned: boolean;
+  /** Whether you may rename, change, share or delete it. */
+  can_edit: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const viewName = z.string().trim().min(1).max(80);
+
 export const savedViewInput = z
   .object({
-    name: z.string().trim().min(1).max(120),
-    /** Null or left out: the person's own. A team id: shared with the team. */
+    name: viewName,
     team_id: z.uuid().nullable().default(null),
-    layout: z.enum(VIEW_LAYOUTS).default("table"),
     definition: viewDefinition,
   })
   .strict();
@@ -153,80 +367,28 @@ export type SavedViewInput = z.input<typeof savedViewInput>;
 
 export const savedViewUpdate = z
   .object({
-    version: z.number().int().min(1),
-    name: z.string().trim().min(1).max(120).optional(),
-    layout: z.enum(VIEW_LAYOUTS).optional(),
+    name: viewName.optional(),
+    team_id: z.uuid().nullable().optional(),
     definition: viewDefinition.optional(),
-    position: z.number().int().min(0).max(9999).optional(),
   })
   .strict();
 export type SavedViewUpdate = z.input<typeof savedViewUpdate>;
 
-export type SavedView = {
-  id: string;
-  user_id: string;
-  team_id: string | null;
-  team_name: string | null;
-  name: string;
-  layout: ViewLayout;
-  definition: ViewDefinition;
-  position: number;
-  version: number;
-  created_at: string;
-  updated_at: string;
-};
+export const viewPinInput = z.object({ pinned: z.boolean() }).strict();
 
-/** The most saved views one person keeps of their own (teams too, each). */
-export const MAX_SAVED_VIEWS = 200;
-
-/**
- * The filters in words, for a view's subtitle ("Open tasks · due before
- * +7d · sorted by due").
- */
-export function describeView(d: ViewDefinition): string {
-  const what: Record<ViewSource, string> = {
-    tasks: "tasks",
-    events: "events",
-    docs: "pages",
-    projects: "projects",
-    records: "work records",
-  };
-  const parts = [
-    `${d.status === "any" ? "All" : d.status === "done" ? "Done" : "Open"} ${what[d.over]}`,
-  ];
-  if (d.text) parts.push(`matching “${d.text}”`);
-  if (d.overdue) parts.push("overdue");
-  if (d.due_after) parts.push(`due from ${d.due_after}`);
-  if (d.due_before) parts.push(`due before ${d.due_before}`);
-  if (d.assignee === "me") parts.push("assigned to me");
-  if (d.team === "personal") parts.push("Personal");
-  if (d.links_to) parts.push(`linking to ${d.links_to}`);
-  if (d.group_by) parts.push(`grouped by ${d.group_by}`);
-  if (d.sort) parts.push(`sorted by ${d.sort}`);
-  return parts.join(" · ");
-}
-
-/** One row of a view, as GET /views/:id/rows and the query tool give it. */
-export type SavedViewRow = {
-  /** A typed id: task:, event:, doc:, project: or record:. */
-  id: string;
-  title: string;
-  url: string;
-  type: "task" | "event" | "doc" | "project" | "record";
-  status: string | null;
-  due: { at: string; local: string } | null;
-  priority: string | null;
-  team: string;
-  project_id: string | null;
-  assignee: string | null;
-  updated_at: string;
-  provenance: string;
-  group: string | null;
-};
-
-export type SavedViewRows = {
-  view: SavedView;
-  rows: SavedViewRow[];
-  groups: { key: string; label: string; count: number }[];
-  next_offset: number | null;
-};
+/** Run a saved view by id, or a definition that isn't saved (a live list). */
+export const viewRunInput = z.union([
+  z
+    .object({
+      id: z.uuid(),
+      limit: z.number().int().min(1).max(500).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      definition: viewDefinition,
+      limit: z.number().int().min(1).max(500).optional(),
+    })
+    .strict(),
+]);
+export type ViewRunInput = z.input<typeof viewRunInput>;

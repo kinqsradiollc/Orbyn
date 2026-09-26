@@ -784,20 +784,6 @@ The numbers belong to the experiment's owner, or its creator. It is `404` to any
 see the record. The verdict stays the person's — the client shows the numbers beside the
 "What did you learn?" field rather than judging the experiment itself.
 
-## Saved views
-
-A saved view is a named filter, sort, grouping and layout (`table`, `list`, `board`, `calendar`) over tasks, events, pages, projects or work records, kept on the account or shared with a team. The definition (`packages/core/src/views.ts`) is the one the agents' `query` and `save_view` use; dates may be relative (`today`, `+7d`, `-3d`).
-
-| Method and path       | Body / result                                                                                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /views`          | Your views and your teams', personal first.                                                                                                                                |
-| `POST /views`         | `{ name, team_id?, layout?, definition }` → `201` the view. A team view needs a member who can change team items (`403` for viewers); 200 views per space at most (`422`). |
-| `PUT /views/:id`      | `{ version, name?, layout?, definition?, position? }` → the view; `409` when it changed since.                                                                             |
-| `DELETE /views/:id`   | `204`. Its maker, or the team's owners and admins (`403` otherwise). Its stars go with it.                                                                                 |
-| `GET /views/:id/rows` | `?offset=&limit=` (100 at most) → `{ view, rows, groups, next_offset }`: only rows you can open.                                                                           |
-
-Stars take `kind: "view"` too (`PUT /favourites`).
-
 ## Page history
 
 Each time someone sits down and changes a document, the state they started from is kept. Saves

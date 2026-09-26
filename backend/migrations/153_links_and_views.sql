@@ -8,8 +8,8 @@
 --    makes between two things. It is the only kind typed in rather than
 --    derived, so page saves never remove it.
 -- 3. saved_views: a named filter, sort, grouping and layout over tasks,
---    events, pages, projects or work records (packages/core/src/views.ts),
---    used by the app's views, query and save_view alike.
+--    pages or projects. The views track (D4a) owns it; this is the same
+--    table, made here only where it doesn't exist yet.
 -- 4. A view can be starred (favourites kind 'view').
 
 DO $object_links$
@@ -265,26 +265,32 @@ $related$;
 CREATE INDEX IF NOT EXISTS object_links_source_idx
   ON object_links (source_kind, source_id);
 
--- 3. Saved views.
+-- 3. Saved views: the views track's table (its migration
+--    112_saved_views_fields, D4a), word for word, so whichever of the two
+--    runs first makes it and the other leaves it as it is. The definition
+--    is packages/core/src/views.ts; agents write the same rows the app does.
 CREATE TABLE IF NOT EXISTS saved_views (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  -- A team view is shared with the team; NULL is the person's own.
   team_id     uuid REFERENCES teams(id) ON DELETE CASCADE,
-  name        text NOT NULL CHECK (length(name) BETWEEN 1 AND 120),
-  -- The filters, sort, grouping and columns (see core/views.ts).
-  definition  jsonb NOT NULL DEFAULT '{}'::jsonb,
-  layout      text NOT NULL DEFAULT 'table'
-    CHECK (layout IN ('table', 'list', 'board', 'calendar')),
-  position    integer NOT NULL DEFAULT 0,
-  version     integer NOT NULL DEFAULT 1,
+  name        text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 80),
+  source      text NOT NULL CHECK (source IN ('tasks', 'pages', 'projects')),
+  definition  jsonb NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS saved_views_user_idx
-  ON saved_views (user_id, position, name) WHERE team_id IS NULL;
+  ON saved_views (user_id) WHERE team_id IS NULL;
 CREATE INDEX IF NOT EXISTS saved_views_team_idx
-  ON saved_views (team_id, position, name) WHERE team_id IS NOT NULL;
+  ON saved_views (team_id) WHERE team_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS saved_view_pins (
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  view_id    uuid NOT NULL REFERENCES saved_views(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, view_id)
+);
+CREATE INDEX IF NOT EXISTS saved_view_pins_view_idx ON saved_view_pins (view_id);
 
 -- 4. Stars on a view go with it.
 CREATE OR REPLACE FUNCTION saved_views_drop_favourites() RETURNS trigger

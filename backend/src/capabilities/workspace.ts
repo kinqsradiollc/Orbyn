@@ -1088,7 +1088,7 @@ export const organize = defineCapability({
 });
 
 async function seeViewTitle(ctx: CapabilityContext, id: string) {
-  const { findView } = await import("../modules/views/service.js");
+  const { findView } = await import("./view-store.js");
   const v = await findView(ctx.db, ctx.spaces, id);
   if (!v) throw notReachable();
   return v.name;

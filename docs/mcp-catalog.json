@@ -1031,52 +1031,31 @@
                   "id": { "type": "string" },
                   "name": { "type": "string" },
                   "url": { "type": "string" },
+                  "source": {
+                    "type": "string",
+                    "enum": ["tasks", "pages", "projects"]
+                  },
                   "layout": {
                     "type": "string",
-                    "enum": ["table", "list", "board", "calendar"]
+                    "enum": ["list", "board", "table", "calendar", "gallery"]
                   },
-                  "group_by": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "enum": [
-                          "status",
-                          "priority",
-                          "project",
-                          "stage",
-                          "assignee",
-                          "team",
-                          "kind",
-                          "due"
-                        ]
-                      },
-                      { "type": "null" }
-                    ]
-                  },
-                  "columns": {
+                  "group_by": { "type": ["string", "null"] },
+                  "columns": { "type": "array", "items": { "type": "string" } },
+                  "not_applied": {
                     "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "status",
-                        "due",
-                        "priority",
-                        "project",
-                        "assignee",
-                        "team",
-                        "updated",
-                        "provenance"
-                      ]
-                    }
+                    "items": { "type": "string" },
+                    "description": "Parts of the view only the app applies (your own fields)."
                   }
                 },
                 "required": [
                   "id",
                   "name",
                   "url",
+                  "source",
                   "layout",
                   "group_by",
-                  "columns"
+                  "columns",
+                  "not_applied"
                 ],
                 "additionalProperties": false
               },
@@ -3672,7 +3651,7 @@
     {
       "name": "save_view",
       "title": "Save a view",
-      "description": "Creates a saved view, or changes one (view + version): a name, what it lists and its filters (as query takes them; dates may be relative like \"+7d\"), sort, group_by, columns and layout (table, list, board or calendar). space: \"personal\" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.",
+      "description": "Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: \"personal\" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.",
       "kind": "write",
       "access": "write",
       "toolset": "workspace",
@@ -3700,114 +3679,149 @@
             "minimum": 1,
             "maximum": 9007199254740991
           },
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
           "space": {
             "description": "Where a new view is kept: \"personal\" (the default), or a team id to share it with the team.",
             "type": "string",
             "maxLength": 100
           },
-          "layout": {
+          "source": {
+            "description": "What a new view lists (default tasks). A view keeps it.",
             "type": "string",
-            "enum": ["table", "list", "board", "calendar"]
+            "enum": ["tasks", "pages", "projects"]
           },
-          "over": {
-            "description": "Default tasks.",
-            "type": "string",
-            "enum": ["tasks", "events", "docs", "projects", "records"]
-          },
-          "text": { "type": "string", "minLength": 1, "maxLength": 200 },
-          "status": {
-            "description": "Default open.",
-            "type": "string",
-            "enum": ["open", "done", "any"]
-          },
-          "project": {
-            "description": "A project: project:<id>, its id or its link.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "stage": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "team": {
-            "description": "\"personal\", or a team id from get_context.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "list": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "tag": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "assignee": {
-            "anyOf": [
-              { "type": "string", "const": "me" },
-              {
+          "filters": {
+            "description": "The filters (they replace the view's own when changing it). Days are YYYY-MM-DD; due_within_days and updated_within_days count from today.",
+            "type": "object",
+            "properties": {
+              "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "status": { "type": "string", "enum": ["open", "done", "any"] },
+              "team": {
+                "anyOf": [
+                  { "type": "string", "const": "personal" },
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                ]
+              },
+              "project": {
                 "type": "string",
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "list": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "tag": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "assignee": {
+                "anyOf": [
+                  { "type": "string", "const": "me" },
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                ]
+              },
+              "due_after": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "due_before": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "due_within_days": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 365
+              },
+              "overdue": { "type": "boolean" },
+              "no_due": { "type": "boolean" },
+              "folder": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["doc", "note", "agenda", "meeting"]
+              },
+              "updated_within_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 365
+              },
+              "fields": {
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "op": {
+                      "type": "string",
+                      "enum": [
+                        "is",
+                        "is_not",
+                        "empty",
+                        "not_empty",
+                        "before",
+                        "after",
+                        "contains"
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        { "type": "string", "maxLength": 500 },
+                        { "type": "number" },
+                        { "type": "boolean" }
+                      ]
+                    }
+                  },
+                  "required": ["field", "op"],
+                  "additionalProperties": false
+                }
               }
-            ]
+            },
+            "additionalProperties": false
           },
-          "due_after": { "type": "string", "maxLength": 40 },
-          "due_before": { "type": "string", "maxLength": 40 },
-          "overdue": { "type": "boolean" },
-          "updated_after": { "type": "string", "maxLength": 40 },
-          "folder": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "kind": { "type": "string", "minLength": 1, "maxLength": 40 },
-          "links_to": {
-            "description": "Rows linking to doc:, task: or project:.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "starred": { "type": "boolean" },
           "sort": {
-            "type": "string",
-            "enum": ["due", "updated", "created", "priority", "title"]
+            "description": "by: due, updated, created, priority, title, estimate, days_left or field:<id>.",
+            "type": "object",
+            "properties": {
+              "by": { "type": "string", "minLength": 1, "maxLength": 60 },
+              "dir": { "type": "string", "enum": ["asc", "desc"] }
+            },
+            "required": ["by"],
+            "additionalProperties": false
           },
           "group_by": {
+            "description": "none, or what the source groups by (tasks: status, list, tag, size, priority, project, due_week, assignee).",
             "type": "string",
-            "enum": [
-              "status",
-              "priority",
-              "project",
-              "stage",
-              "assignee",
-              "team",
-              "kind",
-              "due"
-            ]
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "layout": {
+            "type": "string",
+            "enum": ["list", "board", "table", "calendar", "gallery"]
           },
           "columns": {
-            "maxItems": 8,
+            "maxItems": 20,
             "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "status",
-                "due",
-                "priority",
-                "project",
-                "assignee",
-                "team",
-                "updated",
-                "provenance"
-              ]
-            }
+            "items": { "type": "string", "minLength": 1, "maxLength": 60 }
           },
           "star": { "type": "boolean" },
           "client_ref": {
@@ -6652,9 +6666,13 @@
                     "type": "object",
                     "properties": {
                       "task": { "type": "string" },
-                      "title": { "type": "string" }
+                      "title": { "type": "string" },
+                      "provenance": {
+                        "type": "string",
+                        "description": "Who wrote it: \"you\", \"teammate:<name>\", or where it came from."
+                      }
                     },
-                    "required": ["task", "title"],
+                    "required": ["task", "title", "provenance"],
                     "additionalProperties": false
                   }
                 },
@@ -6902,9 +6920,17 @@
                       "type": "object",
                       "properties": {
                         "at": { "type": "string" },
-                        "what": { "type": "string" }
+                        "what": { "type": "string" },
+                        "by": {
+                          "type": "string",
+                          "enum": ["host", "booker", "system"]
+                        },
+                        "detail": {
+                          "description": "What was written with it (a reason), fenced as outside content with emails masked.",
+                          "type": ["string", "null"]
+                        }
                       },
-                      "required": ["at", "what"],
+                      "required": ["at", "what", "by", "detail"],
                       "additionalProperties": false
                     }
                   },
@@ -7752,5 +7778,5 @@
       ]
     }
   ],
-  "routes": { "covered": 194, "excluded": 164, "pending": 0 }
+  "routes": { "covered": 189, "excluded": 164, "pending": 0 }
 }

@@ -25,7 +25,13 @@ import { announceDocChange } from "../modules/docs/live.js";
 import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
 import { savePrefs } from "../modules/planner/routines.js";
-import { deleteView, findView, updateView } from "../modules/views/service.js";
+import {
+  deleteView,
+  everySpace,
+  findView,
+  readDefinition,
+  updateView,
+} from "./view-store.js";
 
 /**
  * Undo for what an outside agent changed: each change it makes records the
@@ -137,7 +143,7 @@ export type UndoOp =
       op: "view.restore";
       id: string;
       version: number;
-      fields: { name: string; layout: string; definition: unknown };
+      fields: { name: string; definition: unknown };
     };
 
 /** Undo is kept this long after the change. */
@@ -381,8 +387,7 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
         await updateView(db, u, op.id, {
           version: view.version,
           name: op.fields.name,
-          layout: op.fields.layout as never,
-          definition: op.fields.definition as never,
+          definition: readDefinition(op.fields.definition, view.source),
         });
         break;
       }
@@ -390,12 +395,6 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
   }
   return after;
 }
-
-const everySpace = (userId: string) => ({
-  userId,
-  teamIds: null,
-  personal: true,
-});
 
 /**
  * Undo one change an agent made for `u` (from its activity list): once,

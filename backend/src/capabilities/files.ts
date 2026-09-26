@@ -44,6 +44,25 @@ const personal = (ctx: CapabilityContext) => {
     );
 };
 
+/**
+ * The person's imports this connection reaches: all of them with Personal;
+ * without it, only those into a project of a team it reaches.
+ */
+async function reachableJobs(ctx: CapabilityContext, id?: string) {
+  const list = await jobs(ctx.db, ctx.principal.user.id, id);
+  if (ctx.principal.personal || !list.length) return list;
+  const inTeams = new Set(
+    (
+      await ctx.db.query<{ id: string }>(
+        `SELECT id FROM imports WHERE id = ANY ($1::uuid[])
+            AND project_team_id = ANY ($2::uuid[])`,
+        [list.map((j) => j.id), ctx.principal.teams.map((t) => t.id)],
+      )
+    ).rows.map((r) => r.id),
+  );
+  return list.filter((j) => inTeams.has(j.id));
+}
+
 const job = z.object({
   id: z.string(),
   file: z.string(),
@@ -92,9 +111,8 @@ export const listImports = defineCapability({
   mode: "read",
   tier: "R",
   async run(ctx, a) {
-    personal(ctx);
     const id = a.import?.replace(/^import:/, "");
-    const list = await jobs(ctx.db, ctx.principal.user.id, id);
+    const list = await reachableJobs(ctx, id);
     if (id && !list.length)
       throw new CapabilityError(
         "NOT_FOUND",
@@ -153,8 +171,10 @@ export const startImportCapability = defineCapability({
   mode: "write",
   tier: "W1",
   async run(ctx, a) {
-    personal(ctx);
     const project = a.project ? await seeProject(ctx, a.project) : null;
+    // Into a team's project, the team's space is enough; anything else is
+    // the person's own.
+    if (!project?.team_id) personal(ctx);
     if (
       destination(
         ctx,
@@ -219,14 +239,21 @@ export const cancelImportCapability = defineCapability({
   mode: "write",
   tier: "W2",
   async run(ctx, a) {
-    personal(ctx);
-    if (destination(ctx, null, "W2") === "review")
+    const id = a.import.replace(/^import:/, "");
+    const before = (await reachableJobs(ctx, id))[0];
+    const team = before
+      ? ((
+          await dbOf(ctx).query<{ project_team_id: string | null }>(
+            "SELECT project_team_id FROM imports WHERE id = $1",
+            [id],
+          )
+        ).rows[0]?.project_team_id ?? null)
+      : null;
+    if (destination(ctx, team, "W2") === "review")
       throw new CapabilityError(
         "FORBIDDEN",
         "This connection can only suggest changes.",
       );
-    const id = a.import.replace(/^import:/, "");
-    const before = (await jobs(dbOf(ctx), ctx.principal.user.id, id))[0];
     if (!before)
       throw new CapabilityError(
         "NOT_FOUND",

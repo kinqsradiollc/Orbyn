@@ -1,19 +1,19 @@
 import { z } from "zod";
 import {
-  VIEW_COLUMNS,
   VIEW_LAYOUTS,
+  VIEW_SOURCES,
   viewDefinition,
+  viewFilters,
   type ViewDefinition,
 } from "@orbyn/core";
-import { createView, findView, updateView } from "../modules/views/service.js";
 import { setFavourite } from "../modules/organize/service.js";
 import { announceTo } from "../modules/presence/live.js";
 import { teamFilter } from "./common.js";
 import { cleanTitle } from "./format.js";
-import { definitionFrom, filterFields } from "./query.js";
 import { parseRef, refs } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
 import type { UndoOp } from "./undo.js";
+import { createView, findView, updateView } from "./view-store.js";
 import {
   ADDS,
   actorOf,
@@ -25,16 +25,29 @@ import {
 } from "./write.js";
 
 /**
- * save_view: an agent makes or changes a saved view, the same thing the
- * app's views screen shows (and query runs). Personal views are the
- * person's own; team views are shared with the team.
+ * save_view: an agent makes or changes a saved view, the same row and the
+ * same definition the app's Views screen shows (packages/core/src/views.ts)
+ * and query runs. Personal views are the person's own; team views are
+ * shared with the team.
  */
+
+/** The definition's words, checked the way the app checks them. */
+function checked(raw: Record<string, unknown>): ViewDefinition {
+  const parsed = viewDefinition.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  const issue = parsed.error.issues[0];
+  throw new CapabilityError(
+    "INVALID",
+    `${issue.path.length ? `${issue.path.join(".")}: ` : ""}${issue.message}`,
+    "The view language is in orbyn://spec/views.",
+  );
+}
 
 export const saveView = defineCapability({
   name: "save_view",
   title: "Save a view",
   description:
-    'Creates a saved view, or changes one (view + version): a name, what it lists and its filters (as query takes them; dates may be relative like "+7d"), sort, group_by, columns and layout (table, list, board or calendar). space: "personal" (default) or a team id to share it with the team. star pins it in the person\'s favourites. Run it with query(view). The definition language is in orbyn://spec/views.',
+    "Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: \"personal\" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.",
   input: z
     .object({
       view: z
@@ -50,7 +63,7 @@ export const saveView = defineCapability({
         .min(1)
         .optional()
         .describe("The view's version, when changing it."),
-      name: z.string().trim().min(1).max(120).optional(),
+      name: z.string().trim().min(1).max(80).optional(),
       space: z
         .string()
         .trim()
@@ -59,12 +72,36 @@ export const saveView = defineCapability({
         .describe(
           'Where a new view is kept: "personal" (the default), or a team id to share it with the team.',
         ),
+      source: z
+        .enum(VIEW_SOURCES)
+        .optional()
+        .describe("What a new view lists (default tasks). A view keeps it."),
+      filters: viewFilters
+        .optional()
+        .describe(
+          "The filters (they replace the view's own when changing it). Days are YYYY-MM-DD; due_within_days and updated_within_days count from today.",
+        ),
+      sort: z
+        .object({
+          by: z.string().trim().min(1).max(60),
+          dir: z.enum(["asc", "desc"]).optional(),
+        })
+        .strict()
+        .optional()
+        .describe(
+          "by: due, updated, created, priority, title, estimate, days_left or field:<id>.",
+        ),
+      group_by: z
+        .string()
+        .trim()
+        .min(1)
+        .max(60)
+        .optional()
+        .describe(
+          "none, or what the source groups by (tasks: status, list, tag, size, priority, project, due_week, assignee).",
+        ),
       layout: z.enum(VIEW_LAYOUTS).optional(),
-      ...filterFields,
-      columns: z
-        .array(z.enum(VIEW_COLUMNS))
-        .max(VIEW_COLUMNS.length)
-        .optional(),
+      columns: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
       star: z.boolean().optional(),
       client_ref: clientRefInput,
     })
@@ -78,10 +115,15 @@ export const saveView = defineCapability({
   async run(ctx, a) {
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
-    const asked = {
-      ...definitionFrom(a),
-      ...(a.columns ? { columns: a.columns } : {}),
-    };
+    const asked: Record<string, unknown> = {};
+    for (const k of [
+      "filters",
+      "sort",
+      "group_by",
+      "layout",
+      "columns",
+    ] as const)
+      if (a[k] !== undefined) asked[k] = a[k];
     const undo: UndoOp[] = [];
     let saved;
     let change: string;
@@ -101,31 +143,29 @@ export const saveView = defineCapability({
           "This connection can only suggest changes there, and saved views don't go through review.",
           "Ask the person to change the view in Orbyn.",
         );
+      if (a.source && a.source !== view.source)
+        throw new CapabilityError(
+          "INVALID",
+          "A view keeps showing what it was made for.",
+          "Save a new view for the other source.",
+        );
       if (a.version === undefined)
         throw new CapabilityError(
           "INVALID",
           "Changing a view needs its version.",
           "Fetch the view (fetch view:<id>) for its version.",
         );
-      const definition: ViewDefinition = viewDefinition.parse({
-        ...view.definition,
-        ...asked,
-      });
+      const definition = checked({ ...view.definition, ...asked });
       saved = await updateView(db, actor, view.id, {
         version: a.version,
         name: a.name,
-        layout: a.layout,
         definition,
       });
       undo.push({
         op: "view.restore",
         id: saved.id,
         version: saved.version,
-        fields: {
-          name: view.name,
-          layout: view.layout,
-          definition: view.definition,
-        },
+        fields: { name: view.name, definition: view.definition },
       });
       change = "Changed";
     } else {
@@ -142,8 +182,7 @@ export const saveView = defineCapability({
       saved = await createView(db, actor, {
         name: a.name,
         team_id: teamId,
-        layout: a.layout ?? "table",
-        definition: viewDefinition.parse(asked),
+        definition: checked({ source: a.source ?? "tasks", ...asked }),
       });
       undo.push({ op: "view.delete", id: saved.id, version: saved.version });
       change = "Saved";

@@ -363,6 +363,14 @@ async function relatedLink(
       key,
     )
   ).rows;
+  // Removing needs write access where each stored link starts: a link made
+  // the other way round starts at `to`, not at `from`.
+  if (!on)
+    for (const e of existing) {
+      const start =
+        e.source_kind === from.kind && e.source_id === from.id ? from : to;
+      if (destination(ctx, start.team_id, "W2") === "review") refuseSuggest();
+    }
   const undo: UndoOp[] = [];
   if (on && !existing.length) {
     await db.query(

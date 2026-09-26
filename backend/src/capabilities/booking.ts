@@ -115,7 +115,19 @@ export const getBookings = defineCapability({
         answers: z.array(
           z.object({ question: z.string(), answer: z.string() }),
         ),
-        history: z.array(z.object({ at: z.string(), what: z.string() })),
+        history: z.array(
+          z.object({
+            at: z.string(),
+            what: z.string(),
+            by: z.enum(["host", "booker", "system"]),
+            detail: z
+              .string()
+              .nullable()
+              .describe(
+                "What was written with it (a reason), fenced as outside content with emails masked.",
+              ),
+          }),
+        ),
         host_note: z.string(),
       })
       .nullable(),
@@ -152,15 +164,20 @@ export const getBookings = defineCapability({
         "NOT_FOUND",
         "No booking page with that id is reachable from this connection.",
       );
+    // Only what this connection reaches is listed and counted, in SQL, so
+    // totals and pages are right: its booking pages, and open invites (no
+    // page) only with the personal space.
+    const reach = { pages: [...pages.keys()], invites: ctx.principal.personal };
     const found = await listBookings(ctx.db, me, {
       view: a.view,
       ...(a.page ? { page_id: a.page } : {}),
       limit: a.limit,
       offset: a.offset,
+      reach,
     });
     const allowed = (b: { page_id: string | null }) =>
       b.page_id ? pages.has(b.page_id) : ctx.principal.personal;
-    const rows = found.rows.filter(allowed);
+    const rows = found.rows;
     const inReach = async (id: string) => {
       const row = (
         await ctx.db.query<{ page_id: string | null }>(
@@ -187,9 +204,20 @@ export const getBookings = defineCapability({
               ? "[Hidden: text from a booking guest.]"
               : labelled(d.answers[q.id], "booking_guest"),
           })),
+        // Only the kind is plain. A reason may be the guest's own words
+        // (a booker's cancel reason), so any detail arrives fenced with its
+        // emails masked, and hidden when the connection hides outside text.
         history: d.events.map((e) => ({
           at: new Date(e.created_at).toISOString(),
-          what: cleanTitle(e.detail || e.kind),
+          what: cleanTitle(e.kind.replace(/_/g, " ")),
+          by: e.actor,
+          detail: e.detail
+            ? labelled(
+                e.detail.slice(0, 1000),
+                "booking_guest",
+                ctx.principal.flags.hide_outside_content,
+              )
+            : null,
         })),
         host_note: labelled(d.host_note, "you"),
       };
@@ -205,7 +233,7 @@ export const getBookings = defineCapability({
         .slice(0, 50)
         .map((x) => ({ start: when(ctx, x.start_at) }));
     }
-    const stats = await bookingStats(ctx.db, me, a.page ?? null);
+    const stats = await bookingStats(ctx.db, me, a.page ?? null, reach);
     const invites = ctx.principal.personal
       ? (await listOpenInvites(ctx.db, me)).filter(
           (i) => i.status === "open" || i.status === "booked",

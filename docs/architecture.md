@@ -46,7 +46,6 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 | `capabilities/`       | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
 | `modules/mcp-server/` | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
 | `modules/agents/`     | Agent keys, Connected agents, activity, admin switches, team agent policy       |
-| `modules/views/`      | Saved views (`/views`), run by the same engine as the `query` tool              |
 | `modules/developers/` | The public MCP developer page data and `/.well-known/security.txt`              |
 | `lib/visibility.ts`   | The one rule for what a person (or a narrowed connection) can see               |
 | `worker/`             | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
