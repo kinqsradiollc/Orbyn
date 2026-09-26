@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -8,14 +8,18 @@ import {
   FastForward,
   FileText,
   Hourglass,
+  AtSign,
+  Play,
+  Timer,
   UserCheck,
   Wand2,
   type LucideIcon,
   LayoutTemplate,
 } from "lucide-react";
-import { dateLabel, type Notice } from "@orbyn/core";
+import { dateLabel, type Notice, type PageMention } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { stagger } from "../../lib/motion";
+import { client } from "../../lib/api";
 
 type Props = {
   notices: Notice[];
@@ -36,6 +40,8 @@ type Props = {
   onOpenProject?: (projectId: string) => void;
   /** Opens a page in Docs (an imported file that's ready: "import" notices). */
   onOpenDoc?: (docId: string) => void;
+  /** Starts a session from its reminder ("session" notices), in focus mode. */
+  onStartSession?: (blockId: string, itemId: string) => Promise<void>;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -49,7 +55,47 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   template: LayoutTemplate,
   project: CalendarDays,
   import: FileText,
+  mention: AtSign,
+  session: Timer,
 };
+
+/**
+ * "Mentioned in": the pages that name you, newest first, with the line
+ * around the mention. Only pages you can still open are listed.
+ */
+function MentionedIn({ onOpenDoc }: { onOpenDoc?: (docId: string) => void }) {
+  const [list, setList] = useState<PageMention[] | null>(null);
+  useEffect(() => {
+    client.mentions(20).then(setList, () => setList([]));
+  }, []);
+  if (!list?.length) return null;
+  return (
+    <section className="card mentioned-in" aria-labelledby="mentioned-in">
+      <h2 id="mentioned-in">
+        <AtSign size={16} aria-hidden="true" /> Mentioned in
+      </h2>
+      <ul>
+        {list.slice(0, 6).map((m) => (
+          <li key={`${m.doc_id}:${m.block_id}`}>
+            <button
+              type="button"
+              className="mentioned-row"
+              onClick={() => onOpenDoc?.(m.doc_id)}
+              disabled={!onOpenDoc}
+            >
+              <strong>{m.title || "Untitled"}</strong>
+              {m.quote && <span className="mentioned-quote">{m.quote}</span>}
+              <small>
+                {m.mentioned_by ? `${m.mentioned_by} · ` : ""}
+                {dateLabel(m.created_at)}
+              </small>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 export function NotificationsView({
   notices,
@@ -63,9 +109,12 @@ export function NotificationsView({
   onOpenTemplate,
   onOpenProject,
   onOpenDoc,
+  onStartSession,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
+    <>
+    <MentionedIn onOpenDoc={onOpenDoc} />
     <section className="card">
       {notices.map((n, index) => {
         const Icon = ICONS[n.kind ?? "reminder"] ?? Bell;
@@ -79,7 +128,8 @@ export function NotificationsView({
         const eventId = n.kind === "rsvp" ? n.item_id : undefined;
         // An imported file that's ready points at its page ("doc:<id>").
         const docId =
-          n.kind === "import" && n.ref?.startsWith("doc:")
+          (n.kind === "import" || n.kind === "mention") &&
+          n.ref?.startsWith("doc:")
             ? n.ref.slice(4).split(":")[0]
             : undefined;
         const openEvent = (id: string) => {
@@ -135,6 +185,17 @@ export function NotificationsView({
               >
                 <CalendarClock size={14} />{" "}
                 {pending === n.id ? "Moving…" : "Reschedule"}
+              </button>
+            )}
+            {n.kind === "session" && n.ref && n.item_id && onStartSession && (
+              <button
+                className="secondary notice-action"
+                disabled={pending === n.id}
+                onClick={() =>
+                  act(() => onStartSession(n.ref!.split(":")[0], n.item_id!))
+                }
+              >
+                <Play size={14} /> {pending === n.id ? "Starting…" : "Start"}
               </button>
             )}
             {n.kind === "template" && n.ref && onOpenTemplate && (
@@ -218,5 +279,6 @@ export function NotificationsView({
         />
       )}
     </section>
+    </>
   );
 }

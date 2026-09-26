@@ -376,6 +376,27 @@ export function PlanningSettings({ teams, report }: Props) {
             and clashes. They always show in Notifications.
           </p>
           <div className="settings-grid">
+            <div className="settings-field">
+              <label htmlFor="pref-session-reminder">
+                Remind me when a session starts
+              </label>
+              <Select
+                id="pref-session-reminder"
+                value={String(draft.session_reminder_minutes ?? "off")}
+                onChange={(e) =>
+                  set(
+                    "session_reminder_minutes",
+                    e.target.value === "off" ? null : Number(e.target.value),
+                  )
+                }
+              >
+                <option value="off">Off</option>
+                <option value="0">As it starts</option>
+                <option value="5">5 minutes before</option>
+                <option value="10">10 minutes before</option>
+                <option value="15">15 minutes before</option>
+              </Select>
+            </div>
             <NumberInput
               id="pref-deadline"
               label="Warn about tasks due within (days)"

@@ -47,6 +47,8 @@ import {
   keepStart,
   linkRange,
   linkShortcut,
+  mentionMarkdown,
+  mentionQuery,
   listLayout,
   pageFooter,
   plainText,
@@ -90,13 +92,16 @@ import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
 import {
   DocBlockMenu,
+  PeopleMenu,
   SlashMenu,
   todayText,
+  type MentionPerson,
   type SlashItem,
 } from "./DocBlockMenu";
 import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
 import { PageTags } from "./PageTags";
+import { OriginalLine } from "./OriginalFile";
 import { SaveTemplateDialog } from "./PageTemplates";
 
 type Kind = (typeof BLOCK_KINDS)[number];
@@ -354,6 +359,17 @@ export function DocEditor({
     insertsOnly: boolean;
     from: number;
   } | null>(null);
+  /**
+   * An "@" typed in a line, waiting for a person to be picked: from `from`
+   * (where the "@" is) to the caret. Only people who can open the page.
+   */
+  const [mention, setMention] = useState<{
+    index: number;
+    query: string;
+    at: DOMRect;
+    from: number;
+  } | null>(null);
+  const [people, setPeople] = useState<MentionPerson[] | null>(null);
   /** A version chosen in history, shown on the page with what changed. */
   const [historyView, setHistoryView] = useState<HistoryView | null>(null);
   /** Words being made a link: the words, and the address typed so far. */
@@ -1256,6 +1272,47 @@ export function DocEditor({
     else if (slash) setSlash(null);
   };
 
+  /** "@" and a few letters open the people picker (not in code or maths). */
+  const watchMention = (
+    index: number,
+    value: string,
+    el: HTMLTextAreaElement,
+  ) => {
+    const kind = blocks[index].type;
+    const q =
+      kind === "code" || kind === "math"
+        ? null
+        : mentionQuery(value, el.selectionStart);
+    if (!q) {
+      if (mention) setMention(null);
+      return;
+    }
+    if (people === null)
+      void client.docPeople(doc.id).then(
+        (list) => setPeople(list.filter((p) => p.id !== userId)),
+        () => setPeople([]),
+      );
+    setMention({
+      index,
+      query: q.query,
+      at: el.getBoundingClientRect(),
+      from: q.from,
+    });
+  };
+
+  /** The picked person goes in as a mention where "@…" was typed. */
+  const pickPerson = (person: MentionPerson) => {
+    const el = areaRef.current;
+    const at = mention;
+    setMention(null);
+    if (!el || !at) return;
+    const caret = el.selectionStart;
+    const written = `${mentionMarkdown(person)} `;
+    const text = el.value.slice(0, at.from) + written + el.value.slice(caret);
+    const end = at.from + written.length;
+    typeInto(el, { text, start: end, end });
+  };
+
   const pickSlash = (item: SlashItem) => {
     if (!slash) return;
     if (item.kind === "date") {
@@ -2087,15 +2144,25 @@ export function DocEditor({
                       e.currentTarget.style.height = "auto";
                       e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
                       watchSlash(index, e.currentTarget.value, e.currentTarget);
+                      watchMention(
+                        index,
+                        e.currentTarget.value,
+                        e.currentTarget,
+                      );
                       editBlock(index, e.currentTarget.value);
                     }}
                     onKeyDown={(e) => {
-                      // The slash menu owns Enter and the arrows while it is open.
+                      // The slash menu and the people picker own Enter and
+                      // the arrows while open.
                       if (
-                        slash &&
+                        (slash || mention) &&
                         ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
                       )
                         return;
+                      if (mention && e.key === "Escape") {
+                        setMention(null);
+                        return;
+                      }
                       onKey(e, index);
                     }}
                     onBlur={() => {
@@ -2211,6 +2278,15 @@ export function DocEditor({
                   onClose={() => setMenu(null)}
                 />
               )}
+              {mention && (
+                <PeopleMenu
+                  anchor={mention.at}
+                  query={mention.query}
+                  people={people}
+                  onPick={pickPerson}
+                  onClose={() => setMention(null)}
+                />
+              )}
               {slash && (
                 <SlashMenu
                   anchor={slash.at}
@@ -2232,6 +2308,7 @@ export function DocEditor({
                 select words to style them.
               </p>
             )}
+            <OriginalLine doc={doc} canWrite={canWrite} report={report} />
             <p className="doc-footer">
               {pageFooter({
                 ...stats,

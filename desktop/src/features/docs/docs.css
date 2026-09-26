@@ -2492,6 +2492,16 @@ h4.doc-heading {
   white-space: nowrap;
 }
 
+/* "@Anna": someone named in the page, as a soft pill. */
+.doc-mention {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-selected);
+  color: var(--color-selectedText);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* Tags on a library row, after where the page lives. */
 .doc-row-tags {
   display: inline-flex;
@@ -2615,4 +2625,28 @@ h4.doc-heading {
 .page-template-noted svg {
   flex: none;
   color: var(--color-muted);
+}
+
+/* The file an imported page came from, when it was kept. */
+.doc-original {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 18px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  color: var(--color-textMuted);
+  font-size: 13px;
+}
+.doc-original .text-button {
+  padding: 0;
+  font-size: 13px;
+}
+.doc-original .text-button.is-quiet {
+  color: var(--color-textMuted);
+}
+.uploads-keep {
+  margin: 0 0 12px;
 }

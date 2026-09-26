@@ -18,6 +18,7 @@ import {
   type TodayRow,
 } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
+import { SessionCheckIns } from "./SessionCheckIns";
 import "./today.css";
 
 /** Late tasks shown before "Show all". */
@@ -70,6 +71,9 @@ type Props = {
   onPlanDay: () => void;
   /** Every late task, in My tasks. */
   onShowLate: () => void;
+  /** After a session check-in: load Today and planned time again. */
+  onCheckedIn?: () => void;
+  report?: (error: unknown) => void;
 };
 
 /**
@@ -87,8 +91,12 @@ export function TodayCard({
   onOpenCalendar,
   onPlanDay,
   onShowLate,
+  onCheckedIn,
+  report = () => undefined,
 }: Props) {
   const [allLate, setAllLate] = useState(false);
+  // Sessions waiting for a check-in are asked about there, not here too.
+  const [asked, setAsked] = useState<string[]>([]);
   const [dismissed, setDismissed] = useState<string[]>(readDismissed);
   // The list moves on at midnight; words like "past" follow the clock.
   const [now, setNow] = useState(() => new Date());
@@ -106,7 +114,7 @@ export function TodayCard({
   const lateListed = rows.filter((r) => r.due === "late").length;
   const moreLate = current ? current.late_total - lateListed : 0;
   const unfinished = (current?.unfinished ?? []).filter(
-    (u) => !dismissed.includes(u.block_id),
+    (u) => !dismissed.includes(u.block_id) && !asked.includes(u.block_id),
   );
 
   const dismiss = (blockId: string) => {
@@ -260,6 +268,16 @@ export function TodayCard({
                 </button>
               )}
             </div>
+          )}
+          {current && (
+            <SessionCheckIns
+              version={today}
+              onOpen={onOpen}
+              onPlanIt={onPlanIt}
+              onChanged={() => onCheckedIn?.()}
+              onListed={setAsked}
+              report={report}
+            />
           )}
           {current && unfinished.length > 0 && (
             <div className="today-unfinished">

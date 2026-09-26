@@ -6,6 +6,9 @@ import { DOC_KINDS } from "./docs.js";
 import { PROJECT_STATUSES } from "./projects.js";
 import { FAVOURITE_KINDS } from "./folders.js";
 
+/** When a session's reminder can go: as it starts, or minutes before. */
+export const SESSION_REMINDER_MINUTES = [0, 5, 10, 15];
+
 export const KINDS = ["task", "event"] as const;
 export const STATUSES = [
   "todo",
@@ -1338,7 +1341,11 @@ export const plannerPrefsInput = z
     balance_load: z.boolean().optional(),
     /** A reminder this many minutes before each session starts (0: as it starts); null: off. */
     session_reminder_minutes: z
-      .union([z.literal(0), z.literal(5), z.literal(10), z.literal(15)])
+      .number()
+      .int()
+      .refine((n) => SESSION_REMINDER_MINUTES.includes(n), {
+        message: "Choose a reminder as the session starts, or 5, 10 or 15 minutes before.",
+      })
       .nullable()
       .optional(),
     /** Morning agenda and evening review emails; send the keys you change. */

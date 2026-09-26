@@ -361,7 +361,11 @@ export type Notice = {
      * Outside agents: a new connection, one paused or cut off for safety,
      * or a team's first use (`ref` = "grant:<id>" or "team:<id>").
      */
-    | "agent";
+    | "agent"
+    /** Someone named you in a page or a remark (`ref` = "doc:<page id>:…"). */
+    | "mention"
+    /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */
+    | "session";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

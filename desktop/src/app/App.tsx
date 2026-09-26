@@ -1025,6 +1025,17 @@ export function App() {
                       navigate("Docs");
                     }, report)
                   }
+                  onStartSession={async (blockId, itemId) => {
+                    try {
+                      await client.startSession(blockId, "reminder");
+                    } catch {
+                      // Over or moved: focus mode still starts on the task.
+                    }
+                    const task =
+                      items.find((i) => i.id === itemId) ??
+                      (await client.getItem(itemId).catch(() => null));
+                    if (task) startFocus(task);
+                  }}
                 />
               )}
               {view === "Settings" && (

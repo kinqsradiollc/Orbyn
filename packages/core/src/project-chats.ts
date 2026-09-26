@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AssistantSource } from "./docs.js";
 
 /**
  * Saved project chats: a person's own conversations with the assistant
@@ -63,4 +64,74 @@ export function chatTitle(turns: { role: string; text: string }[]): string {
   const line = first.replace(/\s+/g, " ").trim();
   if (!line) return "Chat";
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line;
+}
+
+/** A conversation's turns as either app keeps them. */
+type LiveTurn =
+  | { role: "user"; text: string }
+  | {
+      role: "assistant";
+      proposal: { summary: string; sources?: AssistantSource[] };
+    };
+
+/** The turns to save: the words and cited sources, never pending changes. */
+export function savedTurnsOf(turns: LiveTurn[]): SavedChatTurn[] {
+  return turns.slice(-CHAT_TURNS_MAX).map((t) =>
+    t.role === "user"
+      ? { role: "user", text: t.text.slice(0, CHAT_TURN_CHARS) }
+      : {
+          role: "assistant",
+          text: t.proposal.summary.slice(0, CHAT_TURN_CHARS),
+          ...(t.proposal.sources?.length
+            ? {
+                sources: t.proposal.sources.slice(0, 20).map((s) => ({
+                  ...(s.number ? { number: s.number } : {}),
+                  title: s.title.slice(0, 300),
+                  ...(s.quote ? { quote: s.quote.slice(0, 600) } : {}),
+                  ...("doc_id" in s
+                    ? { doc_id: s.doc_id, block_id: s.block_id }
+                    : {
+                        kind: s.kind,
+                        id: s.id,
+                        ...(s.project_id ? { project_id: s.project_id } : {}),
+                      }),
+                })),
+              }
+            : {}),
+        },
+  );
+}
+
+/**
+ * A saved assistant turn as a reply to show: its words and sources, with no
+ * changes to approve (those have to be asked for again).
+ */
+export function savedReply(
+  turn: SavedChatTurn,
+  n: number,
+): { id: string; summary: string; actions: []; sources: AssistantSource[] } {
+  return {
+    id: `saved-${n}`,
+    summary: turn.text,
+    actions: [],
+    sources: (turn.sources ?? []).map(
+      (s): AssistantSource =>
+        s.doc_id
+          ? {
+              doc_id: s.doc_id,
+              title: s.title,
+              block_id: s.block_id ?? null,
+              quote: s.quote ?? "",
+              ...(s.number ? { number: s.number } : {}),
+            }
+          : {
+              kind: s.kind ?? "task",
+              id: s.id ?? "",
+              title: s.title,
+              quote: s.quote ?? "",
+              ...(s.project_id ? { project_id: s.project_id } : {}),
+              ...(s.number ? { number: s.number } : {}),
+            },
+    ),
+  };
 }
