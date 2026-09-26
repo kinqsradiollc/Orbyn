@@ -24,6 +24,8 @@ export type AppLink =
   | { kind: "assistant" }
   /** "Share into Orbyn" with this text or link, to choose where it goes. */
   | { kind: "share"; text: string | null; url: string | null }
+  /** A proposal waiting in the Review inbox. */
+  | { kind: "review"; id: string }
   | LinkTarget;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,6 +76,10 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   if (head === "add" && !id) {
     // The same reading as always for a link with words to add.
     return { kind: "add", text: parseAddDeepLink(url) };
+  }
+  if (head === "review" && id) {
+    if (rest.length || !UUID.test(id)) return null;
+    return { kind: "review", id: id.toLowerCase() };
   }
   if ((head === "task" || head === "doc" || head === "project") && id) {
     if (rest.length || !UUID.test(id)) return null;

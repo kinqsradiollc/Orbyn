@@ -359,7 +359,9 @@ export type Notice = {
      * Outside agents: a new connection, one paused or cut off for safety,
      * or a team's first use (`ref` = "grant:<id>" or "team:<id>").
      */
-    | "agent";
+    | "agent"
+    /** A change waits for your approval in the Review inbox (`ref` = "proposal:<id>"). */
+    | "review";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

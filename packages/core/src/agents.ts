@@ -181,6 +181,12 @@ export type AgentActivity = {
   /** Reads are counted per minute, so one line can stand for several calls. */
   calls: number;
   target_ids: string[];
+  /** It can still be undone (changes only, for 30 days). */
+  undoable: boolean;
+  /** When it was undone, if it was. */
+  undone_at: string | null;
+  /** The proposal it made, waiting in the Review inbox. */
+  proposal_id: string | null;
 };
 
 /** Limits per connection (and per person across connections). */

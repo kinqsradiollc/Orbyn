@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { ZodError } from "zod";
 import {
+  docInput,
+  docUpdate,
   itemData,
   fail,
   HttpError,
@@ -30,6 +32,9 @@ import { announceDocChange } from "./live.js";
 import { hasVectors } from "../search/semantic.js";
 import { syncSavedPages } from "../study/service.js";
 import { inMyTeams, readableDocs, visibleDocs } from "../../lib/visibility.js";
+import { actAs } from "../../lib/actor.js";
+import { announceTo } from "../presence/live.js";
+import type { z } from "zod";
 
 /**
  * The docs service: reading, checking and writing pages, their tags, task
@@ -824,7 +829,16 @@ export async function eventNote(
  * list of sittings, not keystrokes.
  */
 export const SITTING = "5 minutes";
-export async function snapshot(db: Queryable, docId: string, byUser: string) {
+export async function snapshot(
+  db: Queryable,
+  docId: string,
+  byUser: string,
+  /**
+   * Keep it whatever the last kept one is: an outside agent's edit always
+   * leaves the state before it in history, so it can be undone.
+   */
+  always = false,
+) {
   const current = (
     await db.query<{ version: number; title: string; content: unknown }>(
       "SELECT version, title, content FROM docs WHERE id = $1",
@@ -840,7 +854,7 @@ export async function snapshot(db: Queryable, docId: string, byUser: string) {
       [docId, SITTING],
     )
   ).rows[0];
-  if (last && last.recent && last.user_id === byUser) return;
+  if (!always && last && last.recent && last.user_id === byUser) return;
   await db.query(
     `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
        VALUES ($1, $2, $3, $4::jsonb, $5)
@@ -868,7 +882,7 @@ export async function addToPage(
   place: (content: DocBlock[]) => DocBlock[],
 ): Promise<{ id: string; title: string; version: number }> {
   const saved = await transaction(async (db) => {
-    await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+    await actAs(db, u.id);
     await requireDoc(db, docId, u, "items:write");
     const current = (
       await db.query<{ content: DocBlock[] | null }>(
@@ -978,4 +992,173 @@ export function changeFor(
     text: replace,
     quote: find,
   };
+}
+
+// --- Writing pages ------------------------------------------------------
+
+export type DocCreate = z.output<typeof docInput>;
+export type DocSave = z.output<typeof docUpdate>;
+
+/** Tells open apps (lists, projects) that a space's pages changed. */
+export const announceDocs = (
+  db: Queryable,
+  userId: string,
+  teamId: string | null,
+) =>
+  announceTo(db as never, { user_id: userId, team_id: teamId }, "changed", {
+    area: "docs",
+  });
+
+/**
+ * A new page by `u`: POST /docs, an agent's create_doc and an approved
+ * proposal all make pages here. Runs in the caller's transaction; the caller
+ * syncs Study after it commits (syncSavedPages).
+ */
+export async function createDoc(
+  db: Db,
+  u: UserRow,
+  data: DocCreate,
+): Promise<Doc> {
+  await actAs(db, u.id);
+  if (data.team_id) await requireTeam(data.team_id, u, "items:write", db);
+  await checkLinks(db, u, data.team_id ?? null, data);
+  const id = (
+    await db.query<{ id: string }>(
+      `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
+         folder_id, project_id)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING id`,
+      [
+        u.id,
+        data.team_id,
+        data.title,
+        data.kind,
+        JSON.stringify(data.content),
+        data.item_id,
+        data.folder_id,
+        data.project_id,
+      ],
+    )
+  ).rows[0].id;
+  await setTags(db, id, u, data.team_id, data.tags);
+  await announceDocs(db, u.id, data.team_id);
+  return (
+    await db.query<Doc>(
+      `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
+         ${JOINS} WHERE d.id = $1`,
+      [id],
+    )
+  ).rows[0];
+}
+
+/**
+ * Save an edit to a page, checked against the version it was made on:
+ * PUT /docs/:id, an agent's edit_doc and an approved proposal. The state it
+ * replaces is kept for history (always, for `always`). The caller announces
+ * the new version and syncs Study once it commits.
+ */
+export async function saveDoc(
+  db: Db,
+  u: UserRow,
+  id: string,
+  body: DocSave,
+  options: { ticksFrom?: number | null; always?: boolean } = {},
+): Promise<Doc> {
+  await actAs(db, u.id);
+  const current = await requireDoc(db, id, u, "items:write");
+  await checkLinks(db, u, current.team_id, {
+    project_id: body.project_id,
+    folder_id: body.folder_id,
+  });
+  if (current.version !== body.version)
+    fail(409, "This document changed somewhere else. Refresh and try again.");
+  // Lines tied to tasks are stored as their tasks now stand.
+  const content = body.content
+    ? await syncTicks(db, u, id, body.content, options.ticksFrom ?? null)
+    : undefined;
+  if (content) await followComments(db, id, content);
+  if (content) await followSuggestions(db, id, content);
+  await snapshot(db, id, u.id, options.always);
+  await db.query(
+    `UPDATE docs SET
+       title = coalesce($2, title),
+       content = coalesce($3::jsonb, content),
+       folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
+       project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
+       -- Filing an imported page anywhere takes it out of Uploads.
+       in_uploads = CASE WHEN $4::boolean OR $6::boolean THEN false
+                         ELSE in_uploads END,
+       version = version + 1,
+       updated_at = now()
+     WHERE id = $1`,
+    [
+      id,
+      body.title ?? null,
+      content === undefined ? null : JSON.stringify(content),
+      body.folder_id !== undefined,
+      body.folder_id ?? null,
+      body.project_id !== undefined,
+      body.project_id ?? null,
+    ],
+  );
+  if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
+  if (
+    body.title !== undefined ||
+    body.folder_id !== undefined ||
+    body.project_id !== undefined
+  )
+    await announceDocs(db, current.user_id, current.team_id);
+  return readDoc(db, id);
+}
+
+/**
+ * Move a page to Trash (DELETE /docs/:id, or an approved proposal). The
+ * caller tells open editors once it commits.
+ */
+export async function trashDoc(db: Db, u: UserRow, id: string): Promise<Owned> {
+  await actAs(db, u.id);
+  const doc = await requireDoc(db, id, u, "items:write");
+  await db.query(
+    "UPDATE docs SET deleted_at = now(), deleted_by = $2 WHERE id = $1",
+    [id, u.id],
+  );
+  await noteTrash(db, id, u.id, true);
+  await searchTrash(db, id, true);
+  await announceDocs(db, doc.user_id, doc.team_id);
+  return doc;
+}
+
+/**
+ * Put a past state back as a new version on top (history is only ever
+ * added to). The caller announces it and syncs Study once it commits.
+ */
+export async function restoreDocVersion(
+  db: Db,
+  u: UserRow,
+  id: string,
+  n: number,
+): Promise<Doc> {
+  await actAs(db, u.id);
+  await requireDoc(db, id, u, "items:write");
+  const past = (
+    await db.query<{ title: string; content: DocBlock[] }>(
+      "SELECT title, content FROM doc_versions WHERE doc_id = $1 AND version = $2",
+      [id, n],
+    )
+  ).rows[0];
+  if (!past) fail(404, "That version is not kept");
+  // A restored version's ticks are ones the page said before.
+  const content = await syncTicks(db, u, id, past.content, null);
+  // Going back in time moves the words a remark points at, so the same
+  // pass a save makes runs here too — a remark left behind by a restore
+  // comes loose rather than pointing at the wrong sentence.
+  await followComments(db, id, content);
+  await followSuggestions(db, id, content);
+  // A restore is a sitting of its own: always keep what it replaces.
+  await snapshot(db, id, u.id, true);
+  await db.query(
+    `UPDATE docs SET title = $2, content = $3::jsonb, version = version + 1,
+       updated_at = now() WHERE id = $1`,
+    [id, past.title, JSON.stringify(content)],
+  );
+  return readDoc(db, id);
 }

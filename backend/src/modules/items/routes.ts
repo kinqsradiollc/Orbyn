@@ -24,8 +24,6 @@ import {
   type ItemSort,
   type ItemSyncPage,
   type QuickAddCreated,
-  type QuickAddList,
-  type QuickAddMember,
   type QuickAddResult,
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
@@ -48,6 +46,7 @@ import {
   lockItem,
   moveItem,
   mutate,
+  quickAddContext,
   recomputeProgress,
   requireItemAccess,
   setItemStatus,
@@ -57,7 +56,6 @@ import {
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import {
-  inMyTeams,
   visibleItems,
   visibleOwned,
   visibleProjects,
@@ -336,30 +334,9 @@ export async function itemRoutes(app: FastifyInstance) {
       const u = await authenticate(r);
       const d = quickAddInput.parse(r.body);
       const timeZone = d.timezone ?? (await loadPrefs(pool, u.id)).timezone;
-      const mine = visibleOwned("x", "user_id");
-      const [lists, tags, members] = await Promise.all([
-        pool.query<QuickAddList>(
-          `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
-          [u.id],
-        ),
-        pool.query<QuickAddList>(
-          `SELECT x.id, x.name, x.team_id FROM tags x WHERE ${mine}`,
-          [u.id],
-        ),
-        // Everyone who shares a team with you, and which of your teams.
-        pool.query<QuickAddMember>(
-          `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
-           FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
-           WHERE ${inMyTeams("m")}
-           GROUP BY p.id, p.name, p.email`,
-          [u.id],
-        ),
-      ]);
       const parsed = parseQuickAdd(d.text, {
         timeZone,
-        lists: lists.rows,
-        tags: tags.rows,
-        members: members.rows,
+        ...(await quickAddContext(pool, u.id)),
         selfId: u.id,
       });
       if (!parsed.input.title)

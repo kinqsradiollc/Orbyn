@@ -16,6 +16,7 @@ import {
   visibleFolders,
   visibleOwned,
 } from "../../lib/visibility.js";
+import { announceWrites } from "../presence/live.js";
 
 /**
  * Folders group documents inside a workspace, and favourites pin the few
@@ -49,6 +50,7 @@ async function requireFolder(
 }
 
 export async function folderRoutes(app: FastifyInstance) {
+  announceWrites(app, "organize");
   app.get("/folders", async (r) => {
     const u = await authenticate(r);
     return (

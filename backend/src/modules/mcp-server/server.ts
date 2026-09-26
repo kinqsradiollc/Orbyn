@@ -86,6 +86,8 @@ export type CallContext = {
     digest: string,
   ) => void;
   log: (err: unknown) => void;
+  /** The request, for the activity row of a change. */
+  requestId?: string;
 };
 
 const TEMPLATES = [
@@ -225,6 +227,7 @@ export function buildServer(call: CallContext): Server {
         primary: call.primary,
         log: call.log,
         write: (fn) => call.write((db) => fn(db)),
+        requestId: call.requestId,
       });
     if (scope)
       exec.result._meta = {

@@ -13,6 +13,7 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { visibleOwned } from "../../lib/visibility.js";
+import { announceWrites } from "../presence/live.js";
 
 /**
  * Lists and tags. Personal ones belong to their creator; team ones follow
@@ -52,6 +53,7 @@ const duplicateTag = (error: unknown) =>
     : Promise.reject(error);
 
 export async function organizeRoutes(app: FastifyInstance) {
+  announceWrites(app, "organize");
   app.get("/lists", async (r) => {
     const u = await authenticate(r);
     return (

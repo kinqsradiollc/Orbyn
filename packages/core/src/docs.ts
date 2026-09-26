@@ -245,6 +245,11 @@ export type DocVersion = {
   created_at: string;
   blocks: number;
   content?: DocBlock[];
+  /**
+   * The outside agent that made the change (its app's name, "Claude"), so
+   * history reads "Edited via Claude"; null for a person's own edits.
+   */
+  via_agent?: string | null;
 };
 
 export type Doc = {

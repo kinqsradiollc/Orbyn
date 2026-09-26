@@ -23,6 +23,7 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { linkPreview } from "./preview.js";
 import { cachedSettings } from "../../lib/settings.js";
 import { visibleFolders } from "../../lib/visibility.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Sharing into Orbyn (the phone's share sheet): a link or some text, sent
@@ -208,7 +209,7 @@ async function capture(
 
   // A new page, in the folder's space (a team folder makes a team page).
   const made = await transaction(async (db) => {
-    await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+    await actAs(db, u.id);
     const folder = to.folder_id
       ? await visibleFolder(db, to.folder_id, u)
       : null;

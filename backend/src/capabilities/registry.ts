@@ -5,6 +5,7 @@ import type { Queryable } from "../db/pool.js";
 import { derivedKey } from "../lib/secrets.js";
 import type { Spaces } from "../lib/visibility.js";
 import { policy, type Principal } from "./policy.js";
+import type { WriteMeta } from "./write.js";
 
 /**
  * The capability registry: every tool an outside agent can call, declared
@@ -92,6 +93,8 @@ export type CapabilityResult<T> = {
   links?: ResultLink[];
   /** Typed ids it touched, for the activity log (never content). */
   targets?: string[];
+  /** For changes: the outcome, proposal, undo steps and after-commit work. */
+  write?: WriteMeta;
 };
 
 export type Capability<

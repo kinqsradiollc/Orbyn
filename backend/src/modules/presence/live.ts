@@ -1,6 +1,8 @@
-import type { FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import pg from "pg";
 import { env } from "../../config/env.js";
+import { pool } from "../../db/pool.js";
+import { requestUser } from "../../lib/request-log.js";
 
 /**
  * Live news for a person's own devices and their teams: something changed
@@ -25,8 +27,22 @@ export type LiveKind = (typeof LIVE_KINDS)[number];
 /** Who the news is for: one person, or everyone on a team. */
 export type LiveAudience = { user_id?: string | null; team_id?: string | null };
 
+/**
+ * What part of the app a "changed" is about, so a screen showing pages or
+ * projects re-reads just then; the planner re-reads on any "changed".
+ */
+export type LiveArea =
+  | "items"
+  | "docs"
+  | "projects"
+  | "organize"
+  | "templates"
+  | "records"
+  | "review";
+
 export type LiveEvent = {
   kind: LiveKind;
+  area?: LiveArea;
   user?: string;
   team?: string;
   /** The document, for `doc_presence`. */
@@ -87,7 +103,7 @@ export async function announceTo(
   db: { query: pg.Pool["query"] },
   audience: LiveAudience,
   kind: LiveKind,
-  extra: { doc?: string; by?: string } = {},
+  extra: { doc?: string; by?: string; area?: LiveArea } = {},
 ): Promise<void> {
   const event: LiveEvent = {
     kind,
@@ -150,4 +166,50 @@ export async function closeLiveNews(): Promise<void> {
   client = null;
   readers.clear();
   await open?.end().catch(() => {});
+}
+
+const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Every successful change through a route module is announced as
+ * "changed" (with its `area`) to the person who made it and, when the
+ * thing changed belongs to a team, to that team: open apps showing lists,
+ * folders, templates or work records re-read them, whoever (or whatever
+ * agent) made the change. The team comes from the answer's `team_id`, or
+ * the request's. Registered once per route module (its hooks only see its
+ * own routes); announced after the answer is sent, so after the commit.
+ */
+export function announceWrites(app: FastifyInstance, area: LiveArea) {
+  const teams = new WeakMap<FastifyRequest, string>();
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (
+      WRITES.has(request.method) &&
+      reply.statusCode < 300 &&
+      typeof payload === "string" &&
+      payload.includes('"team_id"')
+    ) {
+      try {
+        const team = (JSON.parse(payload) as { team_id?: unknown })?.team_id;
+        if (typeof team === "string") teams.set(request, team);
+      } catch {
+        // Not JSON: nothing to read the team from.
+      }
+    }
+    return payload;
+  });
+  app.addHook("onResponse", async (request, reply) => {
+    if (!WRITES.has(request.method) || reply.statusCode >= 300) return;
+    const user = requestUser.get(request);
+    if (!user) return;
+    const asked = (request.body as { team_id?: unknown } | null)?.team_id;
+    const team =
+      teams.get(request) ?? (typeof asked === "string" ? asked : null);
+    await announceTo(pool, { user_id: user }, "changed", { area }).catch(
+      () => {},
+    );
+    if (team)
+      await announceTo(pool, { team_id: team }, "changed", { area }).catch(
+        () => {},
+      );
+  });
 }

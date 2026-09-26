@@ -97,8 +97,13 @@ import {
   tagNamed,
   withTaskState,
   proposeChanges,
+  createDoc,
+  saveDoc,
+  trashDoc,
+  restoreDocVersion,
   SUGGESTION_SELECT,
 } from "./service.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Documents: notes, briefs and agendas. Personal documents belong to their
@@ -139,36 +144,7 @@ export async function docRoutes(app: FastifyInstance) {
   app.post("/docs", async (r, reply) => {
     const u = await authenticate(r);
     const data = docInput.parse(r.body ?? {});
-    if (data.team_id) await requireTeam(data.team_id, u, "items:write");
-    await checkLinks(pool, u, data.team_id ?? null, data);
-    const doc = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      const id = (
-        await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
-             folder_id, project_id)
-             VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING id`,
-          [
-            u.id,
-            data.team_id,
-            data.title,
-            data.kind,
-            JSON.stringify(data.content),
-            data.item_id,
-            data.folder_id,
-            data.project_id,
-          ],
-        )
-      ).rows[0].id;
-      await setTags(db, id, u, data.team_id, data.tags);
-      return (
-        await db.query<Doc>(
-          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
-             ${JOINS} WHERE d.id = $1`,
-          [id],
-        )
-      ).rows[0];
-    });
+    const doc = await transaction((db) => createDoc(db, u, data));
     await syncSavedPages(doc.id);
     reply.code(201);
     return doc;
@@ -288,50 +264,9 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = docUpdate.parse(r.body);
-    const saved = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      const current = await requireDoc(db, id, u, "items:write");
-      await checkLinks(db, u, current.team_id, {
-        project_id: body.project_id,
-        folder_id: body.folder_id,
-      });
-      if (current.version !== body.version)
-        fail(
-          409,
-          "This document changed somewhere else. Refresh and try again.",
-        );
-      // Lines tied to tasks are stored as their tasks now stand.
-      const content = body.content
-        ? await syncTicks(db, u, id, body.content, ticksFrom(r, body.version))
-        : undefined;
-      if (content) await followComments(db, id, content);
-      if (content) await followSuggestions(db, id, content);
-      await snapshot(db, id, u.id);
-      await db.query(
-        `UPDATE docs SET
-           title = coalesce($2, title),
-           content = coalesce($3::jsonb, content),
-           folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
-           project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
-           -- Filing an imported page anywhere takes it out of Uploads.
-           in_uploads = CASE WHEN $4::boolean OR $6::boolean THEN false
-                             ELSE in_uploads END,
-           version = version + 1,
-           updated_at = now()
-         WHERE id = $1`,
-        [
-          id,
-          body.title ?? null,
-          content === undefined ? null : JSON.stringify(content),
-          body.folder_id !== undefined,
-          body.folder_id ?? null,
-          body.project_id !== undefined,
-          body.project_id ?? null,
-        ],
-      );
-      if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
-      return readDoc(db, id);
-    });
+    const saved = await transaction((db) =>
+      saveDoc(db, u, id, body, { ticksFrom: ticksFrom(r, body.version) }),
+    );
     // Announced after the transaction commits, so anyone who comes running
     // to re-read the document finds the new version already there.
     await announceDocChange(pool, id, saved.version, editorOf(r));
@@ -440,48 +375,7 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const n = Number((r.params as { version: string }).version);
     if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
-    const restored = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      await requireDoc(db, id, u, "items:write");
-      const past = (
-        await db.query<{ title: string; content: DocBlock[] }>(
-          "SELECT title, content FROM doc_versions WHERE doc_id = $1 AND version = $2",
-          [id, n],
-        )
-      ).rows[0];
-      if (!past) fail(404, "That version is not kept");
-      // A restored version's ticks are ones the page said before.
-      const content = await syncTicks(db, u, id, past.content, null);
-      // Going back in time moves the words a remark points at, so the same
-      // pass a save makes runs here too — a remark left behind by a restore
-      // comes loose rather than pointing at the wrong sentence.
-      await followComments(db, id, content);
-      await followSuggestions(db, id, content);
-      // A restore is a sitting of its own: always keep what it replaces.
-      const current = (
-        await db.query<{ version: number; title: string; content: unknown }>(
-          "SELECT version, title, content FROM docs WHERE id = $1",
-          [id],
-        )
-      ).rows[0];
-      await db.query(
-        `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
-           VALUES ($1, $2, $3, $4::jsonb, $5) ON CONFLICT (doc_id, version) DO NOTHING`,
-        [
-          id,
-          current.version,
-          current.title,
-          JSON.stringify(current.content),
-          u.id,
-        ],
-      );
-      await db.query(
-        `UPDATE docs SET title = $2, content = $3::jsonb, version = version + 1,
-           updated_at = now() WHERE id = $1`,
-        [id, past.title, JSON.stringify(content)],
-      );
-      return readDoc(db, id);
-    });
+    const restored = await transaction((db) => restoreDocVersion(db, u, id, n));
     await announceDocChange(pool, id, restored.version, editorOf(r));
     await syncSavedPages(id);
     return restored;
@@ -1111,17 +1005,7 @@ export async function docRoutes(app: FastifyInstance) {
   app.delete("/docs/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const doc = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      const doc = await requireDoc(db, id, u, "items:write");
-      await db.query(
-        "UPDATE docs SET deleted_at = now(), deleted_by = $2 WHERE id = $1",
-        [id, u.id],
-      );
-      await noteTrash(db, id, u.id, true);
-      await searchTrash(db, id, true);
-      return doc;
-    });
+    const doc = await transaction((db) => trashDoc(db, u, id));
     // Anyone with it open is told, so their editor lets it go.
     await announceDocChange(pool, id, doc.version, editorOf(r), {
       trashed: true,
@@ -1192,7 +1076,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const back = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       await requireDoc(db, id, u, "items:write", true);
       await db.query(
         "UPDATE docs SET deleted_at = NULL, deleted_by = NULL WHERE id = $1",
@@ -1223,7 +1107,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       await requireDoc(db, id, u, "items:write", true);
       await db.query("DELETE FROM docs WHERE id = $1", [id]);
     });

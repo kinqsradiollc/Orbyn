@@ -234,6 +234,19 @@ import {
 /** News from `GET /events`: re-read what it names. */
 export type LiveNews = {
   kind: "changed" | "focus" | "presence" | "doc_presence";
+  /**
+   * What a "changed" is about: pages, projects, lists and folders
+   * (organize), templates, work records, the Review inbox, or items.
+   * Absent on older news, which means anything may have changed.
+   */
+  area?:
+    | "items"
+    | "docs"
+    | "projects"
+    | "organize"
+    | "templates"
+    | "records"
+    | "review";
   user?: string;
   team?: string;
   doc?: string;

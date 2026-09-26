@@ -1,4 +1,13 @@
-import { fail, type Project, type ProjectStage } from "@orbyn/core";
+import {
+  DEFAULT_STAGES,
+  fail,
+  projectInput,
+  type Project,
+  type ProjectStage,
+} from "@orbyn/core";
+import type { z } from "zod";
+import { actAs } from "../../lib/actor.js";
+import { announceTo } from "../presence/live.js";
 import { type Db, type Queryable } from "../../db/pool.js";
 import { type UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -135,4 +144,55 @@ export async function projectVisible(
       id,
     ])
   ).rowCount;
+}
+
+/** Tells open apps that a space's projects changed. */
+export const announceProjects = (
+  db: Queryable,
+  owner: { user_id: string; team_id: string | null },
+) =>
+  announceTo(
+    db as never,
+    { user_id: owner.user_id, team_id: owner.team_id },
+    "changed",
+    { area: "projects" },
+  );
+
+export type ProjectCreate = z.output<typeof projectInput>;
+
+/**
+ * A new project with its stages (the default ones when none are given):
+ * POST /projects, an agent's create_project and an approved proposal.
+ */
+export async function createProject(
+  db: Db,
+  u: UserRow,
+  data: ProjectCreate,
+): Promise<Project> {
+  await actAs(db, u.id);
+  if (data.team_id) await requireTeam(data.team_id, u, "items:write", db);
+  const id = (
+    await db.query<{ id: string }>(
+      `INSERT INTO projects (user_id, team_id, name, summary, deadline)
+         VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [u.id, data.team_id, data.name, data.summary, data.deadline],
+    )
+  ).rows[0].id;
+  const names = data.stages?.length ? data.stages : DEFAULT_STAGES;
+  for (const [position, name] of names.entries())
+    await db.query(
+      "INSERT INTO project_stages (project_id, name, position) VALUES ($1,$2,$3)",
+      [id, name, position],
+    );
+  await announceProjects(db, { user_id: u.id, team_id: data.team_id });
+  return loadProject(db, id);
+}
+
+/** Delete a project; its tasks outlive it, simply unfiled. */
+export async function deleteProject(db: Db, u: UserRow, id: string) {
+  await actAs(db, u.id);
+  const row = await requireProject(db, id, u, "items:write");
+  await db.query("DELETE FROM projects WHERE id = $1", [id]);
+  await announceProjects(db, row);
+  return row;
 }

@@ -111,6 +111,7 @@ import {
   addSession,
   blockById,
   plainBlockById,
+  placeSessions,
   moveSession,
   ownBlock,
   removeSession,
@@ -1059,104 +1060,11 @@ export async function plannerRoutes(app: FastifyInstance) {
           409,
           "The dependency schedule changed. Refresh the plan before applying it.",
         );
-      const spans = [...plan.blocks, ...moves];
-      const starts = spans.map((b) => Date.parse(b.start_at));
-      const ends = spans.map((b) => Date.parse(b.end_at));
-      // The sessions being moved don't stand in their own way.
-      const busy = await busyIntervals(
-        db,
-        u.id,
-        new Date(Math.min(...starts)),
-        new Date(Math.max(...ends)),
-        {
-          blocks: true,
-          derived: true,
-          excludeBlockIds: moves.map((m) => m.block_id),
-        },
-      );
-      const clashes = (b: { start_at: string; end_at: string }) =>
-        busy.some((x) => x.start_at < b.end_at && b.start_at < x.end_at);
-
-      // Moves first. Each session is checked again: it's still yours, its
-      // task is still open, and it hasn't been moved since.
-      const moved: TimeBlock[] = [];
-      let movesSkipped = 0;
-      for (const m of moves) {
-        const same = await db.query(
-          `SELECT 1 FROM time_blocks b JOIN items i ON i.id = b.item_id
-           WHERE b.id = $1 AND b.user_id = $2 AND b.item_id = $3
-             AND b.start_at = $4 AND b.end_at = $5
-             AND i.status NOT IN ('done', 'cancelled')
-           FOR UPDATE OF b`,
-          [m.block_id, u.id, m.item_id, m.from_start_at, m.from_end_at],
-        );
-        if (!same.rowCount || clashes(m)) {
-          movesSkipped++;
-          continue;
-        }
-        await db.query(
-          "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
-          [m.block_id, m.start_at, m.end_at],
-        );
-        await db.query(
-          "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
-          [m.block_id],
-        );
-        moved.push(await plainBlockById(db, m.block_id, u.id));
-      }
-
-      const created: TimeBlock[] = [];
-      let skipped = 0;
-      for (const b of plan.blocks) {
-        const clash = clashes(b);
-        const open = await db.query(
-          `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}`,
-          [u.id, b.item_id],
-        );
-        if (clash || !open.rowCount) {
-          skipped++;
-          continue;
-        }
-        const { id } = (
-          await db.query<{ id: string }>(
-            `INSERT INTO time_blocks (item_id, user_id, start_at, end_at, source, plan_id)
-             VALUES ($1, $2, $3, $4, 'planner', $5) RETURNING id`,
-            [b.item_id, u.id, b.start_at, b.end_at, plan.id],
-          )
-        ).rows[0];
-        created.push(await plainBlockById(db, id, u.id));
-      }
-      // Numbered together, once every session of the plan is in place.
-      const facts = await withSessionFacts(db, u.id, [...created, ...moved]);
-      const saved = facts.slice(0, created.length);
-      const shifted = facts.slice(created.length);
+      const placed = await placeSessions(db, u.id, plan.id, plan.blocks, moves);
       await db.query("UPDATE plans SET applied = true WHERE id = $1", [
         plan.id,
       ]);
-      if (created.length)
-        await queueWebhooks(
-          db,
-          "block.scheduled",
-          { user_id: u.id, team_id: null },
-          {
-            plan_id: plan.id,
-            blocks: saved,
-          },
-        );
-      // Other devices and webhooks hear about each moved session.
-      for (const b of shifted)
-        await queueWebhooks(
-          db,
-          "block.updated",
-          { user_id: u.id, team_id: null },
-          b,
-        );
-      return {
-        blocks: saved,
-        skipped,
-        moved: shifted,
-        moves_skipped: movesSkipped,
-      };
+      return placed;
     });
   });
 

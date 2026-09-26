@@ -28,12 +28,14 @@ import {
   proposeFromTemplate,
   toTemplate,
 } from "./service.js";
+import { announceWrites } from "../presence/live.js";
 
 /**
  * Project templates: the starters everyone has, your own, and your teams'.
  * Owners and admins make a team's; everyone on the team uses them.
  */
 export async function templateRoutes(app: FastifyInstance) {
+  announceWrites(app, "templates");
   app.get("/templates", async (r): Promise<ProjectTemplate[]> => {
     const u = await authenticate(r);
     const rows = (

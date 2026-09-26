@@ -8,6 +8,7 @@ import { isLegacyRequest } from "@modelcontextprotocol/server";
 import { env, oauthIssuer } from "../../config/env.js";
 import { transaction } from "../../db/pool.js";
 import { mcpOriginAllowed } from "../../lib/mcp-origins.js";
+import { actAs } from "../../lib/actor.js";
 import {
   agentRequests,
   requestUser,
@@ -491,10 +492,7 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         primary: Date.now() - since < READ_OWN_WRITES_MS,
         write: (fn) =>
           transaction(async (db) => {
-            await db.query(
-              "SELECT set_config('orbyn.user_id', $1, true), set_config('orbyn.agent_grant', $2, true)",
-              [p.user.id, grantId],
-            );
+            await actAs(db, p.user.id, grantId);
             const result = await fn(db);
             await db.query(
               "UPDATE agent_grants SET last_write_at = now() WHERE id = $1",
@@ -524,9 +522,11 @@ export async function mcpServerRoutes(app: FastifyInstance) {
             requestId: String(r.id),
             latencyMs: ms,
             write: !!c && c.mode !== "read",
+            recorded: !!exec.recorded,
           });
         },
         log: (err) => r.log.error({ err }, "MCP tool failed"),
+        requestId: String(r.id),
       };
 
       try {

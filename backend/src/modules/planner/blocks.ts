@@ -1,8 +1,14 @@
-import { fail, type TimeBlock } from "@orbyn/core";
+import {
+  fail,
+  type PlanApplied,
+  type PlanMove,
+  type TimeBlock,
+} from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { withSessionFacts } from "./sessions.js";
+import { busyIntervals } from "./calendar.js";
 
 /**
  * Sessions (time set aside for a task): adding, moving and removing one.
@@ -153,4 +159,120 @@ export async function removeSession(
       end_at: gone.end_at.toISOString(),
     },
   );
+}
+
+/**
+ * Put a plan's sessions on `userId`'s calendar, and make the moves it
+ * offers: the app's plan apply and an agent's schedule_sessions both come
+ * here, so each is checked the same way first. A move is made only if its
+ * session is still yours, unmoved since, and its task still open; a new
+ * session only if its task is still open and visible to you; neither if it
+ * now clashes with anything on the calendar. What fails a check is skipped
+ * and counted, never an error. Moves go first (the sessions being moved
+ * don't stand in their own way).
+ */
+export async function placeSessions(
+  db: Db,
+  userId: string,
+  planId: string | null,
+  blocks: { item_id: string; start_at: string; end_at: string }[],
+  moves: PlanMove[],
+): Promise<PlanApplied> {
+  const spans = [...blocks, ...moves];
+  if (!spans.length)
+    return { blocks: [], skipped: 0, moved: [], moves_skipped: 0 };
+  const starts = spans.map((b) => Date.parse(b.start_at));
+  const ends = spans.map((b) => Date.parse(b.end_at));
+  const busy = await busyIntervals(
+    db,
+    userId,
+    new Date(Math.min(...starts)),
+    new Date(Math.max(...ends)),
+    {
+      blocks: true,
+      derived: true,
+      excludeBlockIds: moves.map((m) => m.block_id),
+    },
+  );
+  const clashes = (b: { start_at: string; end_at: string }) =>
+    busy.some((x) => x.start_at < b.end_at && b.start_at < x.end_at);
+
+  const moved: TimeBlock[] = [];
+  let movesSkipped = 0;
+  for (const m of moves) {
+    const same = await db.query(
+      `SELECT 1 FROM time_blocks b JOIN items i ON i.id = b.item_id
+       WHERE b.id = $1 AND b.user_id = $2 AND b.item_id = $3
+         AND b.start_at = $4 AND b.end_at = $5
+         AND i.status NOT IN ('done', 'cancelled')
+       FOR UPDATE OF b`,
+      [m.block_id, userId, m.item_id, m.from_start_at, m.from_end_at],
+    );
+    if (!same.rowCount || clashes(m)) {
+      movesSkipped++;
+      continue;
+    }
+    await db.query(
+      "UPDATE time_blocks SET start_at = $2, end_at = $3 WHERE id = $1",
+      [m.block_id, m.start_at, m.end_at],
+    );
+    await db.query(
+      "UPDATE notifications SET read = true WHERE kind = 'conflict' AND ref = $1",
+      [m.block_id],
+    );
+    moved.push(await plainBlockById(db, m.block_id, userId));
+  }
+
+  const created: TimeBlock[] = [];
+  let skipped = 0;
+  // Two new sessions of the same plan never land on each other either.
+  const placed: { start_at: string; end_at: string }[] = [];
+  for (const b of blocks) {
+    const clash =
+      clashes(b) ||
+      placed.some((x) => x.start_at < b.end_at && b.start_at < x.end_at);
+    const open = await db.query(
+      `SELECT 1 FROM items i WHERE i.id = $2 AND i.kind = 'task'
+         AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}`,
+      [userId, b.item_id],
+    );
+    if (clash || !open.rowCount) {
+      skipped++;
+      continue;
+    }
+    const { id } = (
+      await db.query<{ id: string }>(
+        `INSERT INTO time_blocks (item_id, user_id, start_at, end_at, source, plan_id)
+         VALUES ($1, $2, $3, $4, 'planner', $5) RETURNING id`,
+        [b.item_id, userId, b.start_at, b.end_at, planId],
+      )
+    ).rows[0];
+    placed.push(b);
+    created.push(await plainBlockById(db, id, userId));
+  }
+  // Numbered together, once every session of the plan is in place.
+  const facts = await withSessionFacts(db, userId, [...created, ...moved]);
+  const saved = facts.slice(0, created.length);
+  const shifted = facts.slice(created.length);
+  if (created.length)
+    await queueWebhooks(
+      db,
+      "block.scheduled",
+      { user_id: userId, team_id: null },
+      { plan_id: planId, blocks: saved },
+    );
+  // Other devices and webhooks hear about each moved session.
+  for (const b of shifted)
+    await queueWebhooks(
+      db,
+      "block.updated",
+      { user_id: userId, team_id: null },
+      b,
+    );
+  return {
+    blocks: saved,
+    skipped,
+    moved: shifted,
+    moves_skipped: movesSkipped,
+  };
 }

@@ -20,6 +20,7 @@ import { pool, transaction } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { actAs } from "../../lib/actor.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -609,7 +610,7 @@ export async function aiRoutes(app: FastifyInstance) {
         return { applied: true, project_id: p.applied_project_id ?? null };
       if (p.expires_at <= new Date())
         fail(409, "Proposal expired. Ask the assistant again.");
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       let projectId: string | null = null;
       if (p.project)
         ({ project_id: projectId } = await applyProject(

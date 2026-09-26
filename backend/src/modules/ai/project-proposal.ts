@@ -17,6 +17,7 @@ import { loadFrames } from "../planner/frames.js";
 import { mutate } from "../items/service.js";
 import { scheduleProjectDraft } from "./project-schedule.js";
 import { parseProjectDraft } from "./project-draft.js";
+import { actAs } from "../../lib/actor.js";
 
 export type StoredProject = ProjectDecomposition & { fingerprint: string };
 
@@ -176,7 +177,7 @@ export async function applyProject(
     );
   // Project history names who made it (the project and its stages are written
   // before any task, which would otherwise set this).
-  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [user.id]);
+  await actAs(db, user.id);
   // Started for a team: the project and its tasks are the team's.
   const teamId = stored.team_id ?? null;
   const projectId = (

@@ -537,11 +537,20 @@ export async function grantActivity(
       summary: string;
       calls: number;
       target_ids: string[];
+      undoable: boolean;
+      undone_at: Date | null;
+      proposal_id: string | null;
     }>(
-      `SELECT id::text, at, tool, outcome, summary, calls, target_ids
+      `SELECT id::text, at, tool, outcome, summary, calls, target_ids,
+              (undo IS NOT NULL AND undone_at IS NULL AND undo_until > now()) AS undoable,
+              undone_at, proposal_id
          FROM agent_activity WHERE grant_id = $1 AND user_id = $2
         ORDER BY at DESC, id DESC LIMIT 100`,
       [grantId, userId],
     )
-  ).rows.map((a) => ({ ...a, at: a.at.toISOString() }));
+  ).rows.map((a) => ({
+    ...a,
+    at: a.at.toISOString(),
+    undone_at: a.undone_at?.toISOString() ?? null,
+  }));
 }

@@ -6,11 +6,19 @@ import { loadPrefs } from "../modules/planner/calendar.js";
 import { cap as capText } from "./format.js";
 import { policy, type Principal } from "./policy.js";
 import {
+  keepAnswer,
+  priorAnswer,
+  recordChange,
+  type Recorded,
+} from "./write.js";
+import {
   CapabilityError,
+  argsDigest,
   cursorCodec,
   cursorKey,
   type Capability,
   type CapabilityContext,
+  type CapabilityResult,
   type Registry,
   type ResultLink,
 } from "./registry.js";
@@ -48,6 +56,13 @@ export type Execution = {
   result: ToolResult;
   outcome: AgentOutcome;
   targets: string[];
+  /**
+   * The change's activity row was written in its own transaction (with
+   * its undo and proposal), so the batched recorder only counts it.
+   */
+  recorded?: boolean;
+  /** The same client_ref was sent before: this is that call's answer. */
+  replayed?: boolean;
 };
 
 /** What's wrong with the arguments, in words that name the field. */
@@ -177,6 +192,8 @@ export type ExecuteOptions = {
   now?: Date;
   /** Runs a non-read capability; reads never need it. */
   write?: (fn: (db: Queryable) => Promise<unknown>) => Promise<unknown>;
+  /** The request, for the activity row of a change. */
+  requestId?: string;
 };
 
 /** Calls `name` for `p` with `args`, as an MCP tool result. */
@@ -214,7 +231,23 @@ export async function execute(
     );
   const input = parsed.data as Record<string, unknown>;
   const now = options.now ?? new Date();
+  // A change made for a connection is recorded with it; one sent again
+  // with the same client_ref gets the first answer back.
+  const grantId = cap.mode !== "read" ? p.grant_id : null;
+  const clientRef =
+    grantId && typeof input.client_ref === "string" ? input.client_ref : null;
+  let replayed: Recorded | null = null;
   const run = async (db: Queryable) => {
+    if (grantId && clientRef) {
+      replayed = await priorAnswer(db, grantId, name, clientRef);
+      if (replayed)
+        return {
+          structured: replayed.structured,
+          markdown: replayed.markdown,
+          links: replayed.links as ResultLink[] | undefined,
+          targets: replayed.targets,
+        } as CapabilityResult<unknown>;
+    }
     const prefs = await loadPrefs(db, p.user.id);
     const ctx: CapabilityContext = {
       principal: p,
@@ -224,7 +257,30 @@ export async function execute(
       spaces: policy.spaces(p),
       cursor: cursorCodec(p, name, input),
     };
-    return cap.run(ctx, input as z.output<typeof cap.input>);
+    const answer = await cap.run(ctx, input as z.output<typeof cap.input>);
+    if (grantId) {
+      const outcome = answer.write?.outcome ?? "ok";
+      const targets = answer.targets ?? [];
+      await recordChange(db, p, {
+        tool: cap.name,
+        tier: cap.tier,
+        outcome,
+        targets,
+        argsDigest: argsDigest(args),
+        summary: `${cap.title}${targets.length ? ` · ${targets.length} item${targets.length === 1 ? "" : "s"}` : ""}`,
+        meta: answer.write ?? {},
+        requestId: options.requestId,
+      });
+      if (clientRef)
+        await keepAnswer(db, grantId, name, clientRef, {
+          structured: answer.structured,
+          markdown: answer.markdown,
+          links: answer.links,
+          targets,
+          outcome,
+        });
+    }
+    return answer;
   };
   try {
     await cursorKey();
@@ -242,6 +298,10 @@ export async function execute(
                 "Changes aren't available here.",
               );
             })();
+    // Once committed: live news, Study, open editors.
+    for (const after of answer.write?.after ?? [])
+      await after().catch((err) => options.log?.(err));
+    const again = replayed as Recorded | null;
     const checked = cap.output.safeParse(answer.structured);
     if (!checked.success) {
       // The answer doesn't match the declared shape: Orbyn's fault, not the caller's.
@@ -255,10 +315,14 @@ export async function execute(
       );
     }
     const structured = checked.data;
+    const result = toResult(cap, structured, answer.markdown, answer.links);
+    if (again) result._meta = { ...result._meta, "orbyn/replayed": true };
     return {
-      result: toResult(cap, structured, answer.markdown, answer.links),
-      outcome: "ok",
+      result,
+      outcome: again?.outcome ?? answer.write?.outcome ?? "ok",
       targets: answer.targets ?? [],
+      recorded: !!grantId && !again,
+      replayed: !!again,
     };
   } catch (e) {
     return fail(asCapabilityError(e, options.log));

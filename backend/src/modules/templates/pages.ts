@@ -42,6 +42,7 @@ import {
   visibleItems,
   visiblePageTemplates,
 } from "../../lib/visibility.js";
+import { actAs } from "../../lib/actor.js";
 
 /**
  * Page templates (DAY-02): the starters everyone has, your own, and your
@@ -235,7 +236,7 @@ async function usePageTemplate(
   },
   input: ReturnType<typeof pageTemplateUse.parse>,
 ) {
-  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+  await actAs(db, u.id);
   const event = input.event_id
     ? ((
         await db.query<EventRow>(

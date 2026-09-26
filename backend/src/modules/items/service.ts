@@ -16,9 +16,11 @@ import {
   type OccurrenceChanges,
   type Kind,
   type Status,
+  type QuickAddList,
+  type QuickAddMember,
 } from "@orbyn/core";
 import type { QueryResult } from "pg";
-import { pool, type Db } from "../../db/pool.js";
+import { pool, type Db, type Queryable } from "../../db/pool.js";
 import { requireTeam } from "../../lib/teams.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { followTaskState } from "../docs/task-lines.js";
@@ -37,7 +39,8 @@ import {
   syncAttendees,
 } from "./attendees.js";
 import { carryEventNotes } from "./notes.js";
-import { visibleItems } from "../../lib/visibility.js";
+import { inMyTeams, visibleItems, visibleOwned } from "../../lib/visibility.js";
+import { actAs } from "../../lib/actor.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -638,7 +641,7 @@ export async function mutate(
   options: MutateOptions = {},
 ): Promise<Item | null> {
   const { operation, item_id, version } = action;
-  await db.query("SELECT set_config('orbyn.user_id', $1, true)", [actor.id]);
+  await actAs(db, actor.id);
   let item: ItemRow | undefined;
   if (operation !== "create") {
     item = await lockItem(db, item_id!);
@@ -1255,4 +1258,39 @@ export async function itemDetail(
     )
   ).rows;
   return { ...item, steps, updates, attendees, overrides, links };
+}
+
+/**
+ * What quick add reads a line against: the person's lists and tags (their
+ * own and their teams'), and everyone who shares a team with them.
+ * POST /items/quick and an agent's create_tasks both use it.
+ */
+export async function quickAddContext(
+  db: Queryable,
+  userId: string,
+): Promise<{
+  lists: QuickAddList[];
+  tags: QuickAddList[];
+  members: QuickAddMember[];
+}> {
+  const mine = visibleOwned("x", "user_id");
+  const [lists, tags, members] = await Promise.all([
+    db.query<QuickAddList>(
+      `SELECT x.id, x.name, x.team_id FROM lists x WHERE ${mine}`,
+      [userId],
+    ),
+    db.query<QuickAddList>(
+      `SELECT x.id, x.name, x.team_id FROM tags x WHERE ${mine}`,
+      [userId],
+    ),
+    // Everyone who shares a team with you, and which of your teams.
+    db.query<QuickAddMember>(
+      `SELECT p.id AS user_id, p.name, p.email, array_agg(m.team_id) AS team_ids
+       FROM team_members m JOIN users p ON p.id = m.user_id AND NOT p.disabled
+       WHERE ${inMyTeams("m")}
+       GROUP BY p.id, p.name, p.email`,
+      [userId],
+    ),
+  ]);
+  return { lists: lists.rows, tags: tags.rows, members: members.rows };
 }

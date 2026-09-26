@@ -1,6 +1,5 @@
 import type { FastifyInstance } from "fastify";
 import {
-  DEFAULT_STAGES,
   fail,
   projectAssign,
   projectInput,
@@ -23,6 +22,7 @@ import { visibleProjectActivity } from "./activity-visibility.js";
 import { makeProjectPlan } from "../planner/plans.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { z } from "zod";
+import { actAs } from "../../lib/actor.js";
 
 import {
   VISIBLE,
@@ -32,6 +32,9 @@ import {
   projectVisible,
   requireProject,
   stagesFor,
+  announceProjects,
+  createProject,
+  deleteProject,
 } from "./service.js";
 /**
  * Projects group planner tasks into a named piece of work with ordered
@@ -57,24 +60,7 @@ export async function projectRoutes(app: FastifyInstance) {
   app.post("/projects", async (r, reply) => {
     const u = await authenticate(r);
     const data = projectInput.parse(r.body);
-    if (data.team_id) await requireTeam(data.team_id, u, "items:write");
-    const project = await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      const id = (
-        await db.query<{ id: string }>(
-          `INSERT INTO projects (user_id, team_id, name, summary, deadline)
-             VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-          [u.id, data.team_id, data.name, data.summary, data.deadline],
-        )
-      ).rows[0].id;
-      const names = data.stages?.length ? data.stages : DEFAULT_STAGES;
-      for (const [position, name] of names.entries())
-        await db.query(
-          "INSERT INTO project_stages (project_id, name, position) VALUES ($1,$2,$3)",
-          [id, name, position],
-        );
-      return loadProject(db, id);
-    });
+    const project = await transaction((db) => createProject(db, u, data));
     reply.code(201);
     return project;
   });
@@ -110,7 +96,8 @@ export async function projectRoutes(app: FastifyInstance) {
     const link = await transaction(async (db) => {
       // requireProject locks the project row (FOR UPDATE), so two adds at
       // once are counted one after the other and never pass 20 together.
-      await requireProject(db, id, u, "items:write");
+      const owned = await requireProject(db, id, u, "items:write");
+      await announceProjects(db, owned);
       const existing = await db.query(
         "SELECT 1 FROM project_links WHERE project_id = $1 AND url = $2",
         [id, input.url],
@@ -138,7 +125,8 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const params = z.object({ id: z.uuid(), linkId: z.uuid() }).parse(r.params);
     await transaction(async (db) => {
-      await requireProject(db, params.id, u, "items:write");
+      const owned = await requireProject(db, params.id, u, "items:write");
+      await announceProjects(db, owned);
       const removed = await db.query(
         "DELETE FROM project_links WHERE id = $1 AND project_id = $2 RETURNING id",
         [params.linkId, params.id],
@@ -245,7 +233,7 @@ export async function projectRoutes(app: FastifyInstance) {
       .strict()
       .parse(r.body ?? {});
     return transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const project = await requireProject(db, id, u, "items:write");
       const details = (
         await db.query<{ status: string; deadline: Date | null }>(
@@ -348,8 +336,9 @@ export async function projectRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const body = projectUpdate.parse(r.body);
     return transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      await requireProject(db, id, u, "items:write");
+      await actAs(db, u.id);
+      const owned = await requireProject(db, id, u, "items:write");
+      await announceProjects(db, owned);
       const before = (
         await db.query<{ name: string; deadline: Date | null }>(
           "SELECT name, deadline FROM projects WHERE id = $1",
@@ -423,12 +412,8 @@ export async function projectRoutes(app: FastifyInstance) {
   app.delete("/projects/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    await transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
-      await requireProject(db, id, u, "items:write");
-      // The tasks outlive the project; they simply become unfiled.
-      await db.query("DELETE FROM projects WHERE id = $1", [id]);
-    });
+    // The tasks outlive the project; they simply become unfiled.
+    await transaction((db) => deleteProject(db, u, id));
     reply.code(204);
   });
 
@@ -438,7 +423,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const body = projectAssign.parse(r.body);
     return transaction(async (db) => {
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const item = (
         await db.query<{
           id: string;

@@ -26,9 +26,12 @@ import {
   checkOwner,
   notifyPromise,
 } from "./service.js";
+import { actAs } from "../../lib/actor.js";
+import { announceWrites } from "../presence/live.js";
 
 /** Promises and decisions use the same privacy boundary as their source work. */
 export async function workRecordRoutes(app: FastifyInstance) {
+  announceWrites(app, "records");
   app.get("/work-records", async (r) => {
     const u = await authenticate(r);
     const q = listQuery.parse(r.query);
@@ -72,7 +75,7 @@ export async function workRecordRoutes(app: FastifyInstance) {
       await checkOwner(db, ownerId, d.team_id, u);
       if (ownerId !== u.id && d.kind !== "promise")
         fail(422, "Only a promise can be offered to someone else.");
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       const id = (
         await db.query<{ id: string }>(
           `INSERT INTO work_records
@@ -131,7 +134,7 @@ export async function workRecordRoutes(app: FastifyInstance) {
         fail(409, "This promise is waiting for its owner's response.");
       if (d.linked_item_id !== undefined)
         await checkItem(db, d.linked_item_id, current.team_id, u, true);
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       await db.query(
         `UPDATE work_records SET
           title = coalesce($2, title), details = coalesce($3, details),
@@ -217,7 +220,7 @@ export async function workRecordRoutes(app: FastifyInstance) {
         await requireTeam(current.team_id, u, "items:read", db);
       if (current.kind !== "promise" || current.status !== "proposed")
         fail(409, "This promise is no longer waiting for a response.");
-      await db.query("SELECT set_config('orbyn.user_id', $1, true)", [u.id]);
+      await actAs(db, u.id);
       await db.query(
         "UPDATE work_records SET status = $2, version = version + 1, updated_at = now() WHERE id = $1",
         [id, decision === "accept" ? "open" : "declined"],
