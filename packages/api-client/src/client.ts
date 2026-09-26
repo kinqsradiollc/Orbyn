@@ -268,6 +268,8 @@ export type DocNews = {
   trashed: boolean;
   /** Only the page's tags changed; its words and version are as they were. */
   tags: boolean;
+  /** Only a field value changed (the Info panel reads it afresh). */
+  fields?: boolean;
   /** Who made the change, so an editor can skip its own saves ("" when unknown). */
   by: string;
 };
@@ -1530,11 +1532,13 @@ export class OrbynClient {
                   version?: number;
                   trashed?: boolean;
                   tags?: boolean;
+                  fields?: boolean;
                   by?: string;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
                   tags: payload.tags === true,
+                  fields: payload.fields === true,
                   by: typeof payload.by === "string" ? payload.by : "",
                 });
               } catch {

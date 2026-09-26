@@ -504,10 +504,10 @@ function OpenView({
   const [result, setResult] = useState<ViewResult | null>(null);
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const [stamp, setStamp] = useState(0);
-  const tz = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-    [],
-  );
+  // The account's time zone, as the server read the rows' days in it; the
+  // phone's own until the first rows arrive.
+  const tz =
+    result?.time_zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const reportRef = useRef(report);
   reportRef.current = report;
 

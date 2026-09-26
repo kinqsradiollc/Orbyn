@@ -2,7 +2,7 @@ import {
   changeProjectDeadline,
   itemBody,
   parseMinutes,
-  taskDueChange,
+  viewDueChange,
   type FieldValue,
   type Item,
   type ItemInput,
@@ -69,9 +69,12 @@ export async function applyEdit(
         };
         break;
       }
-      case "due":
-        change = taskDueChange(item, value, timeZone);
+      case "due": {
+        const moved = viewDueChange(item, value, timeZone);
+        if (!moved.ok) throw new Error(moved.reason);
+        change = moved.change;
         break;
+      }
     }
     if (change) await outbox.updateItem(item, { ...itemBody(item), ...change });
     return;

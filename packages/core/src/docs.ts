@@ -842,7 +842,6 @@ export function serializeDoc(blocks: DocBlock[]): string {
   );
 }
 
-/** Plain text of a document, for previews and search. */
 /**
  * The language of a live list block (SRCH-02): a fenced block whose words
  * say what to list, drawn as live rows in the apps (see views.ts). Its
@@ -854,6 +853,7 @@ export const LIVE_LIST_LANG = "orbyn-list";
 export const isLiveList = (b: DocBlock) =>
   b.type === "code" && b.lang === LIVE_LIST_LANG;
 
+/** Plain text of a document, for previews and search. */
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
     .map((b) => {

@@ -29,6 +29,7 @@ import {
   type GroupNames,
 } from "./task-groups.js";
 import { allDayRange } from "./planner.js";
+import { dueDayAt } from "./deadlines.js";
 import { addDays, dayTime, localDateKey, zonedParts } from "./time.js";
 import type { Item, Priority } from "./types.js";
 
@@ -263,9 +264,26 @@ export const EDITABLE_COLUMNS: Record<ViewSource, readonly string[]> = {
   projects: ["title", "status", "due"],
 };
 
-export const isEditableColumn = (source: ViewSource, column: string) =>
-  EDITABLE_COLUMNS[source].includes(column) ||
-  (source !== "tasks" && fieldKeyId(column) !== null);
+/**
+ * Whether a column is changed in place: for `row`, when given. A repeating
+ * task's date is changed from the task, which asks which of its dates the
+ * change is for; a view has no such question to ask.
+ */
+export const isEditableColumn = (
+  source: ViewSource,
+  column: string,
+  row?: Pick<ViewRow, "kind" | "item">,
+) =>
+  (EDITABLE_COLUMNS[source].includes(column) ||
+    (source !== "tasks" && fieldKeyId(column) !== null)) &&
+  !(column === "due" && row && isRepeatingTask(row));
+
+/** A repeating task's row. */
+export const isRepeatingTask = (row: Pick<ViewRow, "kind" | "item">) =>
+  row.kind === "task" && !!row.item?.rrule;
+
+/** Why a view doesn't move a repeating task's date. */
+export const REPEATING_DATE_NOTE = "Open a repeating task to change its date.";
 
 const columnKey = z
   .string()
@@ -411,6 +429,12 @@ export type ViewRow = {
   status: string | null;
   /** A task's deadline (an instant) or a project's (a day); null otherwise. */
   due_at: string | null;
+  /** A task's end time, when it runs over a span (it is due when it ends). */
+  end_at?: string | null;
+  /** A task due all day: due by the end of its day, not the midnight it starts. */
+  all_day?: boolean;
+  /** The zone an all-day task's date is kept in. */
+  timezone?: string | null;
   priority: Priority | null;
   estimate_minutes: number | null;
   spent_minutes: number | null;
@@ -451,6 +475,11 @@ export type ViewResult = {
   fields: CustomField[];
   /** The people named by Person fields and assignees. */
   people: { id: string; name: string }[];
+  /**
+   * The zone its days were read in (the account's time zone): the apps draw
+   * and edit in it too, so "due today" means the same day everywhere.
+   */
+  time_zone?: string;
   /** The saved view, when one was run. */
   view?: SavedView;
 };
@@ -462,15 +491,30 @@ export type ViewContext = {
   timeZone: string;
 };
 
-/** The day a row is due, in the viewer's zone ("YYYY-MM-DD"), or null. */
-export function dueDay(
-  row: Pick<ViewRow, "due_at">,
-  timeZone: string,
-): string | null {
+/**
+ * What a row's deadline is worked out from. A task's row carries its times
+ * (or the task itself), so a view reads "due" and "overdue" by the same rule
+ * as the task list (`deadlineOf`, `dueDayAt`, `dueBeforeToday`): an all-day
+ * task is due by the end of its day, one with an end time when it ends.
+ */
+export type DueRow = Pick<ViewRow, "due_at"> &
+  Partial<Pick<ViewRow, "kind" | "end_at" | "all_day" | "timezone" | "item">>;
+
+/** The day a row is due by, in the viewer's zone ("YYYY-MM-DD"), or null. */
+export function dueDay(row: DueRow, timeZone: string): string | null {
   if (!row.due_at) return null;
   if (DAY.test(row.due_at)) return row.due_at;
-  const t = new Date(row.due_at);
-  return Number.isNaN(t.getTime()) ? null : localDateKey(t, timeZone);
+  if (Number.isNaN(new Date(row.due_at).getTime())) return null;
+  const at =
+    row.kind === "task" || row.item
+      ? dueDayAt({
+          due_at: row.due_at,
+          end_at: row.end_at ?? row.item?.end_at ?? null,
+          all_day: row.all_day ?? row.item?.all_day ?? false,
+          timezone: row.timezone ?? row.item?.timezone ?? null,
+        })
+      : new Date(row.due_at);
+  return at ? localDateKey(at, timeZone) : null;
 }
 
 const isOpen = (row: Pick<ViewRow, "kind" | "status">) =>
@@ -480,9 +524,9 @@ const isOpen = (row: Pick<ViewRow, "kind" | "status">) =>
       ? row.status === "active"
       : true;
 
-/** Days until a row is due (0 today, negative once past), or null. */
+/** Days until the day a row is due by (0 today, negative once past), or null. */
 export function daysLeft(
-  row: Pick<ViewRow, "due_at">,
+  row: DueRow,
   ctx: Pick<ViewContext, "now" | "timeZone">,
 ): number | null {
   const due = dueDay(row, ctx.timeZone);
@@ -494,17 +538,18 @@ export function daysLeft(
   );
 }
 
-/** An open row past its deadline. */
+/**
+ * An open row whose deadline fell on a day before today, as on task lists
+ * (`dueBeforeToday`): a task due earlier today isn't overdue yet, and an
+ * all-day task becomes overdue the day after its date.
+ */
 export function isOverdue(
-  row: Pick<ViewRow, "kind" | "status" | "due_at">,
+  row: DueRow & Pick<ViewRow, "kind" | "status">,
   ctx: Pick<ViewContext, "now" | "timeZone">,
 ): boolean {
   if (!row.due_at || !isOpen(row)) return false;
-  if (DAY.test(row.due_at)) {
-    const left = daysLeft(row, ctx);
-    return left !== null && left < 0;
-  }
-  return new Date(row.due_at).getTime() < ctx.now.getTime();
+  const left = daysLeft(row, ctx);
+  return left !== null && left < 0;
 }
 
 const lower = (s: string) => s.toLocaleLowerCase();
@@ -1117,19 +1162,48 @@ export function calendarDay(
   return dueDay(row, timeZone);
 }
 
-const OWN_IMAGE = /!\[[^\]]*\]\((\/[^\s)]+)\)/;
+const IMAGE = /!\[[^\]]*\]\(([^\s)]+)\)/;
+
+/**
+ * Where Orbyn's own file store serves files: the only images a gallery card
+ * may show. EDT-01's page images are kept under it too.
+ */
+export const OWN_FILES_PREFIX = "/files/";
+
+/**
+ * An image address as a path in Orbyn's own file store, or null when it
+ * could reach anywhere else. It is read the way a browser reads it (so
+ * "/\\host/x.png", which browsers treat as "//host/x.png", is refused), and
+ * it must stay on this site and under {@link OWN_FILES_PREFIX}.
+ */
+export function ownFilePath(address: string): string | null {
+  if (!address.startsWith("/") || /[\\\u0000-\u001f]/.test(address))
+    return null;
+  const base = "https://orbyn.invalid";
+  let url: URL;
+  try {
+    url = new URL(address, base);
+  } catch {
+    return null;
+  }
+  if (url.origin !== base || !url.pathname.startsWith(OWN_FILES_PREFIX))
+    return null;
+  return url.pathname + url.search;
+}
 
 /**
  * A page's cover for the gallery: its first image, only when it is one of
- * Orbyn's own files (an address on this site), so a gallery never fetches
- * anything from elsewhere. Null otherwise: the card stays plain.
+ * Orbyn's own files (`ownFilePath`), so a gallery never fetches anything
+ * from elsewhere. Null otherwise: the card stays plain.
  */
 export function docCover(
   blocks: { type: string; text?: string }[],
 ): string | null {
   for (const b of blocks) {
-    const m = typeof b.text === "string" ? OWN_IMAGE.exec(b.text) : null;
-    if (m && !m[1].startsWith("//")) return m[1];
+    const m = typeof b.text === "string" ? IMAGE.exec(b.text) : null;
+    if (!m) continue;
+    const own = ownFilePath(m[1]);
+    if (own) return own;
   }
   return null;
 }
@@ -1264,6 +1338,22 @@ export function taskDueChange(
     all_day: true,
     timezone: timeZone,
   };
+}
+
+/**
+ * A task's date change from a view (a table cell, a calendar drop), or why
+ * not: a repeating task isn't moved, since moving its date without asking
+ * "this one or all" would start the whole series again from the new day.
+ */
+export function viewDueChange(
+  item: Pick<Item, "due_at" | "end_at" | "all_day" | "rrule">,
+  day: string | null,
+  timeZone: string,
+):
+  | { ok: true; change: ReturnType<typeof taskDueChange> }
+  | { ok: false; reason: string } {
+  if (item.rrule) return { ok: false, reason: REPEATING_DATE_NOTE };
+  return { ok: true, change: taskDueChange(item, day, timeZone) };
 }
 
 /**

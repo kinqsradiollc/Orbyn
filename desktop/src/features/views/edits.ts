@@ -1,7 +1,7 @@
 import {
   changeProjectDeadline,
   parseMinutes,
-  taskDueChange,
+  viewDueChange,
   type FieldValue,
   type Item,
   type ItemInput,
@@ -72,9 +72,12 @@ export async function applyEdit(
         });
         return;
       }
-      case "due":
-        actions.onChangeItem(item, taskDueChange(item, value, timeZone));
+      case "due": {
+        const moved = viewDueChange(item, value, timeZone);
+        if (!moved.ok) throw new Error(moved.reason);
+        actions.onChangeItem(item, moved.change);
         return;
+      }
     }
     return;
   }

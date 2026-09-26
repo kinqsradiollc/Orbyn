@@ -19,6 +19,7 @@ import {
   groupHeader,
   isEditableColumn,
   isOverdue,
+  isRepeatingTask,
   localDateKey,
   PRIORITIES,
   statusChoices,
@@ -30,6 +31,7 @@ import {
   type ViewGroup,
   type ViewResult,
   type ViewRow,
+  REPEATING_DATE_NOTE,
 } from "@orbyn/core";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Chip, ChipRow } from "../../components/Chip";
@@ -54,6 +56,10 @@ type Props = {
 };
 
 /** The short facts under a row's name: when it's due, where it sits. */
+/** A repeating task's date cell: it opens the task, which asks which dates to change. */
+const repeating = (row: ViewRow, column: string) =>
+  column === "due" && row.can_write && isRepeatingTask(row);
+
 function facts(row: ViewRow, timeZone: string, fields: CustomField[]) {
   const ctx = { now: new Date(), timeZone };
   const parts: string[] = [];
@@ -313,7 +319,7 @@ function TableLayout({
                       const fieldId = fieldKeyId(c);
                       const editable =
                         row.can_write &&
-                        isEditableColumn(def.source, c) &&
+                        isEditableColumn(def.source, c, row) &&
                         (!fieldId ||
                           result.fields.some((f) => f.id === fieldId));
                       return (
@@ -325,10 +331,12 @@ function TableLayout({
                               ? "Opens it"
                               : editable
                                 ? "Changes it"
-                                : undefined
+                                : repeating(row, c)
+                                  ? REPEATING_DATE_NOTE
+                                  : undefined
                           }
                           onPress={() =>
-                            c === "title"
+                            c === "title" || repeating(row, c)
                               ? onOpen(row)
                               : editable
                                 ? setCell({ row, column: c })

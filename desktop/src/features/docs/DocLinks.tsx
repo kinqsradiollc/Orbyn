@@ -96,12 +96,17 @@ type Pills = {
   pills: Map<string, LinkPill>;
   onToggle?: (id: string, done: boolean) => void;
   onRestore?: (id: string) => void;
+  /** A task was changed from the page (a live list's tick): the planner reads afresh. */
+  onItemsChanged?: () => void;
 };
 
 const PillContext = createContext<Pills>({ pills: new Map() });
 
 /** Gives the pills inside it their live titles and actions. */
 export const LinkPillProvider = PillContext.Provider;
+
+/** The page's pill actions, for blocks inside it that change tasks. */
+export const usePageActions = () => useContext(PillContext);
 
 /**
  * The pills for a page's links, as they stand now. Asked again when the

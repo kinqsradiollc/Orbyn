@@ -17,8 +17,10 @@ import {
   type TargetFields,
   type TeamRole,
 } from "@orbyn/core";
-import { reader, transaction, type Queryable } from "../../db/pool.js";
+import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { announceDocChange } from "../docs/live.js";
 import { idParam } from "../../lib/params.js";
 import { membershipRole, requireTeam } from "../../lib/teams.js";
 
@@ -132,8 +134,11 @@ async function loadTarget(
          FROM ${table} x
          LEFT JOIN team_members tm ON tm.team_id = x.team_id AND tm.user_id = $1
         WHERE x.id = $2
-          ${target === "page" ? "AND x.deleted_at IS NULL" : ""}
-          AND ((x.team_id IS NULL AND x.user_id = $1) OR tm.user_id IS NOT NULL)`,
+          AND ${
+            target === "page"
+              ? docVisibleTo("$1", "x")
+              : "((x.team_id IS NULL AND x.user_id = $1) OR tm.user_id IS NOT NULL)"
+          }`,
       [userId, id],
     )
   ).rows[0];
@@ -390,7 +395,7 @@ export async function fieldRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = fieldValueInput.parse(r.body ?? {});
-    return transaction(async (db) => {
+    const out = await transaction(async (db) => {
       const field = await requireField(db, id, u, false);
       if (field.applies_to !== body.target)
         fail(
@@ -441,8 +446,35 @@ export async function fieldRoutes(app: FastifyInstance) {
                          updated_at = now()`,
           [id, body.target_id, JSON.stringify(checked.value), u.id],
         );
-      return { field_id: id, value: checked.value };
+      // A value is a change to the page or project: "Last changed" and
+      // "changed in the last N days" count it. A page's version stays, so
+      // an editor that has it open saves on without a conflict.
+      const touched = (
+        await db.query<{ version: number }>(
+          body.target === "page"
+            ? "UPDATE docs SET updated_at = now() WHERE id = $1 RETURNING version"
+            : "UPDATE projects SET updated_at = now() WHERE id = $1 RETURNING 0 AS version",
+          [body.target_id],
+        )
+      ).rows[0];
+      return {
+        field_id: id,
+        value: checked.value,
+        version: touched?.version ?? 0,
+      };
     });
+    // Open pages hear of it, so their Info panel reads the values afresh.
+    if (body.target === "page")
+      await announceDocChange(
+        pool,
+        body.target_id,
+        out.version,
+        typeof r.headers["x-orbyn-editor"] === "string"
+          ? r.headers["x-orbyn-editor"].slice(0, 64)
+          : "",
+        { fields: true },
+      ).catch(() => {});
+    return { field_id: out.field_id, value: out.value };
   });
 
   /** Date fields on the calendar between two days (DATA-07). */

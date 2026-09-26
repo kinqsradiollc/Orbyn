@@ -712,6 +712,73 @@ test("project fields show in project views", async () => {
   assert.equal(run.rows[0].fields[budget.id], 1250.5);
 });
 
+test("setting a field counts as a change to the page, its version kept", async () => {
+  const note = await call(me, "POST", "/fields", {
+    name: "Reviewer note",
+    type: "text",
+    applies_to: "page",
+  });
+  assert.equal(note.statusCode, 201, note.body);
+  const page = (
+    await call(me, "POST", "/docs", { title: "Field touch" })
+  ).json();
+  await pool.query(
+    "UPDATE docs SET updated_at = now() - interval '30 days' WHERE id = $1",
+    [page.id],
+  );
+  const set = await call(me, "PUT", `/fields/${note.json().id}/value`, {
+    target: "page",
+    target_id: page.id,
+    value: "Looks good",
+  });
+  assert.equal(set.statusCode, 200, set.body);
+  assert.deepEqual(set.json(), {
+    field_id: note.json().id,
+    value: "Looks good",
+  });
+  const after = (
+    await pool.query<{ updated_at: Date; version: number }>(
+      "SELECT updated_at, version FROM docs WHERE id = $1",
+      [page.id],
+    )
+  ).rows[0];
+  assert.ok(Date.now() - after.updated_at.getTime() < 60_000);
+  assert.equal(after.version, page.version);
+  // "Changed in the last 7 days" now finds it.
+  const run = (
+    await call(me, "POST", "/views/run", {
+      definition: {
+        source: "pages",
+        filters: { updated_within_days: 7, text: "Field touch" },
+      },
+    })
+  ).json();
+  assert.deepEqual(
+    run.rows.map((r: { id: string }) => r.id),
+    [page.id],
+  );
+  // The zone the rows' days were read in comes back, for the apps.
+  assert.equal(typeof run.time_zone, "string");
+});
+
+test("a view run for a connection limited to some spaces reads only those", async () => {
+  const { runView } = await import("../src/modules/views/service.js");
+  const { fullDefinition } = await import("@orbyn/core");
+  const def = fullDefinition({ source: "tasks", filters: { status: "any" } });
+  const teams = (r: { rows: { team_id: string | null }[] }) =>
+    new Set(r.rows.map((x) => x.team_id));
+  const every = await runView(pool, me.id, def);
+  assert.deepEqual(teams(every), new Set([null, teamId]));
+  const personal = await runView(pool, me.id, def, {
+    spaces: { personal: true, teamIds: [] },
+  });
+  assert.deepEqual(teams(personal), new Set([null]));
+  const team = await runView(pool, me.id, def, {
+    spaces: { personal: false, teamIds: [teamId] },
+  });
+  assert.deepEqual(teams(team), new Set([teamId]));
+});
+
 test("views and fields answer 429 past the per-minute limit", async () => {
   const { settings, cachedSettings } = await import("../src/lib/settings.js");
   await settings();

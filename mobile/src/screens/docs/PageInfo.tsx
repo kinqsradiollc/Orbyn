@@ -52,6 +52,7 @@ export function PageInfo({
   current = -1,
   onJump,
   onShowLinked,
+  fieldsStamp,
 }: {
   visible: boolean;
   doc: Doc;
@@ -73,6 +74,8 @@ export function PageInfo({
   onJump?: (entry: OutlineEntry) => void;
   /** Go to "Linked here" under the page. */
   onShowLinked?: () => void;
+  /** Changes when someone else sets a field on the page. */
+  fieldsStamp?: number;
 }) {
   // What it belongs to, its links and versions: read when Info opens.
   const [info, setInfo] = useState<DocInfo | null>(null);
@@ -132,7 +135,11 @@ export function PageInfo({
             <Text style={s.small}>No tags.</Text>
           )}
         </Section>
-        <FieldsBlock docId={doc.id} version={doc.version} report={report} />
+        <FieldsBlock
+          docId={doc.id}
+          revision={`${doc.version}:${fieldsStamp ?? 0}`}
+          report={report}
+        />
         {!!info?.linked_here && (
           <Section label="Linked here">
             <Pressable
@@ -197,18 +204,18 @@ export function PageInfo({
 /** Your own fields (ORG-02), under their own heading once there are any. */
 function FieldsBlock({
   docId,
-  version,
+  revision,
   report,
 }: {
   docId: string;
-  version: number;
+  revision: string;
   report: (e: unknown) => void;
 }) {
   return (
     <FieldsSection
       target="page"
       targetId={docId}
-      revision={version}
+      revision={revision}
       report={report}
       frame={(content) => <Section label="Fields">{content}</Section>}
     />

@@ -14,7 +14,9 @@ import {
   groupHeader,
   isEditableColumn,
   isOverdue,
+  isRepeatingTask,
   PRIORITIES,
+  REPEATING_DATE_NOTE,
   statusChoices,
   statusText,
   viewTotals,
@@ -121,7 +123,7 @@ export function ViewTable({
     const field = fieldId ? fields.find((f) => f.id === fieldId) : undefined;
     const editable =
       row.can_write &&
-      isEditableColumn(source, column) &&
+      isEditableColumn(source, column, row) &&
       (!fieldId || !!field) &&
       column !== "done";
     const isEditing = editing === key;
@@ -247,6 +249,11 @@ export function ViewTable({
         onClick={() => {
           if (editable && !isEditing) setEditing(key);
         }}
+        title={
+          column === "due" && row.can_write && isRepeatingTask(row)
+            ? REPEATING_DATE_NOTE
+            : undefined
+        }
         onKeyDown={(e) => onCellKey(e, r, c, key, editable)}
       >
         {content}

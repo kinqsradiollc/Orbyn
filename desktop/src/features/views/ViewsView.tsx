@@ -144,7 +144,8 @@ export function ViewsView({
   const [stamp, setStamp] = useState(0);
   const reportRef = useRef(report);
   reportRef.current = report;
-  const tz = useMemo(timeZone, []);
+  // The account's time zone, as the server read the rows' days in it.
+  const tz = result?.time_zone ?? planning.prefs?.timezone ?? timeZone();
 
   const view = views?.find((v) => v.id === selected) ?? null;
 

@@ -687,10 +687,12 @@ export function DocEditor({
    * not on callbacks that are rebuilt each time the page is typed into.
    * Without this the stream was torn down and reopened on every keystroke.
    */
+  /** Bumped when someone else sets a field, so Info reads the values afresh. */
+  const [fieldsStamp, setFieldsStamp] = useState(0);
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
-    { trashed, tags: retagged, by }: DocNews,
+    { trashed, tags: retagged, fields: refielded, by }: DocNews,
   ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
@@ -703,6 +705,11 @@ export function DocEditor({
       toast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone set a field: Info reads the values afresh, the words stay.
+    if (refielded) {
+      setFieldsStamp((n) => n + 1);
       return;
     }
     // Someone changed the page's tags: the row follows, the words stay.
@@ -1317,6 +1324,10 @@ export function DocEditor({
           }, report),
       onRestore: (id: string) =>
         void client.restoreDoc(id).then(() => reloadPills(), report),
+      onItemsChanged: () => {
+        reloadPills();
+        onItemsChanged?.();
+      },
     }),
     [pills],
   );
@@ -2659,7 +2670,7 @@ export function DocEditor({
             current={readingAt}
             viewers={viewers}
             facts={footerText}
-            revision={savedAt ?? ""}
+            revision={`${savedAt ?? ""}:${fieldsStamp}`}
             onTags={setTags}
             onJump={jumpTo}
             onOpenProject={onOpenProject}

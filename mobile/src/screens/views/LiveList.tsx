@@ -4,16 +4,17 @@ import {
   daysLeft,
   daysLeftText,
   isOverdue,
-  itemBody,
   parseLiveList,
   VIEW_SOURCE_LABELS,
   type ViewResult,
   type ViewRow,
 } from "@orbyn/core";
+import { celebrate } from "../../components/Celebration";
 import { Icon } from "../../components/Icon";
 import { openAppUrl } from "../../hooks/useAppLinks";
 import { client } from "../../lib/api";
 import * as outbox from "../../lib/outbox";
+import { toggledStatus } from "../../lib/progress";
 import { colors, fonts, radii, themed } from "../../theme";
 
 const open = (row: ViewRow) =>
@@ -62,15 +63,21 @@ export function LiveList({ text }: { text: string }) {
         : spec
           ? VIEW_SOURCE_LABELS[spec.definition.source]
           : "Live list";
+  // Days are read in the account's zone, as the server filtered them.
   const ctx = {
     now: new Date(),
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone:
+      result?.time_zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
+  /** Tick or untick as the app's ticks do: an update on the task's timeline. */
   const tick = (row: ViewRow) => {
     if (!row.item) return;
-    const status = row.status === "done" ? "todo" : "done";
+    const status = toggledStatus(row.item);
     void outbox
-      .updateItem(row.item, { ...itemBody(row.item), status })
+      .postItemUpdate(row.item, { status })
+      .then(() => {
+        if (status === "done") celebrate(row.title);
+      })
       .finally(() => setStamp((n) => n + 1));
   };
 

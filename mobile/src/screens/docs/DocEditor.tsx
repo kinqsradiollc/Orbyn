@@ -628,10 +628,12 @@ export function DocEditor({
    * Without this the stream was torn down and reopened on every render,
    * which on a phone is a request storm rather than a nuisance.
    */
+  /** Bumped when someone else sets a field, so Info reads the values afresh. */
+  const [fieldsStamp, setFieldsStamp] = useState(0);
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
-    { trashed, tags: retagged, by }: DocNews,
+    { trashed, tags: retagged, fields: refielded, by }: DocNews,
   ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
@@ -644,6 +646,11 @@ export function DocEditor({
       showToast({
         text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
+      return;
+    }
+    // Someone set a field: Info reads the values afresh, the words stay.
+    if (refielded) {
+      setFieldsStamp((n) => n + 1);
       return;
     }
     // Someone changed the page's tags: the row follows, the words stay.
@@ -1782,6 +1789,7 @@ export function DocEditor({
       <PageInfo
         visible={infoOpen}
         doc={doc}
+        fieldsStamp={fieldsStamp}
         tags={tags}
         mode={mode}
         canWrite={canWrite}

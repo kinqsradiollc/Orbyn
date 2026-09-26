@@ -5,7 +5,6 @@ import {
   daysLeft,
   daysLeftText,
   isOverdue,
-  itemBody,
   liveListText,
   parseLiveList,
   VIEW_SOURCE_LABELS,
@@ -16,7 +15,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Popover } from "../../components/Popover";
-import { OPEN_LINK_EVENT } from "../docs/DocLinks";
+import { OPEN_LINK_EVENT, usePageActions } from "../docs/DocLinks";
 import "./views.css";
 
 /** Something to open, asked of the app the way link pills ask. */
@@ -85,6 +84,8 @@ export function LiveList({
   onChange?: (text: string) => void;
 }) {
   const spec = parseLiveList(text);
+  const page = usePageActions();
+  const [note, setNote] = useState<string | null>(null);
   const [result, setResult] = useState<ViewResult | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [stamp, setStamp] = useState(0);
@@ -128,29 +129,33 @@ export function LiveList({
           : "Live list";
 
   /**
-   * Tick or untick a task. The row may be a moment old: when the task has
-   * changed since (409), it is read again and ticked on its newest version.
+   * Tick or untick a task the way the app's ticks do: as an update on its
+   * timeline (POST /items/:id/updates), so teammates see who finished it,
+   * and the planner reads its list afresh.
    */
   const tick = async (row: ViewRow) => {
     if (!row.item) return;
-    const status = row.status === "done" ? "todo" : "done";
+    setNote(null);
+    const status =
+      row.status !== "done"
+        ? "done"
+        : (row.item.progress ?? 0) > 0
+          ? "in_progress"
+          : "todo";
     try {
-      await client.updateItem(row.id, { ...itemBody(row.item), status });
-    } catch (e) {
-      if ((e as { statusCode?: number }).statusCode === 409) {
-        const fresh = await client.getItem(row.id).catch(() => null);
-        if (fresh)
-          await client
-            .updateItem(row.id, { ...itemBody(fresh), status })
-            .catch(() => undefined);
-      }
+      await client.postItemUpdate(row.id, { status });
+      page.onItemsChanged?.();
+    } catch {
+      setNote("That task couldn't be changed just now.");
     }
     setStamp((n) => n + 1);
   };
 
+  // Days are read in the account's zone, as the server filtered them.
   const ctx = {
     now: new Date(),
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone:
+      result?.time_zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
 
   return (
@@ -240,9 +245,12 @@ export function LiveList({
           })}
         </ul>
       )}
+      {note && <small className="muted">{note}</small>}
       {result?.truncated && (
         <small className="muted">
-          More than {result.rows.length}; open it as a view to see all.
+          {spec && "id" in spec
+            ? `More than ${result.rows.length}; open it as a view to see all.`
+            : `Showing the first ${result.rows.length}.`}
         </small>
       )}
       {picker && onChange && (

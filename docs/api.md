@@ -1244,8 +1244,12 @@ change the team's things (`403` for a viewer, `404` outside the team). At most 2
 ### `POST /views/run` (auth)
 
 `{ "id", "limit"? }` or `{ "definition", "limit"? }` → `{ source, rows, truncated, fields, people,
-view? }`. Rows are tasks, pages or projects in one shape (`ViewRow`); a task's row carries the task.
-At most 500 rows. Nothing is written.
+time_zone, view? }`. Rows are tasks, pages or projects in one shape (`ViewRow`); a task's row carries
+the task and its `end_at`, `all_day` and `timezone`, so "due" and "overdue" follow the task list's
+rule (an all-day task is due by the end of its day, a task with an end time when it ends, and a task
+due earlier today isn't overdue yet). Days are read in the account's time zone, returned as
+`time_zone` so the apps draw and edit in the same one. A page's `cover` is its first image only when
+it is in Orbyn's own file store (`/files/…`). At most 500 rows. Nothing is written.
 
 ### `GET /views/:id/export.csv` (auth)
 
@@ -1270,7 +1274,9 @@ Only the fields of its own space count.
 
 `{ "target", "target_id", "value" }` → `{ field_id, value }`. Checked by type (`400`): a choice must
 be one of the field's, a person someone in the team. `null` or empty text clears it. Needs
-permission to change the page or project (`403`).
+permission to change the page or project (`403`). It counts as a change: the page's or project's
+`updated_at` moves (a page's `version` stays, so an open editor saves on), and open pages hear of it
+on their live stream as `{ fields: true }`.
 
 ### `GET /fields/dates?from=YYYY-MM-DD&to=YYYY-MM-DD` (auth)
 

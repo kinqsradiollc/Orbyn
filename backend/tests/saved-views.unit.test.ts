@@ -13,6 +13,11 @@ import {
   groupRows,
   isEditableColumn,
   isOverdue,
+  ownFilePath,
+  dueDay,
+  allDayRange,
+  viewDueChange,
+  REPEATING_DATE_NOTE,
   layoutsFor,
   liveListText,
   parseLiveList,
@@ -348,6 +353,79 @@ test("live list blocks keep a view's id or a definition of their own", () => {
   assert.equal(parseLiveList('{"source":"tasks","layout":"gallery"}'), null);
 });
 
+test("due and overdue follow the task list's rule (deadlineOf)", () => {
+  const ny = "America/New_York";
+  // 11:00 in New York on 26 Sept.
+  const at11 = { now: new Date("2026-09-26T15:00:00Z"), timeZone: ny };
+  const nextDay = { now: new Date("2026-09-27T15:00:00Z"), timeZone: ny };
+  // An all-day task due today is due by the end of today, not overdue.
+  const allDay = row({
+    ...allDayRange("2026-09-26", "2026-09-26", ny),
+    all_day: true,
+    timezone: ny,
+  });
+  assert.equal(isOverdue(allDay, at11), false);
+  assert.equal(daysLeft(allDay, at11), 0);
+  assert.equal(cellText(allDay, "overdue", at11), "");
+  assert.equal(isOverdue(allDay, nextDay), true);
+  // Kept only as a midnight start (no end), it still counts to day's end.
+  const bare = row({
+    due_at: allDayRange("2026-09-26", "2026-09-26", ny).due_at,
+    all_day: true,
+    timezone: ny,
+  });
+  assert.equal(isOverdue(bare, at11), false);
+  assert.equal(dueDay(bare, ny), "2026-09-26");
+  // The task's own times are read when the row doesn't carry them.
+  const viaItem = withItem(row({ due_at: bare.due_at }));
+  (viaItem.item as Item & { all_day: boolean; timezone: string }).all_day =
+    true;
+  (viaItem.item as Item & { timezone: string }).timezone = ny;
+  assert.equal(isOverdue(viaItem, at11), false);
+  // A timed task due at 09:00 today isn't overdue at 11:00 the same day.
+  const nine = row({ due_at: "2026-09-26T13:00:00Z" });
+  assert.equal(isOverdue(nine, at11), false);
+  assert.equal(daysLeft(nine, at11), 0);
+  assert.equal(isOverdue(nine, nextDay), true);
+  // A task running over several days is due when it ends.
+  const span = row({
+    due_at: "2026-09-24T13:00:00Z",
+    end_at: "2026-09-28T13:00:00Z",
+  });
+  assert.equal(dueDay(span, ny), "2026-09-28");
+  assert.equal(daysLeft(span, at11), 2);
+  assert.equal(isOverdue(span, at11), false);
+  // The Overdue filter, the totals line and the column agree.
+  const def = fullDefinition({ source: "tasks", filters: { overdue: true } });
+  const late = row({ title: "Late", due_at: "2026-09-25T13:00:00Z" });
+  assert.deepEqual(
+    applyView([allDay, nine, span, late], def, { ...ctx, ...at11 }).rows.map(
+      (r) => r.title,
+    ),
+    ["Late"],
+  );
+  assert.equal(
+    columnTotal([allDay, nine, span, late], "overdue", [], at11),
+    "1 overdue",
+  );
+});
+
+test("a view never moves a repeating task's date", () => {
+  const plain = withItem(row({ due_at: "2026-09-28T09:00:00Z" }));
+  const repeating = withItem(row({ due_at: "2026-09-28T09:00:00Z" }));
+  (repeating.item as Item).rrule = "FREQ=WEEKLY";
+  assert.equal(isEditableColumn("tasks", "due", plain), true);
+  assert.equal(isEditableColumn("tasks", "due", repeating), false);
+  assert.equal(isEditableColumn("tasks", "title", repeating), true);
+  assert.deepEqual(viewDueChange(repeating.item!, "2026-09-30", "UTC"), {
+    ok: false,
+    reason: REPEATING_DATE_NOTE,
+  });
+  const moved = viewDueChange(plain.item!, "2026-09-30", "UTC");
+  assert.ok(moved.ok);
+  assert.equal(moved.change.due_at, "2026-09-30T09:00:00.000Z");
+});
+
 test("covers are only Orbyn's own images", () => {
   assert.equal(
     docCover([{ type: "paragraph", text: "![a](/files/x.png)" }]),
@@ -360,6 +438,29 @@ test("covers are only Orbyn's own images", () => {
   assert.equal(
     docCover([{ type: "paragraph", text: "![a](//evil.test/x.png)" }]),
     null,
+  );
+  // Browsers read "/\\host" as "//host": it must not pass as a path.
+  assert.equal(
+    docCover([{ type: "paragraph", text: "![a](/\\evil.test/x.png)" }]),
+    null,
+  );
+  assert.equal(ownFilePath("/\\evil.test/x.png"), null);
+  assert.equal(ownFilePath("/files\\..\\x.png"), null);
+  assert.equal(ownFilePath("//evil.test/files/x.png"), null);
+  assert.equal(ownFilePath("https://evil.test/files/x.png"), null);
+  assert.equal(ownFilePath("https:/evil.test/files/x.png"), null);
+  assert.equal(ownFilePath("javascript:alert(1)"), null);
+  // Only the file store's own paths, even on this site.
+  assert.equal(ownFilePath("/settings/x.png"), null);
+  assert.equal(ownFilePath("/files/../settings/x.png"), null);
+  assert.equal(ownFilePath("/files/a/b.png?w=200"), "/files/a/b.png?w=200");
+  // A later own image is found past an outside one.
+  assert.equal(
+    docCover([
+      { type: "paragraph", text: "![a](https://evil.test/x.png)" },
+      { type: "paragraph", text: "![b](/files/y.png)" },
+    ]),
+    "/files/y.png",
   );
 });
 

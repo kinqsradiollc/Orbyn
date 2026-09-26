@@ -19,6 +19,8 @@ import {
   type ViewSource,
 } from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
+import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { inSpaces, type Spaces } from "../../lib/visibility.js";
 import { ITEM_COLUMNS, ITEM_FROM } from "../items/service.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { PROJECT_COUNTS } from "../projects/counts.js";
@@ -53,11 +55,18 @@ const writable = (
 
 type Narrowing = { where: string[]; values: unknown[] };
 
-/** SQL narrowing shared by every source: team and project. */
+/**
+ * The spaces a view may read from: an agent's connection may be limited to
+ * some of them (`ctx.spaces`); the apps read every space.
+ */
+export type ViewSpaces = Pick<Spaces, "teamIds" | "personal">;
+
+/** SQL narrowing shared by every source: spaces, team and project. */
 function narrow(
   def: ViewDefinition,
   alias: string,
   projectColumn: string,
+  spaces?: ViewSpaces,
 ): Narrowing {
   const where: string[] = [];
   const values: unknown[] = [];
@@ -66,6 +75,11 @@ function narrow(
     return `$${values.length + 1}`;
   };
   const f = def.filters;
+  if (spaces && !spaces.personal) where.push(`${alias}.team_id IS NOT NULL`);
+  if (spaces?.teamIds)
+    where.push(
+      `(${alias}.team_id IS NULL OR ${alias}.team_id = ANY (${add(spaces.teamIds)}::uuid[]))`,
+    );
   if (f.team === "personal") where.push(`${alias}.team_id IS NULL`);
   else if (f.team) where.push(`${alias}.team_id = ${add(f.team)}`);
   if (f.project) where.push(`${projectColumn} = ${add(f.project)}`);
@@ -76,8 +90,9 @@ async function taskRows(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
+  spaces?: ViewSpaces,
 ): Promise<ViewRow[]> {
-  const n = narrow(def, "i", "i.project_id");
+  const n = narrow(def, "i", "i.project_id", spaces);
   const add = (v: unknown) => {
     n.values.push(v);
     return `$${n.values.length + 1}`;
@@ -133,6 +148,9 @@ async function taskRows(
     project_name,
     status: item.status,
     due_at: iso(item.due_at),
+    end_at: iso(item.end_at),
+    all_day: !!item.all_day,
+    timezone: item.timezone ?? null,
     priority: item.priority as Priority,
     estimate_minutes: item.estimate_minutes ?? null,
     spent_minutes: item.spent_minutes ?? 0,
@@ -181,8 +199,9 @@ async function pageRows(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
+  spaces?: ViewSpaces,
 ): Promise<ViewRow[]> {
-  const n = narrow(def, "d", "d.project_id");
+  const n = narrow(def, "d", "d.project_id", spaces);
   const add = (v: unknown) => {
     n.values.push(v);
     return `$${n.values.length + 1}`;
@@ -210,8 +229,7 @@ async function pageRows(
          LEFT JOIN projects p ON p.id = d.project_id
          LEFT JOIN folders fo ON fo.id = d.folder_id
          LEFT JOIN team_members tm ON tm.team_id = d.team_id AND tm.user_id = $1
-        WHERE ((d.team_id IS NULL AND d.user_id = $1) OR tm.user_id IS NOT NULL)
-          AND d.deleted_at IS NULL
+        WHERE ${docVisibleTo("$1", "d")}
           ${n.where.map((w) => `AND ${w}`).join(" ")}
         ORDER BY d.updated_at DESC, d.id
         LIMIT ${CANDIDATES}`,
@@ -277,8 +295,9 @@ async function projectRows(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
+  spaces?: ViewSpaces,
 ): Promise<ViewRow[]> {
-  const n = narrow(def, "p", "p.id");
+  const n = narrow(def, "p", "p.id", spaces);
   const status = def.filters.status ?? "open";
   if (status === "open") n.where.push("p.status = 'active'");
   if (status === "done") n.where.push("p.status = 'done'");
@@ -337,7 +356,12 @@ async function projectRows(
 
 const LOADERS: Record<
   ViewSource,
-  (db: Queryable, userId: string, def: ViewDefinition) => Promise<ViewRow[]>
+  (
+    db: Queryable,
+    userId: string,
+    def: ViewDefinition,
+    spaces?: ViewSpaces,
+  ) => Promise<ViewRow[]>
 > = { tasks: taskRows, pages: pageRows, projects: projectRows };
 
 /** The names of the people rows and Person fields name. */
@@ -366,13 +390,20 @@ async function peopleOf(
 
 /**
  * The rows `userId` sees in a view: filtered, ordered and cut at `limit`,
- * with the fields their columns can show and the people they name.
+ * with the fields their columns can show and the people they name. An
+ * agent's connection passes its `spaces` (A4's query and save_view), so a
+ * connection limited to some teams never reads rows from the others.
  */
 export async function runView(
   db: Queryable,
   userId: string,
   def: ViewDefinition,
-  options: { limit?: number; now?: Date; timeZone?: string } = {},
+  options: {
+    limit?: number;
+    now?: Date;
+    timeZone?: string;
+    spaces?: ViewSpaces;
+  } = {},
 ): Promise<ViewResult> {
   const timeZone =
     options.timeZone ?? (await loadPrefs(db as unknown as Db, userId)).timezone;
@@ -384,7 +415,9 @@ export async function runView(
           userId,
           def.source === "pages" ? "page" : "project",
         );
-  const candidates = await LOADERS[def.source](db, userId, def);
+  const candidates = (
+    await LOADERS[def.source](db, userId, def, options.spaces)
+  ).filter((r) => !options.spaces || inSpaces(options.spaces, r.team_id));
   const { rows, truncated } = applyView(
     candidates,
     def,
@@ -398,6 +431,7 @@ export async function runView(
     truncated: truncated || candidates.length >= CANDIDATES,
     fields,
     people: await peopleOf(db, rows, fields),
+    time_zone: timeZone,
   };
 }
 
@@ -471,7 +505,7 @@ export async function loadView(
   return toSavedView(row, userId);
 }
 
-/** Every saved view `userId` can see: pinned first, then by name. */
+/** Every saved view `userId` can see: your own first, then each team's, by name. */
 export async function listViews(
   db: Queryable,
   userId: string,
