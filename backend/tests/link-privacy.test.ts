@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 import { helpers, type Person } from "./mcp-helpers.js";
@@ -20,8 +21,24 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { linkMarkdown } = await import("@orbyn/core");
 
+const { runTool } = await import("../src/modules/ai/agent/tools.js");
+
 const app = await buildApp();
 const h = helpers(app);
+
+/** A stand-in AI provider: never a real one. It answers `reply`. */
+let reply = "";
+const provider = createServer((req, res) => {
+  req.resume();
+  req.on("end", () => {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        choices: [{ finish_reason: "stop", message: { content: reply } }],
+      }),
+    );
+  });
+});
 
 let ana: Person; // in Lab and Side
 let ben: Person; // in Lab only
@@ -114,6 +131,7 @@ before(async () => {
 });
 
 after(async () => {
+  provider.close();
   const { closeLive } = await import("../src/modules/docs/live.js");
   await closeLive();
   await app.close();
@@ -522,4 +540,140 @@ test("study cards made from a shared line show the neutral words", async () => {
   // Ana's own card still names her page.
   const hers = await call(ana, "GET", `/study/queue?doc_id=${cards}`);
   assert.match(hers.body, /Budget 2027 private/);
+});
+
+test("the assistant's proposal answer reads neutrally to a reader who can't open the link", async () => {
+  await new Promise<void>((r) => provider.listen(0, "127.0.0.1", r));
+  const port = (provider.address() as { port: number }).port;
+  const standIn = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('openai-compatible', 'Link privacy stand-in', $1) RETURNING id",
+      [`http://127.0.0.1:${port}/v1`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE ai_settings SET provider_id=$1, model='link-privacy-test' WHERE id",
+    [standIn],
+  );
+  const line = (await call(ben, "GET", `/docs/${sharedId}`))
+    .json()
+    .content.find((b: { id: string }) => b.id === "b1").text as string;
+  assert.match(line, /\[Private page\]/);
+  reply = line.replace("Plan:", "Plans:");
+  const made = await call(ben, "POST", `/docs/${sharedId}/assist`, {
+    block_id: "b1",
+    range_start: 0,
+    range_end: line.length,
+    action: "shorten",
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  noSecrets(made.body, "assist answer");
+  assert.match(made.json().text, /^Plans: \[Private page\]/);
+  // The page keeps the title, so taking it changes nothing Ana can open.
+  const kept = (
+    await pool.query<{ text: string }>(
+      "SELECT text FROM doc_suggestions WHERE id = $1",
+      [made.json().id],
+    )
+  ).rows[0].text;
+  assert.match(kept, /^Plans: \[Budget 2027 private\]/);
+  await call(ben, "DELETE", `/docs/${sharedId}/suggestions/${made.json().id}`);
+});
+
+test("the agent can't test a guessed title, and its proposals keep the stored titles", async () => {
+  const ctx = {
+    user: { id: ben.id, role: "member" as const },
+    timezone: "UTC",
+    intentText: "",
+    actions: [],
+    clarification: null,
+    cited: new Map(),
+    notes: [] as unknown[],
+  };
+  const propose = async (find: string, replace: string) =>
+    JSON.parse(
+      (
+        await runTool(
+          {
+            id: "t",
+            name: "propose_doc_edit",
+            arguments: JSON.stringify({
+              doc_id: sharedId,
+              changes: [{ find, replace }],
+            }),
+          },
+          ctx,
+        )
+      ).content,
+    );
+  // A guess at the hidden title matches nothing, just like any other guess.
+  const guess = await propose("Budget 2027 private", "x");
+  assert.equal(guess.proposed, 0);
+  // Words the agent was shown (get_doc) do match.
+  const shown = (await call(ben, "GET", `/docs/${sharedId}`))
+    .json()
+    .content.find((b: { id: string }) => b.id === "b1").text as string;
+  const link = /\[Private page\]\([^)]+\)/.exec(shown)![0];
+  const out = await propose(`Plan: ${link}`, `Plan now: ${link}`);
+  assert.equal(out.proposed, 1, JSON.stringify(out));
+  const row = (
+    await pool.query<{ id: string; text: string; quote: string }>(
+      `SELECT id, text, quote FROM doc_suggestions
+        WHERE doc_id = $1 AND user_id = $2 AND status = 'open'
+        ORDER BY created_at DESC LIMIT 1`,
+      [sharedId, ben.id],
+    )
+  ).rows[0];
+  assert.match(row.text, /^Plan now: \[Budget 2027 private\]/);
+  assert.match(row.quote, /^Plan: \[Budget 2027 private\]/);
+  const list = await call(ben, "GET", `/docs/${sharedId}/suggestions`);
+  noSecrets(list.body, "GET suggestions (agent)");
+  const seen = list.json().find((s: { id: string }) => s.id === row.id);
+  assert.match(seen.quote, /^Plan: \[Private page\]/);
+  await call(ben, "DELETE", `/docs/${sharedId}/suggestions/${row.id}`);
+});
+
+test("a title quoted as plain words stays hidden after its link leaves the page", async () => {
+  const page = (
+    await call(ana, "POST", "/docs", {
+      title: "Quote page",
+      team_id: lab,
+      content: [
+        para(
+          `See ${linkMarkdown({ kind: "doc", id: personalId }, "Budget 2027 private")} now`,
+          "q1",
+        ),
+        para("Other words", "q2"),
+      ],
+    })
+  ).json();
+  const stored = (
+    await pool.query<{ content: { id: string; text: string }[] }>(
+      "SELECT content FROM docs WHERE id = $1",
+      [page.id],
+    )
+  ).rows[0].content.find((b) => b.id === "q1")!.text;
+  const at = stored.indexOf("Budget 2027 private");
+  const made = await call(ana, "POST", `/docs/${page.id}/comments`, {
+    body: "Rename?",
+    block_id: "q1",
+    quote: "Budget 2027 private",
+    range_start: at,
+    range_end: at + "Budget 2027 private".length,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  // The line with the link goes; the remark comes loose.
+  const saved = await call(ana, "PUT", `/docs/${page.id}`, {
+    version: page.version,
+    content: [para("Other words", "q2")],
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const list = await call(ben, "GET", `/docs/${page.id}/comments`);
+  assert.equal(list.statusCode, 200, list.body);
+  noSecrets(list.body, "GET comments (link gone)");
+  // Ana still reads her own words.
+  const hers = (await call(ana, "GET", `/docs/${page.id}/comments`))
+    .json()
+    .find((c: { id: string }) => c.id === made.json().id);
+  assert.equal(hers.quote, "Budget 2027 private");
 });

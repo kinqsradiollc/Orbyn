@@ -3,6 +3,8 @@ import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
   blockText,
+  keepLinkLabels,
+  type RedactedLine,
   dueDayAt,
   estimateModelOf,
   isClosed,
@@ -49,7 +51,7 @@ import {
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/routes.js";
-import { readableLinks } from "../../links/privacy.js";
+import { linkPrivacy, readableLinks } from "../../links/privacy.js";
 
 export { toInstant, whenLabel };
 
@@ -2145,20 +2147,42 @@ async function proposeDocEdit(
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
 
+  // The agent was shown links to what this person can't open as "Private
+  // page" (get_doc, D3aF), so its words are looked for in those lines, and
+  // places, quote and replacement are carried back to the stored words.
+  // Matching the stored words instead would let a guessed title come back
+  // as "proposed" and so confirm it.
+  const links = await linkPrivacy(pool, ctx.user.id, doc.content);
   const made: string[] = [];
   const missed: string[] = [];
   for (const change of a.changes.slice(0, 10)) {
     // The words to change are looked for in the page as it stands; a
     // proposal against words that are not there would have nothing to apply.
-    const block = doc.content.find(
-      (b) => b.id && blockText(b).includes(change.find),
-    );
-    if (!block?.id) {
+    let found: {
+      id: string;
+      kept: string;
+      line: RedactedLine;
+      at: number;
+    } | null = null;
+    for (const b of doc.content) {
+      if (!b.id) continue;
+      const kept = blockText(b);
+      const line = links.line(kept);
+      const at = line.text.indexOf(change.find);
+      if (at !== -1) {
+        found = { id: b.id, kept, line, at };
+        break;
+      }
+    }
+    if (!found) {
       missed.push(change.find);
       continue;
     }
-    const source = blockText(block);
-    const at = source.indexOf(change.find);
+    const { kept, line, at } = found;
+    const start = line.changed ? line.toStored(at) : at;
+    const end = line.changed
+      ? Math.max(start, line.toStored(at + change.find.length, true))
+      : at + change.find.length;
     await pool.query(
       `INSERT INTO doc_suggestions
          (doc_id, user_id, block_id, kind, range_start, range_end,
@@ -2167,12 +2191,12 @@ async function proposeDocEdit(
       [
         doc.id,
         ctx.user.id,
-        block.id,
+        found.id,
         change.replace ? "replace" : "delete",
-        at,
-        at + change.find.length,
-        change.replace,
-        change.find,
+        start,
+        end,
+        keepLinkLabels(change.replace, doc.content, links.hidden),
+        kept.slice(start, end),
         `Assistant${a.why ? ` · ${a.why.slice(0, 120)}` : ""}`,
       ],
     );

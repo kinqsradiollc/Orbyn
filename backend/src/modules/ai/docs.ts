@@ -16,7 +16,7 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
-import { linkPrivacy } from "../links/privacy.js";
+import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import { carryRanges } from "../docs/ranges.js";
 
 /**
@@ -181,9 +181,10 @@ passage should be removed entirely, reply with an empty line.`;
       ).rows[0];
     });
     reply.code(201);
-    // Places and quoted words as this reader is shown them (D3aF).
+    // Places, quoted words and the offered words as this reader is shown
+    // them (D3aF): the stored text keeps hidden titles, the reply must not.
     const [shown] = await carryRanges(pool, u.id, id, [made], "shown");
-    return shown;
+    return readableLinks(pool, u.id, shown);
   });
 
   /**

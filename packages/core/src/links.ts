@@ -620,7 +620,10 @@ const LABEL_PIECE = 4;
  * short (a whole line's first 400 characters). Whole links to what the
  * reader can't open read "Private page"; a link cut off mid-address counts
  * as hidden unless its target (whole, or the one page link in `known`
- * its address began) is open to them; any of `labels`
+ * its address began) is open to them — when no link in `known` begins
+ * that address, it reads "Private page" even to someone who could open it,
+ * since only the address's first characters are left to go on; any of
+ * `labels`
  * (from {@link hiddenLinkLabels}) is swapped wherever it appears. Words
  * that begin or end partway into one of them, or lie inside one, can't be
  * told apart from it, so the quote is dropped (null).

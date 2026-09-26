@@ -48,12 +48,18 @@ export async function carryRanges<T extends Ranged>(
       )
     ).rows[0]?.content ?? [];
   const quotes = rows.map((r) => r.quote ?? null);
-  const links = await linkPrivacy(db, userId, content, quotes);
+  // A quote may hold a hidden link's title as plain words after the link
+  // itself has left the page; the page's recent history still names it.
+  const past =
+    way === "shown" && quotes.some(Boolean) ? await pastLinks(db, docId) : [];
+  const links = await linkPrivacy(db, userId, content, quotes, past);
   const labels =
     way === "shown"
-      ? hiddenLinkLabels([content, quotes], links.hidden)
+      ? hiddenLinkLabels([content, quotes, past], links.hidden)
       : new Map<string, string>();
-  const known = way === "shown" ? objectRefsInValue(content) : [];
+  // Past links too, so a line cut mid-address whose link has since left
+  // the page still reads as its own words to someone who can open it.
+  const known = way === "shown" ? objectRefsInValue([content, past]) : [];
   return rows.map((row) => {
     const block = row.block_id
       ? content.find((b) => b.id === row.block_id)
@@ -105,3 +111,31 @@ export async function carryRanges<T extends Ranged>(
     return quote === row.quote ? row : { ...row, quote };
   });
 }
+
+/** How many past states of a page are searched for link words. */
+const PAST_STATES = 50;
+
+/**
+ * The links (as `[words](orbyn://…)`) the page's recent past states held,
+ * each once. Only the link text is read out of the database, never whole
+ * past pages, so this stays small however long the page is. Words holding
+ * a quote mark or backslash are skipped (their JSON escapes would need
+ * undoing); such a title is still hidden wherever its link is. A link
+ * added and taken out again within one sitting never reaches the history
+ * (only a sitting's first state is kept), so its title quoted as plain
+ * words is the one case still given back as quoted.
+ */
+async function pastLinks(db: Queryable, docId: string): Promise<string[]> {
+  return (
+    await db.query<{ link: string }>(
+      `SELECT DISTINCT '[' || m[1] || '](' || m[2] || ')' AS link
+         FROM (SELECT content::text AS t FROM doc_versions
+                WHERE doc_id = $1 ORDER BY created_at DESC LIMIT $2) v,
+              regexp_matches(v.t, $3, 'g') AS m`,
+      [docId, PAST_STATES, PAST_LINK],
+    )
+  ).rows.map((r) => r.link);
+}
+
+/** A picker link inside a page's JSON text (Postgres regular expression). */
+const PAST_LINK = String.raw`\[([^]\\"\n]+)\]\((orbyn://[a-z]+/[0-9a-fA-F-]+)`;
