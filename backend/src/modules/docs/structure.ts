@@ -227,7 +227,8 @@ export async function docStructureRoutes(app: FastifyInstance) {
       // The line it pointed at has gone from the page.
       missing: !!block && !lines.length,
       more: !block && content.length > EMBED_LINES,
-      blocks: lines,
+      // Words of links this reader can't open read "Private page" (D3aF).
+      blocks: await readableLinks(db, u.id, lines),
     };
   });
 

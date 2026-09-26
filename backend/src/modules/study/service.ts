@@ -22,6 +22,7 @@ import {
   loadPrefs,
 } from "../planner/calendar.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
+import { readableLinks } from "../links/privacy.js";
 
 /**
  * Study: cards live in pages as "Question :: Answer" lines, and each person
@@ -318,7 +319,7 @@ export async function studyOverview(
         ),
       };
     }),
-    weak: weak.rows.map((w) => ({
+    weak: (await readableLinks(pool, userId, weak.rows)).map((w) => ({
       ...w,
       doc_title: w.doc_title || "Untitled",
     })),
@@ -372,16 +373,22 @@ export async function reviewQueue(
           )
         ).rows
       : [];
-  return [...due, ...fresh].map((r) => cardOf(r, now));
+  // Cards are copied from page lines when synced; the words of links this
+  // person can't open (now) read "Private page" (D3aF).
+  return (await readableLinks(pool, userId, [...due, ...fresh])).map((r) =>
+    cardOf(r, now),
+  );
 }
 
+/** One of `userId`'s cards, its words as they may read them (D3aF). */
 export async function cardById(db: Db, userId: string, id: string) {
-  return (
+  const row = (
     await db.query<CardRow>(
       `${CARD_SELECT} WHERE c.id = $2 AND c.user_id = $1`,
       [userId, id],
     )
   ).rows[0];
+  return row ? readableLinks(db, userId, row) : row;
 }
 
 /**

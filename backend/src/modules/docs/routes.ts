@@ -71,6 +71,7 @@ import {
 import { mutate, recomputeProgress, setItemStatus } from "../items/service.js";
 import { announceDocChange } from "./live.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
+import { carryRanges } from "./ranges.js";
 import { hasVectors } from "../search/semantic.js";
 import {
   agendaDayOf,
@@ -352,6 +353,7 @@ export async function readDoc(
 async function keepHiddenLabels(
   db: Queryable,
   id: string,
+  userId: string,
   content: DocBlock[],
 ): Promise<DocBlock[]> {
   if (!JSON.stringify(content).includes("orbyn://")) return content;
@@ -361,63 +363,11 @@ async function keepHiddenLabels(
       [id],
     )
   ).rows[0]?.content;
-  return stored ? keepLinkLabels(content, stored) : content;
-}
-
-/** A remark or proposal on some of a line's words. */
-type Ranged = {
-  block_id?: string | null;
-  range_start?: number | null;
-  range_end?: number | null;
-  quote?: string | null;
-};
-
-/**
- * Carry the words remarks and proposals are about between a line as it's
- * stored and as `userId` is shown it (D3aF): a reader shown "Private page"
- * in place of a link's words counts places in the words they see, and the
- * page counts them in its own. "stored" takes a reader's new ones in;
- * "shown" gives kept ones back out.
- */
-async function carryRanges<T extends Ranged>(
-  db: Queryable,
-  userId: string,
-  docId: string,
-  rows: T[],
-  way: "stored" | "shown",
-): Promise<T[]> {
-  if (!rows.some((r) => r.block_id && r.range_start != null)) return rows;
-  const content =
-    (
-      await db.query<{ content: DocBlock[] | null }>(
-        "SELECT content FROM docs WHERE id = $1",
-        [docId],
-      )
-    ).rows[0]?.content ?? [];
-  const links = await linkPrivacy(db, userId, content);
-  return rows.map((row) => {
-    if (!row.block_id || row.range_start == null || row.range_end == null)
-      return row;
-    const block = content.find((b) => b.id === row.block_id);
-    if (!block) return row;
-    const stored = blockText(block);
-    const line = links.line(stored);
-    if (!line.changed) return row;
-    const [from, to] =
-      way === "stored" ? [line.text, stored] : [stored, line.text];
-    const carry = way === "stored" ? line.toStored : line.toShown;
-    const start = carry(row.range_start);
-    const end = Math.max(start, carry(row.range_end, true));
-    return {
-      ...row,
-      range_start: start,
-      range_end: end,
-      ...(way === "stored" &&
-      row.quote === from.slice(row.range_start, row.range_end)
-        ? { quote: to.slice(start, end) }
-        : {}),
-    };
-  });
+  if (!stored) return content;
+  // Only links the saver was shown as "Private page": someone who can open
+  // the target and wrote those words on purpose keeps them.
+  const links = await linkPrivacy(db, userId, stored);
+  return keepLinkLabels(content, stored, links.hidden);
 }
 
 /**
@@ -1249,7 +1199,7 @@ export async function docRoutes(app: FastifyInstance) {
             db,
             u,
             id,
-            await keepHiddenLabels(db, id, body.content),
+            await keepHiddenLabels(db, id, u.id, body.content),
             ticksFrom(r, body.version),
           )
         : undefined;
@@ -1942,8 +1892,13 @@ export async function docRoutes(app: FastifyInstance) {
           [id],
         )
       ).rows[0]?.content;
+      const shownPrivate = stored
+        ? (await linkPrivacy(db, u.id, stored)).hidden
+        : () => false;
       for (const c of placed.map((c) =>
-        stored ? { ...c, text: keepLinkLabels(c.text, stored) } : c,
+        stored
+          ? { ...c, text: keepLinkLabels(c.text, stored, shownPrivate) }
+          : c,
       ))
         ids.push(
           (

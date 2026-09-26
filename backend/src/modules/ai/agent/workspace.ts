@@ -33,6 +33,7 @@ import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { readableLinks } from "../../links/privacy.js";
 
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
@@ -359,6 +360,9 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
       tasks.rows.some((task) => task.id === session.item_id),
     ),
   );
+  // The first lines of the project's pages, with the words of links this
+  // person can't open read "Private page" (D3aF).
+  const pages = await readableLinks(pool, ctx.user.id, notes.rows);
   const cite = (key: string, source: AssistantSource) => {
     if (!ctx.cited) return null;
     const number = ctx.cited.get(key)?.number ?? ctx.cited.size + 1;
@@ -393,10 +397,10 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     ],
     finished_tasks: tasks.rows.filter((t) => isClosed(t.status)).length,
     brief:
-      notes.rows
+      pages
         .find((d) => d.id === project.doc_id)
         ?.lines.map((line) => clean(line.text, 200)) ?? [],
-    notes: notes.rows.map((d) => ({
+    notes: pages.map((d) => ({
       id: d.id,
       title: clean(d.title, 120),
       first_lines: d.lines.slice(0, 2).map((line) => ({

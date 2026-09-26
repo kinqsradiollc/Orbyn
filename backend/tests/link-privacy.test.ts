@@ -353,3 +353,173 @@ test("a proposal made on the words shown is taken into the stored line", async (
     `Do [Side quest secret](orbyn://task/${sideTaskId}) for [Moonshot secret](orbyn://project/${sideProjectId}) today, then [Side quest secret](orbyn://task/${sideTaskId})`,
   );
 });
+
+// ---- Quoted words, live embeds and study cards (D3aF review) ----
+
+const commentsFor = async (who: Person) =>
+  (await call(who, "GET", `/docs/${sharedId}/comments`)).json() as {
+    id: string;
+    quote: string | null;
+    range_start: number | null;
+    range_end: number | null;
+  }[];
+
+test("a remark on the words 'Private page' never hands the title back", async () => {
+  const shown = (await call(ben, "GET", `/docs/${sharedId}`)).json().content;
+  const line = shown.find((b: { id: string }) => b.id === "b1").text as string;
+  const start = line.indexOf("Private page");
+  assert.ok(start > 0, line);
+  const made = await call(ben, "POST", `/docs/${sharedId}/comments`, {
+    body: "What is this?",
+    block_id: "b1",
+    quote: "Private page",
+    range_start: start,
+    range_end: start + "Private page".length,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  noSecrets(made.body, "comment answer");
+  assert.equal(made.json().quote, "Private page");
+  assert.equal(made.json().range_start, start);
+  const list = await call(ben, "GET", `/docs/${sharedId}/comments`);
+  noSecrets(list.body, "GET comments");
+  const again = list
+    .json()
+    .find((c: { id: string }) => c.id === made.json().id);
+  assert.equal(again.quote, "Private page");
+  assert.equal(line.slice(again.range_start, again.range_end), "Private page");
+  // The page keeps the title, and Ana, who can open it, reads it.
+  const own = (await commentsFor(ana)).find((c) => c.id === made.json().id)!;
+  assert.equal(own.quote, "Budget 2027 private");
+});
+
+test("words Ana quotes from inside a link, or a line cut short, read neutrally to Ben", async () => {
+  const stored = (
+    await pool.query<{ content: { id: string; text: string }[] }>(
+      "SELECT content FROM docs WHERE id = $1",
+      [sharedId],
+    )
+  ).rows[0].content.find((b) => b.id === "b1")!.text;
+  const at = stored.indexOf("2027 priv");
+  const part = await call(ana, "POST", `/docs/${sharedId}/comments`, {
+    body: "Which year?",
+    block_id: "b1",
+    quote: "2027 priv",
+    range_start: at,
+    range_end: at + "2027 priv".length,
+  });
+  assert.equal(part.statusCode, 201, part.body);
+  assert.equal(part.json().quote, "2027 priv");
+  // A whole line's quote cut off in the middle of a link's address.
+  const cut = stored.slice(0, stored.indexOf("orbyn://doc/") + 20);
+  const whole = await call(ana, "POST", `/docs/${sharedId}/comments`, {
+    body: "About this line",
+    block_id: "b1",
+    quote: cut,
+  });
+  assert.equal(whole.statusCode, 201, whole.body);
+  // A remark whose line has gone, quoting the title as plain words.
+  const gone = await call(ana, "POST", `/docs/${sharedId}/comments`, {
+    body: "Gone line",
+    block_id: "no-such-line",
+    quote: "see Budget 2027 private first",
+  });
+  assert.equal(gone.statusCode, 201, gone.body);
+
+  const list = await call(ben, "GET", `/docs/${sharedId}/comments`);
+  noSecrets(list.body, "GET comments (Ana's quotes)");
+  const seen = await commentsFor(ben);
+  const benPart = seen.find((c) => c.id === part.json().id)!;
+  assert.equal(benPart.quote, "Private page");
+  const line = (await call(ben, "GET", `/docs/${sharedId}`))
+    .json()
+    .content.find((b: { id: string }) => b.id === "b1").text as string;
+  assert.equal(
+    line.slice(benPart.range_start!, benPart.range_end!),
+    "Private page",
+  );
+  assert.match(
+    seen.find((c) => c.id === whole.json().id)!.quote!,
+    /^Plan: \[Private page\]\(orbyn:\/\/doc\//,
+  );
+  assert.equal(
+    seen.find((c) => c.id === gone.json().id)!.quote,
+    "see Private page first",
+  );
+  // Ana still reads her own words.
+  const hers = await commentsFor(ana);
+  assert.equal(hers.find((c) => c.id === part.json().id)!.quote, "2027 priv");
+  assert.equal(hers.find((c) => c.id === whole.json().id)!.quote, cut);
+});
+
+test("a proposal's quote reads neutrally to a reader who can't open the link", async () => {
+  const stored = (
+    await pool.query<{ content: { id: string; text: string }[] }>(
+      "SELECT content FROM docs WHERE id = $1",
+      [sharedId],
+    )
+  ).rows[0].content.find((b) => b.id === "b1")!.text;
+  const at = stored.indexOf("Budget 2027 private");
+  const made = await call(ana, "POST", `/docs/${sharedId}/suggestions`, {
+    changes: [
+      {
+        block_id: "b1",
+        kind: "replace",
+        range_start: at,
+        range_end: at + "Budget 2027".length,
+        text: "Budget 2028",
+        quote: "Budget 2027",
+      },
+    ],
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const list = await call(ben, "GET", `/docs/${sharedId}/suggestions`);
+  noSecrets(list.body, "GET suggestions");
+  const row = list
+    .json()
+    .find((s: { id: string }) => s.id === made.json()[0].id);
+  assert.equal(row.quote, "Private page");
+  await call(ana, "DELETE", `/docs/${sharedId}/suggestions/${row.id}`);
+});
+
+test("a live embed of a shared page hides the words of links the reader can't open", async () => {
+  const line = await call(ben, "GET", `/docs/${sharedId}/section?block=b1`);
+  assert.equal(line.statusCode, 200, line.body);
+  noSecrets(line.body, "section");
+  assert.match(line.body, /Private page/);
+  assert.match(line.body, /Lab 3 notes/);
+  const first = await call(ben, "GET", `/docs/${sharedId}/section`);
+  noSecrets(first.body, "section (first lines)");
+  const own = await call(ana, "GET", `/docs/${sharedId}/section?block=b1`);
+  assert.match(own.body, /Budget 2027 private/);
+});
+
+test("study cards made from a shared line show the neutral words", async () => {
+  const cards = (
+    await call(ana, "POST", "/docs", { title: "Lab cards", team_id: lab })
+  ).json().id as string;
+  const saved = await call(ana, "PUT", `/docs/${cards}`, {
+    version: 1,
+    content: [
+      para(
+        `What is ${linkMarkdown({ kind: "doc", id: personalId }, "Budget 2027 private")} :: the answer`,
+        "c1",
+      ),
+    ],
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const queue = await call(ben, "GET", `/study/queue?doc_id=${cards}`);
+  assert.equal(queue.statusCode, 200, queue.body);
+  noSecrets(queue.body, "study queue");
+  const card = queue.json()[0];
+  assert.ok(card, queue.body);
+  assert.match(card.question, /Private page/);
+  const reviewed = await call(ben, "POST", `/study/cards/${card.id}/review`, {
+    rating: "again",
+  });
+  assert.equal(reviewed.statusCode, 200, reviewed.body);
+  noSecrets(reviewed.body, "card review");
+  noSecrets((await call(ben, "GET", "/study")).body, "study overview");
+  // Ana's own card still names her page.
+  const hers = await call(ana, "GET", `/study/queue?doc_id=${cards}`);
+  assert.match(hers.body, /Budget 2027 private/);
+});

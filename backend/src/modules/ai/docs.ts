@@ -10,13 +10,14 @@ import {
   type DocBlock,
   type DocSuggestion,
 } from "@orbyn/core";
-import { reader, transaction } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { linkPrivacy } from "../links/privacy.js";
+import { carryRanges } from "../docs/ranges.js";
 
 /**
  * The assistant, inside a page.
@@ -158,7 +159,7 @@ passage should be removed entirely, reply with an empty line.`;
             answer ? "replace" : "delete",
             stored.start,
             stored.end,
-            keepLinkLabels(answer, doc.stored),
+            keepLinkLabels(answer, doc.stored, doc.links.hidden),
             stored.quote,
             `Assistant · ${
               d.action === "custom"
@@ -180,7 +181,9 @@ passage should be removed entirely, reply with an empty line.`;
       ).rows[0];
     });
     reply.code(201);
-    return made;
+    // Places and quoted words as this reader is shown them (D3aF).
+    const [shown] = await carryRanges(pool, u.id, id, [made], "shown");
+    return shown;
   });
 
   /**

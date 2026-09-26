@@ -523,8 +523,17 @@ export function objectRefsInValue(value: unknown): ObjectRef[] {
  * words hands those words back. Keep the words the page had for that link
  * instead, so the people who can open it still read its title.
  * `before` is the stored value (a page's lines, or one line).
+ *
+ * `shownPrivate` says which links the saver was shown as "Private page"
+ * (their {@link redactLine} rule). Only those are put back: someone who can
+ * open a target and writes "Private page" as its words on purpose keeps
+ * them. Left out, every such link is put back.
  */
-export function keepLinkLabels<T>(next: T, before: unknown): T {
+export function keepLinkLabels<T>(
+  next: T,
+  before: unknown,
+  shownPrivate: (ref: ObjectRef) => boolean = () => true,
+): T {
   const labels = new Map<string, string>();
   const collect = (v: unknown) => {
     if (typeof v === "string") {
@@ -546,6 +555,7 @@ export function keepLinkLabels<T>(next: T, before: unknown): T {
         ? v.replace(OBJECT_LINK, (whole, label: string, href: string) => {
             const ref = parseObjectHref(href);
             if (!ref || label !== PRIVATE_LINK_LABELS[ref.kind]) return whole;
+            if (!shownPrivate(ref)) return whole;
             const kept = labels.get(targetKey(ref));
             return kept ? `[${kept}](${href})` : whole;
           })
@@ -569,6 +579,93 @@ export function keepLinkLabels<T>(next: T, before: unknown): T {
     return v;
   };
   return fix(next) as T;
+}
+
+/**
+ * The words hidden links carry in `value`, each with what a reader is shown
+ * instead ("Zebra Secret" → "Private page"), for {@link redactQuote}.
+ */
+export function hiddenLinkLabels(
+  value: unknown,
+  hidden: (ref: ObjectRef) => boolean,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const walk = (v: unknown) => {
+    if (typeof v === "string") {
+      if (!v.includes("orbyn://")) return;
+      for (const m of v.matchAll(OBJECT_LINK)) {
+        const ref = parseObjectHref(m[2]);
+        if (!ref || ref.kind === "date" || !hidden(ref)) continue;
+        const label = PRIVATE_LINK_LABELS[ref.kind];
+        if (m[1] !== label && m[1].trim()) out.set(m[1], label);
+      }
+    } else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object" && !(v instanceof Date))
+      Object.values(v).forEach(walk);
+  };
+  walk(value);
+  return out;
+}
+
+/** A link cut off before its closing parenthesis, at the end of words. */
+const CUT_LINK = /\[([^\]\n]+)\]\((orbyn:\/\/[^)\s]*)$/;
+
+/** The shortest piece of a hidden link's words treated as naming it. */
+const LABEL_PIECE = 4;
+
+/**
+ * Words quoted from a page (a remark's or a proposal's `quote`) as a reader
+ * may see them, when they can't be read off the reader's own line: the
+ * line has gone, or the words no longer match it, or the quote was cut
+ * short (a whole line's first 400 characters). Whole links to what the
+ * reader can't open read "Private page"; a link cut off mid-address counts
+ * as hidden unless its target (whole, or the one page link in `known`
+ * its address began) is open to them; any of `labels`
+ * (from {@link hiddenLinkLabels}) is swapped wherever it appears. Words
+ * that begin or end partway into one of them, or lie inside one, can't be
+ * told apart from it, so the quote is dropped (null).
+ */
+export function redactQuote(
+  quote: string | null | undefined,
+  hidden: (ref: ObjectRef) => boolean,
+  labels: Map<string, string>,
+  /** The links on the page, to tell whose address a cut-off link began. */
+  known: ObjectRef[] = [],
+): string | null {
+  if (quote == null) return null;
+  let q = redactLinkLabels(quote, hidden);
+  const cut = CUT_LINK.exec(q);
+  if (cut) {
+    const begun = known.filter((r) =>
+      `orbyn://${r.kind}/${r.id}`.startsWith(cut[2].toLowerCase()),
+    );
+    const ref =
+      parseObjectHref(cut[2]) ??
+      (begun.length && begun.every((r) => !hidden(r)) ? begun[0] : null);
+    const kind =
+      ref?.kind ??
+      (LINK_KINDS as readonly string[]).find((k) =>
+        cut[2].startsWith(`orbyn://${k}/`),
+      ) ??
+      "doc";
+    if (!ref || hidden(ref)) {
+      const label = PRIVATE_LINK_LABELS[kind as LinkKind];
+      q = `${q.slice(0, cut.index)}[${label}](${cut[2]}`;
+    }
+  }
+  if (!labels.size) return q;
+  // Longest first, so a title holding another is swapped whole.
+  const byLength = [...labels].sort((a, b) => b[0].length - a[0].length);
+  for (const [words, label] of byLength) q = q.split(words).join(label);
+  const shown = new Set(labels.values());
+  for (const [words] of byLength) {
+    if (q.length >= LABEL_PIECE && !shown.has(q) && words.includes(q))
+      return null;
+    for (let k = Math.min(words.length - 1, q.length); k >= LABEL_PIECE; k--)
+      if (q.endsWith(words.slice(0, k)) || q.startsWith(words.slice(-k)))
+        return null;
+  }
+  return q;
 }
 
 // ----------------------------------------------------------------- wire ---

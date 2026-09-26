@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  hiddenLinkLabels,
   keepLinkLabels,
   objectRefsInValue,
   PRIVATE_LINK_LABELS,
   redactLine,
   redactLinkLabels,
+  redactQuote,
   redactValue,
   type ObjectRef,
 } from "@orbyn/core";
@@ -141,4 +143,56 @@ test("a save of the words shown puts the page's own words back", () => {
     { ...stored[0], text: `[Budget, final](orbyn://doc/${DOC})` },
   ];
   assert.deepEqual(keepLinkLabels(renamed, stored), renamed);
+});
+
+test("a link written as 'Private page' on purpose by someone shown its title stays as written", () => {
+  const stored = [
+    { type: "paragraph", text: `[Budget 2027](orbyn://doc/${DOC})` },
+  ];
+  const edited = [
+    { type: "paragraph", text: `[Private page](orbyn://doc/${DOC})` },
+  ];
+  // The saver can open it: their words stand.
+  assert.equal(
+    keepLinkLabels(edited, stored, () => false),
+    edited,
+  );
+  // The saver was shown "Private page": the page's words come back.
+  assert.equal(
+    keepLinkLabels(edited, stored, () => true)[0].text,
+    `[Budget 2027](orbyn://doc/${DOC})`,
+  );
+});
+
+test("a quote read by someone who can't open a link names no hidden title", () => {
+  const hidden = (r: ObjectRef) => r.id === DOC;
+  const line = `See [Zebra Secret](orbyn://doc/${DOC}) and [Open](orbyn://doc/${OPEN})`;
+  const labels = hiddenLinkLabels([line], hidden);
+  assert.deepEqual([...labels], [["Zebra Secret", "Private page"]]);
+  assert.equal(
+    redactQuote(line, hidden, labels),
+    `See [Private page](orbyn://doc/${DOC}) and [Open](orbyn://doc/${OPEN})`,
+  );
+  // Plain words naming the title.
+  assert.equal(
+    redactQuote("about Zebra Secret today", hidden, labels),
+    "about Private page today",
+  );
+  // Cut off mid-address: hidden when the target can't be told.
+  assert.equal(
+    redactQuote(`See [Zebra Secret](orbyn://doc/1111`, hidden, labels),
+    `See [Private page](orbyn://doc/1111`,
+  );
+  assert.equal(
+    redactQuote(`See [Anything](orbyn://doc/1111`, hidden, new Map()),
+    `See [Private page](orbyn://doc/1111`,
+  );
+  // Words inside a hidden title, or cut partway into one, are dropped.
+  assert.equal(redactQuote("bra Secr", hidden, labels), null);
+  assert.equal(redactQuote("See [Zebra Sec", hidden, labels), null);
+  assert.equal(redactQuote("ret) and more", hidden, labels), "ret) and more");
+  assert.equal(redactQuote("Secret) and more", hidden, labels), null);
+  // Nothing hidden, nothing changed.
+  assert.equal(redactQuote("plain words", hidden, labels), "plain words");
+  assert.equal(redactQuote(null, hidden, labels), null);
 });
