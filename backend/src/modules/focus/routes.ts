@@ -13,7 +13,7 @@ import {
 import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { loadPrefs } from "../planner/calendar.js";
-import { itemDetail } from "../items/routes.js";
+import { itemDetail } from "../items/service.js";
 import { lockItem, requireItemAccess } from "../items/service.js";
 import { announceTo } from "../presence/live.js";
 

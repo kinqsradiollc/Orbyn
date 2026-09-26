@@ -16,7 +16,7 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { calendarEntries, loadPrefs } from "../planner/calendar.js";
-import { teamMembers } from "../teams/routes.js";
+import { teamMembers } from "../teams/service.js";
 
 /**
  * Minutes of meetings someone has between `from` and `to`: timed, busy

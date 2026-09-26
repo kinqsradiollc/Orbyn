@@ -20,7 +20,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { busyIntervals, loadPrefs } from "../planner/calendar.js";
 import { CHILD_COLUMNS, freeSpans, workingSpans } from "../planner/plans.js";
 import { remainingOf } from "../planner/scheduler.js";
-import { teamMembers } from "./routes.js";
+import { teamMembers } from "./service.js";
 
 /**
  * Team time: who is busy when, who is overloaded, and when everyone can

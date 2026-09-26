@@ -18,20 +18,17 @@ import {
   stepInput,
   stepUpdate,
   timeLogInput,
-  type ItemDetail,
   type ItemContext,
   type DocBlock,
   quoteOf,
   type ItemSort,
   type ItemSyncPage,
-  type OccurrenceChanges,
   type QuickAddCreated,
   type QuickAddList,
   type QuickAddMember,
   type QuickAddResult,
 } from "@orbyn/core";
-import type { QueryResult } from "pg";
-import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -55,6 +52,8 @@ import {
   requireItemAccess,
   setItemStatus,
   type ItemRow,
+  itemDetail,
+  via,
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import {
@@ -63,66 +62,6 @@ import {
   visibleOwned,
   visibleProjects,
 } from "../../lib/visibility.js";
-
-type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
-/** Runs queries on a transaction client. */
-const via =
-  (db: Db): Run =>
-  (text, values) =>
-    db.query(text, values);
-
-/**
- * A task with its checklist and its 100 most recent updates, newest first;
- * an event with the people invited and their answers; a repeating item with
- * the occurrences changed on their own.
- */
-export async function itemDetail(
-  id: string,
-  run: Run = (text, values) => pool.query(text, values),
-): Promise<ItemDetail> {
-  const item = (
-    await run(`SELECT ${ITEM_COLUMNS} FROM ${ITEM_FROM} WHERE i.id = $1`, [id])
-  ).rows[0];
-  if (!item) fail(404, "Item not found");
-  const steps = (
-    await run(
-      "SELECT id, item_id, title, done, position, created_at FROM item_steps WHERE item_id=$1 ORDER BY position, created_at, id",
-      [id],
-    )
-  ).rows;
-  const updates = (
-    await run(
-      `SELECT u.id, u.item_id, u.user_id, coalesce(a.name, 'Former member') AS author_name,
-              u.body, u.status, u.progress, u.created_at
-       FROM item_updates u LEFT JOIN users a ON a.id = u.user_id
-       WHERE u.item_id = $1 ORDER BY u.created_at DESC, u.id DESC LIMIT 100`,
-      [id],
-    )
-  ).rows;
-  const attendees = (
-    await run(
-      `SELECT id, email, name, status, responded_at FROM item_attendees
-       WHERE item_id = $1 ORDER BY created_at, email`,
-      [id],
-    )
-  ).rows;
-  const overrides = (
-    await run(
-      "SELECT occurrence, data FROM item_overrides WHERE item_id = $1 ORDER BY occurrence",
-      [id],
-    )
-  ).rows.map((o: { occurrence: Date; data: OccurrenceChanges }) => ({
-    ...o.data,
-    occurrence: o.occurrence.toISOString(),
-  }));
-  const links = (
-    await run(
-      "SELECT id, url, title, position FROM item_links WHERE item_id = $1 ORDER BY position, id",
-      [id],
-    )
-  ).rows;
-  return { ...item, steps, updates, attendees, overrides, links };
-}
 
 /** ORDER BY for each list order but the score, which is worked out in code. */
 const ORDER: Record<Exclude<ItemSort, "score">, string> = {

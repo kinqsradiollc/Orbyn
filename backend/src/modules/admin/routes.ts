@@ -13,7 +13,7 @@ import { query, reader, transaction, type Db } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { authorize } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { TEAM_COLUMNS } from "../teams/routes.js";
+import { TEAM_COLUMNS } from "../teams/service.js";
 import { revokeConnections } from "../agents/service.js";
 import { adminDatabaseRoutes } from "./database.js";
 import { adminInsightRoutes } from "./insights.js";

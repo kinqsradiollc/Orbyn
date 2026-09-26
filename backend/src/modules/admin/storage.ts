@@ -10,7 +10,7 @@ import { pool } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { authorize } from "../../lib/auth.js";
 import { announceTo } from "../presence/live.js";
-import { importCapabilities } from "../imports/routes.js";
+import { importCapabilities } from "../imports/service.js";
 import { serviceKey } from "../imports/tokens.js";
 
 /**

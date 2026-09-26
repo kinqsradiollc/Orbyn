@@ -20,7 +20,7 @@ import {
 } from "../planner/calendar.js";
 import { CHILD_COLUMNS, freeSpans, workingSpans } from "../planner/plans.js";
 import { remainingOf } from "../planner/scheduler.js";
-import { teamMembers } from "./routes.js";
+import { teamMembers } from "./service.js";
 
 const MAX_MEMBERS = 50;
 /** Busy time teammates see: planned sessions and busy frames count too. */
