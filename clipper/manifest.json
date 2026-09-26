@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Orbyn Clipper",
+  "short_name": "Orbyn Clipper",
+  "version": "1.0.0",
+  "description": "Save articles, papers, assignments and highlights from the web into Orbyn.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Clip to Orbyn",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "host_permissions": ["https://orbyn.dev/*"],
+  "optional_host_permissions": ["<all_urls>"],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+O" },
+      "description": "Clip this page to Orbyn"
+    },
+    "highlight": {
+      "suggested_key": { "default": "Alt+Shift+H" },
+      "description": "Highlight the selected words"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

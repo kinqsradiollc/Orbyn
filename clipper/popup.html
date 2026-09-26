@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Orbyn Clipper</title>
+    <link rel="stylesheet" href="clipper.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <h1>
+        <img src="icons/icon-32.png" width="18" height="18" alt="" /> Clip to
+        Orbyn
+      </h1>
+      <section id="connect" class="card" hidden>
+        <p>Connect the Clipper to your Orbyn account to start saving.</p>
+        <p class="muted small">
+          In Orbyn, open Settings → Connections → Orbyn Clipper and make a key.
+        </p>
+        <button id="open-options" class="primary">Connect</button>
+      </section>
+      <section id="clip" hidden>
+        <div class="card">
+          <p id="page-title" class="title"></p>
+          <p id="page-host" class="muted small"></p>
+          <div class="chips" role="group" aria-label="Clip as" id="types"></div>
+          <p id="preview" class="muted small" aria-live="polite"></p>
+        </div>
+        <div class="card" id="highlight-card" hidden>
+          <div class="row">
+            <h2 class="grow">Highlights on this page</h2>
+            <button id="add-highlight" class="link-button">
+              Highlight selection
+            </button>
+          </div>
+          <ul id="highlights" class="highlights"></ul>
+          <div
+            class="chips"
+            role="group"
+            aria-label="Save highlights as"
+            id="as"
+          >
+            <button data-as="quotes" aria-pressed="true">As quotes</button>
+            <button data-as="cards" aria-pressed="false">As study cards</button>
+          </div>
+        </div>
+        <label id="due-field" hidden>
+          Deadline
+          <input id="due" type="datetime-local" />
+          <span id="due-note" class="muted small"></span>
+        </label>
+        <label>
+          Put it in
+          <select id="where"></select>
+        </label>
+        <p id="message" role="status" aria-live="polite"></p>
+        <div class="row">
+          <button id="save" class="primary grow">Save to Orbyn</button>
+          <button id="settings" class="secondary" title="Options">⋯</button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

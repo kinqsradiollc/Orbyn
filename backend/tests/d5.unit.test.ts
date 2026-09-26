@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   arrangeEntries,
   articleBlocks,
+  BUILT_IN_CLIP_RULES,
   cellText,
   clipTypeFor,
   clozeLine,
@@ -360,4 +361,42 @@ test("ready-made columns: subtasks done and last touched", () => {
     ),
     "Yesterday",
   );
+});
+
+// ---------------------------------------------------- the Clipper app
+
+test("the Clipper extension is Manifest V3, asks for little, and shapes clips as Orbyn does", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const at = (rel: string) =>
+    fileURLToPath(new URL(`../../clipper/${rel}`, import.meta.url));
+  const manifest = JSON.parse(readFileSync(at("manifest.json"), "utf8"));
+  assert.equal(manifest.manifest_version, 3);
+  // Everywhere-access is optional (only for bringing highlights back).
+  assert.ok(!manifest.host_permissions.includes("<all_urls>"));
+  assert.ok(manifest.optional_host_permissions.includes("<all_urls>"));
+  assert.deepEqual([...manifest.permissions].sort(), [
+    "activeTab",
+    "contextMenus",
+    "scripting",
+    "storage",
+  ]);
+  for (const file of [
+    manifest.background.service_worker,
+    manifest.action.default_popup,
+    manifest.options_page,
+    ...Object.values(manifest.icons as Record<string, string>),
+  ])
+    assert.ok(readFileSync(at(file)).length > 0, file);
+  const shared = (await import(at("shared.js"))) as {
+    BUILT_IN_RULES: unknown;
+    clipTypeFor: (url: string, rules?: unknown[]) => string;
+  };
+  assert.deepEqual(shared.BUILT_IN_RULES, BUILT_IN_CLIP_RULES);
+  for (const url of [
+    "https://arxiv.org/abs/2401.1",
+    "https://uni.instructure.com/courses/1/assignments/2",
+    "https://blog.example.com/post",
+  ])
+    assert.equal(shared.clipTypeFor(url), clipTypeFor(url), url);
 });

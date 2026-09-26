@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Orbyn Clipper options</title>
+    <link rel="stylesheet" href="clipper.css" />
+  </head>
+  <body>
+    <main class="options">
+      <h1>
+        <img src="icons/icon-32.png" width="22" height="22" alt="" /> Orbyn
+        Clipper
+      </h1>
+      <section class="card">
+        <h2>Connect to Orbyn</h2>
+        <p class="muted">
+          In Orbyn, open Settings → Connections → Orbyn Clipper, press New
+          Clipper key, and paste the key here. A Clipper key can only save
+          clips: it can't read your pages or change your account.
+        </p>
+        <label>
+          Clipper key
+          <input
+            id="key"
+            type="password"
+            autocomplete="off"
+            placeholder="ocl_…"
+          />
+        </label>
+        <details>
+          <summary class="muted small">Orbyn's address</summary>
+          <label>
+            API address
+            <input id="api" type="url" />
+          </label>
+        </details>
+        <div class="row">
+          <button id="save" class="primary">Save and test</button>
+          <span id="status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Clip shapes by site</h2>
+        <p class="muted">
+          Pages from these sites are clipped as the shape you choose. Papers on
+          arXiv and DOI sites, and assignments on course sites, already are.
+        </p>
+        <ul id="rules" class="rules"></ul>
+        <button id="add-rule" class="secondary">Add a site</button>
+      </section>
+      <section class="card">
+        <h2>Highlights</h2>
+        <label class="row">
+          <input
+            id="restore"
+            type="checkbox"
+            style="width: auto; min-height: 0"
+          />
+          <span class="grow">
+            Keep highlights when I come back to a page
+            <span class="muted small" style="display: block">
+              This asks to run on every page, only to put your highlights back.
+              Highlights stay on this computer until you clip them.
+            </span>
+          </span>
+        </label>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
