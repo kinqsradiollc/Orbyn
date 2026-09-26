@@ -127,18 +127,25 @@ export function LiveList({
           ? VIEW_SOURCE_LABELS[spec.definition.source]
           : "Live list";
 
-  const tick = (row: ViewRow) => {
+  /**
+   * Tick or untick a task. The row may be a moment old: when the task has
+   * changed since (409), it is read again and ticked on its newest version.
+   */
+  const tick = async (row: ViewRow) => {
     if (!row.item) return;
-    const done = row.status === "done";
-    client
-      .updateItem(row.id, {
-        ...itemBody(row.item),
-        status: done ? "todo" : "done",
-      })
-      .then(
-        () => setStamp((n) => n + 1),
-        () => setStamp((n) => n + 1),
-      );
+    const status = row.status === "done" ? "todo" : "done";
+    try {
+      await client.updateItem(row.id, { ...itemBody(row.item), status });
+    } catch (e) {
+      if ((e as { statusCode?: number }).statusCode === 409) {
+        const fresh = await client.getItem(row.id).catch(() => null);
+        if (fresh)
+          await client
+            .updateItem(row.id, { ...itemBody(fresh), status })
+            .catch(() => undefined);
+      }
+    }
+    setStamp((n) => n + 1);
   };
 
   const ctx = {
@@ -210,7 +217,7 @@ export function LiveList({
                     aria-label={`${row.status === "done" ? "Reopen" : "Finish"} ${row.title}`}
                     checked={row.status === "done"}
                     disabled={!row.can_write}
-                    onChange={() => tick(row)}
+                    onChange={() => void tick(row)}
                   />
                 )}
                 <button

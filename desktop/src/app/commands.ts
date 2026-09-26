@@ -69,6 +69,7 @@ export const COMMANDS: CommandDef[] = [
   go("Calendar", "events week month"),
   go("Projects", "stages work"),
   go("Docs", "documents pages notes library", "Go to Documents"),
+  go("Views", "saved views filters table board gallery exam week"),
   go("Study", "flashcards cards exams revise"),
   go("Lists", "groups"),
   go("AI assistant", "ask chat ai"),

@@ -1170,7 +1170,7 @@ coming back to, and are private to whoever starred them.
 
 ### `GET /favourites` (auth)
 
-→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc` or `project`.
+→ `[ { "kind", "target_id", "created_at" } ]`. `kind` is `doc`, `project` or `view` (a saved view).
 
 ### `PUT /favourites` (auth)
 
@@ -1178,6 +1178,111 @@ coming back to, and are private to whoever starred them.
 
 A document is filed by sending `folder_id` to `POST /docs` or `PUT /docs/:id`; `null` unfiles it,
 and leaving the field out keeps it where it is.
+
+## Saved views and your own fields
+
+A saved view (DATA-01) is a named filter, sort, grouping and layout over tasks, pages or projects.
+Its `definition` is the one language the apps, the live list block in a page and the agents' `query`
+and `save_view` share (`viewDefinition` in `packages/core/src/views.ts`):
+
+```json
+{
+  "source": "tasks",
+  "filters": {
+    "due_within_days": 7,
+    "project": "<id>",
+    "fields": [{ "field": "<id>", "op": "is", "value": "Final" }]
+  },
+  "sort": { "by": "due", "dir": "asc" },
+  "group_by": "project",
+  "layout": "table",
+  "columns": ["done", "title", "due", "estimate", "spent", "tags", "days_left"],
+  "date_by": "due"
+}
+```
+
+- `filters`: `text`, `status` (`open` by default for tasks and projects, `done`, `any`), `team`
+  (`"personal"` or a team id), `project`, `list`, `tag`, `assignee` (`"me"` or an id),
+  `due_after` / `due_before` (days), `due_within_days`, `overdue`, `no_due`, `folder`, `kind`,
+  `updated_within_days`, and up to ten `fields` filters (`is`, `is_not`, `empty`, `not_empty`,
+  `before`, `after`, `contains`).
+- `sort.by`: `due`, `updated`, `created`, `priority`, `title`, `estimate`, `days_left` or
+  `field:<id>`. Things without a value sort last either way.
+- `group_by`: tasks group as the task list does (`status`, `list`, `tag`, `size`, `priority`,
+  `project`, `due_week`, `assignee`); pages by `kind`, `folder`, `project`, `team`, `tag`; projects
+  by `status`, `team`; pages and projects also by `field:<id>`.
+- `layout`: `list`, `board`, `table`, `calendar`, or `gallery` (pages only). `columns` include the
+  ready-made computed columns `days_left`, `overdue` and `spent_vs_estimate` (no formula language).
+- A definition that doesn't fit its source is refused with `422`.
+
+A view is yours (`team_id` null) or shared with a team. It always runs as the person looking: a shared
+view shares its definition, never anyone's rows.
+
+### `GET /views` (auth)
+
+→ `[ SavedView ]`: yours and your teams', each with `pinned` (your own sidebar) and `can_edit`.
+
+### `POST /views` (auth)
+
+`{ "name", "team_id"?, "definition" }` → `201` the view. Sharing with a team needs permission to
+change the team's things (`403` for a viewer, `404` outside the team). At most 200 views per person
+(`409`).
+
+### `PUT /views/:id` (auth)
+
+`{ "name"?, "team_id"?, "definition"? }` → the view. Its maker, or the team's owners and admins
+(`403` otherwise). Only its maker shares it or takes it back; a view keeps its `source` (`400`).
+
+### `DELETE /views/:id` (auth)
+
+→ `204`, with everyone's stars and pins of it.
+
+### `PUT /views/:id/pin` (auth)
+
+`{ "pinned": bool }` → `204`. Pins are each person's own.
+
+### `POST /views/run` (auth)
+
+`{ "id", "limit"? }` or `{ "definition", "limit"? }` → `{ source, rows, truncated, fields, people,
+view? }`. Rows are tasks, pages or projects in one shape (`ViewRow`); a task's row carries the task.
+At most 500 rows. Nothing is written.
+
+### `GET /views/:id/export.csv` (auth)
+
+The view as CSV with the columns it shows. Text that would start a spreadsheet formula is kept as
+text.
+
+### `GET /fields` (auth) · `POST /fields` · `PUT /fields/:id` · `DELETE /fields/:id`
+
+Your own typed fields (ORG-02) for pages or projects in a space (yours, or a team's):
+`{ "name", "type": "text"|"number"|"date"|"select"|"person"|"checkbox", "applies_to": "page"|"project",
+"team_id"?, "options"? (choices), "on_calendar"? (date fields) }`. One name per space and kind
+(`409`), 40 per space. Anyone who can change the team's things adds one; renaming, changing choices
+and removing it is for its maker and the team's owners and admins. A choice taken away is cleared
+where it was picked; removing a field clears every value.
+
+### `GET /fields/values?target=page|project&id=` (auth)
+
+A page's or project's fields and values, for its Info panel: `{ fields, values, can_write, people }`.
+Only the fields of its own space count.
+
+### `PUT /fields/:id/value` (auth)
+
+`{ "target", "target_id", "value" }` → `{ field_id, value }`. Checked by type (`400`): a choice must
+be one of the field's, a person someone in the team. `null` or empty text clears it. Needs
+permission to change the page or project (`403`).
+
+### `GET /fields/dates?from=YYYY-MM-DD&to=YYYY-MM-DD` (auth)
+
+Date fields shown on the calendar as deadlines (DATA-07), on the pages and projects you can open:
+`[ { field_id, field_name, target, target_id, title, date, team_id } ]`. The agents' `get_calendar`
+lists them as `deadline` entries.
+
+### A live list in a page (SRCH-02)
+
+A fenced block with the language `orbyn-list` whose text is `view:<id>` or a definition (with an
+optional `title` and `limit`). The apps draw it as live rows with working ticks; everything else
+keeps it as a code block.
 
 ## Documents
 

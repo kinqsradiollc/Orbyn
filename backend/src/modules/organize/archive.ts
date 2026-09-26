@@ -75,6 +75,8 @@ bring somewhere else.
   bring this file back in (Settings, Import & export).
 - \`projects.json\`: your ${counts.projects} project${counts.projects === 1 ? "" : "s"}, with their stages and deadlines.
 - \`folders.json\`: your ${counts.folders} folder${counts.folders === 1 ? "" : "s"}.
+- \`views.json\`: your ${counts.views} saved view${counts.views === 1 ? "" : "s"}, and your own fields on your pages and
+  projects with what you filled in.
 - \`attachments.json\`: the files you imported and the page each one became.
   Orbyn doesn't keep the files themselves: each is deleted as soon as it
   becomes a page, and always within a day.
@@ -112,6 +114,45 @@ export async function exportArchive(
          FROM folders f
         WHERE f.user_id = $1 AND f.team_id IS NULL
         ORDER BY f.position, lower(f.name)`,
+      [userId],
+    )
+  ).rows;
+
+  // Your own saved views, and your own fields with their values on your
+  // own pages and projects (a team's belong to the team).
+  const views = (
+    await db.query<{
+      name: string;
+      source: string;
+      definition: unknown;
+      created_at: Date;
+    }>(
+      `SELECT name, source, definition, created_at FROM saved_views
+        WHERE user_id = $1 AND team_id IS NULL ORDER BY lower(name), id`,
+      [userId],
+    )
+  ).rows;
+  const fields = (
+    await db.query<{
+      name: string;
+      type: string;
+      applies_to: string;
+      options: string[];
+      on_calendar: boolean;
+      values: { on: string; value: unknown }[];
+    }>(
+      `SELECT f.name, f.type, f.applies_to, f.options, f.on_calendar,
+              coalesce((SELECT json_agg(json_build_object(
+                         'on', coalesce(d.title, p.name), 'value', v.value)
+                         ORDER BY coalesce(d.title, p.name))
+                          FROM custom_field_values v
+                          LEFT JOIN docs d ON d.id = v.doc_id AND d.team_id IS NULL
+                          LEFT JOIN projects p ON p.id = v.project_id AND p.team_id IS NULL
+                         WHERE v.field_id = f.id
+                           AND (d.id IS NOT NULL OR p.id IS NOT NULL)), '[]'::json) AS values
+         FROM custom_fields f
+        WHERE f.user_id = $1 AND f.team_id IS NULL
+        ORDER BY f.applies_to, f.position, lower(f.name)`,
       [userId],
     )
   ).rows;
@@ -202,6 +243,7 @@ export async function exportArchive(
     pages: pageCount,
     projects: projects.length,
     folders: folders.length,
+    views: views.length,
   };
 
   // The page an import became is named in attachments.json, which is
@@ -320,6 +362,25 @@ export async function exportArchive(
           pages: f.pages,
         })),
       ),
+    };
+    yield {
+      name: `${root}/views.json`,
+      body: json({
+        views: views.map((v) => ({
+          name: v.name,
+          shows: v.source,
+          definition: v.definition,
+          created_at: iso(v.created_at),
+        })),
+        fields: fields.map((f) => ({
+          name: f.name,
+          type: f.type,
+          on: f.applies_to === "page" ? "pages" : "projects",
+          choices: f.options,
+          on_calendar: f.on_calendar,
+          values: f.values,
+        })),
+      }),
     };
     yield {
       name: `${root}/consent.json`,

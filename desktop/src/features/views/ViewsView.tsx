@@ -6,6 +6,7 @@ import {
   Download,
   GalleryVertical,
   LayoutList,
+  Link2,
   MoreHorizontal,
   Pin,
   Plus,
@@ -57,6 +58,8 @@ import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useToast } from "../../components/Toast";
 import { usePlanning } from "../../app/planning";
+import { webOrigin } from "../../lib/links";
+import { copyText } from "../../lib/planning";
 import { TaskBoard } from "../tasks/TaskBoard";
 import { applyEdit, type CellEdit, type TaskActions } from "./edits";
 import { ViewFilters } from "./ViewFilters";
@@ -884,6 +887,27 @@ export function ViewsView({
               }}
             >
               <Copy size={14} aria-hidden="true" /> Duplicate
+            </button>
+            <button
+              onClick={() => {
+                setMenu(null);
+                const origin = webOrigin();
+                void copyText(
+                  origin
+                    ? `${origin}/app/view/${view.id}`
+                    : `orbyn://view/${view.id}`,
+                ).then((ok) =>
+                  toast(
+                    ok
+                      ? {
+                          text: "Link copied. It opens for anyone who has this view.",
+                        }
+                      : { text: "Couldn't copy here.", tone: "warn" },
+                  ),
+                );
+              }}
+            >
+              <Link2 size={14} aria-hidden="true" /> Copy link
             </button>
             <button onClick={() => exportCsv(view)}>
               <Download size={14} aria-hidden="true" /> Export as CSV

@@ -192,6 +192,8 @@ rate limited separately from the rest of the API.
 | `deleted_items`                                                | Items deleted in the last 90 days and who could see them, for incremental sync.                 |
 | `open_invites`                                                 | One-off links offering hand-picked windows, their link (hashed and encrypted) and booking.      |
 | `object_links`                                                 | Links between things, for "Linked here": picker links, mentions and fixed connections.          |
+| `saved_views`, `saved_view_pins`                               | Saved views (one shared definition), yours or a team's, and each person's sidebar pins.         |
+| `custom_fields`, `custom_field_values`                         | Your own typed fields on pages and projects in a space, and their values.                       |
 | `migrations`                                                   | Applied migration file names.                                                                   |
 
 Every item write goes through `mutate()` and requires the current `version`. A stale write returns
