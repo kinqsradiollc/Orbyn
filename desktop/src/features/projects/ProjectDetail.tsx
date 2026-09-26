@@ -48,6 +48,7 @@ import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
 import { FieldsPanel } from "../views/FieldsPanel";
 import { LinkedHere } from "../docs/DocLinks";
+import { AliasesField } from "../docs/AliasesField";
 
 /** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
 function dayLabel(iso: string, withTime = false) {
@@ -1385,6 +1386,29 @@ export function ProjectDetail({
               >
                 All decisions
               </button>
+            </section>
+          )}
+          {/* Other names, such as a course code (LNK-03). */}
+          {(canWrite || (project.aliases ?? []).length > 0) && (
+            <section className="project-home-section">
+              <h3>Also called</h3>
+              <AliasesField
+                aliases={project.aliases ?? []}
+                canWrite={canWrite}
+                placeholder="Add another name, like COMP3100"
+                onSave={(aliases) =>
+                  client.updateProject(project.id, { aliases }).then(
+                    (next) => {
+                      onChanged(next);
+                      return next.aliases ?? aliases;
+                    },
+                    (e) => {
+                      report(e);
+                      return project.aliases ?? [];
+                    },
+                  )
+                }
+              />
             </section>
           )}
           {/* Your own fields on the project (ORG-02). */}

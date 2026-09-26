@@ -204,21 +204,28 @@ export function withClozeLines(
   const at = blocks.findIndex(
     (b) => b.type === "heading" && b.text.trim().toLowerCase() === "cards",
   );
-  if (at < 0)
+  if (at < 0) {
+    const kept = blocks.filter(
+      (b, i) =>
+        !(i === blocks.length - 1 && b.type === "paragraph" && !b.text.trim()),
+    );
+    // Before the footnotes, which stay at the page's end.
+    let end = kept.length;
+    while (end > 0 && kept[end - 1].type === "footnote") end--;
     return [
-      ...blocks.filter(
-        (b, i) =>
-          !(
-            i === blocks.length - 1 &&
-            b.type === "paragraph" &&
-            !b.text.trim()
-          ),
-      ),
+      ...kept.slice(0, end),
       { type: "heading", level: 2, id: newBlockId(), text: "Cards" },
       ...made,
+      ...kept.slice(end),
     ];
+  }
   let end = at + 1;
-  while (end < blocks.length && blocks[end].type !== "heading") end++;
+  while (
+    end < blocks.length &&
+    blocks[end].type !== "heading" &&
+    blocks[end].type !== "footnote"
+  )
+    end++;
   return [...blocks.slice(0, end), ...made, ...blocks.slice(end)];
 }
 

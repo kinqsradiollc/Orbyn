@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   aliasesInput,
+  blockPlainText,
   blockText,
   docAnchorInput,
   docExtractInput,
@@ -225,7 +226,11 @@ export async function docStructureRoutes(app: FastifyInstance) {
           )
         ).rows[0].content ?? [];
       const b = content[index];
-      if (!b || blockText(b) !== text)
+      // The line's words as the picker showed them, or its Markdown.
+      const shown = b
+        ? blockPlainText(b).replace(/\s+/g, " ").trim().slice(0, 160)
+        : "";
+      if (!b || (blockText(b) !== text && shown !== text))
         fail(409, "This page changed. Open it again to link to that line.");
       if (b.id) return { block_id: b.id, version: null };
       const named = { ...b, id: newBlockId() };

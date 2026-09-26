@@ -10,8 +10,11 @@ import {
   ArrowLeft,
   Bold,
   Check,
+  ChevronDown,
+  ChevronRight,
   Copy,
   Download,
+  FileInput,
   GripVertical,
   Highlighter,
   History,
@@ -24,13 +27,33 @@ import {
   ListPlus,
   Loader2,
   MessageSquarePlus,
+  MoreHorizontal,
   Plus,
   Sparkles,
+  Strikethrough,
   Trash2,
   Users,
 } from "lucide-react";
 import type { DragEvent } from "react";
 import {
+  blocksToClipboard,
+  canFold,
+  EMBED_LANG,
+  embedText,
+  emptyTable,
+  foldableHeadings,
+  foldedLines,
+  footnoteNumbers,
+  footnoteTexts,
+  highlightCards,
+  IMAGE_MAX_SIDE,
+  movedRange,
+  nextFootnoteLabel,
+  pageFileType,
+  tintRange,
+  withClozeLines,
+  type HighlightTint,
+  type RelatedPage,
   LIVE_LIST_LANG,
   insertLink,
   linkMarkdown,
@@ -122,6 +145,15 @@ import {
 import { DocComments } from "./DocComments";
 import { DocChanges, DocHistory, type HistoryView } from "./DocHistory";
 import { SaveTemplateDialog } from "./PageTemplates";
+import {
+  cachedFileUrl,
+  fileLink,
+  FootnoteContext,
+  isPicture,
+  scaledPicture,
+} from "./RichBlocks";
+import { MergeDialog, TemplateInsert } from "./PageActions";
+import { openObject } from "./DocLinks";
 
 type Kind = (typeof BLOCK_KINDS)[number];
 
@@ -135,8 +167,18 @@ const CLOCK_MS = 30_000;
 const STYLES: { style: InlineStyle; label: string; keys: string }[] = [
   { style: "bold", label: "Bold", keys: "⌘B" },
   { style: "italic", label: "Italic", keys: "⌘I" },
+  { style: "strike", label: "Strikethrough", keys: "⌘⇧X" },
   { style: "highlight", label: "Highlight", keys: "⌘⇧H" },
 ];
+
+/** The highlighter's other colours, beside the usual amber (EDT-05). */
+const TINTS: { tint: HighlightTint; label: string }[] = [
+  { tint: "green", label: "Highlight green" },
+  { tint: "rose", label: "Highlight pink" },
+];
+
+/** How long a line that was jumped to stays lit. */
+const FLASH_MS = 1_600;
 
 /**
  * Put new words into a line being typed, as typing would: through the
@@ -429,6 +471,38 @@ export function DocEditor({
   const tagBase = useRef<DocBlock[]>(doc.content);
   /** Whether "Save as template" is open. */
   const [savingTemplate, setSavingTemplate] = useState(false);
+  /**
+   * The headings folded on this page (EDT-14), each person's own and kept
+   * for them on every device.
+   */
+  const [folds, setFolds] = useState<Set<string>>(() => new Set());
+  const foldTimer = useRef<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    setFolds(new Set());
+    client.docFolds(doc.id).then(
+      (r) => live && setFolds(new Set(r.block_ids)),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id]);
+  /** A line just jumped to, lit for a moment so the eye finds it. */
+  const [flash, setFlash] = useState<string | null>(null);
+  /** The page's ⋯ menu, and "Merge into…". */
+  const [moreMenu, setMoreMenu] = useState(false);
+  const [merging, setMerging] = useState(false);
+  /** "Template" in the / menu: where its lines go. */
+  const [inserting, setInserting] = useState<{
+    index: number;
+    at: DOMRect;
+  } | null>(null);
+  /** The next pick in the link picker becomes an embed, not a link. */
+  const embedNext = useRef(false);
+  /** The hidden file picker, and where what it picks goes. */
+  const fileInput = useRef<HTMLInputElement>(null);
+  const filePlace = useRef<{ index: number; replace: boolean } | null>(null);
 
   // A different document replaces the editor's state entirely.
   useEffect(() => {
@@ -1004,6 +1078,22 @@ export function DocEditor({
     window.getSelection()?.removeAllRanges();
   };
 
+  /** Highlight the selected words in one of the highlighter's colours. */
+  const tintWords = (words: Picked, tint: HighlightTint) => {
+    const at = lineOf(words);
+    if (!at || at.block.type === "divider") return;
+    const made = tintRange(at.block.text, words.start, words.end, tint);
+    if (!made) {
+      toast({ text: "Those words already have another style.", tone: "warn" });
+      return;
+    }
+    const next = blocks.slice();
+    next[at.index] = { ...at.block, text: made.text } as DocBlock;
+    update(next);
+    setPicked(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
   /** Make the selected words a link to the address typed in the bar. */
   const linkWords = () => {
     if (!linking) return;
@@ -1083,7 +1173,9 @@ export function DocEditor({
             ? "italic"
             : key === "h" && e.shiftKey
               ? "highlight"
-              : null;
+              : key === "x" && e.shiftKey
+                ? "strike"
+                : null;
       if (style) {
         e.preventDefault();
         e.stopPropagation();
@@ -1099,11 +1191,50 @@ export function DocEditor({
     return () => document.removeEventListener("keydown", onKey, true);
   });
 
-  /** Put a line in view and single it out, for an answer that cites it. */
+  /**
+   * Put a line in view and light it for a moment: a link to the line, a
+   * search hit, an answer that cites it. Headings folded over it open.
+   */
   const goToBlock = (blockId: string) => {
-    const el = blockEls.current.get(blockId);
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const at = live.current.blocks.findIndex((b) => b.id === blockId);
+    if (at >= 0 && folds.size) {
+      const covering = live.current.blocks.flatMap((b, i) =>
+        b.type === "heading" && b.id && folds.has(b.id) && i < at ? [b.id] : [],
+      );
+      if (covering.length) {
+        const next = new Set(folds);
+        for (const id of covering) next.delete(id);
+        saveFolds(next);
+      }
+    }
+    requestAnimationFrame(() => {
+      const el = blockEls.current.get(blockId);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
     setActiveComment(blockId);
+    setFlash(blockId);
+  };
+  useEffect(() => {
+    if (!flash) return;
+    const t = window.setTimeout(() => setFlash(null), FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [flash]);
+
+  /** Keep this page's folds, a moment after the last change. */
+  const saveFolds = (next: Set<string>) => {
+    setFolds(next);
+    if (foldTimer.current) window.clearTimeout(foldTimer.current);
+    foldTimer.current = window.setTimeout(() => {
+      void client.setDocFolds(doc.id, [...next].slice(0, 200)).catch(() => {});
+    }, 400);
+  };
+  const toggleFold = (blockId: string) => {
+    const next = new Set(folds);
+    if (next.has(blockId)) next.delete(blockId);
+    else next.add(blockId);
+    // A heading's name only lives in this editor until the page is saved.
+    if (!base.current.some((b) => b.id === blockId)) queueSave(title, blocks);
+    saveFolds(next);
   };
 
   useEffect(() => {
@@ -1328,6 +1459,7 @@ export function DocEditor({
         reloadPills();
         onItemsChanged?.();
       },
+      report,
     }),
     [pills],
   );
@@ -1355,6 +1487,32 @@ export function DocEditor({
     const at = picking;
     setPicking(null);
     if (!el || !at) return;
+    // "Embed a page": the line becomes a live embed of what was picked.
+    if (embedNext.current) {
+      embedNext.current = false;
+      if (ref.kind !== "doc") {
+        toast({ text: "Only a page can be embedded.", tone: "warn" });
+        return;
+      }
+      if (ref.id === doc.id) {
+        toast({ text: "That's this page.", tone: "warn" });
+        return;
+      }
+      const block: DocBlock = {
+        type: "code",
+        lang: EMBED_LANG,
+        text: embedText({
+          kind: "section",
+          doc: ref.id,
+          block: ref.block ?? null,
+        }),
+      };
+      const next = live.current.blocks.slice();
+      next[at.index] = { ...block, id: next[at.index]?.id ?? newBlockId() };
+      setFocused(null);
+      update(next);
+      return;
+    }
     const put = insertLink(el.value, at.start, el.selectionStart, ref, title);
     typeInto(el, { text: put.text, start: put.caret, end: put.caret });
   };
@@ -1429,6 +1587,102 @@ export function DocEditor({
       setFocused(null);
       return;
     }
+    // Lines the menu makes whole, in place of the "/" line.
+    const replaceLine = (block: DocBlock, open = false) => {
+      setSlash(null);
+      if (suggesting) {
+        setLineSource(serializeBlock(block));
+        return;
+      }
+      const next = blocks.slice();
+      next[slash.index] = {
+        ...block,
+        id: blocks[slash.index]?.id ?? newBlockId(),
+      };
+      update(next);
+      setFocused(null);
+      const at = slash.index;
+      if (open) requestAnimationFrame(() => setFocused(at));
+    };
+    if (item.kind === "table") {
+      replaceLine({ type: "table", text: emptyTable() });
+      const at = slash.index;
+      requestAnimationFrame(() =>
+        bodyRef.current
+          ?.querySelectorAll(".doc-block-row")
+          [at]?.querySelector<HTMLInputElement>('input[data-cell="0:0"]')
+          ?.focus(),
+      );
+      return;
+    }
+    if (item.kind === "diagram") {
+      replaceLine(
+        {
+          type: "code",
+          lang: "mermaid",
+          text: "flowchart TD\n  A[Start] --> B[Next step]",
+        },
+        true,
+      );
+      return;
+    }
+    if (item.kind === "embed-tasks") {
+      replaceLine({
+        type: "code",
+        lang: EMBED_LANG,
+        text: embedText({ kind: "tasks" }),
+      });
+      return;
+    }
+    if (item.kind === "image" || item.kind === "file") {
+      setSlash(null);
+      if (suggesting) return;
+      pickFiles(slash.index, item.kind === "image");
+      return;
+    }
+    if (item.kind === "template") {
+      setSlash(null);
+      if (suggesting) return;
+      setInserting({ index: slash.index, at: slash.at });
+      return;
+    }
+    if (item.kind === "embed-section") {
+      // The line becomes [[, and what is picked is embedded, not linked.
+      const el = areaRef.current;
+      setSlash(null);
+      if (!el || suggesting) return;
+      embedNext.current = true;
+      typeInto(el, { text: "[[", start: 2, end: 2 });
+      watchLink(slash.index, el.value, el);
+      return;
+    }
+    if (item.kind === "footnote") {
+      // A marker where the "/" was, and the note's line at the page's end.
+      const el = areaRef.current;
+      setSlash(null);
+      if (!el || suggesting) return;
+      const label = nextFootnoteLabel(blocks);
+      const caret = el.selectionStart;
+      const marker = `[^${label}]`;
+      const text =
+        el.value.slice(0, slash.from) + marker + el.value.slice(caret);
+      typeInto(el, {
+        text,
+        start: slash.from + marker.length,
+        end: slash.from + marker.length,
+      });
+      requestAnimationFrame(() => {
+        const now = live.current.blocks;
+        update([
+          ...now,
+          { type: "footnote", label, text: "", id: newBlockId() },
+        ]);
+        const last = now.length;
+        setFocused(null);
+        requestAnimationFrame(() => setFocused(last));
+      });
+      return;
+    }
     if (item.kind === "task" && !suggesting) {
       const id = newBlockId();
       const next = blocks.slice();
@@ -1465,6 +1719,203 @@ export function DocEditor({
     // Stay on the line, now of its new kind, ready to type into.
     setFocused(null);
     requestAnimationFrame(() => setFocused(slash.index));
+  };
+
+  // ---- pictures and files (EDT-01) ----
+  /**
+   * Put pictures and files into the page after line `after` (or in place of
+   * it, for an empty line): each is sent to Orbyn's file store, a large
+   * photo scaled first, and becomes a picture or a file card.
+   */
+  const addFiles = async (
+    files: File[],
+    after: number,
+    replace = false,
+  ): Promise<void> => {
+    if (!files.length || !structural) return;
+    toast({
+      text:
+        files.length === 1
+          ? `Adding “${files[0].name}”…`
+          : `Adding ${files.length} files…`,
+    });
+    const made: DocBlock[] = [];
+    for (const file of files) {
+      try {
+        const mime = pageFileType(file.name, file.type);
+        if (!mime)
+          throw new Error(
+            `“${file.name}” can't go in a page: pictures, PDF, Word, Excel, PowerPoint, text and CSV files can.`,
+          );
+        const picture = isPicture(file);
+        const body = picture
+          ? await scaledPicture(file, IMAGE_MAX_SIDE)
+          : { blob: file, width: undefined, height: undefined, type: mime };
+        const { file: row, upload_path } = await client.createPageFile(doc.id, {
+          name: file.name.slice(0, 300) || "File",
+          bytes: body.blob.size,
+          mime: body.type || mime,
+          ...(body.width ? { width: body.width, height: body.height } : {}),
+        });
+        await client.uploadPageFile(upload_path, body.blob, body.type || mime);
+        made.push(
+          row.kind === "image"
+            ? { type: "image", file: row.id, text: "", id: newBlockId() }
+            : { type: "file", file: row.id, text: row.name, id: newBlockId() },
+        );
+      } catch (e) {
+        report(e);
+      }
+    }
+    if (!made.length) return;
+    const now = live.current.blocks;
+    const next = now.slice();
+    const empty =
+      replace &&
+      now[after]?.type === "paragraph" &&
+      !blockText(now[after])
+        .replace(/^\/\S*$/, "")
+        .trim();
+    next.splice(empty ? after : after + 1, empty ? 1 : 0, ...made);
+    setFocused(null);
+    update(next);
+    toast({
+      text:
+        made.length === 1 ? "Added to the page" : `Added ${made.length} files`,
+    });
+  };
+
+  /** Open the file picker for the / menu's Image or File. */
+  const pickFiles = (index: number, images: boolean) => {
+    filePlace.current = { index, replace: true };
+    const input = fileInput.current;
+    if (!input) return;
+    input.accept = images ? "image/png,image/jpeg,image/gif,image/webp" : "";
+    input.value = "";
+    input.click();
+  };
+
+  // ---- links to one line, moving lines (LNK-04, ORG-05) ----
+  /** Everything waiting is saved, so the server has what is on screen. */
+  const flush = async () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (dirty.current) await persist(live.current.title, live.current.blocks);
+    await saveQueue.current;
+  };
+
+  /** "Copy link to this line": a link that opens the page there. */
+  const copyLineLink = async (index: number) => {
+    const blockId = nameBlock(index);
+    try {
+      if (!base.current.some((b) => b.id === blockId)) {
+        dirty.current = true;
+        await flush();
+      }
+      const ok = await copyLink({ kind: "doc", id: doc.id, block: blockId });
+      toast({
+        text: ok ? "Link to this line copied" : "Couldn't copy the link",
+      });
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  /**
+   * "Move to new page" (ORG-05): the line — or a heading's whole section —
+   * becomes a page of its own, with its comments and task lines, and a link
+   * to it takes its place.
+   */
+  const moveToNewPage = async (index: number) => {
+    if (!structural) return;
+    const { start, end } = movedRange(blocks, index);
+    const named = blocks.map((b, i) =>
+      i >= start && i < end && !b.id ? { ...b, id: newBlockId() } : b,
+    );
+    const ids = named.slice(start, end).map((b) => b.id!);
+    if (named.some((b, i) => b !== blocks[i])) update(named);
+    try {
+      dirty.current = true;
+      await flush();
+      const { doc: made, source } = await client.extractToPage(doc.id, {
+        block_ids: ids,
+        version: version.current,
+      });
+      version.current = source.version;
+      ticksFrom.current = source.version;
+      base.current = source.content;
+      dirty.current = false;
+      setFocused(null);
+      setBlocks(source.content);
+      onChanged(source);
+      toast({
+        text: `Moved to “${made.title}”. A link to it is left here.`,
+        action: {
+          label: "Open",
+          run: () => openObject({ kind: "doc", id: made.id }),
+        },
+      });
+    } catch (e) {
+      report(e);
+    }
+  };
+
+  /** "Make cards from highlights" (EDT-05): cloze cards under "Cards". */
+  const cardsFromHighlights = () => {
+    const lines = highlightCards(blocks);
+    if (!lines.length) {
+      toast({
+        text: "Highlight the words to learn with ==, then make cards from them.",
+      });
+      return;
+    }
+    update(withClozeLines(blocks, lines));
+    toast({
+      text: `Added ${lines.length} card${lines.length === 1 ? "" : "s"} under Cards. Study shows them.`,
+    });
+  };
+
+  /**
+   * Copy lines as HTML another app keeps, and as Markdown (EDT-15). A copy
+   * made with ⌘C fills the clipboard there and then (`data`), with the
+   * links to pictures the page already has.
+   */
+  const copyInto = (lines: DocBlock[], data: DataTransfer) => {
+    const { html, text } = blocksToClipboard(lines, { fileUrl: cachedFileUrl });
+    data.setData("text/html", html);
+    data.setData("text/plain", text);
+  };
+  const richCopy = async (lines: DocBlock[]) => {
+    // Pictures go with links that work for the next hour.
+    const urls = new Map<string, string>();
+    await Promise.all(
+      lines.flatMap((b) =>
+        b.type === "image" || b.type === "file"
+          ? [
+              fileLink(b.file).then(
+                (l) => urls.set(b.file, l.url),
+                () => {},
+              ),
+            ]
+          : [],
+      ),
+    );
+    const { html, text } = blocksToClipboard(lines, {
+      fileUrl: (id) => urls.get(id) ?? null,
+    });
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    } catch {
+      return navigator.clipboard.writeText(text).then(
+        () => true,
+        () => false,
+      );
+    }
   };
 
   const removeAt = (index: number) => {
@@ -1543,7 +1994,9 @@ export function DocEditor({
               ? "code"
               : key === "h" && e.shiftKey
                 ? "highlight"
-                : null;
+                : key === "x" && e.shiftKey
+                  ? "strike"
+                  : null;
       if (style) {
         e.preventDefault();
         e.stopPropagation();
@@ -1605,6 +2058,13 @@ export function DocEditor({
   ) => {
     const plain = Date.now() - plainPaste.current < PLAIN_PASTE_MS;
     plainPaste.current = 0;
+    // A picture or file pasted in goes into the page after this line.
+    const pastedFiles = [...(e.clipboardData.files ?? [])];
+    if (pastedFiles.length && !suggesting) {
+      e.preventDefault();
+      void addFiles(pastedFiles, index, true);
+      return;
+    }
     const block = blocks[index];
     if (block.type === "code" || block.type === "math") return;
     const el = e.currentTarget;
@@ -1760,6 +2220,36 @@ export function DocEditor({
   }, [measure]);
 
   const markdown = useMemo(() => serializeDoc(blocks), [blocks]);
+  /** Footnote numbers and words, for markers and the notes' lines. */
+  const footnotes = useMemo(
+    () => ({ numbers: footnoteNumbers(blocks), texts: footnoteTexts(blocks) }),
+    [blocks],
+  );
+  /** Lines hidden under folded headings. */
+  const hiddenLines = useMemo(
+    () => foldedLines(blocks, folds),
+    [blocks, folds],
+  );
+  /**
+   * The lines a selection spans, when it spans more than one: a copy of
+   * those carries the page's own HTML and Markdown.
+   */
+  const selectedLines = (): DocBlock[] | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+    const rowOf = (node: Node | null) =>
+      (node instanceof Element ? node : node?.parentElement)?.closest(
+        ".doc-block-row",
+      );
+    const a = rowOf(sel.anchorNode);
+    const b = rowOf(sel.focusNode);
+    if (!a || !b || a === b) return null;
+    const rows = lineEls();
+    const i = rows.indexOf(a as HTMLElement);
+    const j = rows.indexOf(b as HTMLElement);
+    if (i < 0 || j < 0) return null;
+    return blocks.slice(Math.min(i, j), Math.max(i, j) + 1);
+  };
   /** Where each line sits in its list: its depth and its number. */
   const layout = useMemo(() => listLayout(blocks), [blocks]);
   const stats = useMemo(() => docStats(blocks), [blocks]);
@@ -1851,7 +2341,17 @@ export function DocEditor({
     }
     return at;
   };
+  /** Files dragged in from the computer: pictures and files for the page. */
+  const carriesFiles = (e: DragEvent) =>
+    [...e.dataTransfer.types].includes("Files");
   const onLinkDragOver = (e: DragEvent) => {
+    if (canDropLinks && carriesFiles(e)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      const at = lineBefore(e.clientY);
+      if (at !== linkDrop) setLinkDrop(at);
+      return;
+    }
     if (!canDropLinks || !carriesLink(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -1864,6 +2364,13 @@ export function DocEditor({
     if (at !== linkDrop) setLinkDrop(at);
   };
   const onLinkDrop = async (e: DragEvent) => {
+    if (canDropLinks && e.dataTransfer.files.length) {
+      e.preventDefault();
+      const after = linkDrop ?? lineBefore(e.clientY);
+      setLinkDrop(null);
+      await addFiles([...e.dataTransfer.files], after);
+      return;
+    }
     if (!canDropLinks || !carriesLink(e)) return;
     const found = droppedLink(e);
     const into = e.target === areaRef.current ? areaRef.current : null;
@@ -2161,6 +2668,98 @@ export function DocEditor({
               <Trash2 size={15} />
             </button>
           )}
+          {/* Rarer page actions live behind ⋯. */}
+          <span className="doc-download">
+            <button
+              className={"icon-button" + (moreMenu ? " is-on" : "")}
+              onClick={() => setMoreMenu((v) => !v)}
+              aria-label="More"
+              aria-haspopup="menu"
+              aria-expanded={moreMenu}
+              title="More"
+            >
+              <MoreHorizontal size={15} />
+            </button>
+            {moreMenu && (
+              <ul
+                className="doc-download-menu"
+                role="menu"
+                onMouseLeave={() => setMoreMenu(false)}
+              >
+                {foldableHeadings(blocks).length > 0 && (
+                  <li>
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreMenu(false);
+                        const all = foldableHeadings(blocks);
+                        const anyOpen = all.some((id) => !folds.has(id));
+                        saveFolds(anyOpen ? new Set(all) : new Set());
+                      }}
+                    >
+                      {foldableHeadings(blocks).some((id) => !folds.has(id))
+                        ? "Collapse all headings"
+                        : "Expand all headings"}
+                    </button>
+                  </li>
+                )}
+                <li>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      void richCopy(blocks).then((ok) =>
+                        toast({
+                          text: ok
+                            ? "Copied. It pastes with its headings, lists and links."
+                            : "Couldn't copy the page",
+                        }),
+                      );
+                    }}
+                  >
+                    Copy for another app
+                  </button>
+                </li>
+                {!reading && structural && (
+                  <>
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          cardsFromHighlights();
+                        }}
+                      >
+                        Make cards from highlights
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          pickFiles(blocks.length - 1, false);
+                        }}
+                      >
+                        Add a picture or file
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          setMerging(true);
+                        }}
+                      >
+                        Merge into…
+                      </button>
+                    </li>
+                  </>
+                )}
+              </ul>
+            )}
+          </span>
           {/* The page's facts live in one Info rail (NAV-04). */}
           <button
             className={"icon-button" + (showInfo ? " is-on" : "")}
@@ -2235,7 +2834,9 @@ export function DocEditor({
                         ? Bold
                         : style === "italic"
                           ? Italic
-                          : Highlighter;
+                          : style === "strike"
+                            ? Strikethrough
+                            : Highlighter;
                     return (
                       <button
                         key={style}
@@ -2254,6 +2855,19 @@ export function DocEditor({
                       </button>
                     );
                   })}
+                  {TINTS.map(({ tint, label }) => (
+                    <button
+                      key={tint}
+                      className="icon-button doc-tint-button"
+                      aria-label={label}
+                      title={label}
+                      disabled={!styleable("highlight") && !pickedLine}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => tintWords(words, tint)}
+                    >
+                      <span className={`doc-tint-swatch is-${tint}`} />
+                    </button>
+                  ))}
                   <button
                     className="icon-button"
                     aria-label="Link"
@@ -2302,6 +2916,20 @@ export function DocEditor({
                   onClick={() => taskFromWords(words)}
                 >
                   <ListChecks size={14} aria-hidden="true" /> Make task
+                </button>
+              )}
+              {canFormat && pickedLine && (
+                <button
+                  className="text-button"
+                  title="This line becomes a page of its own, and a link to it takes its place"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setPicked(null);
+                    window.getSelection()?.removeAllRanges();
+                    void moveToNewPage(pickedLine.index);
+                  }}
+                >
+                  <FileInput size={14} aria-hidden="true" /> Move to new page
                 </button>
               )}
               {askMenu && (
@@ -2403,210 +3031,286 @@ export function DocEditor({
             )}
 
             <LinkPillProvider value={pillActions}>
-              <div
-                className="doc-body"
-                ref={bodyRef}
-                onDragOver={onLinkDragOver}
-                onDragLeave={(e) => {
-                  if (e.currentTarget.contains(e.relatedTarget as Node | null))
-                    return;
-                  setLinkDrop(null);
-                }}
-                onDrop={(e) => void onLinkDrop(e)}
-              >
-                {blocks.map((block, index) =>
-                  focused === index && (!reading || suggesting) ? (
-                    <textarea
-                      key={`${index}-${block.type}`}
-                      id={`doc-block-${index}`}
-                      ref={areaRef}
-                      className="doc-input"
-                      // A nested line is typed where it reads, stepped in.
-                      data-depth={layout[index].depth || undefined}
-                      style={
-                        layout[index].depth
-                          ? ({
-                              "--depth": layout[index].depth,
-                            } as CSSProperties)
-                          : undefined
-                      }
-                      rows={1}
-                      defaultValue={serializeBlock(block, layout[index].number)}
-                      onPaste={(e) => onPaste(e, index)}
-                      onChange={(e) => {
-                        e.currentTarget.style.height = "auto";
-                        e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
-                        watchSlash(
-                          index,
-                          e.currentTarget.value,
-                          e.currentTarget,
-                        );
-                        watchLink(
-                          index,
-                          e.currentTarget.value,
-                          e.currentTarget,
-                        );
-                        editBlock(index, e.currentTarget.value);
-                      }}
-                      onKeyDown={(e) => {
-                        // The slash menu and the link picker own Enter and the
-                        // arrows while they are open.
-                        if (
-                          (slash || picking) &&
-                          ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
-                        )
-                          return;
-                        onKey(e, index);
-                      }}
-                      onBlur={() => {
-                        setPicking(null);
-                        if (suggesting) void proposeLine(index);
-                        else settlePendingTask(index);
-                        setFocused((f) => (f === index ? null : f));
-                      }}
-                    />
-                  ) : (
-                    <div
-                      key={index}
-                      data-block-id={block.id ?? undefined}
-                      data-block-source={blockText(block)}
-                      className={
-                        "doc-block-row" +
-                        (linkDrop === index ? " is-drop-after" : "") +
-                        (linkDrop === -1 && index === 0
-                          ? " is-drop-before"
-                          : "") +
-                        (block.id && commented[block.id]?.length
-                          ? " has-comment"
-                          : "") +
-                        (block.id && block.id === activeComment
-                          ? " is-active"
-                          : "")
-                      }
-                      ref={(el) => {
-                        if (!block.id) return;
-                        if (el) blockEls.current.set(block.id, el);
-                        else blockEls.current.delete(block.id);
-                      }}
-                      onClick={() =>
-                        block.id &&
-                        commented[block.id]?.length &&
-                        setActiveComment(block.id)
-                      }
-                    >
-                      {!reading && (
-                        <button
-                          className="doc-handle"
-                          aria-label="Block options"
-                          aria-haspopup="menu"
-                          onClick={(e) =>
-                            setMenu({
-                              index,
-                              at: e.currentTarget.getBoundingClientRect(),
-                            })
-                          }
-                        >
-                          <GripVertical size={14} aria-hidden="true" />
-                        </button>
-                      )}
-                      <div
-                        className="doc-block"
-                        role={reading && !suggesting ? undefined : "button"}
-                        tabIndex={reading && !suggesting ? undefined : 0}
-                        onClick={() => {
-                          if (reading && !suggesting) return;
-                          // A click that ends a drag is a selection, not a
-                          // request to edit: opening the input here would throw
-                          // the selected words away before they can be used.
-                          if (!window.getSelection()?.isCollapsed) return;
-                          setFocused(index);
+              <FootnoteContext.Provider value={footnotes}>
+                <div
+                  className="doc-body"
+                  ref={bodyRef}
+                  onCopy={(e) => {
+                    // Across lines, a copy carries the page's own HTML and
+                    // Markdown, so another app keeps its shape (EDT-15).
+                    const lines = selectedLines();
+                    if (!lines) return;
+                    e.preventDefault();
+                    copyInto(lines, e.clipboardData);
+                  }}
+                  onDragOver={onLinkDragOver}
+                  onDragLeave={(e) => {
+                    if (
+                      e.currentTarget.contains(e.relatedTarget as Node | null)
+                    )
+                      return;
+                    setLinkDrop(null);
+                  }}
+                  onDrop={(e) => void onLinkDrop(e)}
+                >
+                  {blocks.map((block, index) =>
+                    focused === index && (!reading || suggesting) ? (
+                      <textarea
+                        key={`${index}-${block.type}`}
+                        id={`doc-block-${index}`}
+                        ref={areaRef}
+                        className="doc-input"
+                        // A nested line is typed where it reads, stepped in.
+                        data-depth={layout[index].depth || undefined}
+                        style={
+                          layout[index].depth
+                            ? ({
+                                "--depth": layout[index].depth,
+                              } as CSSProperties)
+                            : undefined
+                        }
+                        rows={1}
+                        defaultValue={serializeBlock(
+                          block,
+                          layout[index].number,
+                        )}
+                        onPaste={(e) => onPaste(e, index)}
+                        onChange={(e) => {
+                          e.currentTarget.style.height = "auto";
+                          e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                          watchSlash(
+                            index,
+                            e.currentTarget.value,
+                            e.currentTarget,
+                          );
+                          watchLink(
+                            index,
+                            e.currentTarget.value,
+                            e.currentTarget,
+                          );
+                          editBlock(index, e.currentTarget.value);
                         }}
                         onKeyDown={(e) => {
-                          if ((!reading || suggesting) && e.key === "Enter") {
-                            e.preventDefault();
-                            setFocused(index);
-                          }
+                          // The slash menu and the link picker own Enter and the
+                          // arrows while they are open.
+                          if (
+                            (slash || picking) &&
+                            ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
+                          )
+                            return;
+                          onKey(e, index);
                         }}
+                        onBlur={() => {
+                          setPicking(null);
+                          if (suggesting) void proposeLine(index);
+                          else settlePendingTask(index);
+                          setFocused((f) => (f === index ? null : f));
+                        }}
+                      />
+                    ) : (
+                      <div
+                        key={index}
+                        hidden={hiddenLines[index]}
+                        data-block-id={block.id ?? undefined}
+                        data-block-source={blockText(block)}
+                        className={
+                          "doc-block-row" +
+                          (block.id && block.id === flash ? " is-flash" : "") +
+                          (block.type === "heading" &&
+                          block.id &&
+                          folds.has(block.id)
+                            ? " is-folded"
+                            : "") +
+                          (linkDrop === index ? " is-drop-after" : "") +
+                          (linkDrop === -1 && index === 0
+                            ? " is-drop-before"
+                            : "") +
+                          (block.id && commented[block.id]?.length
+                            ? " has-comment"
+                            : "") +
+                          (block.id && block.id === activeComment
+                            ? " is-active"
+                            : "")
+                        }
+                        ref={(el) => {
+                          if (!block.id) return;
+                          if (el) blockEls.current.set(block.id, el);
+                          else blockEls.current.delete(block.id);
+                        }}
+                        onClick={() =>
+                          block.id &&
+                          commented[block.id]?.length &&
+                          setActiveComment(block.id)
+                        }
                       >
-                        <BlockView
-                          block={block}
-                          marks={
-                            block.id
-                              ? [
-                                  ...(commented[block.id] ?? []),
-                                  ...proposedMarks[block.id],
-                                ]
-                              : []
-                          }
-                          onToggleTodo={
-                            structural ? () => toggleTodo(index) : undefined
-                          }
-                          number={layout[index].number}
-                          depth={layout[index].depth}
-                          isTask={!!block.id && linked.has(block.id)}
-                          projectId={doc.project_id ?? null}
-                          onReplace={
-                            structural && !reading
-                              ? (b) => {
-                                  const next = blocks.slice();
-                                  next[index] = b;
-                                  update(next);
-                                }
-                              : undefined
-                          }
-                        />
+                        {block.type === "heading" &&
+                          block.id &&
+                          (folds.has(block.id) || canFold(blocks, index)) && (
+                            <button
+                              className="doc-fold"
+                              aria-label={
+                                folds.has(block.id)
+                                  ? `Unfold “${blockText(block)}”`
+                                  : `Fold “${blockText(block)}”`
+                              }
+                              aria-expanded={!folds.has(block.id)}
+                              title={folds.has(block.id) ? "Unfold" : "Fold"}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFold(block.id!);
+                              }}
+                            >
+                              {folds.has(block.id) ? (
+                                <ChevronRight size={14} aria-hidden="true" />
+                              ) : (
+                                <ChevronDown size={14} aria-hidden="true" />
+                              )}
+                            </button>
+                          )}
+                        {!reading && (
+                          <button
+                            className="doc-handle"
+                            aria-label="Block options"
+                            aria-haspopup="menu"
+                            onClick={(e) =>
+                              setMenu({
+                                index,
+                                at: e.currentTarget.getBoundingClientRect(),
+                              })
+                            }
+                          >
+                            <GripVertical size={14} aria-hidden="true" />
+                          </button>
+                        )}
+                        <div
+                          className="doc-block"
+                          role={reading && !suggesting ? undefined : "button"}
+                          tabIndex={reading && !suggesting ? undefined : 0}
+                          onClick={() => {
+                            if (reading && !suggesting) return;
+                            // A click that ends a drag is a selection, not a
+                            // request to edit: opening the input here would throw
+                            // the selected words away before they can be used.
+                            if (!window.getSelection()?.isCollapsed) return;
+                            setFocused(index);
+                          }}
+                          onKeyDown={(e) => {
+                            if ((!reading || suggesting) && e.key === "Enter") {
+                              e.preventDefault();
+                              setFocused(index);
+                            }
+                          }}
+                        >
+                          <BlockView
+                            block={block}
+                            marks={
+                              block.id
+                                ? [
+                                    ...(commented[block.id] ?? []),
+                                    ...proposedMarks[block.id],
+                                  ]
+                                : []
+                            }
+                            onToggleTodo={
+                              structural ? () => toggleTodo(index) : undefined
+                            }
+                            number={layout[index].number}
+                            depth={layout[index].depth}
+                            isTask={!!block.id && linked.has(block.id)}
+                            projectId={doc.project_id ?? null}
+                            pageBlocks={blocks}
+                            onReplace={
+                              structural && !reading
+                                ? (b) => {
+                                    const next = blocks.slice();
+                                    next[index] = b;
+                                    update(next);
+                                  }
+                                : undefined
+                            }
+                          />
+                        </div>
                       </div>
-                    </div>
-                  ),
-                )}
-                {!reading && structural && (
-                  <button
-                    className="doc-add"
-                    onClick={() => insertAfter(blocks.length - 1)}
-                  >
-                    <Plus size={14} aria-hidden="true" /> Add a block
-                    <kbd>/</kbd>
-                  </button>
-                )}
-                {menu && (
-                  <DocBlockMenu
-                    anchor={menu.at}
-                    block={blocks[menu.index]}
-                    isFirst={menu.index === 0}
-                    isLast={menu.index === blocks.length - 1}
-                    onTurnInto={(kind) => turnInto(menu.index, kind)}
-                    onMove={(by) => moveBlock(menu.index, by)}
-                    onDuplicate={() => duplicate(menu.index)}
-                    onComment={() => commentOn(menu.index)}
-                    onDelete={() => removeAt(menu.index)}
-                    onIndent={(by) => indent(menu.index, by)}
-                    canIndent={indentBlocks(blocks, menu.index, 1) !== blocks}
-                    canOutdent={indentBlocks(blocks, menu.index, -1) !== blocks}
-                    structural={structural}
-                    onClose={() => setMenu(null)}
-                  />
-                )}
-                {slash && (
-                  <SlashMenu
-                    anchor={slash.at}
-                    query={slash.query}
-                    insertsOnly={slash.insertsOnly}
-                    onPick={pickSlash}
-                    onClose={() => setSlash(null)}
-                  />
-                )}
-                {picking && (
-                  <LinkPicker
-                    anchor={picking.at}
-                    query={picking.query}
-                    projectName={doc.project_name}
-                    onPick={pickLink}
-                    onCreate={(kind, title) => void createAndLink(kind, title)}
-                    onClose={() => setPicking(null)}
-                    report={report}
-                  />
-                )}
-              </div>
+                    ),
+                  )}
+                  {!reading && structural && (
+                    <button
+                      className="doc-add"
+                      onClick={() => insertAfter(blocks.length - 1)}
+                    >
+                      <Plus size={14} aria-hidden="true" /> Add a block
+                      <kbd>/</kbd>
+                    </button>
+                  )}
+                  {menu && (
+                    <DocBlockMenu
+                      anchor={menu.at}
+                      block={blocks[menu.index]}
+                      isFirst={menu.index === 0}
+                      isLast={menu.index === blocks.length - 1}
+                      onTurnInto={(kind) => turnInto(menu.index, kind)}
+                      onMove={(by) => moveBlock(menu.index, by)}
+                      onDuplicate={() => duplicate(menu.index)}
+                      onComment={() => commentOn(menu.index)}
+                      onDelete={() => removeAt(menu.index)}
+                      onIndent={(by) => indent(menu.index, by)}
+                      canIndent={indentBlocks(blocks, menu.index, 1) !== blocks}
+                      canOutdent={
+                        indentBlocks(blocks, menu.index, -1) !== blocks
+                      }
+                      structural={structural}
+                      onCopyLink={() => void copyLineLink(menu.index)}
+                      onMoveToPage={() => void moveToNewPage(menu.index)}
+                      onClose={() => setMenu(null)}
+                    />
+                  )}
+                  {slash && (
+                    <SlashMenu
+                      anchor={slash.at}
+                      query={slash.query}
+                      insertsOnly={slash.insertsOnly}
+                      onPick={pickSlash}
+                      onClose={() => setSlash(null)}
+                    />
+                  )}
+                  {picking && (
+                    <LinkPicker
+                      anchor={picking.at}
+                      query={picking.query}
+                      projectName={doc.project_name}
+                      onPick={pickLink}
+                      onCreate={(kind, title) =>
+                        void createAndLink(kind, title)
+                      }
+                      onClose={() => {
+                        embedNext.current = false;
+                        setPicking(null);
+                      }}
+                      report={report}
+                    />
+                  )}
+                  {inserting && (
+                    <TemplateInsert
+                      anchor={inserting.at}
+                      doc={{ title, project_name: doc.project_name }}
+                      onPick={(lines) => {
+                        const now = live.current.blocks;
+                        const next = now.slice();
+                        const empty =
+                          next[inserting.index]?.type === "paragraph" &&
+                          !blockText(next[inserting.index])
+                            .replace(/^\/\S*$/, "")
+                            .trim();
+                        next.splice(inserting.index, empty ? 1 : 0, ...lines);
+                        setFocused(null);
+                        update(next);
+                      }}
+                      onClose={() => setInserting(null)}
+                      report={report}
+                    />
+                  )}
+                </div>
+              </FootnoteContext.Provider>
             </LinkPillProvider>
 
             {/* One quiet line at the end of the page. The Markdown help
@@ -2647,6 +3351,24 @@ export function DocEditor({
               id={doc.id}
               onCount={setLinkedCount}
               report={report}
+              onLinkRelated={
+                !reading && structural
+                  ? (page: RelatedPage) => {
+                      const now = live.current.blocks;
+                      update([
+                        ...now,
+                        {
+                          type: "paragraph",
+                          id: newBlockId(),
+                          text: `See also ${linkMarkdown({ kind: "doc", id: page.doc_id }, page.title)}`,
+                        },
+                      ]);
+                      toast({
+                        text: `Linked “${page.title}” at the end of the page`,
+                      });
+                    }
+                  : undefined
+              }
             />
           </div>
           {!showHistory && (
@@ -2734,6 +3456,43 @@ export function DocEditor({
         )}
       </div>
 
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          const place = filePlace.current;
+          filePlace.current = null;
+          if (files.length && place)
+            void addFiles(files, place.index, place.replace);
+        }}
+      />
+      {merging && (
+        <MergeDialog
+          doc={{ id: doc.id, title, team_id: doc.team_id }}
+          version={async () => {
+            await flush();
+            return version.current;
+          }}
+          onClose={() => setMerging(false)}
+          onMerged={(into, relinked) => {
+            setMerging(false);
+            dirty.current = false;
+            flushOnClose.current = () => {};
+            gone.current = true;
+            onDeleted(doc.id);
+            openObject({ kind: "doc", id: into.id });
+            toast({
+              text:
+                relinked > 0
+                  ? `Merged into “${into.title}”. ${relinked} page${relinked === 1 ? "" : "s"} now link there.`
+                  : `Merged into “${into.title}”.`,
+            });
+          }}
+        />
+      )}
       {savingTemplate && (
         <SaveTemplateDialog
           doc={doc}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Folder, Info, Link2, Users, X } from "lucide-react";
+import { Download, Folder, Info, Link2, Users, X } from "lucide-react";
 import {
   dateLabel,
   savedAgo,
@@ -15,6 +15,8 @@ import { DocViewers } from "./DocViewers";
 import { PageFreshness } from "./PageFreshness";
 import { PageTags } from "./PageTags";
 import { FieldsPanel } from "../views/FieldsPanel";
+import { AliasesField } from "./AliasesField";
+import { downloadFile } from "./RichBlocks";
 
 /**
  * A page's Info (NAV-04): one slim rail beside the page, opened with ⓘ,
@@ -124,6 +126,27 @@ export function PageInfo({
         </p>
       </section>
 
+      <AliasesSection
+        doc={doc}
+        canWrite={canWrite && !reading}
+        report={report}
+      />
+
+      {doc.imported_from?.original_file && (
+        <section className="page-info-section">
+          <h3>Original file</h3>
+          <button
+            className="page-info-link"
+            onClick={() =>
+              void downloadFile(doc.imported_from!.original_file!).catch(report)
+            }
+          >
+            <Download size={13} aria-hidden="true" />
+            {doc.imported_from.file_name}
+          </button>
+        </section>
+      )}
+
       {(tags.length > 0 || (canWrite && !reading)) && (
         <section className="page-info-section">
           <h3>Tags</h3>
@@ -209,5 +232,41 @@ export function PageInfo({
         </section>
       )}
     </aside>
+  );
+}
+
+/** "Also called": a page's other names (LNK-03). */
+function AliasesSection({
+  doc,
+  canWrite,
+  report,
+}: {
+  doc: Doc;
+  canWrite: boolean;
+  report: (e: unknown) => void;
+}) {
+  const [aliases, setAliases] = useState(doc.aliases ?? []);
+  useEffect(() => setAliases(doc.aliases ?? []), [doc.id, doc.aliases]);
+  if (!canWrite && !aliases.length) return null;
+  return (
+    <section className="page-info-section">
+      <h3>Also called</h3>
+      <AliasesField
+        aliases={aliases}
+        canWrite={canWrite}
+        onSave={(next) =>
+          client.setDocAliases(doc.id, next).then(
+            (r) => {
+              setAliases(r.aliases);
+              return r.aliases;
+            },
+            (e) => {
+              report(e);
+              return aliases;
+            },
+          )
+        }
+      />
+    </section>
   );
 }

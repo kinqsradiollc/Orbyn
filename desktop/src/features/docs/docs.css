@@ -3045,3 +3045,732 @@ h4.doc-heading {
 .doc-row[draggable="true"] {
   cursor: grab;
 }
+
+/* ---- richer links and pages (D4b) ---- */
+
+/* A line that was jumped to lights up for a moment (LNK-04). */
+.doc-block-row.is-flash > .doc-block {
+  animation: doc-flash 1.6s ease-out;
+}
+@keyframes doc-flash {
+  0%,
+  35% {
+    background: var(--color-warnSoft);
+  }
+  100% {
+    background: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-block-row.is-flash > .doc-block {
+    animation: none;
+    background: var(--color-warnSoft);
+  }
+}
+
+/* Folding a heading (EDT-14): the arrow sits in the gutter left of it. */
+.doc-fold {
+  position: absolute;
+  left: -58px;
+  top: 3px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.doc-block-row:hover .doc-fold,
+.doc-fold:focus-visible,
+.doc-block-row.is-folded .doc-fold {
+  opacity: 1;
+}
+.doc-fold:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.doc-block-row.is-folded .doc-heading::after {
+  content: " …";
+  color: var(--color-faint);
+}
+@media (max-width: 720px) {
+  .doc-fold {
+    left: -26px;
+    opacity: 1;
+  }
+}
+
+/* Strikethrough and the highlighter's other colours (EDT-05). */
+.doc-strike {
+  color: var(--color-muted);
+}
+.doc-highlight.is-green {
+  background: var(--color-accentSoft);
+}
+.doc-highlight.is-rose {
+  background: var(--color-highBg);
+}
+.doc-tint-button {
+  width: 26px;
+}
+.doc-tint-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-borderStrong);
+}
+.doc-tint-swatch.is-green {
+  background: var(--color-accentSoft);
+}
+.doc-tint-swatch.is-rose {
+  background: var(--color-highBg);
+}
+
+/* Footnotes (EDT-13): a small number in the line, its words on hover. */
+.doc-fn-ref {
+  position: relative;
+  padding: 0 1px;
+  color: var(--color-accentText);
+  font-size: 0.72em;
+  cursor: help;
+}
+.doc-fn-ref:hover::after {
+  content: attr(data-note);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  width: max-content;
+  max-width: 280px;
+  transform: translateX(-50%);
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: 0 4px 16px var(--color-backdrop);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+}
+.doc-footnote {
+  display: flex;
+  gap: 6px;
+  color: var(--color-textSoft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.doc-footnote > sup {
+  flex: none;
+  min-width: 1.2em;
+  color: var(--color-muted);
+}
+
+/* Callouts (EDT-04), each on a tint the palette already has. */
+.doc-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-soft);
+  line-height: 1.6;
+}
+.doc-callout.is-tip {
+  background: var(--color-accentSoft);
+}
+.doc-callout.is-warning {
+  background: var(--color-warnSoft);
+}
+.doc-callout.is-question {
+  background: var(--color-highBg);
+}
+.doc-callout.is-summary {
+  background: var(--color-surfaceMuted);
+}
+.doc-callout-icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--color-accent);
+}
+.doc-callout.is-warning .doc-callout-icon {
+  color: var(--color-warn);
+}
+.doc-callout.is-question .doc-callout-icon {
+  color: var(--color-highText);
+}
+.doc-callout-body {
+  flex: 1;
+  min-width: 0;
+}
+.doc-callout-label {
+  font-weight: 600;
+}
+.doc-callout.is-folded .doc-callout-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.doc-callout-fold {
+  flex: none;
+  display: inline-flex;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+/* Tables (EDT-02). */
+.doc-table-wrap {
+  position: relative;
+  margin: 6px 0;
+  overflow-x: auto;
+}
+.doc-table {
+  border-collapse: collapse;
+  min-width: 60%;
+  font-size: 14px;
+}
+.doc-table th,
+.doc-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+.doc-table th,
+.doc-table tr.is-head td {
+  background: var(--color-surfaceMuted);
+  font-weight: 600;
+}
+.doc-table-wrap.is-editable td {
+  padding: 0;
+}
+.doc-table-wrap.is-editable td.is-near {
+  background: var(--color-hover);
+}
+.doc-table-wrap.is-editable input {
+  width: 100%;
+  min-width: 90px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.doc-table-wrap.is-editable tr.is-head input {
+  font-weight: 600;
+}
+.doc-table-wrap.is-editable input:focus {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+/* The bar floats over the line above, so the page doesn't move when it
+   comes and goes. */
+.doc-table-edit {
+  position: relative;
+}
+.doc-table-bar {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 0;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  box-shadow: 0 2px 8px var(--color-backdrop);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+.doc-table-bar .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.doc-table-bar-label {
+  padding: 0 4px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.doc-table-add {
+  display: flex;
+  gap: 12px;
+}
+
+/* Pictures and files (EDT-01). */
+.doc-image {
+  position: relative;
+  max-width: 100%;
+  margin: 6px 0;
+}
+.doc-image-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: zoom-in;
+}
+.doc-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+.doc-image-loading,
+.doc-image-missing {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surfaceMuted);
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.doc-image-handle {
+  position: absolute;
+  top: 50%;
+  right: -6px;
+  width: 8px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: var(--radius-pill);
+  background: var(--color-borderStrong);
+  cursor: ew-resize;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity 120ms ease;
+}
+.doc-image:hover .doc-image-handle {
+  opacity: 1;
+}
+.doc-image-caption {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+}
+input.doc-image-caption:focus {
+  outline: none;
+  color: var(--color-text);
+}
+.doc-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.doc-file > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.doc-file-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.doc-file-text strong {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-file-text small {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+/* The full-screen viewer. */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--color-backdrop);
+  backdrop-filter: blur(2px);
+}
+.image-viewer img {
+  max-width: 92vw;
+  max-height: 84vh;
+  border-radius: var(--radius-sm);
+  transition: transform 80ms ease-out;
+  user-select: none;
+}
+.image-viewer img.is-zoomed {
+  cursor: grab;
+}
+.image-viewer-bar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.image-viewer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.image-viewer-zoom {
+  min-width: 42px;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Code colouring and diagrams (EDT-11). */
+.doc-code[data-lang]::before {
+  content: attr(data-lang);
+  float: right;
+  margin-left: 8px;
+  color: var(--color-faint);
+  font-size: 11px;
+}
+.code-keyword {
+  color: var(--color-accentText);
+  font-weight: 500;
+}
+.code-string {
+  color: var(--color-highText);
+}
+.code-comment {
+  color: var(--color-muted);
+  font-style: italic;
+}
+.code-number {
+  color: var(--color-mediumText);
+}
+.code-name {
+  color: var(--color-info);
+}
+.doc-diagram {
+  margin: 6px 0;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  text-align: center;
+}
+.doc-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+.doc-diagram.is-failed {
+  text-align: left;
+}
+.doc-diagram-note {
+  margin: 0 0 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+/* Embeds (LNK-08): another page's section, read-only and live. */
+.doc-embed {
+  margin: 6px 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-softBorder);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.doc-embed.is-loading {
+  min-height: 60px;
+}
+.doc-embed.is-broken,
+.doc-embed-note {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.doc-embed-note {
+  margin: 4px 0 0;
+}
+.doc-embed-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.doc-embed-head > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-embed-head .text-button {
+  padding: 2px 0;
+}
+.doc-embed-body {
+  display: grid;
+  gap: 2px;
+}
+.doc-embed-tasks {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.doc-embed-tasks li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.doc-embed-tasks .doc-check {
+  margin-top: 0;
+  align-self: center;
+}
+.doc-embed-task {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.doc-embed-task:hover {
+  text-decoration: underline;
+}
+.doc-embed-task.is-done {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+/* A link to one line of a page: the page, then the line's words. */
+.link-pill-line {
+  color: var(--color-muted);
+}
+
+/* A link's hover card (LNK-07). */
+.link-card {
+  display: grid;
+  gap: 8px;
+  padding: 4px 2px;
+}
+.link-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.link-card-head > svg {
+  flex: none;
+  color: var(--color-muted);
+}
+.link-card-head strong {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+.link-card-head strong.is-done {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.link-card-rows {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-textSoft);
+  font-size: 13px;
+}
+.link-card-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  color: var(--color-muted);
+}
+.link-card-bar {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-track);
+  overflow: hidden;
+}
+.link-card-bar span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+}
+.link-card-actions,
+.link-card-move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.link-card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.link-card-action:hover:not(:disabled),
+.link-card-action.is-on {
+  background: var(--color-hover);
+}
+.link-card-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.link-card-action.is-open {
+  margin-left: auto;
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-onAccent);
+}
+.link-card-action.is-open:hover {
+  background: var(--color-accentPressed);
+}
+.link-card-note,
+.link-card-loading,
+.link-card-gone {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+/* "Mentioned without a link" and "Related" (LNK-06). */
+.linked-here-more {
+  margin-top: 10px;
+}
+.linked-here-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.linked-here-toggle:hover {
+  color: var(--color-text);
+}
+.linked-here-mention {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.linked-here-mention .linked-here-row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* "Also called" (LNK-03). */
+.aliases-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.aliases-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-chip);
+  color: var(--color-chipText);
+  font-size: 13px;
+}
+.aliases-chip button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.aliases-field input {
+  flex: 1;
+  min-width: 140px;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+/* "Merge into…" */
+.merge-dialog > input {
+  width: 100%;
+  margin: 8px 0;
+}
+.merge-list {
+  display: grid;
+  gap: 2px;
+  max-height: 260px;
+  margin: 0 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.merge-list .doc-menu-item {
+  width: 100%;
+}
+.merge-empty {
+  padding: 8px;
+  font-size: 13px;
+}
+.uploads-keep {
+  margin: 4px 0 12px;
+}
+/* A shorthand in a menu reads on one line. */
+.doc-menu-item kbd {
+  white-space: nowrap;
+}

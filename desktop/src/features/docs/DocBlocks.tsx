@@ -1,5 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
+  EMBED_LANG,
+  isDiagram,
   LIVE_LIST_LANG,
   parseDocInline,
   parseObjectHref,
@@ -12,6 +14,17 @@ import { Math } from "./Math";
 import { LinkPillView } from "./DocLinks";
 import { LiveList } from "../views/LiveList";
 import { cut, touches, type Mark } from "./marks";
+import {
+  CalloutView,
+  CodeView,
+  Diagram,
+  EmbedBlock,
+  FileCard,
+  FootnoteLine,
+  FootnoteRef,
+  ImageBlock,
+  TableBlock,
+} from "./RichBlocks";
 
 /**
  * The pieces of one run, each in its own span.
@@ -87,6 +100,8 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
               {shade(run.text)}
             </code>
           );
+        if (run.footnote)
+          return <FootnoteRef key={i} label={run.footnote} start={run.start} />;
         // A link made with the picker reads as a pill with the thing's
         // live title, and opens it in the app rather than the browser.
         if (run.link && parseObjectHref(run.link))
@@ -122,9 +137,18 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
               <Pieces run={run} marks={marks} />
             </em>
           );
+        if (run.strike)
+          return (
+            <s key={i} className="doc-strike">
+              <Pieces run={run} marks={marks} />
+            </s>
+          );
         if (run.highlight)
           return (
-            <mark key={i} className="doc-highlight">
+            <mark
+              key={i}
+              className={"doc-highlight" + (run.tint ? ` is-${run.tint}` : "")}
+            >
               <Pieces run={run} marks={marks} />
             </mark>
           );
@@ -156,6 +180,7 @@ export function BlockView({
   isTask = false,
   projectId = null,
   onReplace,
+  pageBlocks = [],
 }: {
   block: DocBlock;
   /** Stretches of this line that carry remarks. */
@@ -171,6 +196,8 @@ export function BlockView({
   projectId?: string | null;
   /** Put another block in this one's place (a live list's new choice). */
   onReplace?: (block: DocBlock) => void;
+  /** The page's lines, for an embed of the tasks the page links to. */
+  pageBlocks?: DocBlock[];
 }) {
   // A nested list line steps in from the left by its depth.
   const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
@@ -249,11 +276,27 @@ export function BlockView({
             }
           />
         );
+      if (block.lang === EMBED_LANG)
+        return <EmbedBlock text={block.text} pageBlocks={pageBlocks} />;
+      if (isDiagram(block)) return <Diagram text={block.text} />;
+      return <CodeView text={block.text} lang={block.lang} />;
+    case "callout":
+      return <CalloutView block={block} />;
+    case "table":
       return (
-        <pre className="doc-code">
-          <code>{block.text}</code>
-        </pre>
+        <TableBlock
+          text={block.text}
+          onChange={
+            onReplace ? (text) => onReplace({ ...block, text }) : undefined
+          }
+        />
       );
+    case "image":
+      return <ImageBlock block={block} onChange={onReplace} />;
+    case "file":
+      return <FileCard block={block} />;
+    case "footnote":
+      return <FootnoteLine block={block} />;
     case "math":
       return (
         <div className="doc-math">

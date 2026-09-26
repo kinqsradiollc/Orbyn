@@ -4,15 +4,19 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
 } from "react";
 import {
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Circle,
   FileText,
   FolderKanban,
+  Hash,
   Link2,
   Plus,
   UserRound,
@@ -23,6 +27,11 @@ import {
   dateTitle,
   docObjectLinks,
   parseObjectHref,
+  refKey,
+  splitHeadingQuery,
+  type HeadingOption,
+  type RelatedPage,
+  type UnlinkedMention,
   type DocBlock,
   type LinkedHere as LinkedHereEntry,
   type LinkedHereList,
@@ -33,6 +42,7 @@ import {
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
 import { client } from "../../lib/api";
+import { LinkCardPopover } from "./LinkCard";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05) on the web: the pill a
@@ -71,9 +81,11 @@ const NOUNS: Record<LinkKind, string> = {
   date: "date",
 };
 
-/** One key for a thing, whether it was linked as a task or an event. */
-export const pillKey = (r: ObjectRef) =>
-  `${r.kind === "event" ? "task" : r.kind}:${r.id.toLowerCase()}`;
+/**
+ * One key for a thing, whether it was linked as a task or an event; a link
+ * to one line of a page has a key of its own (it shows that line's words).
+ */
+export const pillKey = refKey;
 
 /** A deadline as a pill says it: "Fri" this week, "2 Oct" after. */
 export function shortDue(iso: string, now = new Date()): string {
@@ -98,6 +110,8 @@ type Pills = {
   onRestore?: (id: string) => void;
   /** A task was changed from the page (a live list's tick): the planner reads afresh. */
   onItemsChanged?: () => void;
+  /** Where a hover card's failures go. */
+  report?: (e: unknown) => void;
 };
 
 const PillContext = createContext<Pills>({ pills: new Map() });
@@ -147,11 +161,16 @@ export function useLinkPills(blocks: DocBlock[], report: (e: unknown) => void) {
   return { pills, reload };
 }
 
+/** How long the pointer rests on a link before its card opens. */
+const HOVER_MS = 450;
+
 /**
  * A link made with the picker, as it reads on the page: the thing's icon
- * and live title; a task with its tick and deadline. A page in the Trash
- * reads "Deleted page", muted, with Restore when you may; something gone or
- * not yours to see says only that it isn't there.
+ * and live title; a task with its tick and deadline; a link to one line of
+ * a page with that line's words. A page in the Trash reads "Deleted page",
+ * muted, with Restore when you may; something gone or not yours to see
+ * says only that it isn't there. Resting the pointer on it opens its hover
+ * card (LNK-07).
  */
 export function LinkPillView({
   href,
@@ -163,7 +182,18 @@ export function LinkPillView({
   start: number;
 }) {
   const ref = parseObjectHref(href);
-  const { pills, onToggle, onRestore } = useContext(PillContext);
+  const { pills, onToggle, onRestore, onItemsChanged, report } =
+    useContext(PillContext);
+  const [card, setCard] = useState<DOMRect | null>(null);
+  const timer = useRef<number | null>(null);
+  const inside = useRef(false);
+  const el = useRef<HTMLSpanElement>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) window.clearTimeout(timer.current);
+    },
+    [],
+  );
   if (!ref) return null;
   const pill = pills.get(pillKey(ref));
   const noun = NOUNS[ref.kind];
@@ -197,10 +227,25 @@ export function LinkPillView({
     ref.kind === "date" ? dateTitle(ref.id) : (pill?.title ?? label);
   const isTask = ref.kind === "task" || ref.kind === "event";
   const done = !!pill?.done;
-  const Icon = ICONS[ref.kind];
+  const Icon = ref.block ? Hash : ICONS[ref.kind];
   const openable = ref.kind !== "person" && ref.kind !== "date";
+  // A page merged into another opens the page it went into.
+  const target: ObjectRef = pill?.moved_to
+    ? { kind: "doc", id: pill.moved_to }
+    : ref;
+  const open = () => openObject(target, ref.block);
+  const hoverable =
+    ref.kind === "doc" ||
+    ref.kind === "task" ||
+    ref.kind === "event" ||
+    ref.kind === "project";
+  const later = (fn: () => void, ms: number) => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(fn, ms);
+  };
   return (
     <span
+      ref={el}
       className={
         "link-pill" +
         (done ? " is-done" : "") +
@@ -212,15 +257,26 @@ export function LinkPillView({
       aria-label={openable ? `Open ${noun} ${title}` : undefined}
       onClick={(e) => {
         stop(e);
-        if (openable) openObject(ref);
+        if (openable) open();
       }}
       onKeyDown={(e) => {
         if (openable && e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          openObject(ref);
+          open();
         }
       }}
+      onMouseEnter={() => {
+        if (!hoverable) return;
+        later(() => {
+          if (el.current) setCard(el.current.getBoundingClientRect());
+        }, HOVER_MS);
+      }}
+      onMouseLeave={() =>
+        later(() => {
+          if (!inside.current) setCard(null);
+        }, 250)
+      }
     >
       {ref.kind === "task" && onToggle && pill ? (
         <button
@@ -243,9 +299,35 @@ export function LinkPillView({
       ) : (
         <Icon size={13} aria-hidden="true" />
       )}
-      <span className="link-pill-title">{title}</span>
+      <span className="link-pill-title">
+        {title}
+        {ref.block && pill && (
+          <span className="link-pill-line">
+            {" › "}
+            {pill.block_title ?? "line gone"}
+          </span>
+        )}
+      </span>
       {isTask && pill?.due_at && !done && (
         <small className="link-pill-due">{shortDue(pill.due_at)}</small>
+      )}
+      {card && (
+        <span onClick={stop}>
+          <LinkCardPopover
+            target={{ ...target, ...(ref.block ? { block: ref.block } : {}) }}
+            anchor={card}
+            onOpen={open}
+            onOpenDoc={(id) => openObject({ kind: "doc", id })}
+            onChanged={() => onItemsChanged?.()}
+            onClose={() => setCard(null)}
+            onHover={(on) => {
+              inside.current = on;
+              if (!on) later(() => setCard(null), 250);
+              else if (timer.current) window.clearTimeout(timer.current);
+            }}
+            report={report ?? (() => {})}
+          />
+        </span>
       )}
     </span>
   );
@@ -255,7 +337,9 @@ export function LinkPillView({
 
 type Row =
   | { type: "option"; option: LinkOption }
-  | { type: "create"; kind: "doc" | "task"; title: string };
+  | { type: "create"; kind: "doc" | "task"; title: string }
+  /** `[[Page#`: one of the page's headings or lines (LNK-04). */
+  | { type: "heading"; doc: LinkOption; heading: HeadingOption };
 
 const GROUPS: { kind: LinkKind; label: string }[] = [
   { kind: "doc", label: "Pages" },
@@ -292,17 +376,49 @@ export function LinkPicker({
 }) {
   const q = query.trim();
   const [found, setFound] = useState<LinkOption[]>([]);
+  /** `[[Page#words`: the page it names, and its headings. */
+  const wantsLine = splitHeadingQuery(query);
+  const [lines, setLines] = useState<{
+    doc: LinkOption;
+    headings: HeadingOption[];
+  } | null>(null);
   useEffect(() => {
     let live = true;
     const t = window.setTimeout(() => {
-      client.pickLinks(q, 12).then((hits) => live && setFound(hits), report);
+      if (wantsLine)
+        client
+          .pickLinks(wantsLine.page, 5)
+          .then(async (hits) => {
+            const doc = hits.find((h) => h.kind === "doc");
+            if (!doc) return live && setLines(null);
+            const headings = await client.pageHeadings(
+              doc.id,
+              wantsLine.heading.trim(),
+            );
+            if (live) setLines({ doc, headings });
+          })
+          .catch(report);
+      else
+        client.pickLinks(q, 12).then((hits) => live && setFound(hits), report);
     }, 120);
     return () => {
       live = false;
       window.clearTimeout(t);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
   const rows = useMemo<Row[]>(() => {
+    if (wantsLine)
+      return lines
+        ? [
+            { type: "option", option: lines.doc },
+            ...lines.headings.map((heading): Row => ({
+              type: "heading",
+              doc: lines.doc,
+              heading,
+            })),
+          ]
+        : [];
     const dates: LinkOption[] = dateOptions(q).map((d) => ({
       kind: "date",
       id: d.id,
@@ -322,7 +438,8 @@ export function LinkPicker({
       out.push({ type: "create", kind: "doc", title: q });
     }
     return out;
-  }, [found, q]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [found, q, lines]);
   const [highlight, setHighlight] = useState(0);
   useEffect(() => setHighlight(0), [q]);
 
@@ -330,9 +447,25 @@ export function LinkPicker({
     (row: Row | undefined) => {
       if (!row) return;
       if (row.type === "create") onCreate(row.kind, row.title);
-      else onPick(row.option, row.option.title);
+      else if (row.type === "heading") {
+        const { doc, heading } = row;
+        // A line with no name yet is named first, so the link can find it.
+        const named = heading.block_id
+          ? Promise.resolve(heading.block_id)
+          : client
+              .anchorLine(doc.id, heading.index, heading.text)
+              .then((r) => r.block_id);
+        void named.then(
+          (block) => onPick({ kind: "doc", id: doc.id, block }, doc.title),
+          (e) => {
+            // Not ours to name (a page we may only read): link the page.
+            onPick({ kind: "doc", id: doc.id }, doc.title);
+            if ((e as { statusCode?: number }).statusCode !== 403) report(e);
+          },
+        );
+      } else onPick(row.option, row.option.title);
     },
-    [onCreate, onPick],
+    [onCreate, onPick, report],
   );
 
   useEffect(() => {
@@ -373,19 +506,28 @@ export function LinkPicker({
       <div className="doc-menu link-picker">
         {!rows.length && (
           <p className="doc-menu-note">
-            {q
-              ? "Nothing is called that."
-              : "Type to find a page, task, project, person or date."}
+            {wantsLine
+              ? "No page is called that, or it has no headings."
+              : q
+                ? "Nothing is called that."
+                : "Type to find a page, task, project, person or date. Add # after a page for one of its headings."}
           </p>
         )}
         <div className="link-picker-rows" role="listbox" aria-label="Link to">
           {rows.map((row, i) => {
-            const kind = row.type === "option" ? row.option.kind : "create";
+            const kind =
+              row.type === "option"
+                ? row.option.kind
+                : row.type === "heading"
+                  ? "heading"
+                  : "create";
             const heading =
               kind !== lastKind
                 ? kind === "create"
                   ? null
-                  : GROUPS.find((g) => g.kind === kind)?.label
+                  : kind === "heading"
+                    ? "Headings and lines"
+                    : GROUPS.find((g) => g.kind === kind)?.label
                 : null;
             lastKind = kind;
             const selected = i === highlight;
@@ -406,7 +548,22 @@ export function LinkPicker({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => take(row)}
                 >
-                  {row.type === "create" ? (
+                  {row.type === "heading" ? (
+                    <>
+                      <Hash size={15} aria-hidden="true" />
+                      <span
+                        className="doc-menu-text"
+                        style={{
+                          paddingLeft: row.heading.level
+                            ? (row.heading.level - 1) * 12
+                            : 0,
+                        }}
+                      >
+                        <strong>{row.heading.text}</strong>
+                        {!row.heading.level && <small>A line</small>}
+                      </span>
+                    </>
+                  ) : row.type === "create" ? (
                     <>
                       <Plus size={15} aria-hidden="true" />
                       <span className="doc-menu-text">
@@ -461,7 +618,10 @@ function OptionRow({ option }: { option: LinkOption }) {
 /**
  * "Linked here": the pages and tasks that link to this page, task, project
  * or event, each with the line around the link. Places you can't open are
- * never listed or counted. Hidden when nothing links here.
+ * never listed or counted. Under it, for a page or a project, the pages that
+ * say its name without linking to it ("Mentioned without a link"), each
+ * with a Link button, and for a page, the pages that read like it
+ * ("Related", LNK-06). Hidden when there is none of these.
  */
 export function LinkedHere({
   kind,
@@ -470,6 +630,7 @@ export function LinkedHere({
   onCount,
   report,
   compact = false,
+  onLinkRelated,
 }: {
   kind: "doc" | "task" | "event" | "project";
   id: string;
@@ -479,8 +640,14 @@ export function LinkedHere({
   report: (e: unknown) => void;
   /** Narrow panels: no heading rule, tighter rows. */
   compact?: boolean;
+  /** Link a related page from this one; left out where that can't be. */
+  onLinkRelated?: (page: RelatedPage) => void;
 }) {
   const [list, setList] = useState<LinkedHereList | null>(null);
+  const [mentions, setMentions] = useState<UnlinkedMention[]>([]);
+  const [related, setRelated] = useState<RelatedPage[]>([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let live = true;
     client.linksHere(kind, id).then((l) => {
@@ -488,25 +655,145 @@ export function LinkedHere({
       setList(l);
       onCount?.(l.count);
     }, report);
+    if (kind === "doc" || kind === "project")
+      client.unlinkedMentions(kind, id).then(
+        (m) => live && setMentions(m),
+        () => setMentions([]),
+      );
+    if (kind === "doc")
+      client.relatedPages(id).then(
+        (r) => live && setRelated(r),
+        () => setRelated([]),
+      );
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, id, refresh]);
-  if (!list || !list.count) return null;
+  }, [kind, id, refresh, round]);
+  const link = (m: UnlinkedMention) => {
+    if (!m.block_id || (kind !== "doc" && kind !== "project")) return;
+    void client
+      .linkMention({
+        doc_id: m.doc_id,
+        block_id: m.block_id,
+        matched: m.matched,
+        target: { kind, id },
+      })
+      .then(() => setRound((n) => n + 1), report);
+  };
+  if (!list) return null;
+  if (!list.count && !mentions.length && !related.length) return null;
   return (
     <section
       className={"linked-here" + (compact ? " is-compact" : "")}
       aria-label="Linked here"
     >
-      <h3 className="linked-here-title">Linked here · {list.count}</h3>
-      <ul>
-        {list.items.map((e) => (
-          <li key={`${e.kind}:${e.id}`}>
-            <LinkedRow entry={e} />
-          </li>
-        ))}
-      </ul>
+      {list.count > 0 && (
+        <>
+          <h3 className="linked-here-title">Linked here · {list.count}</h3>
+          <ul>
+            {list.items.map((e) => (
+              <li key={`${e.kind}:${e.id}`}>
+                <LinkedRow entry={e} />
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {mentions.length > 0 && (
+        <div className="linked-here-more">
+          <button
+            type="button"
+            className="linked-here-toggle"
+            aria-expanded={showMentions}
+            onClick={() => setShowMentions((v) => !v)}
+          >
+            {showMentions ? (
+              <ChevronDown size={14} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={14} aria-hidden="true" />
+            )}
+            Mentioned without a link ({mentions.length})
+          </button>
+          {showMentions && (
+            <ul>
+              {mentions.map((m) => (
+                <li key={m.doc_id} className="linked-here-mention">
+                  <button
+                    type="button"
+                    className="linked-here-row"
+                    onClick={() =>
+                      openObject({ kind: "doc", id: m.doc_id }, m.block_id)
+                    }
+                  >
+                    <FileText size={15} aria-hidden="true" />
+                    <span className="linked-here-text">
+                      <span className="linked-here-head">
+                        <strong>{m.title}</strong>
+                        {m.hint && <small>{m.hint}</small>}
+                      </span>
+                      <span className="linked-here-context">
+                        {m.context.before}
+                        <b>{m.context.linked}</b>
+                        {m.context.after}
+                      </span>
+                    </span>
+                  </button>
+                  {m.can_link && (
+                    <button
+                      type="button"
+                      className="link-card-action"
+                      onClick={() => link(m)}
+                    >
+                      <Link2 size={13} aria-hidden="true" /> Link
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {related.length > 0 && (
+        <div className="linked-here-more">
+          <h3 className="linked-here-title">Related</h3>
+          <ul>
+            {related.map((r) => (
+              <li key={r.doc_id} className="linked-here-mention">
+                <button
+                  type="button"
+                  className="linked-here-row"
+                  onClick={() => openObject({ kind: "doc", id: r.doc_id })}
+                >
+                  <FileText size={15} aria-hidden="true" />
+                  <span className="linked-here-text">
+                    <span className="linked-here-head">
+                      <strong>{r.title}</strong>
+                      <small>
+                        {[r.hint, r.reason].filter(Boolean).join(" · ")}
+                      </small>
+                    </span>
+                  </span>
+                </button>
+                {onLinkRelated && (
+                  <button
+                    type="button"
+                    className="link-card-action"
+                    onClick={() => {
+                      onLinkRelated(r);
+                      setRelated((all) =>
+                        all.filter((x) => x.doc_id !== r.doc_id),
+                      );
+                    }}
+                  >
+                    <Link2 size={13} aria-hidden="true" /> Link
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }

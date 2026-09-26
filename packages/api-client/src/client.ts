@@ -1003,6 +1003,8 @@ export class OrbynClient {
       deadline?: string | null;
       doc_id?: string | null;
       stages?: { id?: string; name: string }[];
+      /** Other names, such as a course code (LNK-03). */
+      aliases?: string[];
     },
   ) {
     return this.request<Project>(`/projects/${id}`, {

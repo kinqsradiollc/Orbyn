@@ -14,6 +14,28 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 
+const KEEP_KEY = "orbyn-keep-originals";
+
+/**
+ * "Keep the original" (EDT-01): whether an imported file stays with its
+ * page, in your file space. Off unless chosen; remembered in this browser.
+ */
+export function keepOriginals(): boolean {
+  try {
+    return localStorage.getItem(KEEP_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function rememberKeep(on: boolean) {
+  try {
+    if (on) localStorage.setItem(KEEP_KEY, "1");
+    else localStorage.removeItem(KEEP_KEY);
+  } catch {
+    // Storage can be off: the switch still works for this visit.
+  }
+}
+
 /**
  * Importing files into Docs: the imports going on, kept fresh while any is
  * still being read, and a way to start one from a picked or dropped file.
@@ -101,6 +123,7 @@ export function useImports(
           mime: file.type || undefined,
           project_id: projectId,
           project_team_id: projectId ? projectTeamId : undefined,
+          ...(keepOriginals() ? { keep_original: true } : {}),
         });
         startedId = started.id;
         await refresh();
@@ -197,6 +220,7 @@ export function UploadsPanel({
   onMakeCards: (doc: DocSummary) => void;
   onFiles: (files: File[]) => void;
 }) {
+  const [keep, setKeep] = useState(keepOriginals);
   const waiting = docs.filter((d) => d.in_uploads);
   // A finished import is shown as its page (below) while it waits to be
   // filed; once filed or deleted, it's gone from Uploads.
@@ -205,10 +229,29 @@ export function UploadsPanel({
     <div className="uploads">
       <p className="uploads-intro muted">
         PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays. Move a page to a folder when
-        you&apos;re ready.
+        file, then deletes it; only the page stays, unless you keep the
+        original. Move a page to a folder when you&apos;re ready.
       </p>
       <p className="uploads-hint">{importHint(caps)}</p>
+      <label className="switch-line uploads-keep">
+        <input
+          type="checkbox"
+          role="switch"
+          className="ai-switch"
+          checked={keep}
+          onChange={(e) => {
+            setKeep(e.target.checked);
+            rememberKeep(e.target.checked);
+          }}
+        />
+        <span>
+          Keep the original file
+          <small>
+            It stays with its page, in your space for files, to download again.
+            Off, it's deleted once read.
+          </small>
+        </span>
+      </label>
       {!waiting.length && !shownJobs.length && (
         <div className="uploads-empty">
           <FileUp size={22} aria-hidden="true" />

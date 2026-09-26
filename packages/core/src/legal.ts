@@ -260,7 +260,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 ## What we collect
 
 - **Your account:** your name, email address, password (stored only as a one-way hash), passkeys, two-step settings and preferences.
-- **What you put into Orbyn:** tasks, pages, notes, projects, comments, calendars you connect, booking pages and the answers people give on them, the flashcards in your pages with how your reviews went, and files you import into Docs (PDFs, Word documents and photos of notes).
+- **What you put into Orbyn:** tasks, pages, notes, projects, comments, calendars you connect, booking pages and the answers people give on them, the flashcards in your pages with how your reviews went, files you import into Docs (PDFs, Word documents and photos of notes), and pictures and files you add to pages.
 - **Sign-ins:** the device and browser you signed in from and when each session was last used, so you can see and end them.
 - **Requests to our servers:** the address requested, when, how long it took, the result, and which account made it. We use this to run, secure and debug Orbyn.
 - **Usage analytics:** per day, how many requests, changes and assistant requests your account made. This never includes what you wrote. You can turn it off.
@@ -283,7 +283,11 @@ If you connect an outside AI agent or app to Orbyn (for example Claude, ChatGPT 
 
 ## Files you import
 
-When you import a PDF, Word document or photo into Docs, the file is stored encrypted on Orbyn's own servers only while it's turned into a page, then deleted. Scanned pages and photos are read by a text-recognition model that runs on our servers; the file is never sent to the AI service or anyone else. The file is deleted as soon as the import finishes, fails or is cancelled, and in any case within 24 hours. Only the page it became stays, like any page you write, with a note of the file's name.
+When you import a PDF, Word document or photo into Docs, the file is stored encrypted on Orbyn's own servers only while it's turned into a page, then deleted. Scanned pages and photos are read by a text-recognition model that runs on our servers; the file is never sent to the AI service or anyone else. The file is deleted as soon as the import finishes, fails or is cancelled, and in any case within 24 hours. Only the page it became stays, like any page you write, with a note of the file's name — unless you choose "Keep the original", when the file stays with its page as described below.
+
+## Pictures and files in pages
+
+Pictures and files you add to a page, and the originals of imports you chose to keep, are stored encrypted on Orbyn's own servers (never a third-party storage service), for as long as the page they're on. Whoever can open the page can see or download them, through links that last an hour. They count against your space for files. When the page is deleted for good, or you remove a file, it's deleted within a few hours. They are included in our backups.
 
 ## Who we share it with
 
@@ -302,7 +306,8 @@ Orbyn stores only what it needs in your browser: your sign-in, and settings such
 - Your account and content: until you delete them or your account.
 - Deleted items: 90 days, so you can restore them.
 - Request logs: 7 days. Daily usage counts and study review history: about 13 months.
-- Files you import: deleted once they're read, and always within 24 hours. The record of each import (its file name and outcome): 30 days.
+- Files you import: deleted once they're read, and always within 24 hours, unless you keep the original. The record of each import (its file name and outcome): 30 days.
+- Pictures and files in pages: as long as their page.
 - Security audit records: 2 years.
 - Expired sign-ins and email links: removed automatically.
 
