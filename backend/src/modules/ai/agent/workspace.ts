@@ -25,17 +25,16 @@ import {
   workingSpans,
 } from "../../planner/plans.js";
 import { planReality } from "../../followthrough/reality.js";
-import { PROJECT_COUNTS } from "../../projects/counts.js";
 import { projectPlanning } from "../../projects/planning.js";
 import { withSessionFacts } from "../../planner/sessions.js";
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import type { AgentContext } from "./tools.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
+import { visibleItems, visibleRecords } from "../../../lib/visibility.js";
 import {
-  visibleItems,
-  visibleProjects,
-  visibleRecords,
-} from "../../../lib/visibility.js";
+  findProject,
+  listProjects as listVisibleProjects,
+} from "../../projects/service.js";
 
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
@@ -191,12 +190,6 @@ type ProjectRow = {
   updated_at: Date;
 };
 
-const PROJECT_SELECT = `SELECT p.id, p.name, p.summary, p.doc_id, p.team_id,
-    p.status, p.deadline, p.updated_at,
-    t.name AS team_name,
-    ${PROJECT_COUNTS}
-  FROM projects p LEFT JOIN teams t ON t.id = p.team_id`;
-const VISIBLE_PROJECTS = visibleProjects("p");
 /** Work records `$1` can open (as work-records/routes.ts). */
 const VISIBLE_RECORDS = visibleRecords("w");
 
@@ -237,15 +230,12 @@ export async function listProjects(
   ctx: AgentContext,
   a: { include_archived?: boolean },
 ) {
-  const rows = (
-    await pool.query<ProjectRow>(
-      `${PROJECT_SELECT} WHERE ${VISIBLE_PROJECTS}
-         ${a.include_archived ? "" : "AND p.status <> 'archived'"}
-       ORDER BY p.status = 'archived', p.deadline NULLS LAST, p.updated_at DESC
-       LIMIT 50`,
-      [ctx.user.id],
-    )
-  ).rows;
+  // The same list the app's Projects shows (the projects service).
+  const rows = await listVisibleProjects<ProjectRow>(pool, ctx.user.id, {
+    includeArchived: !!a.include_archived,
+    order: "deadline",
+    limit: 50,
+  });
   const checked = new Set(
     rows
       .filter((p) => p.status === "active" && p.deadline)
@@ -283,12 +273,11 @@ export async function getProject(ctx: AgentContext, a: { project_id: string }) {
     throw new Error("This conversation is scoped to a different project.");
   if (!isUuid(a.project_id))
     throw new Error("Use a project id from list_projects.");
-  const project = (
-    await pool.query<ProjectRow>(
-      `${PROJECT_SELECT} WHERE p.id = $2 AND ${VISIBLE_PROJECTS}`,
-      [ctx.user.id, a.project_id],
-    )
-  ).rows[0];
+  const project = await findProject<ProjectRow>(
+    pool,
+    ctx.user.id,
+    a.project_id,
+  );
   if (!project) throw new Error("No project with that id in this workspace.");
   const now = new Date();
   const [stages, tasks, notes, records, plan, upcoming] = await Promise.all([

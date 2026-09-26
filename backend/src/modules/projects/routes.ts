@@ -10,14 +10,12 @@ import {
   projectUpdate,
   type Project,
   type ProjectLink,
-  type ProjectStage,
   type ProjectSession,
 } from "@orbyn/core";
-import { reader, transaction, type Db, type Queryable } from "../../db/pool.js";
-import { authenticate, type UserRow } from "../../lib/auth.js";
+import { reader, transaction } from "../../db/pool.js";
+import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
-import { PROJECT_COUNTS } from "./counts.js";
 import { projectTimeMachineRoutes } from "./time-machine.js";
 import { loadItem } from "../items/service.js";
 import { projectPlanning } from "./planning.js";
@@ -25,8 +23,16 @@ import { visibleProjectActivity } from "./activity-visibility.js";
 import { makeProjectPlan } from "../planner/plans.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import { z } from "zod";
-import { visibleProjects } from "../../lib/visibility.js";
 
+import {
+  VISIBLE,
+  findProject,
+  listProjects,
+  loadProject,
+  projectVisible,
+  requireProject,
+  stagesFor,
+} from "./service.js";
 /**
  * Projects group planner tasks into a named piece of work with ordered
  * stages. Personal projects belong to their creator; team projects follow the
@@ -35,79 +41,12 @@ import { visibleProjects } from "../../lib/visibility.js";
  * reminders and the calendar keep working untouched.
  */
 
-// A brief page in Trash is no brief: the project reads as having none until
-// the page is restored (the link itself is kept for that).
-const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summary,
-  p.status, p.deadline,
-  (SELECT b.id FROM docs b WHERE b.id = p.doc_id AND b.deleted_at IS NULL) AS doc_id,
-  p.created_at, p.updated_at,
-  ${PROJECT_COUNTS}`;
-
-/** Projects `$1` can see: their own, and their teams'. */
-const VISIBLE = visibleProjects("p");
-
-type Owned = { id: string; user_id: string; team_id: string | null };
-
-async function requireProject(
-  db: Db,
-  id: string,
-  u: UserRow,
-  permission: "items:read" | "items:write",
-): Promise<Owned> {
-  const row = (
-    await db.query<Owned>(
-      "SELECT id, user_id, team_id FROM projects WHERE id = $1 FOR UPDATE",
-      [id],
-    )
-  ).rows[0];
-  if (!row) fail(404, "Project not found");
-  if (row.team_id) await requireTeam(row.team_id, u, permission, db);
-  else if (row.user_id !== u.id) fail(404, "Project not found");
-  return row;
-}
-
-/** Stages for a set of projects, in order, keyed by project. */
-async function stagesFor(db: Queryable, ids: string[]) {
-  if (!ids.length) return new Map<string, ProjectStage[]>();
-  const rows = (
-    await db.query<ProjectStage>(
-      `SELECT id, project_id, name, position FROM project_stages
-        WHERE project_id = ANY($1::uuid[]) ORDER BY position, name`,
-      [ids],
-    )
-  ).rows;
-  const map = new Map<string, ProjectStage[]>();
-  for (const s of rows)
-    map.set(s.project_id, [...(map.get(s.project_id) ?? []), s]);
-  return map;
-}
-
-/** Read one project back with its stages attached. */
-async function loadProject(db: Queryable, id: string): Promise<Project> {
-  const row = (
-    await db.query<Project>(
-      `SELECT ${COLUMNS} FROM projects p LEFT JOIN teams t ON t.id = p.team_id
-        WHERE p.id = $1`,
-      [id],
-    )
-  ).rows[0];
-  const stages = await stagesFor(db, [id]);
-  return { ...row, stages: stages.get(id) ?? [] };
-}
-
 export async function projectRoutes(app: FastifyInstance) {
   await projectTimeMachineRoutes(app);
   app.get("/projects", async (r) => {
     const u = await authenticate(r);
     const db = reader(r.headers);
-    const rows = (
-      await db.query<Project>(
-        `SELECT ${COLUMNS} FROM projects p LEFT JOIN teams t ON t.id = p.team_id
-          WHERE ${VISIBLE} ORDER BY p.status = 'archived', p.updated_at DESC
-          LIMIT 200`,
-        [u.id],
-      )
-    ).rows;
+    const rows = await listProjects(db, u.id);
     const stages = await stagesFor(
       db,
       rows.map((p) => p.id),
@@ -144,13 +83,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const db = reader(r.headers);
-    const row = (
-      await db.query<Project>(
-        `SELECT ${COLUMNS} FROM projects p LEFT JOIN teams t ON t.id = p.team_id
-          WHERE p.id = $2 AND ${VISIBLE}`,
-        [u.id, id],
-      )
-    ).rows[0];
+    const row = await findProject(db, u.id, id);
     if (!row) fail(404, "Project not found");
     const stages = await stagesFor(db, [id]);
     return { ...row, stages: stages.get(id) ?? [] };
@@ -160,11 +93,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const db = reader(r.headers);
-    const visible = await db.query(
-      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
-      [u.id, id],
-    );
-    if (!visible.rows.length) fail(404, "Project not found");
+    if (!(await projectVisible(db, u.id, id))) fail(404, "Project not found");
     return (
       await db.query<ProjectLink>(
         `SELECT id, project_id, url, title, created_at FROM project_links
@@ -279,11 +208,7 @@ export async function projectRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const db = reader(r.headers);
-    const visible = await db.query(
-      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
-      [u.id, id],
-    );
-    if (!visible.rowCount) fail(404, "Project not found");
+    if (!(await projectVisible(db, u.id, id))) fail(404, "Project not found");
     const rows = (
       await db.query<{
         id: string;
@@ -400,13 +325,7 @@ export async function projectRoutes(app: FastifyInstance) {
       if (!Number.isInteger(requested) || requested < 1 || requested > 200)
         fail(422, "Limit must be between 1 and 200.");
       const db = reader(r.headers);
-      const visible = (
-        await db.query<{ id: string }>(
-          `SELECT p.id FROM projects p WHERE p.id = $2 AND ${VISIBLE}`,
-          [u.id, id],
-        )
-      ).rowCount;
-      if (!visible) fail(404, "Project not found");
+      if (!(await projectVisible(db, u.id, id))) fail(404, "Project not found");
       return (
         await db.query(
           `SELECT a.id, a.project_id, a.actor_id, u.name AS actor_name,

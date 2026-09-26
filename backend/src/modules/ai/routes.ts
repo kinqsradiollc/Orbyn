@@ -44,11 +44,8 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { applySessionChange } from "./session-change.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
-import {
-  visibleItems,
-  visibleProjects,
-  visibleRecords,
-} from "../../lib/visibility.js";
+import { visibleItems, visibleRecords } from "../../lib/visibility.js";
+import { projectVisible } from "../projects/service.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -79,12 +76,8 @@ async function scopeOverview(
     clarification: null,
   };
   if (scope.kind === "project") {
-    const visible = await pool.query(
-      `SELECT 1 FROM projects p WHERE p.id = $2
-        AND ${visibleProjects("p")}`,
-      [u.id, scope.id],
-    );
-    if (!visible.rows.length) fail(404, "Project not found");
+    if (!(await projectVisible(pool, u.id, scope.id)))
+      fail(404, "Project not found");
     const [project, changes] = await Promise.all([
       getProject(ctx, { project_id: scope.id }),
       pool.query<{ id: string; summary: string; created_at: Date }>(
