@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
+  LIVE_LIST_LANG,
   parseDocInline,
   parseObjectHref,
   tagRuns,
@@ -9,6 +10,7 @@ import {
 } from "@orbyn/core";
 import { Math } from "./Math";
 import { LinkPillView } from "./DocLinks";
+import { LiveList } from "../views/LiveList";
 import { cut, touches, type Mark } from "./marks";
 
 /**
@@ -152,6 +154,8 @@ export function BlockView({
   number,
   depth = 0,
   isTask = false,
+  projectId = null,
+  onReplace,
 }: {
   block: DocBlock;
   /** Stretches of this line that carry remarks. */
@@ -163,6 +167,10 @@ export function BlockView({
   depth?: number;
   /** A checklist line tied to a task in the planner. */
   isTask?: boolean;
+  /** The page's project, for a live list's ready-made choices. */
+  projectId?: string | null;
+  /** Put another block in this one's place (a live list's new choice). */
+  onReplace?: (block: DocBlock) => void;
 }) {
   // A nested list line steps in from the left by its depth.
   const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
@@ -231,6 +239,16 @@ export function BlockView({
         </blockquote>
       );
     case "code":
+      if (block.lang === LIVE_LIST_LANG)
+        return (
+          <LiveList
+            text={block.text}
+            projectId={projectId}
+            onChange={
+              onReplace ? (text) => onReplace({ ...block, text }) : undefined
+            }
+          />
+        );
       return (
         <pre className="doc-code">
           <code>{block.text}</code>

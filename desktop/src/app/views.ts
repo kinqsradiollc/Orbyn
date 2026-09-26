@@ -11,13 +11,21 @@ import {
   ShieldCheck,
   Sparkles,
   Sun,
+  Table2,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { screens, screenTitle, type ScreenName } from "@orbyn/core";
 
 export type View =
-  ScreenName | "Lists" | "Agenda" | "Docs" | "Study" | "Projects" | "Booking";
+  | ScreenName
+  | "Lists"
+  | "Agenda"
+  | "Docs"
+  | "Study"
+  | "Projects"
+  | "Booking"
+  | "Views";
 
 type Screen = { title: string; subtitle: string; eyebrow: string };
 
@@ -50,6 +58,12 @@ export const SCREENS: Record<View, Screen> = {
     title: "Study",
     subtitle:
       "Flashcards from your own pages, reviewed at the right time and planned around your exams.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  Views: {
+    title: "Views",
+    subtitle:
+      "Saved filters, sorts and layouts over your tasks, pages and projects.",
     eyebrow: "YOUR PERSONAL ORBIT",
   },
   Booking: {
@@ -87,6 +101,7 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
     items: [
       { label: "Projects", icon: Boxes },
       { label: "Docs", icon: FileText },
+      { label: "Views", icon: Table2 },
       { label: "Study", icon: GraduationCap },
       { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
@@ -118,4 +133,5 @@ export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "Teams",
   "Admin",
   "Booking",
+  "Views",
 ];

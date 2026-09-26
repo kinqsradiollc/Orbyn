@@ -28,7 +28,8 @@ import {
   TASK_GROUPS,
   type GroupNames,
 } from "./task-groups.js";
-import { addDays, localDateKey } from "./time.js";
+import { allDayRange } from "./planner.js";
+import { addDays, dayTime, localDateKey, zonedParts } from "./time.js";
 import type { Item, Priority } from "./types.js";
 
 export const VIEW_SOURCES = ["tasks", "pages", "projects"] as const;
@@ -437,6 +438,8 @@ export type ViewRow = {
   item?: Item;
   /** Whether you may change it in place. */
   can_write: boolean;
+  /** A page's version, to rename it in place; null for anything else. */
+  version: number | null;
 };
 
 export type ViewResult = {
@@ -1187,7 +1190,6 @@ export const fullDefinition = (def: ViewDefinitionInput): ViewDefinition =>
  * definition of its own. Stored as a code block with this language, so the
  * page stays plain Markdown and every exporter keeps it.
  */
-export const LIVE_LIST_LANG = "orbyn-list";
 
 export type LiveListSpec =
   | { id: string; limit: number }
@@ -1235,4 +1237,52 @@ export function liveListText(
   if (def.sort.by !== "due" || def.sort.dir !== "asc") out.sort = def.sort;
   if (def.group_by !== "none") out.group_by = def.group_by;
   return JSON.stringify(out);
+}
+
+/**
+ * A task's new deadline from a day picked in a table or calendar: a task
+ * with a time keeps its time on the new day; otherwise it is due all that
+ * day. No day clears the deadline. Only the deadline changes, never its
+ * sessions.
+ */
+export function taskDueChange(
+  item: Pick<Item, "due_at" | "end_at" | "all_day">,
+  day: string | null,
+  timeZone: string,
+): Pick<Item, "due_at" | "end_at" | "all_day"> & { timezone?: string } {
+  if (!day) return { due_at: null, end_at: null, all_day: false };
+  if (item.due_at && !item.all_day && !item.end_at) {
+    const p = zonedParts(new Date(item.due_at), timeZone);
+    return {
+      due_at: dayTime(day, p.hour * 60 + p.minute, timeZone).toISOString(),
+      end_at: null,
+      all_day: false,
+    };
+  }
+  return {
+    ...allDayRange(day, day, timeZone),
+    all_day: true,
+    timezone: timeZone,
+  };
+}
+
+/**
+ * Minutes from what someone typed for an estimate: "90", "45m", "2h",
+ * "1h 30", "1:30", "1.5h". Null for nothing or nonsense.
+ */
+export function parseMinutes(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+  let m: RegExpExecArray | null;
+  if ((m = /^(\d+):(\d{1,2})$/.exec(t)))
+    return Number(m[1]) * 60 + Number(m[2]);
+  if (
+    (m =
+      /^(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?)\s*(?:(\d+)\s*(?:m|min|mins|minutes?)?)?$/.exec(
+        t,
+      ))
+  )
+    return Math.round(Number(m[1]) * 60 + Number(m[2] ?? 0));
+  if ((m = /^(\d+)\s*(?:m|min|mins|minutes?)?$/.exec(t))) return Number(m[1]);
+  return null;
 }

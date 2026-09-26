@@ -14,13 +14,14 @@ import { DocOutline } from "./DocOutline";
 import { DocViewers } from "./DocViewers";
 import { PageFreshness } from "./PageFreshness";
 import { PageTags } from "./PageTags";
+import { FieldsPanel } from "../views/FieldsPanel";
 
 /**
  * A page's Info (NAV-04): one slim rail beside the page, opened with ⓘ,
  * that holds the facts that used to stack above the words: what it belongs
  * to, its tags, what links here, its contents, its versions, who's here and
- * whether it's still true. Sections with nothing to say are left out.
- * (Fields join it with saved views.)
+ * whether it's still true, and your own fields (ORG-02). Sections with
+ * nothing to say are left out.
  */
 export function PageInfo({
   doc,
@@ -136,6 +137,13 @@ export function PageInfo({
           />
         </section>
       )}
+
+      <FieldsPanel
+        target="page"
+        targetId={doc.id}
+        revision={revision}
+        report={report}
+      />
 
       {!!info?.linked_here && (
         <section className="page-info-section">

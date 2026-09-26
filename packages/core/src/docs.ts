@@ -681,7 +681,7 @@ export function parseDoc(markdown: string): DocBlock[] {
     if (line.trim() && !/^\s*([-*]|\d+[.)])\s/.test(line)) indents = [];
 
     // Fenced code: ```lang … ```
-    const fence = /^```(\w*)\s*$/.exec(line);
+    const fence = /^```([\w+#.-]*)\s*$/.exec(line);
     if (fence) {
       const lang = fence[1] ?? "";
       const body: string[] = [];
@@ -843,10 +843,21 @@ export function serializeDoc(blocks: DocBlock[]): string {
 }
 
 /** Plain text of a document, for previews and search. */
+/**
+ * The language of a live list block (SRCH-02): a fenced block whose words
+ * say what to list, drawn as live rows in the apps (see views.ts). Its
+ * words are settings, not writing, so previews and counts leave them out.
+ */
+export const LIVE_LIST_LANG = "orbyn-list";
+
+/** A live list block, whose text is its settings. */
+export const isLiveList = (b: DocBlock) =>
+  b.type === "code" && b.lang === LIVE_LIST_LANG;
+
 export function docPlainText(blocks: DocBlock[]): string {
   return blocks
     .map((b) => {
-      if (b.type === "divider") return "";
+      if (b.type === "divider" || isLiveList(b)) return "";
       // A maths block is LaTeX all the way through, with no fences to find
       // it by, so it is spelled out whole.
       if (b.type === "math") return mathToText(b.text);

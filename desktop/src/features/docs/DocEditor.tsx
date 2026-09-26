@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { DragEvent } from "react";
 import {
+  LIVE_LIST_LANG,
   insertLink,
   linkMarkdown,
   linkQueryAt,
@@ -105,6 +106,7 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
+import { liveListChoices } from "../views/LiveList";
 import {
   LinkedHere,
   LinkPicker,
@@ -1397,6 +1399,25 @@ export function DocEditor({
       typeInto(el, { text, start: at, end: at });
       return;
     }
+    if (item.kind === "live-list") {
+      // A live list starts on the page's project's open tasks (or what's
+      // due this week) and can be changed from its own header.
+      const block: DocBlock = {
+        type: "code",
+        lang: LIVE_LIST_LANG,
+        text: liveListChoices(doc.project_id ?? null)[0].text,
+      };
+      setSlash(null);
+      if (suggesting) {
+        setLineSource(serializeBlock(block));
+        return;
+      }
+      const next = blocks.slice();
+      next[slash.index] = { ...block, id: blocks[slash.index]?.id };
+      update(next);
+      setFocused(null);
+      return;
+    }
     if (item.kind === "task" && !suggesting) {
       const id = newBlockId();
       const next = blocks.slice();
@@ -2512,6 +2533,16 @@ export function DocEditor({
                           number={layout[index].number}
                           depth={layout[index].depth}
                           isTask={!!block.id && linked.has(block.id)}
+                          projectId={doc.project_id ?? null}
+                          onReplace={
+                            structural && !reading
+                              ? (b) => {
+                                  const next = blocks.slice();
+                                  next[index] = b;
+                                  update(next);
+                                }
+                              : undefined
+                          }
                         />
                       </div>
                     </div>

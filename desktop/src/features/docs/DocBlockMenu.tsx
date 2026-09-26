@@ -21,6 +21,7 @@ import {
   CalendarDays,
   Link2,
   ListChecks,
+  ListFilter,
   ListIndentDecrease,
   ListIndentIncrease,
 } from "lucide-react";
@@ -220,14 +221,16 @@ export function DocBlockMenu({
 
 /**
  * What the "/" menu can do: turn the line into a kind of block, or put
- * something in it — today's date, or a new task. Only what works today is
- * offered; links, tables, images, callouts and templates come later.
+ * something in it — today's date, a new task, a link or a live list. Only
+ * what works today is offered; tables, images, callouts and templates come
+ * later.
  */
 export type SlashItem =
   | { kind: "block"; block: (typeof BLOCK_KINDS)[number] }
   | { kind: "task" }
   | { kind: "date" }
-  | { kind: "link" };
+  | { kind: "link" }
+  | { kind: "live-list" };
 
 type SlashEntry = {
   item: SlashItem;
@@ -284,10 +287,25 @@ const slashEntries = (): SlashEntry[] => {
     icon: Link2,
     words: "link page connect mention",
   };
-  // "New task" sits with the checklist it is a kind of; links and the date
-  // come last.
+  const liveList: SlashEntry = {
+    item: { kind: "live-list" },
+    key: "live-list",
+    label: "Live list",
+    hint: "Tasks or pages that match, kept up to date",
+    icon: ListFilter,
+    words: "live list query view filter tasks due open action items",
+  };
+  // "New task" sits with the checklist it is a kind of; links, live lists
+  // and the date come last.
   const at = blocks.findIndex((e) => e.key === "todo") + 1;
-  return [...blocks.slice(0, at), task, ...blocks.slice(at), link, date];
+  return [
+    ...blocks.slice(0, at),
+    task,
+    ...blocks.slice(at),
+    link,
+    liveList,
+    date,
+  ];
 };
 
 /**

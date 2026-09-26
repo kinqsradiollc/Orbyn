@@ -153,6 +153,7 @@ async function taskRows(
     updated_at: iso(item.updated_at) ?? "",
     fields: {},
     item: item as Item,
+    version: item.version,
     can_write: writable(item.team_id ?? null, item.user_id ?? "", role, userId),
   }));
 }
@@ -164,6 +165,7 @@ type PageRow = {
   team_name: string | null;
   title: string;
   kind: DocKind;
+  version: number;
   project_id: string | null;
   project_name: string | null;
   folder_id: string | null;
@@ -195,7 +197,7 @@ async function pageRows(
   const rows = (
     await db.query<PageRow>(
       `SELECT d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
-              d.project_id, p.name AS project_name, d.folder_id, fo.name AS folder_name,
+              d.version, d.project_id, p.name AS project_name, d.folder_id, fo.name AS folder_name,
               jsonb_path_query_array(d.content, '$[0 to 11]') AS head,
               coalesce((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name,
                                                           'color', tg.color)
@@ -250,6 +252,7 @@ async function pageRows(
     created_at: d.created_at.toISOString(),
     updated_at: d.updated_at.toISOString(),
     fields: values.get(d.id) ?? {},
+    version: d.version,
     can_write: writable(d.team_id, d.user_id, d.role, userId),
   }));
 }
@@ -327,6 +330,7 @@ async function projectRows(
     created_at: p.created_at.toISOString(),
     updated_at: p.updated_at.toISOString(),
     fields: values.get(p.id) ?? {},
+    version: null,
     can_write: writable(p.team_id, p.user_id, p.role, userId),
   }));
 }

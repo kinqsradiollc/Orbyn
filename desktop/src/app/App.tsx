@@ -70,10 +70,16 @@ import {
 import { OverviewView } from "../features/overview/OverviewView";
 import { TasksView } from "../features/tasks/TasksView";
 import { ListsView } from "../features/lists/ListsView";
-import type { AssistantSource, Doc, LegalSummary } from "@orbyn/core";
+import type {
+  AssistantSource,
+  Doc,
+  LegalSummary,
+  SavedView,
+} from "@orbyn/core";
 import { DocsView } from "../features/docs/DocsView";
 import { AgendaView } from "../features/docs/AgendaView";
 import { ProjectsView } from "../features/projects/ProjectsView";
+import { ViewsView } from "../features/views/ViewsView";
 import {
   CalendarView,
   type CalendarMode,
@@ -190,6 +196,27 @@ export function App() {
   const [noteDoc, setNoteDoc] = useState<Doc | null>(null);
   const [noteBlockId, setNoteBlockId] = useState<string | null>(null);
   const [projectToOpen, setProjectToOpen] = useState<string | null>(null);
+  /** A saved view to open (from the sidebar or a link), and the one open. */
+  const [viewToOpen, setViewToOpen] = useState<string | null>(null);
+  const [shownView, setShownView] = useState<string | null>(null);
+  /** Saved views pinned to the sidebar. */
+  const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
+  const loadPinnedViews = useCallback(() => {
+    client.listViews().then(
+      (views) => setPinnedViews(views.filter((v) => v.pinned)),
+      () => {
+        // The sidebar goes without pins until the next try.
+      },
+    );
+  }, []);
+  useEffect(() => {
+    if (token) loadPinnedViews();
+    else setPinnedViews([]);
+  }, [token, loadPinnedViews]);
+  const openSavedView = (id: string) => {
+    setViewToOpen(id);
+    setView("Views");
+  };
   const [projectSectionToOpen, setProjectSectionToOpen] = useState<
     "decisions" | "history" | null
   >(null);
@@ -283,6 +310,7 @@ export function App() {
         link.kind === "add",
       );
     else if (link.kind === "review") setView("Notifications");
+    else if (link.kind === "view") openSavedView(link.id);
     else setView("Overview");
   };
   // The desktop app hands over orbyn:// links it was opened with. Signed
@@ -529,7 +557,7 @@ export function App() {
    * A card dragged to another board column (DATA-03): its list, priority,
    * assignee or tags change, saved against the version it was shown at.
    */
-  const changeItem = (i: Item, change: ColumnChange) => {
+  const changeItem = (i: Item, change: ColumnChange | Partial<ItemInput>) => {
     if (!guard(i)) return;
     void act(async () => {
       await client.updateItem(i.id, { ...itemBody(i), ...change });
@@ -873,6 +901,9 @@ export function App() {
           user={user}
           hasUnread={notices.some((n) => !n.read)}
           onNavigate={navigate}
+          pinnedViews={pinnedViews}
+          openView={shownView}
+          onOpenView={openSavedView}
           onSignOut={() => void planner.logout()}
         />
         <div className="shell">
@@ -1002,6 +1033,33 @@ export function App() {
                   }}
                 />
               )}
+              {view === "Views" && (
+                <ViewsView
+                  report={report}
+                  teams={teams}
+                  userId={user?.id}
+                  items={items}
+                  revision={revision}
+                  openViewId={viewToOpen}
+                  onViewOpened={() => setViewToOpen(null)}
+                  onSelected={setShownView}
+                  onOpenItem={openItem}
+                  onOpenDoc={(id) =>
+                    void client.getDoc(id).then((doc) => {
+                      setNoteDoc(doc);
+                      setView("Docs");
+                    }, report)
+                  }
+                  onOpenProject={(id) => {
+                    setProjectToOpen(id);
+                    setView("Projects");
+                  }}
+                  onViewsChanged={loadPinnedViews}
+                  onToggle={toggle}
+                  onSetStatus={setStatus}
+                  onChangeItem={changeItem}
+                />
+              )}
               {view === "Study" && (
                 <StudyView
                   report={report}
@@ -1080,6 +1138,16 @@ export function App() {
                   report={report}
                   onChanged={refresh}
                   planRequest={planRequest}
+                  onOpenFieldTarget={(target, id) => {
+                    if (target === "project") {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    } else
+                      void client.getDoc(id).then((doc) => {
+                        setNoteDoc(doc);
+                        setView("Docs");
+                      }, report);
+                  }}
                 />
               )}
               {view === "AI assistant" && (

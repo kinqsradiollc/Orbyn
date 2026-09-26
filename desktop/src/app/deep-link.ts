@@ -5,7 +5,7 @@
  *   /app/doc/<id>#<line>      a page, scrolled to the line when given
  *   /app/project/<id>         a project
  *   /app/today                the Today list (on Overview)
- *   /app/view/<id>            (reserved: saved views arrive later)
+ *   /app/view/<id>            a saved view (D4a)
  *   /app/review[/<id>]        the Review inbox (Notifications until it lands)
  *   /app/add?text=<words>     Quick add, filled in, to confirm (never adds)
  *   /app/search?q=<words>     ⌘K with the words typed
@@ -160,6 +160,7 @@ export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
   switch (link.kind) {
     case "task":
     case "project":
+    case "view":
       return { kind: link.kind, id: link.id };
     case "doc":
       return { kind: "doc", id: link.id, block: BLOCK.exec(hash)?.[1] ?? null };

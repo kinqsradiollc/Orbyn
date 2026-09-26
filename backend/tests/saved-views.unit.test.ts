@@ -66,6 +66,7 @@ const row = (over: Partial<ViewRow> = {}): ViewRow => ({
   updated_at: "2026-09-20T00:00:00Z",
   fields: {},
   can_write: true,
+  version: null,
   ...over,
 });
 const withItem = (r: ViewRow): ViewRow => ({

@@ -4,8 +4,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  Table2,
 } from "lucide-react";
-import { hasSystemPermission, type User } from "@orbyn/core";
+import { hasSystemPermission, type SavedView, type User } from "@orbyn/core";
 import { NAV_GROUPS, type View } from "../app/views";
 import { commandById, keysFor } from "../app/commands";
 
@@ -24,6 +25,10 @@ type Props = {
   user: User | null;
   hasUnread: boolean;
   onNavigate: (view: View) => void;
+  /** Saved views pinned to the sidebar, and the one open (if any). */
+  pinnedViews?: SavedView[];
+  openView?: string | null;
+  onOpenView?: (id: string) => void;
   onSignOut: () => void;
 };
 
@@ -41,6 +46,9 @@ export function Sidebar({
   user,
   hasUnread,
   onNavigate,
+  pinnedViews = [],
+  openView = null,
+  onOpenView,
   onSignOut,
 }: Props) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
@@ -79,6 +87,27 @@ export function Sidebar({
             </div>
           );
         })}
+        {pinnedViews.length > 0 && onOpenView && (
+          <div className="nav-group" aria-label="Pinned views">
+            <span className="nav-label">PINNED VIEWS</span>
+            {pinnedViews.map((v) => {
+              const on = view === "Views" && openView === v.id;
+              return (
+                <button
+                  key={v.id}
+                  className={"nav-view" + (on ? " active" : "")}
+                  aria-current={on ? "page" : undefined}
+                  aria-label={railed ? v.name : undefined}
+                  title={railed ? v.name : undefined}
+                  onClick={() => onOpenView(v.id)}
+                >
+                  <Table2 size={17} />
+                  <span>{v.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </nav>
 
       <div className="sidebar-bottom">

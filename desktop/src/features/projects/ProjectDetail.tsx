@@ -46,6 +46,7 @@ import { useToast } from "../../components/Toast";
 import { copyLink } from "../../lib/links";
 import { deviceTimeZone } from "../../lib/planning";
 import { ImportButton, useImports } from "../docs/Uploads";
+import { FieldsPanel } from "../views/FieldsPanel";
 import { LinkedHere } from "../docs/DocLinks";
 
 /** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
@@ -1386,6 +1387,14 @@ export function ProjectDetail({
               </button>
             </section>
           )}
+          {/* Your own fields on the project (ORG-02). */}
+          <FieldsPanel
+            target="project"
+            targetId={project.id}
+            revision={project.updated_at}
+            report={report}
+            className="project-home-section"
+          />
           {/* Pages in the project and pages that link to it. */}
           <LinkedHere kind="project" id={project.id} report={report} compact />
         </div>
