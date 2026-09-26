@@ -143,7 +143,7 @@ Open one thing: task:, `event:<id>@<occurrence>`, `doc:<id>#<line>`, project:, r
 
 ### `get_today`
 
-The Today list for the person's local day: the time now and free time until the next commitment; sessions and events in order (repeating events expanded, subscribed calendars marked); tasks due today with the minutes planned before each deadline; late tasks (at most 20, plus the total); Up next with the reasons; and how many teammate requests wait. Reads only.
+The Today list for the person's local day: the time now and free time until the next commitment; sessions and events in order (repeating events expanded, subscribed calendars marked); the person's tasks (their own, or assigned to them) due today with the minutes planned before each deadline; late ones (at most 20, plus the total); Up next with the reasons; and how many teammate requests wait. Reads only.
 
 No arguments.
 
@@ -216,4 +216,4 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 
 Tools change only by adding: a tool is never renamed, and a field never changes its type. A tool that is going away is marked deprecated in its description first. Each change to a tool appears in `docs/mcp-catalog.json`.
 
-Routes: 19 of the app's signed-in routes are covered by tools, 149 are never for agents, and 177 are still to come.
+Routes: 25 of the app's signed-in routes are covered by tools, 156 are never for agents, and 165 are still to come.

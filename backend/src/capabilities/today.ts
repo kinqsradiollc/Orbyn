@@ -112,10 +112,16 @@ export const todayOutput = z.object({
   planned: z
     .array(entry)
     .describe("Sessions and events today, in order; repeats expanded."),
-  due: z.array(task).describe("Open tasks with a deadline today."),
+  due: z
+    .array(task)
+    .describe(
+      "The person's open tasks (their own, or assigned to them) with a deadline today, as the app's Today list shows them.",
+    ),
   late: z
     .array(task)
-    .describe("Open tasks past their deadline, latest first (at most 20)."),
+    .describe(
+      "The person's open tasks past their deadline, latest first (at most 20).",
+    ),
   late_total: z.number().describe("How many tasks are late in all."),
   up_next: z
     .array(
@@ -537,7 +543,7 @@ export const getToday = defineCapability({
   name: "get_today",
   title: "Today",
   description:
-    "The Today list for the person's local day: the time now and free time until the next commitment; sessions and events in order (repeating events expanded, subscribed calendars marked); tasks due today with the minutes planned before each deadline; late tasks (at most 20, plus the total); Up next with the reasons; and how many teammate requests wait. Reads only.",
+    "The Today list for the person's local day: the time now and free time until the next commitment; sessions and events in order (repeating events expanded, subscribed calendars marked); the person's tasks (their own, or assigned to them) due today with the minutes planned before each deadline; late ones (at most 20, plus the total); Up next with the reasons; and how many teammate requests wait. Reads only.",
   input: z.object({}).strict(),
   output: todayOutput,
   annotations: READ,

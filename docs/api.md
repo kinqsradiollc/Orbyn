@@ -283,6 +283,12 @@ without a name is matched by its question. Removing the line removes the card. S
 v4.5 with the standard parameters, aiming for 90% recall: Again brings a card back in 10 minutes,
 and the others in days. At most 20 new cards are introduced a day.
 
+Cards follow their pages, not the reading of Study: saving a page (and restoring a version or a
+page from Trash, taking a proposal or adding tasks from its lines) updates its cards for everyone
+who can read it before the answer comes back, and joining or leaving a team does the same for the
+team's pages. Pages written any other way (imports, templates, the assistant) are synced by the
+notifier within a few seconds. `GET /study` and `GET /study/queue` only read.
+
 | Method and path                           | Body / result                                                                                                  |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `GET /study`                              | `{ due_today, new_cards, reviewed_today, streak, decks[], exams[], weak[], forecast[] }`                       |
@@ -429,17 +435,22 @@ Two kinds of document Orbyn writes for you. Both are ordinary documents once cre
 be edited like any other page. The agenda is built from the calendar; with an AI provider connected
 it also opens with a few sentences the assistant writes about the day.
 
-### `GET /agenda/today` (auth)
+### `POST /agenda/today` (auth)
 
+`{ "timezone"?: "Australia/Melbourne" }` (the device's zone, adopted like `POST /me/timezone`).
 Today's agenda, in the person's planner time zone, written from the calendar as it actually is. Its
 sections: a summary line (the assistant's, when connected), Top priorities, Schedule (Morning,
 Afternoon, Evening; all-day first; no calendar names), Focus time (time set aside and free
 stretches), Due today, Carried over, Coming up, Notes and End of day. It reads
 (`packages/core/src/agenda.ts`, `backend/src/modules/docs/agenda.ts`) your events with repeats on
 the day they fall and the calendars you subscribe to, time set aside for tasks and habits, what's
-due, what slipped, exams and all-day events in the coming week, and how much working time is free. Written the first time it's asked for each day, never waiting on the AI
-provider, and returned unchanged after that, so edits are never overwritten. → a document with
-`kind` `agenda`, titled like "Sunday 20 September".
+due, what slipped, exams and all-day events in the coming week, and how much working time is free. Written the first time it's asked for each day (`201`), never waiting on the AI
+provider, and returned unchanged after that (`200`), so edits are never overwritten. → a document
+with `kind` `agenda`, titled like "Sunday 20 September".
+
+`GET /agenda/today?timezone=` does the same for app builds from before 26 September 2026. Because
+it writes, it answers with `Deprecation` (RFC 9745) and a `Link` to the POST, and goes once those
+builds are gone.
 
 The worker writes each active person's page between 5 and 11 in their own zone (at most 25 per
 15-minute pass, five at a time), opening with the assistant's summary of the day when a provider is
@@ -451,8 +462,8 @@ connected.
 when they start. It becomes the planner zone unless the person picked one in Planning settings
 (`planner_prefs.timezone_chosen`); before this, anyone who never did was treated as UTC for
 everything the server writes. On a change, subscribed calendars are read again and today's agenda,
-if untouched, is written again. `GET /agenda/today?timezone=` and `POST /ai/agenda/today`
-`{ timezone }` do the same first.
+if untouched, is written again. `POST /agenda/today`, `POST /agenda/:date` and
+`POST /ai/agenda/today` `{ timezone }` do the same first.
 
 In the library, agendas have their own **Agendas** section, filed by year, month and week (Monday
 first), and are left out of "All documents" and "Unfiled".
@@ -460,13 +471,14 @@ first), and are left out of "All documents" and "Unfiled".
 ### `GET /agenda/:date` (auth)
 
 One day's agenda, for stepping back and forward (`date` like `2026-09-24`, at most a year back and
-two months ahead, else `422`). → `{ date, title, today, doc }`: today's page is written on the
-spot as `/agenda/today` does; any other day's `doc` is `null` until it is written. Every agenda
-carries `agenda_date`, the day it is for, and the library files it under that day.
+two months ahead, else `422`). → `{ date, title, today, doc }`. It only reads: a day's `doc`,
+today's included, is `null` until it is written with the POST below (the apps write today's at
+once, as `POST /agenda/today` does, and offer to write any other day's). Every agenda carries
+`agenda_date`, the day it is for, and the library files it under that day.
 
 ### `POST /agenda/:date` (auth)
 
-Writes that day's agenda from the calendar if it isn't there yet (`201`), or returns the one there
+`{ "timezone"? }`, adopted as above. Writes that day's agenda from the calendar if it isn't there yet (`201`), or returns the one there
 (`200`). A past day reads as the calendar has it now, with no free time; a day ahead shows what's
 planned so far. A page written ahead that nobody changes is written again on its day.
 
@@ -559,7 +571,7 @@ it up as above. `to` is one of:
 - `{ "kind": "project", "project_id": "…" }`: the same task in the project's first stage (a team
   project's task is the team's).
 - `{ "kind": "agenda" }`: list lines (the link, then the text) at the end of today's agenda's
-  Notes, before the end-of-day questions; `timezone` is adopted like `GET /agenda/today`'s.
+  Notes, before the end-of-day questions; `timezone` is adopted like `POST /agenda/today`'s.
 - `{ "kind": "page", "doc_id": "…" }`: the lines at the end of a page (a page that is one empty
   line takes them in its place). Saved as any edit is: a new version, kept in history, and open
   editors are told.
@@ -1623,11 +1635,11 @@ Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp s
 Apps can also connect by signing in with Orbyn (OAuth 2.1, public clients with PKCE S256, no client secrets). The metadata is at `<APP_URL>/.well-known/oauth-authorization-server`; everything below is also in docs/openapi.yaml.
 
 - `GET /oauth/authorize/check?…` — what the consent page shows: the app (verified for a client ID metadata document, unverified for a registered one), `requested_access`, `requested_bookings`, and with a session your spaces and any earlier connection. 30 a minute.
-- `POST /oauth/authorize` `{ request, access, personal?, team_ids?, toolsets?, bookings?, notify_teammates?, hide_outside_content?, expires_in_days? }` → `{ redirect_to }` with a 60-second code. Needs a session; write access or bookings need `POST /me/reauth` in the last 10 minutes (`403 reauth_required`). Sign-ins allowed but never finished don't count towards the 50 connections and are cleared after a day.
+- `POST /oauth/authorize` `{ request, access, personal?, team_ids?, toolsets?, bookings?, notify_teammates?, hide_outside_content?, expires_in_days? }` → `{ redirect_to }` with a 60-second code. Needs a session; write access or bookings need `POST /me/reauth` in the last 10 minutes (`403 reauth_required`). Sign-ins allowed but never finished don't count towards the 50 connections and are cleared after a day; the limit is checked again when the code is exchanged, so consents given at once can't all finish past it (`invalid_grant`).
 - `POST /oauth/authorize/deny` `{ request }` → `{ redirect_to }` with `error=access_denied`.
 - `POST /oauth/token` (form): `grant_type=authorization_code` (code, redirect_uri, client_id, code_verifier, resource) or `refresh_token`. Access tokens (`oat_`) last an hour and work only at the MCP address; refresh tokens (`ort_`) rotate. A spent refresh token presented again within 60 seconds (twice at most, for retries) gets another pair; after that it counts as copied: the family is revoked, the connection paused and its owner told.
 - `POST /oauth/revoke` (form, RFC 7009): a refresh token takes its family; unknown tokens answer `200`.
-- `POST /oauth/register` (RFC 7591), when `dcr_enabled`: public clients only, 10 an hour per address and 20 a day.
+- `POST /oauth/register` (RFC 7591), when `dcr_enabled`: public clients only, 10 an hour per address and 20 a day. Every redirect address must be on one website (or all back to this computer, or all to one app scheme); a list that mixes them is refused with `invalid_redirect_uri`.
 - `POST /me/reauth` `{ password, code? }` or `{ handle, response }` (after `POST /me/reauth/options`) → `{ reauth_until }`. Open during maintenance.
 
 `allowed_client_hosts` applies to every website an app could send a code to: a registered app must be allowed for each https address it declared. Narrowing the list stops refreshes and MCP calls from apps no longer allowed.

@@ -410,7 +410,7 @@
     {
       "name": "get_today",
       "title": "Today",
-      "description": "The Today list for the person's local day: the time now and free time until the next commitment; sessions and events in order (repeating events expanded, subscribed calendars marked); tasks due today with the minutes planned before each deadline; late tasks (at most 20, plus the total); Up next with the reasons; and how many teammate requests wait. Reads only.",
+      "description": "The Today list for the person's local day: the time now and free time until the next commitment; sessions and events in order (repeating events expanded, subscribed calendars marked); the person's tasks (their own, or assigned to them) due today with the minutes planned before each deadline; late ones (at most 20, plus the total); Up next with the reasons; and how many teammate requests wait. Reads only.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -608,7 +608,7 @@
               ],
               "additionalProperties": false
             },
-            "description": "Open tasks with a deadline today."
+            "description": "The person's open tasks (their own, or assigned to them) with a deadline today, as the app's Today list shows them."
           },
           "late": {
             "type": "array",
@@ -659,7 +659,7 @@
               ],
               "additionalProperties": false
             },
-            "description": "Open tasks past their deadline, latest first (at most 20)."
+            "description": "The person's open tasks past their deadline, latest first (at most 20)."
           },
           "late_total": {
             "type": "number",
@@ -1546,5 +1546,5 @@
       }
     }
   ],
-  "routes": { "covered": 19, "excluded": 149, "pending": 177 }
+  "routes": { "covered": 25, "excluded": 156, "pending": 165 }
 }

@@ -34,6 +34,10 @@ export const EXCLUSION_REASONS = {
   team_admin:
     "Making, renaming and deleting teams, members, roles and team policies: people only.",
   sends_outside: "Sends an email to test delivery.",
+  app_pages:
+    "Pages the app writes for itself from the calendar (the daily agenda): agents read them as pages (fetch, query) and write pages of their own instead.",
+  trash:
+    "The Trash: agents never see trashed pages, and restoring or deleting for good is for people.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
@@ -58,6 +62,13 @@ export const COVERED: Record<string, string[]> = {
   "GET /me": ["get_context"],
   "GET /planner/prefs": ["get_context"],
   "GET /today": ["get_today"],
+  // Merged in the M1–M4 integration and classified in A1-late.
+  "GET /items/:id/context": ["fetch"],
+  "GET /items/:id/sessions": ["fetch"],
+  "GET /planned": ["get_today", "get_calendar"],
+  "GET /agenda/:date": ["fetch", "query"],
+  "GET /projects/:id/planning": ["get_project"],
+  "GET /projects/:id/sessions": ["get_project"],
 };
 
 /** Routes agents never reach, with the reason. */
@@ -212,6 +223,14 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /teams/:id/members/:userId": "team_admin",
   "PUT /teams/:id/members/:userId": "team_admin",
   "GET /teams/:id/presence": "device",
+  // Merged in the M1–M4 integration and classified in A1-late.
+  "POST /agenda/today": "app_pages",
+  "GET /agenda/today": "app_pages",
+  "POST /agenda/:date": "app_pages",
+  "POST /projects/:id/visit": "device",
+  "GET /docs/trash": "trash",
+  "POST /docs/:id/restore": "trash",
+  "DELETE /docs/:id/forever": "trash",
 };
 
 /**
@@ -221,26 +240,16 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
  */
 export const PENDING: string[] = [
   // Built alongside A1–A2 on the planning and pages tracks (merged in the
-  // M1–M4 integration); agents reach them in A3–A5.
-  "GET /items/:id/context",
-  "GET /items/:id/sessions",
-  "GET /planned",
+  // M1–M4 integration): the writes, links, tags, templates and history that
+  // agents reach in A3–A5.
   "GET /docs/:id/versions/:version/changes",
-  "GET /agenda/:date",
-  "POST /agenda/:date",
   "PUT /docs/:id/tags",
   "POST /docs/:id/tags",
   "GET /docs/event-notes",
-  "GET /docs/trash",
-  "POST /docs/:id/restore",
-  "DELETE /docs/:id/forever",
   "POST /capture",
   "GET /projects/:id/links",
   "POST /projects/:id/links",
   "DELETE /projects/:id/links/:linkId",
-  "POST /projects/:id/visit",
-  "GET /projects/:id/planning",
-  "GET /projects/:id/sessions",
   "POST /projects/:id/plan",
   "GET /page-templates",
   "POST /page-templates",
@@ -249,7 +258,6 @@ export const PENDING: string[] = [
   "POST /page-templates/from-doc/:id",
   "POST /page-templates/:id/use",
 
-  "GET /agenda/today",
   "GET /asks",
   "POST /asks/:id/reply",
   "POST /asks/:id/settle",
