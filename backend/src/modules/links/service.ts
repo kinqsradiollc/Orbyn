@@ -16,6 +16,7 @@ import type { Queryable } from "../../db/pool.js";
 import { docReadableBy, docVisibleTo } from "../../lib/doc-visibility.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { find } from "../search/find.js";
+import { linkPrivacy } from "./privacy.js";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05), read from the object_links
@@ -108,7 +109,15 @@ export async function linksHere(
     )
   ).rows as (HereRow & { updated_at: Date })[];
   rows.sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
-  const items: LinkedHere[] = rows.slice(0, HERE_LIMIT).map((r) => ({
+  const shown = rows.slice(0, HERE_LIMIT);
+  // The line around each link names other things too: only those this
+  // reader may open keep their words (D3aF).
+  const links = await linkPrivacy(
+    db,
+    userId,
+    shown.map((r) => r.context),
+  );
+  const items: LinkedHere[] = shown.map((r) => ({
     kind: r.source_kind,
     id: r.source_id,
     title: r.title || "Untitled",
@@ -120,7 +129,10 @@ export async function linksHere(
       !r.source_block.startsWith("#")
         ? r.source_block
         : null,
-    context: linkContext(r.context, r.link_kind === "link" ? target : null),
+    context: linkContext(
+      links.line(r.context ?? "").text,
+      r.link_kind === "link" ? target : null,
+    ),
   }));
   return { count: rows.length, items };
 }
@@ -206,6 +218,19 @@ export async function resolveLinks(
   const itemMap = byId(items?.rows);
   const projectMap = byId(projects?.rows);
   const personMap = byId(people?.rows);
+  // A linked line's words name other things too (D3aF).
+  const lineWords = new Map<string, string>();
+  for (const r of refs)
+    if (r.kind === "doc" && r.block) {
+      const line = (docMap.get(r.id.toLowerCase())?.content ?? []).find(
+        (b) => b.id === r.block,
+      );
+      if (line)
+        lineWords.set(`${r.id.toLowerCase()}#${r.block}`, blockText(line));
+    }
+  const lineLinks = lineWords.size
+    ? await linkPrivacy(db, userId, [...lineWords.values()])
+    : null;
   const missing = (r: ObjectRef): LinkPill => ({
     kind: r.kind,
     id: r.id,
@@ -242,19 +267,20 @@ export async function resolveLinks(
             state: "ok",
             title: d.title || "Untitled",
           };
-        const line = (d.content ?? []).find((b) => b.id === r.block);
+        const line = lineWords.get(`${id}#${r.block}`);
         return {
           kind: r.kind,
           id,
           state: "ok",
           title: d.title || "Untitled",
           block: r.block,
-          block_title: line
-            ? plainText(blockText(line))
-                .replace(/\s+/g, " ")
-                .trim()
-                .slice(0, 120) || "Untitled line"
-            : null,
+          block_title:
+            line !== undefined
+              ? plainText(lineLinks ? lineLinks.value(line) : line)
+                  .replace(/\s+/g, " ")
+                  .trim()
+                  .slice(0, 120) || "Untitled line"
+              : null,
         };
       }
       case "task":

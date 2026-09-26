@@ -17,6 +17,7 @@ import {
   quoteOf,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
+import { readableLinks } from "../links/privacy.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
@@ -160,8 +161,13 @@ async function scopeOverview(
           doc_id: cameFrom.doc_id,
           title: cameFrom.title,
           block_id: cameFrom.block_id,
+          // Links to what the person can't open keep no title (D3aF).
           quote: quoteOf(
-            cameFrom.content.find((block) => block.id === cameFrom.block_id),
+            await readableLinks(
+              pool,
+              u.id,
+              cameFrom.content.find((block) => block.id === cameFrom.block_id),
+            ),
           ),
         }
       : null,

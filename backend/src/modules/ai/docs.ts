@@ -5,6 +5,7 @@ import {
   DOC_AI_LABELS,
   blockText,
   fail,
+  keepLinkLabels,
   type DocAnswer,
   type DocBlock,
   type DocSuggestion,
@@ -15,6 +16,7 @@ import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { complete } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
+import { linkPrivacy } from "../links/privacy.js";
 
 /**
  * The assistant, inside a page.
@@ -55,7 +57,15 @@ export async function aiDocRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    return doc;
+    // The words of links to what this reader can't open are not theirs to
+    // send anywhere (D3aF); `links` carries places back to the stored lines.
+    const links = await linkPrivacy(db, userId, doc.content);
+    return {
+      ...doc,
+      stored: doc.content,
+      content: links.value(doc.content),
+      links,
+    };
   }
 
   /** The provider, or a message saying who can turn one on. */
@@ -123,6 +133,16 @@ passage should be removed entirely, reply with an empty line.`;
     if (answer === quote)
       fail(409, "The assistant had nothing to change there.");
 
+    // Places and words as the page keeps them, not as they were shown.
+    const kept = blockText(doc.stored[at]);
+    const line = doc.links.line(kept);
+    const stored = line.changed
+      ? (() => {
+          const start = line.toStored(d.range_start);
+          const end = Math.max(start, line.toStored(d.range_end, true));
+          return { start, end, quote: kept.slice(start, end) };
+        })()
+      : { start: d.range_start, end: d.range_end, quote };
     const made = await transaction(async (db) => {
       if (doc.team_id) await requireTeam(doc.team_id, u, "items:read");
       const row = (
@@ -136,10 +156,10 @@ passage should be removed entirely, reply with an empty line.`;
             u.id,
             d.block_id,
             answer ? "replace" : "delete",
-            d.range_start,
-            d.range_end,
-            answer,
-            quote,
+            stored.start,
+            stored.end,
+            keepLinkLabels(answer, doc.stored),
+            stored.quote,
             `Assistant · ${
               d.action === "custom"
                 ? d.instruction.slice(0, 120)

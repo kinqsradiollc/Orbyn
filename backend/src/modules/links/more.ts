@@ -23,6 +23,7 @@ import { hasVectors, semanticOn } from "../search/semantic.js";
 import { announceDocChange } from "../docs/live.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { requireDoc, snapshot } from "../docs/routes.js";
+import { linkPrivacy, readableLinks } from "./privacy.js";
 
 /**
  * More about links (D4b): the hover card a link opens (LNK-07), the pages
@@ -105,7 +106,8 @@ export async function linkCard(
       if (into.state === "ok") return { ...into, moved_from: q.id };
     }
     if (d.deleted) return { ...gone("deleted"), title: d.title || "Untitled" };
-    const content = d.content ?? [];
+    // Its own links show only what this reader may see (D3aF).
+    const content = await readableLinks(db, userId, d.content ?? []);
     const section = q.block ? sectionOf(content, q.block) : null;
     return {
       kind: "doc",
@@ -349,6 +351,12 @@ export async function unlinkedMentions(
     )
   ).rows;
   const out: UnlinkedMention[] = [];
+  // The words around a mention show only the links this reader may see.
+  const links = await linkPrivacy(
+    db,
+    userId,
+    rows.map((d) => d.content),
+  );
   for (const d of rows) {
     let hit: UnlinkedMention | null = null;
     for (const b of d.content ?? []) {
@@ -366,13 +374,18 @@ export async function unlinkedMentions(
       for (const name of names) {
         const found = findMention(b.text, name);
         if (!found) continue;
+        const line = links.line(b.text);
         hit = {
           doc_id: d.id,
           title: d.title || "Untitled",
           hint: d.hint,
           block_id: b.id ?? null,
           matched: found.matched,
-          context: mentionContext(b.text, found.start, found.end),
+          context: mentionContext(
+            line.text,
+            line.toShown(found.start),
+            line.toShown(found.end, true),
+          ),
           // A line without a name can't be pointed at to link it.
           can_link: d.can_link && !!b.id,
         };
@@ -578,7 +591,7 @@ export async function pageHeadings(
   if (!d) fail(404, "Document not found");
   const want = q.trim().toLowerCase();
   const words = (b: DocBlock) => blockPlainText(b).replace(/\s+/g, " ").trim();
-  const content = d.content ?? [];
+  const content = await readableLinks(db, userId, d.content ?? []);
   const headings: HeadingOption[] = [];
   const lines: HeadingOption[] = [];
   content.forEach((b, index) => {

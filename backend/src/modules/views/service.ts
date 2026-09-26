@@ -25,6 +25,7 @@ import { ITEM_COLUMNS, ITEM_FROM } from "../items/service.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { PROJECT_COUNTS } from "../projects/counts.js";
 import { fieldValuesFor, visibleFields } from "./fields.js";
+import { linkPrivacy } from "../links/privacy.js";
 
 /**
  * Running a view: the rows it shows, for the person looking. Rows are read
@@ -241,6 +242,12 @@ async function pageRows(
     "page",
     rows.map((r) => r.id),
   );
+  // Previews show only the links this reader may open (D3aF).
+  const links = await linkPrivacy(
+    db,
+    userId,
+    rows.map((r) => r.head),
+  );
   return rows.map((d) => ({
     kind: "page" as const,
     id: d.id,
@@ -263,7 +270,7 @@ async function pageRows(
     folder_id: d.folder_id,
     folder_name: d.folder_name,
     doc_kind: d.kind,
-    preview: docPreview(d.head ?? [], 160),
+    preview: docPreview(links.value(d.head ?? []), 160),
     cover: docCover((d.head ?? []) as { type: string; text?: string }[]),
     task_count: null,
     done_count: null,

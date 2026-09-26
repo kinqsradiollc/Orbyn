@@ -21,6 +21,7 @@ import { allowPageFiles } from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { announceDocChange } from "./live.js";
+import { readableLinks } from "../links/privacy.js";
 import {
   COLUMNS,
   JOINS,
@@ -306,7 +307,9 @@ export async function docStructureRoutes(app: FastifyInstance) {
       const wanted = new Set(body.block_ids);
       const moved = content.filter((b) => b.id && wanted.has(b.id));
       if (!moved.length) fail(409, "Those lines aren't on the page any more.");
-      const title = body.title?.trim() || titleFor(moved);
+      // Named from its lines as the mover reads them (D3aF).
+      const title =
+        body.title?.trim() || titleFor(await readableLinks(db, u.id, moved));
       // The pictures and files go with their lines (read through this page).
       await allowPageFiles(db, u.id, moved);
       const newId = (
@@ -345,14 +348,18 @@ export async function docStructureRoutes(app: FastifyInstance) {
       );
       await writeLines(db, u, id, rest);
       return {
-        doc: (
-          await db.query<Doc>(
-            `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
-              WHERE d.id = $1`,
-            [newId],
-          )
-        ).rows[0],
-        source: await readDoc(db, id),
+        doc: await readableLinks(
+          db,
+          u.id,
+          (
+            await db.query<Doc>(
+              `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
+                WHERE d.id = $1`,
+              [newId],
+            )
+          ).rows[0],
+        ),
+        source: await readDoc(db, id, u.id),
       };
     });
     await announceDocChange(pool, id, out.source.version, "extract");
@@ -495,7 +502,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
       );
       await noteTrash(db, id, u.id, true);
       await searchTrash(db, id, true);
-      return { version, rewritten, doc: await readDoc(db, body.into) };
+      return { version, rewritten, doc: await readDoc(db, body.into, u.id) };
     });
     await announceDocChange(pool, id, body.version, "merge", { trashed: true });
     await announceDocChange(pool, body.into, out.version, "merge");

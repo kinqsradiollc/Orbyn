@@ -36,19 +36,20 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
 ## Backend (`backend/src`)
 
-| Path                  | Responsibility                                                                  |
-| --------------------- | ------------------------------------------------------------------------------- |
-| `config/env.ts`       | Loads `.env` and validates configuration with zod                               |
-| `db/pool.ts`          | Primary and optional read-replica pools, `reader()`, `transaction()`            |
-| `modules/<name>/`     | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
-| `modules/items/`      | `mutate()`, the single write path with optimistic locking, plus progress        |
-| `modules/ai/`         | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
-| `capabilities/`       | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
-| `modules/mcp-server/` | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
-| `modules/agents/`     | Agent keys, Connected agents, activity, admin switches, team agent policy       |
-| `lib/visibility.ts`   | The one rule for what a person (or a narrowed connection) can see               |
-| `worker/`             | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
-| `app.ts`              | Which modules each service mounts (`serviceModules`)                            |
+| Path                       | Responsibility                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `config/env.ts`            | Loads `.env` and validates configuration with zod                               |
+| `db/pool.ts`               | Primary and optional read-replica pools, `reader()`, `transaction()`            |
+| `modules/<name>/`          | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
+| `modules/items/`           | `mutate()`, the single write path with optimistic locking, plus progress        |
+| `modules/ai/`              | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
+| `capabilities/`            | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
+| `modules/mcp-server/`      | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
+| `modules/agents/`          | Agent keys, Connected agents, activity, admin switches, team agent policy       |
+| `lib/visibility.ts`        | The one rule for what a person (or a narrowed connection) can see               |
+| `modules/links/privacy.ts` | Link words a reader may see: hides the titles of links they can't open (D3aF)   |
+| `worker/`                  | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
+| `app.ts`                   | Which modules each service mounts (`serviceModules`)                            |
 
 ### Outside agents (MCP)
 

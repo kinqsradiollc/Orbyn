@@ -28,6 +28,7 @@ import { audit } from "../../lib/audit.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
+import { privacyFrom } from "../links/privacy.js";
 import { PAGE_FILE_COLUMNS, readLink } from "../page-files/routes.js";
 import { importsEnabled } from "../imports/tokens.js";
 
@@ -215,8 +216,8 @@ type PublicDoc = {
 
 /**
  * Where each linked page can be read on the web, for the pages a page links
- * to: its own address, or its folder's. A page that isn't published keeps
- * its words and loses its link.
+ * to: its own address, or its folder's. A page that isn't published loses
+ * its link, and its words read "Private page" (see visitorView).
  */
 async function publicPaths(ids: string[]): Promise<Map<string, string>> {
   if (!ids.length) return new Map();
@@ -252,6 +253,10 @@ const linkedIds = (blocks: DocBlock[]) => {
   return [...ids];
 };
 
+/** What a visitor may read of links: pages published at `paths` only. */
+const visitorView = (paths: Map<string, string>) =>
+  privacyFrom((ref) => !(ref.kind === "doc" && paths.has(ref.id)));
+
 /** A page's pictures, as links a reader can load for the next hour. */
 async function pictures(docId: string): Promise<Map<string, string>> {
   if (!importsEnabled()) return new Map();
@@ -282,8 +287,11 @@ async function renderPage(
   } | null,
 ) {
   const links = await publicPaths(linkedIds(doc.content));
+  // A visitor can open only published pages: every other link's words are
+  // hidden, so a private title never reaches the web (D3aF).
+  const content = visitorView(links).value(doc.content);
   const files = await pictures(doc.id);
-  const bodyHtml = blocksHtml(doc.content, {
+  const bodyHtml = blocksHtml(content, {
     anchors: true,
     math: typeset,
     fileUrl: (id) => files.get(id) ?? null,
@@ -308,7 +316,7 @@ async function renderPage(
     )
   ).rows;
   const herePaths = await publicPaths(here.map((h) => h.id));
-  const firstPicture = doc.content.find(
+  const firstPicture = content.find(
     (b): b is Extract<DocBlock, { type: "image" }> => b.type === "image",
   );
   const image = firstPicture ? files.get(firstPicture.file) : undefined;
@@ -318,12 +326,12 @@ async function renderPage(
     description:
       doc.web_description ||
       (row.doc_id ? row.description : "") ||
-      cardDescription(docPlainText(doc.content)),
+      cardDescription(docPlainText(content)),
     url: `${origin()}${path}`,
     image: image ? `${origin()}${image}` : null,
     noindex: row.noindex,
     updatedAt: doc.updated_at.toISOString(),
-    contents: docOutline(doc.content),
+    contents: docOutline(content),
     linkedHere: here
       .filter((h) => herePaths.has(h.id))
       .map((h) => ({
@@ -654,6 +662,9 @@ export async function publishRoutes(app: FastifyInstance) {
       [row.id],
     );
     const pages = await folderPages(row.folder_id!, folder.team_id);
+    const visitor = visitorView(
+      await publicPaths(pages.flatMap((p) => linkedIds(p.content))),
+    );
     return send(
       reply,
       200,
@@ -666,7 +677,8 @@ export async function publishRoutes(app: FastifyInstance) {
           title: p.title,
           href: `${path}/${p.id}`,
           description:
-            p.web_description || cardDescription(docPlainText(p.content), 120),
+            p.web_description ||
+            cardDescription(docPlainText(visitor.value(p.content)), 120),
         })),
       }),
       row.noindex,

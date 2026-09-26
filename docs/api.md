@@ -1144,6 +1144,18 @@ index, beside the fixed connections: a checklist line that became a task, a meet
 a project, a task that waits for another and a person mentioned in a comment. Nothing is shown to
 someone who can't open both ends.
 
+**Link words are private to who can open the target (D3aF).** A reader who can't open what a link
+points to (someone's personal page, another team's task or project, a page deleted for good — the
+same things `/links/resolve` calls `missing`) never gets its bracket words: every answer that
+carries a page's words shows them as `Private page`, `Private task`, `Private event`,
+`Private project` or `Someone` instead — `GET /docs/:id` and its list previews, saves, versions,
+comments and suggestions, exports, `/links/here` lines, hover cards, headings, search hits, the
+assistant and agent `fetch`/`search` (an agent connection also can't read what lies outside its
+spaces) and published pages (a visitor can open only published pages). The stored page keeps the
+words: a save that hands back `Private …` for a link the page has keeps the page's own words, and
+comment and suggestion ranges are counted in the words the reader was shown and carried to the
+stored line (and back). Pages are found by search on their own words only, never by a link's.
+
 ### `GET /links/here?kind=&id=` (auth)
 
 "Linked here" for a page, task, event, project or person (`kind` `doc`, `task`, `event`, `project`

@@ -4,6 +4,7 @@ import { reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { VISIBLE_ITEMS } from "../../lib/teams.js";
 import { nearest } from "./semantic.js";
+import { readableLinks } from "../links/privacy.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { visibleProjects } from "../../lib/visibility.js";
 import { findRoutes } from "./find.js";
@@ -296,7 +297,8 @@ export async function searchRoutes(app: FastifyInstance) {
       }
     }
 
-    return found.slice(0, q.limit);
+    // A hit's words show only the links this reader may open (D3aF).
+    return readableLinks(db, u.id, found.slice(0, q.limit));
   });
 
   await findRoutes(app);

@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { pageFile, safeFileName, type DocBlock } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
 import { zipStream, type ZipEntry } from "../docs/zip.js";
+import { linkPrivacy } from "../links/privacy.js";
 import { exportData } from "./portability.js";
 
 /**
@@ -284,6 +285,12 @@ export async function exportArchive(
           [userId, after?.at ?? null, after?.id ?? null],
         )
       ).rows;
+      // Links to things this person can no longer open keep no title (D3aF).
+      const links = await linkPrivacy(
+        db,
+        userId,
+        batch.map((page) => page.content),
+      );
       for (const page of batch) {
         const title = page.title.trim() || "Untitled";
         const dir = page.deleted_at
@@ -322,7 +329,7 @@ export async function exportArchive(
               imported_from: page.imported_from,
               in_trash: !!page.deleted_at,
             },
-            page.content ?? [],
+            links.value(page.content ?? []),
           ),
         };
       }

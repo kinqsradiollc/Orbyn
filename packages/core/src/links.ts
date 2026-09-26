@@ -342,6 +342,235 @@ export const blocksWithWebLinks = (
       : b,
   );
 
+// --------------------------------------------------------------- privacy ---
+
+/**
+ * What a link's words say to a reader who can't open the thing it points
+ * to. A picker link keeps the title it had when it was made in its
+ * brackets, so a page shared with a team can carry the title of someone's
+ * private page or of another team's task. Every place that shows a page's
+ * words to a reader swaps those words for these first; nothing in them
+ * comes from the thing's id, so they tell the reader nothing about it.
+ */
+export const PRIVATE_LINK_LABELS: Record<LinkKind, string> = {
+  doc: "Private page",
+  task: "Private task",
+  event: "Private event",
+  project: "Private project",
+  person: "Someone",
+  date: "Date",
+};
+
+/** A picker link in a line's words: `[words](orbyn://kind/id)`. */
+const OBJECT_LINK = /\[([^\]\n]+)\]\((orbyn:\/\/[^)\s]+)\)/g;
+
+/** The key a link's target is judged by: the thing, never one line of it. */
+export const targetKey = (r: ObjectRef): string =>
+  `${r.kind === "event" ? "task" : r.kind}:${r.id.toLowerCase()}`;
+
+/** Every thing the picker links in `text` point to (with repeats). */
+export function objectRefsIn(text: string): ObjectRef[] {
+  const out: ObjectRef[] = [];
+  if (!text.includes("orbyn://")) return out;
+  for (const m of text.matchAll(OBJECT_LINK)) {
+    const ref = parseObjectHref(m[2]);
+    if (ref) out.push(ref);
+  }
+  return out;
+}
+
+/** One link's words as written, and as a reader is shown them. */
+type LabelSwap = {
+  /** Where the words start and end in the stored line. */
+  from: number;
+  to: number;
+  /** Where they start and end in the line as shown. */
+  viewFrom: number;
+  viewTo: number;
+};
+
+/**
+ * A line as one reader sees it: the words of each link to something
+ * `hidden` says they can't open swapped for {@link PRIVATE_LINK_LABELS},
+ * with a way to carry a place in the line between the two (for comments
+ * and proposals made on the words shown).
+ */
+export type RedactedLine = {
+  text: string;
+  changed: boolean;
+  /** A place in the shown line, as a place in the stored one. */
+  toStored(at: number, end?: boolean): number;
+  /** A place in the stored line, as a place in the shown one. */
+  toShown(at: number, end?: boolean): number;
+};
+
+export function redactLine(
+  text: string,
+  hidden: (ref: ObjectRef) => boolean,
+): RedactedLine {
+  const swaps: LabelSwap[] = [];
+  let out = "";
+  let last = 0;
+  if (text.includes("orbyn://"))
+    for (const m of text.matchAll(OBJECT_LINK)) {
+      const ref = parseObjectHref(m[2]);
+      // A day is no one's to hide.
+      if (!ref || ref.kind === "date" || !hidden(ref)) continue;
+      const label = PRIVATE_LINK_LABELS[ref.kind];
+      if (m[1] === label) continue;
+      const from = m.index! + 1;
+      const to = from + m[1].length;
+      out += text.slice(last, from);
+      const viewFrom = out.length;
+      out += label;
+      swaps.push({ from, to, viewFrom, viewTo: out.length });
+      last = to;
+    }
+  if (!swaps.length)
+    return {
+      text,
+      changed: false,
+      toStored: (at) => at,
+      toShown: (at) => at,
+    };
+  out += text.slice(last);
+  const move = (
+    at: number,
+    end: boolean,
+    a: (s: LabelSwap) => [number, number],
+    b: (s: LabelSwap) => [number, number],
+  ) => {
+    let shift = 0;
+    for (const s of swaps) {
+      const [aFrom, aTo] = a(s);
+      const [bFrom, bTo] = b(s);
+      if (at <= aFrom) break;
+      if (at >= aTo) {
+        shift = bTo - aTo;
+        continue;
+      }
+      // Inside a link's words: the whole of them.
+      return end ? bTo : bFrom;
+    }
+    return at + shift;
+  };
+  const stored = (s: LabelSwap): [number, number] => [s.from, s.to];
+  const shown = (s: LabelSwap): [number, number] => [s.viewFrom, s.viewTo];
+  return {
+    text: out,
+    changed: true,
+    toStored: (at, end = false) => move(at, end, shown, stored),
+    toShown: (at, end = false) => move(at, end, stored, shown),
+  };
+}
+
+/** {@link redactLine}'s words alone. */
+export const redactLinkLabels = (
+  text: string,
+  hidden: (ref: ObjectRef) => boolean,
+): string => redactLine(text, hidden).text;
+
+/**
+ * Every string in a value (a page's lines, a comment, a search hit) with
+ * {@link redactLinkLabels} applied. Only strings that hold a link are
+ * copied; the rest of the value is shared, never changed in place.
+ */
+export function redactValue<T>(
+  value: T,
+  hidden: (ref: ObjectRef) => boolean,
+): T {
+  const walk = (v: unknown): unknown => {
+    if (typeof v === "string")
+      return v.includes("orbyn://") ? redactLinkLabels(v, hidden) : v;
+    if (Array.isArray(v)) {
+      let copy: unknown[] | null = null;
+      v.forEach((x, i) => {
+        const y = walk(x);
+        if (y !== x) (copy ??= v.slice())[i] = y;
+      });
+      return copy ?? v;
+    }
+    if (v && typeof v === "object" && !(v instanceof Date)) {
+      let copy: Record<string, unknown> | null = null;
+      for (const [k, x] of Object.entries(v)) {
+        const y = walk(x);
+        if (y !== x) (copy ??= { ...(v as Record<string, unknown>) })[k] = y;
+      }
+      return copy ?? v;
+    }
+    return v;
+  };
+  return walk(value) as T;
+}
+
+/** Every link target named in any string of a value, each once. */
+export function objectRefsInValue(value: unknown): ObjectRef[] {
+  const found = new Map<string, ObjectRef>();
+  const walk = (v: unknown) => {
+    if (typeof v === "string") {
+      for (const r of objectRefsIn(v))
+        found.set(targetKey(r), { kind: r.kind, id: r.id });
+    } else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object" && !(v instanceof Date))
+      Object.values(v).forEach(walk);
+  };
+  walk(value);
+  return [...found.values()];
+}
+
+/**
+ * A save from someone who was shown "Private page" in place of a link's
+ * words hands those words back. Keep the words the page had for that link
+ * instead, so the people who can open it still read its title.
+ * `before` is the stored value (a page's lines, or one line).
+ */
+export function keepLinkLabels<T>(next: T, before: unknown): T {
+  const labels = new Map<string, string>();
+  const collect = (v: unknown) => {
+    if (typeof v === "string") {
+      if (!v.includes("orbyn://")) return;
+      for (const m of v.matchAll(OBJECT_LINK)) {
+        const ref = parseObjectHref(m[2]);
+        if (!ref || m[1] === PRIVATE_LINK_LABELS[ref.kind]) continue;
+        const key = targetKey(ref);
+        if (!labels.has(key)) labels.set(key, m[1]);
+      }
+    } else if (Array.isArray(v)) v.forEach(collect);
+    else if (v && typeof v === "object") Object.values(v).forEach(collect);
+  };
+  collect(before);
+  if (!labels.size) return next;
+  const fix = (v: unknown): unknown => {
+    if (typeof v === "string")
+      return v.includes("orbyn://")
+        ? v.replace(OBJECT_LINK, (whole, label: string, href: string) => {
+            const ref = parseObjectHref(href);
+            if (!ref || label !== PRIVATE_LINK_LABELS[ref.kind]) return whole;
+            const kept = labels.get(targetKey(ref));
+            return kept ? `[${kept}](${href})` : whole;
+          })
+        : v;
+    if (Array.isArray(v)) {
+      let copy: unknown[] | null = null;
+      v.forEach((x, i) => {
+        const y = fix(x);
+        if (y !== x) (copy ??= v.slice())[i] = y;
+      });
+      return copy ?? v;
+    }
+    if (v && typeof v === "object") {
+      let copy: Record<string, unknown> | null = null;
+      for (const [k, x] of Object.entries(v)) {
+        const y = fix(x);
+        if (y !== x) (copy ??= { ...(v as Record<string, unknown>) })[k] = y;
+      }
+      return copy ?? v;
+    }
+    return v;
+  };
+  return fix(next) as T;
+}
+
 // ----------------------------------------------------------------- wire ---
 
 /** A link's pill, as it stands now (GET /links/resolve). */

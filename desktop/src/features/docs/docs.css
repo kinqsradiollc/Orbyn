@@ -2732,7 +2732,7 @@ h4.doc-heading {
 .link-picker-hint kbd {
   margin: 0;
   padding: 0 4px;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* "Linked here": below a page's last line, and in task and project panels. */

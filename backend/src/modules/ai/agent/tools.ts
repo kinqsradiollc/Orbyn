@@ -49,6 +49,7 @@ import {
 import { clean, isUuid, localDate, toInstant, whenLabel } from "./format.js";
 import { docVisibleTo } from "../../../lib/doc-visibility.js";
 import { searchPages } from "../../search/routes.js";
+import { readableLinks } from "../../links/privacy.js";
 
 export { toInstant, whenLabel };
 
@@ -1979,7 +1980,9 @@ async function readDoc(
     )
   ).rows[0];
   if (!doc) throw new Error("No such page, or it is not yours to read.");
-  const allLines = doc.content
+  // Links to what the person can't open keep no title (D3aF).
+  const content = await readableLinks(pool, ctx.user.id, doc.content);
+  const allLines = content
     .filter((block) => (block.text ?? "").trim())
     .map((block, index) => ({
       line: index + 1,

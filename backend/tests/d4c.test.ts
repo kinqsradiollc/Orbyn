@@ -417,8 +417,10 @@ test("a page published to the web reads at /p/<slug>, hidden from search, and Un
   // Maths is written as MathML, which browsers draw with nothing to load.
   assert.match(read.body, /<math/);
   assert.match(read.body, /href="#h-0"/);
-  // A link to a page that isn't published keeps its words, not its address.
-  assert.match(read.body, /the other page/);
+  // A link to a page that isn't published shows neither its address nor
+  // its words: a visitor can't open it, so it reads "Private page" (D3aF).
+  assert.ok(!read.body.includes("the other page"));
+  assert.match(read.body, /Private page/);
   assert.ok(!read.body.includes(`orbyn://doc/${other.id}`));
   // Published too: now the link works.
   const otherInfo = (

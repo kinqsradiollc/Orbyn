@@ -48,6 +48,8 @@ import {
   type DocVersionChanges,
   type Item,
   blocksWithWebLinks,
+  blockText,
+  keepLinkLabels,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import {
@@ -68,6 +70,7 @@ import {
 } from "../planner/calendar.js";
 import { mutate, recomputeProgress, setItemStatus } from "../items/service.js";
 import { announceDocChange } from "./live.js";
+import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import { hasVectors } from "../search/semantic.js";
 import {
   agendaDayOf,
@@ -322,7 +325,12 @@ export async function withTaskState(
  * editor takes the ticks from here, so a repeating task it just finished
  * shows unticked for its next occurrence.
  */
-export async function readDoc(db: Queryable, id: string): Promise<Doc> {
+export async function readDoc(
+  db: Queryable,
+  id: string,
+  /** Who it's for: the words of links they can't open are hidden (D3aF). */
+  userId: string,
+): Promise<Doc> {
   const doc = (
     await db.query<Doc>(
       `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d
@@ -330,7 +338,86 @@ export async function readDoc(db: Queryable, id: string): Promise<Doc> {
       [id],
     )
   ).rows[0];
-  return { ...doc, content: await withTaskState(db, id, doc.content ?? []) };
+  return readableLinks(db, userId, {
+    ...doc,
+    content: await withTaskState(db, id, doc.content ?? []),
+  });
+}
+
+/**
+ * Lines a save hands in, with the words of any link it was shown as
+ * "Private page" put back as the page has them (D3aF): the saver never
+ * read them, and the people who can open the target still should.
+ */
+async function keepHiddenLabels(
+  db: Queryable,
+  id: string,
+  content: DocBlock[],
+): Promise<DocBlock[]> {
+  if (!JSON.stringify(content).includes("orbyn://")) return content;
+  const stored = (
+    await db.query<{ content: DocBlock[] | null }>(
+      "SELECT content FROM docs WHERE id = $1",
+      [id],
+    )
+  ).rows[0]?.content;
+  return stored ? keepLinkLabels(content, stored) : content;
+}
+
+/** A remark or proposal on some of a line's words. */
+type Ranged = {
+  block_id?: string | null;
+  range_start?: number | null;
+  range_end?: number | null;
+  quote?: string | null;
+};
+
+/**
+ * Carry the words remarks and proposals are about between a line as it's
+ * stored and as `userId` is shown it (D3aF): a reader shown "Private page"
+ * in place of a link's words counts places in the words they see, and the
+ * page counts them in its own. "stored" takes a reader's new ones in;
+ * "shown" gives kept ones back out.
+ */
+async function carryRanges<T extends Ranged>(
+  db: Queryable,
+  userId: string,
+  docId: string,
+  rows: T[],
+  way: "stored" | "shown",
+): Promise<T[]> {
+  if (!rows.some((r) => r.block_id && r.range_start != null)) return rows;
+  const content =
+    (
+      await db.query<{ content: DocBlock[] | null }>(
+        "SELECT content FROM docs WHERE id = $1",
+        [docId],
+      )
+    ).rows[0]?.content ?? [];
+  const links = await linkPrivacy(db, userId, content);
+  return rows.map((row) => {
+    if (!row.block_id || row.range_start == null || row.range_end == null)
+      return row;
+    const block = content.find((b) => b.id === row.block_id);
+    if (!block) return row;
+    const stored = blockText(block);
+    const line = links.line(stored);
+    if (!line.changed) return row;
+    const [from, to] =
+      way === "stored" ? [line.text, stored] : [stored, line.text];
+    const carry = way === "stored" ? line.toStored : line.toShown;
+    const start = carry(row.range_start);
+    const end = Math.max(start, carry(row.range_end, true));
+    return {
+      ...row,
+      range_start: start,
+      range_end: end,
+      ...(way === "stored" &&
+      row.quote === from.slice(row.range_start, row.range_end)
+        ? { quote: to.slice(start, end) }
+        : {}),
+    };
+  });
 }
 
 /**
@@ -619,10 +706,16 @@ export async function makeLineTasks(
   // Each line gets a stable id, so the link survives later edits.
   const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
   const out: Item[] = [];
+  // A task is named from its line as its maker reads it (D3aF).
+  const links = await linkPrivacy(
+    db,
+    u.id,
+    lines.map((b) => b.text),
+  );
   for (const line of lines) {
     const item = await mutate(db, u, {
       operation: "create",
-      data: itemFromLine(line.text, doc.team_id),
+      data: itemFromLine(links.line(line.text).text, doc.team_id),
     });
     if (!item) continue;
     if (options.projectId) {
@@ -962,10 +1055,16 @@ export async function docRoutes(app: FastifyInstance) {
         [u.id, q.kind ?? null, q.project ?? null, q.tag ?? null],
       )
     ).rows;
-    // The preview is derived here so the list stays light on the wire.
+    // The preview is derived here so the list stays light on the wire,
+    // from the words this reader may see of each page's links.
+    const links = await linkPrivacy(
+      reader(r.headers),
+      u.id,
+      rows.map((row) => row.content),
+    );
     return rows.map(({ content, ...rest }) => ({
       ...rest,
-      preview: docPreview(content ?? []),
+      preview: docPreview(links.value(content ?? [])),
     }));
   });
 
@@ -1020,7 +1119,10 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    return { ...doc, content: await withTaskState(db, id, doc.content ?? []) };
+    return readableLinks(db, u.id, {
+      ...doc,
+      content: await withTaskState(db, id, doc.content ?? []),
+    });
   });
 
   /** Export as Markdown, with any LaTeX kept as source. */
@@ -1047,7 +1149,11 @@ export async function docRoutes(app: FastifyInstance) {
     // Ticks as the tasks stand, the same as the page reads, and links to
     // pages, tasks and projects as web links anyone with access can open.
     const blocks = blocksWithWebLinks(
-      await withTaskState(reader(r.headers), id, doc.content ?? []),
+      await readableLinks(
+        reader(r.headers),
+        u.id,
+        await withTaskState(reader(r.headers), id, doc.content ?? []),
+      ),
       env.APP_URL,
     );
     const body =
@@ -1083,7 +1189,11 @@ export async function docRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!doc) fail(404, "Document not found");
     const blocks = blocksWithWebLinks(
-      await withTaskState(reader(r.headers), id, doc.content ?? []),
+      await readableLinks(
+        reader(r.headers),
+        u.id,
+        await withTaskState(reader(r.headers), id, doc.content ?? []),
+      ),
       env.APP_URL,
     );
     return reply
@@ -1135,7 +1245,13 @@ export async function docRoutes(app: FastifyInstance) {
         );
       // Lines tied to tasks are stored as their tasks now stand.
       const content = body.content
-        ? await syncTicks(db, u, id, body.content, ticksFrom(r, body.version))
+        ? await syncTicks(
+            db,
+            u,
+            id,
+            await keepHiddenLabels(db, id, body.content),
+            ticksFrom(r, body.version),
+          )
         : undefined;
       if (content) await followComments(db, id, content);
       if (content) await followSuggestions(db, id, content);
@@ -1167,7 +1283,7 @@ export async function docRoutes(app: FastifyInstance) {
         ],
       );
       if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
-      return readDoc(db, id);
+      return readDoc(db, id, u.id);
     });
     // Announced after the transaction commits, so anyone who comes running
     // to re-read the document finds the new version already there.
@@ -1220,7 +1336,7 @@ export async function docRoutes(app: FastifyInstance) {
       )
     ).rows[0];
     if (!row) fail(404, "That version is not kept");
-    return row;
+    return readableLinks(reader(r.headers), u.id, row);
   });
 
   /**
@@ -1263,7 +1379,7 @@ export async function docRoutes(app: FastifyInstance) {
             }))
           : null,
     };
-    return answer;
+    return readableLinks(db, u.id, answer);
   });
 
   /**
@@ -1317,7 +1433,7 @@ export async function docRoutes(app: FastifyInstance) {
            updated_at = now() WHERE id = $1`,
         [id, past.title, JSON.stringify(content)],
       );
-      return readDoc(db, id);
+      return readDoc(db, id, u.id);
     });
     await announceDocChange(pool, id, restored.version, editorOf(r));
     return restored;
@@ -1406,10 +1522,10 @@ export async function docRoutes(app: FastifyInstance) {
 
     const existing = await eventNote(pool, u, id, event.team_id, when);
     if (existing)
-      return {
+      return readableLinks(pool, u.id, {
         ...existing,
         content: await withTaskState(pool, existing.id, existing.content ?? []),
-      };
+      });
 
     const prefs = await loadPrefs(pool, u.id);
     const timeZone = prefs.timezone || "UTC";
@@ -1496,10 +1612,10 @@ export async function docRoutes(app: FastifyInstance) {
     return {
       created: made.length,
       items: made,
-      doc: {
+      doc: await readableLinks(pool, u.id, {
         ...updated,
         content: await withTaskState(pool, id, updated.content ?? []),
-      },
+      }),
     };
   });
 
@@ -1597,12 +1713,17 @@ export async function docRoutes(app: FastifyInstance) {
       ])
     ).rowCount;
     if (!seen) fail(404, "Document not found");
-    return (
+    const rows = (
       await db.query<DocComment>(
         `${COMMENT_SELECT} WHERE c.doc_id = $1 ORDER BY c.created_at`,
         [id],
       )
     ).rows;
+    return readableLinks(
+      db,
+      u.id,
+      await carryRanges(db, u.id, id, rows, "shown"),
+    );
   });
 
   /**
@@ -1651,6 +1772,8 @@ export async function docRoutes(app: FastifyInstance) {
         if (!parent) fail(404, "Comment not found");
         input.parent_id = parent.parent_id ?? parent.id;
       }
+      // Places counted in the words the reader was shown (D3aF).
+      const [placed] = await carryRanges(db, u.id, id, [input], "stored");
       const made = (
         await db.query<{ id: string }>(
           `INSERT INTO doc_comments
@@ -1662,9 +1785,9 @@ export async function docRoutes(app: FastifyInstance) {
             u.id,
             input.body,
             input.block_id ?? null,
-            input.quote ?? null,
-            input.range_start ?? null,
-            input.range_end ?? null,
+            placed.quote ?? null,
+            placed.range_start ?? null,
+            placed.range_end ?? null,
             input.parent_id ?? null,
           ],
         )
@@ -1675,7 +1798,8 @@ export async function docRoutes(app: FastifyInstance) {
       ).rows[0];
     });
     reply.code(201);
-    return comment;
+    const [shown] = await carryRanges(pool, u.id, id, [comment], "shown");
+    return readableLinks(pool, u.id, shown);
   });
 
   /**
@@ -1784,12 +1908,17 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const db = reader(r.headers);
     await mustSee(db, id, u);
-    return (
+    const rows = (
       await db.query<DocSuggestion>(
         `${SUGGESTION_SELECT} WHERE s.doc_id = $1 ORDER BY s.created_at`,
         [id],
       )
     ).rows;
+    return readableLinks(
+      db,
+      u.id,
+      await carryRanges(db, u.id, id, rows, "shown"),
+    );
   });
 
   /**
@@ -1804,7 +1933,18 @@ export async function docRoutes(app: FastifyInstance) {
     const made = await transaction(async (db) => {
       await requireDoc(db, id, u, "items:read");
       const ids: string[] = [];
-      for (const c of changes)
+      // Places counted in the words the reader was shown, and the words of
+      // links they were shown as "Private page" put back (D3aF).
+      const placed = await carryRanges(db, u.id, id, changes, "stored");
+      const stored = (
+        await db.query<{ content: DocBlock[] | null }>(
+          "SELECT content FROM docs WHERE id = $1",
+          [id],
+        )
+      ).rows[0]?.content;
+      for (const c of placed.map((c) =>
+        stored ? { ...c, text: keepLinkLabels(c.text, stored) } : c,
+      ))
         ids.push(
           (
             await db.query<{ id: string }>(
@@ -1834,7 +1974,11 @@ export async function docRoutes(app: FastifyInstance) {
       ).rows;
     });
     reply.code(201);
-    return made;
+    return readableLinks(
+      pool,
+      u.id,
+      await carryRanges(pool, u.id, id, made, "shown"),
+    );
   });
 
   /**
@@ -1922,7 +2066,7 @@ export async function docRoutes(app: FastifyInstance) {
             "UPDATE doc_suggestions SET detached = true WHERE id = $1",
             [rival.id],
           );
-      return readDoc(db, id);
+      return readDoc(db, id, u.id);
     });
     if (out) await announceDocChange(pool, id, out.version, editorOf(r));
     return { doc: out };
@@ -2025,9 +2169,14 @@ export async function docRoutes(app: FastifyInstance) {
         [u.id, TRASH_DAYS],
       )
     ).rows;
+    const links = await linkPrivacy(
+      reader(r.headers),
+      u.id,
+      rows.map((row) => row.content),
+    );
     return rows.map(({ content, ...rest }) => ({
       ...rest,
-      preview: docPreview(content ?? []),
+      preview: docPreview(links.value(content ?? [])),
     }));
   });
 
@@ -2055,7 +2204,7 @@ export async function docRoutes(app: FastifyInstance) {
       return { ...doc, content: await withTaskState(db, id, doc.content) };
     });
     await announceDocChange(pool, id, back.version, editorOf(r));
-    return back;
+    return readableLinks(pool, u.id, back);
   });
 
   /**

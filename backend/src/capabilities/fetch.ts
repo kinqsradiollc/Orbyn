@@ -32,6 +32,7 @@ import {
   defineCapability,
   type CapabilityContext,
 } from "./registry.js";
+import { readableLinks } from "../modules/links/privacy.js";
 
 /**
  * Opening one thing by id. Follows OpenAI's fetch contract: the input is
@@ -304,7 +305,12 @@ async function fetchDoc(
     ref.id,
   );
   if (!d) throw notFound();
-  const blocks = Array.isArray(d.content) ? d.content : [];
+  // Links to what this connection can't open keep no title (D3aF).
+  const blocks = await readableLinks(
+    ctx.db,
+    ctx.spaces,
+    Array.isArray(d.content) ? d.content : [],
+  );
   const indexOf = (anchor: string | undefined) => {
     if (!anchor) return -1;
     const at = /^@(\d{1,6})$/.exec(anchor);

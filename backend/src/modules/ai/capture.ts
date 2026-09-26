@@ -8,6 +8,7 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
+import { readableLinks } from "../links/privacy.js";
 import { authenticate } from "../../lib/auth.js";
 import { strictRateLimit } from "../../lib/params.js";
 import { complete, ProviderError } from "./providers/adapters.js";
@@ -80,7 +81,8 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
         ).rows[0];
         if (!doc) fail(404, "Page not found");
         title = doc.title;
-        text = serializeDoc(doc.content ?? []);
+        // Links to what the reader can't open keep no title (D3aF).
+        text = serializeDoc(await readableLinks(pool, u.id, doc.content ?? []));
       }
       text = text.slice(0, WORDS);
       if (!text.trim()) fail(422, "There are no words to work from yet.");

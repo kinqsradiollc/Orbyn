@@ -9,6 +9,7 @@ import {
   type SuggestedCard,
 } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
+import { readableLinks } from "../links/privacy.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { cardById } from "../study/service.js";
@@ -39,9 +40,12 @@ const pageOf = async (userId: string, docId: string) => {
     )
   ).rows[0];
   if (!doc) fail(404, "Page not found");
+  // Links to what the reader can't open keep no title (D3aF).
+  const content = await readableLinks(pool, userId, doc.content ?? []);
   return {
     ...doc,
-    text: serializeDoc(doc.content ?? []).slice(0, PAGE_CHARS),
+    content,
+    text: serializeDoc(content).slice(0, PAGE_CHARS),
   };
 };
 

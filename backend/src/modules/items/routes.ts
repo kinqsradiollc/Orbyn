@@ -57,6 +57,7 @@ import {
   type ItemRow,
 } from "./service.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
+import { readableLinks } from "../links/privacy.js";
 
 type Run = (text: string, values: unknown[]) => Promise<QueryResult>;
 /** Runs queries on a transaction client. */
@@ -512,7 +513,8 @@ export async function itemRoutes(app: FastifyInstance) {
             title: source.title,
             kind: source.kind,
             block_id: source.block_id!,
-            quote: quoteOf(block),
+            // Links to what the reader can't open keep no title (D3aF).
+            quote: quoteOf(await readableLinks(db, u.id, block)),
             todo: block?.type === "todo",
             done: block?.type === "todo" ? block.done : false,
           }
