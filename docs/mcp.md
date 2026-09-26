@@ -242,7 +242,7 @@ No arguments.
 
 ### `get_calendar`
 
-The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.
+The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page's or project's "Essay due"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.
 
 | Argument       | Type    | Notes                                                            |
 | -------------- | ------- | ---------------------------------------------------------------- |
@@ -901,4 +901,4 @@ Catalog version: `2026-09-26`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 189 of the app's signed-in routes are covered by tools, 164 are never for agents, and 0 are still to come.
+Routes: 205 of the app's signed-in routes are covered by tools, 234 are never for agents, and 0 are still to come.
