@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Pressable,
   Animated,
   Easing,
   StyleSheet,
@@ -52,8 +53,19 @@ export function AssistantScreen({
   onShowOnCalendar?: (at: string) => void;
   onBackToProject?: (projectId: string) => void;
 }) {
-  const { turns, thinking, ask, apply, discard, reset, scope, setScope } =
-    assistant;
+  const {
+    turns,
+    thinking,
+    ask,
+    apply,
+    discard,
+    reset,
+    scope,
+    setScope,
+    savedChats,
+    openChat,
+    deleteChat,
+  } = assistant;
   const { height } = useWindowDimensions();
   const locked = busy || thinking;
   // Quick replies only make sense on the newest assistant reply.
@@ -116,6 +128,46 @@ export function AssistantScreen({
               </PressableScale>
             ))}
           </View>
+          {scope?.kind === "project" && !!savedChats?.length && (
+            <View style={s.saved}>
+              <Text style={shared.label}>Saved chats about {scope.name}</Text>
+              {savedChats.slice(0, 5).map((c) => (
+                <View key={c.id} style={s.savedRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open the chat “${c.title}”`}
+                    disabled={locked}
+                    onPress={() => void openChat(c.id).catch(() => undefined)}
+                    style={({ pressed }) => [
+                      s.savedOpen,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={s.savedTitle} numberOfLines={1}>
+                      {c.title}
+                    </Text>
+                    <Text style={shared.small}>
+                      {new Date(c.updated_at).toLocaleDateString([], {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete the chat “${c.title}”`}
+                    hitSlop={10}
+                    onPress={() => void deleteChat(c.id).catch(() => undefined)}
+                  >
+                    <Icon name="trash" size={16} color={colors.muted} />
+                  </Pressable>
+                </View>
+              ))}
+              <Text style={shared.small}>
+                Only you see these. They go after a year unused.
+              </Text>
+            </View>
+          )}
         </FadeIn>
       ) : (
         <View style={s.threadHead}>
@@ -392,6 +444,31 @@ const LINE = 21;
 
 const s = themed(() =>
   StyleSheet.create({
+    saved: {
+      alignSelf: "stretch",
+      gap: 6,
+      marginTop: 18,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    savedRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    savedOpen: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      minHeight: 40,
+    },
+    savedTitle: {
+      flex: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      color: colors.text,
+    },
     welcome: {
       justifyContent: "center",
       paddingVertical: 24,

@@ -50,6 +50,8 @@ import {
   setTodoSource,
   ticksTakenFrom,
   proposeEdit,
+  mentionMarkdown,
+  mentionQuery,
   type Doc,
   type DocBlock,
   type DocMode,
@@ -80,6 +82,7 @@ import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
 import { LineToolbar, kindKey, type LineKind } from "./LineToolbar";
+import { MentionStrip, type MentionPerson } from "./MentionStrip";
 import { PageInfo } from "./PageInfo";
 import { colors, fonts, radii, themed } from "../../theme";
 
@@ -277,6 +280,8 @@ export function DocEditor({
   /** The page's Info, its ⋯ menu, and the two menus ⋯ leads to. */
   const [infoOpen, setInfoOpen] = useState(false);
   const [menu, setMenu] = useState<"page" | "share" | "export" | null>(null);
+  /** People who can open the page, for "@" (loaded the first time). */
+  const [people, setPeople] = useState<MentionPerson[] | null>(null);
   /** Where the caret or selection is in the open line. */
   const sel = useRef({ start: 0, end: 0 });
   const [selection, setSelection] = useState({ start: 0, end: 0 });
@@ -1287,45 +1292,80 @@ export function DocEditor({
             b.text.trim().length > 0,
         ).length;
 
+  /** "@" and a few letters in the open line: the people picker. */
+  const typedKind = focused !== null ? parseDoc(draft)[0]?.type : undefined;
+  const mention =
+    focused !== null &&
+    (!reading || suggesting) &&
+    typedKind !== "code" &&
+    typedKind !== "math"
+      ? mentionQuery(draft, selection.start)
+      : null;
+  const wantsPeople = !!mention;
+  useEffect(() => {
+    if (!wantsPeople || people !== null) return;
+    client.docPeople(doc.id).then(
+      (list) => setPeople(list.filter((p) => p.id !== userId)),
+      () => setPeople([]),
+    );
+  }, [wantsPeople, people, doc.id, userId]);
+  const pickPerson = (person: MentionPerson) => {
+    if (!mention) return;
+    const written = `${mentionMarkdown(person)} `;
+    const text =
+      draft.slice(0, mention.from) + written + draft.slice(selection.start);
+    const at = mention.from + written.length;
+    applyEdit({ text, start: at, end: at });
+  };
+
   /** The line being typed, as the keyboard toolbar shows it. */
   const current = focused !== null ? (parseDoc(draft)[0] ?? EMPTY) : null;
   const saved = focused !== null ? blocks[focused] : undefined;
   const toolbar =
     focused !== null && current && (!reading || suggesting) ? (
-      <LineToolbar
-        suggesting={!structural}
-        line={{
-          kind: kindKey(
-            current.type === "heading"
-              ? { type: "heading", level: current.level }
-              : { type: current.type },
-          ),
-          styles: stylesAt(draft, selection.start, selection.end),
-          styleable: canStyleLine(draft),
-          canUndo: canUndo(history.current),
-          canRedo: canRedo(history.current),
-          structural,
-          canIndent: structural && canIndent,
-          canOutdent: structural && blockDepth(openBlocks[focused]) > 0,
-          isTask: saved?.type === "todo" && !!saved.id,
-          hasWords: !!blockText(current).trim(),
-          canMoveUp: focused > 0,
-          canMoveDown: focused < blocks.length - 1,
-        }}
-        onUndo={undo}
-        onRedo={redo}
-        onKind={(kind: LineKind) => turnInto(kind)}
-        onStyle={styleLine}
-        onLink={linkLine}
-        onTodo={todoLine}
-        onIndent={indentLine}
-        onComment={commentOnLine}
-        onAsk={askLine}
-        onMove={moveLine}
-        onCommentWords={commentOnWords}
-        onDelete={deleteLine}
-        onHide={hideKeyboard}
-      />
+      <>
+        {mention && (
+          <MentionStrip
+            query={mention.query}
+            people={people}
+            onPick={pickPerson}
+          />
+        )}
+        <LineToolbar
+          suggesting={!structural}
+          line={{
+            kind: kindKey(
+              current.type === "heading"
+                ? { type: "heading", level: current.level }
+                : { type: current.type },
+            ),
+            styles: stylesAt(draft, selection.start, selection.end),
+            styleable: canStyleLine(draft),
+            canUndo: canUndo(history.current),
+            canRedo: canRedo(history.current),
+            structural,
+            canIndent: structural && canIndent,
+            canOutdent: structural && blockDepth(openBlocks[focused]) > 0,
+            isTask: saved?.type === "todo" && !!saved.id,
+            hasWords: !!blockText(current).trim(),
+            canMoveUp: focused > 0,
+            canMoveDown: focused < blocks.length - 1,
+          }}
+          onUndo={undo}
+          onRedo={redo}
+          onKind={(kind: LineKind) => turnInto(kind)}
+          onStyle={styleLine}
+          onLink={linkLine}
+          onTodo={todoLine}
+          onIndent={indentLine}
+          onComment={commentOnLine}
+          onAsk={askLine}
+          onMove={moveLine}
+          onCommentWords={commentOnWords}
+          onDelete={deleteLine}
+          onHide={hideKeyboard}
+        />
+      </>
     ) : null;
 
   /** The page's ⋯: Ask, Share, Export, History, template and Trash. */

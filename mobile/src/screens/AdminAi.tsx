@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { SemanticSetup } from "./SemanticSetup";
 import {
   Alert,
   Pressable,
@@ -176,6 +177,16 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
           }
         />
       </FadeIn>
+
+      <View style={s.section}>
+        <SemanticSetup
+          settings={settings}
+          providerName={active?.name ?? null}
+          busy={busy}
+          act={act}
+          onSettings={setSettings}
+        />
+      </View>
 
       <Text style={[shared.eyebrow, s.section]}>PROVIDERS</Text>
       {providers.length ? (

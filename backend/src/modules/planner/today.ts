@@ -51,7 +51,10 @@ export async function todayFor(
        LIMIT ${DUE_LIMIT}`,
       [userId, to],
     ),
-    unfinishedBlocks(db, userId, from, now),
+    // A session checked in as done for today isn't unfinished.
+    unfinishedBlocks(db, userId, from, now).then((rows) =>
+      rows.filter((b) => b.outcome !== "done"),
+    ),
   ]);
 
   // Statuses only for the tasks the list names: due today, the latest late

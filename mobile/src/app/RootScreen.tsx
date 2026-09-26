@@ -713,6 +713,19 @@ export function RootScreen() {
     } else if (kind === "booking" && text("ref")) {
       setBookingId(text("ref"));
       present({ sheet: "booking" });
+    } else if (kind === "session" && text("ref") && itemId) {
+      // A session's reminder: tapping it starts the session in focus mode.
+      const blockId = text("ref").split(":")[0];
+      void act(async () => {
+        await client.startSession(blockId, "reminder").catch(() => undefined);
+        openFocus(await client.getItem(itemId));
+      });
+    } else if (kind === "mention" && text("ref").startsWith("doc:")) {
+      const docId = text("ref").slice(4).split(":")[0];
+      void act(async () => {
+        setNote(await client.getDoc(docId));
+        present({ sheet: "note" });
+      });
     } else if (itemId)
       void act(async () => openTask(await client.getItem(itemId)));
   };
@@ -1121,6 +1134,23 @@ export function RootScreen() {
                         act(async () => {
                           setNote(await client.getDoc(docId));
                           present({ sheet: "note" });
+                        }),
+                      )
+                    }
+                    onOpenPage={(docId) =>
+                      void act(async () => {
+                        setNote(await client.getDoc(docId));
+                        present({ sheet: "note" });
+                      })
+                    }
+                    onStartSession={(n) =>
+                      void noticeAction(n, () =>
+                        act(async () => {
+                          await client
+                            .startSession(n.ref!.split(":")[0], "reminder")
+                            .catch(() => undefined);
+                          if (n.item_id)
+                            openFocus(await client.getItem(n.item_id));
                         }),
                       )
                     }

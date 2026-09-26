@@ -82,6 +82,18 @@ export function AdminStorage({ act, busy }: { act: Act; busy: boolean }) {
           )}
         </View>
       </View>
+      {data.originals && (
+        <View style={shared.card}>
+          <Text style={s.title}>Kept originals</Text>
+          <Text style={shared.body}>{bytes(data.originals.bytes)}</Text>
+          <Text style={shared.small}>
+            {data.originals.count} file{data.originals.count === 1 ? "" : "s"}{" "}
+            for {data.originals.people}{" "}
+            {data.originals.people === 1 ? "person" : "people"} · in kept/, back
+            it up
+          </Text>
+        </View>
+      )}
       <View style={shared.card}>
         <Text style={s.title}>Reading scans</Text>
         <Text style={shared.body}>{SCANS[data.reading.scans]}</Text>

@@ -181,6 +181,7 @@ export function TodayScreen({
           onPlanIt={onPlanTask}
           onPlanAgain={onPlanAgain}
           onOpenCalendar={onOpenCalendar}
+          onCheckedIn={() => onQuickAdded(null)}
         />
       )}
       {open.some((i) => i.kind === "task") && (

@@ -1,13 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
+  SESSION_OUTCOME_LABELS,
+  checkInNote,
+  shortMinutes,
   todayIsCurrent,
   todayRowWords,
   unfinishedHeading,
   unfinishedWhen,
+  type SessionCheckIn,
+  type SessionOutcome,
   type TodayList,
   type TodayRow,
 } from "@orbyn/core";
+import { client } from "../lib/api";
+import { tap } from "../lib/haptics";
 import { Icon, type IconName } from "./Icon";
 import { Pill, chipTone } from "./Pill";
 import { readLocal, saveLocal } from "../lib/localPrefs";
@@ -58,6 +65,7 @@ export function TodayCard({
   onPlanAgain,
   onOpenCalendar,
   busy,
+  onCheckedIn,
 }: {
   today: TodayList | null;
   /** Opens a task or event by id. */
@@ -70,8 +78,30 @@ export function TodayCard({
   onPlanAgain: (blockId: string) => void;
   onOpenCalendar: () => void;
   busy: boolean;
+  /** After a session check-in: the planner loads again. */
+  onCheckedIn?: () => void;
 }) {
   const [allLate, setAllLate] = useState(false);
+  // Sessions waiting for "how did it go?" are asked about in their own
+  // group, not under "Not finished" too.
+  const [checkIns, setCheckIns] = useState<SessionCheckIn[]>([]);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [said, setSaid] = useState<{
+    text: string;
+    itemId: string;
+    plan: boolean;
+  } | null>(null);
+  const [answering, setAnswering] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    client.sessionCheckIns().then(
+      (list) => live && setCheckIns(list),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [today]);
   const [dismissed, setDismissed] = useState<string[]>(readDismissed);
   // The words follow the clock ("past"), and the day ends at midnight.
   const [now, setNow] = useState(() => new Date());
@@ -88,8 +118,38 @@ export function TodayCard({
   const lateShown = allLate ? late : late.slice(0, LATE_SHOWN);
   const lateListed = rows.filter((r) => r.due === "late").length;
   const unfinished = today.unfinished.filter(
-    (u) => !dismissed.includes(u.block_id),
+    (u) =>
+      !dismissed.includes(u.block_id) &&
+      !checkIns.some((c) => c.id === u.block_id),
   );
+
+  const answer = async (
+    c: SessionCheckIn,
+    outcome: SessionOutcome,
+    more?: number,
+  ) => {
+    setAnswering(c.id);
+    try {
+      const r = await client.checkInSession(c.id, {
+        outcome,
+        ...(more ? { more_minutes: more } : {}),
+      });
+      tap();
+      animateLayout();
+      setCheckIns((list) => list.filter((x) => x.id !== c.id));
+      setAsking(null);
+      setSaid({
+        text: `${c.title}: ${checkInNote(outcome, r.counted_minutes)}`,
+        itemId: c.item_id,
+        plan: outcome !== "done",
+      });
+      onCheckedIn?.();
+    } catch {
+      // The row stays; answering again is safe.
+    } finally {
+      setAnswering(null);
+    }
+  };
 
   const dismiss = (blockId: string) => {
     animateLayout();
@@ -181,7 +241,7 @@ export function TodayCard({
     );
   };
 
-  const empty = !rows.length && !unfinished.length;
+  const empty = !rows.length && !unfinished.length && !checkIns.length;
   return (
     <FadeIn style={shared.card}>
       <View style={s.head}>
@@ -217,6 +277,93 @@ export function TodayCard({
                   {today.late_total - lateListed} more late in Tasks
                 </Text>
               )}
+            </View>
+          )}
+          {said && (
+            <View style={[s.group, s.said]}>
+              <Text style={s.line} accessibilityLiveRegion="polite">
+                {said.text}
+              </Text>
+              <View style={s.saidButtons}>
+                {said.plan && (
+                  <PillButton
+                    label="Plan it"
+                    onPress={() => {
+                      setSaid(null);
+                      onPlanIt(said.itemId);
+                    }}
+                  />
+                )}
+                <PillButton label="OK" quiet onPress={() => setSaid(null)} />
+              </View>
+            </View>
+          )}
+          {checkIns.length > 0 && (
+            <View style={s.group}>
+              <Text style={shared.label}>
+                How did it go? ({checkIns.length})
+              </Text>
+              {checkIns.map((c, n) => {
+                const start = new Date(c.start_at);
+                const when = `${start.toLocaleDateString([], { weekday: "short" })} ${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · ${shortMinutes(c.minutes)}`;
+                return (
+                  <View key={c.id} style={[s.checkRow, n > 0 && s.divider]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${c.title}, ${when}`}
+                      accessibilityHint="Opens it"
+                      onPress={() => onOpen(c.item_id)}
+                      style={({ pressed }) => [s.main, pressed && s.pressed]}
+                    >
+                      <Text numberOfLines={2} style={s.title}>
+                        {c.title}
+                      </Text>
+                      <Text style={s.line}>
+                        {when}
+                        {c.project_name ? ` · ${c.project_name}` : ""}
+                      </Text>
+                    </Pressable>
+                    <View style={s.answers}>
+                      {asking === c.id ? (
+                        <>
+                          {[15, 30, 60, 120].map((m) => (
+                            <PillButton
+                              key={m}
+                              label={`+${shortMinutes(m)}`}
+                              disabled={answering === c.id}
+                              onPress={() => void answer(c, "more", m)}
+                            />
+                          ))}
+                          <PillButton
+                            label="Cancel"
+                            quiet
+                            onPress={() => setAsking(null)}
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <PillButton
+                            label={SESSION_OUTCOME_LABELS.done}
+                            disabled={answering === c.id}
+                            onPress={() => void answer(c, "done")}
+                          />
+                          <PillButton
+                            label={SESSION_OUTCOME_LABELS.more}
+                            disabled={answering === c.id}
+                            onPress={() => setAsking(c.id)}
+                          />
+                          <PillButton
+                            label={SESSION_OUTCOME_LABELS.skipped}
+                            quiet
+                            disabled={answering === c.id}
+                            onPress={() => void answer(c, "skipped")}
+                          />
+                        </>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           )}
           {unfinished.length > 0 && (
@@ -351,6 +498,10 @@ const s = themed(() =>
       borderTopColor: colors.divider,
     },
     buttons: { gap: 6, alignItems: "flex-end" },
+    checkRow: { gap: 8, paddingVertical: 11 },
+    answers: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    said: { gap: 8 },
+    saidButtons: { flexDirection: "row", gap: 6 },
     footer: {
       flexDirection: "row",
       alignItems: "center",
