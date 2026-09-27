@@ -154,6 +154,7 @@ export function InboxScreen({
   onStartSession,
   reviewPending = 0,
   onOpenReview,
+  onOpenAgents,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -183,6 +184,11 @@ export function InboxScreen({
   reviewPending?: number;
   /** Open Review, on one proposal (a "review" notice) or the whole inbox. */
   onOpenReview?: (proposalId: string | null, notice?: Notice) => void;
+  /**
+   * Open Settings → Connected agents, from an "agent" notice about one
+   * connection (`ref` = "grant:<id>"), e.g. a big job it finished.
+   */
+  onOpenAgents?: (notice: Notice) => void;
 }) {
   const review =
     reviewPending > 0 && onOpenReview ? (
@@ -249,6 +255,8 @@ export function InboxScreen({
           n.kind === "review" && n.ref?.startsWith("proposal:")
             ? n.ref.slice("proposal:".length)
             : null;
+        const grant =
+          n.kind === "agent" && !!n.ref?.startsWith("grant:") && !!onOpenAgents;
         const action =
           n.kind === "session" && n.ref && n.item_id && onStartSession
             ? { label: "Start", run: onStartSession }
@@ -274,7 +282,12 @@ export function InboxScreen({
                                 label: "Open page",
                                 run: (x: Notice) => onOpenDoc(x, docId),
                               }
-                            : null;
+                            : grant && onOpenAgents
+                              ? {
+                                  label: "Open Connected agents",
+                                  run: onOpenAgents,
+                                }
+                              : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
@@ -315,6 +328,7 @@ export function InboxScreen({
                 <Text style={s.body}>{n.body}</Text>
                 <Text style={shared.small}>
                   {dateLabel(n.created_at)}
+                  {n.via_agent ? ` · via ${n.via_agent}` : ""}
                   {booking
                     ? " · Tap to open"
                     : n.read

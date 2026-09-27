@@ -6,6 +6,7 @@ import {
   fail,
   type AgentAccess,
   type AgentActivity,
+  type AgentActivityLink,
   type AgentAskFirst,
   type AgentGrant,
   type AgentSpaceTrust,
@@ -28,6 +29,7 @@ import { digest } from "../../lib/auth.js";
 import { settings } from "../../lib/settings.js";
 import { emailEnabled } from "../../worker/channels/email.js";
 import { announceTo } from "../presence/live.js";
+import { namedThings } from "../../lib/named-things.js";
 
 /**
  * Connections for outside agents: agent keys made in Settings, old personal
@@ -547,11 +549,12 @@ export async function grantActivity(
     )
   ).rowCount;
   if (!owns) fail(404, "Connection not found");
-  return (
+  const rows = (
     await db.query<{
       id: string;
       at: Date;
       tool: string;
+      tier: string;
       outcome: AgentOutcome;
       summary: string;
       calls: number;
@@ -560,21 +563,79 @@ export async function grantActivity(
       undone_at: Date | null;
       proposal_id: string | null;
       undo_until: Date | null;
+      request_id: string | null;
+      changes: number;
+      kinds: Record<string, number> | null;
     }>(
-      `SELECT id::text, at, tool, outcome, summary, calls, target_ids,
+      `SELECT id::text, at, tool, tier, outcome, summary, calls, target_ids,
               (undo IS NOT NULL AND undone_at IS NULL AND undo_until > now()) AS undoable,
               undone_at, proposal_id,
-              CASE WHEN undo IS NOT NULL THEN undo_until END AS undo_until
+              CASE WHEN undo IS NOT NULL THEN undo_until END AS undo_until,
+              request_id, changes, kinds
          FROM agent_activity WHERE grant_id = $1 AND user_id = $2
         ORDER BY at DESC, id DESC LIMIT 100`,
       [grantId, userId],
     )
-  ).rows.map((a) => ({
+  ).rows;
+  const names = await activityNames(db, userId, rows);
+  return rows.map(({ tier, request_id, ...a }) => ({
     ...a,
     at: a.at.toISOString(),
     undone_at: a.undone_at?.toISOString() ?? null,
     undo_until: a.undo_until?.toISOString() ?? null,
+    // Reads have no job; a change's job groups it with the rest of its
+    // call (or its plan) and undoes them together.
+    job: tier === "R" ? null : request_id,
+    changes: a.changes ?? 0,
+    kinds: a.kinds ?? null,
+    links: linksOf(a.target_ids ?? [], names),
   }));
+}
+
+const ACTIVITY_LINKS = 5;
+
+/** The typed ids in targets that open in the app. */
+function openable(targets: string[]) {
+  const out: { kind: AgentActivityLink["kind"]; id: string }[] = [];
+  for (const t of targets) {
+    const m = /^(task|event|doc|project):([0-9a-f-]{36})/i.exec(t);
+    if (!m) continue;
+    const raw = m[1].toLowerCase();
+    out.push({
+      kind: raw === "event" ? "task" : (raw as AgentActivityLink["kind"]),
+      id: m[2].toLowerCase(),
+    });
+  }
+  return out;
+}
+
+/** Names for what the activity touched that the person can still see. */
+const activityNames = (
+  db: Queryable,
+  userId: string,
+  rows: { target_ids: string[] }[],
+) =>
+  namedThings(
+    db,
+    userId,
+    rows.flatMap((r) => openable(r.target_ids ?? []).slice(0, ACTIVITY_LINKS)),
+  );
+
+/** What one activity row touched, named, that still opens. */
+function linksOf(
+  targets: string[],
+  names: Map<string, string>,
+): AgentActivityLink[] {
+  const seen = new Set<string>();
+  const out: AgentActivityLink[] = [];
+  for (const t of openable(targets).slice(0, ACTIVITY_LINKS)) {
+    const key = `${t.kind}:${t.id}`;
+    const title = names.get(key);
+    if (!title || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...t, title });
+  }
+  return out;
 }
 
 /**

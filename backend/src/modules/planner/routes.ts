@@ -224,6 +224,7 @@ export async function plannerRoutes(app: FastifyInstance) {
       u.name,
       new Date(),
       prefs.timezone,
+      { agents: prefs.digest?.agents !== false },
     );
     await sendEmail({
       id: randomBytes(8).toString("hex"),

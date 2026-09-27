@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { StarButton } from "../../components/StarButton";
 import {
+  activityOriginLabel,
   dateLabel,
   dueLine,
   freshItem,
@@ -1098,6 +1099,11 @@ export function TaskDetail({
                         >
                           {timeAgo(u.created_at)}
                         </time>
+                        {u.via_agent && (
+                          <span className="timeline-via">
+                            {activityOriginLabel({ via_agent: u.via_agent })}
+                          </span>
+                        )}
                       </p>
                       {u.body && <p className="timeline-body">{u.body}</p>}
                       {(u.status || u.progress !== null) && (

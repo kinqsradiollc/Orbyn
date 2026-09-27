@@ -38,6 +38,7 @@ import { announceTo } from "../presence/live.js";
 import { allowPageFiles } from "../../lib/page-file-access.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import type { z } from "zod";
+import { viaAgentColumn } from "../../lib/via-agent.js";
 
 /**
  * The docs service: reading, checking and writing pages, their tags, task
@@ -60,7 +61,8 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
                                               'color', tg.color)
                          ORDER BY lower(tg.name), tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
-             WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
+             WHERE dt.doc_id = d.id), '[]'::json) AS tags,
+  ${viaAgentColumn("d", "written_via")}`;
 
 /**
  * The lines of a page that are tied to a task, by block id. Every line gets
@@ -80,7 +82,7 @@ export const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
  */
 export const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
          c.block_id, c.quote, c.range_start, c.range_end, c.parent_id,
-         c.detached, c.resolved_at, c.created_at,
+         c.detached, c.resolved_at, c.created_at, ${viaAgentColumn("c")},
          coalesce((SELECT json_agg(json_build_object('user_id', mu.id, 'name', mu.name)
                                    ORDER BY mu.name)
                      FROM doc_comment_mentions m JOIN users mu ON mu.id = m.user_id
@@ -961,7 +963,8 @@ export async function addToPage(
 /** A proposal as the clients read it, with its author's name. */
 export const SUGGESTION_SELECT = `SELECT s.id, s.doc_id, s.block_id, s.user_id,
        u.name AS author, s.kind, s.range_start, s.range_end, s.text,
-       s.quote, s.note, s.status, s.detached, s.created_at
+       s.quote, s.note, s.status, s.detached, s.created_at,
+       ${viaAgentColumn("s")}
   FROM doc_suggestions s JOIN users u ON u.id = s.user_id`;
 
 /** One proposed change to a line: its place in the line and the new words. */

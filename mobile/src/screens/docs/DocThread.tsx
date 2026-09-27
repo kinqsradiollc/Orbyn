@@ -97,7 +97,12 @@ export function DocThread({
               ]}
             >
               <View style={styles.head}>
-                <Text style={styles.author}>{c.author}</Text>
+                <Text style={styles.author}>
+                  {c.author}
+                  {c.via_agent ? (
+                    <Text style={styles.via}> · via {c.via_agent}</Text>
+                  ) : null}
+                </Text>
                 <Text style={styles.when}>{when(c.created_at)}</Text>
               </View>
               <Text style={styles.body}>{c.body}</Text>
@@ -227,6 +232,7 @@ const styles = themed(() =>
       fontFamily: fonts.semibold,
     },
     when: { color: colors.muted, fontSize: 13 },
+    via: { color: colors.muted, fontFamily: fonts.regular },
     body: { color: colors.text, fontSize: 15, lineHeight: 20 },
     actions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
     input: {

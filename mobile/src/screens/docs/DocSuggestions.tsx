@@ -37,7 +37,12 @@ export function DocSuggestions({
       </Text>
       {open.map((one) => (
         <View key={one.id} style={[s.card, one.detached && s.faded]}>
-          <Text style={s.author}>{one.author}</Text>
+          <Text style={s.author}>
+            {one.author}
+            {one.via_agent ? (
+              <Text style={s.via}> · via {one.via_agent}</Text>
+            ) : null}
+          </Text>
           <Text style={s.change}>
             {!!one.quote && <Text style={s.was}>{plainText(one.quote)}</Text>}
             {!!one.quote && !!one.text && <Text style={s.arrow}> → </Text>}
@@ -98,6 +103,7 @@ const s = themed(() =>
     },
     faded: { opacity: 0.7 },
     author: { color: colors.text, fontSize: 13, fontFamily: fonts.semibold },
+    via: { color: colors.muted, fontFamily: fonts.regular },
     change: { fontSize: 15, lineHeight: 20 },
     was: { color: colors.muted, textDecorationLine: "line-through" },
     arrow: { color: colors.muted },

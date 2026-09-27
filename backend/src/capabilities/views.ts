@@ -13,7 +13,7 @@ import { setFavourite } from "../modules/organize/service.js";
 import { announceTo } from "../modules/presence/live.js";
 import { teamFilter } from "./common.js";
 import { cleanTitle } from "./format.js";
-import { parseRef, refs } from "./refs.js";
+import { appLinkFor, parseRef, refs } from "./refs.js";
 import {
   CapabilityError,
   defineCapability,
@@ -287,6 +287,7 @@ async function exportView(ctx: CapabilityContext, input: string | undefined) {
           id: r.id,
           title: name,
           url: r.url,
+          app_url: appLinkFor(r.url),
           version: view.version,
           change: `Exported ${result.rows.length} rows as CSV (${viewFileName(view.name)})`,
         },
@@ -295,7 +296,7 @@ async function exportView(ctx: CapabilityContext, input: string | undefined) {
       skipped: [],
       csv,
     },
-    markdown: `${name}: ${result.rows.length} rows as CSV (${viewFileName(view.name)}).\n\n\`\`\`csv\n${csv}\n\`\`\``,
+    markdown: `${name}: ${result.rows.length} rows as CSV (${viewFileName(view.name)}).\n\n\`\`\`csv\n${csv}\n\`\`\`\nOpen the view on the web: ${r.url} · in the Orbyn app: ${appLinkFor(r.url)}`,
     targets: [r.id],
     write: { outcome: "ok" as const, team_id: view.team_id },
   };

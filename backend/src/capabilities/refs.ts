@@ -138,6 +138,32 @@ export function refUrl(ref: Ref, projectId?: string | null): string {
   }
 }
 
+/**
+ * The phone app's link for a web app link (H7): the same path on orbyn://,
+ * as the apps' own share links have it (`https://…/app/doc/<id>#b1` and
+ * `orbyn://doc/<id>#b1` open the same page). The app's home is Today.
+ * Empty for a link that isn't the web app's.
+ */
+export function appLinkFor(url: string | null | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("orbyn://")) return url;
+  const base = `${appUrl()}/app`;
+  if (
+    url !== base &&
+    !url.startsWith(`${base}/`) &&
+    !url.startsWith(`${base}#`)
+  )
+    return "";
+  const rest = url.slice(base.length).replace(/^\/+/, "");
+  return `orbyn://${rest && !rest.startsWith("#") ? rest : "today"}`;
+}
+
+/** Both links to a thing: the web app's and the phone app's. */
+export const linksFor = (ref: Ref, projectId?: string | null) => {
+  const url = refUrl(ref, projectId);
+  return { url, app_url: appLinkFor(url) };
+};
+
 /** The Today list in the web app. */
 export const todayUrl = () => `${appUrl()}/app/today`;
 

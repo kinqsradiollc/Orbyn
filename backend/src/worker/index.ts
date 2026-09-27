@@ -23,6 +23,7 @@ import { drainStudyQueue } from "../modules/study/service.js";
 import { scanAgentStudy } from "../modules/agent-inbox/scan.js";
 import { expireQuestions } from "../modules/agent-inbox/questions.js";
 import { deliverWakes } from "../modules/agent-inbox/wake.js";
+import { scanAgentJobs } from "./agent-jobs.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -114,6 +115,12 @@ export async function runWorker() {
         // due (H0): each agent hears within a cycle.
         await expireQuestions();
         await deliverWakes();
+        // A push when an agent finished a job of over 20 changes (H7).
+        try {
+          await scanAgentJobs();
+        } catch {
+          // Its changes stay unreported: the next cycle looks again.
+        }
         lastSchedule = Date.now();
       }
       // Each lane delivers reminders and webhooks until both queues are empty.

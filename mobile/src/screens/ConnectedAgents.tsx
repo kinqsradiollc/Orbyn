@@ -16,11 +16,15 @@ import {
   AGENT_SIGN_IN_STEPS,
   agentExpiryText,
   agentInstallLinks,
+  agentJobText,
+  groupAgentActivity,
   agentSetup,
   isSignInClient,
   type AgentAccess,
   type AgentActivity,
+  type AgentActivityLink,
   type AgentAskFirst,
+  type AgentJob,
   type AgentGrant,
   type AgentTrust,
   type AgentSetupClient,
@@ -31,15 +35,18 @@ import {
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
 import { Field } from "../components/Field";
+import { Icon, CONCEPT_ICON } from "../components/Icon";
 import { Pill } from "../components/Pill";
 import { SmallAction } from "../components/SmallAction";
+import { showToast } from "../components/Toast";
+import { openAppUrl } from "../hooks/useAppLinks";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
 import { openReview } from "../lib/review";
 import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
-import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { FadeIn, PressableScale, animateLayout } from "../motion";
+import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AgentRulesCard, InboxPanel } from "./AgentInbox";
 
@@ -264,6 +271,47 @@ const spacesText = (g: AgentGrant) =>
         ", ",
       ) || "No spaces";
 
+/** What a job touched that still opens, each once, at most five. */
+const jobLinks = (job: AgentJob): AgentActivityLink[] => {
+  const seen = new Set<string>();
+  const out: AgentActivityLink[] = [];
+  for (const row of job.rows)
+    for (const l of row.links ?? []) {
+      const key = `${l.kind}:${l.id}`;
+      if (seen.has(key) || out.length >= 5) continue;
+      seen.add(key);
+      out.push(l);
+    }
+  return out;
+};
+
+/** One call's outcome after its words: " · refused", " · undone". */
+const outcomeText = (a: AgentActivity) =>
+  (a.outcome === "ok"
+    ? ""
+    : a.outcome === "denied"
+      ? " · refused"
+      : ` · ${a.outcome}`) + (a.undone_at ? " · undone" : "");
+
+/** Something a job touched, as a small link that opens it in the app. */
+function LinkChip({ link }: { link: AgentActivityLink }) {
+  const concept = link.kind === "doc" ? "page" : link.kind;
+  return (
+    <PressableScale
+      accessibilityRole="link"
+      accessibilityLabel={`Open ${link.title || "Untitled"}`}
+      hitSlop={{ top: 5, bottom: 5 }}
+      onPress={() => openAppUrl(`orbyn://${link.kind}/${link.id}`)}
+      style={s.link}
+    >
+      <Icon name={CONCEPT_ICON[concept]} size={13} color={colors.accent} />
+      <Text style={s.linkText} numberOfLines={1}>
+        {link.title || "Untitled"}
+      </Text>
+    </PressableScale>
+  );
+}
+
 /** A connection's title in the list. */
 const grantTitle = (g: AgentGrant) =>
   g.kind === "legacy"
@@ -292,6 +340,8 @@ export function ConnectedAgentsCard({
   const [activity, setActivity] = useState<
     Record<string, AgentActivity[] | null>
   >({});
+  // Jobs opened to their single changes, by "<grant>:<job>".
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState<AgentSetupClient>("claude");
   const [making, setMaking] = useState(false);
   const [name, setName] = useState("");
@@ -389,6 +439,137 @@ export function ConnectedAgentsCard({
         }),
       false,
     );
+
+  // Take back every change of one job at once (all or nothing: refused if
+  // anything in it changed since).
+  const undoJob = (g: AgentGrant, job: AgentJob) =>
+    confirmAction(
+      "Undo this whole job?",
+      "Orbyn puts back every change in it as it was before. If something changed since, nothing is undone.",
+      "Undo job",
+      () =>
+        void run(async () => {
+          const { undone } = await client.undoAgentJob(g.id, job.job!);
+          const list = await client.agentActivity(g.id);
+          animateLayout();
+          setActivity((all) => ({ ...all, [g.id]: list }));
+          showToast({
+            text: undone === 1 ? "Undid 1 change." : `Undid ${undone} changes.`,
+          });
+        }),
+      false,
+    );
+
+  const toggleJob = (key: string) => {
+    animateLayout();
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  /** One change, with its own Review and Undo. */
+  const changeRow = (g: AgentGrant, a: AgentActivity, time: boolean) => (
+    <View key={a.id} style={s.activityRow}>
+      <Text style={[shared.small, s.activityTime]}>
+        {time ? timeAgo(a.at) : ""}
+      </Text>
+      <Text style={[shared.small, s.flex]}>
+        {a.summary}
+        {outcomeText(a)}
+      </Text>
+      {a.proposal_id && onOpenReview && (
+        <SmallAction
+          label="Review"
+          disabled={busy}
+          onPress={() => onOpenReview(a.proposal_id!)}
+        />
+      )}
+      {a.undoable && (
+        <SmallAction label="Undo" disabled={busy} onPress={() => undo(g, a)} />
+      )}
+    </View>
+  );
+
+  /**
+   * One job: when, what it did in plain words, what it touched, and undoing
+   * it whole; a job of several calls opens to each change.
+   */
+  const jobView = (g: AgentGrant, job: AgentJob, first: boolean) => {
+    const key = `${g.id}:${job.id}`;
+    const single = job.rows.length === 1;
+    const row = job.rows[0];
+    const links = jobLinks(job);
+    const undoable = job.rows.filter((r) => r.undoable).length;
+    const open = expanded.has(key);
+    const words =
+      job.changes > 0 ? agentJobText(grantTitle(g), job.kinds) : null;
+    return (
+      <View key={key} style={[s.job, !first && s.jobDivider]}>
+        {single && !words ? (
+          changeRow(g, row, true)
+        ) : (
+          <View style={s.activityRow}>
+            <Text style={[shared.small, s.activityTime]}>
+              {timeAgo(job.at)}
+            </Text>
+            <Text style={[shared.small, s.flex, s.jobText]}>
+              {words ?? row.summary}
+              {single
+                ? outcomeText(row)
+                : job.rows.every((r) => r.undone_at)
+                  ? " · undone"
+                  : ""}
+            </Text>
+            {single && row.proposal_id && onOpenReview && (
+              <SmallAction
+                label="Review"
+                disabled={busy}
+                onPress={() => onOpenReview(row.proposal_id!)}
+              />
+            )}
+            {single && row.undoable && (
+              <SmallAction
+                label="Undo"
+                disabled={busy}
+                onPress={() => undo(g, row)}
+              />
+            )}
+          </View>
+        )}
+        {links.length > 0 && (
+          <View style={[s.indent, s.links]}>
+            {links.map((l) => (
+              <LinkChip key={`${l.kind}:${l.id}`} link={l} />
+            ))}
+          </View>
+        )}
+        {!single && (
+          <View style={[s.indent, s.jobActions]}>
+            <SmallAction
+              label={open ? "Hide changes" : `See ${job.rows.length} changes`}
+              disabled={false}
+              onPress={() => toggleJob(key)}
+            />
+            {!!job.job && undoable > 1 && (
+              <SmallAction
+                label="Undo job"
+                disabled={busy}
+                onPress={() => undoJob(g, job)}
+              />
+            )}
+          </View>
+        )}
+        {!single && open && (
+          <View style={s.jobRows}>
+            {job.rows.map((a) => changeRow(g, a, false))}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const revoke = (g: AgentGrant) => {
     const legacy = g.kind === "legacy";
@@ -640,36 +821,9 @@ export function ConnectedAgentsCard({
                     {open === null ? (
                       <Text style={shared.small}>Loading…</Text>
                     ) : open.length ? (
-                      open.slice(0, 30).map((a) => (
-                        <View key={a.id} style={s.activityRow}>
-                          <Text style={[shared.small, s.activityTime]}>
-                            {timeAgo(a.at)}
-                          </Text>
-                          <Text style={[shared.small, s.flex]}>
-                            {a.summary}
-                            {a.outcome === "ok"
-                              ? ""
-                              : a.outcome === "denied"
-                                ? " · refused"
-                                : ` · ${a.outcome}`}
-                            {a.undone_at ? " · undone" : ""}
-                          </Text>
-                          {a.proposal_id && onOpenReview && (
-                            <SmallAction
-                              label="Review"
-                              disabled={busy}
-                              onPress={() => onOpenReview(a.proposal_id!)}
-                            />
-                          )}
-                          {a.undoable && (
-                            <SmallAction
-                              label="Undo"
-                              disabled={busy}
-                              onPress={() => undo(g, a)}
-                            />
-                          )}
-                        </View>
-                      ))
+                      groupAgentActivity(open)
+                        .slice(0, 30)
+                        .map((job, n) => jobView(g, job, n === 0))
                     ) : (
                       <Text style={shared.small}>Nothing yet.</Text>
                     )}
@@ -919,6 +1073,38 @@ const s = themed(() =>
     },
     activityRow: { flexDirection: "row", gap: 10, alignItems: "center" },
     activityTime: { width: 64, color: colors.muted },
+    job: { gap: 6 },
+    jobDivider: {
+      paddingTop: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    jobText: { color: colors.text },
+    // Under the words, past the time column (64 + the row's gap).
+    indent: { paddingLeft: 74 },
+    links: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    link: {
+      // 34pt drawn, 44pt to a finger through hitSlop.
+      minHeight: controls.tap - 10,
+      maxWidth: "100%",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    linkText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.accent,
+    },
+    jobActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    jobRows: { gap: 6 },
     flex: { flex: 1 },
     askName: {
       fontFamily: fonts.semibold,

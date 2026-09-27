@@ -379,6 +379,11 @@ export type Doc = {
   /** For a daily agenda, the day it is for ("2026-09-24"). */
   agenda_date?: string | null;
   /**
+   * The connected agent that last wrote its words ("Claude"), agenda pages
+   * included; null once a person edits it (H7).
+   */
+  via_agent?: string | null;
+  /**
    * For the note of one class of a repeating event, which class: its first
    * start, as the calendar's `occurrence`. Null for any other page.
    */
@@ -526,6 +531,8 @@ export type DocComment = {
   /** Who was named in the body, so the page can show them as people. */
   mentions: DocMention[];
   resolved_at: string | null;
+  /** The connected agent it was written through ("Claude"), if one. */
+  via_agent?: string | null;
   created_at: string;
 };
 
@@ -2150,6 +2157,8 @@ export type DocSuggestion = {
   status: SuggestionStatus;
   /** True once the words it was about have gone from the page. */
   detached: boolean;
+  /** The connected agent that proposed it ("Claude"), if one. */
+  via_agent?: string | null;
   created_at: string;
 };
 

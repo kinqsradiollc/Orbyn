@@ -874,3 +874,62 @@ export async function undoActivity(
   await announceTo(db as never, { user_id: u.id }, "changed");
   return { after, summary: row.summary };
 }
+
+/**
+ * Undo every change one job of an agent made (every step of one apply_plan,
+ * or one call's changes; H7), from Settings → Connected agents: a person
+ * only. Last first, all or nothing (the caller's transaction): if any of it
+ * changed since, nothing is undone (409). Changes already undone or past
+ * their 30 days are left as they are; a job with nothing left to undo is a
+ * 409, one that isn't this person's connection's is a 404.
+ */
+export async function undoJob(
+  db: Db,
+  u: UserRow,
+  grantId: string,
+  job: string,
+): Promise<{ after: (() => Promise<void>)[]; undone: number }> {
+  const rows = (
+    await db.query<{
+      id: string;
+      undo: UndoOp[] | null;
+      undo_until: Date | null;
+      undone_at: Date | null;
+    }>(
+      `SELECT a.id::text, a.undo, a.undo_until, a.undone_at
+         FROM agent_activity a
+         JOIN agent_grants g ON g.id = a.grant_id AND g.user_id = $1
+        WHERE a.user_id = $1 AND a.grant_id = $2 AND a.request_id = $3
+          AND a.tier <> 'R'
+        ORDER BY a.at DESC, a.id DESC
+        FOR UPDATE OF a`,
+      [u.id, grantId, job],
+    )
+  ).rows;
+  if (!rows.length) fail(404, "That job isn't in this agent's activity.");
+  const now = new Date();
+  const todo = rows.filter(
+    (r) => r.undo?.length && !r.undone_at && r.undo_until && r.undo_until > now,
+  );
+  if (!todo.length) fail(409, "Nothing in that job can be undone any more.");
+  const after: (() => Promise<void>)[] = [];
+  // One job's changes are undone together, last first (see runUndo).
+  const carry = new Map<string, number>();
+  for (const r of todo) after.push(...(await runUndo(db, u, r.undo!, carry)));
+  await db.query(
+    "UPDATE agent_activity SET undone_at = now() WHERE id = ANY($1::bigint[])",
+    [todo.map((r) => r.id)],
+  );
+  await audit(
+    {
+      actorId: u.id,
+      action: "agent.job_undone",
+      targetType: "agent_grant",
+      targetId: grantId,
+      details: { job, changes: todo.map((r) => r.id) },
+    },
+    db,
+  );
+  await announceTo(db as never, { user_id: u.id }, "changed");
+  return { after, undone: todo.length };
+}

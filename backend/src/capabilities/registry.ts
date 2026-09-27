@@ -224,8 +224,45 @@ function jsonSchema(schema: z.ZodType, io: "input" | "output"): ObjectSchema {
   delete out.$schema;
   if (out.type !== "object")
     throw new Error("Tool schemas must describe an object.");
-  if (io === "output") looseAnswers(out);
+  if (io === "output") {
+    looseAnswers(out);
+    return foldNullables(out) as ObjectSchema;
+  }
   return out as ObjectSchema;
+}
+
+/**
+ * Writes "an object, or null" in an answer's schema as one schema with
+ * `type: ["object", "null"]` instead of an anyOf of the two: the same
+ * meaning in fewer tokens (H7's budget, which paid for every change's app
+ * link). Plain values already come out this way.
+ */
+function foldNullables(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(foldNullables);
+  if (!node || typeof node !== "object") return node;
+  const o: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) o[k] = foldNullables(v);
+  const any = o.anyOf;
+  if (Array.isArray(any) && any.length === 2 && Object.keys(o).length === 1) {
+    const isNull = (x: unknown) =>
+      !!x &&
+      typeof x === "object" &&
+      (x as { type?: unknown }).type === "null" &&
+      Object.keys(x).length === 1;
+    const at = any.findIndex(isNull);
+    const other = any[1 - at] as Record<string, unknown> | undefined;
+    // An enum or const would refuse the null, so those stay as they are.
+    if (
+      at >= 0 &&
+      other &&
+      typeof other.type === "string" &&
+      !other.anyOf &&
+      !("enum" in other) &&
+      !("const" in other)
+    )
+      return { ...other, type: [other.type, "null"] };
+  }
+  return o;
 }
 
 /**

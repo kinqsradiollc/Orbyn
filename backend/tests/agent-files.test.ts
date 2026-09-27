@@ -181,6 +181,10 @@ test("add_file: a picture line, stored encrypted in Orbyn's own file store", asy
     page.text,
     new RegExp(`!\\[The gel after 40 minutes\\]\\(orbyn://file/${fileId}\\)`),
   );
+  // H7: both links to where it landed, the web app's and the phone app's.
+  const base = env.APP_URL.replace(/\/+$/, "");
+  assert.match(r.url, new RegExp(`^${base}/app/doc/${doc}#b`));
+  assert.equal(r.app_url, r.url.replace(`${base}/app/`, "orbyn://"));
   assert.deepEqual(outside, []);
 });
 

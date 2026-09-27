@@ -21,7 +21,7 @@ import {
   type CapabilityContext,
 } from "./registry.js";
 import { seeProject } from "./shared.js";
-import { refUrl } from "./refs.js";
+import { linksFor } from "./refs.js";
 import { afterSave } from "./write-docs.js";
 import {
   actorOf,
@@ -153,6 +153,8 @@ export const addFile = defineCapability({
     bytes: z.number(),
     doc: z.string(),
     version: z.number().nullable(),
+    url: z.string(),
+    app_url: z.string(),
   }),
   annotations: {
     readOnlyHint: false,
@@ -223,6 +225,7 @@ export const addFile = defineCapability({
           bytes: n,
           doc: `doc:${page.id}`,
           version: null,
+          ...linksFor({ type: "doc", id: page.id }),
         },
         markdown: `Add ${cleanTitle(a.name)} (${fileSize(n)}) to “${cleanTitle(page.title)}”${original ? " as its original" : ""}`,
       };
@@ -303,6 +306,7 @@ export const addFile = defineCapability({
     const name = cleanTitle(a.name).slice(0, 200) || "file";
     const file = `orbyn://file/${fileId}`;
     if (original) {
+      const keptLinks = linksFor({ type: "doc", id: page.id });
       await ctx.db.query(
         `INSERT INTO kept_files (id, user_id, doc_id, file_name, file_type, bytes)
          VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -315,11 +319,13 @@ export const addFile = defineCapability({
           bytes: n,
           doc: `doc:${page.id}`,
           version: null,
+          ...keptLinks,
         },
-        markdown: `Kept ${name} (${fileSize(n)}) as the original of “${cleanTitle(page.title)}” (doc:${page.id}), in its Info. ${refUrl({ type: "doc", id: page.id })}`,
+        markdown: `Kept ${name} (${fileSize(n)}) as the original of “${cleanTitle(page.title)}” (doc:${page.id}), in its Info.\nOpen the page on the web: ${keptLinks.url} · in the Orbyn app: ${keptLinks.app_url}`,
         targets: [`doc:${page.id}`],
         write: {
           outcome: "ok",
+          counts: { "added:file": 1 },
           undo: [
             ...(made
               ? [
@@ -356,6 +362,7 @@ export const addFile = defineCapability({
       },
       { always: true },
     );
+    const lineLinks = linksFor({ type: "doc", id: page.id, block: line.id });
     return {
       structured: {
         file,
@@ -363,11 +370,13 @@ export const addFile = defineCapability({
         bytes: n,
         doc: `doc:${page.id}#${line.id}`,
         version: saved.version,
+        ...lineLinks,
       },
-      markdown: `Added ${name} (${fileSize(n)}) to “${cleanTitle(page.title)}” as ${image ? "a picture" : "a file"} line ^${line.id} (version ${saved.version}). ${refUrl({ type: "doc", id: page.id, block: line.id })}`,
+      markdown: `Added ${name} (${fileSize(n)}) to “${cleanTitle(page.title)}” as ${image ? "a picture" : "a file"} line ^${line.id} (version ${saved.version}).\nOpen it on the web: ${lineLinks.url} · in the Orbyn app: ${lineLinks.app_url}`,
       targets: [`doc:${page.id}`],
       write: {
         outcome: "ok",
+        counts: { "added:file": 1 },
         // Last first: the line goes, then the file nothing shows.
         // Undone last first: the line goes, then the file, then (for a
         // project's file) the page made for it goes to Trash.

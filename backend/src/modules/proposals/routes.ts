@@ -11,7 +11,9 @@ import {
 import { reader, transaction } from "../../db/pool.js";
 import { authenticate, isApiKeyRequest } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { undoActivity } from "../../capabilities/undo.js";
+import { undoActivity, undoJob } from "../../capabilities/undo.js";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import {
   applyProposal,
   declineProposal,
@@ -110,5 +112,19 @@ export async function proposalRoutes(app: FastifyInstance) {
     const done = await transaction((db) => undoActivity(db, u, id));
     for (const after of done.after) await after().catch(() => {});
     return { undone: true, summary: done.summary };
+  });
+
+  // Undo a whole job of one agent (every step of a plan, or one call's
+  // changes; H7), from the same list: a person only, all or nothing.
+  app.post("/me/agents/:id/jobs/:job/undo", async (r) => {
+    const u = await firstParty(r);
+    const { id, job } = r.params as { id: string; job: string };
+    if (!UUID.test(id) || !/^[\w.:@-]{1,64}$/.test(job))
+      fail(404, "That job isn't in this agent's activity.");
+    const done = await transaction((db) =>
+      undoJob(db, u, id.toLowerCase(), job),
+    );
+    for (const after of done.after) await after().catch(() => {});
+    return { undone: done.undone };
   });
 }

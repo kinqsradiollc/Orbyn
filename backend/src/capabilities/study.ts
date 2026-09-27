@@ -720,7 +720,7 @@ async function addCards(
         b.id &&
         plainText(b.text).trim().toLowerCase() === "cards",
     );
-    return editPage(
+    const edited = await editPage(
       ctx,
       {
         doc: doc.id,
@@ -733,6 +733,10 @@ async function addCards(
       },
       change,
     );
+    // Told as cards, not as one page edited (H7).
+    if (edited.write)
+      edited.write = { ...edited.write, counts: { "added:card": n } };
+    return edited;
   }
   const title = a.new_deck!;
   const team = teamFilter(a.team);
@@ -779,6 +783,7 @@ async function addCards(
     undo: [{ op: "doc.trash", doc_id: doc.id, version: doc.version }],
     after: [() => syncSavedPages(doc.id)],
     teamId,
+    counts: { "added:card": n },
   });
 }
 

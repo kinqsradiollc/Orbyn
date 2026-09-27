@@ -676,7 +676,7 @@ For pages longer than create_doc takes (a lecture transcript, a long brief): sen
 
 ### `get_work_patterns`
 
-What the planner learned (durations, good hours, load), planned against done by weekday, focus and the running timer, where time went, unfinished sessions of the last two weeks (reschedule_sessions checks in or rolls forward), subscribed calendars and routines.
+What the planner learned (durations, good hours, load), planned against done by weekday, focus and the running timer, where time went, unfinished sessions (last 14 days) (reschedule_sessions checks in or rolls forward), subscribed calendars and routines.
 
 | Argument | Type    | Notes       |
 | -------- | ------- | ----------- |
@@ -696,7 +696,7 @@ Compares the plan now with a scenario (added tasks, days off, a moved deadline, 
 
 ### `log_focus`
 
-Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref dedupes retries.
+Records a finished focus session (started_at, ended_at, optionally a task) or adds minutes to a task. session_id or client_ref dedupes retries.
 
 | Argument             | Type             | Notes                                                                 |
 | -------------------- | ---------------- | --------------------------------------------------------------------- |
@@ -721,7 +721,7 @@ Starts the focus timer on the person's devices (rhythm "25-5", "50-10", "45-15" 
 
 ### `manage_routines`
 
-Up to 25 routine changes: add or change a frame (kept time), habit or place, or skip or unskip a frame's date. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (location text), travel_minutes, mode, peak_minutes. Deleting: propose_changes; habit sessions: plan_schedule.
+Up to 25 routine changes: add/change a frame (kept time), habit or place, or skip/unskip a frame's date. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (location text), travel_minutes, mode, peak_minutes. Deleting: propose_changes; habit sessions: plan_schedule.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -730,7 +730,7 @@ Up to 25 routine changes: add or change a frame (kept time), habit or place, or 
 
 ### `update_planner_settings`
 
-Changes any planner setting (hours, time zones, calendar sets, teammates, buffers, travel, alerts, reminders, notices, digests, learning), keep_originals, and calendars: subscribe by link, change one (id; refresh fetches it now) or unsubscribe. Undoable.
+Changes any planner setting (hours, time zones, calendar sets, teammates, buffers, travel, alerts, reminders, notices, digests, learning), keep_originals, and calendars: subscribe by link, change one (id; refresh re-fetches) or unsubscribe. Undoable.
 
 | Argument         | Type       | Notes                                                                 |
 | ---------------- | ---------- | --------------------------------------------------------------------- |
@@ -1026,6 +1026,7 @@ Catalog version: `2026-09-27`.
 
 ### 2026-09-27
 
+- You always know what happened (H7), still 60 tools: every change's done entries carry app_url (the phone app's orbyn:// link) beside url (the web app's), apply_plan's steps too, and add_file and save_source answer with url and app_url of the page; each change's summary ends with its links in words. An object-or-null in an answer's schema is written type ["object", "null"] (the same meaning, fewer tokens). The person sees "via `<agent>"` on a task's updates, comments and suggestions, Recent changes (shown even with their own hidden), notices a change caused and the page an agent last wrote (agenda pages too); gets one notice and push when a job (one apply_plan, or calls from one connection under two minutes apart) makes more than 20 changes; and a "What your agents did" section in the morning digest. Both can be turned off in Settings; agents can't turn them off. Connected agents lists changes by job with Undo per change and per job.
 - Every feature, no gaps (H6b), still 60 tools: organize takes page changes (aliases: other names; fold; link_mention; extract: lines to a new page, linked where they were; merge: into another page, this one to Trash; remove_source), your own fields (create_field, change_field, set_field on pages and projects; deleting one is propose_changes delete what "field") and running a team, always asked first (create_team, rename_team, invite, remove_member, set_role, meeting_budget; the Review inbox action team.admin; deleting a team and its agent policy stay people only). update_project adds, changes, fills and removes milestones (removing is a delete: what "milestone" in propose_changes too) and keeps a project out of AI (assistant "off"; "on" always asks the person, and its proposal doesn't name the project to the agent). get_project lists milestones. save_view pins a view in the sidebar (pin) and returns a saved view's rows as CSV text (export "csv", in csv). get_history lists "recent" (opened and changed lately), "trash" and a team's recent changes ("changes" or `team:<id>)`. propose_changes restore_doc brings a page back from Trash (emptying it stays the person's). fetch shows a page's Info (other names, tags, links here, versions, folds, fields with ids) and a project's fields. add_file takes project (a new page in it holding the file). update_planner_settings subscribe with id changes a subscribed calendar (link, name, colour, kind, busy, shown) or refreshes it (refresh). Every change is undoable except a new team and keeping a project out of AI. Every command in Orbyn's command list maps to a tool or a written reason.
 - Every feature, no gaps (H6a), by extending tools (no new ones): create_tasks and update_tasks take alerts, colour, web links, busy or free and a meeting link; update_tasks also status, all-day, targets (target_value, current_value, value_unit), a repeat change or stop (rrule, null), a new parent or top level (parent, null; cycles refused), and scope this or following with occurrence for one occurrence of a repeating item or it and later ones (one occurrence's change can be undone). edit_checklist moves steps (move: id, position). reschedule_sessions pins, unpins, duplicates, rolls forward, starts and checks in sessions (outcome done, more with more_minutes, or skipped), attributed to the agent, with undo. update_planner_settings changes every planner setting (time zone, extra time zones, calendar sets, pinned teammates, default alerts, planner notices, buffer scope, travel padding, counting sessions as spent, session reminders, digest emails), keep_originals, and subscribes to a calendar by link (Orbyn fetches it after its public-address check) or unsubscribes; get_work_patterns lists subscribed calendars (never their links) and gives each unfinished session's id and whether it was checked in. create_doc kind agenda writes a day's agenda page from the calendar (today's again, keeping Notes). ack_inbox takes notices (ids or "all") and marks the person's in-app notices read: mark_notifications_read is folded into it and no longer listed, but still answers when called. Answer schemas no longer repeat additionalProperties: false on every object.
 - One call, whole job (H5): apply_plan (core) takes up to 50 steps of write tools ({id, tool, args}: create_doc, append_doc with finish, edit_doc, create_tasks, update_tasks, complete_tasks, edit_checklist, create_project, update_project, link, organize, tasks_from_doc, comment_on_doc, update_study, schedule_sessions, save_source, save_record, add_progress). Every step is checked first (tool, access, schema, spaces, $refs only to earlier steps) and a wrong plan is refused whole with a report per step. Arguments may use earlier results ("$notes.id", ".uri", ".ids", `".lines.<anchor>"`, "$proj.stages[0].id", or "{$notes.uri}" inside words). The steps run in one transaction, all or nothing; anything on the ask-first list (or a connection that asks or suggests) asks once for the whole plan: in the chat, by URL, or as one Review inbox proposal that makes the whole plan when approved. Every step is recorded with one job id: undo({job}) takes the plan back. client_ref applies to the whole plan. New prompts: lecture_to_notes, research_brief, exam_prep and meeting_to_actions (the agent does the thinking and applies it with one apply_plan call). client_ref's description is shorter.
@@ -1062,4 +1063,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 249 of the app's signed-in routes are covered by tools, 204 are never for agents, and 0 are still to come.
+Routes: 249 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.

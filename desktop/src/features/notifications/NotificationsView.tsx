@@ -3,6 +3,7 @@ import {
   Inbox,
   AlertTriangle,
   Bell,
+  Bot,
   CalendarCheck,
   CalendarClock,
   CalendarDays,
@@ -19,6 +20,7 @@ import {
   MessageCircleQuestion,
 } from "lucide-react";
 import {
+  activityOriginLabel,
   dateLabel,
   type AgentQuestion,
   type Notice,
@@ -53,6 +55,11 @@ type Props = {
   onStartSession?: (blockId: string, itemId: string) => Promise<void>;
   /** Opens Review on the proposal in a "review" notice's `ref`. */
   onOpenReview?: (proposalId: string) => void;
+  /**
+   * Opens Settings at one setting: "agents" for an agent notice about a
+   * connection (a big job finished, say), where each change can be undone.
+   */
+  onOpenSetting?: (id: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -70,6 +77,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   session: Timer,
   review: Inbox,
   question: MessageCircleQuestion,
+  agent: Bot,
 };
 
 /**
@@ -197,6 +205,7 @@ export function NotificationsView({
   onOpenDoc,
   onStartSession,
   onOpenReview,
+  onOpenSetting,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -257,6 +266,9 @@ export function NotificationsView({
                   <p>{n.body}</p>
                   <small>
                     {dateLabel(n.created_at)}
+                    {n.via_agent
+                      ? ` · ${activityOriginLabel({ via_agent: n.via_agent })}`
+                      : ""}
                     {n.read ? " · Read" : ""}
                   </small>
                 </span>
@@ -308,6 +320,19 @@ export function NotificationsView({
                     }}
                   >
                     <Inbox size={14} /> Review
+                  </button>
+                )}
+              {n.kind === "agent" &&
+                n.ref?.startsWith("grant:") &&
+                onOpenSetting && (
+                  <button
+                    className="secondary notice-action"
+                    onClick={() => {
+                      if (!n.read) onRead(n);
+                      onOpenSetting("agents");
+                    }}
+                  >
+                    <Bot size={14} /> Open Connected agents
                   </button>
                 )}
               {n.kind === "project" && n.ref && onOpenProject && (

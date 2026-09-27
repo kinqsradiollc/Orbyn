@@ -1516,6 +1516,8 @@ export const plannerPrefsInput = z
         evening: z.boolean().optional(),
         morning_time: clock.optional(),
         evening_time: clock.optional(),
+        agents: z.boolean().optional(),
+        agent_push: z.boolean().optional(),
       })
       .strict()
       .optional(),

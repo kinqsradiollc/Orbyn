@@ -5,6 +5,7 @@ import { reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { inMyTeams } from "../../lib/visibility.js";
+import { viaAgentColumn } from "../../lib/via-agent.js";
 
 const query = z.object({
   /** One team; every team you are in when left out. */
@@ -55,7 +56,7 @@ export async function teamChangeRoutes(app: FastifyInstance) {
       await db.query<Row>(
         `SELECT c.id, c.team_id, t.name AS team_name, c.user_id,
                 who.name AS user_name, c.kind, c.object_id, c.title, c.action,
-                c.edits, c.first_at, c.at,
+                c.edits, c.first_at, c.at, ${viaAgentColumn("c")},
                 (extract(epoch FROM c.at) * 1000000)::bigint::text AS at_us,
                 CASE c.kind
                   WHEN 'page' THEN EXISTS (
@@ -70,7 +71,9 @@ export async function teamChangeRoutes(app: FastifyInstance) {
            LEFT JOIN users who ON who.id = c.user_id
           WHERE ${inMyTeams("c")}
             AND ($2::uuid IS NULL OR c.team_id = $2)
-            AND (NOT $3::boolean OR c.user_id IS DISTINCT FROM $1)
+            -- What your agents did for you is news, even with yours hidden.
+            AND (NOT $3::boolean OR c.user_id IS DISTINCT FROM $1
+                 OR c.via_grant_id IS NOT NULL)
             AND ($4::timestamptz IS NULL OR c.at < $4)
             AND ($6::bigint IS NULL OR (c.at, c.id) <
                  (timestamptz 'epoch' + $6::bigint * interval '1 microsecond', $7::uuid))

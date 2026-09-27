@@ -18,6 +18,7 @@ import {
   type PlannerPrefs,
   type Team,
   type TravelMode,
+  type DigestPrefs,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import type { PlannerLearning } from "@orbyn/core";
@@ -182,13 +183,13 @@ export function PlanningSettings({ teams, report }: Props) {
   };
   const setScope = (patch: Partial<BufferScope>) =>
     set("buffer_scope", { ...scope, ...patch });
-  const digest = draft.digest ?? {
+  const digest: DigestPrefs = draft.digest ?? {
     morning: false,
     evening: false,
     morning_time: "07:00",
     evening_time: "17:00",
   };
-  const setDigest = (patch: Partial<typeof digest>) =>
+  const setDigest = (patch: Partial<DigestPrefs>) =>
     set("digest", { ...digest, ...patch });
   const toggleScopeTeam = (id: string) => {
     const current = scope.team_ids ?? teams.map((t) => t.id);
@@ -522,7 +523,8 @@ export function PlanningSettings({ teams, report }: Props) {
           <h3 className="settings-subtitle">Daily digest</h3>
           <p className="muted">
             A short email with your day. Sent from the workspace’s own mail
-            server, at the times below in your zone. Off until you turn it on.
+            server, at the times below in your zone. The morning and evening
+            emails are off until you turn them on.
           </p>
           <div className="settings-grid settings-pairs">
             <label className="switch-line settings-field">
@@ -566,6 +568,37 @@ export function PlanningSettings({ teams, report }: Props) {
                 value={digest.evening_time}
                 onChange={(e) => setDigest({ evening_time: e.target.value })}
               />
+            </label>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={digest.agents !== false}
+                onChange={(e) => setDigest({ agents: e.target.checked })}
+              />
+              <span>
+                What your agents did
+                <small>
+                  In the morning digest: what connected agents changed, with
+                  links, and what waits for you.
+                </small>
+              </span>
+            </label>
+            <label className="switch-line settings-field">
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                checked={digest.agent_push !== false}
+                onChange={(e) => setDigest({ agent_push: e.target.checked })}
+              />
+              <span>
+                Tell me when an agent finishes a big job
+                <small>
+                  One notice when an agent makes more than 20 changes in one go.
+                </small>
+              </span>
             </label>
           </div>
           <div className="digest-preview">

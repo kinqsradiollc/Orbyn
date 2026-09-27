@@ -953,6 +953,9 @@ export function RootScreen() {
       case "view":
         setViewToOpen(link.id);
         return present({ sheet: "views" });
+      case "agents":
+        // Settings → Connected agents: each connection and what it did.
+        return present({ sheet: "connections" });
     }
   };
 
@@ -992,6 +995,9 @@ export function RootScreen() {
     } else if (kind === "review" && text("ref").startsWith("proposal:")) {
       setReviewFocus(text("ref").slice("proposal:".length));
       present({ sheet: "review" });
+    } else if (kind === "agent" && text("ref").startsWith("grant:")) {
+      // An agent finished a big job: see each change, and undo it, there.
+      present({ sheet: "connections" });
     } else if (itemId)
       void act(async () => openTask(await client.getItem(itemId)));
   };
@@ -1508,6 +1514,11 @@ export function RootScreen() {
                           setProjectToOpen(n.ref?.split(":")[0] ?? null);
                           present({ sheet: "projects" });
                         })
+                      }
+                      onOpenAgents={(n) =>
+                        void noticeAction(n, async () =>
+                          present({ sheet: "connections" }),
+                        )
                       }
                       onOpenDoc={(n, docId) =>
                         void noticeAction(n, () =>

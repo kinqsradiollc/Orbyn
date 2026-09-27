@@ -85,6 +85,7 @@ import {
   mentionMarkdown,
   mentionQuery,
   listLayout,
+  activityOriginLabel,
   pageFooter,
   plainText,
   proposeEdit,
@@ -2449,15 +2450,21 @@ export function DocEditor({
     toast({ text: `Moved “${from.text}”` });
   };
   const linkedRef = useRef<HTMLDivElement>(null);
-  const footerText = pageFooter({
-    ...stats,
-    selected: picked ? countWords(plainText(picked.quote)) : 0,
-    savedAt,
-    saving: save === "saving",
-    failed: save === "error",
-    now,
-    linked: linkedCount,
-  });
+  // An agent wrote the page's words (an agenda page, say) and no one has
+  // edited them since: the footer says so.
+  const writtenVia = doc.via_agent
+    ? activityOriginLabel({ via_agent: doc.via_agent })
+    : null;
+  const footerText =
+    pageFooter({
+      ...stats,
+      selected: picked ? countWords(plainText(picked.quote)) : 0,
+      savedAt,
+      saving: save === "saving",
+      failed: save === "error",
+      now,
+      linked: linkedCount,
+    }) + (writtenVia ? ` · written ${writtenVia}` : "");
   const stale =
     doc.kind === "doc" &&
     pageFreshness(doc.updated_at, doc.reviewed_at).state !== "fresh";

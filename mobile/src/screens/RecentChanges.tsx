@@ -120,7 +120,10 @@ export function RecentChangesList({
                     color={colors.muted}
                   />
                   <View style={s.rowText}>
-                    <Text style={s.who}>{changeVerb(c)}</Text>
+                    <Text style={s.who}>
+                      {changeVerb(c)}
+                      {c.via_agent ? ` via ${c.via_agent}` : ""}
+                    </Text>
                     <Text style={s.title} numberOfLines={2}>
                       {c.title || "Untitled"}
                     </Text>

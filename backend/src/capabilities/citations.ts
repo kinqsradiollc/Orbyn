@@ -13,6 +13,7 @@ import {
 } from "../lib/visibility.js";
 import { docId, teamFilter } from "./common.js";
 import { cleanTitle } from "./format.js";
+import { linksFor } from "./refs.js";
 import {
   CapabilityError,
   defineCapability,
@@ -128,6 +129,8 @@ export const saveSource = defineCapability({
     source: z.string(),
     saved: z.string().describe("new, updated or unchanged"),
     marker: z.string(),
+    url: z.string().nullable(),
+    app_url: z.string().nullable(),
   }),
   annotations: {
     readOnlyHint: false,
@@ -316,9 +319,17 @@ export const saveSource = defineCapability({
       .replace(/[[\]\n]/g, " ")
       .slice(0, 120)}]`;
     const where = page ? ` for doc:${page.id}` : "";
+    // The page it was saved for opens with its Sources in Info.
+    const open = page ? linksFor({ type: "doc", id: page.id }) : null;
     return {
-      structured: { source: `source:${id}`, saved, marker },
-      markdown: `Source ${saved === "new" ? "saved" : saved === "updated" ? "updated" : "already saved"}${where}: ${cleanTitle(a.title)} (source:${id}). Orbyn didn't open the address. Mark the lines that use it with ${marker}.`,
+      structured: {
+        source: `source:${id}`,
+        saved,
+        marker,
+        url: open?.url ?? null,
+        app_url: open?.app_url ?? null,
+      },
+      markdown: `Source ${saved === "new" ? "saved" : saved === "updated" ? "updated" : "already saved"}${where}: ${cleanTitle(a.title)} (source:${id}). Orbyn didn't open the address. Mark the lines that use it with ${marker}.${open ? `\nOpen the page on the web: ${open.url} · in the Orbyn app: ${open.app_url}` : ""}`,
       targets: [`source:${id}`, ...(page ? [`doc:${page.id}`] : [])],
       write: {
         outcome: "ok",

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Activity, X } from "lucide-react";
 import {
+  activityOriginLabel,
   changeEdits,
   changeTime,
   changeVerb,
@@ -124,6 +125,7 @@ export function RecentChanges({
             {day.changes.slice(0, compact ? 5 : undefined).map((c) => {
               const Icon = ICONS[c.kind];
               const edits = changeEdits(c);
+              const via = activityOriginLabel({ via_agent: c.via_agent });
               const ref = {
                 kind: c.kind === "page" ? ("doc" as const) : ("task" as const),
                 id: c.object_id,
@@ -147,9 +149,9 @@ export function RecentChanges({
                     <span className="change-text">
                       <span className="change-who">{changeVerb(c)}</span>{" "}
                       <strong>{c.title || "Untitled"}</strong>
-                      {(edits || showTeam) && (
+                      {(edits || showTeam || via) && (
                         <small>
-                          {[edits, showTeam ? c.team_name : ""]
+                          {[edits, showTeam ? c.team_name : "", via]
                             .filter(Boolean)
                             .join(" · ")}
                         </small>

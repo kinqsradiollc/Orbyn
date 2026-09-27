@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   AGENT_BULK_LIMIT,
+  agentToolVerb,
   type AgentAskFirst,
   type AgentOutcome,
   type ReviewChangeInput,
@@ -19,7 +20,7 @@ import {
   type Effect,
   type Tier,
 } from "./registry.js";
-import { refUrl } from "./refs.js";
+import { appLinkFor, refUrl } from "./refs.js";
 import { UNDO_DAYS, type UndoOp } from "./undo.js";
 
 /**
@@ -293,7 +294,46 @@ export type WriteMeta = {
    * gives every step one job id, so undo({job}) takes the plan back).
    */
   job?: string;
+  /**
+   * What the change made, counted by kind, when its targets don't say it
+   * (a new deck is one page but so many cards). Otherwise counted from
+   * the targets.
+   */
+  counts?: Record<string, number>;
 };
+
+/** Kinds of things as changes count them (an event is a task). */
+const KIND_OF: Record<string, string> = { event: "task" };
+
+/**
+ * What a change made, by "verb:kind" ({"added:task": 3}), from its targets
+ * (proposals it filed are not changes) or the counts it gave; a count
+ * without a verb takes the tool's (agentToolVerb).
+ */
+export function changeKinds(
+  tool: string,
+  targets: string[],
+  counts?: Record<string, number>,
+): Record<string, number> {
+  const verb = agentToolVerb(tool);
+  const kinds: Record<string, number> = {};
+  const add = (key: string, n: number) => {
+    const k = key.includes(":") ? key : `${verb}:${key}`;
+    kinds[k] = (kinds[k] ?? 0) + n;
+  };
+  if (counts && Object.keys(counts).length) {
+    for (const [k, n] of Object.entries(counts)) if (n > 0) add(k, n);
+    return kinds;
+  }
+  for (const t of new Set(targets)) {
+    const m = /^([a-z_]+):/i.exec(t);
+    if (!m) continue;
+    const raw = m[1].toLowerCase();
+    if (raw === "proposal" || raw === "change") continue;
+    add(KIND_OF[raw] ?? raw, 1);
+  }
+  return kinds;
+}
 
 // --- client_ref idempotency ---------------------------------------------
 
@@ -367,14 +407,21 @@ export async function recordChange(
   },
 ): Promise<string> {
   const undo = entry.meta.undo?.length ? entry.meta.undo : null;
+  // Only what was made counts as changes: a proposal, a refusal or a
+  // whole plan's own row (its steps are counted one by one) doesn't.
+  const kinds =
+    entry.outcome === "ok" && entry.tool !== "apply_plan"
+      ? changeKinds(entry.tool, entry.targets, entry.meta.counts)
+      : {};
+  const changes = Object.values(kinds).reduce((n, k) => n + k, 0);
   return (
     await db.query<{ id: string }>(
       `INSERT INTO agent_activity (user_id, grant_id, client_name, tool, tier,
          team_id, target_ids, args_digest, summary, outcome, proposal_id,
-         request_id, undo, undo_until)
+         request_id, undo, undo_until, changes, kinds)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb,
          CASE WHEN $13::jsonb IS NULL THEN NULL
-              ELSE now() + make_interval(days => $14) END)
+              ELSE now() + make_interval(days => $14) END, $15, $16::jsonb)
        RETURNING id::text`,
       [
         p.user.id,
@@ -391,6 +438,8 @@ export async function recordChange(
         (entry.meta.job ?? entry.requestId)?.slice(0, 64) ?? null,
         undo ? JSON.stringify(undo) : null,
         UNDO_DAYS,
+        changes,
+        changes ? JSON.stringify(kinds) : null,
       ],
     )
   ).rows[0].id;
@@ -401,16 +450,56 @@ export const dbOf = (ctx: CapabilityContext) => ctx.db as Db;
 
 // --- What the write tools share -------------------------------------------
 
-/** One thing a change made or changed, as the answer lists it. */
+/**
+ * One thing a change made or changed, as the answer lists it: `url` opens
+ * it in the web app, `app_url` in the phone app (orbyn://…, H7).
+ */
 export const doneEntry = z.object({
   id: z.string(),
   title: z.string(),
   url: z.string(),
+  app_url: z.string(),
   /** Its version now (tasks and pages), for the next change. */
   version: z.number().nullable(),
   change: z.string(),
 });
-export type DoneEntry = z.output<typeof doneEntry>;
+/** A done entry as the tools build it: finishWrite adds the app link. */
+export type DoneEntry = Omit<z.output<typeof doneEntry>, "app_url"> & {
+  app_url?: string;
+};
+
+/** A done entry with both links, as answers carry it. */
+export const withAppLink = (d: DoneEntry): z.output<typeof doneEntry> => ({
+  ...d,
+  app_url: d.app_url || appLinkFor(d.url),
+});
+
+/** The most things whose links a summary spells out. */
+const LINKS_SHOWN = 10;
+
+/**
+ * The closing lines of a change's summary: where each thing opens, on the
+ * web and in the phone app, in plain words (H7).
+ */
+export function linkLines(
+  done: { id: string; title: string; url: string; app_url: string }[],
+): string[] {
+  const open = done.filter((d) => d.url || d.app_url);
+  if (!open.length) return [];
+  const shown = open.slice(0, LINKS_SHOWN).map((d) => {
+    const where = [
+      d.url ? `on the web: ${d.url}` : "",
+      d.app_url ? `in the Orbyn app: ${d.app_url}` : "",
+    ].filter(Boolean);
+    return `- ${d.title || d.id} — open it ${where.join(" · ")}`;
+  });
+  const more = open.length - shown.length;
+  return [
+    "Links:",
+    ...shown,
+    ...(more > 0 ? [`- …and ${more} more (their links are in done).`] : []),
+  ];
+}
 
 /** Something asked for that wasn't done, and why. */
 export const skippedEntry = z.object({ index: z.number(), reason: z.string() });
@@ -443,6 +532,8 @@ export async function finishWrite(
     after?: (() => Promise<void>)[];
     teamId?: string | null;
     outcome?: AgentOutcome;
+    /** What was made by kind, when the done entries don't say it. */
+    counts?: Record<string, number>;
   },
 ) {
   const review = parts.review ?? [];
@@ -450,6 +541,7 @@ export async function finishWrite(
     ? await toReview(ctx, parts.reviewSummary ?? what, review)
     : null;
   const skipped = parts.skipped ?? [];
+  const done = parts.done.map(withAppLink);
   const status: WriteAnswer["status"] = !pending
     ? "done"
     : parts.done.length
@@ -458,14 +550,12 @@ export async function finishWrite(
   const { targets: pendingTargets = [], ...pendingOut } = pending ?? {};
   const structured: WriteAnswer = {
     status,
-    done: parts.done,
+    done,
     pending: pending ? (pendingOut as Pending) : null,
     skipped,
   };
   const lines = [
-    ...parts.done.map(
-      (d) => `- ${d.change}: ${d.title}\n  id: ${d.id} · open: ${d.url}`,
-    ),
+    ...done.map((d) => `- ${d.change}: ${d.title} (${d.id})`),
     ...skipped.map((s) => `- Not done (#${s.index + 1}): ${s.reason}`),
   ];
   const head = parts.done.length
@@ -479,6 +569,7 @@ export async function finishWrite(
     ...(pending
       ? [pendingText(parts.done.length ? "The rest" : what, pending)]
       : []),
+    ...linkLines(done),
   ]
     .filter(Boolean)
     .join("\n");
@@ -530,6 +621,7 @@ export async function finishWrite(
       undo: parts.undo,
       team_id: parts.teamId ?? null,
       after: after.length ? after : undefined,
+      ...(parts.counts ? { counts: parts.counts } : {}),
     } satisfies WriteMeta,
   };
 }

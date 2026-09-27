@@ -2,6 +2,7 @@ import { useConfirm } from "../../components/Confirm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
 import {
+  activityOriginLabel,
   anchorComments,
   plainText,
   threadComments,
@@ -278,7 +279,12 @@ export function DocComments({
     >
       <header>
         <strong>{c.author}</strong>
-        <small>{when(c.created_at)}</small>
+        <small>
+          {when(c.created_at)}
+          {c.via_agent
+            ? ` · ${activityOriginLabel({ via_agent: c.via_agent })}`
+            : ""}
+        </small>
         <button
           className="icon-button"
           aria-label={

@@ -143,6 +143,14 @@ async function agendaPage(ctx: CapabilityContext, title: string) {
       "The agenda goes back a year and ahead two months.",
     );
   const doc = made.doc;
+  // Written on the agenda's own connection, so labelled here: the page
+  // says "via <agent>" until the person writes in it (H7).
+  if (ctx.principal.grant_id)
+    await ctx.db.query(
+      `UPDATE docs SET written_via = $2 WHERE id = $1
+          AND EXISTS (SELECT 1 FROM agent_grants WHERE id = $2)`,
+      [doc.id, ctx.principal.grant_id],
+    );
   return finishWrite(ctx, "Agenda", {
     done: [
       {

@@ -1558,7 +1558,10 @@ function UpdateRow({ update, first }: { update: ItemUpdate; first: boolean }) {
           <Text style={s.author} numberOfLines={1}>
             {update.author_name || "Someone"}
           </Text>
-          <Text style={shared.small}>{timeAgo(update.created_at)}</Text>
+          <Text style={shared.small}>
+            {update.via_agent ? `via ${update.via_agent} · ` : ""}
+            {timeAgo(update.created_at)}
+          </Text>
         </View>
         {!!update.body && <Text style={s.updateBody}>{update.body}</Text>}
         {(update.status || update.progress !== null) && (

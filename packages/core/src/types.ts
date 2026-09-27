@@ -380,6 +380,11 @@ export type Notice = {
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;
+  /**
+   * The connected agent whose change caused it ("Claude"), if one: "via
+   * Claude" beside it (H7).
+   */
+  via_agent?: string | null;
 };
 
 /** An AI plan awaiting user approval. `id` is the proposal id to apply. */
@@ -579,6 +584,8 @@ export type ItemUpdate = {
   status: Status | null;
   /** Set when this update changed the progress. */
   progress: number | null;
+  /** The connected agent it was written through ("Claude"), if one. */
+  via_agent?: string | null;
   created_at: string;
 };
 
@@ -989,6 +996,13 @@ export type DigestPrefs = {
   /** Local time each digest is sent, "HH:MM". */
   morning_time: string;
   evening_time: string;
+  /**
+   * "What your agents did" in the morning digest, when agents changed
+   * anything (H7). Missing: on.
+   */
+  agents?: boolean;
+  /** A push when an agent finishes a job of over 20 changes. Missing: on. */
+  agent_push?: boolean;
 };
 
 /** Minutes-before alerts for new events, tasks and all-day items. */

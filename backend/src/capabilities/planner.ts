@@ -96,7 +96,7 @@ export const getWorkPatterns = defineCapability({
   name: "get_work_patterns",
   title: "How you work",
   description:
-    "What the planner learned (durations, good hours, load), planned against done by weekday, focus and the running timer, where time went, unfinished sessions of the last two weeks (reschedule_sessions checks in or rolls forward), subscribed calendars and routines.",
+    "What the planner learned (durations, good hours, load), planned against done by weekday, focus and the running timer, where time went, unfinished sessions (last 14 days) (reschedule_sessions checks in or rolls forward), subscribed calendars and routines.",
   input: z
     .object({ days: z.number().int().min(7).max(90).default(28) })
     .strict(),
@@ -478,7 +478,7 @@ export const logFocus = defineCapability({
   name: "log_focus",
   title: "Log focus time",
   description:
-    "Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref dedupes retries.",
+    "Records a finished focus session (started_at, ended_at, optionally a task) or adds minutes to a task. session_id or client_ref dedupes retries.",
   input: z
     .object({
       task: z.string().trim().max(300).optional(),
@@ -653,7 +653,7 @@ const ROUTINE_FIELDS =
 export const manageRoutines = defineCapability({
   name: "manage_routines",
   title: "Frames, habits and places",
-  description: `Up to 25 routine changes: add or change a frame (kept time), habit or place, or skip or unskip a frame's date. Fields: ${ROUTINE_FIELDS} Deleting: propose_changes; habit sessions: plan_schedule.`,
+  description: `Up to 25 routine changes: add/change a frame (kept time), habit or place, or skip/unskip a frame's date. Fields: ${ROUTINE_FIELDS} Deleting: propose_changes; habit sessions: plan_schedule.`,
   input: z
     .object({
       changes: z
@@ -836,7 +836,7 @@ export const updatePlannerSettings = defineCapability({
   name: "update_planner_settings",
   title: "Change planner settings",
   description:
-    "Changes any planner setting (hours, time zones, calendar sets, teammates, buffers, travel, alerts, reminders, notices, digests, learning), keep_originals, and calendars: subscribe by link, change one (id; refresh fetches it now) or unsubscribe. Undoable.",
+    "Changes any planner setting (hours, time zones, calendar sets, teammates, buffers, travel, alerts, reminders, notices, digests, learning), keep_originals, and calendars: subscribe by link, change one (id; refresh re-fetches) or unsubscribe. Undoable.",
   input: z
     .object({
       settings: AGENT_PREFS.optional(),

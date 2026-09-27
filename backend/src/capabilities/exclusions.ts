@@ -401,6 +401,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /proposals/:id/decline": "people_only",
   "POST /proposals/:id/respond": "people_only",
   "POST /me/agents/activity/:id/undo": "people_only",
+  "POST /me/agents/:id/jobs/:job/undo": "people_only",
   // Agent 2 (H0): answering an agent's question is the person's own
   // answer (agents ask with ask_person and read the answer in get_inbox).
   "GET /me/questions": "people_only",

@@ -29,12 +29,14 @@ import {
   type CapabilityContext,
   type CapabilityResult,
 } from "./registry.js";
-import { refUri } from "./refs.js";
+import { parseRef, refUri, refUrl } from "./refs.js";
 import {
   actorOf,
   dbOf,
+  linkLines,
   recordChange,
   toReview,
+  withAppLink,
   type DoneEntry,
   type Pending,
 } from "./write.js";
@@ -313,10 +315,23 @@ function doneOf(answer: CapabilityResult<unknown>): DoneEntry[] {
   return (answer.targets ?? []).slice(0, 20).map((id, i) => ({
     id,
     title: cleanTitle(links[i]?.name ?? "") || id,
-    url: "",
+    url: urlOf(id),
     version: null,
     change: "Saved",
   }));
+}
+
+/** The web link for a typed id that opens somewhere, else "". */
+function urlOf(id: string): string {
+  const ref = parseRef(id);
+  return ref.type === "task" ||
+    ref.type === "event" ||
+    ref.type === "doc" ||
+    ref.type === "project" ||
+    ref.type === "view" ||
+    ref.type === "proposal"
+    ? refUrl(ref)
+    : "";
 }
 
 const UUID_IN = /^(\w+):([0-9a-f-]{36})/i;
@@ -453,6 +468,7 @@ export const stepOutput = z.object({
       id: z.string(),
       title: z.string(),
       url: z.string(),
+      app_url: z.string(),
       change: z.string(),
     }),
   ),
@@ -545,7 +561,7 @@ export async function runPlan(
         {
           id: `proposal:${id}`,
           title: r.cap.title,
-          url: "",
+          url: refUrl({ type: "proposal", id }),
           version: null,
           change: "Approved with the plan",
         },
@@ -596,23 +612,24 @@ export async function runPlan(
   const steps = ran.map((r) => ({
     id: r.step.id,
     tool: r.cap.name,
-    done: r.done.map(({ id, title, url, change }) => ({
-      id,
-      title,
-      url,
-      change,
-    })),
+    done: r.done
+      .map(withAppLink)
+      .map(({ id, title, url, app_url, change }) => ({
+        id,
+        title,
+        url,
+        app_url,
+        change,
+      })),
   }));
   const markdown = [
     `Plan applied: ${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}, ${changes} change${changes === 1 ? "" : "s"}, as one job (${job}). undo({"job": "${job}"}) takes it all back.`,
     ...ran.flatMap((r) => [
       `${r.step.id} (${r.cap.name}):`,
-      ...r.done.map(
-        (d) =>
-          `- ${d.change}: ${d.title}\n  id: ${d.id}${d.url ? ` · open: ${d.url}` : ""}`,
-      ),
+      ...r.done.map((d) => `- ${d.change}: ${d.title} (${d.id})`),
       ...r.skipped.map((s) => `- Not done: ${s}`),
     ]),
+    ...linkLines(steps.flatMap((s) => s.done)),
   ].join("\n");
   const targets = ran.flatMap((r) => r.done.map((d) => d.id));
   return {

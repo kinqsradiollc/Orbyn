@@ -422,7 +422,8 @@ button.step-title {
   font-size: 13px;
   color: var(--color-text);
 }
-.timeline-head time {
+.timeline-head time,
+.timeline-head .timeline-via {
   font-size: 13px;
   color: var(--color-textSoft);
 }

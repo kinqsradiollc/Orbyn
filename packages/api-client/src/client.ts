@@ -2768,6 +2768,13 @@ export class OrbynClient {
       { method: "POST" },
     );
   }
+  /** Undo a whole job of one agent (a plan, or one call's changes). */
+  undoAgentJob(grantId: string, job: string) {
+    return this.request<{ undone: number }>(
+      `/me/agents/${grantId}/jobs/${encodeURIComponent(job)}/undo`,
+      { method: "POST" },
+    );
+  }
   // ---- The Review inbox ----
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {

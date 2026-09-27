@@ -1,5 +1,9 @@
 import { Check, X, Undo2 } from "lucide-react";
-import { plainText, type DocSuggestion } from "@orbyn/core";
+import {
+  activityOriginLabel,
+  plainText,
+  type DocSuggestion,
+} from "@orbyn/core";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -66,7 +70,12 @@ export function DocSuggestions({
         >
           <header>
             <strong>{s.author}</strong>
-            <small>{when(s.created_at)}</small>
+            <small>
+              {when(s.created_at)}
+              {s.via_agent
+                ? ` · ${activityOriginLabel({ via_agent: s.via_agent })}`
+                : ""}
+            </small>
           </header>
           <p className="doc-suggest-change">
             {!!s.quote && <del>{plainText(s.quote)}</del>}

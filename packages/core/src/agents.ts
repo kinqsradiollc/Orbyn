@@ -335,6 +335,24 @@ export type AgentActivity = {
   proposal_id: string | null;
   /** Until when it can be undone, for changes that can be. */
   undo_until: string | null;
+  /**
+   * The job it belongs to (every step of one apply_plan, or one call's
+   * changes), for grouping and undoing it whole; null for reads.
+   */
+  job?: string | null;
+  /** How many things it changed (H7). */
+  changes?: number;
+  /** What it changed by "verb:kind" ({"added:task": 3}); see agent-reports. */
+  kinds?: Record<string, number> | null;
+  /** What it touched that opens in the app, named (up to five). */
+  links?: AgentActivityLink[];
+};
+
+/** Something an agent's change touched, to open. */
+export type AgentActivityLink = {
+  kind: "task" | "doc" | "project";
+  id: string;
+  title: string;
 };
 
 /** Limits per connection (and per person across connections). */
