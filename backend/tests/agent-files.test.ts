@@ -436,6 +436,58 @@ test("add_file: undo removes the line and the file, or the original", async () =
   );
 });
 
+test("add_file: a project's file becomes a page in it (H6b); undo takes both away", async () => {
+  const proj = ok(
+    await tool(keys.write, "create_project", { name: "Field trip" }),
+  );
+  const projectId = idOf(proj.done[0].id);
+  const r = ok(
+    await tool(keys.write, "add_file", {
+      project: `project:${projectId}`,
+      name: "Consent form.pdf",
+      content: b64(PDF),
+    }),
+    "add_file to a project",
+  );
+  const pageId = idOf(r.doc);
+  const page = (
+    await pool.query(
+      "SELECT title, project_id, deleted_at FROM docs WHERE id = $1",
+      [pageId],
+    )
+  ).rows[0];
+  assert.equal(page.project_id, projectId);
+  assert.equal(page.title, "Consent form.pdf");
+  assert.deepEqual(
+    (await content(pageId)).map((b) => b.type),
+    ["file"],
+  );
+  // One or the other: a page, or a project.
+  assert.equal(
+    code(
+      await tool(keys.write, "add_file", {
+        project: `project:${projectId}`,
+        doc: `doc:${pageId}`,
+        name: "x.pdf",
+        content: b64(PDF),
+      }),
+    ),
+    "INVALID",
+  );
+  const change = ok(await tool(keys.write, "list_agent_changes", { limit: 1 }))
+    .changes[0];
+  ok(await tool(keys.write, "undo", { change: change.id }), "undo");
+  assert.ok(
+    (await pool.query("SELECT deleted_at FROM docs WHERE id = $1", [pageId]))
+      .rows[0].deleted_at,
+  );
+  assert.equal(
+    (await pool.query("SELECT 1 FROM page_files WHERE id = $1", [idOf(r.file)]))
+      .rowCount,
+    0,
+  );
+});
+
 test("add_file: never waits for review; reads, suggestions and a teammate's page are refused", async () => {
   const mine = await newPage(keys.write, "Mine");
   assert.equal(

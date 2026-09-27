@@ -1785,6 +1785,12 @@ export class OrbynClient {
   docInfo(id: string) {
     return this.request<DocInfo>(`/docs/${id}/info`);
   }
+  /** Take a source off a page (H6b); the source stays for other pages. */
+  removePageSource(docId: string, sourceId: string) {
+    return this.request<void>(`/docs/${docId}/sources/${sourceId}`, {
+      method: "DELETE",
+    });
+  }
   /** Put exactly these tags (by id) on a page. */
   setDocTags(id: string, tags: string[]) {
     return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {

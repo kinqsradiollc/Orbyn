@@ -245,7 +245,9 @@ test("budgets: every combination of toolsets stays small", () => {
       .length;
   // Each toolset on its own.
   const each: Record<string, number> = {
-    workspace: 26_000,
+    // H6b (page structure, fields, milestones, keep-out, team admin, view
+    // pins and CSV, history lists) raised this from 26k, adding no tools.
+    workspace: 27_600,
     planner: 17_000,
     // H4 (cards, quiz order, explain-it-back, exams) raised this from 8k.
     study: 10_600,

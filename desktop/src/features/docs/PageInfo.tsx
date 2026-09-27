@@ -180,7 +180,15 @@ export function PageInfo({
         report={report}
       />
 
-      {!!info?.sources?.length && <SourcesSection sources={info.sources} />}
+      {!!info?.sources?.length && (
+        <SourcesSection
+          docId={doc.id}
+          sources={info.sources}
+          canWrite={(info?.can_write ?? canWrite) && !reading}
+          onRemoved={() => setAsked((n) => n + 1)}
+          report={report}
+        />
+      )}
 
       {(tags.length > 0 || (canWrite && !reading)) && (
         <section className="page-info-section">
@@ -284,7 +292,34 @@ export function PageInfo({
  * (opening its address in a new tab), site, author, the day it was read
  * and the words it quoted. Orbyn itself never opens them.
  */
-function SourcesSection({ sources }: { sources: PageSource[] }) {
+function SourcesSection({
+  docId,
+  sources,
+  canWrite,
+  onRemoved,
+  report,
+}: {
+  docId: string;
+  sources: PageSource[];
+  canWrite: boolean;
+  onRemoved: () => void;
+  report: (e: unknown) => void;
+}) {
+  const { ask } = useConfirm();
+  // Taking a source off the page (H6b): the page's words stay as they are,
+  // and the source stays for other pages that use it.
+  const remove = async (src: PageSource) => {
+    if (
+      !(await ask({
+        title: `Take “${src.title}” off this page?`,
+        body: "The page's words stay. Other pages that cite it keep it.",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
+    client.removePageSource(docId, src.id).then(onRemoved, report);
+  };
   return (
     <section className="page-info-section">
       <h3>Sources</h3>
@@ -307,6 +342,16 @@ function SourcesSection({ sources }: { sources: PageSource[] }) {
                 .join(" · ")}
             </small>
             {src.quote && <blockquote>{src.quote}</blockquote>}
+            {canWrite && (
+              <button
+                className="icon-button page-info-source-remove"
+                onClick={() => void remove(src)}
+                aria-label={`Remove ${src.title} from this page`}
+                title="Remove from this page"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </li>
         ))}
       </ul>

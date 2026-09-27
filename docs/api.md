@@ -973,6 +973,12 @@ places the reader can open. `sources` are web sources an agent read and saved fo
 `lines` are the anchors of the lines that use each one; Orbyn never opens them. `404` for a page the
 reader can't open or one in the Trash.
 
+### `DELETE /docs/:id/sources/:sourceId` (auth)
+
+Takes a source off the page (page Info → Sources): its lines' uses of it go, the page's words don't
+change and the source stays for other pages that cite it. Whoever can change the page. `204`; `404`
+when the source isn't on the page or the page can't be changed by the reader.
+
 ### `GET /docs/:id/versions` (auth)
 
 → `[ { "version", "title", "author", "user_id", "created_at", "blocks" } ]`, newest first, without

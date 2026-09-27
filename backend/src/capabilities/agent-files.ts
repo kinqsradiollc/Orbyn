@@ -10,12 +10,17 @@ import {
 } from "@orbyn/core";
 import { env } from "../config/env.js";
 import { Params, scopeFor, visibleDocs } from "../lib/visibility.js";
-import { saveDoc } from "../modules/docs/service.js";
+import { createDoc, saveDoc } from "../modules/docs/service.js";
 import { importsEnabled, serviceKey } from "../modules/imports/tokens.js";
 import { pageFileLimits, usedBytes } from "../modules/page-files/service.js";
 import { docId } from "./common.js";
 import { cleanTitle } from "./format.js";
-import { CapabilityError, defineCapability } from "./registry.js";
+import {
+  CapabilityError,
+  defineCapability,
+  type CapabilityContext,
+} from "./registry.js";
+import { seeProject } from "./shared.js";
 import { refUrl } from "./refs.js";
 import { afterSave } from "./write-docs.js";
 import {
@@ -129,10 +134,11 @@ export const addFile = defineCapability({
   name: "add_file",
   title: "Add a file",
   description:
-    "Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file line, or as the page's original. PDF, Word, PowerPoint, pictures, text; typed by its bytes; undoable.",
+    "Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file line, or as the page's original; or to a project (a new page in it holding the file, as the app's Pages & files does). PDF, Word, PowerPoint, pictures, text; typed by its bytes; undoable.",
   input: z
     .object({
-      doc: z.string().trim().min(1).max(300),
+      doc: z.string().trim().min(1).max(300).optional(),
+      project: z.string().trim().min(1).max(300).optional(),
       name: z.string().trim().min(1).max(200),
       content: z.string().max(MAX_BASE64),
       keep: z.enum(["line", "original"]).default("line"),
@@ -170,7 +176,11 @@ export const addFile = defineCapability({
     const typed = agentFileType(a.name, bytes);
     if ("error" in typed) throw new CapabilityError("INVALID", typed.error);
     const mime = typed.mime;
-    const id = docId(a.doc)!;
+    if (!a.doc === !a.project)
+      throw new CapabilityError("INVALID", "Name a doc or a project (one).");
+    // A project's file (H6b): a new page filed in it, named for the file.
+    const made = a.project ? await projectPage(ctx, a.project, a.name) : null;
+    const id = made?.id ?? docId(a.doc!)!;
     const p = new Params();
     const scope = scopeFor(ctx.spaces, p);
     const page = (
@@ -310,7 +320,18 @@ export const addFile = defineCapability({
         targets: [`doc:${page.id}`],
         write: {
           outcome: "ok",
-          undo: [{ op: "file.delete", id: fileId, kept: true }],
+          undo: [
+            ...(made
+              ? [
+                  {
+                    op: "doc.trash" as const,
+                    doc_id: page.id,
+                    version: page.version,
+                  },
+                ]
+              : []),
+            { op: "file.delete" as const, id: fileId, kept: true },
+          ],
           team_id: page.team_id,
         },
       };
@@ -348,18 +369,59 @@ export const addFile = defineCapability({
       write: {
         outcome: "ok",
         // Last first: the line goes, then the file nothing shows.
-        undo: [
-          { op: "file.delete", id: fileId },
-          {
-            op: "doc.restore",
-            doc_id: page.id,
-            version: saved.version,
-            to_version: page.version,
-          },
-        ],
+        // Undone last first: the line goes, then the file, then (for a
+        // project's file) the page made for it goes to Trash.
+        undo: made
+          ? [
+              { op: "doc.trash", doc_id: page.id, version: saved.version },
+              { op: "file.delete", id: fileId },
+              {
+                op: "doc.restore",
+                doc_id: page.id,
+                version: saved.version,
+                to_version: page.version,
+              },
+            ]
+          : [
+              { op: "file.delete", id: fileId },
+              {
+                op: "doc.restore",
+                doc_id: page.id,
+                version: saved.version,
+                to_version: page.version,
+              },
+            ],
         team_id: page.team_id,
         after: afterSave(page.id, saved.version, ctx.principal.grant_id),
       },
     };
   },
 });
+
+/**
+ * A new page in a project for a file sent to it (H6b), in the project's
+ * space: the app adds a project's files as pages in it too.
+ */
+async function projectPage(
+  ctx: CapabilityContext,
+  input: string,
+  name: string,
+) {
+  const project = await seeProject(ctx, input);
+  if (
+    destination(ctx, project.team_id, project.team_id ? "W2" : "W1") ===
+    "review"
+  )
+    throw cantWait(ctx, project.team_id);
+  const doc = await createDoc(dbOf(ctx), actorOf(ctx.principal), {
+    title: cleanTitle(name).slice(0, 200) || "File",
+    kind: "doc",
+    team_id: project.team_id,
+    project_id: project.id,
+    folder_id: null,
+    item_id: null,
+    content: [],
+    tags: [],
+  } as never);
+  return doc;
+}

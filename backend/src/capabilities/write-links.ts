@@ -7,6 +7,7 @@ import {
 } from "@orbyn/core";
 import {
   Params,
+  readableDocs,
   scopeFor,
   visibleDocs,
   visibleProjects,
@@ -83,6 +84,28 @@ export async function visibleDoc(ctx: CapabilityContext, input: string) {
               d.user_id
          FROM docs d WHERE d.id = ${params.add(docId(input))}
           AND ${visibleDocs("d", scope)} FOR UPDATE`,
+      params.values,
+    )
+  ).rows[0];
+  if (!doc) throw notFound();
+  return doc;
+}
+
+/** A page in the Trash the connection could read (H6b: bringing it back). */
+export async function trashedDoc(ctx: CapabilityContext, input: string) {
+  const params = new Params();
+  const scope = scopeFor(ctx.spaces, params);
+  const doc = (
+    await ctx.db.query<{
+      id: string;
+      title: string;
+      team_id: string | null;
+      user_id: string;
+      deleted_by: string | null;
+    }>(
+      `SELECT d.id, d.title, d.team_id, d.user_id, d.deleted_by FROM docs d
+        WHERE d.id = ${params.add(docId(input))} AND d.deleted_at IS NOT NULL
+          AND ${readableDocs("d", scope)} FOR UPDATE`,
       params.values,
     )
   ).rows[0];
@@ -723,6 +746,12 @@ const DELETABLE_TABLE: Record<
     label: "the habit session",
     personalOnly: true,
   },
+  field: { table: "custom_fields", name: "name", label: "the field" },
+  milestone: {
+    table: "project_milestones",
+    name: "name",
+    label: "the milestone",
+  },
 };
 
 /** A delete of something organising (a list, a routine, a comment …) for review. */
@@ -734,7 +763,8 @@ async function deletion(
 ): Promise<
   ReviewChangeInput & { team_id: string | null; owner: string | null }
 > {
-  const ref = parseRef(target);
+  // field:<id> and milestone:<id> as fetch and get_project name them.
+  const ref = parseRef(target.replace(/^(field|milestone):/i, ""));
   if (ref.type === "title")
     throw new CapabilityError("INVALID", "Name what to delete by its id.");
   const t = DELETABLE_TABLE[what];
@@ -742,7 +772,12 @@ async function deletion(
   let parent: string | null = null;
   let title = "";
   let owner: string | null = null;
-  if (what === "comment" || what === "proof" || what === "project_link") {
+  if (
+    what === "comment" ||
+    what === "proof" ||
+    what === "project_link" ||
+    what === "milestone"
+  ) {
     if (!on)
       throw new CapabilityError(
         "INVALID",
@@ -762,10 +797,16 @@ async function deletion(
         : what === "proof"
           ? "item_id"
           : "project_id";
+    const ownerCol =
+      what === "project_link"
+        ? "NULL::uuid"
+        : what === "milestone"
+          ? "created_by"
+          : "user_id";
     const row = (
       await ctx.db.query<{ title: string; owner: string | null }>(
         `SELECT coalesce(${t.name}, '') AS title,
-                ${what === "project_link" ? "NULL::uuid" : "user_id"} AS owner
+                ${ownerCol} AS owner
            FROM ${t.table} WHERE id = $1 AND ${col} = $2`,
         [ref.id, parent],
       )
@@ -814,6 +855,7 @@ const PROPOSED = [
   "delete_project",
   "remove_step",
   "restore_doc_version",
+  "restore_doc",
   "move_task",
   "change_task",
   "invite",
@@ -875,7 +917,7 @@ export const proposeChanges = defineCapability({
   name: "propose_changes",
   title: "Delete, move and other bigger changes",
   description:
-    "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; fetch(\"proposal:<id>\") for the outcome; 72 hours).",
+    "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version or a page from Trash (restore_doc), moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; fetch(\"proposal:<id>\") for the outcome; 72 hours).",
   input: z
     .object({
       summary: z
@@ -1035,6 +1077,25 @@ export const proposeChanges = defineCapability({
                   title: doc.title,
                   team_id: doc.team_id,
                 },
+          );
+          break;
+        }
+        case "restore_doc": {
+          // A page from Trash (get_history of "trash" lists them). Whoever
+          // put a teammate's page there decides with the person.
+          const doc = await trashedDoc(ctx, c.target);
+          may(doc.team_id, {
+            user_id: doc.deleted_by ?? doc.user_id,
+          });
+          push(
+            actionChange({
+              action: "page.restore",
+              target_id: doc.id,
+              title: doc.title,
+              team_id: doc.team_id,
+              headline: `Bring ${quoted(doc.title)} back from Trash`,
+              input: { id: doc.id },
+            }),
           );
           break;
         }

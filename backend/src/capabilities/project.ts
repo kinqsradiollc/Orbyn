@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { projectMilestones } from "../modules/projects/milestones.js";
 import { isClosed, projectAtRisk, projectProgress } from "@orbyn/core";
 import {
   Params,
@@ -154,6 +155,16 @@ export const projectOutput = z.object({
   ),
   pins: z.array(
     z.object({ id: z.string(), title: z.string(), url: z.string() }),
+  ),
+  milestones: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      due_on: z.string(),
+      status: z.string(),
+      done: z.number(),
+      tasks: z.number(),
+    }),
   ),
 });
 export type ProjectHub = z.output<typeof projectOutput>;
@@ -549,6 +560,17 @@ export async function projectHub(
       title: cleanTitle(l.title) || l.url.slice(0, 200),
       url: l.url,
     })),
+    // The timeline's checkpoints (H6b): update_project changes them.
+    milestones: (
+      await projectMilestones(ctx.db, ctx.principal.user.id, id, ctx.now)
+    ).map((m) => ({
+      id: m.id,
+      name: cleanTitle(m.name),
+      due_on: m.due_on,
+      status: m.status,
+      done: m.done_count,
+      tasks: m.task_count,
+    })),
   };
 }
 
@@ -635,6 +657,13 @@ export function projectMarkdown(h: ProjectHub): string {
           : "") +
         ".",
     );
+  if (h.milestones.length) {
+    out.push("", "## Milestones");
+    for (const m of h.milestones)
+      out.push(
+        `- ${m.due_on} ${m.name} (${m.status}, ${m.done} of ${m.tasks} tasks done) · milestone ${m.id}`,
+      );
+  }
   if (h.docs.length) {
     out.push("", "## Pages");
     for (const d of h.docs) out.push(`- ${mdLink(d.title, d.url)} · ${d.id}`);
@@ -669,7 +698,7 @@ export const getProject = defineCapability({
   name: "get_project",
   title: "Open a project",
   description:
-    "A project as a hub, as its page shows it: summary, status, deadline; stages with open tasks; your sessions in the next two weeks; pages; open promises and decisions; recent changes (with the agent that made them); health; your planning against the deadline; and what links here.",
+    "A project as a hub, as its page shows it: summary, status, deadline; stages with open tasks; milestones; your sessions in the next two weeks; pages; open promises and decisions; recent changes (with the agent that made them); health; your planning against the deadline; and what links here.",
   input: z
     .object({
       project: z

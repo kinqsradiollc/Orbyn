@@ -41,6 +41,7 @@ import { parseRef, refUrl, refs, type Ref, type RefType } from "./refs.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
 import { visibleSource } from "./citations.js";
 import { pageSources } from "../modules/sources/service.js";
+import { fieldsLine, pageInfoLines } from "./page-info.js";
 import {
   CapabilityError,
   defineCapability,
@@ -373,9 +374,13 @@ async function fetchDoc(
   });
   // Sources an agent saved for the page (H2), named on its first part.
   const cited = start > 0 ? [] : await pageSources(ctx.db, d.id);
+  // The page's Info (H6b): other names, tags, links here, versions, folds
+  // and fields, on its first part.
+  const info = start > 0 ? [] : await pageInfoLines(ctx, d);
   const header = [
     `# ${cleanTitle(d.title) || "Untitled"}`,
     `${spaceName(d.team_id, ctx.principal.teams)}${d.folder_name ? ` · folder ${cleanTitle(d.folder_name)}` : ""} · version ${d.version} · changed ${d.updated_at.toISOString()}`,
+    ...info,
     cited.length
       ? `Sources: ${cited
           .slice(0, 10)
@@ -415,10 +420,26 @@ async function fetchProject(
   ref: Ref,
 ): Promise<Fetched> {
   const hub = await projectHub(ctx, ref.id);
+  // Your own fields on it (H6b), with ids for organize set_field.
+  const owner = (
+    await ctx.db.query<{ user_id: string }>(
+      "SELECT user_id FROM projects WHERE id = $1",
+      [ref.id],
+    )
+  ).rows[0];
+  const fields = owner
+    ? await fieldsLine(
+        ctx,
+        "project",
+        ref.id,
+        hub.project.team_id,
+        owner.user_id,
+      )
+    : null;
   return {
     id: hub.project.id,
     title: hub.project.title,
-    text: projectMarkdown(hub),
+    text: [projectMarkdown(hub), fields ? `\n${fields}` : ""].join(""),
     url: hub.project.url,
     metadata: {
       type: "project",

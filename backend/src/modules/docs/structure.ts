@@ -16,7 +16,13 @@ import {
   type Doc,
   type DocBlock,
 } from "@orbyn/core";
-import { pool, reader, transaction, type Db } from "../../db/pool.js";
+import {
+  pool,
+  reader,
+  transaction,
+  type Db,
+  type Queryable,
+} from "../../db/pool.js";
 import { allowPageFiles } from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
@@ -171,8 +177,9 @@ async function writeLines(
   u: UserRow,
   docId: string,
   blocks: DocBlock[],
+  always = false,
 ) {
-  await snapshot(db, docId, u.id);
+  await snapshot(db, docId, u.id, always);
   return (
     await db.query<{ version: number }>(
       `UPDATE docs SET content = $2::jsonb, version = version + 1,
@@ -185,6 +192,273 @@ async function writeLines(
       ],
     )
   ).rows[0].version;
+}
+
+/**
+ * "Move to new page" (ORG-05) in `db`'s transaction: the lines become a new
+ * page beside this one, with their remarks, proposals and task lines, and a
+ * link takes their place. The route and agents (organize, H6b) share it.
+ */
+export async function extractLines(
+  db: Db,
+  u: UserRow,
+  id: string,
+  body: z.output<typeof docExtractInput>,
+  /** Always keep the state before (an agent's change, so it can be undone). */
+  always = false,
+) {
+  await actAs(db, u.id);
+  const current = await requireDoc(db, id, u, "items:write");
+  if (current.version !== body.version)
+    fail(409, "This document changed somewhere else. Refresh and try again.");
+  const source = (
+    await db.query<{
+      content: DocBlock[] | null;
+      project_id: string | null;
+      folder_id: string | null;
+    }>("SELECT content, project_id, folder_id FROM docs WHERE id = $1", [id])
+  ).rows[0];
+  const content = source.content ?? [];
+  const wanted = new Set(body.block_ids);
+  const moved = content.filter((b) => b.id && wanted.has(b.id));
+  if (!moved.length) fail(409, "Those lines aren't on the page any more.");
+  // Named from its lines as the mover reads them (D3aF).
+  const title =
+    body.title?.trim() || titleFor(await readableLinks(db, u.id, moved));
+  // The pictures and files go with their lines (read through this page).
+  await allowPageFiles(db, u.id, moved);
+  const newId = (
+    await db.query<{ id: string }>(
+      `INSERT INTO docs (user_id, team_id, title, kind, content, project_id,
+           folder_id)
+         VALUES ($1, $2, $3, 'doc', $4::jsonb, $5, $6) RETURNING id`,
+      [
+        u.id,
+        current.team_id,
+        title,
+        JSON.stringify(moved),
+        source.project_id,
+        source.folder_id,
+      ],
+    )
+  ).rows[0].id;
+  // The link sits where the first moved line was.
+  const first = content.findIndex((b) => b.id && wanted.has(b.id));
+  const link: DocBlock = {
+    type: "paragraph",
+    id: newBlockId(),
+    text: linkMarkdown({ kind: "doc", id: newId }, title),
+  };
+  const rest = content.flatMap((b, i) =>
+    i === first ? [link] : b.id && wanted.has(b.id) ? [] : [b],
+  );
+  await carryLines(
+    db,
+    id,
+    newId,
+    moved.map((b) => b.id!),
+    undefined,
+    // Unless a line left behind still shows it.
+    filesOf(moved).filter((f) => !filesOf(rest).includes(f)),
+  );
+  await writeLines(db, u, id, rest, always);
+  return {
+    doc: await readableLinks(
+      db,
+      u.id,
+      (
+        await db.query<Doc>(
+          `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
+              WHERE d.id = $1`,
+          [newId],
+        )
+      ).rows[0],
+    ),
+    source: await readDoc(db, id, u.id),
+  };
+}
+
+/**
+ * "Merge into…" (ORG-05) in `db`'s transaction: this page's lines go to the
+ * end of the other, links to it are pointed there and it goes to Trash.
+ * The route and agents (organize, H6b) share it.
+ */
+export async function mergePages(
+  db: Db,
+  u: UserRow,
+  id: string,
+  body: z.output<typeof docMergeInput>,
+  /** Always keep the state before (an agent's change, so it can be undone). */
+  always = false,
+) {
+  if (body.into === id) fail(400, "A page can't be merged into itself.");
+  await actAs(db, u.id);
+  // Locked in one order, so two merges the other way round can't deadlock.
+  const [a, b] = [id, body.into].sort();
+  const first = await requireDoc(db, a, u, "items:write");
+  const second = await requireDoc(db, b, u, "items:write");
+  const src = a === id ? first : second;
+  const into = a === id ? second : first;
+  if (src.version !== body.version)
+    fail(409, "This document changed somewhere else. Refresh and try again.");
+  if ((src.team_id ?? null) !== (into.team_id ?? null))
+    fail(
+      422,
+      "Pages can only be merged with a page in the same space. Move one first.",
+    );
+  const rows = (
+    await db.query<{
+      id: string;
+      title: string;
+      content: DocBlock[] | null;
+    }>("SELECT id, title, content FROM docs WHERE id = ANY ($1::uuid[])", [
+      [id, body.into],
+    ])
+  ).rows;
+  const source = rows.find((x) => x.id === id)!;
+  const target = rows.find((x) => x.id === body.into)!;
+  const taken = new Set(
+    (target.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
+  );
+  // A line whose name the other page already uses gets a new one.
+  const rename = new Map<string, string>();
+  const lines = (source.content ?? [])
+    .filter((x) => !(x.type === "paragraph" && !x.text.trim()))
+    .map((x) => {
+      if (!x.id || !taken.has(x.id)) return x;
+      const fresh = newBlockId();
+      rename.set(x.id, fresh);
+      return { ...x, id: fresh };
+    });
+  const heading: DocBlock[] =
+    source.title.trim() && lines[0]?.type !== "heading"
+      ? [
+          {
+            type: "heading",
+            level: 2,
+            id: newBlockId(),
+            text: source.title.trim(),
+          },
+        ]
+      : [];
+  const merged = [...(target.content ?? []), ...heading, ...lines];
+  // Checked before the source goes to Trash, while it still shows them.
+  await allowPageFiles(db, u.id, lines);
+  await carryLines(
+    db,
+    id,
+    body.into,
+    (source.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
+    rename,
+    filesOf(source.content ?? []),
+  );
+  const version = await writeLines(db, u, body.into, merged, always);
+  // Links to the merged page, in pages you can change, now open the
+  // other, and a link to one of its lines to that line under its new
+  // name if it had to be renamed. Each page keeps its history.
+  const linking = (
+    await db.query<{ id: string; content: DocBlock[] | null }>(
+      `SELECT d.id, d.content FROM docs d
+            WHERE d.id IN (
+                    SELECT l.source_id FROM object_links l
+                     WHERE l.source_kind = 'doc' AND l.link_kind = 'link'
+                       AND l.target_kind = 'doc' AND l.target_id = $2
+                     LIMIT 200)
+              AND d.id <> $3 AND d.deleted_at IS NULL
+              AND ${writableOwned("d", "user_id")}
+            ORDER BY d.id
+            FOR UPDATE OF d`,
+      [u.id, id, id],
+    )
+  ).rows;
+  const pointer = new RegExp(
+    `orbyn://doc/${id}(?:#([A-Za-z0-9_-]{1,64}))?`,
+    "gi",
+  );
+  const rewritten: { id: string; version: number }[] = [];
+  for (const p of linking) {
+    const before = JSON.stringify(p.content ?? []);
+    const after = before.replace(
+      pointer,
+      (_all, line?: string) =>
+        `orbyn://doc/${body.into}${line ? `#${rename.get(line) ?? line}` : ""}`,
+    );
+    if (after === before) continue;
+    await snapshot(db, p.id, u.id);
+    rewritten.push(
+      (
+        await db.query<{ id: string; version: number }>(
+          `UPDATE docs SET content = $2::jsonb, version = version + 1,
+                 updated_at = now() WHERE id = $1 RETURNING id, version`,
+          [p.id, after],
+        )
+      ).rows[0],
+    );
+  }
+  await db.query(
+    `UPDATE docs SET deleted_at = now(), deleted_by = $2, merged_into = $3
+          WHERE id = $1`,
+    [id, u.id, body.into],
+  );
+  await noteTrash(db, id, u.id, true);
+  await searchTrash(db, id, true);
+  return { version, rewritten, doc: await readDoc(db, body.into, u.id) };
+}
+
+/**
+ * A page's other names (LNK-03), in `db`'s transaction: its version stays.
+ * Returns the names it had before, for undo.
+ */
+export async function setAliases(
+  db: Db,
+  u: UserRow,
+  id: string,
+  aliases: string[],
+): Promise<{ version: number; before: string[] }> {
+  const doc = await requireDoc(db, id, u, "items:write");
+  const before =
+    (
+      await db.query<{ aliases: string[] | null }>(
+        "SELECT aliases FROM docs WHERE id = $1",
+        [id],
+      )
+    ).rows[0]?.aliases ?? [];
+  await db.query("UPDATE docs SET aliases = $2 WHERE id = $1", [id, aliases]);
+  return { version: doc.version, before };
+}
+
+/**
+ * The headings `userId` folded on a page (EDT-14), set as a whole (an empty
+ * list unfolds all). Returns what was folded before, for undo.
+ */
+export async function setFolds(
+  db: Queryable,
+  userId: string,
+  id: string,
+  blockIds: string[],
+): Promise<{ before: string[]; after: string[] }> {
+  const before =
+    (
+      await db.query<{ block_ids: string[] }>(
+        "SELECT block_ids FROM doc_folds WHERE user_id = $1 AND doc_id = $2",
+        [userId, id],
+      )
+    ).rows[0]?.block_ids ?? [];
+  const ids = [...new Set(blockIds)];
+  if (!ids.length)
+    await db.query("DELETE FROM doc_folds WHERE user_id = $1 AND doc_id = $2", [
+      userId,
+      id,
+    ]);
+  else
+    await db.query(
+      `INSERT INTO doc_folds (user_id, doc_id, block_ids)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, doc_id)
+         DO UPDATE SET block_ids = $3, updated_at = now()`,
+      [userId, id, ids],
+    );
+  return { before, after: ids };
 }
 
 export async function docStructureRoutes(app: FastifyInstance) {
@@ -289,82 +563,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = docExtractInput.parse(r.body ?? {});
-    const out = await transaction(async (db) => {
-      await actAs(db, u.id);
-      const current = await requireDoc(db, id, u, "items:write");
-      if (current.version !== body.version)
-        fail(
-          409,
-          "This document changed somewhere else. Refresh and try again.",
-        );
-      const source = (
-        await db.query<{
-          content: DocBlock[] | null;
-          project_id: string | null;
-          folder_id: string | null;
-        }>("SELECT content, project_id, folder_id FROM docs WHERE id = $1", [
-          id,
-        ])
-      ).rows[0];
-      const content = source.content ?? [];
-      const wanted = new Set(body.block_ids);
-      const moved = content.filter((b) => b.id && wanted.has(b.id));
-      if (!moved.length) fail(409, "Those lines aren't on the page any more.");
-      // Named from its lines as the mover reads them (D3aF).
-      const title =
-        body.title?.trim() || titleFor(await readableLinks(db, u.id, moved));
-      // The pictures and files go with their lines (read through this page).
-      await allowPageFiles(db, u.id, moved);
-      const newId = (
-        await db.query<{ id: string }>(
-          `INSERT INTO docs (user_id, team_id, title, kind, content, project_id,
-             folder_id)
-           VALUES ($1, $2, $3, 'doc', $4::jsonb, $5, $6) RETURNING id`,
-          [
-            u.id,
-            current.team_id,
-            title,
-            JSON.stringify(moved),
-            source.project_id,
-            source.folder_id,
-          ],
-        )
-      ).rows[0].id;
-      // The link sits where the first moved line was.
-      const first = content.findIndex((b) => b.id && wanted.has(b.id));
-      const link: DocBlock = {
-        type: "paragraph",
-        id: newBlockId(),
-        text: linkMarkdown({ kind: "doc", id: newId }, title),
-      };
-      const rest = content.flatMap((b, i) =>
-        i === first ? [link] : b.id && wanted.has(b.id) ? [] : [b],
-      );
-      await carryLines(
-        db,
-        id,
-        newId,
-        moved.map((b) => b.id!),
-        undefined,
-        // Unless a line left behind still shows it.
-        filesOf(moved).filter((f) => !filesOf(rest).includes(f)),
-      );
-      await writeLines(db, u, id, rest);
-      return {
-        doc: await readableLinks(
-          db,
-          u.id,
-          (
-            await db.query<Doc>(
-              `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
-                WHERE d.id = $1`,
-              [newId],
-            )
-          ).rows[0],
-        ),
-        source: await readDoc(db, id, u.id),
-      };
-    });
+    const out = await transaction((db) => extractLines(db, u, id, body));
     await announceDocChange(pool, id, out.source.version, "extract");
     reply.code(201);
     return {
@@ -387,123 +586,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = docMergeInput.parse(r.body ?? {});
-    if (body.into === id) fail(400, "A page can't be merged into itself.");
-    const out = await transaction(async (db) => {
-      await actAs(db, u.id);
-      // Locked in one order, so two merges the other way round can't deadlock.
-      const [a, b] = [id, body.into].sort();
-      const first = await requireDoc(db, a, u, "items:write");
-      const second = await requireDoc(db, b, u, "items:write");
-      const src = a === id ? first : second;
-      const into = a === id ? second : first;
-      if (src.version !== body.version)
-        fail(
-          409,
-          "This document changed somewhere else. Refresh and try again.",
-        );
-      if ((src.team_id ?? null) !== (into.team_id ?? null))
-        fail(
-          422,
-          "Pages can only be merged with a page in the same space. Move one first.",
-        );
-      const rows = (
-        await db.query<{
-          id: string;
-          title: string;
-          content: DocBlock[] | null;
-        }>("SELECT id, title, content FROM docs WHERE id = ANY ($1::uuid[])", [
-          [id, body.into],
-        ])
-      ).rows;
-      const source = rows.find((x) => x.id === id)!;
-      const target = rows.find((x) => x.id === body.into)!;
-      const taken = new Set(
-        (target.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
-      );
-      // A line whose name the other page already uses gets a new one.
-      const rename = new Map<string, string>();
-      const lines = (source.content ?? [])
-        .filter((x) => !(x.type === "paragraph" && !x.text.trim()))
-        .map((x) => {
-          if (!x.id || !taken.has(x.id)) return x;
-          const fresh = newBlockId();
-          rename.set(x.id, fresh);
-          return { ...x, id: fresh };
-        });
-      const heading: DocBlock[] =
-        source.title.trim() && lines[0]?.type !== "heading"
-          ? [
-              {
-                type: "heading",
-                level: 2,
-                id: newBlockId(),
-                text: source.title.trim(),
-              },
-            ]
-          : [];
-      const merged = [...(target.content ?? []), ...heading, ...lines];
-      // Checked before the source goes to Trash, while it still shows them.
-      await allowPageFiles(db, u.id, lines);
-      await carryLines(
-        db,
-        id,
-        body.into,
-        (source.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
-        rename,
-        filesOf(source.content ?? []),
-      );
-      const version = await writeLines(db, u, body.into, merged);
-      // Links to the merged page, in pages you can change, now open the
-      // other, and a link to one of its lines to that line under its new
-      // name if it had to be renamed. Each page keeps its history.
-      const linking = (
-        await db.query<{ id: string; content: DocBlock[] | null }>(
-          `SELECT d.id, d.content FROM docs d
-            WHERE d.id IN (
-                    SELECT l.source_id FROM object_links l
-                     WHERE l.source_kind = 'doc' AND l.link_kind = 'link'
-                       AND l.target_kind = 'doc' AND l.target_id = $2
-                     LIMIT 200)
-              AND d.id <> $3 AND d.deleted_at IS NULL
-              AND ${writableOwned("d", "user_id")}
-            ORDER BY d.id
-            FOR UPDATE OF d`,
-          [u.id, id, id],
-        )
-      ).rows;
-      const pointer = new RegExp(
-        `orbyn://doc/${id}(?:#([A-Za-z0-9_-]{1,64}))?`,
-        "gi",
-      );
-      const rewritten: { id: string; version: number }[] = [];
-      for (const p of linking) {
-        const before = JSON.stringify(p.content ?? []);
-        const after = before.replace(
-          pointer,
-          (_all, line?: string) =>
-            `orbyn://doc/${body.into}${line ? `#${rename.get(line) ?? line}` : ""}`,
-        );
-        if (after === before) continue;
-        await snapshot(db, p.id, u.id);
-        rewritten.push(
-          (
-            await db.query<{ id: string; version: number }>(
-              `UPDATE docs SET content = $2::jsonb, version = version + 1,
-                 updated_at = now() WHERE id = $1 RETURNING id, version`,
-              [p.id, after],
-            )
-          ).rows[0],
-        );
-      }
-      await db.query(
-        `UPDATE docs SET deleted_at = now(), deleted_by = $2, merged_into = $3
-          WHERE id = $1`,
-        [id, u.id, body.into],
-      );
-      await noteTrash(db, id, u.id, true);
-      await searchTrash(db, id, true);
-      return { version, rewritten, doc: await readDoc(db, body.into, u.id) };
-    });
+    const out = await transaction((db) => mergePages(db, u, id, body));
     await announceDocChange(pool, id, body.version, "merge", { trashed: true });
     await announceDocChange(pool, body.into, out.version, "merge");
     for (const p of out.rewritten)
@@ -543,21 +626,8 @@ export async function docStructureRoutes(app: FastifyInstance) {
       ])
     ).rowCount;
     if (!seen) fail(404, "Document not found");
-    const ids = [...new Set(block_ids)];
-    if (!ids.length)
-      await pool.query(
-        "DELETE FROM doc_folds WHERE user_id = $1 AND doc_id = $2",
-        [u.id, id],
-      );
-    else
-      await pool.query(
-        `INSERT INTO doc_folds (user_id, doc_id, block_ids)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (user_id, doc_id)
-           DO UPDATE SET block_ids = $3, updated_at = now()`,
-        [u.id, id, ids],
-      );
-    return { block_ids: ids };
+    const { after } = await setFolds(pool, u.id, id, block_ids);
+    return { block_ids: after };
   });
 
   /**
@@ -572,14 +642,9 @@ export async function docStructureRoutes(app: FastifyInstance) {
       .object({ aliases: aliasesInput })
       .strict()
       .parse(r.body ?? {});
-    const version = await transaction(async (db) => {
-      const doc = await requireDoc(db, id, u, "items:write");
-      await db.query("UPDATE docs SET aliases = $2 WHERE id = $1", [
-        id,
-        aliases,
-      ]);
-      return doc.version;
-    });
+    const version = await transaction(
+      async (db) => (await setAliases(db, u, id, aliases)).version,
+    );
     await announceDocChange(pool, id, version, "aliases", { tags: true }).catch(
       () => {},
     );

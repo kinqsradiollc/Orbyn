@@ -111,6 +111,16 @@ export const SNAPSHOT_SPECS = {
   proof: { table: "item_proofs", children: [], relink: [] },
   project_link: { table: "project_links", children: [], relink: [] },
   habit_session: { table: "habit_blocks", children: [], relink: [] },
+  field: {
+    table: "custom_fields",
+    children: [["custom_field_values", "field_id"]],
+    relink: [],
+  },
+  milestone: {
+    table: "project_milestones",
+    children: [],
+    relink: [["items", "milestone_id"]],
+  },
 } satisfies Record<string, Spec>;
 
 export type SnapshotKind = keyof typeof SNAPSHOT_SPECS;

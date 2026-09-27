@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { z } from "zod";
 import {
   checkFieldValue,
   customFieldInput,
@@ -17,7 +18,13 @@ import {
   type TargetFields,
   type TeamRole,
 } from "@orbyn/core";
-import { pool, reader, transaction, type Queryable } from "../../db/pool.js";
+import {
+  pool,
+  reader,
+  transaction,
+  type Db,
+  type Queryable,
+} from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { announceDocChange } from "../docs/live.js";
@@ -89,7 +96,7 @@ export async function visibleFields(
 }
 
 /** A field, for someone who may change it (404 when they can't see it). */
-async function requireField(
+export async function requireField(
   db: Queryable,
   id: string,
   u: UserRow,
@@ -245,6 +252,200 @@ export async function fieldDates(
   return rows;
 }
 
+/** Make a field (in `db`'s transaction): the route and agents share it. */
+export async function createField(
+  db: Db,
+  u: UserRow,
+  data: z.output<typeof customFieldInput>,
+): Promise<CustomField> {
+  if (data.team_id) await requireTeam(data.team_id, u, "items:write", db);
+  // One writer at a time per space, so the cap and the position hold.
+  await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+    `fields:${data.team_id ?? u.id}:${data.applies_to}`,
+  ]);
+  const { count, taken } = (
+    await db.query<{ count: number; taken: boolean }>(
+      `SELECT count(*)::int AS count,
+                bool_or(lower(name) = lower($4)) AS taken
+           FROM custom_fields
+          WHERE applies_to = $3
+            AND (CASE WHEN $2::uuid IS NULL THEN team_id IS NULL AND user_id = $1
+                      ELSE team_id = $2 END)`,
+      [u.id, data.team_id, data.applies_to, data.name],
+    )
+  ).rows[0];
+  if (taken) fail(409, `There's already a field called ${data.name} here.`);
+  if (count >= MAX_FIELDS_PER_SPACE)
+    fail(
+      409,
+      `A space can have ${MAX_FIELDS_PER_SPACE} fields for ${data.applies_to === "page" ? "pages" : "projects"}. Remove one first.`,
+    );
+  const id = (
+    await db.query<{ id: string }>(
+      `INSERT INTO custom_fields
+           (user_id, team_id, applies_to, name, type, options, on_calendar, position)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8) RETURNING id`,
+      [
+        u.id,
+        data.team_id,
+        data.applies_to,
+        data.name,
+        data.type,
+        JSON.stringify(data.options),
+        data.on_calendar,
+        count,
+      ],
+    )
+  ).rows[0].id;
+  return requireField(db, id, u, false);
+}
+
+/** Rename a field, change its choices or calendar switch (route and agents). */
+export async function updateField(
+  db: Queryable,
+  u: UserRow,
+  id: string,
+  body: z.output<typeof customFieldUpdate>,
+): Promise<CustomField> {
+  const field = await requireField(db, id, u, true);
+  if (body.on_calendar && field.type !== "date")
+    fail(400, "Only a date field can show on the calendar.");
+  if (body.options && field.type !== "select")
+    fail(400, "Only a choice field has choices.");
+  if (body.options && !body.options.length)
+    fail(400, "A choice field needs at least one choice.");
+  if (body.name && body.name.toLowerCase() !== field.name.toLowerCase()) {
+    const taken = (
+      await db.query(
+        `SELECT 1 FROM custom_fields
+            WHERE id <> $1 AND applies_to = $2 AND lower(name) = lower($3)
+              AND (CASE WHEN $4::uuid IS NULL THEN team_id IS NULL AND user_id = $5
+                        ELSE team_id = $4 END)`,
+        [id, field.applies_to, body.name, field.team_id, field.user_id],
+      )
+    ).rowCount;
+    if (taken) fail(409, `There's already a field called ${body.name} here.`);
+  }
+  await db.query(
+    `UPDATE custom_fields SET name = coalesce($2, name),
+         options = coalesce($3::jsonb, options),
+         on_calendar = coalesce($4, on_calendar),
+         position = coalesce($5, position), updated_at = now()
+       WHERE id = $1`,
+    [
+      id,
+      body.name ?? null,
+      body.options ? JSON.stringify(body.options) : null,
+      body.on_calendar ?? null,
+      body.position ?? null,
+    ],
+  );
+  // A choice that was taken away no longer names anything.
+  if (body.options)
+    await db.query(
+      `DELETE FROM custom_field_values
+          WHERE field_id = $1 AND NOT ($2::jsonb @> jsonb_build_array(value))`,
+      [id, JSON.stringify(body.options)],
+    );
+  return requireField(db, id, u, false);
+}
+
+/** Remove a field, and every value of it (route and agents). */
+export async function deleteField(db: Queryable, u: UserRow, id: string) {
+  const field = await requireField(db, id, u, true);
+  await db.query("DELETE FROM custom_fields WHERE id = $1", [id]);
+  return field;
+}
+
+/**
+ * Set one field on one page or project (null clears it), in `db`'s
+ * transaction: the route and agents share it. `before` is the old value.
+ */
+export async function setFieldValue(
+  db: Db,
+  u: UserRow,
+  id: string,
+  body: z.output<typeof fieldValueInput>,
+) {
+  const field = await requireField(db, id, u, false);
+  if (field.applies_to !== body.target)
+    fail(
+      400,
+      `${field.name} is a field for ${field.applies_to === "page" ? "pages" : "projects"}.`,
+    );
+  const target = await loadTarget(db, u.id, body.target, body.target_id);
+  if (!target)
+    fail(
+      404,
+      body.target === "page" ? "Document not found" : "Project not found",
+    );
+  if (
+    field.team_id !== target.team_id ||
+    (target.team_id === null && field.user_id !== target.user_id)
+  )
+    fail(
+      400,
+      `${field.name} belongs to another space, so it can't be set here.`,
+    );
+  if (!target.can_write) fail(403, "You can read this, but not change it.");
+  const checked = checkFieldValue(field, body.value);
+  if (!checked.ok) fail(400, checked.reason);
+  if (field.type === "person" && checked.value !== null) {
+    const allowed = target.team_id
+      ? !!(await membershipRole(target.team_id, String(checked.value), db))
+      : checked.value === target.user_id;
+    if (!allowed)
+      fail(
+        400,
+        target.team_id
+          ? "Only someone in the team can be named here."
+          : "Only you can be named on your own things.",
+      );
+  }
+  const column = body.target === "page" ? "doc_id" : "project_id";
+  const before =
+    (
+      await db.query<{ value: FieldValue }>(
+        `SELECT value FROM custom_field_values WHERE field_id = $1 AND ${column} = $2`,
+        [id, body.target_id],
+      )
+    ).rows[0]?.value ?? null;
+  if (checked.value === null)
+    await db.query(
+      `DELETE FROM custom_field_values WHERE field_id = $1 AND ${column} = $2`,
+      [id, body.target_id],
+    );
+  else
+    await db.query(
+      `INSERT INTO custom_field_values (field_id, ${column}, value, updated_by)
+         VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (field_id, ${column}) WHERE ${column} IS NOT NULL
+         DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by,
+                       updated_at = now()`,
+      [id, body.target_id, JSON.stringify(checked.value), u.id],
+    );
+  // A value is a change to the page or project: "Last changed" and
+  // "changed in the last N days" count it. A page's version stays, so
+  // an editor that has it open saves on without a conflict.
+  const touched = (
+    await db.query<{ version: number }>(
+      body.target === "page"
+        ? "UPDATE docs SET updated_at = now() WHERE id = $1 RETURNING version"
+        : "UPDATE projects SET updated_at = now() WHERE id = $1 RETURNING 0 AS version",
+      [body.target_id],
+    )
+  ).rows[0];
+  return {
+    field_id: id,
+    field: field.name,
+    title: target.title,
+    team_id: target.team_id,
+    value: checked.value,
+    before,
+    version: touched?.version ?? 0,
+  };
+}
+
 export async function fieldRoutes(app: FastifyInstance) {
   /** Every field you can see (yours and your teams'), for pages and projects. */
   app.get("/fields", async (r): Promise<CustomField[]> => {
@@ -255,48 +456,7 @@ export async function fieldRoutes(app: FastifyInstance) {
   app.post("/fields", async (r, reply): Promise<CustomField> => {
     const u = await authenticate(r);
     const data = customFieldInput.parse(r.body ?? {});
-    if (data.team_id) await requireTeam(data.team_id, u, "items:write");
-    const field = await transaction(async (db) => {
-      // One writer at a time per space, so the cap and the position hold.
-      await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-        `fields:${data.team_id ?? u.id}:${data.applies_to}`,
-      ]);
-      const { count, taken } = (
-        await db.query<{ count: number; taken: boolean }>(
-          `SELECT count(*)::int AS count,
-                  bool_or(lower(name) = lower($4)) AS taken
-             FROM custom_fields
-            WHERE applies_to = $3
-              AND (CASE WHEN $2::uuid IS NULL THEN team_id IS NULL AND user_id = $1
-                        ELSE team_id = $2 END)`,
-          [u.id, data.team_id, data.applies_to, data.name],
-        )
-      ).rows[0];
-      if (taken) fail(409, `There's already a field called ${data.name} here.`);
-      if (count >= MAX_FIELDS_PER_SPACE)
-        fail(
-          409,
-          `A space can have ${MAX_FIELDS_PER_SPACE} fields for ${data.applies_to === "page" ? "pages" : "projects"}. Remove one first.`,
-        );
-      const id = (
-        await db.query<{ id: string }>(
-          `INSERT INTO custom_fields
-             (user_id, team_id, applies_to, name, type, options, on_calendar, position)
-           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8) RETURNING id`,
-          [
-            u.id,
-            data.team_id,
-            data.applies_to,
-            data.name,
-            data.type,
-            JSON.stringify(data.options),
-            data.on_calendar,
-            count,
-          ],
-        )
-      ).rows[0].id;
-      return requireField(db, id, u, false);
-    });
+    const field = await transaction((db) => createField(db, u, data));
     reply.code(201);
     return field;
   });
@@ -305,60 +465,14 @@ export async function fieldRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = customFieldUpdate.parse(r.body ?? {});
-    return transaction(async (db) => {
-      const field = await requireField(db, id, u, true);
-      if (body.on_calendar && field.type !== "date")
-        fail(400, "Only a date field can show on the calendar.");
-      if (body.options && field.type !== "select")
-        fail(400, "Only a choice field has choices.");
-      if (body.options && !body.options.length)
-        fail(400, "A choice field needs at least one choice.");
-      if (body.name && body.name.toLowerCase() !== field.name.toLowerCase()) {
-        const taken = (
-          await db.query(
-            `SELECT 1 FROM custom_fields
-              WHERE id <> $1 AND applies_to = $2 AND lower(name) = lower($3)
-                AND (CASE WHEN $4::uuid IS NULL THEN team_id IS NULL AND user_id = $5
-                          ELSE team_id = $4 END)`,
-            [id, field.applies_to, body.name, field.team_id, field.user_id],
-          )
-        ).rowCount;
-        if (taken)
-          fail(409, `There's already a field called ${body.name} here.`);
-      }
-      await db.query(
-        `UPDATE custom_fields SET name = coalesce($2, name),
-           options = coalesce($3::jsonb, options),
-           on_calendar = coalesce($4, on_calendar),
-           position = coalesce($5, position), updated_at = now()
-         WHERE id = $1`,
-        [
-          id,
-          body.name ?? null,
-          body.options ? JSON.stringify(body.options) : null,
-          body.on_calendar ?? null,
-          body.position ?? null,
-        ],
-      );
-      // A choice that was taken away no longer names anything.
-      if (body.options)
-        await db.query(
-          `DELETE FROM custom_field_values
-            WHERE field_id = $1 AND NOT ($2::jsonb @> jsonb_build_array(value))`,
-          [id, JSON.stringify(body.options)],
-        );
-      return requireField(db, id, u, false);
-    });
+    return transaction((db) => updateField(db, u, id, body));
   });
 
   /** Removing a field clears it from every page or project that had it. */
   app.delete("/fields/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    await transaction(async (db) => {
-      await requireField(db, id, u, true);
-      await db.query("DELETE FROM custom_fields WHERE id = $1", [id]);
-    });
+    await transaction((db) => deleteField(db, u, id));
     reply.code(204);
   });
 
@@ -395,74 +509,7 @@ export async function fieldRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const body = fieldValueInput.parse(r.body ?? {});
-    const out = await transaction(async (db) => {
-      const field = await requireField(db, id, u, false);
-      if (field.applies_to !== body.target)
-        fail(
-          400,
-          `${field.name} is a field for ${field.applies_to === "page" ? "pages" : "projects"}.`,
-        );
-      const target = await loadTarget(db, u.id, body.target, body.target_id);
-      if (!target)
-        fail(
-          404,
-          body.target === "page" ? "Document not found" : "Project not found",
-        );
-      if (
-        field.team_id !== target.team_id ||
-        (target.team_id === null && field.user_id !== target.user_id)
-      )
-        fail(
-          400,
-          `${field.name} belongs to another space, so it can't be set here.`,
-        );
-      if (!target.can_write) fail(403, "You can read this, but not change it.");
-      const checked = checkFieldValue(field, body.value);
-      if (!checked.ok) fail(400, checked.reason);
-      if (field.type === "person" && checked.value !== null) {
-        const allowed = target.team_id
-          ? !!(await membershipRole(target.team_id, String(checked.value), db))
-          : checked.value === target.user_id;
-        if (!allowed)
-          fail(
-            400,
-            target.team_id
-              ? "Only someone in the team can be named here."
-              : "Only you can be named on your own things.",
-          );
-      }
-      const column = body.target === "page" ? "doc_id" : "project_id";
-      if (checked.value === null)
-        await db.query(
-          `DELETE FROM custom_field_values WHERE field_id = $1 AND ${column} = $2`,
-          [id, body.target_id],
-        );
-      else
-        await db.query(
-          `INSERT INTO custom_field_values (field_id, ${column}, value, updated_by)
-           VALUES ($1, $2, $3::jsonb, $4)
-           ON CONFLICT (field_id, ${column}) WHERE ${column} IS NOT NULL
-           DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by,
-                         updated_at = now()`,
-          [id, body.target_id, JSON.stringify(checked.value), u.id],
-        );
-      // A value is a change to the page or project: "Last changed" and
-      // "changed in the last N days" count it. A page's version stays, so
-      // an editor that has it open saves on without a conflict.
-      const touched = (
-        await db.query<{ version: number }>(
-          body.target === "page"
-            ? "UPDATE docs SET updated_at = now() WHERE id = $1 RETURNING version"
-            : "UPDATE projects SET updated_at = now() WHERE id = $1 RETURNING 0 AS version",
-          [body.target_id],
-        )
-      ).rows[0];
-      return {
-        field_id: id,
-        value: checked.value,
-        version: touched?.version ?? 0,
-      };
-    });
+    const out = await transaction((db) => setFieldValue(db, u, id, body));
     // Open pages hear of it, so their Info panel reads the values afresh.
     if (body.target === "page")
       await announceDocChange(

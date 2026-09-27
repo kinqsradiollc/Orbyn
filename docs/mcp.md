@@ -186,7 +186,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `update_project`          | Change a project                       | destructive | write, workspace     |
 | `get_history`             | Show history                           | read        | read, workspace      |
 | `save_template`           | Save a template                        | write       | write, workspace     |
-| `organize`                | Organise lists, tags and folders       | write       | write, workspace     |
+| `organize`                | Organise pages, fields and teams       | destructive | write, workspace     |
 | `comment_on_doc`          | Comment on a page                      | write       | write, workspace     |
 | `resolve_suggestions`     | Take or leave suggestions              | destructive | write, workspace     |
 | `tasks_from_doc`          | Make tasks from a page                 | write       | write, workspace     |
@@ -294,7 +294,7 @@ Runs a saved view `(view:<id>)` or an ad-hoc one over tasks, events, pages, proj
 
 ### `get_project`
 
-A project as a hub, as its page shows it: summary, status, deadline; stages with open tasks; your sessions in the next two weeks; pages; open promises and decisions; recent changes (with the agent that made them); health; your planning against the deadline; and what links here.
+A project as a hub, as its page shows it: summary, status, deadline; stages with open tasks; milestones; your sessions in the next two weeks; pages; open promises and decisions; recent changes (with the agent that made them); health; your planning against the deadline; and what links here.
 
 | Argument             | Type   | Notes                                            |
 | -------------------- | ------ | ------------------------------------------------ |
@@ -450,7 +450,7 @@ Starts a personal or team project with stages, first tasks and an optional main 
 
 ### `propose_changes`
 
-Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; `fetch("proposal:<id>")` for the outcome; 72 hours).
+Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version or a page from Trash (restore_doc), moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; `fetch("proposal:<id>")` for the outcome; 72 hours).
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -542,7 +542,7 @@ Up to 50 write-tool steps as one job: all checked first, then made in one transa
 
 ### `save_view`
 
-Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: "personal" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.
+Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: "personal" (default) or a team id to share it with the team. star puts it in the person's favourites; pin in their sidebar. export: "csv" returns a saved view's rows as CSV text (csv), changing nothing. Run it with query(view). The definition language is in orbyn://spec/views.
 
 | Argument     | Type                                            | Notes                                                                                                                                      |
 | ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -557,36 +557,40 @@ Creates a saved view, or changes one (view + version): a name, what it lists (so
 | `layout`     | `list`, `board`, `table`, `calendar`, `gallery` |                                                                                                                                            |
 | `columns`    | list of string                                  |                                                                                                                                            |
 | `star`       | boolean                                         |                                                                                                                                            |
+| `pin`        | boolean                                         |                                                                                                                                            |
+| `export`     | `csv`                                           |                                                                                                                                            |
 | `client_ref` | string                                          | Idempotency key: sent again within 24 h, the first answer comes back.                                                                      |
 
 ### `update_project`
 
-Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home. Removing stages or unpinning goes to the Review inbox.
+Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).
 
-| Argument             | Type                         | Notes                                                                 |
-| -------------------- | ---------------------------- | --------------------------------------------------------------------- |
-| `project` (required) | string                       |                                                                       |
-| `name`               | string                       |                                                                       |
-| `summary`            | string                       |                                                                       |
-| `status`             | `active`, `done`, `archived` |                                                                       |
-| `deadline`           | ISO 8601 instant or null     |                                                                       |
-| `main_page`          | string or null               | `doc:<id>`, or null for none.                                         |
-| `stages`             | list of object               | Rename (with id), add (without) or reorder (all ids).                 |
-| `remove_stages`      | list of id                   |                                                                       |
-| `pin`                | list of object               |                                                                       |
-| `unpin`              | list of id                   |                                                                       |
-| `client_ref`         | string                       | Idempotency key: sent again within 24 h, the first answer comes back. |
+| Argument             | Type                         | Notes                                                                                                |
+| -------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `project` (required) | string                       |                                                                                                      |
+| `name`               | string                       |                                                                                                      |
+| `summary`            | string                       |                                                                                                      |
+| `status`             | `active`, `done`, `archived` |                                                                                                      |
+| `deadline`           | ISO 8601 instant or null     |                                                                                                      |
+| `main_page`          | string or null               | `doc:<id>`, or null for none.                                                                        |
+| `stages`             | list of object               | Rename (with id), add (without) or reorder (all ids).                                                |
+| `remove_stages`      | list of id                   |                                                                                                      |
+| `pin`                | list of object               |                                                                                                      |
+| `unpin`              | list of id                   |                                                                                                      |
+| `milestones`         | list of object               | No id: add (name, due_on YYYY-MM-DD). id: change or remove. tasks: the project's tasks to put in it. |
+| `assistant`          | `off`, `on`                  |                                                                                                      |
+| `client_ref`         | string                       | Idempotency key: sent again within 24 h, the first answer comes back.                                |
 
 ### `get_history`
 
-What changed and when, with who (and via which agent): a project's timeline (at: a point's snapshot of stages and tasks), a page's versions (version: that version's Markdown), open comments and suggestions, or a task's progress notes.
+What changed and when, with who (and via which agent): a project's timeline (at: a point's snapshot of stages and tasks), a page's versions (version: that version's Markdown), open comments and suggestions, or a task's progress notes. Also lists: "recent" (opened and changed lately), "trash" (pages in Trash), "changes" or `team:<id>` (a team's recent changes).
 
-| Argument        | Type    | Notes                                 |
-| --------------- | ------- | ------------------------------------- |
-| `of` (required) | string  | project:, doc: or task:.              |
-| `version`       | integer | Pages: one version's content.         |
-| `at`            | string  | Projects: the ref of a history point. |
-| `limit`         | integer | Default 30.                           |
+| Argument        | Type    | Notes                                                               |
+| --------------- | ------- | ------------------------------------------------------------------- |
+| `of` (required) | string  | project:, doc:, task:, "recent", "trash", "changes" or `team:<id>`. |
+| `version`       | integer | Pages: one version's content.                                       |
+| `at`            | string  | Projects: the ref of a history point.                               |
+| `limit`         | integer | Default 30.                                                         |
 
 ### `save_template`
 
@@ -608,7 +612,7 @@ Saves a project template (kind "project": from_project, or tasks with estimates 
 
 ### `organize`
 
-Up to 25 changes: create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: a page; add: tag names, remove: tag ids). Deleting a list, tag or folder goes through propose_changes. search finds lists, tags and folders by name.
+Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. Deleting goes through propose_changes.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -672,7 +676,7 @@ For pages longer than create_doc takes (a lecture transcript, a long brief): sen
 
 ### `get_work_patterns`
 
-What the planner learned (real durations, good hours, a day's load), planned against done by weekday, focus and the running timer, where time went, the last two weeks' unfinished sessions (check in or roll forward: reschedule_sessions), subscribed calendars and routines (frames, habits, places).
+What the planner learned (durations, good hours, load), planned against done by weekday, focus and the running timer, where time went, unfinished sessions of the last two weeks (reschedule_sessions checks in or rolls forward), subscribed calendars and routines.
 
 | Argument | Type    | Notes       |
 | -------- | ------- | ----------- |
@@ -680,7 +684,7 @@ What the planner learned (real durations, good hours, a day's load), planned aga
 
 ### `what_if`
 
-Compares the plan as things are with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting, before and after. 10 a minute.
+Compares the plan now with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting. 10 a minute.
 
 | Argument    | Type           | Notes      |
 | ----------- | -------------- | ---------- |
@@ -692,7 +696,7 @@ Compares the plan as things are with a scenario (added tasks, days off, a moved 
 
 ### `log_focus`
 
-Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref makes a retry the same record.
+Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref dedupes retries.
 
 | Argument             | Type             | Notes                                                                 |
 | -------------------- | ---------------- | --------------------------------------------------------------------- |
@@ -706,7 +710,7 @@ Records a finished focus session (started_at, ended_at, optionally a task), or a
 
 ### `set_focus_timer`
 
-Starts the focus timer on all the person's devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.
+Starts the focus timer on the person's devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.
 
 | Argument            | Type            | Notes                                                                 |
 | ------------------- | --------------- | --------------------------------------------------------------------- |
@@ -717,7 +721,7 @@ Starts the focus timer on all the person's devices (rhythm "25-5", "50-10", "45-
 
 ### `manage_routines`
 
-Up to 25 changes to routines: add or change a frame (part of the week kept for something), habit or place, or skip or unskip a frame's date. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event's location), travel_minutes, mode, peak_minutes. Deleting: propose_changes; habit sessions: plan_schedule.
+Up to 25 routine changes: add or change a frame (kept time), habit or place, or skip or unskip a frame's date. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (location text), travel_minutes, mode, peak_minutes. Deleting: propose_changes; habit sessions: plan_schedule.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -726,7 +730,7 @@ Up to 25 changes to routines: add or change a frame (part of the week kept for s
 
 ### `update_planner_settings`
 
-Changes any planner setting (hours, time zones, calendar sets, pinned teammates, buffers, travel, alerts, session reminders, notices, digest emails, learning), keep_originals, and calendars: subscribe by link (Orbyn fetches it) or unsubscribe. Undo puts it back.
+Changes any planner setting (hours, time zones, calendar sets, teammates, buffers, travel, alerts, reminders, notices, digests, learning), keep_originals, and calendars: subscribe by link, change one (id; refresh fetches it now) or unsubscribe. Undoable.
 
 | Argument         | Type       | Notes                                                                 |
 | ---------------- | ---------- | --------------------------------------------------------------------- |
@@ -941,11 +945,12 @@ Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, l
 
 ### `add_file`
 
-Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file line, or as the page's original. PDF, Word, PowerPoint, pictures, text; typed by its bytes; undoable.
+Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file line, or as the page's original; or to a project (a new page in it holding the file, as the app's Pages & files does). PDF, Word, PowerPoint, pictures, text; typed by its bytes; undoable.
 
 | Argument             | Type               | Notes                                                                 |
 | -------------------- | ------------------ | --------------------------------------------------------------------- |
-| `doc` (required)     | string             |                                                                       |
+| `doc`                | string             |                                                                       |
+| `project`            | string             |                                                                       |
 | `name` (required)    | string             |                                                                       |
 | `content` (required) | string             |                                                                       |
 | `keep`               | `line`, `original` | Default "line".                                                       |
@@ -1021,6 +1026,7 @@ Catalog version: `2026-09-27`.
 
 ### 2026-09-27
 
+- Every feature, no gaps (H6b), still 60 tools: organize takes page changes (aliases: other names; fold; link_mention; extract: lines to a new page, linked where they were; merge: into another page, this one to Trash; remove_source), your own fields (create_field, change_field, set_field on pages and projects; deleting one is propose_changes delete what "field") and running a team, always asked first (create_team, rename_team, invite, remove_member, set_role, meeting_budget; the Review inbox action team.admin; deleting a team and its agent policy stay people only). update_project adds, changes, fills and removes milestones (removing is a delete: what "milestone" in propose_changes too) and keeps a project out of AI (assistant "off"; "on" always asks the person, and its proposal doesn't name the project to the agent). get_project lists milestones. save_view pins a view in the sidebar (pin) and returns a saved view's rows as CSV text (export "csv", in csv). get_history lists "recent" (opened and changed lately), "trash" and a team's recent changes ("changes" or `team:<id>)`. propose_changes restore_doc brings a page back from Trash (emptying it stays the person's). fetch shows a page's Info (other names, tags, links here, versions, folds, fields with ids) and a project's fields. add_file takes project (a new page in it holding the file). update_planner_settings subscribe with id changes a subscribed calendar (link, name, colour, kind, busy, shown) or refreshes it (refresh). Every change is undoable except a new team and keeping a project out of AI. Every command in Orbyn's command list maps to a tool or a written reason.
 - Every feature, no gaps (H6a), by extending tools (no new ones): create_tasks and update_tasks take alerts, colour, web links, busy or free and a meeting link; update_tasks also status, all-day, targets (target_value, current_value, value_unit), a repeat change or stop (rrule, null), a new parent or top level (parent, null; cycles refused), and scope this or following with occurrence for one occurrence of a repeating item or it and later ones (one occurrence's change can be undone). edit_checklist moves steps (move: id, position). reschedule_sessions pins, unpins, duplicates, rolls forward, starts and checks in sessions (outcome done, more with more_minutes, or skipped), attributed to the agent, with undo. update_planner_settings changes every planner setting (time zone, extra time zones, calendar sets, pinned teammates, default alerts, planner notices, buffer scope, travel padding, counting sessions as spent, session reminders, digest emails), keep_originals, and subscribes to a calendar by link (Orbyn fetches it after its public-address check) or unsubscribes; get_work_patterns lists subscribed calendars (never their links) and gives each unfinished session's id and whether it was checked in. create_doc kind agenda writes a day's agenda page from the calendar (today's again, keeping Notes). ack_inbox takes notices (ids or "all") and marks the person's in-app notices read: mark_notifications_read is folded into it and no longer listed, but still answers when called. Answer schemas no longer repeat additionalProperties: false on every object.
 - One call, whole job (H5): apply_plan (core) takes up to 50 steps of write tools ({id, tool, args}: create_doc, append_doc with finish, edit_doc, create_tasks, update_tasks, complete_tasks, edit_checklist, create_project, update_project, link, organize, tasks_from_doc, comment_on_doc, update_study, schedule_sessions, save_source, save_record, add_progress). Every step is checked first (tool, access, schema, spaces, $refs only to earlier steps) and a wrong plan is refused whole with a report per step. Arguments may use earlier results ("$notes.id", ".uri", ".ids", `".lines.<anchor>"`, "$proj.stages[0].id", or "{$notes.uri}" inside words). The steps run in one transaction, all or nothing; anything on the ask-first list (or a connection that asks or suggests) asks once for the whole plan: in the chat, by URL, or as one Review inbox proposal that makes the whole plan when approved. Every step is recorded with one job id: undo({job}) takes the plan back. client_ref applies to the whole plan. New prompts: lecture_to_notes, research_brief, exam_prep and meeting_to_actions (the agent does the thinking and applies it with one apply_plan call). client_ref's description is shorter.
 - Study from anything, practice first (no AI of Orbyn's: the agent writes and judges, Orbyn stores and schedules). update_study cards adds question/answer, cloze and picture cards to a page's Cards section or a new deck, each linked to the notes line it came from (from: `doc:<id>#<anchor>`, kept as a [src: …](orbyn://doc/…#…) link on the card's line); undo removes them. get_study queue now quizzes in practice order (cards marked needs work, then the ones most often answered again, then due, then new; decks interleaved), answers hidden, with left_today; get_study card gives one card's answer once the person has tried; get_study explain returns the person's own notes lines and cards with answers on a topic or cards so the agent can judge an explanation, and update_study needs_work records one that fell short. get_study lists what the person keeps getting wrong (wrong) and each card's source (from) and picture. update_study exam names or changes an exam (title, date, pages, target), and exam.plan books its revision sessions in the same call.
@@ -1056,4 +1062,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 217 of the app's signed-in routes are covered by tools, 235 are never for agents, and 0 are still to come.
+Routes: 249 of the app's signed-in routes are covered by tools, 204 are never for agents, and 0 are still to come.

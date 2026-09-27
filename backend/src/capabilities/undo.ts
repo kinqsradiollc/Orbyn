@@ -1,4 +1,4 @@
-import { fail } from "@orbyn/core";
+import { fail, type TeamRole } from "@orbyn/core";
 import type { Db } from "../db/pool.js";
 import { actAs } from "../lib/actor.js";
 import { audit } from "../lib/audit.js";
@@ -34,6 +34,23 @@ import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
 import { savePrefs } from "../modules/planner/routines.js";
 import { restoreSubscription } from "../modules/planner/subscriptions.js";
+import { setFolds } from "../modules/docs/structure.js";
+import {
+  deleteField,
+  requireField,
+  setFieldValue,
+} from "../modules/views/fields.js";
+import {
+  changeMilestone,
+  removeMilestone,
+} from "../modules/projects/milestones.js";
+import {
+  addMember,
+  changeRole,
+  removeMember,
+  renameTeam,
+  setMeetingBudget,
+} from "../modules/teams/admin.js";
 import {
   deleteView,
   everySpace,
@@ -212,7 +229,53 @@ export type UndoOp =
   /** A calendar subscription it removed: add it back as it was. */
   | { op: "subscription.restore"; row: Record<string, unknown> }
   /** The keep-originals setting it changed: put it back. */
-  | { op: "originals.set"; keep: boolean };
+  | { op: "originals.set"; keep: boolean }
+  /** A page's other names it changed (H6b): put them back. */
+  | { op: "aliases.set"; doc_id: string; aliases: string[] }
+  /** The headings the person had folded on a page (H6b). */
+  | { op: "folds.set"; doc_id: string; block_ids: string[] }
+  /** A field it made (H6b): remove it (and any values set since). */
+  | { op: "field.delete"; id: string }
+  /** A field it changed: its name, choices and calendar switch as they were. */
+  | {
+      op: "field.restore";
+      id: string;
+      fields: { name: string; options: string[]; on_calendar: boolean };
+    }
+  /** A field value it set: the value as it was (null: none). */
+  | {
+      op: "field.value";
+      field_id: string;
+      target: "page" | "project";
+      target_id: string;
+      value: unknown;
+    }
+  /** A milestone it added (H6b): remove it. */
+  | { op: "milestone.delete"; id: string; project_id: string }
+  /** A milestone it changed: as it was. */
+  | {
+      op: "milestone.restore";
+      id: string;
+      project_id: string;
+      fields: { name: string; due_on: string; done: boolean };
+    }
+  /** Tasks it put in (or took out of) milestones: back where they were. */
+  | { op: "milestone.tasks"; moves: { id: string; from: string | null }[] }
+  /** A team's name or meeting budget it changed (H6b): as it was. */
+  | {
+      op: "team.set";
+      id: string;
+      name?: string;
+      meeting_budget_minutes?: number | null;
+    }
+  /** Someone it added, removed or re-roled in a team: role as it was (null: not in it). */
+  | { op: "team.member"; id: string; user_id: string; role: string | null }
+  /** A subscribed calendar it changed (H6b): its settings as they were. */
+  | { op: "subscription.update"; id: string; row: Record<string, unknown> }
+  /** A view it pinned or unpinned in the sidebar (H6b). */
+  | { op: "view.pin"; id: string; pinned: boolean }
+  /** A source it took off a page (H6b): put its lines' uses back. */
+  | { op: "source.relink"; id: string; doc_id: string; lines: string[] };
 
 /** Undo is kept this long after the change. */
 export const UNDO_DAYS = 30;
@@ -611,6 +674,145 @@ export async function runUndo(
         break;
       case "exam.restore":
         await restoreExam(db, u.id, op.key, op.was);
+        break;
+      case "aliases.set": {
+        await requireDoc(db, op.doc_id, u, "items:write");
+        await db.query("UPDATE docs SET aliases = $2 WHERE id = $1", [
+          op.doc_id,
+          op.aliases,
+        ]);
+        break;
+      }
+      case "folds.set":
+        await setFolds(db, u.id, op.doc_id, op.block_ids);
+        break;
+      case "field.delete": {
+        // Already gone is as undone as it gets.
+        const there = (
+          await db.query("SELECT 1 FROM custom_fields WHERE id = $1", [op.id])
+        ).rowCount;
+        if (there) await deleteField(db, u, op.id);
+        break;
+      }
+      case "field.restore":
+        await requireField(db, op.id, u, true);
+        await db.query(
+          `UPDATE custom_fields SET name = $2, options = $3::jsonb,
+             on_calendar = $4, updated_at = now() WHERE id = $1`,
+          [
+            op.id,
+            op.fields.name,
+            JSON.stringify(op.fields.options),
+            op.fields.on_calendar,
+          ],
+        );
+        break;
+      case "field.value":
+        await setFieldValue(db, u, op.field_id, {
+          target: op.target,
+          target_id: op.target_id,
+          value: op.value as never,
+        });
+        break;
+      case "milestone.delete": {
+        const there = (
+          await db.query("SELECT 1 FROM project_milestones WHERE id = $1", [
+            op.id,
+          ])
+        ).rowCount;
+        if (there) await removeMilestone(db, u, op.project_id, op.id);
+        break;
+      }
+      case "milestone.restore":
+        await changeMilestone(db, u, op.project_id, op.id, op.fields);
+        break;
+      case "milestone.tasks":
+        for (const m of op.moves) {
+          const item = await lockItem(db, m.id).catch(() => null);
+          if (!item) continue;
+          await requireItemAccess(u, item, "items:write", db);
+          await db.query(
+            `UPDATE items SET milestone_id = $2, version = version + 1, updated_at = now()
+              WHERE id = $1`,
+            [m.id, m.from],
+          );
+        }
+        break;
+      case "team.set":
+        if (op.name !== undefined) await renameTeam(db, u, op.id, op.name);
+        if (op.meeting_budget_minutes !== undefined)
+          await setMeetingBudget(db, u, op.id, op.meeting_budget_minutes);
+        break;
+      case "team.member": {
+        const now = (
+          await db.query<{ role: string }>(
+            "SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2",
+            [op.id, op.user_id],
+          )
+        ).rows[0];
+        if (op.role === null) {
+          if (now) await removeMember(db, u, op.id, op.user_id);
+        } else if (now) {
+          if (now.role !== op.role)
+            await changeRole(db, u, op.id, op.user_id, op.role as TeamRole);
+        } else {
+          const email = (
+            await db.query<{ email: string }>(
+              "SELECT email FROM users WHERE id = $1",
+              [op.user_id],
+            )
+          ).rows[0]?.email;
+          if (email)
+            await addMember(db, u, op.id, {
+              email,
+              role: op.role as TeamRole,
+            });
+        }
+        break;
+      }
+      case "subscription.update": {
+        const r = op.row;
+        await db.query(
+          `UPDATE calendar_subscriptions SET url = $3, name = $4, color = $5,
+             kind = $6, busy = $7, all_day_busy = $8, visible = $9, sharing = $10,
+             reminder_minutes = $11,
+             etag = CASE WHEN url <> $3 THEN NULL ELSE etag END,
+             last_fetched_at = CASE WHEN url <> $3 THEN NULL ELSE last_fetched_at END
+           WHERE id = $1 AND user_id = $2`,
+          [
+            op.id,
+            u.id,
+            r.url,
+            r.name,
+            r.color,
+            r.kind,
+            r.busy,
+            r.all_day_busy,
+            r.visible,
+            r.sharing,
+            r.reminder_minutes,
+          ],
+        );
+        break;
+      }
+      case "view.pin":
+        await db.query(
+          op.pinned
+            ? `INSERT INTO saved_view_pins (user_id, view_id) VALUES ($1, $2)
+               ON CONFLICT DO NOTHING`
+            : "DELETE FROM saved_view_pins WHERE user_id = $1 AND view_id = $2",
+          [u.id, op.id],
+        );
+        break;
+      case "source.relink":
+        await requireDoc(db, op.doc_id, u, "items:write");
+        for (const line of op.lines)
+          await db.query(
+            `INSERT INTO source_uses (source_id, doc_id, block_id)
+             SELECT $1, $2, $3 WHERE EXISTS (SELECT 1 FROM sources WHERE id = $1)
+             ON CONFLICT DO NOTHING`,
+            [op.id, op.doc_id, line],
+          );
         break;
       case "view.restore": {
         const view = await findView(db, everySpace(u.id), op.id, true);

@@ -8,6 +8,7 @@ import { lockItem } from "../modules/items/service.js";
 import { applyChange, staleness } from "../modules/proposals/service.js";
 import { announceDocChange } from "../modules/docs/live.js";
 import { pool } from "../db/pool.js";
+import { syncSavedPages } from "../modules/study/service.js";
 import { CapabilityError, type CapabilityContext } from "./registry.js";
 import { appUrl } from "./refs.js";
 import { entryOf } from "./shared.js";
@@ -275,6 +276,23 @@ export async function applyDirect(
         ? await snapshot(db, "stage", dropped)
         : null;
       await applyChange(db, actor, c);
+      // A page back from Trash (H6b): undo sends it back there.
+      if (c.action === "page.restore" && c.target_id) {
+        const back = (
+          await db.query<{ version: number }>(
+            "SELECT version FROM docs WHERE id = $1",
+            [c.target_id],
+          )
+        ).rows[0];
+        const pageId = c.target_id;
+        undo.push({ op: "doc.trash", doc_id: pageId, version: back.version });
+        after.push(
+          () => announceDocChange(pool, pageId, back.version, "agent"),
+          () => syncSavedPages(pageId),
+        );
+        done = entryOf("doc", pageId, c.title, back.version, c.headline);
+        break;
+      }
       if (project && c.target_id) {
         const now = (
           await db.query<{ updated_at: Date }>(

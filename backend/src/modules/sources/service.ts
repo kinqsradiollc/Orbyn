@@ -59,3 +59,22 @@ export async function pageSources(
     )
   ).rows.map(asSource);
 }
+
+/**
+ * Take a source off a page (its lines' uses of it go), in `db`'s
+ * transaction. The source itself stays (other pages may use it). Returns
+ * the lines that used it, for undo; empty when it wasn't on the page.
+ */
+export async function removePageSource(
+  db: Queryable,
+  pageId: string,
+  sourceId: string,
+): Promise<string[]> {
+  return (
+    await db.query<{ block_id: string }>(
+      `DELETE FROM source_uses WHERE doc_id = $1 AND source_id = $2
+       RETURNING block_id`,
+      [pageId, sourceId],
+    )
+  ).rows.map((r) => r.block_id);
+}

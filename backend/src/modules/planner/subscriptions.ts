@@ -407,7 +407,7 @@ export async function externalEntries(
   );
 }
 
-async function ownSubscription(db: Db, id: string, userId: string) {
+export async function ownSubscription(db: Db, id: string, userId: string) {
   const row = (
     await db.query<CalendarSubscription>(
       `SELECT ${COLUMNS} FROM calendar_subscriptions WHERE id = $1 AND user_id = $2`,
@@ -527,6 +527,52 @@ export async function restoreSubscription(
   );
 }
 
+/**
+ * Change a subscribed calendar (link, name, colour, kind, busy, shown,
+ * sharing, reminders): the route and agents share it. A new link must reach
+ * a public address and is fetched again from scratch (the caller refreshes
+ * it); `current` is the calendar as it was, for undo.
+ */
+export async function updateSubscription(
+  db: Db,
+  userId: string,
+  id: string,
+  d: z.output<typeof calendarSubscriptionUpdate>,
+) {
+  const current = await ownSubscription(db, id, userId);
+  if (d.url && d.url !== current.url) await assertPublicUrl(d.url, "calendar");
+  // A new link is fetched again from scratch soon; its old events stay until then.
+  const moved = !!d.url && d.url !== current.url;
+  const updated = (
+    await db.query<CalendarSubscription>(
+      `UPDATE calendar_subscriptions SET url = $3, name = $4, color = $5, busy = $6,
+         kind = $8, all_day_busy = $9, visible = $10, sharing = $11, reminder_minutes = $12,
+         etag = CASE WHEN $7 THEN NULL ELSE etag END,
+         last_modified = CASE WHEN $7 THEN NULL ELSE last_modified END,
+         content_hash = CASE WHEN $7 THEN NULL ELSE content_hash END,
+         last_fetched_at = CASE WHEN $7 THEN NULL ELSE last_fetched_at END
+       WHERE id = $1 AND user_id = $2 RETURNING ${COLUMNS}`,
+      [
+        current.id,
+        userId,
+        d.url ?? current.url,
+        d.name ?? current.name,
+        d.color ?? current.color,
+        d.busy ?? current.busy,
+        moved,
+        d.kind ?? current.kind,
+        d.all_day_busy ?? current.all_day_busy,
+        d.visible ?? current.visible,
+        d.sharing ?? current.sharing,
+        d.reminder_minutes === undefined
+          ? current.reminder_minutes
+          : d.reminder_minutes,
+      ],
+    )
+  ).rows[0];
+  return { current, updated, moved };
+}
+
 export async function subscriptionRoutes(app: FastifyInstance) {
   app.get("/me/calendar-subscriptions", async (r) => {
     const u = await authenticate(r);
@@ -548,38 +594,12 @@ export async function subscriptionRoutes(app: FastifyInstance) {
   app.put("/me/calendar-subscriptions/:id", async (r) => {
     const u = await authenticate(r);
     const d = calendarSubscriptionUpdate.parse(r.body);
-    const current = await ownSubscription(pool, idParam(r), u.id);
-    if (d.url && d.url !== current.url)
-      await assertPublicUrl(d.url, "calendar");
-    // A new link is fetched again from scratch soon; its old events stay until then.
-    const moved = !!d.url && d.url !== current.url;
-    const updated = (
-      await pool.query<CalendarSubscription>(
-        `UPDATE calendar_subscriptions SET url = $3, name = $4, color = $5, busy = $6,
-           kind = $8, all_day_busy = $9, visible = $10, sharing = $11, reminder_minutes = $12,
-           etag = CASE WHEN $7 THEN NULL ELSE etag END,
-           last_modified = CASE WHEN $7 THEN NULL ELSE last_modified END,
-           content_hash = CASE WHEN $7 THEN NULL ELSE content_hash END,
-           last_fetched_at = CASE WHEN $7 THEN NULL ELSE last_fetched_at END
-         WHERE id = $1 AND user_id = $2 RETURNING ${COLUMNS}`,
-        [
-          current.id,
-          u.id,
-          d.url ?? current.url,
-          d.name ?? current.name,
-          d.color ?? current.color,
-          d.busy ?? current.busy,
-          moved,
-          d.kind ?? current.kind,
-          d.all_day_busy ?? current.all_day_busy,
-          d.visible ?? current.visible,
-          d.sharing ?? current.sharing,
-          d.reminder_minutes === undefined
-            ? current.reminder_minutes
-            : d.reminder_minutes,
-        ],
-      )
-    ).rows[0];
+    const { current, updated, moved } = await updateSubscription(
+      pool,
+      u.id,
+      idParam(r),
+      d,
+    );
     if (moved) {
       await refreshSubscription(current.id);
       return ownSubscription(pool, current.id, u.id);

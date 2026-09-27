@@ -1,6 +1,11 @@
 import { z } from "zod";
 import {
+  milestoneInput,
+  milestoneUpdate,
   FAVOURITE_KINDS,
+  FIELD_TARGETS,
+  FIELD_TYPES,
+  TEAM_ROLES,
   parseDoc,
   serializeDoc,
   templateFromPage,
@@ -19,6 +24,12 @@ import {
   requireProject,
   updateProject,
 } from "../modules/projects/service.js";
+import {
+  addMilestone,
+  changeMilestone,
+  placeTasks,
+} from "../modules/projects/milestones.js";
+import { setAssistantOff } from "../modules/projects/assistant.js";
 import {
   projectCheckpoints,
   projectSnapshot,
@@ -61,7 +72,7 @@ import {
 import { announceTo } from "../modules/presence/live.js";
 import { listProofs } from "../modules/followthrough/proof.js";
 import { announceDocChange } from "../modules/docs/live.js";
-import { READ, teamFilter } from "./common.js";
+import { READ, projectId, teamFilter } from "./common.js";
 import {
   both,
   clean,
@@ -95,6 +106,7 @@ import {
   dbOf,
   cantWait,
   destination,
+  emailField,
   finishWrite,
   idField,
   isoTime,
@@ -103,6 +115,13 @@ import {
   type DoneEntry,
 } from "./write.js";
 import { applyDirect } from "./direct.js";
+import { historyList, isHistoryList } from "./history-lists.js";
+import {
+  ORGANIZE_MORE,
+  organizeMore,
+  type MoreChange,
+  type MoreState,
+} from "./organize-more.js";
 import type { ReviewChangeInput } from "@orbyn/core";
 
 /**
@@ -121,7 +140,7 @@ export const updateProjectCapability = defineCapability({
   name: "update_project",
   title: "Change a project",
   description:
-    "Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home. Removing stages or unpinning goes to the Review inbox.",
+    "Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).",
   input: z
     .object({
       project: z.string().trim().min(1).max(300),
@@ -161,6 +180,25 @@ export const updateProjectCapability = defineCapability({
         .max(10)
         .optional(),
       unpin: z.array(idField).max(20).optional(),
+      milestones: z
+        .array(
+          z
+            .object({
+              id: idField.optional(),
+              name: z.string().trim().min(1).max(120).optional(),
+              due_on: z.string().max(10).optional(),
+              done: z.boolean().optional(),
+              tasks: z.array(z.string().trim().max(300)).max(50).optional(),
+              remove: z.boolean().optional(),
+            })
+            .strict(),
+        )
+        .max(20)
+        .optional()
+        .describe(
+          "No id: add (name, due_on YYYY-MM-DD). id: change or remove. tasks: the project's tasks to put in it.",
+        ),
+      assistant: z.enum(["off", "on"]).optional(),
       client_ref: clientRefInput,
     })
     .strict(),
@@ -172,6 +210,17 @@ export const updateProjectCapability = defineCapability({
   tier: "W2",
   async run(ctx, a) {
     refuseSecrets(a.name, a.summary);
+    for (const m of a.milestones ?? []) refuseSecrets(m.name);
+    if (a.assistant === "on") {
+      const { project: _p, assistant: _a, client_ref: _c, ...rest } = a;
+      if (Object.values(rest).some((v) => v !== undefined))
+        throw new CapabilityError(
+          "INVALID",
+          'assistant: "on" goes on its own.',
+          "Ask for it alone; once the person lets the project back in, change the rest.",
+        );
+      return letBackIn(ctx, a.project);
+    }
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
     const seen = await seeProject(ctx, a.project);
@@ -275,6 +324,131 @@ export const updateProjectCapability = defineCapability({
       if (a.pin?.length && !done.length)
         done.push(entryOf("project", project.id, title, null, "Pinned links"));
     }
+    // Milestones (H6b): added, changed and filled in like the rest;
+    // removing one is a delete, made below with removing stages.
+    for (const m of a.milestones ?? []) {
+      const row = m.id
+        ? (
+            await db.query<{ name: string }>(
+              "SELECT name FROM project_milestones WHERE id = $1 AND project_id = $2",
+              [m.id, project.id],
+            )
+          ).rows[0]
+        : null;
+      if (m.id && !row)
+        throw new CapabilityError(
+          "INVALID",
+          "That milestone isn't in this project.",
+          "get_project lists the project's milestones with their ids.",
+        );
+      if (m.remove) {
+        if (!row)
+          throw new CapabilityError(
+            "INVALID",
+            "Removing needs the milestone's id.",
+          );
+        review.push(
+          actionChange({
+            action: "delete",
+            target_id: m.id!,
+            title,
+            team_id: seen.team_id,
+            headline: `Remove the milestone ${quoted(row.name)} from ${quoted(title)} (its tasks stay)`,
+            rows: [{ label: "Milestone", before: row.name, after: null }],
+            input: { kind: "milestone", id: m.id!, parent_id: project.id },
+          }),
+        );
+        continue;
+      }
+      if (where === "review") throw cantWait(ctx, seen.team_id);
+      const tasks = [];
+      for (const t of m.tasks ?? []) tasks.push((await seeItem(ctx, t)).id);
+      const moves = (
+        await db.query<{ id: string; from: string | null }>(
+          `SELECT id, milestone_id AS "from" FROM items WHERE id = ANY ($1::uuid[])`,
+          [tasks],
+        )
+      ).rows;
+      let id = m.id;
+      if (!id) {
+        const d = milestoneInput.safeParse({
+          name: m.name,
+          due_on: m.due_on,
+          item_ids: tasks,
+        });
+        if (!d.success)
+          throw new CapabilityError(
+            "INVALID",
+            "A new milestone needs a name and due_on (YYYY-MM-DD).",
+          );
+        id = await addMilestone(db, actor, project.id, d.data);
+        undo.push({ op: "milestone.delete", id, project_id: project.id });
+        done.push(
+          entryOf(
+            "project",
+            project.id,
+            title,
+            null,
+            `Added the milestone ${quoted(d.data.name)}`,
+          ),
+        );
+      } else {
+        const d = milestoneUpdate.safeParse({
+          name: m.name,
+          due_on: m.due_on,
+          done: m.done,
+        });
+        if (!d.success)
+          throw new CapabilityError("INVALID", "due_on is a day: YYYY-MM-DD.");
+        if (Object.values(d.data).some((v) => v !== undefined)) {
+          const was = await changeMilestone(db, actor, project.id, id, d.data);
+          undo.push({
+            op: "milestone.restore",
+            id,
+            project_id: project.id,
+            fields: was,
+          });
+        }
+        if (tasks.length)
+          await placeTasks(db, actor, project.id, seen.team_id, tasks, id);
+        done.push(
+          entryOf(
+            "project",
+            project.id,
+            title,
+            null,
+            `Changed the milestone ${quoted(m.name ?? row!.name)}`,
+          ),
+        );
+      }
+      if (moves.length) undo.push({ op: "milestone.tasks", moves });
+    }
+    // Keeping it out of AI (H6b): the agent may; it can't let it back in.
+    if (a.assistant === "off") {
+      if (where === "review")
+        review.push(
+          actionChange({
+            action: "project.assistant",
+            target_id: project.id,
+            title,
+            team_id: seen.team_id,
+            headline: `Keep ${quoted(title)} out of AI and agents`,
+            input: { id: project.id, off: true },
+          }),
+        );
+      else {
+        await setAssistantOff(db, actor, project.id, true);
+        done.push(
+          entryOf(
+            "project",
+            project.id,
+            title,
+            null,
+            "Kept out of AI: this connection can't see it now, and only the person can let it back in (not undoable here)",
+          ),
+        );
+      }
+    }
     // Removing stages (and unpinning) waits for the person.
     if (a.remove_stages?.length) {
       const drop = new Set(a.remove_stages);
@@ -353,6 +527,63 @@ export const updateProjectCapability = defineCapability({
   },
 });
 
+/**
+ * Letting a kept-out project back into AI and agents (H6b): always the
+ * person's call, whatever the connection's trust. Asked in the chat when
+ * the app can (made once they say yes), otherwise a Review inbox proposal
+ * whose summary doesn't name it (the agent can't see the project).
+ */
+async function letBackIn(ctx: CapabilityContext, input: string) {
+  const params = new Params();
+  const scope = { ...scopeFor(ctx.spaces, params), ai: false };
+  const row = (
+    await ctx.db.query<{
+      id: string;
+      name: string;
+      team_id: string | null;
+      assistant_off: boolean;
+    }>(
+      `SELECT p.id, p.name, p.team_id, p.assistant_off FROM projects p
+        WHERE p.id = ${params.add(projectId(input))}
+          AND ${visibleOwned("p", "user_id", scope)}`,
+      params.values,
+    )
+  ).rows[0];
+  if (!row) throw notReachable();
+  if (!row.assistant_off)
+    throw new CapabilityError("INVALID", "That project isn't kept out of AI.");
+  // Reaching the space at all (read-only connections are refused).
+  destination(ctx, row.team_id, "W2");
+  const asking = ctx.asking;
+  if (asking) {
+    if (asking.mode === "collect")
+      asking.reasons.push({
+        kind: "keep_out",
+        text: "it lets a project kept out of AI back in",
+      });
+    await setAssistantOff(dbOf(ctx), actorOf(ctx.principal), row.id, false);
+    return finishWrite(ctx, "Changing a project", {
+      done: [entryOf("project", row.id, row.name, null, "Back in AI")],
+      teamId: row.team_id,
+    });
+  }
+  return finishWrite(ctx, "Changing a project", {
+    done: [],
+    review: [
+      actionChange({
+        action: "project.assistant",
+        target_id: row.id,
+        title: row.name,
+        team_id: row.team_id,
+        headline: `Let ${quoted(row.name)} back into AI and agents`,
+        input: { id: row.id, off: false },
+      }),
+    ],
+    reviewSummary: "Let a project kept out of AI back in",
+    teamId: row.team_id,
+  });
+}
+
 // --- get_history --------------------------------------------------------
 
 const historyEntry = z.object({
@@ -370,7 +601,7 @@ export const getHistory = defineCapability({
   name: "get_history",
   title: "Show history",
   description:
-    "What changed and when, with who (and via which agent): a project's timeline (at: a point's snapshot of stages and tasks), a page's versions (version: that version's Markdown), open comments and suggestions, or a task's progress notes.",
+    "What changed and when, with who (and via which agent): a project's timeline (at: a point's snapshot of stages and tasks), a page's versions (version: that version's Markdown), open comments and suggestions, or a task's progress notes. Also lists: \"recent\" (opened and changed lately), \"trash\" (pages in Trash), \"changes\" or team:<id> (a team's recent changes).",
   input: z
     .object({
       of: z
@@ -378,7 +609,9 @@ export const getHistory = defineCapability({
         .trim()
         .min(1)
         .max(300)
-        .describe("project:, doc: or task:."),
+        .describe(
+          'project:, doc:, task:, "recent", "trash", "changes" or team:<id>.',
+        ),
       version: z
         .number()
         .int()
@@ -425,6 +658,7 @@ export const getHistory = defineCapability({
   mode: "read",
   tier: "R",
   async run(ctx, a) {
+    if (isHistoryList(a.of)) return historyList(ctx, a.of, a.limit);
     const ref = parseRef(a.of);
     const actor = actorOf(ctx.principal);
     const tz = ctx.timezone;
@@ -893,6 +1127,7 @@ async function seeTemplate(ctx: CapabilityContext, id: string) {
 // --- organize -----------------------------------------------------------
 
 const ORGANIZE = [
+  ...ORGANIZE_MORE,
   "create_list",
   "rename_list",
   "create_tag",
@@ -906,9 +1141,9 @@ const ORGANIZE = [
 
 export const organize = defineCapability({
   name: "organize",
-  title: "Organise lists, tags and folders",
+  title: "Organise pages, fields and teams",
   description:
-    "Up to 25 changes: create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: a page; add: tag names, remove: tag ids). Deleting a list, tag or folder goes through propose_changes. search finds lists, tags and folders by name.",
+    "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. Deleting goes through propose_changes.",
   input: z
     .object({
       changes: z
@@ -925,8 +1160,25 @@ export const organize = defineCapability({
                 .enum(FAVOURITE_KINDS)
                 .extract(["doc", "project", "view"])
                 .optional(),
-              add: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+              add: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
               remove: z.array(idField).max(20).optional(),
+              lines: z
+                .array(z.string().trim().min(1).max(65))
+                .max(200)
+                .optional(),
+              to: z.string().trim().max(300).optional(),
+              words: z.string().trim().min(1).max(200).optional(),
+              version: z.number().int().positive().optional(),
+              type: z.enum(FIELD_TYPES).optional(),
+              for: z.enum(FIELD_TARGETS).optional(),
+              value: z
+                .union([z.string().max(500), z.number(), z.boolean(), z.null()])
+                .optional(),
+              calendar: z.boolean().optional(),
+              email: emailField.optional(),
+              person: idField.optional(),
+              role: z.enum(TEAM_ROLES).optional(),
+              minutes: z.number().int().min(30).max(2400).nullable().optional(),
             })
             .strict(),
         )
@@ -936,7 +1188,7 @@ export const organize = defineCapability({
     })
     .strict(),
   output: writeOutput,
-  annotations: ADDS,
+  annotations: EDITS,
   access: "write",
   toolset: "workspace",
   mode: "write",
@@ -948,6 +1200,7 @@ export const organize = defineCapability({
     const skipped: { index: number; reason: string }[] = [];
     const after: (() => Promise<void>)[] = [];
     const teams = new Set<string | null>();
+    const more: MoreState = { done, undo: [], after, review: [] };
     const need = <T>(v: T | undefined, what: string): T => {
       if (v === undefined)
         throw new CapabilityError("INVALID", `This change needs ${what}.`);
@@ -975,6 +1228,23 @@ export const organize = defineCapability({
     for (const [index, c] of a.changes.entries()) {
       try {
         refuseSecrets(c.name, ...(c.add ?? []));
+        if ((ORGANIZE_MORE as readonly string[]).includes(c.do)) {
+          // One change at a time: one that fails leaves nothing behind.
+          await db.query("SAVEPOINT organize_more");
+          try {
+            await organizeMore(ctx, c as MoreChange, more);
+            await db.query("RELEASE SAVEPOINT organize_more");
+          } catch (e) {
+            await db.query("ROLLBACK TO SAVEPOINT organize_more");
+            throw e;
+          }
+          continue;
+        }
+        if (c.do === "tag_page" && c.add?.some((t) => t.length > 40))
+          throw new CapabilityError(
+            "INVALID",
+            "Tag names are 40 characters at most.",
+          );
         if (c.do.startsWith("create_")) {
           const space = teamFilter(c.space ?? "personal");
           const teamId = space && "team" in space ? space.team : null;
@@ -1101,7 +1371,14 @@ export const organize = defineCapability({
           area: "organize",
         },
       );
-    return finishWrite(ctx, "Organising", { done, skipped, after });
+    return finishWrite(ctx, "Organising", {
+      done,
+      skipped,
+      after,
+      undo: more.undo,
+      review: more.review,
+      reviewSummary: "Team changes",
+    });
   },
 });
 

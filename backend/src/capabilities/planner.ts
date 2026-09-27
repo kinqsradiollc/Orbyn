@@ -15,13 +15,16 @@ import {
   whatIfInput,
   CALENDAR_KINDS,
   calendarSubscriptionInput,
+  calendarSubscriptionUpdate,
 } from "@orbyn/core";
 import { assertPublicUrl } from "../lib/netguard.js";
 import {
   addSubscription,
   listSubscriptions,
+  ownSubscription,
   refreshSubscription,
   removeSubscription,
+  updateSubscription,
 } from "../modules/planner/subscriptions.js";
 import { Params, scopeFor, visibleItems } from "../lib/visibility.js";
 import {
@@ -93,7 +96,7 @@ export const getWorkPatterns = defineCapability({
   name: "get_work_patterns",
   title: "How you work",
   description:
-    "What the planner learned (real durations, good hours, a day's load), planned against done by weekday, focus and the running timer, where time went, the last two weeks' unfinished sessions (check in or roll forward: reschedule_sessions), subscribed calendars and routines (frames, habits, places).",
+    "What the planner learned (durations, good hours, load), planned against done by weekday, focus and the running timer, where time went, unfinished sessions of the last two weeks (reschedule_sessions checks in or rolls forward), subscribed calendars and routines.",
   input: z
     .object({ days: z.number().int().min(7).max(90).default(28) })
     .strict(),
@@ -364,7 +367,7 @@ export const whatIfCapability = defineCapability({
   name: "what_if",
   title: "What if…",
   description:
-    "Compares the plan as things are with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting, before and after. 10 a minute.",
+    "Compares the plan now with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting. 10 a minute.",
   input: z
     .object({
       days: z.number().int().min(1).max(14).default(7),
@@ -475,7 +478,7 @@ export const logFocus = defineCapability({
   name: "log_focus",
   title: "Log focus time",
   description:
-    "Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref makes a retry the same record.",
+    "Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref dedupes retries.",
   input: z
     .object({
       task: z.string().trim().max(300).optional(),
@@ -565,7 +568,7 @@ export const setFocusTimer = defineCapability({
   name: "set_focus_timer",
   title: "Start or stop the focus timer",
   description:
-    'Starts the focus timer on all the person\'s devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.',
+    'Starts the focus timer on the person\'s devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.',
   input: z
     .object({
       action: z.enum(["start", "stop"]),
@@ -645,12 +648,12 @@ export const setFocusTimer = defineCapability({
 // --- manage_routines ------------------------------------------------------
 
 const ROUTINE_FIELDS =
-  'frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event\'s location), travel_minutes, mode, peak_minutes.';
+  'frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (location text), travel_minutes, mode, peak_minutes.';
 
 export const manageRoutines = defineCapability({
   name: "manage_routines",
   title: "Frames, habits and places",
-  description: `Up to 25 changes to routines: add or change a frame (part of the week kept for something), habit or place, or skip or unskip a frame's date. Fields: ${ROUTINE_FIELDS} Deleting: propose_changes; habit sessions: plan_schedule.`,
+  description: `Up to 25 routine changes: add or change a frame (kept time), habit or place, or skip or unskip a frame's date. Fields: ${ROUTINE_FIELDS} Deleting: propose_changes; habit sessions: plan_schedule.`,
   input: z
     .object({
       changes: z
@@ -833,16 +836,21 @@ export const updatePlannerSettings = defineCapability({
   name: "update_planner_settings",
   title: "Change planner settings",
   description:
-    "Changes any planner setting (hours, time zones, calendar sets, pinned teammates, buffers, travel, alerts, session reminders, notices, digest emails, learning), keep_originals, and calendars: subscribe by link (Orbyn fetches it) or unsubscribe. Undo puts it back.",
+    "Changes any planner setting (hours, time zones, calendar sets, teammates, buffers, travel, alerts, reminders, notices, digests, learning), keep_originals, and calendars: subscribe by link, change one (id; refresh fetches it now) or unsubscribe. Undoable.",
   input: z
     .object({
       settings: AGENT_PREFS.optional(),
       keep_originals: z.boolean().optional(),
       subscribe: z
         .object({
-          url: z.string().trim().max(1000),
-          name: z.string().trim().min(1).max(80),
+          id: idField.optional(),
+          url: z.string().trim().max(1000).optional(),
+          name: z.string().trim().min(1).max(80).optional(),
           kind: z.enum(CALENDAR_KINDS).optional(),
+          color: z.string().max(9).optional(),
+          busy: z.boolean().optional(),
+          visible: z.boolean().optional(),
+          refresh: z.boolean().optional(),
         })
         .strict()
         .optional(),
@@ -918,9 +926,61 @@ export const updatePlannerSettings = defineCapability({
         change: "Unsubscribed",
       });
     }
-    if (a.subscribe) {
+    if (a.subscribe?.id) {
+      // Changing a subscribed calendar (H6b), or fetching it now: the app's
+      // own service, and its public-address check for a new link.
+      const { id, refresh, ...fields } = a.subscribe;
+      refuseSecrets(fields.name);
+      const current = await ownSubscription(db, id, me).catch(() => null);
+      if (!current) throw notReachable();
+      let title = current.name;
+      if (Object.values(fields).some((v) => v !== undefined)) {
+        const d = calendarSubscriptionUpdate.safeParse(fields);
+        if (!d.success)
+          throw new CapabilityError(
+            "INVALID",
+            d.error.issues[0]?.message ?? "That change isn't valid.",
+          );
+        const r = await updateSubscription(db, me, id, d.data);
+        undo.push({ op: "subscription.update", id, row: { ...r.current } });
+        title = r.updated.name;
+        if (r.moved)
+          after.push(() => refreshSubscription(id).then(() => undefined));
+      }
+      const fetched = current.last_fetched_at
+        ? Date.parse(String(current.last_fetched_at))
+        : 0;
+      // At most once a minute, as the app's own button allows.
+      const fresh = Date.now() - fetched < 60_000;
+      if (refresh && !fresh)
+        after.push(() => refreshSubscription(id).then(() => undefined));
+      done.push({
+        id: `calendar:${id}`,
+        title: cleanTitle(title),
+        url: settingsUrl,
+        version: null,
+        change:
+          [
+            Object.values(fields).some((v) => v !== undefined) ? "Changed" : "",
+            refresh
+              ? fresh
+                ? "fetched under a minute ago, so not again yet"
+                : "fetching it now"
+              : "",
+          ]
+            .filter(Boolean)
+            .join("; ") || "Unchanged",
+      });
+    } else if (a.subscribe) {
       refuseSecrets(a.subscribe.name);
-      const d = calendarSubscriptionInput.parse(a.subscribe);
+      const { refresh: _r, ...asked } = a.subscribe;
+      const parsed = calendarSubscriptionInput.safeParse(asked);
+      if (!parsed.success)
+        throw new CapabilityError(
+          "INVALID",
+          "Subscribing needs url and name (or id, to change a calendar).",
+        );
+      const d = parsed.data;
       // The app's own check: the link must reach a public address. Orbyn
       // fetches it (as for a calendar the person adds), never the agent path.
       await assertPublicUrl(d.url, "calendar");

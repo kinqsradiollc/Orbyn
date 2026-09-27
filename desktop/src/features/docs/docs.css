@@ -3104,9 +3104,19 @@ h4.doc-heading {
   list-style: none;
 }
 .page-info-sources li {
+  position: relative;
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+/* Room on the right for the remove button, top-aligned with the title. */
+.page-info-sources li:has(.page-info-source-remove) {
+  padding-right: 28px;
+}
+.page-info-source-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 .page-info-sources .page-info-link span {
   overflow: hidden;
