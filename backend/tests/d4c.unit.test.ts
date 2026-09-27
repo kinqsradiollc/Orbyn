@@ -422,9 +422,9 @@ test("What's new opens by itself only for a release newer than the one seen", ()
   assert.equal(hasUnseenRelease(null), false, "a new account isn't shown it");
   assert.equal(hasUnseenRelease(newest), false);
   assert.equal(hasUnseenRelease("2000-01-01"), true);
-  // Newest first, each with at least one line.
+  // Newest first (a day can have several releases), each with a line.
   for (let n = 1; n < CHANGELOG.length; n++)
-    assert.ok(CHANGELOG[n - 1].date > CHANGELOG[n].date);
+    assert.ok(CHANGELOG[n - 1].date >= CHANGELOG[n].date);
   for (const r of CHANGELOG)
     assert.ok(r.new.length + r.better.length + r.fixed.length > 0);
   // Plain words: none of the words the product never uses.
