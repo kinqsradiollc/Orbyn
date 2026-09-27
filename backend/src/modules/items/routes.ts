@@ -11,7 +11,7 @@ import {
   parseQuickAdd,
   priorityScore,
   deadlineOf,
-  planningDeadline,
+  fitDeadline,
   progressUpdateInput,
   quickAddInput,
   skipOccurrenceInput,
@@ -132,9 +132,10 @@ const scoreOf = (i: ScoreRow, now: Date, slot: number) => {
   return priorityScore(
     {
       ...task,
-      deadline_at: planningDeadline(
+      deadline_at: fitDeadline(
         deadlineOf(task),
         isoOrNull(i.project_deadline ?? null),
+        now,
       ),
     },
     now,

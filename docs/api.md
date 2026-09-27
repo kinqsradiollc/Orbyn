@@ -2029,12 +2029,12 @@ Everything that happens in Orbyn for you goes to your agents first: each connect
 
 ### Sign in with Orbyn (OAuth)
 
-Apps can also connect by signing in with Orbyn (OAuth 2.1, public clients with PKCE S256, no client secrets). The metadata is at `<APP_URL>/.well-known/oauth-authorization-server`; everything below is also in docs/openapi.yaml.
+Apps can also connect by signing in with Orbyn (OAuth 2.1 with PKCE S256 for every app, no client secrets). An app is a public client (`none`), or, with a client ID metadata document that publishes its keys (`jwks` or `jwks_uri`), signs in with a key (`private_key_jwt`, RFC 7523). A document declaring `client_secret_basic` or `client_secret_post` is served as a public app; any other method is refused by name. The metadata is at `<APP_URL>/.well-known/oauth-authorization-server`; everything below is also in docs/openapi.yaml.
 
 - `GET /oauth/authorize/check?…` — what the consent page shows: the app (verified for a client ID metadata document, unverified for a registered one), `requested_access`, `requested_bookings`, and with a session your spaces and any earlier connection. 30 a minute.
 - `POST /oauth/authorize` `{ request, access, personal?, team_ids?, toolsets?, bookings?, notify_teammates?, hide_outside_content?, expires_in_days? }` → `{ redirect_to }` with a 60-second code. Needs a session; write access or bookings need `POST /me/reauth` in the last 10 minutes (`403 reauth_required`). Sign-ins allowed but never finished don't count towards the 50 connections and are cleared after a day; the limit is checked again when the code is exchanged, so consents given at once can't all finish past it (`invalid_grant`).
 - `POST /oauth/authorize/deny` `{ request }` → `{ redirect_to }` with `error=access_denied`.
-- `POST /oauth/token` (form): `grant_type=authorization_code` (code, redirect_uri, client_id, code_verifier, resource) or `refresh_token`. Access tokens (`oat_`) last an hour and work only at the MCP address; refresh tokens (`ort_`) rotate. A spent refresh token presented again within 60 seconds (twice at most, for retries) gets another pair; after that it counts as copied: the family is revoked, the connection paused and its owner told.
+- `POST /oauth/token` (form): `grant_type=authorization_code` (code, redirect_uri, client_id, code_verifier, resource) or `refresh_token`. An app that signs in with a key adds `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` and `client_assertion` to both: RS256, PS256 or ES256, `iss` = `sub` = its client_id, `aud` the token endpoint (or the issuer), at most an hour long, each `jti` once (`401 invalid_client` otherwise). Access tokens (`oat_`) last an hour and work only at the MCP address; refresh tokens (`ort_`) rotate. A spent refresh token presented again within 60 seconds (twice at most, for retries) gets another pair; after that it counts as copied: the family is revoked, the connection paused and its owner told.
 - `POST /oauth/revoke` (form, RFC 7009): a refresh token takes its family; unknown tokens answer `200`.
 - `POST /oauth/register` (RFC 7591), when `dcr_enabled`: public clients only, 10 an hour per address and 20 a day. Every redirect address must be on one website (or all back to this computer, or all to one app scheme); a list that mixes them is refused with `invalid_redirect_uri`.
 - `POST /me/reauth` `{ password, code? }` or `{ handle, response }` (after `POST /me/reauth/options`) → `{ reauth_until }`. Open during maintenance.
@@ -2313,14 +2313,17 @@ routes below and the `block.*` webhooks carry, besides the session and its task'
 | `POST /blocks/:id/start`      | `{ "from"?: "app" \| "reminder" }` → marks the session started (from 15 minutes before it until it ends; `409` otherwise). Focus mode started on its task while it runs does the same                                                                                                                                                                                              |
 
 `GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
-dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
+dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit, time_zone }`: your sessions for the task, oldest first, past ones
 too (for a repeating task, those for its current occurrence and later ones);
 `planned_minutes` is the time still to come in sessions that end by the deadline (all of it
 without one), and `late_minutes` the time still to come in sessions that end after it.
 `project_deadline` is the deadline of the task's project. `dependent_deadline` is the earliest
 deadline of an open task downstream of this prerequisite. `planning_deadline_at` is the earliest
-of those dates and the task's own deadline; it caps the time that counts as planned and never
-changes `due_at` or `deadline_at`.
+of those dates and the task's own deadline while that date is still ahead; once an earlier
+project or dependent date has passed, it is the task's own deadline again (`fitDeadline` in
+`@orbyn/core`), so "Deadline passed" is only said once the moment the task is due by has passed.
+It caps the time that counts as planned and never changes `due_at` or `deadline_at`. `time_zone`
+is the account's planning zone (null when unset), the zone the apps name the deadline in.
 
 **Does it fit?** `fit` is the task's one status against its planning deadline (`deadlineFit` in
 `@orbyn/core`), or null for a finished task or one that isn't yours to plan (a teammate's, when

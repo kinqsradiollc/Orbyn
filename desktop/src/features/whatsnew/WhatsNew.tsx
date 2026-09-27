@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, X } from "lucide-react";
-import { CHANGELOG, latestRelease } from "@orbyn/core";
+import { latestRelease, releasesSince } from "@orbyn/core";
 import { Releases } from "./Releases";
 import "./whatsnew.css";
 
@@ -25,9 +25,9 @@ export function markReleaseSeen() {
 }
 
 /**
- * "What's new" (DSN-03): the last few releases in a sheet, and the whole
- * changelog a link away. Opens by itself once after a release; from ⌘K and
- * Settings any time.
+ * "What's new" (DSN-03): the releases since this browser last looked (or
+ * the newest one), the newest open, and the whole changelog a link away.
+ * Opens by itself once after a release; from ⌘K and Settings any time.
  */
 export function WhatsNew({
   onClose,
@@ -37,6 +37,8 @@ export function WhatsNew({
   onOpenChangelog: () => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
+  // Read before the effect below marks the newest release as seen.
+  const [releases] = useState(() => releasesSince(seenRelease()));
   useEffect(() => {
     markReleaseSeen();
     const opener = document.activeElement as HTMLElement | null;
@@ -78,7 +80,7 @@ export function WhatsNew({
           </button>
         </div>
         <div className="whats-new-body">
-          <Releases releases={CHANGELOG.slice(0, 2)} headingLevel={3} />
+          <Releases releases={releases} headingLevel={3} />
         </div>
         <div className="whats-new-foot">
           <button className="text-button" onClick={onOpenChangelog}>

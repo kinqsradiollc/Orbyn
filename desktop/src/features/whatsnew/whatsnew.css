@@ -1,34 +1,200 @@
 /* What's new (DSN-03): the in-app sheet and the public changelog. */
 .releases {
   display: grid;
-  gap: 28px;
+  gap: 12px;
 }
-.release h2,
-.release h3 {
-  margin: 2px 0 10px;
+/* One card per release: the date and title are the toggle, the summary and
+   counts stay visible when it is folded. */
+.release {
+  padding: 16px 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  scroll-margin-top: 16px;
+}
+.release.is-open {
+  border-color: var(--color-borderStrong);
+}
+.releases .release-heading {
+  margin: 0;
+  font-size: inherit;
+}
+.release-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "date chevron"
+    "title chevron";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.release-toggle:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
 }
 .release-date {
-  margin: 0;
+  grid-area: date;
   font-size: 13px;
+  font-weight: 400;
   color: var(--color-muted);
+}
+.release-title {
+  grid-area: title;
+  font-family: "Manrope", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.release-chevron {
+  grid-area: chevron;
+  color: var(--color-muted);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.release.is-open .release-chevron {
+  transform: rotate(180deg);
+}
+.releases .release-summary {
+  margin: 6px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-textSoft);
+  max-width: none;
+}
+.releases .release-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.releases .release-counts li {
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-chipText);
+  background: var(--color-chip);
+}
+.releases .release-counts li.is-new {
+  color: var(--color-accent);
+  background: var(--color-accentSoft);
+}
+.release-body {
+  margin-top: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-divider);
+}
+.releases .release-highlight {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-soft);
+  color: var(--color-text);
+  font-size: 15px;
+  line-height: 1.55;
+  max-width: none;
+}
+.release-highlight > svg {
+  flex: none;
+  margin-top: 4px;
+  color: var(--color-accent);
 }
 .release-part h3,
 .release-part h4 {
-  margin: 14px 0 6px;
+  margin: 16px 0 6px;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-textSoft);
 }
-.release-part ul {
+.releases .release-part ul {
   margin: 0;
   padding-left: 18px;
   display: grid;
   gap: 6px;
+  max-width: none;
 }
 .release-part li {
   font-size: 15px;
   line-height: 1.55;
   color: var(--color-text);
+}
+.release-none {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-muted);
+}
+
+/* The changelog's filter and jump list, above the releases. */
+.changelog-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+.changelog-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.changelog-filter button {
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-chip);
+  cursor: pointer;
+}
+.changelog-filter button:hover {
+  color: var(--color-text);
+}
+.changelog-filter button[aria-checked="true"] {
+  color: var(--color-selectedText);
+  background: var(--color-selected);
+}
+.changelog-filter button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.changelog-jump {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.changelog-jump .select {
+  width: 250px;
+}
+.changelog-jump .text-button {
+  flex: none;
+}
+.legal-text .changelog-foot {
+  margin-top: 24px;
 }
 .whats-new {
   width: 600px;
@@ -68,5 +234,28 @@
   .footer-link {
     padding: 15px 0;
     margin-block: -15px;
+  }
+  .changelog-filter button {
+    min-height: 44px;
+  }
+  .changelog-jump .text-button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 600px) {
+  .release {
+    padding: 14px 16px;
+  }
+  .changelog-jump {
+    width: 100%;
+  }
+  .changelog-jump .select {
+    flex: 1;
+    width: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-chevron {
+    transition: none;
   }
 }

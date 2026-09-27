@@ -30,7 +30,12 @@ import {
   resolveClient,
   type OAuthClient,
 } from "./clients.js";
-import { PKCE_CHALLENGE, issueCode, toolsetsFor } from "./tokens.js";
+import {
+  PKCE_CHALLENGE,
+  isOurResource,
+  issueCode,
+  toolsetsFor,
+} from "./tokens.js";
 
 /**
  * The consent page's side of signing in with Orbyn: checking a request
@@ -92,7 +97,8 @@ export async function validateRequest(
   const canonical = env.MCP_PUBLIC_URL;
   if (
     q.resource !== undefined &&
-    q.resource.replace(/\/$/, "") !== canonical.replace(/\/$/, "")
+    q.resource !== "" &&
+    !isOurResource(q.resource)
   )
     fail(
       400,

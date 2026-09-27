@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   AGENT_ACCESS,
@@ -189,5 +190,51 @@ export const getContext = defineCapability({
       CONVENTIONS.content,
     ].join("\n");
     return { structured, markdown };
+  },
+});
+
+/**
+ * The profile a connection acts for, as OpenAI's profile tool contract asks
+ * (`_meta["openai/profile"]`): ChatGPT calls it right after linking to tell
+ * connected accounts apart. The id is opaque and stable (derived from the
+ * account, never reassigned, unchanged by renames or reconnecting); only the
+ * name is shared, as get_context does.
+ */
+export const getProfile = defineCapability({
+  name: "get_profile",
+  title: "Connected account",
+  description:
+    "The Orbyn account this connection acts for: an opaque id that stays the same across refreshes and reconnections, and the person's name.",
+  input: z.object({}).strict(),
+  output: z
+    .object({
+      id: z
+        .string()
+        .min(1)
+        .describe(
+          "Opaque account id, unique within Orbyn and unchanged across token refresh and reconnection.",
+        ),
+      name: z.string().optional().describe("The person's display name."),
+    })
+    .strict(),
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  access: "read",
+  toolset: "core",
+  mode: "read",
+  tier: "R",
+  jsonText: true,
+  meta: { "openai/profile": true },
+  async run(ctx) {
+    const p = ctx.principal;
+    const structured = {
+      id: `prf_${createHash("sha256").update(`orbyn-profile:${p.user.id}`).digest("hex").slice(0, 32)}`,
+      name: cleanTitle(p.user.name) || "Orbyn user",
+    };
+    return { structured, markdown: JSON.stringify(structured) };
   },
 });

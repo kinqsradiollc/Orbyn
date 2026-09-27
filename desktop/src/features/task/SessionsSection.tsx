@@ -3,10 +3,10 @@ import { CalendarClock, CalendarPlus, Wand2 } from "lucide-react";
 import {
   atRiskReason,
   dueAfterProject,
-  dueDate,
   fitTone,
   isClosed,
   itemBody,
+  sessionsDeadlineWords,
   type HttpError,
   type Item,
   type ItemSessions,
@@ -32,20 +32,15 @@ function nextQuarter() {
   return d;
 }
 
-/** "before Fri 2 Oct, 5 pm", or "by the end of Fri 2 Oct" for a whole day. */
-const byDeadline = (s: ItemSessions) =>
-  s.deadline_at
-    ? s.due_all_day
-      ? `by the end of ${dueDate(s.deadline_at, true)}`
-      : `before ${dueDate(s.deadline_at)}`
-    : "";
-
-/** "Planned 1 h 30 min before Fri 2 Oct, 5 pm · 3 h 30 min still needed (4 h estimated, 30 min logged)". */
+/**
+ * "Planned 1 h 30 min before Fri 2 Oct, 5 pm · 3 h 30 min still needed (4 h
+ * estimated, 30 min logged)". Counted up to the deadline its status is
+ * measured against, named in the account's zone.
+ */
 function summary(s: ItemSessions, item: Item) {
+  const { by } = sessionsDeadlineWords(s);
   const parts = [
-    `Planned ${minutesLabel(s.planned_minutes)}${
-      s.deadline_at ? ` ${byDeadline(s)}` : ""
-    }`,
+    `Planned ${minutesLabel(s.planned_minutes)}${by ? ` ${by}` : ""}`,
   ];
   if (item.estimate_minutes != null && item.remaining_minutes != null) {
     const spent = item.spent_minutes ?? 0;
@@ -58,16 +53,19 @@ function summary(s: ItemSessions, item: Item) {
   return parts.join(" · ");
 }
 
-/** "No sessions yet. Due Fri 2 Oct, 5 pm · about 4 h of work." */
+/**
+ * "No sessions yet. Due Fri 2 Oct, 5 pm · about 4 h of work.", with the
+ * earlier date its time is measured against when there is one ("project
+ * ends Fri 2 Oct, 5 pm"), so the status beside it reads against a date the
+ * card names.
+ */
 function emptyText(s: ItemSessions | null, item: Item) {
   const facts: string[] = [];
-  if (s?.deadline_at)
-    facts.push(
-      s.due_all_day
-        ? `Due ${dueDate(s.deadline_at, true)}`
-        : `Due ${dueDate(s.deadline_at)}`,
-    );
-  else if (s?.project_deadline)
+  const words = s ? sessionsDeadlineWords(s) : null;
+  if (words?.due) facts.push(words.due);
+  if (words?.sooner)
+    facts.push(words.due ? words.sooner : `No deadline · ${words.sooner}`);
+  else if (!words?.due && s?.project_deadline)
     facts.push(`No deadline · project ends ${rowDay(s.project_deadline)}`);
   const work = item.remaining_minutes ?? item.estimate_minutes;
   if (item.estimate_minutes && work && work > 0)

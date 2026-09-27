@@ -1,9 +1,16 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  generateKeyPairSync,
+  randomBytes,
+  type KeyObject,
+} from "node:crypto";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 import { z } from "zod";
+import { SignJWT } from "jose";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 import { helpers, type Person } from "./mcp-helpers.js";
@@ -44,6 +51,7 @@ const HOSTS: Record<string, string> = {
   "slow.example.com": "93.184.215.16",
   "rebind.example.com": "127.0.0.1",
   "hop.example.com": "93.184.215.17",
+  "keys.example.com": "93.184.215.18",
 };
 type Doc = { status: number; body?: string; headers?: Record<string, string> };
 const docs = new Map<string, Doc>();
@@ -290,7 +298,7 @@ after(async () => {
 
 // ---- metadata and the resource server ----
 
-test("metadata: RFC 8414 at the issuer, public apps only, CIMD and iss advertised, open CORS", async () => {
+test("metadata: RFC 8414 at the issuer, PKCE for all, none or private_key_jwt, CIMD and iss advertised, open CORS", async () => {
   const r = await inject("GET", "/.well-known/oauth-authorization-server", {
     headers: { origin: "https://claude.ai" },
   });
@@ -304,7 +312,15 @@ test("metadata: RFC 8414 at the issuer, public apps only, CIMD and iss advertise
   assert.equal(m.revocation_endpoint, `${issuer}/api/oauth/revoke`);
   assert.equal(m.registration_endpoint, `${issuer}/api/oauth/register`);
   assert.deepEqual(m.code_challenge_methods_supported, ["S256"]);
-  assert.deepEqual(m.token_endpoint_auth_methods_supported, ["none"]);
+  assert.deepEqual(m.token_endpoint_auth_methods_supported, [
+    "none",
+    "private_key_jwt",
+  ]);
+  assert.deepEqual(m.token_endpoint_auth_signing_alg_values_supported, [
+    "RS256",
+    "PS256",
+    "ES256",
+  ]);
   assert.equal(m.client_id_metadata_document_supported, true);
   assert.equal(m.authorization_response_iss_parameter_supported, true);
   assert.ok(m.scopes_supported.includes("offline_access"));
@@ -1006,15 +1022,15 @@ test("CIMD through netguard: https only, public addresses, 64 KB, redirects re-c
   docs.set(liar, { status: 200, body: cimd(CLIENT) });
   assert.match((await attempt(liar)).json().message, /different app/);
 
-  // One asking for a secret-based method.
-  const secretive = "https://slow.example.com/secret.json";
-  docs.set(secretive, {
+  // One signing in with a key that doesn't say where its keys are.
+  const keyless = "https://slow.example.com/secret.json";
+  docs.set(keyless, {
     status: 200,
-    body: cimd(secretive, { token_endpoint_auth_method: "private_key_jwt" }),
+    body: cimd(keyless, { token_endpoint_auth_method: "private_key_jwt" }),
   });
   assert.match(
-    (await attempt(secretive)).json().message,
-    /method Orbyn doesn't support/,
+    (await attempt(keyless)).json().message,
+    /Claude signs in with a signed key \(private_key_jwt\), but its description doesn't publish its keys/,
   );
 
   // A redirect to a private address is checked again, and refused.
@@ -1735,3 +1751,547 @@ function liveCode(secret: string): string {
     (hmac[offset + 3] & 0xff);
   return String(bin % 1_000_000).padStart(6, "0");
 }
+
+// ---- apps that sign in with a key (private_key_jwt, RFC 7523) ----
+
+const KEYED = "https://agent.example.com/oauth/keyed.json";
+const KEYED_URI = "https://agent.example.com/oauth/keyed-uri.json";
+const JWKS_AT = "https://keys.example.com/jwks.json";
+const JWT_BEARER = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
+
+const rsa = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const ec = generateKeyPairSync("ec", { namedCurve: "P-256" });
+const stranger = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const rotated = generateKeyPairSync("rsa", { modulusLength: 2048 });
+const jwk = (k: KeyObject, kid: string) => ({
+  ...k.export({ format: "jwk" }),
+  kid,
+  use: "sig",
+});
+const RSA_JWK = jwk(rsa.publicKey, "rsa-1");
+const EC_JWK = jwk(ec.publicKey, "ec-1");
+
+type Claims = {
+  alg?: "RS256" | "PS256" | "ES256";
+  kid?: string;
+  key?: KeyObject;
+  iss?: string;
+  sub?: string;
+  aud?: string;
+  iat?: number;
+  exp?: number;
+  jti?: string;
+};
+const nowSec = () => Math.floor(Date.now() / 1000);
+/** A client assertion for `client`, valid unless `over` says otherwise. */
+const signed = (client: string, over: Claims = {}) => {
+  const alg = over.alg ?? "RS256";
+  return new SignJWT({ jti: over.jti ?? randomBytes(12).toString("hex") })
+    .setProtectedHeader({
+      alg,
+      kid: over.kid ?? (alg === "ES256" ? "ec-1" : "rsa-1"),
+    })
+    .setIssuer(over.iss ?? client)
+    .setSubject(over.sub ?? client)
+    .setAudience(over.aud ?? `${oauthIssuer()}/api/oauth/token`)
+    .setIssuedAt(over.iat ?? nowSec())
+    .setExpirationTime(over.exp ?? nowSec() + 60)
+    .sign(over.key ?? (alg === "ES256" ? ec.privateKey : rsa.privateKey));
+};
+const b64 = (v: unknown) =>
+  Buffer.from(JSON.stringify(v)).toString("base64url");
+/** An unsigned ("none") or HMAC-signed assertion, as an attacker would try. */
+const forged = (client: string, alg: "none" | "HS256") => {
+  const head = b64({ alg, typ: "JWT" });
+  const body = b64({
+    iss: client,
+    sub: client,
+    aud: `${oauthIssuer()}/api/oauth/token`,
+    iat: nowSec(),
+    exp: nowSec() + 60,
+    jti: randomBytes(8).toString("hex"),
+  });
+  if (alg === "none") return `${head}.${body}.`;
+  const sig = createHmac("sha256", String(RSA_JWK.n))
+    .update(`${head}.${body}`)
+    .digest("base64url");
+  return `${head}.${body}.${sig}`;
+};
+const keyedDoc = (id: string, extra: Record<string, unknown>) =>
+  cimd(id, {
+    client_name: "Keyed agent",
+    token_endpoint_auth_method: "private_key_jwt",
+    ...extra,
+  });
+
+/** Consent for `client`, returning an unspent code and its verifier. */
+const codeFor = async (client: string, session: string) => {
+  const { req, verifier } = request({ client_id: client });
+  const r = await consent(session, req);
+  assert.equal(r.statusCode, 200, r.body);
+  return { code: codeOf(r.json().redirect_to), verifier };
+};
+const withAssertion = (assertion: string, over: Req = {}) => ({
+  client_assertion_type: JWT_BEARER,
+  client_assertion: assertion,
+  ...over,
+});
+
+/** Forgets the apps a test uses, so each run fetches their documents afresh. */
+const forget = async () => {
+  await pool.query(
+    "DELETE FROM oauth_clients WHERE id LIKE 'https://agent.example.com/oauth/%' AND id <> $1",
+    [CLIENT],
+  );
+  await pool.query("DELETE FROM oauth_client_assertions");
+};
+
+/** Collects what the server logs about client authentication. */
+const watchLog = () => {
+  const lines: string[] = [];
+  const real = console.warn;
+  console.warn = (...args: unknown[]) => {
+    lines.push(args.map(String).join(" "));
+  };
+  return {
+    lines,
+    stop: () => {
+      console.warn = real;
+    },
+  };
+};
+
+test("private_key_jwt with jwks in the document: the whole sign-in, and refresh, need a valid assertion", async () => {
+  await forget();
+  docs.set(KEYED, {
+    status: 200,
+    body: keyedDoc(KEYED, { jwks: { keys: [RSA_JWK, EC_JWK] } }),
+    headers: { "content-type": "application/json" },
+  });
+  const session = await login(me);
+  const shown = await check(request({ client_id: KEYED }).req, session);
+  assert.equal(shown.statusCode, 200, shown.body);
+  assert.equal(shown.json().client.name, "Keyed agent");
+  const stored = (
+    await pool.query("SELECT metadata FROM oauth_clients WHERE id = $1", [
+      KEYED,
+    ])
+  ).rows[0].metadata;
+  assert.equal(stored.auth_method, "private_key_jwt");
+  assert.equal(stored.jwks.length, 2);
+
+  const { code, verifier } = await codeFor(KEYED, session);
+  const send = (over: Req) =>
+    exchange(code, verifier, { client_id: KEYED, ...over });
+  const refusedWith = async (over: Req, why: RegExp) => {
+    const r = await send(over);
+    assert.equal(r.statusCode, 401, `${why}: ${r.body}`);
+    assert.equal(r.json().error, "invalid_client");
+    assert.match(r.json().error_description, why);
+  };
+
+  const log = watchLog();
+  const bad: [string, Req, RegExp][] = [
+    ["missing", {}, /signs in with a signed key: send client_assertion/],
+    [
+      "wrong type",
+      {
+        client_assertion_type: "urn:x",
+        client_assertion: await signed(KEYED),
+      },
+      /client_assertion_type must be/,
+    ],
+    [
+      "wrong audience",
+      withAssertion(await signed(KEYED, { aud: "https://elsewhere.example" })),
+      /for another server/,
+    ],
+    [
+      "expired",
+      withAssertion(
+        await signed(KEYED, { iat: nowSec() - 300, exp: nowSec() - 120 }),
+      ),
+      /expired/,
+    ],
+    [
+      "too long",
+      withAssertion(await signed(KEYED, { exp: nowSec() + 7200 })),
+      /lasts too long/,
+    ],
+    [
+      "too long from iat",
+      withAssertion(
+        await signed(KEYED, { iat: nowSec() - 3700, exp: nowSec() + 60 }),
+      ),
+      /lasts too long/,
+    ],
+    [
+      "issued in the future",
+      withAssertion(
+        await signed(KEYED, { iat: nowSec() + 120, exp: nowSec() + 180 }),
+      ),
+      /future|isn't valid yet/,
+    ],
+    [
+      "wrong key",
+      withAssertion(await signed(KEYED, { key: stranger.privateKey })),
+      /isn't signed with one of this app's keys/,
+    ],
+    [
+      "another app's iss",
+      withAssertion(await signed(KEYED, { iss: CLIENT })),
+      /iss and sub/,
+    ],
+    [
+      "another app's sub",
+      withAssertion(await signed(KEYED, { sub: CLIENT })),
+      /iss and sub/,
+    ],
+    ["alg none", withAssertion(forged(KEYED, "none")), /RS256, PS256, ES256/],
+    ["HS256", withAssertion(forged(KEYED, "HS256")), /RS256, PS256, ES256/],
+    ["garbage", withAssertion("not.a.jwt"), /isn't a valid signed JWT/],
+  ];
+  try {
+    for (const [, over, why] of bad) await refusedWith(over, why);
+  } finally {
+    log.stop();
+  }
+  // The server logs the app and its method, never the assertion.
+  assert.ok(
+    log.lines.some(
+      (l) => l.includes(KEYED) && l.includes('"method":"private_key_jwt"'),
+    ),
+  );
+  assert.ok(!log.lines.some((l) => l.includes("eyJ")), "no assertion logged");
+
+  // A refused app never burned the code: with a good assertion it works.
+  const good = await signed(KEYED);
+  const ok = await send(withAssertion(good));
+  assert.equal(ok.statusCode, 200, ok.body);
+  const tokens = ok.json();
+  assert.match(tokens.access_token, /^oat_/);
+  // The jti is kept hashed until the assertion expires…
+  const kept = await pool.query(
+    "SELECT jti_hash, expires_at FROM oauth_client_assertions WHERE client_id = $1",
+    [KEYED],
+  );
+  assert.equal(kept.rowCount, 1);
+  assert.ok(kept.rows[0].expires_at.getTime() > Date.now());
+  // …and the same assertion can't be used again.
+  const next = await codeFor(KEYED, session);
+  const replay = await exchange(next.code, next.verifier, {
+    client_id: KEYED,
+    ...withAssertion(good),
+  });
+  assert.equal(replay.statusCode, 401);
+  assert.match(replay.json().error_description, /already used/);
+
+  // PKCE is still required with a key: no verifier, or a wrong one, fails.
+  const noVerifier = await inject("POST", "/oauth/token", {
+    form: {
+      grant_type: "authorization_code",
+      code: next.code,
+      redirect_uri: CALLBACK,
+      client_id: KEYED,
+      ...withAssertion(await signed(KEYED)),
+    },
+  });
+  assert.equal(noVerifier.statusCode, 400);
+  assert.equal(noVerifier.json().error, "invalid_request");
+  const wrongVerifier = await exchange(next.code, pkce().verifier, {
+    client_id: KEYED,
+    ...withAssertion(await signed(KEYED)),
+  });
+  assert.equal(wrongVerifier.json().error, "invalid_grant");
+
+  // ES256 and PS256 work; so does the issuer as the audience, and leaving
+  // client_id out (the assertion's sub names the app).
+  for (const over of [
+    { alg: "ES256" as const },
+    { alg: "PS256" as const },
+    { aud: oauthIssuer() },
+  ]) {
+    const c = await codeFor(KEYED, session);
+    const r = await exchange(c.code, c.verifier, {
+      client_id: KEYED,
+      ...withAssertion(await signed(KEYED, over)),
+    });
+    assert.equal(r.statusCode, 200, `${JSON.stringify(over)}: ${r.body}`);
+  }
+  const bare = await codeFor(KEYED, session);
+  const noId = await inject("POST", "/oauth/token", {
+    form: {
+      grant_type: "authorization_code",
+      code: bare.code,
+      redirect_uri: CALLBACK,
+      code_verifier: bare.verifier,
+      ...withAssertion(await signed(KEYED)),
+    },
+  });
+  assert.equal(noId.statusCode, 200, noId.body);
+
+  // Refreshing needs an assertion too.
+  const noProof = await refresh(tokens.refresh_token, KEYED);
+  assert.equal(noProof.statusCode, 401);
+  assert.equal(noProof.json().error, "invalid_client");
+  const wrongProof = await refresh(
+    tokens.refresh_token,
+    KEYED,
+    withAssertion(await signed(KEYED, { key: stranger.privateKey })),
+  );
+  assert.equal(wrongProof.json().error, "invalid_client");
+  const refreshed = await refresh(
+    tokens.refresh_token,
+    KEYED,
+    withAssertion(await signed(KEYED)),
+  );
+  assert.equal(refreshed.statusCode, 200, refreshed.body);
+  assert.match(refreshed.json().refresh_token, /^ort_/);
+
+  // A public app can't send an assertion, and can't pass as a keyed one.
+  const pub = await connect(me, { access: "read" });
+  const asPublic = await refresh(
+    pub.refresh_token,
+    CLIENT,
+    withAssertion(await signed(CLIENT)),
+  );
+  assert.equal(asPublic.statusCode, 401);
+  assert.match(asPublic.json().error_description, /public app/);
+});
+
+test("private_key_jwt with jwks_uri: keys fetched through netguard, cached, and read again when a new key appears", async () => {
+  await forget();
+  const keySet = (keys: unknown[], etag: string) => ({
+    status: 200,
+    body: JSON.stringify({ keys }),
+    headers: {
+      "content-type": "application/jwk-set+json",
+      etag,
+      "cache-control": "max-age=600",
+    },
+  });
+  docs.set(KEYED_URI, {
+    status: 200,
+    body: keyedDoc(KEYED_URI, { jwks_uri: JWKS_AT }),
+  });
+  docs.set(JWKS_AT, keySet([RSA_JWK], '"k1"'));
+  const session = await login(me);
+  fetched.length = 0;
+  const a = await codeFor(KEYED_URI, session);
+  const first = await exchange(a.code, a.verifier, {
+    client_id: KEYED_URI,
+    ...withAssertion(await signed(KEYED_URI)),
+  });
+  assert.equal(first.statusCode, 200, first.body);
+  const b = await codeFor(KEYED_URI, session);
+  const second = await exchange(b.code, b.verifier, {
+    client_id: KEYED_URI,
+    ...withAssertion(await signed(KEYED_URI)),
+  });
+  assert.equal(second.statusCode, 200, second.body);
+  const reads = fetched.filter((f) => f.url === JWKS_AT);
+  assert.equal(reads.length, 1, "cached while fresh");
+  assert.match(reads[0].headers["user-agent"], /Orbyn/);
+
+  // The app rotates to a new key. Keys read under a minute ago aren't read
+  // again (so unknown kids can't make Orbyn fetch on every request)…
+  docs.set(JWKS_AT, keySet([RSA_JWK, jwk(rotated.publicKey, "rsa-2")], '"k2"'));
+  const c = await codeFor(KEYED_URI, session);
+  const withNew = () =>
+    signed(KEYED_URI, { key: rotated.privateKey, kid: "rsa-2" });
+  const early = await exchange(c.code, c.verifier, {
+    client_id: KEYED_URI,
+    ...withAssertion(await withNew()),
+  });
+  assert.equal(early.statusCode, 401);
+  // …but after that, an unknown key reads them again, with If-None-Match.
+  await pool.query(
+    `UPDATE oauth_clients SET metadata = jsonb_set(metadata, '{jwks_cache,fetched_at}',
+       to_jsonb((extract(epoch FROM now()) * 1000 - 120000)::bigint)) WHERE id = $1`,
+    [KEYED_URI],
+  );
+  const rotatedIn = await exchange(c.code, c.verifier, {
+    client_id: KEYED_URI,
+    ...withAssertion(await withNew()),
+  });
+  assert.equal(rotatedIn.statusCode, 200, rotatedIn.body);
+  assert.equal(
+    fetched.filter((f) => f.url === JWKS_AT).at(-1)!.headers["if-none-match"],
+    '"k1"',
+  );
+
+  // Keys on a private address are never fetched.
+  const inside = "https://agent.example.com/oauth/keyed-inside.json";
+  const insideKeys = "https://rebind.example.com/jwks.json";
+  docs.set(inside, {
+    status: 200,
+    body: keyedDoc(inside, { jwks_uri: insideKeys }),
+  });
+  docs.set(insideKeys, keySet([RSA_JWK], '"x"'));
+  fetched.length = 0;
+  const d = await codeFor(inside, session);
+  const priv = await exchange(d.code, d.verifier, {
+    client_id: inside,
+    ...withAssertion(await signed(inside)),
+  });
+  assert.equal(priv.statusCode, 401);
+  assert.equal(priv.json().error, "invalid_client");
+  assert.match(priv.json().error_description, /Couldn't read this app's keys/);
+  assert.ok(!fetched.some((f) => f.url === insideKeys), "never called");
+});
+
+test("CIMD auth methods: client_secret_* are served as public apps with PKCE; others are refused by name", async () => {
+  await forget();
+  const session = await login(me);
+  const basic = "https://agent.example.com/oauth/basic.json";
+  docs.set(basic, {
+    status: 200,
+    body: cimd(basic, {
+      client_name: "Secretive agent",
+      token_endpoint_auth_method: "client_secret_basic",
+    }),
+  });
+  const log = watchLog();
+  let shown;
+  try {
+    shown = await check(request({ client_id: basic }).req, session);
+  } finally {
+    log.stop();
+  }
+  assert.equal(shown.statusCode, 200, shown.body);
+  assert.ok(
+    log.lines.some(
+      (l) => l.includes(basic) && l.includes('"method":"client_secret_basic"'),
+    ),
+  );
+  const meta = (
+    await pool.query("SELECT metadata FROM oauth_clients WHERE id = $1", [
+      basic,
+    ])
+  ).rows[0].metadata;
+  assert.equal(meta.auth_method, "none");
+  assert.equal(meta.declared_auth_method, "client_secret_basic");
+
+  // It authenticates the way it declared (an HTTP Basic header naming it,
+  // client_id left out of the form); whatever secret it sends is ignored,
+  // and PKCE decides.
+  const a = await codeFor(basic, session);
+  const header = `Basic ${Buffer.from(`${encodeURIComponent(basic)}:whatever`).toString("base64")}`;
+  const noVerifier = await inject("POST", "/oauth/token", {
+    headers: { authorization: header },
+    form: {
+      grant_type: "authorization_code",
+      code: a.code,
+      redirect_uri: CALLBACK,
+    },
+  });
+  assert.equal(noVerifier.json().error, "invalid_request");
+  const ok = await inject("POST", "/oauth/token", {
+    headers: { authorization: header },
+    form: {
+      grant_type: "authorization_code",
+      code: a.code,
+      redirect_uri: CALLBACK,
+      code_verifier: a.verifier,
+    },
+  });
+  assert.equal(ok.statusCode, 200, ok.body);
+  // A header naming another app than the form is refused.
+  const mixed = await inject("POST", "/oauth/token", {
+    headers: { authorization: header },
+    form: {
+      grant_type: "refresh_token",
+      refresh_token: ok.json().refresh_token,
+      client_id: CLIENT,
+    },
+  });
+  assert.equal(mixed.json().error, "invalid_request");
+
+  // client_secret_post: the same, with client_secret in the form ignored.
+  const post = "https://agent.example.com/oauth/post.json";
+  docs.set(post, {
+    status: 200,
+    body: cimd(post, { token_endpoint_auth_method: "client_secret_post" }),
+  });
+  const b = await codeFor(post, session);
+  const posted = await exchange(b.code, b.verifier, {
+    client_id: post,
+    client_secret: "anything",
+  });
+  assert.equal(posted.statusCode, 200, posted.body);
+
+  // Any other method is refused, named in plain words, and logged.
+  const cases: [string, unknown, RegExp][] = [
+    [
+      "cert",
+      "tls_client_auth",
+      /^Claude asks to sign in with a client certificate \(tls_client_auth\), which Orbyn doesn't support yet\./,
+    ],
+    [
+      "hmac",
+      "client_secret_jwt",
+      /^Claude asks to sign in with a token signed with a shared secret \(client_secret_jwt\), which Orbyn doesn't support yet\./,
+    ],
+    [
+      "odd",
+      "made_up_method",
+      /^Claude asks to sign in with a method called "made_up_method", which Orbyn doesn't support yet\./,
+    ],
+  ];
+  for (const [slug, method, why] of cases) {
+    const id = `https://agent.example.com/oauth/${slug}.json`;
+    docs.set(id, {
+      status: 200,
+      body: cimd(id, { token_endpoint_auth_method: method }),
+    });
+    const watch = watchLog();
+    let r;
+    try {
+      r = await check(request({ client_id: id }).req, session);
+    } finally {
+      watch.stop();
+    }
+    assert.equal(r.statusCode, 400);
+    assert.match(r.json().message, why);
+    assert.ok(
+      watch.lines.some(
+        (l) => l.includes(id) && l.includes(`"method":"${method}"`),
+      ),
+      `logged ${method}`,
+    );
+  }
+
+  // A key set holding a private key, or keys in two places, is refused.
+  const leaky = "https://agent.example.com/oauth/leaky.json";
+  docs.set(leaky, {
+    status: 200,
+    body: keyedDoc(leaky, {
+      jwks: { keys: [rsa.privateKey.export({ format: "jwk" })] },
+    }),
+  });
+  assert.match(
+    (await check(request({ client_id: leaky }).req, session)).json().message,
+    /publishes a private or secret key/,
+  );
+  const both = "https://agent.example.com/oauth/both.json";
+  docs.set(both, {
+    status: 200,
+    body: keyedDoc(both, { jwks: { keys: [RSA_JWK] }, jwks_uri: JWKS_AT }),
+  });
+  assert.match(
+    (await check(request({ client_id: both }).req, session)).json().message,
+    /both jwks and jwks_uri/,
+  );
+  const hs = "https://agent.example.com/oauth/hs.json";
+  docs.set(hs, {
+    status: 200,
+    body: keyedDoc(hs, {
+      jwks: { keys: [RSA_JWK] },
+      token_endpoint_auth_signing_alg: "HS256",
+    }),
+  });
+  assert.match(
+    (await check(request({ client_id: hs }).req, session)).json().message,
+    /HS256, which Orbyn doesn't support yet/,
+  );
+});

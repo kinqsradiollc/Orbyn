@@ -1,5 +1,6 @@
 import {
   deadlineOf,
+  fitDeadline,
   planningDeadline,
   remainingOf,
   type ProjectPlanning,
@@ -117,7 +118,7 @@ export async function projectPlanning(
     ]);
     result.team_planned_minutes = Math.round(
       teamRows.reduce((minutes, row) => {
-        const target = planningDeadline(
+        const target = fitDeadline(
           deadlineOf({
             due_at: row.due_at,
             end_at: row.due_end_at,
@@ -125,6 +126,7 @@ export async function projectPlanning(
             timezone: row.timezone,
           }),
           planningDeadline(project.deadline, dependent.get(row.item_id)),
+          now,
         );
         if (target && row.end_at.getTime() > Date.parse(target)) return minutes;
         return (

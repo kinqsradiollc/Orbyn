@@ -1,6 +1,6 @@
 import {
   deadlineOf,
-  planningDeadline,
+  fitDeadline,
   dueDate,
   dueWhen,
   SESSION_DUE_SOON_DAYS,
@@ -72,9 +72,12 @@ export function spokenMinutes(minutes: number) {
  * Why a task is at risk, as the daily notice, the review and the planner all
  * say it: "Needs 2 h more, with 45 min free before it's due." When there is
  * enough free time in all, but not in pieces its sessions fit (with the
- * planner's padding, breaks and frames), it says that instead.
+ * planner's padding, breaks and frames), it says that instead. With no
+ * working time left at all (the working day is over), it says so.
  */
 export function atRiskReason(neededMinutes: number, freeMinutes: number) {
+  if (neededMinutes > 0 && Math.round(freeMinutes) <= 0)
+    return `Needs ${spokenMinutes(neededMinutes)} more, with no working time left before it's due.`;
   return neededMinutes > freeMinutes
     ? `Needs ${spokenMinutes(neededMinutes)} more, with ${spokenMinutes(freeMinutes)} free before it's due.`
     : "Its sessions don't all fit in the free time before it's due.";
@@ -150,7 +153,8 @@ export function splitSessions<T extends Span>(
   projectDeadline?: string | Date | null,
 ): SessionSplit<T> {
   const kind = sessionKindFor(task, now);
-  const deadline = planningDeadline(deadlineOf(task), projectDeadline);
+  // The same deadline the status is measured against (see `fitDeadline`).
+  const deadline = fitDeadline(deadlineOf(task), projectDeadline, now);
   const cap = deadline ? Date.parse(deadline) : null;
   let planned = 0;
   let lateMinutes = 0;
@@ -231,6 +235,13 @@ export type FitInput = {
   /** Free working time before the deadline; without it "At risk" isn't told. */
   free_minutes?: number | null;
   /**
+   * The task's own deadline (`deadlineOf`), when `deadline_at` may be an
+   * earlier latest date (its project's, or a dependent task's). "Deadline
+   * passed" is said only once this has passed: an earlier date already gone
+   * gives way to it (see `fitDeadline`).
+   */
+  task_deadline_at?: string | null;
+  /**
    * The task has its own estimate. Without one it counts as 30 minutes, a
    * guess, so "Short" is said only within a week of the deadline.
    */
@@ -256,7 +267,10 @@ export function deadlineFit(input: FitInput): DeadlineFit {
   const late = Math.max(0, Math.round(input.late_minutes ?? 0));
   const free = input.free_minutes ?? null;
   const short = Math.max(0, needed - planned);
-  const deadline = input.deadline_at ?? null;
+  const deadline =
+    input.task_deadline_at !== undefined
+      ? fitDeadline(input.task_deadline_at, input.deadline_at, now)
+      : (input.deadline_at ?? null);
   const out = (status: FitStatus): DeadlineFit => ({
     status,
     label:
@@ -299,6 +313,57 @@ export function fitTone(status: FitStatus): "ok" | "warn" | "muted" {
   if (status === "on_track") return "ok";
   if (status === "no_deadline") return "muted";
   return "warn";
+}
+
+// ---- a task's Sessions card ---------------------------------------------------
+
+/** What a Sessions card needs to name a task's deadline (see `ItemSessions`). */
+export type SessionsDeadline = {
+  deadline_at: string | null;
+  due_all_day: boolean;
+  project_deadline?: string | null;
+  planning_deadline_at?: string | null;
+  fit?: Pick<DeadlineFit, "deadline_at"> | null;
+  time_zone?: string | null;
+};
+
+/**
+ * How a task's Sessions card names its deadline, so the "Due …" it shows is
+ * the moment its status is measured against, in the account's zone (the
+ * device's when it has none):
+ * - `due`: "Due Sun 27 Sep, 11:59 pm", or "Due Fri 2 Oct" for a whole day;
+ *   null without its own deadline;
+ * - `sooner`: the earlier date its time is measured against, when that
+ *   isn't its own deadline: "project ends Sun 27 Sep, 5 pm" or "a task
+ *   waiting on it is due Sat 26 Sep, 5 pm";
+ * - `by`: what "Planned 2 h …" is counted up to: "before Sun 27 Sep, 5 pm",
+ *   "by the end of Fri 2 Oct", or "" without a deadline.
+ */
+export function sessionsDeadlineWords(s: SessionsDeadline): {
+  due: string | null;
+  sooner: string | null;
+  by: string;
+} {
+  const zone = s.time_zone || undefined;
+  const own = s.deadline_at;
+  const allDay = !!own && s.due_all_day;
+  const measured = s.fit?.deadline_at ?? s.planning_deadline_at ?? own ?? null;
+  const same = (a: string | null | undefined, b: string | null | undefined) =>
+    !!a && !!b && Date.parse(a) === Date.parse(b);
+  const isOwn = !measured || same(measured, own);
+  const due = own ? `Due ${dueDate(own, allDay, zone)}` : null;
+  const sooner =
+    !measured || isOwn
+      ? null
+      : same(measured, s.project_deadline)
+        ? `project ends ${dueDate(measured, false, zone)}`
+        : `a task waiting on it is due ${dueDate(measured, false, zone)}`;
+  const by = !measured
+    ? ""
+    : isOwn && allDay
+      ? `by the end of ${dueDate(measured, true, zone)}`
+      : `before ${dueDate(measured, false, zone)}`;
+  return { due, sooner, by };
 }
 
 // ---- moving a session by hand ------------------------------------------------

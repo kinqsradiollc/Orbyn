@@ -538,10 +538,18 @@ export async function getItem(ctx: AgentContext, a: { id: string }) {
     reminder_minutes: row.reminder_minutes,
     planning: planning
       ? {
-          deadline_at: planning.deadline_at,
-          project_deadline: planning.project_deadline,
-          dependent_deadline: planning.dependent_deadline,
-          planning_deadline_at: planning.planning_deadline_at,
+          // In the person's zone, as the app names them; the status is
+          // measured against planning_deadline_at (see `fitDeadline`).
+          deadline_at: localIso(planning.deadline_at, ctx.timezone),
+          project_deadline: localIso(planning.project_deadline, ctx.timezone),
+          dependent_deadline: localIso(
+            planning.dependent_deadline,
+            ctx.timezone,
+          ),
+          planning_deadline_at: localIso(
+            planning.planning_deadline_at,
+            ctx.timezone,
+          ),
           status: planning.fit?.label ?? null,
           needed_minutes: planning.fit?.needed_minutes ?? null,
           planned_minutes: planning.planned_minutes,

@@ -5,6 +5,7 @@ import {
   dayTime,
   deadlineFit,
   deadlineOf,
+  fitDeadline,
   planningDeadline,
   guessEstimate,
   hasTeamPermission,
@@ -243,7 +244,9 @@ export async function candidateTasks(
         dependent_deadline: dependentDeadline,
         due_at: t.due_at ? new Date(t.due_at).toISOString() : null,
         // One rule for when it's due by (the end of the day for an all-day task).
-        deadline_at: planningDeadline(deadlineOf(task), latest),
+        // Its latest date while that's still ahead, else its own deadline
+        // (see `fitDeadline`): the moment its status is measured against.
+        deadline_at: fitDeadline(deadlineOf(task), latest, now),
         due_all_day: !!t.due_at && all_day,
         scheduled_minutes: split.planned_minutes,
         late_minutes: split.late_minutes,
@@ -438,9 +441,10 @@ export async function computePlan(
     return {
       ...t,
       due_at: due,
-      deadline_at: planningDeadline(
+      deadline_at: fitDeadline(
         due,
         planningDeadline(t.project_deadline, t.dependent_deadline),
+        now,
       ),
       due_all_day: false,
       scheduled_minutes: split.planned_minutes,

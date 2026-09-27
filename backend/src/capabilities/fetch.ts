@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { docLines, type DocBlock, type TemplateTask } from "@orbyn/core";
+import {
+  deadlineOf,
+  docLines,
+  serializeBlock,
+  type DocBlock,
+  type TemplateTask,
+} from "@orbyn/core";
 import {
   Params,
   scopeFor,
@@ -121,6 +127,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     due_at: Date | null;
     end_at: Date | null;
     all_day: boolean;
+    timezone: string;
     rrule: string | null;
     location: string;
     estimate_minutes: number | null;
@@ -142,7 +149,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   const t = await visibleRow<Row>(
     ctx,
     (s, id) => `SELECT i.id, i.title, i.notes, i.kind, i.status, i.priority,
-        i.due_at, i.end_at, i.all_day, i.rrule, i.location, i.estimate_minutes,
+        i.due_at, i.end_at, i.all_day, i.timezone, i.rrule, i.location, i.estimate_minutes,
         i.spent_minutes, i.progress, i.team_id, i.user_id, u.name AS author_name,
         i.project_id, p.name AS project_name, st.name AS stage_name,
         l.name AS list_name, a.name AS assignee, i.version, i.updated_at,
@@ -198,10 +205,14 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     id: t.id,
     ...(ref.occurrence ? { occurrence: ref.occurrence } : {}),
   });
+  // The moment a task is due by, as the apps measure it (`deadlineOf`): the
+  // end of an all-day task's day, or the end of one with an end time.
+  const deadline = event ? null : deadlineOf(t);
+  const deadlineMs = deadline ? Date.parse(deadline) : null;
+  const afterDeadline = (b: { end_at: Date }) =>
+    deadlineMs !== null && b.end_at.getTime() > deadlineMs;
   const futureBefore = sessions.rows.filter(
-    (b) =>
-      b.end_at.getTime() > ctx.now.getTime() &&
-      (!t.due_at || b.end_at.getTime() <= t.due_at.getTime()),
+    (b) => b.end_at.getTime() > ctx.now.getTime() && !afterDeadline(b),
   );
   const plannedBefore = futureBefore.reduce(
     (m, b) => m + (b.end_at.getTime() - b.start_at.getTime()) / 60_000,
@@ -218,7 +229,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   ];
   if (start)
     lines.push(
-      `- ${event ? "When" : "Due (deadline)"}: ${both(start, tz)!.local}${end ? ` – ${both(end, tz)!.local}` : ""} (${start.toISOString()})${t.rrule ? ` · repeats (${t.rrule})` : ""}`,
+      `- ${event ? "When" : "Due (deadline)"}: ${both(start, tz)!.local}${end ? ` – ${both(end, tz)!.local}` : ""} (${start.toISOString()})${deadline && Date.parse(deadline) !== start.getTime() ? ` · due by ${both(deadline, tz)!.local}` : ""}${t.rrule ? ` · repeats (${t.rrule})` : ""}`,
     );
   if (t.project_name)
     lines.push(
@@ -245,7 +256,7 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
     lines.push("", "## Sessions");
     for (const b of sessions.rows)
       lines.push(
-        `- ${both(b.start_at, tz)!.local} – ${both(b.end_at, tz)!.local}${t.due_at && b.end_at > t.due_at ? " (after the deadline)" : ""}`,
+        `- ${both(b.start_at, tz)!.local} – ${both(b.end_at, tz)!.local}${afterDeadline(b) ? " (after the deadline)" : ""}`,
       );
   }
   if (steps.rows.length) {

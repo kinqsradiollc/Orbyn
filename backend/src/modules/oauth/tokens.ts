@@ -211,15 +211,29 @@ async function mint(
   };
 }
 
+/**
+ * Whether `resource` names Orbyn's MCP address (RFC 8707): the canonical
+ * address with or without a final slash, or, when the MCP address is
+ * `/mcp` at the root of its host, that origin (clients that name the server
+ * rather than its path). Tokens are always bound to the canonical address.
+ */
+export function isOurResource(resource: string): boolean {
+  const canonical = env.MCP_PUBLIC_URL.replace(/\/$/, "");
+  const given = resource.replace(/\/$/, "");
+  if (given === canonical) return true;
+  try {
+    const url = new URL(canonical);
+    return url.pathname === "/mcp" && given === url.origin;
+  } catch {
+    return false;
+  }
+}
+
 /** The resource a token request names, checked (RFC 8707). */
 function checkResource(resource: string | undefined, bound?: string) {
   if (resource === undefined || resource === "") return;
   const canonical = env.MCP_PUBLIC_URL;
-  const given =
-    resource.replace(/\/$/, "") === canonical.replace(/\/$/, "")
-      ? canonical
-      : resource;
-  if (given !== canonical || (bound && bound !== canonical))
+  if (!isOurResource(resource) || (bound && bound !== canonical))
     throw new OAuthError(
       "invalid_target",
       `Tokens here are only for ${canonical}.`,

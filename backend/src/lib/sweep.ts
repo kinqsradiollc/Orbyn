@@ -296,6 +296,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "oauth_client_assertions",
+    label: "Agent sign-in key proofs",
+    detail:
+      "Which signed assertions apps that sign in with a key have used, past their expiry.",
+    table: "oauth_client_assertions",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "agent_grants",
     label: "Unfinished agent sign-ins",
     detail:
