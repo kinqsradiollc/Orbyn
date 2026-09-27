@@ -374,7 +374,9 @@ export type Notice = {
     /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */
     | "session"
     /** A change waits for your approval in the Review inbox (`ref` = "proposal:<id>"). */
-    | "review";
+    | "review"
+    /** To admins: something about the server itself (`ref` = "clock:<since>"). */
+    | "system";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;
@@ -437,6 +439,22 @@ export type StatusReport = {
   incidents: StatusIncident[];
   /** Set while an admin has switched maintenance mode on. */
   maintenance: Maintenance | null;
+  /** Set while the server's clock is out against outside time. */
+  clock?: ServerClock | null;
+};
+
+/**
+ * The server's clock found out against outside time (the Date of two
+ * well-known sites, checked by the worker every few minutes): how far, and
+ * since when. Only there while it is out by more than a couple of minutes.
+ */
+export type ServerClock = {
+  /** Server time minus outside time: positive when the server is fast. */
+  skew_ms: number;
+  /** When it was first found out (outside time). */
+  since: string;
+  /** The latest check that agreed (outside time). */
+  checked_at: string;
 };
 
 /** Maintenance mode: members can read but not change anything; admins can. */
@@ -481,6 +499,8 @@ export type SystemSettingsView = {
   settings: SystemSettings;
   sources: Record<SystemSettingKey, "database" | "environment">;
   updated_at: string | null;
+  /** Set while the server's clock is out (see `ServerClock`). */
+  clock?: ServerClock | null;
 };
 
 /** The build a service is running. */

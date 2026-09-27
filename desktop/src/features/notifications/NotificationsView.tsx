@@ -5,6 +5,7 @@ import {
   Bell,
   CalendarCheck,
   CalendarClock,
+  Clock,
   CalendarDays,
   FastForward,
   FileText,
@@ -62,6 +63,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   mention: AtSign,
   session: Timer,
   review: Inbox,
+  system: Clock,
 };
 
 /**

@@ -11,6 +11,7 @@ import {
   CircleCheck,
   CircleDashed,
   CircleX,
+  Clock,
   Orbit,
   RefreshCw,
   TriangleAlert,
@@ -18,6 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  clockSkewText,
   formatUptime,
   groupStatusComponents,
   groupSummary,
@@ -252,6 +254,29 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
                   </strong>
                 </p>
               )}
+            </div>
+          </section>
+        )}
+
+        {report?.clock && (
+          <section
+            className="status-maintenance fade-up"
+            role="status"
+            aria-labelledby="status-clock-title"
+          >
+            <Clock size={22} aria-hidden="true" />
+            <div>
+              <h2 id="status-clock-title">Server clock is out</h2>
+              <p className="status-maintenance-message">
+                {clockSkewText(report.clock.skew_ms)}
+              </p>
+              <p>
+                Found{" "}
+                <time dateTime={report.clock.since}>
+                  {formatDateTime(report.clock.since)}
+                </time>
+                , checked against outside time every ten minutes.
+              </p>
             </div>
           </section>
         )}

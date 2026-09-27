@@ -24,11 +24,14 @@ import {
   agendaGroups,
   agendaMonthKey,
   agendaTitleOn,
+  agendaTodayAt,
   agendaWeekOf,
   docPreview,
   isOfflineError,
   withPendingSave,
   localDateKey,
+  dayZone,
+  nextDayStart,
   favouriteKey,
   favouriteSet,
   savedAgo,
@@ -204,11 +207,17 @@ export function DocsSheet({
   /** Whether "New page from a template" is showing in place of the list. */
   const [templating, setTemplating] = useState(false);
   /**
-   * Stepping through agendas: today's date in your own zone, and a day with
-   * no page written yet (shown as a gap with a way to write it).
+   * The zone the agenda's days are in: your account's (planner settings),
+   * as the server writes them — not the phone's, which may be elsewhere.
+   * The phone's stands in until the settings are read.
+   */
+  const agendaZone = useRef(deviceTimeZone());
+  /**
+   * Stepping through agendas: today's date in your account's zone, and a
+   * day with no page written yet (shown as a gap with a way to write it).
    */
   const [agendaToday, setAgendaToday] = useState(() =>
-    localDateKey(new Date(), deviceTimeZone()),
+    localDateKey(new Date(), agendaZone.current),
   );
   const [agendaGap, setAgendaGap] = useState<string | null>(null);
   const { busy, error, setError, run } = useRun();
@@ -227,16 +236,46 @@ export function DocsSheet({
   const [historyKey, setHistoryKey] = useState(0);
   const scroller = useRef<ScrollView>(null);
 
-  // Left open past midnight, today's page becomes yesterday's: the labels
-  // and Rewrite follow the clock whenever the app comes back to the front.
+  // Left open past midnight (your account's), today's page becomes
+  // yesterday's: the labels and Rewrite follow the clock whenever the app
+  // comes back to the front, and at midnight while it stays open.
   useEffect(() => {
     if (!agenda) return;
+    let live = true;
+    const check = () => {
+      setAgendaToday((was) =>
+        agendaTodayAt(was, new Date(), agendaZone.current),
+      );
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const atMidnight = () => {
+      const now = new Date();
+      const next = nextDayStart(now, agendaZone.current).getTime() + 5_000;
+      timer = setTimeout(() => {
+        check();
+        atMidnight();
+      }, next - now.getTime());
+    };
+    client.getPlannerPrefs().then(
+      (prefs) => {
+        if (!live) return;
+        agendaZone.current = dayZone(prefs.timezone, false, deviceTimeZone());
+        clearTimeout(timer);
+        atMidnight();
+      },
+      () => {
+        // Offline: the phone's zone until the next open.
+      },
+    );
+    atMidnight();
     const sub = AppState.addEventListener("change", (state) => {
-      if (state !== "active") return;
-      const now = localDateKey(new Date(), deviceTimeZone());
-      setAgendaToday((was) => (now > was ? now : was));
+      if (state === "active") check();
     });
-    return () => sub.remove();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      sub.remove();
+    };
   }, [agenda]);
 
   useEffect(() => {
@@ -272,7 +311,7 @@ export function DocsSheet({
         },
         async (e: unknown) => {
           // No signal: today's agenda as this phone last saw it (SHR-03).
-          const today = localDateKey(new Date(), deviceTimeZone());
+          const today = localDateKey(new Date(), agendaZone.current);
           const kept = isOfflineError(e)
             ? (await keptPages()).find(
                 (d) => d.kind === "agenda" && d.agenda_date === today,

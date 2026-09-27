@@ -1,5 +1,25 @@
-import { isTimeZone, localDateKey } from "@orbyn/core";
-import { pool } from "../../db/pool.js";
+import { dayZone, isTimeZone, localDateKey } from "@orbyn/core";
+import { pool, type Queryable } from "../../db/pool.js";
+
+/**
+ * The zone someone's days are read in (core's `dayZone`): their planner
+ * zone, the same one the agenda, digests and agents use. `device` (the
+ * zone an app says it is in) counts only while the account has none of its
+ * own yet. It only reads.
+ */
+export async function dayZoneFor(
+  db: Queryable,
+  userId: string,
+  device?: string,
+) {
+  const row = (
+    await db.query<{ timezone: string; timezone_chosen: boolean }>(
+      "SELECT timezone, timezone_chosen FROM planner_prefs WHERE user_id = $1",
+      [userId],
+    )
+  ).rows[0];
+  return dayZone(row?.timezone, !!row?.timezone_chosen, device);
+}
 
 /**
  * Adopt the time zone of the device someone is using, unless they picked one

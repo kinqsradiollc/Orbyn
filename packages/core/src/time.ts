@@ -119,6 +119,34 @@ export function addDays(key: string, days: number) {
   return t.toISOString().slice(0, 10);
 }
 
+/**
+ * The instant the day after the one `now` falls on starts, in `timeZone`:
+ * when "today" turns over. Worked out on the calendar, not by adding 24
+ * hours, so a day that daylight saving makes 23 or 25 hours long still
+ * turns over at its own midnight (or, where midnight is skipped, the first
+ * moment of the new day).
+ */
+export function nextDayStart(now: Date, timeZone: string) {
+  return dayTime(addDays(localDateKey(now, timeZone), 1), 0, timeZone);
+}
+
+/**
+ * The zone someone's days are read in — "today" on the Today list, the
+ * agenda and everything the server writes: their account's (planner) zone.
+ * The device's zone stands in only while the account has none of its own
+ * yet (still on the UTC it started with, never picked), which is when the
+ * server adopts the device's anyway.
+ */
+export function dayZone(
+  account: string | null | undefined,
+  chosen: boolean,
+  device?: string | null,
+) {
+  const own = account && isTimeZone(account) ? account : "UTC";
+  if (own !== "UTC" || chosen) return own;
+  return device && isTimeZone(device) ? device : own;
+}
+
 /** The weekday (0 = Sunday) of a "YYYY-MM-DD" key. */
 export const weekdayOf = (key: string) => {
   const [y, m, d] = key.split("-").map(Number);

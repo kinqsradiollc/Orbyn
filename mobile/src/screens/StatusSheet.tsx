@@ -7,6 +7,7 @@ import {
   View,
 } from "react-native";
 import {
+  clockSkewText,
   formatUptime,
   groupStatusComponents,
   groupSummary,
@@ -196,6 +197,7 @@ export function StatusSheet({
               {report.maintenance?.enabled && (
                 <MaintenanceNotice maintenance={report.maintenance} />
               )}
+              {report.clock && <ClockNotice skewMs={report.clock.skew_ms} />}
               <Headline report={report} now={now} />
               <ActiveIncidents
                 incidents={splitIncidents(report.incidents).active}
@@ -238,6 +240,23 @@ function MaintenanceNotice({ maintenance }: { maintenance: Maintenance }) {
             Expected back {formatUntil(maintenance.until)}
           </Text>
         )}
+      </View>
+    </FadeIn>
+  );
+}
+
+/** Shown while the server's clock is out against outside time. */
+function ClockNotice({ skewMs }: { skewMs: number }) {
+  return (
+    <FadeIn style={s.maintenance}>
+      <View style={[s.bannerIcon, { backgroundColor: maintenanceTone.fg }]}>
+        <Icon name="clock" size={18} color={colors.white} strokeWidth={2.2} />
+      </View>
+      <View style={{ flex: 1 }} accessible accessibilityRole="alert">
+        <Text style={[s.bannerTitle, { color: maintenanceTone.fg }]}>
+          Server clock is out
+        </Text>
+        <Text style={shared.body}>{clockSkewText(skewMs)}</Text>
       </View>
     </FadeIn>
   );
