@@ -175,7 +175,7 @@ async function logMilestone(
 }
 
 /** Put project tasks into a milestone (or take them out, with null). */
-async function placeTasks(
+export async function placeTasks(
   db: Db,
   u: UserRow,
   projectId: string,
@@ -218,6 +218,132 @@ async function ownMilestone(db: Db, projectId: string, id: string) {
 
 const params = z.object({ id: z.uuid(), milestoneId: z.uuid() });
 
+/** Add a milestone to a project (route and agents); its id. */
+export async function addMilestone(
+  db: Db,
+  u: UserRow,
+  id: string,
+  d: z.output<typeof milestoneInput>,
+): Promise<string> {
+  await actAs(db, u.id);
+  const project = await requireProject(db, id, u, "items:write");
+  // One add at a time per project, so parallel adds can't pass the cap.
+  await db.query(
+    "SELECT pg_advisory_xact_lock(hashtext('project_milestones:' || $1))",
+    [id],
+  );
+  const count = (
+    await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM project_milestones WHERE project_id = $1",
+      [id],
+    )
+  ).rows[0].n;
+  if (count >= 50) fail(409, "A project can have up to 50 milestones.");
+  const row = (
+    await db.query<{ id: string }>(
+      `INSERT INTO project_milestones (project_id, name, due_on, created_by)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+      [id, d.name, d.due_on, u.id],
+    )
+  ).rows[0];
+  await placeTasks(db, u, id, project.team_id, d.item_ids ?? [], row.id);
+  await logMilestone(
+    db,
+    u,
+    id,
+    "milestone_added",
+    row.id,
+    `Milestone added: ${d.name}`,
+    null,
+    { name: d.name, due_on: d.due_on },
+  );
+  return row.id;
+}
+
+/** Rename, re-date or tick a milestone (route and agents); what it was. */
+export async function changeMilestone(
+  db: Db,
+  u: UserRow,
+  projectId: string,
+  milestoneId: string,
+  d: z.output<typeof milestoneUpdate>,
+): Promise<{ name: string; due_on: string; done: boolean }> {
+  await actAs(db, u.id);
+  await requireProject(db, projectId, u, "items:write");
+  const before = await ownMilestone(db, projectId, milestoneId);
+  const after = (
+    await db.query<MilestoneRow>(
+      `UPDATE project_milestones m SET
+           name = coalesce($3, name),
+           due_on = coalesce($4::date, due_on),
+           done_at = CASE WHEN $5::boolean IS NULL THEN done_at
+                          WHEN $5 THEN coalesce(done_at, now()) ELSE NULL END,
+           updated_at = now()
+         WHERE m.id = $1 AND m.project_id = $2 RETURNING ${COLUMNS}`,
+      [
+        milestoneId,
+        projectId,
+        d.name ?? null,
+        d.due_on ?? null,
+        d.done ?? null,
+      ],
+    )
+  ).rows[0];
+  const was = {
+    name: before.name,
+    due_on: before.due_on,
+    done: !!before.done_at,
+  };
+  const now = {
+    name: after.name,
+    due_on: after.due_on,
+    done: !!after.done_at,
+  };
+  if (JSON.stringify(was) !== JSON.stringify(now))
+    await logMilestone(
+      db,
+      u,
+      projectId,
+      "milestone_changed",
+      milestoneId,
+      !was.done && now.done
+        ? `Milestone done: ${after.name}`
+        : `Milestone changed: ${after.name}`,
+      was,
+      now,
+    );
+  return { name: before.name, due_on: before.due_on, done: !!before.done_at };
+}
+
+/** Remove a milestone (its tasks stay in the project): route and agents. */
+export async function removeMilestone(
+  db: Db,
+  u: UserRow,
+  projectId: string,
+  milestoneId: string,
+) {
+  await actAs(db, u.id);
+  await requireProject(db, projectId, u, "items:write");
+  const before = await ownMilestone(db, projectId, milestoneId);
+  // Its tasks stay in the project; other devices hear they changed.
+  await db.query(
+    `UPDATE items SET milestone_id = NULL, version = version + 1, updated_at = now()
+        WHERE milestone_id = $1`,
+    [milestoneId],
+  );
+  await db.query("DELETE FROM project_milestones WHERE id = $1", [milestoneId]);
+  await logMilestone(
+    db,
+    u,
+    projectId,
+    "milestone_removed",
+    milestoneId,
+    `Milestone removed: ${before.name}`,
+    { name: before.name, due_on: before.due_on },
+    null,
+  );
+}
+
 export async function milestoneRoutes(app: FastifyInstance) {
   app.get("/projects/:id/milestones", async (r) => {
     const u = await authenticate(r);
@@ -235,41 +361,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const d = milestoneInput.parse(r.body);
-    const made = await transaction(async (db) => {
-      await actAs(db, u.id);
-      const project = await requireProject(db, id, u, "items:write");
-      // One add at a time per project, so parallel adds can't pass the cap.
-      await db.query(
-        "SELECT pg_advisory_xact_lock(hashtext('project_milestones:' || $1))",
-        [id],
-      );
-      const count = (
-        await db.query<{ n: number }>(
-          "SELECT count(*)::int AS n FROM project_milestones WHERE project_id = $1",
-          [id],
-        )
-      ).rows[0].n;
-      if (count >= 50) fail(409, "A project can have up to 50 milestones.");
-      const row = (
-        await db.query<{ id: string }>(
-          `INSERT INTO project_milestones (project_id, name, due_on, created_by)
-           VALUES ($1, $2, $3, $4) RETURNING id`,
-          [id, d.name, d.due_on, u.id],
-        )
-      ).rows[0];
-      await placeTasks(db, u, id, project.team_id, d.item_ids ?? [], row.id);
-      await logMilestone(
-        db,
-        u,
-        id,
-        "milestone_added",
-        row.id,
-        `Milestone added: ${d.name}`,
-        null,
-        { name: d.name, due_on: d.due_on },
-      );
-      return row.id;
-    });
+    const made = await transaction((db) => addMilestone(db, u, id, d));
     reply.code(201);
     const all = await projectMilestones(reader(r.headers), u.id, id);
     return all.find((m) => m.id === made)!;
@@ -279,52 +371,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const p = params.parse(r.params);
     const d = milestoneUpdate.parse(r.body);
-    await transaction(async (db) => {
-      await actAs(db, u.id);
-      await requireProject(db, p.id, u, "items:write");
-      const before = await ownMilestone(db, p.id, p.milestoneId);
-      const after = (
-        await db.query<MilestoneRow>(
-          `UPDATE project_milestones m SET
-             name = coalesce($3, name),
-             due_on = coalesce($4::date, due_on),
-             done_at = CASE WHEN $5::boolean IS NULL THEN done_at
-                            WHEN $5 THEN coalesce(done_at, now()) ELSE NULL END,
-             updated_at = now()
-           WHERE m.id = $1 AND m.project_id = $2 RETURNING ${COLUMNS}`,
-          [
-            p.milestoneId,
-            p.id,
-            d.name ?? null,
-            d.due_on ?? null,
-            d.done ?? null,
-          ],
-        )
-      ).rows[0];
-      const was = {
-        name: before.name,
-        due_on: before.due_on,
-        done: !!before.done_at,
-      };
-      const now = {
-        name: after.name,
-        due_on: after.due_on,
-        done: !!after.done_at,
-      };
-      if (JSON.stringify(was) !== JSON.stringify(now))
-        await logMilestone(
-          db,
-          u,
-          p.id,
-          "milestone_changed",
-          p.milestoneId,
-          !was.done && now.done
-            ? `Milestone done: ${after.name}`
-            : `Milestone changed: ${after.name}`,
-          was,
-          now,
-        );
-    });
+    await transaction((db) => changeMilestone(db, u, p.id, p.milestoneId, d));
     const all = await projectMilestones(reader(r.headers), u.id, p.id);
     return all.find((m) => m.id === p.milestoneId)!;
   });
@@ -332,30 +379,7 @@ export async function milestoneRoutes(app: FastifyInstance) {
   app.delete("/projects/:id/milestones/:milestoneId", async (r, reply) => {
     const u = await authenticate(r);
     const p = params.parse(r.params);
-    await transaction(async (db) => {
-      await actAs(db, u.id);
-      await requireProject(db, p.id, u, "items:write");
-      const before = await ownMilestone(db, p.id, p.milestoneId);
-      // Its tasks stay in the project; other devices hear they changed.
-      await db.query(
-        `UPDATE items SET milestone_id = NULL, version = version + 1, updated_at = now()
-          WHERE milestone_id = $1`,
-        [p.milestoneId],
-      );
-      await db.query("DELETE FROM project_milestones WHERE id = $1", [
-        p.milestoneId,
-      ]);
-      await logMilestone(
-        db,
-        u,
-        p.id,
-        "milestone_removed",
-        p.milestoneId,
-        `Milestone removed: ${before.name}`,
-        { name: before.name, due_on: before.due_on },
-        null,
-      );
-    });
+    await transaction((db) => removeMilestone(db, u, p.id, p.milestoneId));
     reply.code(204);
   });
 

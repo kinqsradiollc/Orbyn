@@ -60,6 +60,14 @@ export const REVIEW_ACTIONS = [
   "template.use",
   "tasks.import",
   "delete",
+  /** A whole plan an agent sent in one call (apply_plan), made all at once. */
+  "plan.apply",
+  /** A page brought back from Trash (H6b). */
+  "page.restore",
+  /** Running a team: make, rename, invite, remove, roles, meeting budget (H6b). */
+  "team.admin",
+  /** Letting a kept-out project back into AI (H6b): always the person's call. */
+  "project.assistant",
 ] as const;
 export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
 
@@ -78,6 +86,10 @@ export const REVIEW_DELETABLE = [
   "proof",
   "project_link",
   "habit_session",
+  /** Your own field on pages or projects (H6b). */
+  "field",
+  /** A project's milestone (H6b). */
+  "milestone",
 ] as const;
 export type ReviewDeletable = (typeof REVIEW_DELETABLE)[number];
 
@@ -138,6 +150,11 @@ export const reviewChange = z.discriminatedUnion("type", [
     untick: z.array(id).max(100).default([]),
     rename: z
       .array(z.object({ id, title: z.string().max(500) }))
+      .max(100)
+      .default([]),
+    /** Steps moved to a place in the list (0 is the top), in order. */
+    move: z
+      .array(z.object({ id, position: z.number().int().min(0).max(1000) }))
       .max(100)
       .default([]),
   }),

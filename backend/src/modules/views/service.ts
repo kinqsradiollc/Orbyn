@@ -60,7 +60,10 @@ type Narrowing = { where: string[]; values: unknown[] };
  * The spaces a view may read from: an agent's connection may be limited to
  * some of them (`ctx.spaces`); the apps read every space.
  */
-export type ViewSpaces = Pick<Spaces, "teamIds" | "personal">;
+export type ViewSpaces = Pick<Spaces, "teamIds" | "personal"> & {
+  /** Read for an agent: projects kept out of AI (and what's in them) are left out. */
+  ai?: boolean;
+};
 
 /** SQL narrowing shared by every source: spaces, team and project. */
 function narrow(
@@ -84,6 +87,10 @@ function narrow(
   if (f.team === "personal") where.push(`${alias}.team_id IS NULL`);
   else if (f.team) where.push(`${alias}.team_id = ${add(f.team)}`);
   if (f.project) where.push(`${projectColumn} = ${add(f.project)}`);
+  if (spaces?.ai)
+    where.push(
+      `NOT EXISTS (SELECT 1 FROM projects ko WHERE ko.id = ${projectColumn} AND ko.assistant_off)`,
+    );
   return { where, values };
 }
 

@@ -21,6 +21,52 @@ import { workingFree } from "./plans.js";
  * webhooks the same way, and stays the caller's own.
  */
 
+/**
+ * Another session for the same task and length: at `startAt`, or the next
+ * free working time after the original (and after `now`). The planner's
+ * route and agents' reschedule_sessions (duplicate, roll forward) share it.
+ */
+export async function duplicateSession(
+  db: Db,
+  userId: string,
+  id: string,
+  startAt?: string,
+  now = new Date(),
+): Promise<TimeBlock> {
+  const b = await ownBlock(db, id, userId);
+  const open = await db.query(
+    `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}`,
+    [userId, b.item_id],
+  );
+  if (!open.rowCount) fail(409, "This task is done or no longer yours.");
+  const length = b.end_at.getTime() - b.start_at.getTime();
+  let slot: { start_at: string; end_at: string } | null;
+  if (startAt)
+    slot = {
+      start_at: new Date(startAt).toISOString(),
+      end_at: new Date(Date.parse(startAt) + length).toISOString(),
+    };
+  else {
+    slot = await workingFree(db, userId, length / 60000, [], now, b.end_at);
+    if (!slot)
+      fail(409, "There's no free working time in the 7 days after it.");
+  }
+  const { id: newId } = (
+    await db.query<{ id: string }>(
+      `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [b.item_id, userId, slot!.start_at, slot!.end_at],
+    )
+  ).rows[0];
+  const created = await blockById(db, newId, userId);
+  await queueWebhooks(
+    db,
+    "block.scheduled",
+    { user_id: userId, team_id: null },
+    created,
+  );
+  return created;
+}
+
 /** One of `userId`'s sessions, locked for a change; 404 when it isn't theirs. */
 export async function ownBlock(db: Db, id: string, userId: string) {
   const row = (

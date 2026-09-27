@@ -388,6 +388,8 @@ export function App() {
       setReviewToOpen(link.id);
       setView("Review");
     } else if (link.kind === "view") openSavedView(link.id);
+    // Settings → Connected agents: what agents did, to undo (H7).
+    else if (link.kind === "agents") openSetting("agents");
     else setView("Overview");
   };
   // How many proposals wait, for the sidebar: read when signed in and again
@@ -882,6 +884,12 @@ export function App() {
     setQuery("");
     setPlanRequest(null);
     setBookingFocus(null);
+  };
+
+  /** Settings, at one setting ("agents": Connected agents). */
+  const openSetting = (id: string) => {
+    navigate("Settings");
+    setSettingAsked((was) => ({ id, seq: (was?.seq ?? 0) + 1 }));
   };
 
   /** The bookings inbox, with one booking open. */
@@ -1524,6 +1532,7 @@ export function App() {
                       setProjectToOpen(id);
                       navigate("Projects");
                     }}
+                    onOpenSetting={openSetting}
                     onOpenDoc={(id) =>
                       void client.getDoc(id).then((doc) => {
                         setNoteDoc(doc);

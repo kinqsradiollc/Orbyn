@@ -283,6 +283,15 @@ without a name is matched by its question. Removing the line removes the card. S
 v4.5 with the standard parameters, aiming for 90% recall: Again brings a card back in 10 minutes,
 and the others in days. At most 20 new cards are introduced a day.
 
+A card line may end with a link to the notes line it was made from,
+`[src: Lecture 5 › Cells make energy](orbyn://doc/<id>#<line>)` (never part of the question or
+answer): each card then has `source { doc_id, block_id, doc_title, text }`, shown as "from: …" once
+the answer is revealed (only where the person can read that page). A card line right under a picture
+line asks about that picture (`picture`, a page file id). Every Again counts as a miss (`misses`);
+`weak[]` lists what the person keeps getting wrong, most misses first, with the notes to re-read
+(`source`). An outside agent can mark a card "needs work" (its explanation fell short): it comes
+first in the agent's next quiz and is cleared by a Good or Easy.
+
 Cards follow their pages, not the reading of Study: saving a page (and restoring a version or a
 page from Trash, taking a proposal or adding tasks from its lines) updates its cards for everyone
 who can read it before the answer comes back, and joining or leaving a team does the same for the
@@ -302,7 +311,8 @@ notifier within a few seconds. `GET /study` and `GET /study/queue` only read.
 | `POST /ai/study/cards/:id/explain`        | → `{ explanation, beyond_notes }`; `beyond_notes` is true when it needed more than the page                    |
 
 **Exams** are upcoming events (60 days) from a subscribed calendar of the Exams kind, or events named
-like one (exam, midterm, final, test, quiz). Each has a `key` built from its source and start.
+like one (exam, midterm, final, test, quiz), and exams named in Study itself by an outside agent
+(`own:<id>` keys). Each has a `key` built from its source and start, and an optional `target`.
 `readiness` is the share of the attached pages' cards known well (stable for a week or more).
 `projected` is the share known well by the exam if every review is done when due and new cards are
 learnt 20 a day. `forecast` gives reviews due on each of the next 7 days, with overdue ones counted
@@ -955,10 +965,19 @@ Kept for anything already pointing at it; `export?format=md` is the same bytes.
 ### `GET /docs/:id/info` (auth)
 
 A page's Info panel in one request (NAV-04):
-`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write }`.
+`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write, sources }`.
 `team`, `project`, `event` (`{ id, title, due_at }`) and `folder` are `null` when the page has none;
 `recent` is the latest three versions as `GET /docs/:id/versions` lists them. `linked_here` counts only
-places the reader can open. `404` for a page the reader can't open or one in the Trash.
+places the reader can open. `sources` are web sources an agent read and saved for the page
+(save_source): `[ { id, url, title, site, author, quote, accessed_on, lines } ]`, newest first, where
+`lines` are the anchors of the lines that use each one; Orbyn never opens them. `404` for a page the
+reader can't open or one in the Trash.
+
+### `DELETE /docs/:id/sources/:sourceId` (auth)
+
+Takes a source off the page (page Info → Sources): its lines' uses of it go, the page's words don't
+change and the source stays for other pages that cite it. Whoever can change the page. `204`; `404`
+when the source isn't on the page or the page can't be changed by the reader.
 
 ### `GET /docs/:id/versions` (auth)
 
@@ -1985,16 +2004,34 @@ Outside AI agents (Claude Code, Codex, Cursor and others) connect to the **mcp s
 
 ## Connected agents
 
-| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                                                               |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /me/agents`              | `{ mcp_url, legacy_keys_until, grants }`: your connections (agent keys, old keys used over MCP), each with `access`, `personal`, `teams`, `toolsets`, `hide_outside_content`, `prefix`, `expires_at`, `last_used_at`, `suspended_at`                                                                                                                                                                        |
-| `POST /me/agent-keys`         | `{ "name", "access"?: "read"\|"suggest"\|"write", "personal"?, "team_ids"?, "toolsets"?, "expires_in_days"?, "hide_outside_content"? }` → `201` `{ grant, key }` (the key is shown once). 30 days by default, never past the admin's limit. `hide_outside_content` leaves out the text of subscribed calendar events, imported files, emailed tasks and booking answers (imported pages keep their titles). |
-| `DELETE /me/agents/:id`       | Revokes it: `204`. It stops working on its next call. For an old API key, this removes only its MCP access.                                                                                                                                                                                                                                                                                                 |
-| `POST /me/agents/:id/restore` | Restores a connection Orbyn paused (`suspended_at`) after it kept going over its limits or being refused: `204`. Audited.                                                                                                                                                                                                                                                                                   |
-| `PUT /me/agents/:id/toolsets` | `{ "toolsets": [...] }` → the connection, with `core` always on. Bookings can be added to an agent key; a connection that signed in gets them only by signing in again (`422`). Every copy of the service hears of it at once; agents see it the next time they list their tools. Audited.                                                                                                                  |
-| `GET /me/agents/:id/activity` | What it did, newest first. Each change is one line, and reads are counted per minute: `[{ at, tool, outcome, summary, calls, target_ids }]`                                                                                                                                                                                                                                                                 |
-| `PUT /teams/:id/agent-access` | Owners and admins: `{ "agent_access": "role"\|"suggest"\|"read"\|"off" }`. This caps every agent in the team. `off` hides the team from agents.                                                                                                                                                                                                                                                             |
-| `GET` / `PUT /admin/agents`   | Admins: `agents_enabled`, `agents_writes_enabled`, `blocked_client_ids`, `allowed_client_hosts`, `dcr_enabled`, `max_grant_days` and `agent_limits`. They apply within 10 s, with no deploy. Changes are audited.                                                                                                                                                                                           |
+| Method and path               | Body / result                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me/agents`              | `{ mcp_url, legacy_keys_until, grants }`: your connections (agent keys, old keys used over MCP), each with `access`, `personal`, `teams`, `toolsets`, `hide_outside_content`, `prefix`, `expires_at`, `last_used_at`, `suspended_at`                                                                                                                                                                                                                                                     |
+| `POST /me/agent-keys`         | `{ "name", "access"?: "read"\|"suggest"\|"write", "personal"?, "team_ids"?, "toolsets"?, "expires_in_days"?, "hide_outside_content"? }` → `201` `{ grant, key }` (the key is shown once). 30 days by default, never past the admin's limit. `hide_outside_content` leaves out the text of subscribed calendar events, imported files, emailed tasks and booking answers (imported pages keep their titles).                                                                              |
+| `DELETE /me/agents/:id`       | Revokes it: `204`. It stops working on its next call. For an old API key, this removes only its MCP access.                                                                                                                                                                                                                                                                                                                                                                              |
+| `POST /me/agents/:id/restore` | Restores a connection Orbyn paused (`suspended_at`) after it kept going over its limits or being refused: `204`. Audited.                                                                                                                                                                                                                                                                                                                                                                |
+| `PUT /me/agents/:id/toolsets` | `{ "toolsets": [...] }` → the connection, with `core` always on. Bookings can be added to an agent key; a connection that signed in gets them only by signing in again (`422`). Every copy of the service hears of it at once; agents see it the next time they list their tools. Audited.                                                                                                                                                                                               |
+| `PUT /me/agents/:id/trust`    | `{ "trust"?: "full"\|"ask"\|"suggest", "spaces"?: { "personal"\|<team id>: level or null }, "acts_alone"?: [ask-first items] }` → the connection. How much it does alone (full power by default; `ask` asks before every change; `suggest` sends everything to review), per space, and which ask-first items (`teammates`, `people`, `publishing`, `bookings`, `team_admin`, `profile`, `bulk`) it may do alone. Full and ask need a connection that may change things (`422`). Audited. |
+| `GET /me/agents/:id/activity` | What it did, newest first. Each change is one line, and reads are counted per minute: `[{ at, tool, outcome, summary, calls, target_ids }]`                                                                                                                                                                                                                                                                                                                                              |
+| `PUT /teams/:id/agent-access` | Owners and admins: `{ "agent_access": "role"\|"suggest"\|"read"\|"off" }`. This caps every agent in the team. `off` hides the team from agents.                                                                                                                                                                                                                                                                                                                                          |
+| `POST /proposals/:id/respond` | `{ "decision": "approve"\|"decline" }` → `{ status }`, from a notification's Approve and Decline (signed in as you; keys refused). A proposal already decided answers how it ended.                                                                                                                                                                                                                                                                                                      |
+| `GET` / `PUT /admin/agents`   | Admins: `agents_enabled`, `agents_writes_enabled`, `blocked_client_ids`, `allowed_client_hosts`, `dcr_enabled`, `max_grant_days` and `agent_limits`. They apply within 10 s, with no deploy. Changes are audited.                                                                                                                                                                                                                                                                        |
+
+### Agents' inboxes (H0)
+
+Everything that happens in Orbyn for you goes to your agents first: each connection has an inbox (read with the MCP tools `get_inbox` and `ack_inbox`, and the resource `orbyn://inbox`), only for the spaces it reaches, never from projects kept out of the assistant, kept 14 days. These routes are for you, signed in (keys refused).
+
+| Method and path                      | Body / result                                                                                                                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /me/agents/:id/inbox`           | `{ muted, wake_url, wake_last_status, wake_last_error, wake_last_sent_at, unread }`                                                                                                                                                                                |
+| `PUT /me/agents/:id/inbox`           | `{ "muted": [kinds] }` → the same. Kinds: `booking`, `mention`, `invite`, `deadline`, `import`, `study`, `email_task`, `review`, `ask`, `answer`. Audited.                                                                                                         |
+| `PUT /me/agents/:id/wake`            | `{ "url" }` (https, public address) → `{ settings, secret }`; the signing secret is shown once. Orbyn POSTs `{ grant, count, inbox_url, kinds }` (never content) signed like webhooks (`X-Orbyn-Signature`, event `agent.wake`), at most every 5 minutes. Audited. |
+| `DELETE /me/agents/:id/wake`         | No more wake-ups → the settings.                                                                                                                                                                                                                                   |
+| `POST /me/agents/:id/wake/test`      | Calls the address now → `{ ok, status, error }`.                                                                                                                                                                                                                   |
+| `GET` / `POST /me/agent-rules`       | Your standing rules for agents: `[{ id, kind, text }]`; `{ "kind"?: kind\|null, "text" }` → `201`. At most 50. Agents get them with each inbox item.                                                                                                               |
+| `PUT` / `DELETE /me/agent-rules/:id` | Change (`{ kind, text }`) or remove (`204`) a rule.                                                                                                                                                                                                                |
+| `GET /me/questions`                  | Questions your agents asked (`ask_person`) that wait: `[{ id, agent, question, detail, choices, yes_no, default_choice, expires_at }]`.                                                                                                                            |
+| `POST /me/questions/:id/answer`      | `{ "answer", "via"?: "app"\|"push" }` → the question. One of its choices (yes/no also as approve/decline); the asking agent gets it as an `answer` item. One already answered says how it ended.                                                                   |
 
 ### Sign in with Orbyn (OAuth)
 

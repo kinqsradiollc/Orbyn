@@ -85,6 +85,7 @@ import {
   announceTags,
   checkLinks,
   dropStandInCopy,
+  untrashDoc,
   eventNote,
   eventTime,
   findTagNamed,
@@ -855,16 +856,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const back = await transaction(async (db) => {
-      await actAs(db, u.id);
-      await requireDoc(db, id, u, "items:write", true);
-      await db.query(
-        `UPDATE docs SET deleted_at = NULL, deleted_by = NULL,
-           merged_into = NULL WHERE id = $1`,
-        [id],
-      );
-      await noteTrash(db, id, u.id, false);
-      await searchTrash(db, id, false);
-      await dropStandInCopy(db, id);
+      await untrashDoc(db, u, id);
       const doc = (
         await db.query<Doc>(
           `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS} WHERE d.id = $1`,

@@ -21,6 +21,16 @@ import { serviceKey } from "./tokens.js";
  * API reads them back only for someone who can open the page.
  */
 
+/** Originals an agent kept (H2) come in a few more types than imports. */
+const KEPT_MIME: Record<string, string> = {
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  gif: "image/gif",
+  webp: "image/webp",
+  txt: "text/plain",
+  md: "text/markdown",
+  csv: "text/csv",
+};
+
 const quotaBytes = () => env.FILES_KEEP_QUOTA_MB * 1024 * 1024;
 
 /** A kept original's bytes from the file service. */
@@ -110,6 +120,7 @@ export async function originalRoutes(app: FastifyInstance) {
     if (!body) fail(404, "The original couldn't be found.");
     const type =
       IMPORT_MIME[row.file_type as ImportFileType] ??
+      KEPT_MIME[row.file_type] ??
       "application/octet-stream";
     const name = row.file_name.replace(/["\\\r\n]/g, "_");
     reply.header("Content-Type", type);

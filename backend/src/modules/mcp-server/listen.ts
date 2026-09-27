@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { AGENT_INBOX_URI } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import { mcpOriginAllowed } from "../../lib/mcp-origins.js";
 import {
@@ -37,7 +38,8 @@ import { detailed, readTasks, ownTaskIds } from "./tasks.js";
  *
  * - The stream opens with notifications/subscriptions/acknowledged, naming
  *   what was agreed: the recent-things list (resourcesListChanged), the
- *   resources it can read (resourceSubscriptions: orbyn://today,
+ *   resources it can read (resourceSubscriptions: orbyn://inbox, its own
+ *   inbox, told of as soon as something lands in it; orbyn://today,
  *   orbyn://day/<date>, orbyn://<task|doc|project|record|template|view>/<id>)
  *   and its own long jobs (taskIds, the Tasks extension). Anything it can't
  *   read is dropped from the acknowledgement, never reported on; a followed
@@ -163,6 +165,8 @@ export function checkListen(
 const THING =
   /^orbyn:\/\/(task|doc|project|record|template|view)\/([0-9a-f-]{36})$/i;
 const DAY = /^orbyn:\/\/day\/(\d{4}-\d{2}-\d{2})$/;
+/** The connection's inbox (H0), as a resource. */
+const INBOX_URI = AGENT_INBOX_URI;
 
 const TABLES = {
   task: ["items", "i", visibleItems],
@@ -268,6 +272,11 @@ export async function honour(
     : [];
   const keep = await readableThings(p, asked);
   for (const uri of asked) {
+    // The connection's own inbox (H0): new items are told at once.
+    if (uri === INBOX_URI) {
+      if (p.grant_id) keep.add(uri);
+      continue;
+    }
     if (uri === "orbyn://today") {
       if (p.personal) keep.add(uri);
       continue;
@@ -298,9 +307,20 @@ export async function honour(
 export function notesFor(
   event: LiveEvent,
   filter: Filter,
-  p: Pick<Principal, "personal">,
+  p: Pick<Principal, "personal"> & { grant_id?: string | null },
 ): { updated: string[]; listChanged: boolean; tasks: string[] | "all" } {
   const none = { updated: [], listChanged: false, tasks: [] as string[] };
+  // Something new in a connection's inbox: only that connection hears.
+  if (event.kind === "agent_inbox")
+    return {
+      ...none,
+      updated:
+        !!p.grant_id &&
+        event.entity_id === p.grant_id &&
+        filter.resourceSubscriptions?.includes(INBOX_URI)
+          ? [INBOX_URI]
+          : [],
+    };
   // Personal news only for a connection given the Personal space; its own
   // jobs always.
   if (!event.team && !p.personal && event.kind !== "agent_task") return none;

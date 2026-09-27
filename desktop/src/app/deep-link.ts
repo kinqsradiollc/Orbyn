@@ -9,6 +9,7 @@
  *   /app/review[/<id>]        the Review inbox (Notifications until it lands)
  *   /app/add?text=<words>     Quick add, filled in, to confirm (never adds)
  *   /app/search?q=<words>     ⌘K with the words typed
+ *   /app/agents               Settings → Connected agents (H7)
  *
  * The desktop app opens the same links as orbyn://task/<id> and so on
  * (fromAppLink), handed over by its main process.
@@ -29,7 +30,8 @@ export type DeepLink =
   | { kind: "view"; id: string }
   | { kind: "review"; id: string | null }
   | { kind: "add"; text: string }
-  | { kind: "search"; q: string };
+  | { kind: "search"; q: string }
+  | { kind: "agents" };
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const WITH_ID = new RegExp(
@@ -50,6 +52,7 @@ export function deepLinkOf(
   search = "",
 ): DeepLink | null {
   if (/^\/app\/today\/?$/i.test(path)) return { kind: "today" };
+  if (/^\/app\/agents\/?$/i.test(path)) return { kind: "agents" };
   if (/^\/app\/review\/?$/i.test(path)) return { kind: "review", id: null };
   if (/^\/app\/add\/?$/i.test(path))
     return { kind: "add", text: wordsIn(search, "text", 500) };
@@ -67,6 +70,7 @@ export function deepLinkOf(
 /** The path (and hash) that opens a link. */
 export function deepLinkPath(link: DeepLink): string {
   if (link.kind === "today") return "/app/today";
+  if (link.kind === "agents") return "/app/agents";
   if (link.kind === "add")
     return link.text
       ? `/app/add?${new URLSearchParams({ text: link.text })}`
@@ -173,6 +177,8 @@ export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
       return { kind: "add", text: link.text ?? "" };
     case "search":
       return { kind: "search", q: link.q };
+    case "agents":
+      return { kind: "agents" };
     case "share":
       return {
         kind: "add",

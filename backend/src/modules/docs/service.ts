@@ -30,7 +30,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { isOccurrence, type SeriesRow } from "../planner/calendar.js";
 import { mutate, recomputeProgress, setItemStatus } from "../items/service.js";
 import { announceDocChange } from "./live.js";
-import { hasVectors } from "../search/semantic.js";
+import { hasVectors } from "../search/vectors.js";
 import { syncSavedPages } from "../study/service.js";
 import { inMyTeams, readableDocs, visibleDocs } from "../../lib/visibility.js";
 import { actAs } from "../../lib/actor.js";
@@ -38,6 +38,7 @@ import { announceTo } from "../presence/live.js";
 import { allowPageFiles } from "../../lib/page-file-access.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import type { z } from "zod";
+import { viaAgentColumn } from "../../lib/via-agent.js";
 
 /**
  * The docs service: reading, checking and writing pages, their tags, task
@@ -48,10 +49,9 @@ import type { z } from "zod";
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
-  CASE WHEN d.imported_from IS NOT NULL THEN (
-    SELECT json_build_object('id', k.id, 'doc_id', k.doc_id, 'file_name', k.file_name,
+  (SELECT json_build_object('id', k.id, 'doc_id', k.doc_id, 'file_name', k.file_name,
       'file_type', k.file_type, 'bytes', k.bytes, 'created_at', k.created_at)
-      FROM kept_files k WHERE k.doc_id = d.id) END AS original,
+      FROM kept_files k WHERE k.doc_id = d.id) AS original,
   to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
   d.aliases, d.archived_at,
   (d.archived_at IS NOT NULL OR EXISTS (
@@ -61,7 +61,8 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
                                               'color', tg.color)
                          ORDER BY lower(tg.name), tg.name)
               FROM doc_tags dt JOIN tags tg ON tg.id = dt.tag_id
-             WHERE dt.doc_id = d.id), '[]'::json) AS tags`;
+             WHERE dt.doc_id = d.id), '[]'::json) AS tags,
+  ${viaAgentColumn("d", "written_via")}`;
 
 /**
  * The lines of a page that are tied to a task, by block id. Every line gets
@@ -81,7 +82,7 @@ export const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
  */
 export const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
          c.block_id, c.quote, c.range_start, c.range_end, c.parent_id,
-         c.detached, c.resolved_at, c.created_at,
+         c.detached, c.resolved_at, c.created_at, ${viaAgentColumn("c")},
          coalesce((SELECT json_agg(json_build_object('user_id', mu.id, 'name', mu.name)
                                    ORDER BY mu.name)
                      FROM doc_comment_mentions m JOIN users mu ON mu.id = m.user_id
@@ -962,7 +963,8 @@ export async function addToPage(
 /** A proposal as the clients read it, with its author's name. */
 export const SUGGESTION_SELECT = `SELECT s.id, s.doc_id, s.block_id, s.user_id,
        u.name AS author, s.kind, s.range_start, s.range_end, s.text,
-       s.quote, s.note, s.status, s.detached, s.created_at
+       s.quote, s.note, s.status, s.detached, s.created_at,
+       ${viaAgentColumn("s")}
   FROM doc_suggestions s JOIN users u ON u.id = s.user_id`;
 
 /** One proposed change to a line: its place in the line and the new words. */
@@ -1189,6 +1191,24 @@ export async function trashDoc(db: Db, u: UserRow, id: string): Promise<Owned> {
   await searchTrash(db, id, true);
   await announceDocs(db, doc.user_id, doc.team_id, id);
   return doc;
+}
+
+/**
+ * Bring a page back from Trash, just as it was (POST /docs/:id/restore,
+ * or undoing an agent's delete). The caller tells open editors and Study
+ * once it commits.
+ */
+export async function untrashDoc(db: Db, u: UserRow, id: string) {
+  await actAs(db, u.id);
+  await requireDoc(db, id, u, "items:write", true);
+  await db.query(
+    `UPDATE docs SET deleted_at = NULL, deleted_by = NULL,
+       merged_into = NULL WHERE id = $1`,
+    [id],
+  );
+  await noteTrash(db, id, u.id, false);
+  await searchTrash(db, id, false);
+  await dropStandInCopy(db, id);
 }
 
 /**

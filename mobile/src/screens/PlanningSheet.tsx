@@ -16,6 +16,7 @@ import {
   hourText,
   isTimeZone,
   learningSummary,
+  AGENT_REPORT_THRESHOLD,
   type BreakLevel,
   type BufferScope,
   type DigestPrefs,
@@ -821,7 +822,8 @@ function Body({ teams }: { teams: Team[] }) {
               >
                 <Text style={[shared.small, s.sectionHint]}>
                   A short email with your day, sent from the workspace’s own
-                  mail server. Off until you turn it on.
+                  mail server. The morning and evening emails are off until you
+                  turn them on.
                 </Text>
                 <View style={s.switchRow}>
                   <View style={{ flex: 1 }}>
@@ -845,6 +847,42 @@ function Body({ teams }: { teams: Team[] }) {
                     }
                   />
                 </Field>
+                <View style={s.switchRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.switchTitle}>What your agents did</Text>
+                    <Text style={shared.small}>
+                      In the morning digest: what connected agents changed, with
+                      links, and what waits for you.
+                    </Text>
+                  </View>
+                  <Switch
+                    trackColor={{ true: colors.accent }}
+                    value={form.digest.agents !== false}
+                    accessibilityLabel="What your agents did, in the morning digest"
+                    onValueChange={(agents) =>
+                      patch({ digest: { ...form.digest, agents } })
+                    }
+                  />
+                </View>
+                <View style={s.switchRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.switchTitle}>
+                      Tell me when an agent finishes a big job
+                    </Text>
+                    <Text style={shared.small}>
+                      One notice when an agent makes more than{" "}
+                      {AGENT_REPORT_THRESHOLD} changes in one go.
+                    </Text>
+                  </View>
+                  <Switch
+                    trackColor={{ true: colors.accent }}
+                    value={form.digest.agent_push !== false}
+                    accessibilityLabel="Tell me when an agent finishes a big job"
+                    onValueChange={(agent_push) =>
+                      patch({ digest: { ...form.digest, agent_push } })
+                    }
+                  />
+                </View>
                 <View style={s.switchRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={s.switchTitle}>Evening review</Text>

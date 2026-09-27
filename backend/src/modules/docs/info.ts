@@ -7,11 +7,15 @@ import {
   type DocVersion,
   type TeamRole,
 } from "@orbyn/core";
-import { reader } from "../../db/pool.js";
+import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { idParam } from "../../lib/params.js";
+import { actAs } from "../../lib/actor.js";
+import { announceDocChange } from "./live.js";
+import { requireDoc } from "./service.js";
 import { linksHere } from "../links/service.js";
+import { pageSources, removePageSource } from "../sources/service.js";
 
 type InfoRow = {
   id: string;
@@ -80,7 +84,10 @@ export async function docInfoRoutes(app: FastifyInstance) {
         [id],
       )
     ).rows;
-    const linked = await linksHere(db, u.id, { kind: "doc", id });
+    const [linked, sources] = await Promise.all([
+      linksHere(db, u.id, { kind: "doc", id }),
+      pageSources(db, id),
+    ]);
     return {
       id: row.id,
       kind: row.kind,
@@ -112,6 +119,28 @@ export async function docInfoRoutes(app: FastifyInstance) {
       can_write: row.team_id
         ? !!row.role && hasTeamPermission(row.role, "items:write")
         : row.user_id === u.id,
+      sources,
     };
+  });
+
+  /**
+   * Take a source off the page (H6b): whoever can change the page. The
+   * source stays for other pages that use it; the page's words don't change.
+   */
+  app.delete("/docs/:id/sources/:sourceId", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const sourceId = idParam(r, "sourceId");
+    const version = await transaction(async (db) => {
+      await actAs(db, u.id);
+      const doc = await requireDoc(db, id, u, "items:write");
+      const lines = await removePageSource(db, id, sourceId);
+      if (!lines.length) fail(404, "That source isn't on this page.");
+      return doc.version;
+    });
+    await announceDocChange(pool, id, version, "sources", {
+      fields: true,
+    }).catch(() => {});
+    return reply.code(204).send();
   });
 }

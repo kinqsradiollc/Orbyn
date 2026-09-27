@@ -1560,3 +1560,12 @@
     display: inline;
   }
 }
+
+/* A finger needs a 44px target on the deadline line; the line itself
+   stays where it is. */
+@media (max-width: 600px), (pointer: coarse) {
+  .tg-deadline-marker {
+    padding-block: 11px;
+    margin-top: -11px;
+  }
+}

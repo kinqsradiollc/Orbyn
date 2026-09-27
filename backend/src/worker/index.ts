@@ -21,6 +21,10 @@ import { scanBlocksStarted, scanEventStarting } from "./webhookEvents.js";
 import { refreshDueSubscriptions } from "../modules/planner/subscriptions.js";
 import { scanMorningAgendas } from "./agenda.js";
 import { drainStudyQueue } from "../modules/study/service.js";
+import { scanAgentStudy } from "../modules/agent-inbox/scan.js";
+import { expireQuestions } from "../modules/agent-inbox/questions.js";
+import { deliverWakes } from "../modules/agent-inbox/wake.js";
+import { scanAgentJobs } from "./agent-jobs.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -85,6 +89,8 @@ export async function runWorker() {
           await scanMorningAgendas();
           // Templates with a rhythm: say when one is ready to start.
           await runDueTemplates();
+          // Agents' inboxes: cards due and exams close (H0).
+          await scanAgentStudy();
           lastNotices = tick();
         }
         // Pages for search by meaning are measured by their own service
@@ -120,6 +126,16 @@ export async function runWorker() {
         await refreshDueSubscriptions(10);
         await remindSubscribed();
         await enqueue();
+        // Agents' questions whose time ran out, and wake-up calls that are
+        // due (H0): each agent hears within a cycle.
+        await expireQuestions();
+        await deliverWakes();
+        // A push when an agent finished a job of over 20 changes (H7).
+        try {
+          await scanAgentJobs();
+        } catch {
+          // Its changes stay unreported: the next cycle looks again.
+        }
         lastSchedule = tick();
       }
       // Each lane delivers reminders and webhooks until both queues are empty.

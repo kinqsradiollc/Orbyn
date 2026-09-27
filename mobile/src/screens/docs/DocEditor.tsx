@@ -2375,7 +2375,10 @@ export function DocEditor({
         saving,
         now,
         linked: linkedCount,
-      });
+      }) +
+      // The words were last written by a connected agent (an agenda it
+      // wrote, say); gone once a person edits the page.
+      (doc.via_agent ? ` · written via ${doc.via_agent}` : "");
 
   /** Footnote numbers and words; a marker's words show when tapped. */
   const footnotes = useMemo(

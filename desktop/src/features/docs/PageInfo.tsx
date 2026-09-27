@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Download,
+  ExternalLink,
   File as FileIcon,
   Folder,
   Image as ImageIcon,
@@ -14,6 +15,7 @@ import {
   dateLabel,
   fileSize,
   savedAgo,
+  sourceReadLabel,
   type Doc,
   type DocInfo,
   type DocTag,
@@ -21,6 +23,7 @@ import {
   type OutlineEntry,
   type PageFile,
   type PageFilesUsage,
+  type PageSource,
 } from "@orbyn/core";
 import { useConfirm } from "../../components/Confirm";
 import { client } from "../../lib/api";
@@ -177,6 +180,16 @@ export function PageInfo({
         report={report}
       />
 
+      {!!info?.sources?.length && (
+        <SourcesSection
+          docId={doc.id}
+          sources={info.sources}
+          canWrite={(info?.can_write ?? canWrite) && !reading}
+          onRemoved={() => setAsked((n) => n + 1)}
+          report={report}
+        />
+      )}
+
       {(tags.length > 0 || (canWrite && !reading)) && (
         <section className="page-info-section">
           <h3>Tags</h3>
@@ -271,6 +284,78 @@ export function PageInfo({
         </section>
       )}
     </aside>
+  );
+}
+
+/**
+ * Sources an agent read and saved for this page (H2): each one's title
+ * (opening its address in a new tab), site, author, the day it was read
+ * and the words it quoted. Orbyn itself never opens them.
+ */
+function SourcesSection({
+  docId,
+  sources,
+  canWrite,
+  onRemoved,
+  report,
+}: {
+  docId: string;
+  sources: PageSource[];
+  canWrite: boolean;
+  onRemoved: () => void;
+  report: (e: unknown) => void;
+}) {
+  const { ask } = useConfirm();
+  // Taking a source off the page (H6b): the page's words stay as they are,
+  // and the source stays for other pages that use it.
+  const remove = async (src: PageSource) => {
+    if (
+      !(await ask({
+        title: `Take “${src.title}” off this page?`,
+        body: "The page's words stay. Other pages that cite it keep it.",
+        confirmLabel: "Remove",
+        destructive: true,
+      }))
+    )
+      return;
+    client.removePageSource(docId, src.id).then(onRemoved, report);
+  };
+  return (
+    <section className="page-info-section">
+      <h3>Sources</h3>
+      <ul className="page-info-sources">
+        {sources.map((src) => (
+          <li key={src.id}>
+            <a
+              className="page-info-link"
+              href={src.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={src.url}
+            >
+              <span>{src.title}</span>
+              <ExternalLink size={13} aria-hidden="true" />
+            </a>
+            <small>
+              {[src.site, src.author, sourceReadLabel(src.accessed_on)]
+                .filter(Boolean)
+                .join(" · ")}
+            </small>
+            {src.quote && <blockquote>{src.quote}</blockquote>}
+            {canWrite && (
+              <button
+                className="icon-button page-info-source-remove"
+                onClick={() => void remove(src)}
+                aria-label={`Remove ${src.title} from this page`}
+                title="Remove from this page"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

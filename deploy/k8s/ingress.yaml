@@ -163,8 +163,9 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "4"
     nginx.ingress.kubernetes.io/limit-connections: "200"
-    # The mcp service takes JSON-RPC bodies up to 1 MB.
-    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # The mcp service takes JSON-RPC bodies up to 36 MB (add_file sends a
+    # file of up to 25 MB as base64).
+    nginx.ingress.kubernetes.io/proxy-body-size: "36m"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "100"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "100"
@@ -223,7 +224,7 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "4"
     nginx.ingress.kubernetes.io/limit-connections: "200"
-    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "36m"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "100"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "100"

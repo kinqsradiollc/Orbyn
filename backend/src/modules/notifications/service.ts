@@ -1,5 +1,6 @@
 import type { Queryable } from "../../db/pool.js";
 import { visibleItems } from "../../lib/visibility.js";
+import { viaAgentColumn } from "../../lib/via-agent.js";
 
 /**
  * The in-app notification tray, for the routes and the agents (get_today
@@ -22,8 +23,10 @@ export async function listNotifications(
       kind: string;
       item_id: string | null;
       ref: string | null;
+      via_agent: string | null;
     }>(
-      `SELECT n.id, n.title, n.body, n.read, n.created_at, n.kind, n.item_id, n.ref
+      `SELECT n.id, n.title, n.body, n.read, n.created_at, n.kind, n.item_id, n.ref,
+              ${viaAgentColumn("n")}
        FROM notifications n LEFT JOIN items i ON i.id = n.item_id
        WHERE n.user_id = $1 AND n.channel = 'inapp'
          AND (n.item_id IS NULL OR ${visibleItems()})

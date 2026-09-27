@@ -206,7 +206,7 @@ export const getLinks = defineCapability({
   name: "get_links",
   title: "Backlinks and links",
   description:
-    "Backlinks (in) and outgoing links (out) for a page, task, event, project, person or date: picker links, comment mentions, checklist tasks, dependencies, pages filed in a project, meeting notes and related links, each with its line. For a project, include unresolved and orphans. Links whose other end this connection can't see are left out, uncounted.",
+    "Backlinks (in) and outgoing links (out) for a page, task, event, project, person or date: picker links, comment mentions, checklist tasks, dependencies, pages filed in a project, meeting notes and related links, each with its line. For a project, include unresolved and orphans. Ends this connection can't see are left out.",
   input: z
     .object({
       of: z

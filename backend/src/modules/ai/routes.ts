@@ -39,6 +39,7 @@ import {
 } from "./agent/tools.js";
 import { calendarMatches, getProject } from "./agent/workspace.js";
 import { rewriteAgenda } from "../docs/agenda.js";
+import { briefFor } from "./agenda-brief.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
@@ -473,7 +474,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const zone = (r.body as { timezone?: unknown } | null)?.timezone;
     if (typeof zone === "string")
       await adoptDeviceZone(u.id, zone.slice(0, 64));
-    return rewriteAgenda(u.id, { withBrief: true });
+    return rewriteAgenda(u.id, { brief: briefFor });
   });
 
   app.post("/ai/project", strictRateLimit, async (r) => {

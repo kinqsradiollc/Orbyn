@@ -3,6 +3,7 @@ import { ArrowLeft, Check, FileText, Lightbulb, Sparkles } from "lucide-react";
 import { RATINGS, type Rating, type StudyCard } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Inline } from "../docs/DocBlocks";
+import { ImageBlock } from "../docs/RichBlocks";
 import { errorText } from "../../lib/errors";
 
 const LABEL: Record<Rating, string> = {
@@ -206,6 +207,11 @@ export function ReviewSession({
             </div>
             <div className="study-face">
               <span className="study-face-label">Question</span>
+              {card.picture && (
+                <ImageBlock
+                  block={{ type: "image", file: card.picture, text: "" }}
+                />
+              )}
               <p className="study-question">
                 <Inline text={card.question} />
               </p>
@@ -216,6 +222,16 @@ export function ReviewSession({
                 <p className="study-answer">
                   <Inline text={card.answer} />
                 </p>
+                {card.source && (
+                  <button
+                    className="study-source study-from-line"
+                    onClick={() => onOpenPage(card.source!.doc_id)}
+                    title="Open the notes this card came from"
+                  >
+                    from: {card.source.doc_title}
+                    {card.source.text ? ` › ${card.source.text}` : ""}
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -98,6 +98,13 @@ before(async () => {
     grants[name] = k.id;
   };
   await make("all", olga, { access: "write", team_ids: [crew], toolsets: ALL });
+  // Asks before every change (H1), for the review path.
+  await make("asker", olga, {
+    access: "write",
+    trust: "ask",
+    team_ids: [crew],
+    toolsets: ALL,
+  });
   await make("notify", olga, {
     access: "write",
     team_ids: [crew],
@@ -132,11 +139,13 @@ after(async () => {
   await pool.end();
 });
 
-test("52 tools: 22 core, the rest in toolsets; each toolset's tools are its own", async () => {
+test("60 tools: 28 core (apply_plan and get_profile too), the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
-  assert.equal(listed.length, 52);
+  // H6a folded mark_notifications_read into ack_inbox: not listed.
+  assert.equal(listed.length, 60);
+  assert.ok(!listed.some((t: any) => t.name === "mark_notifications_read"));
   const core = (await h.legacy(keys.core, "tools/list")).body.result.tools;
-  assert.equal(core.length, 22);
+  assert.equal(core.length, 28);
   assert.ok(!core.some((t: any) => t.name === "get_team"));
   // A core-only key can't call a toolset's tool.
   assert.equal(
@@ -158,7 +167,7 @@ test("X-MCP-Toolsets and X-MCP-Readonly narrow a connection for one call, and ne
       await h.legacy(key, "tools/list", undefined, headers)
     ).body.result.tools.map((t: any) => t.name) as string[];
   const planner = await narrow(keys.all, { "x-mcp-toolsets": "core,planner" });
-  assert.equal(planner.length, 28);
+  assert.equal(planner.length, 34);
   assert.ok(planner.includes("what_if") && !planner.includes("get_team"));
   const ro = await narrow(keys.all, {
     "x-mcp-toolsets": "planner",
@@ -236,9 +245,12 @@ test("budgets: every combination of toolsets stays small", () => {
       .length;
   // Each toolset on its own.
   const each: Record<string, number> = {
-    workspace: 26_000,
+    // H6b (page structure, fields, milestones, keep-out, team admin, view
+    // pins and CSV, history lists) raised this from 26k, adding no tools.
+    workspace: 27_600,
     planner: 17_000,
-    study: 8_000,
+    // H4 (cards, quiz order, explain-it-back, exams) raised this from 8k.
+    study: 10_600,
     followthrough: 14_000,
     teams: 5_000,
     booking: 8_000,
@@ -246,11 +258,13 @@ test("budgets: every combination of toolsets stays small", () => {
   };
   for (const t of optional)
     assert.ok(size([t]) < each[t], `${t} is ${size([t])} characters`);
-  // Every combination with core: under about 37k tokens and 60 tools, well
+  // Every combination with core: under about 39k tokens and 60 tools, well
   // inside the 100 and 128 tool limits clients have with other servers on.
+  // H2 (append_doc, save_source, add_file) raised this from 150k, and H4
+  // (study practice) from 156k.
   for (let mask = 0; mask < 1 << optional.length; mask++) {
     const sets = ["core", ...optional.filter((_, i) => mask & (1 << i))];
-    assert.ok(size(sets) < 150_000, `${sets.join("+")}: ${size(sets)}`);
+    assert.ok(size(sets) < 158_600, `${sets.join("+")}: ${size(sets)}`);
     assert.ok(count(sets) <= 60, `${sets.join("+")}: ${count(sets)} tools`);
   }
 });
@@ -324,7 +338,7 @@ test("Settings: choosing a connection's toolsets (401, 403 for API keys, 404, 42
   }
 });
 
-test("workspace: update_project keeps stages it isn't told about; removals and unpins go to review", async () => {
+test("workspace: update_project keeps stages it isn't told about; removals and unpins are direct at full power (undo), reviewed when asking", async () => {
   const p = (
     await h.call(olga.token, "POST", "/projects", {
       name: "Launch",
@@ -352,20 +366,14 @@ test("workspace: update_project keeps stages it isn't told about; removals and u
   );
   assert.equal(hub.pins[0].title, "Brief");
   const linkId = hub.pins[0].id;
-  const review = ok(
+  const removed = ok(
     await tool(keys.all, "update_project", {
       project: `project:${p.id}`,
       remove_stages: [stages[2].id],
       unpin: [linkId],
     }),
   );
-  assert.equal(review.status, "pending_review");
-  assert.equal(
-    (await h.call(olga.token, "GET", `/projects/${p.id}`)).json().stages.length,
-    4,
-    "nothing removed before approval",
-  );
-  await approve(olga, review.pending.proposal_id);
+  assert.equal(removed.status, "done");
   const after = (await h.call(olga.token, "GET", `/projects/${p.id}`)).json();
   assert.deepEqual(
     after.stages.map((s: any) => s.name),
@@ -376,20 +384,56 @@ test("workspace: update_project keeps stages it isn't told about; removals and u
       .rowCount,
     0,
   );
-  // Undo puts the name and stages back as they were before the agent.
-  const act = (
+  // Undo the removal: the stage and the pinned link come back.
+  const acts = (
     await pool.query(
-      "SELECT id FROM agent_activity WHERE tool = 'update_project' AND grant_id = $1 AND undo IS NOT NULL ORDER BY id LIMIT 1",
+      "SELECT id FROM agent_activity WHERE tool = 'update_project' AND grant_id = $1 AND undo IS NOT NULL ORDER BY id",
       [grants.all],
     )
-  ).rows[0];
+  ).rows;
+  const back = await h.call(
+    olga.token,
+    "POST",
+    `/me/agents/activity/${acts[acts.length - 1].id}/undo`,
+  );
+  assert.equal(back.statusCode, 200, back.body);
+  const restored = (
+    await h.call(olga.token, "GET", `/projects/${p.id}`)
+  ).json();
+  assert.deepEqual(
+    restored.stages.map((s: any) => s.name),
+    ["Plan", "Make", "Ship", "Celebrate"],
+  );
+  assert.equal(
+    (await pool.query("SELECT 1 FROM project_links WHERE id = $1", [linkId]))
+      .rowCount,
+    1,
+  );
+  // Undo of the rename is refused: the project changed again since.
   const undo = await h.call(
     olga.token,
     "POST",
-    `/me/agents/activity/${act.id}/undo`,
+    `/me/agents/activity/${acts[0].id}/undo`,
   );
-  // The project changed again since (the approved removal), so it's refused.
   assert.equal(undo.statusCode, 409);
+  // A connection that asks first: the removal waits for the person.
+  const review = ok(
+    await tool(keys.asker, "update_project", {
+      project: `project:${p.id}`,
+      remove_stages: [stages[2].id],
+    }),
+  );
+  assert.equal(review.status, "pending_review");
+  assert.equal(
+    (await h.call(olga.token, "GET", `/projects/${p.id}`)).json().stages.length,
+    4,
+    "nothing removed before approval",
+  );
+  await approve(olga, review.pending.proposal_id);
+  assert.equal(
+    (await h.call(olga.token, "GET", `/projects/${p.id}`)).json().stages.length,
+    3,
+  );
   // A viewer's agent can't change a team project.
   const teamProject = (
     await h.call(olga.token, "POST", "/projects", {
@@ -455,7 +499,8 @@ test("workspace: get_history for a project, a page (versions, comments, suggesti
 });
 
 test("workspace: templates, organising, comments with mentions, suggestions and tasks from a page", async () => {
-  // A project template from scratch, then a project from it (reviewed).
+  // A project template from scratch, then a project from it (made at once
+  // at full power; a connection that asks first sends it for review).
   const saved = ok(
     await tool(keys.all, "save_template", {
       kind: "project",
@@ -474,13 +519,29 @@ test("workspace: templates, organising, comments with mentions, suggestions and 
       template: templateId,
     }),
   );
-  assert.equal(started.status, "pending_review");
-  await approve(olga, started.pending.proposal_id);
+  assert.equal(started.status, "done");
   const made = await pool.query(
     "SELECT id FROM projects WHERE name = 'Sprint 12' AND user_id = $1",
     [olga.id],
   );
   assert.equal(made.rowCount, 1);
+  const asked = ok(
+    await tool(keys.asker, "create_project", {
+      name: "Sprint 13",
+      template: templateId,
+    }),
+  );
+  assert.equal(asked.status, "pending_review");
+  await approve(olga, asked.pending.proposal_id);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM projects WHERE name = 'Sprint 13' AND user_id = $1",
+        [olga.id],
+      )
+    ).rowCount,
+    1,
+  );
   // A page template, and a page made from it.
   const pt = ok(
     await tool(keys.all, "save_template", {
@@ -540,14 +601,14 @@ test("workspace: templates, organising, comments with mentions, suggestions and 
     await tool(keys.all, "query", { over: "docs", starred: true }),
   );
   assert.ok(starred.rows.some((r: any) => r.id === `doc:${doc.id}`));
-  // Deleting the list waits for review, then goes.
+  // Deleting her own list goes at once at full power (with undo).
   const del = ok(
     await tool(keys.all, "propose_changes", {
       summary: "Tidy lists",
       changes: [{ type: "delete", what: "list", target: listId }],
     }),
   );
-  await approve(olga, del.pending.proposal_id);
+  assert.equal(del.status, "done");
   assert.equal(
     (await pool.query("SELECT 1 FROM lists WHERE id = $1", [listId])).rowCount,
     0,
@@ -1118,7 +1179,7 @@ test("bookings: guests masked, approvals reviewed, no-shows and notes direct, of
   );
 });
 
-test("files: imports listed, started with a single-use upload URL, cancelled; task import dry-run then reviewed", async () => {
+test("files: imports listed, started with a single-use upload URL, cancelled; task import dry-run, then direct (undo) or asked over 50", async () => {
   const listed = ok(await tool(keys.all, "list_imports"));
   assert.ok("enabled" in listed.can_read);
   const started = ok(
@@ -1206,16 +1267,49 @@ test("files: imports listed, started with a single-use upload URL, cancelled; ta
       dry_run: false,
     }),
   );
-  assert.equal(real.status, "pending_review");
-  await approve(olga, real.pending.proposal_id);
-  assert.equal(
+  // Two tasks at full power: made at once, each one undoable.
+  assert.equal(real.status, "done");
+  assert.equal(real.done.length, 2);
+  const imported = async () =>
     (
       await pool.query(
         "SELECT 1 FROM items WHERE title = $1 AND user_id = $2",
         [`Imported one ${tag}`, olga.id],
       )
-    ).rowCount,
-    1,
+    ).rowCount;
+  assert.equal(await imported(), 1);
+  const act = (
+    await pool.query(
+      "SELECT id FROM agent_activity WHERE tool = 'import_tasks' AND grant_id = $1 AND undo IS NOT NULL ORDER BY id DESC LIMIT 1",
+      [grants.all],
+    )
+  ).rows[0];
+  const undone = await h.call(
+    olga.token,
+    "POST",
+    `/me/agents/activity/${act.id}/undo`,
+  );
+  assert.equal(undone.statusCode, 200, undone.body);
+  assert.equal(await imported(), 0);
+  // More than 50 tasks asks first: to the Review inbox here.
+  const many = `title\n${Array.from({ length: 51 }, (_, i) => `Bulk ${tag} ${i}`).join("\n")}\n`;
+  const bulk = ok(
+    await tool(keys.all, "import_tasks", {
+      format: "csv",
+      data: many,
+      dry_run: false,
+    }),
+  );
+  assert.equal(bulk.status, "pending_review");
+  await approve(olga, bulk.pending.proposal_id);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM items WHERE title LIKE $1 AND user_id = $2",
+        [`Bulk ${tag} %`, olga.id],
+      )
+    ).rows[0].n,
+    51,
   );
 });
 
@@ -1250,7 +1344,7 @@ test("the developer page's catalog and security.txt are public", async () => {
   const r = await h.call(null, "GET", "/developers/mcp");
   assert.equal(r.statusCode, 200);
   const c = r.json();
-  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 52);
+  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 60);
   assert.equal(c.toolsets.length, 8);
   assert.ok(c.versioning.length >= 3);
   assert.ok(c.changelog[0].date);

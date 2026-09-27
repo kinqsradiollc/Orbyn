@@ -5,8 +5,11 @@ import {
   LEGACY_KEY_CLIENT_ID,
   grantedScopes,
   type AgentAccess,
+  type AgentAskFirst,
   type AgentGrantKind,
+  type AgentSpaceTrust,
   type AgentToolset,
+  type AgentTrust,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import { pool } from "../../db/pool.js";
@@ -91,6 +94,9 @@ type GrantRow = {
   personal: boolean;
   toolsets: AgentToolset[];
   flags: { notify_teammates?: boolean; hide_outside_content?: boolean };
+  trust: AgentTrust;
+  space_trust: AgentSpaceTrust | null;
+  acts_alone: AgentAskFirst[] | null;
   client_blocked: boolean | null;
   client_host: string | null;
   client_kind: string | null;
@@ -152,12 +158,18 @@ async function principalFor(
       hide_outside_content: !!row.flags?.hide_outside_content,
       readonly: n.readonly,
     },
+    trust: {
+      level: row.trust ?? "full",
+      spaces: row.space_trust ?? {},
+      acts_alone: row.acts_alone ?? [],
+    },
     teams: await reachableTeams(pool, row.user_id, row.team_ids, via),
   };
 }
 
 const GRANT_SELECT = `SELECT g.id AS grant_id, g.kind, g.client_id, g.client_name, g.name,
     g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
+    g.trust, g.space_trust, g.acts_alone,
     t.expires_at AS token_expires_at, t.resource, g.last_write_at,
     g.suspended_at, g.revoked_at, u.id AS user_id, u.name AS user_name, u.disabled,
     c.blocked AS client_blocked, c.host AS client_host,
@@ -305,6 +317,7 @@ export async function resolveCaller(
       await pool.query<GrantRow>(
         `SELECT g.id AS grant_id, g.kind, g.client_id, g.client_name, g.name,
                 g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
+                g.trust, g.space_trust, g.acts_alone,
                 NULL::timestamptz AS token_expires_at, NULL AS resource,
                 g.last_write_at, g.suspended_at, g.revoked_at,
                 u.id AS user_id, u.name AS user_name, u.disabled,

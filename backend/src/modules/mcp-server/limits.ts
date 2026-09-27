@@ -13,8 +13,10 @@ import { pool } from "../../db/pool.js";
 export type LimitKind = "call" | "search" | "write" | "heavy";
 
 /**
- * CPU-heavy tools (what_if works out two whole plans) run at most this
- * many times a minute per connection, whatever the other limits say.
+ * Heavy tools (limitGroup "heavy": what_if works out two whole plans,
+ * apply_plan makes up to 50 steps in one transaction, add_file carries up
+ * to 25 MB) run at most this many times a minute per connection, whatever
+ * the other limits say; a heavy change counts as a change too.
  */
 export const HEAVY_PER_MINUTE = 10;
 
@@ -100,6 +102,7 @@ export class Limiter {
     kind: LimitKind,
     limits: AgentLimits,
     now = Date.now(),
+    heavy = kind === "heavy",
   ): Promise<{ ok: true; release: () => void } | ({ ok: false } & Limited)> {
     const flying = this.inFlight.get(grantId) ?? 0;
     if (flying >= limits.concurrent)
@@ -122,11 +125,11 @@ export class Limiter {
         limits.search_per_minute,
         "searches a minute",
       ]);
-    if (kind === "heavy")
+    if (heavy)
       checks.push([
         `h:${grantId}`,
         HEAVY_PER_MINUTE,
-        "plan comparisons a minute",
+        "heavy calls (what_if, apply_plan, add_file) a minute",
       ]);
     if (kind === "write")
       checks.push([

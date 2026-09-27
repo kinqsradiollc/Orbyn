@@ -1,8 +1,12 @@
 import {
   AGENT_ACCESS_RANK,
   AGENT_TOOLSETS,
+  trustIn as grantTrustIn,
   type AgentAccess,
+  type AgentAskFirst,
+  type AgentSpaceTrust,
   type AgentToolset,
+  type AgentTrust,
   type SystemRole,
   type TeamAgentAccess,
   type TeamRole,
@@ -55,6 +59,16 @@ export type Principal = {
   personal: boolean;
   toolsets: AgentToolset[];
   flags: PrincipalFlags;
+  /**
+   * How much it does alone where it may change things (full power, ask
+   * first, suggest only), per space, and the ask-first items the person
+   * let it do alone. See write.ts destination().
+   */
+  trust: {
+    level: AgentTrust;
+    spaces: AgentSpaceTrust;
+    acts_alone: AgentAskFirst[];
+  };
   /**
    * The person's teams that this principal reaches: memberships, within the
    * connection's teams, without teams whose policy turns agents off.
@@ -156,9 +170,10 @@ function allows(
     access: AgentAccess;
     toolset: AgentToolset;
     legacyOnly?: boolean;
+    aliasOf?: string;
   },
 ): boolean {
-  if (cap.legacyOnly && p.via !== "legacy_key") return false;
+  if (cap.legacyOnly && !cap.aliasOf && p.via !== "legacy_key") return false;
   if (!p.toolsets.includes(cap.toolset)) return false;
   const ceiling: AgentAccess = p.flags.readonly ? "read" : p.access;
   return AGENT_ACCESS_RANK[cap.access] <= AGENT_ACCESS_RANK[ceiling];
@@ -182,7 +197,20 @@ function actor(p: Principal): { id: string; name: string; role: SystemRole } {
   return { id: p.user.id, name: p.user.name, role: "member" };
 }
 
-export const policy = { can, allows, levelIn, spaces, actor };
+/**
+ * The principal's trust in a space (null: Personal). A connection that may
+ * only suggest there (its access or the team's policy) suggests, whatever
+ * its trust says.
+ */
+export function trustIn(p: Principal, teamId: string | null): AgentTrust {
+  if (p.access === "suggest") return "suggest";
+  return grantTrustIn(
+    { trust: p.trust.level, space_trust: p.trust.spaces },
+    teamId,
+  );
+}
+
+export const policy = { can, allows, levelIn, spaces, actor, trustIn };
 
 /**
  * The person's teams as a principal reaches them: current memberships, only
@@ -232,6 +260,7 @@ export async function sessionPrincipal(
       hide_outside_content: false,
       readonly: false,
     },
+    trust: { level: "full", spaces: {}, acts_alone: [] },
     teams: await reachableTeams(db, user.id, null, "session"),
   };
 }

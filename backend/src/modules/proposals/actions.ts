@@ -41,6 +41,11 @@ import {
 } from "../planner/routines.js";
 import { loadTemplate, proposeFromTemplate } from "../templates/service.js";
 import { applyProject } from "../ai/project-proposal.js";
+import { untrashDoc } from "../docs/service.js";
+import { deleteField } from "../views/fields.js";
+import { removeMilestone } from "../projects/milestones.js";
+import { setAssistantOff } from "../projects/assistant.js";
+import { runTeamAdmin, teamAdminInput } from "../teams/admin.js";
 
 /**
  * Changes of type "action" in the Review inbox: each runs its own service
@@ -115,6 +120,8 @@ const TABLE: Record<(typeof REVIEW_DELETABLE)[number], string> = {
   proof: "item_proofs",
   project_link: "project_links",
   habit_session: "habit_blocks",
+  field: "custom_fields",
+  milestone: "project_milestones",
 };
 
 export const ACTIONS: Record<ReviewAction, Handler> = {
@@ -383,6 +390,76 @@ export const ACTIONS: Record<ReviewAction, Handler> = {
         fail(422, summary.errors[0]);
     },
   },
+  // A whole plan from apply_plan (H5): run again as the agent acting for
+  // the person, every step in this one transaction. Loaded when used, as
+  // the plan runner reaches every capability.
+  "plan.apply": {
+    input: z.object({
+      grant_id: z.uuid(),
+      job: z.string().min(1).max(64),
+      summary: z.string().max(300),
+      steps: z.array(z.record(z.string(), z.unknown())).min(1).max(50),
+    }),
+    async stale(db, userId, input) {
+      const plan = await import("../../capabilities/plan-run.js");
+      const parsed = plan.planApplyInput.safeParse(input);
+      if (!parsed.success) return "This plan can't be read any more.";
+      return plan.planStaleness(db as Db, userId, parsed.data);
+    },
+    async apply(db, u, input: Record<string, unknown>) {
+      const plan = await import("../../capabilities/plan-run.js");
+      await plan.applyApprovedPlan(db, u, plan.planApplyInput.parse(input));
+    },
+  },
+  // H6b: a page back from Trash, running a team, and letting a kept-out
+  // project back into AI (only ever with the person's yes).
+  "page.restore": {
+    input: idOf,
+    async stale(db, _u, input) {
+      const row = (
+        await db.query<{ deleted_at: Date | null }>(
+          "SELECT deleted_at FROM docs WHERE id = $1",
+          [String(input.id)],
+        )
+      ).rows[0];
+      if (!row) return "That page was deleted for good.";
+      return row.deleted_at ? null : "That page is already back.";
+    },
+    async apply(db, u, input: { id: string }) {
+      await untrashDoc(db, u, input.id);
+    },
+  },
+  "team.admin": {
+    input: teamAdminInput,
+    async stale(db, _u, input) {
+      if (input.op === "create") return null;
+      const found = (
+        await db.query("SELECT 1 FROM teams WHERE id = $1", [
+          String(input.team_id),
+        ])
+      ).rowCount;
+      return found ? null : "That team is gone.";
+    },
+    async apply(db, u, input: z.output<typeof teamAdminInput>) {
+      await runTeamAdmin(db, u, input);
+    },
+  },
+  "project.assistant": {
+    input: idOf.extend({ off: z.boolean() }),
+    async stale(db, _u, input) {
+      const row = (
+        await db.query<{ assistant_off: boolean }>(
+          "SELECT assistant_off FROM projects WHERE id = $1",
+          [String(input.id)],
+        )
+      ).rows[0];
+      if (!row) return "The project is gone.";
+      return row.assistant_off === input.off ? "It's already so." : null;
+    },
+    async apply(db, u, input: { id: string; off: boolean }) {
+      await setAssistantOff(db, u, input.id, input.off);
+    },
+  },
   delete: {
     input: deleteInput,
     async stale(db, _u, input) {
@@ -429,6 +506,11 @@ export const ACTIONS: Record<ReviewAction, Handler> = {
           return removeProjectLink(db, u, parent(), input.id);
         case "habit_session":
           return deleteHabitBlock(db, u.id, input.id);
+        case "field":
+          await deleteField(db, u, input.id);
+          return;
+        case "milestone":
+          return removeMilestone(db, u, parent(), input.id);
       }
     },
   },

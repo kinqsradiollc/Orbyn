@@ -37,6 +37,11 @@ export type AppLink =
   | { kind: "search"; q: string }
   /** A saved view (orbyn://view/<id>, /app/view/<id>). */
   | { kind: "view"; id: string }
+  /**
+   * Settings → Connected agents, where what agents did is listed and can
+   * be undone (orbyn://agents, /app/agents; H7).
+   */
+  | { kind: "agents" }
   | LinkTarget;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -112,6 +117,7 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   }
   if (id) return null;
   if (head === "today") return { kind: "today" };
+  if (head === "agents") return { kind: "agents" };
   if (head === "search")
     return { kind: "search", q: (text("q") ?? "").slice(0, 200) };
   // These three are the phone's own; the web has no such pages.

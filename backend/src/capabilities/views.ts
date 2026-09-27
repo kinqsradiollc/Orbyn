@@ -2,6 +2,9 @@ import { z } from "zod";
 import {
   VIEW_LAYOUTS,
   VIEW_SOURCES,
+  viewColumns,
+  viewFileName,
+  viewTable,
   viewDefinition,
   viewFilters,
   type ViewDefinition,
@@ -10,15 +13,26 @@ import { setFavourite } from "../modules/organize/service.js";
 import { announceTo } from "../modules/presence/live.js";
 import { teamFilter } from "./common.js";
 import { cleanTitle } from "./format.js";
-import { parseRef, refs } from "./refs.js";
-import { CapabilityError, defineCapability } from "./registry.js";
+import { appLinkFor, parseRef, refs } from "./refs.js";
+import {
+  CapabilityError,
+  defineCapability,
+  type CapabilityContext,
+} from "./registry.js";
 import type { UndoOp } from "./undo.js";
-import { createView, findView, updateView } from "./view-store.js";
+import {
+  createView,
+  findView,
+  readDefinition,
+  updateView,
+} from "./view-store.js";
+import { runView as runSavedView } from "../modules/views/service.js";
 import {
   ADDS,
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   writeOutput,
@@ -47,7 +61,7 @@ export const saveView = defineCapability({
   name: "save_view",
   title: "Save a view",
   description:
-    "Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: \"personal\" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.",
+    'Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app\'s Views screen uses, so the view opens there too. space: "personal" (default) or a team id to share it with the team. star puts it in the person\'s favourites; pin in their sidebar. export: "csv" returns a saved view\'s rows as CSV text (csv), changing nothing. Run it with query(view). The definition language is in orbyn://spec/views.',
   input: z
     .object({
       view: z
@@ -103,10 +117,12 @@ export const saveView = defineCapability({
       layout: z.enum(VIEW_LAYOUTS).optional(),
       columns: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
       star: z.boolean().optional(),
+      pin: z.boolean().optional(),
+      export: z.enum(["csv"]).optional(),
       client_ref: clientRefInput,
     })
     .strict(),
-  output: writeOutput,
+  output: writeOutput.extend({ csv: z.string().optional() }),
   annotations: ADDS,
   access: "write",
   toolset: "workspace",
@@ -115,6 +131,7 @@ export const saveView = defineCapability({
   async run(ctx, a) {
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
+    if (a.export) return exportView(ctx, a.view);
     const asked: Record<string, unknown> = {};
     for (const k of [
       "filters",
@@ -138,11 +155,7 @@ export const saveView = defineCapability({
           "No saved view with that id is reachable from this connection.",
         );
       if (destination(ctx, view.team_id, "W2") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there, and saved views don't go through review.",
-          "Ask the person to change the view in Orbyn.",
-        );
+        throw cantWait(ctx, view.team_id);
       if (a.source && a.source !== view.source)
         throw new CapabilityError(
           "INVALID",
@@ -174,11 +187,7 @@ export const saveView = defineCapability({
       const team = teamFilter(a.space ?? "personal");
       const teamId = team && "team" in team ? team.team : null;
       if (destination(ctx, teamId, teamId ? "W2" : "W1") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there, and saved views don't go through review.",
-          "Ask the person to save the view in Orbyn.",
-        );
+        throw cantWait(ctx, teamId);
       saved = await createView(db, actor, {
         name: a.name,
         team_id: teamId,
@@ -186,6 +195,23 @@ export const saveView = defineCapability({
       });
       undo.push({ op: "view.delete", id: saved.id, version: saved.version });
       change = "Saved";
+    }
+    if (a.pin !== undefined) {
+      const was = !!(
+        await db.query(
+          "SELECT 1 FROM saved_view_pins WHERE user_id = $1 AND view_id = $2",
+          [ctx.principal.user.id, saved.id],
+        )
+      ).rowCount;
+      await db.query(
+        a.pin
+          ? `INSERT INTO saved_view_pins (user_id, view_id) VALUES ($1, $2)
+             ON CONFLICT DO NOTHING`
+          : "DELETE FROM saved_view_pins WHERE user_id = $1 AND view_id = $2",
+        [ctx.principal.user.id, saved.id],
+      );
+      undo.push({ op: "view.pin", id: saved.id, pinned: was });
+      change += a.pin ? ", pinned" : ", unpinned";
     }
     if (a.star !== undefined) {
       await setFavourite(db, ctx.principal.user.id, "view", saved.id, a.star);
@@ -209,3 +235,69 @@ export const saveView = defineCapability({
     });
   },
 });
+
+/**
+ * A saved view's rows as CSV text (H6b), with the columns it shows: the
+ * app's "Export CSV", returned in the answer rather than as a download.
+ * Only rows this connection reaches (its spaces, no kept-out projects).
+ */
+async function exportView(ctx: CapabilityContext, input: string | undefined) {
+  const ref = parseRef(input ?? "");
+  if (
+    !input ||
+    ref.type === "title" ||
+    (ref.type !== "view" && ref.type !== "any")
+  )
+    throw new CapabilityError("INVALID", "export needs view: view:<id>.");
+  const view = await findView(ctx.db, ctx.spaces, ref.id);
+  if (!view)
+    throw new CapabilityError(
+      "NOT_FOUND",
+      "No saved view with that id is reachable from this connection.",
+    );
+  const def = readDefinition(view.definition, view.source);
+  const result = await runSavedView(ctx.db, ctx.principal.user.id, def, {
+    timeZone: ctx.timezone,
+    now: ctx.now,
+    spaces: {
+      teamIds: ctx.spaces.teamIds,
+      personal: ctx.spaces.personal,
+      ai: true,
+    },
+  });
+  const csv = viewTable(
+    result.rows,
+    viewColumns(def),
+    { now: ctx.now, timeZone: ctx.timezone },
+    { fields: result.fields, people: result.people },
+  );
+  if (csv.length > 200_000)
+    throw new CapabilityError(
+      "INVALID",
+      "That view is too big to return as text (over 200 KB).",
+      "Narrow its filters, or ask the person to export it in Orbyn.",
+    );
+  const r = refs({ type: "view", id: view.id });
+  const name = cleanTitle(view.name) || "Untitled view";
+  return {
+    structured: {
+      status: "done" as const,
+      done: [
+        {
+          id: r.id,
+          title: name,
+          url: r.url,
+          app_url: appLinkFor(r.url),
+          version: view.version,
+          change: `Exported ${result.rows.length} rows as CSV (${viewFileName(view.name)})`,
+        },
+      ],
+      pending: null,
+      skipped: [],
+      csv,
+    },
+    markdown: `${name}: ${result.rows.length} rows as CSV (${viewFileName(view.name)}).\n\n\`\`\`csv\n${csv}\n\`\`\`\nOpen the view on the web: ${r.url} · in the Orbyn app: ${appLinkFor(r.url)}`,
+    targets: [r.id],
+    write: { outcome: "ok" as const, team_id: view.team_id },
+  };
+}

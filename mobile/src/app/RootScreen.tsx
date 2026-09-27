@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import { answerReview, registerReviewActions, reviewAction } from "../lib/push";
 import {
   createLabel,
   freshItem,
@@ -460,10 +461,21 @@ export function RootScreen() {
   const handledPush = useRef("");
   useEffect(() => {
     if (!token) return;
+    void registerReviewActions();
     const handle = (response: Notifications.NotificationResponse) => {
       const request = response.notification.request;
-      if (handledPush.current === request.identifier) return;
-      handledPush.current = request.identifier;
+      const key = `${request.identifier}:${response.actionIdentifier}`;
+      if (handledPush.current === key) return;
+      handledPush.current = key;
+      // Approve or Decline on a proposal's notification: answered at once.
+      const answer = reviewAction(response);
+      if (answer) {
+        void answerReview(answer).then(
+          () => void Notifications.dismissNotificationAsync(request.identifier),
+          (e: Error) => setError(errorText(e)),
+        );
+        return;
+      }
       routePush.current?.(request.content.data ?? {});
     };
     const sub = Notifications.addNotificationResponseReceivedListener(handle);
@@ -941,6 +953,9 @@ export function RootScreen() {
       case "view":
         setViewToOpen(link.id);
         return present({ sheet: "views" });
+      case "agents":
+        // Settings → Connected agents: each connection and what it did.
+        return present({ sheet: "connections" });
     }
   };
 
@@ -955,7 +970,9 @@ export function RootScreen() {
     else if (kind === "project" && text("ref")) {
       setProjectToOpen(text("ref").split(":")[0]);
       present({ sheet: "projects" });
-    } else if (kind === "conflict") setTab("Inbox");
+    } else if (kind === "conflict" || kind === "question")
+      // An agent's question opens on its card, with the choices as buttons.
+      setTab("Inbox");
     else if (kind === "template" && text("ref")) {
       setTemplateToOpen(text("ref"));
       present({ sheet: "projects" });
@@ -978,6 +995,9 @@ export function RootScreen() {
     } else if (kind === "review" && text("ref").startsWith("proposal:")) {
       setReviewFocus(text("ref").slice("proposal:".length));
       present({ sheet: "review" });
+    } else if (kind === "agent" && text("ref").startsWith("grant:")) {
+      // An agent finished a big job: see each change, and undo it, there.
+      present({ sheet: "connections" });
     } else if (itemId)
       void act(async () => openTask(await client.getItem(itemId)));
   };
@@ -1494,6 +1514,11 @@ export function RootScreen() {
                           setProjectToOpen(n.ref?.split(":")[0] ?? null);
                           present({ sheet: "projects" });
                         })
+                      }
+                      onOpenAgents={(n) =>
+                        void noticeAction(n, async () =>
+                          present({ sheet: "connections" }),
+                        )
                       }
                       onOpenDoc={(n, docId) =>
                         void noticeAction(n, () =>

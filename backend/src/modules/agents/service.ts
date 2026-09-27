@@ -6,15 +6,22 @@ import {
   fail,
   type AgentAccess,
   type AgentActivity,
+  type AgentActivityLink,
+  type AgentAskFirst,
   type AgentGrant,
+  type AgentSpaceTrust,
+  type AgentTrust,
+  type AgentTrustInput,
   type AgentGrantKind,
   type AgentKeyInput,
   type AgentOutcome,
   type AgentToolset,
   type AgentToolsetsInput,
   AGENT_TOOLSETS,
+  AGENT_ASK_FIRST,
   agentKeyInput,
   agentToolsetsInput,
+  agentTrustInput,
 } from "@orbyn/core";
 import { pool, transaction, type Db, type Queryable } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
@@ -22,6 +29,7 @@ import { digest } from "../../lib/auth.js";
 import { settings } from "../../lib/settings.js";
 import { emailEnabled } from "../../worker/channels/email.js";
 import { announceTo } from "../presence/live.js";
+import { namedThings } from "../../lib/named-things.js";
 
 /**
  * Connections for outside agents: agent keys made in Settings, old personal
@@ -38,6 +46,9 @@ type GrantRow = {
   name: string;
   client_name: string;
   access: AgentAccess;
+  trust: AgentTrust;
+  space_trust: AgentSpaceTrust | null;
+  acts_alone: AgentAskFirst[] | null;
   personal: boolean;
   team_ids: string[] | null;
   toolsets: AgentToolset[];
@@ -50,7 +61,8 @@ type GrantRow = {
   created_at: Date;
 };
 
-const GRANT_COLUMNS = `g.id, g.kind, g.name, g.client_name, g.access, g.personal,
+const GRANT_COLUMNS = `g.id, g.kind, g.name, g.client_name, g.access, g.trust,
+  g.space_trust, g.acts_alone, g.personal,
   g.team_ids, g.toolsets, g.flags, g.expires_at, g.last_used_at, g.suspended_at,
   g.created_at,
   (SELECT c.host FROM oauth_clients c WHERE c.id = g.client_id AND g.kind = 'oauth') AS client_host,
@@ -78,6 +90,9 @@ const view = (g: GrantRow, names: Map<string, string>): AgentGrant => ({
   name: g.name,
   client_name: g.client_name,
   access: g.access,
+  trust: g.access === "suggest" ? "suggest" : g.trust,
+  space_trust: g.space_trust ?? {},
+  acts_alone: g.acts_alone ?? [],
   personal: g.personal,
   team_ids: g.team_ids,
   teams: (g.team_ids ?? [...names.keys()])
@@ -320,10 +335,11 @@ export async function createAgentKey(
       await db.query<GrantRow>(
         `INSERT INTO agent_grants
            (user_id, kind, client_id, client_name, name, access, team_ids,
-            personal, toolsets, flags, expires_at)
+            personal, toolsets, flags, expires_at, trust)
          VALUES ($1, 'key', $2, 'Agent key', $3, $4, $5, $6, $7, $9,
-                 now() + make_interval(days => $8::int))
-         RETURNING id, kind, name, client_name, access, personal, team_ids,
+                 now() + make_interval(days => $8::int), $10)
+         RETURNING id, kind, name, client_name, access, trust, space_trust,
+                   acts_alone, personal, team_ids,
                    toolsets, flags, expires_at, last_used_at, suspended_at,
                    created_at, NULL AS client_host, NULL AS prefix`,
         [
@@ -336,6 +352,7 @@ export async function createAgentKey(
           [...new Set(d.toolsets)],
           days,
           { hide_outside_content: d.hide_outside_content },
+          d.access === "suggest" ? "suggest" : d.trust,
         ],
       )
     ).rows[0];
@@ -355,6 +372,7 @@ export async function createAgentKey(
           name: row.name,
           prefix,
           access: row.access,
+          trust: row.trust,
           personal: row.personal,
           team_ids: teamIds,
           hide_outside_content: d.hide_outside_content,
@@ -531,11 +549,12 @@ export async function grantActivity(
     )
   ).rowCount;
   if (!owns) fail(404, "Connection not found");
-  return (
+  const rows = (
     await db.query<{
       id: string;
       at: Date;
       tool: string;
+      tier: string;
       outcome: AgentOutcome;
       summary: string;
       calls: number;
@@ -543,19 +562,80 @@ export async function grantActivity(
       undoable: boolean;
       undone_at: Date | null;
       proposal_id: string | null;
+      undo_until: Date | null;
+      request_id: string | null;
+      changes: number;
+      kinds: Record<string, number> | null;
     }>(
-      `SELECT id::text, at, tool, outcome, summary, calls, target_ids,
+      `SELECT id::text, at, tool, tier, outcome, summary, calls, target_ids,
               (undo IS NOT NULL AND undone_at IS NULL AND undo_until > now()) AS undoable,
-              undone_at, proposal_id
+              undone_at, proposal_id,
+              CASE WHEN undo IS NOT NULL THEN undo_until END AS undo_until,
+              request_id, changes, kinds
          FROM agent_activity WHERE grant_id = $1 AND user_id = $2
         ORDER BY at DESC, id DESC LIMIT 100`,
       [grantId, userId],
     )
-  ).rows.map((a) => ({
+  ).rows;
+  const names = await activityNames(db, userId, rows);
+  return rows.map(({ tier, request_id, ...a }) => ({
     ...a,
     at: a.at.toISOString(),
     undone_at: a.undone_at?.toISOString() ?? null,
+    undo_until: a.undo_until?.toISOString() ?? null,
+    // Reads have no job; a change's job groups it with the rest of its
+    // call (or its plan) and undoes them together.
+    job: tier === "R" ? null : request_id,
+    changes: a.changes ?? 0,
+    kinds: a.kinds ?? null,
+    links: linksOf(a.target_ids ?? [], names),
   }));
+}
+
+const ACTIVITY_LINKS = 5;
+
+/** The typed ids in targets that open in the app. */
+function openable(targets: string[]) {
+  const out: { kind: AgentActivityLink["kind"]; id: string }[] = [];
+  for (const t of targets) {
+    const m = /^(task|event|doc|project):([0-9a-f-]{36})/i.exec(t);
+    if (!m) continue;
+    const raw = m[1].toLowerCase();
+    out.push({
+      kind: raw === "event" ? "task" : (raw as AgentActivityLink["kind"]),
+      id: m[2].toLowerCase(),
+    });
+  }
+  return out;
+}
+
+/** Names for what the activity touched that the person can still see. */
+const activityNames = (
+  db: Queryable,
+  userId: string,
+  rows: { target_ids: string[] }[],
+) =>
+  namedThings(
+    db,
+    userId,
+    rows.flatMap((r) => openable(r.target_ids ?? []).slice(0, ACTIVITY_LINKS)),
+  );
+
+/** What one activity row touched, named, that still opens. */
+function linksOf(
+  targets: string[],
+  names: Map<string, string>,
+): AgentActivityLink[] {
+  const seen = new Set<string>();
+  const out: AgentActivityLink[] = [];
+  for (const t of openable(targets).slice(0, ACTIVITY_LINKS)) {
+    const key = `${t.kind}:${t.id}`;
+    const title = names.get(key);
+    if (!title || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...t, title });
+  }
+  return out;
 }
 
 /**
@@ -608,6 +688,99 @@ export async function setGrantToolsets(
         targetType: "agent_grant",
         targetId: row.id,
         details: { name: row.name, from: row.toolsets, to: toolsets },
+        requestId,
+      },
+      db,
+    );
+    return (await grantView(db, userId, row.id))!;
+  });
+}
+
+/**
+ * A connection's trust (Settings → Connected agents): its own level, per
+ * space ("personal" or a team it reaches; null goes back to its own), and
+ * which ask-first items it may do alone. Full power and asking first need
+ * a connection that may change things; one that may only suggest stays
+ * there until it is connected again with more. Every copy hears at once.
+ */
+export async function setGrantTrust(
+  userId: string,
+  grantId: string,
+  input: AgentTrustInput,
+  requestId?: string,
+): Promise<AgentGrant> {
+  const d = agentTrustInput.parse(input);
+  return transaction(async (db) => {
+    const row = (
+      await db.query<{
+        id: string;
+        name: string;
+        access: AgentAccess;
+        trust: AgentTrust;
+        space_trust: AgentSpaceTrust;
+        acts_alone: AgentAskFirst[];
+        team_ids: string[] | null;
+        personal: boolean;
+      }>(
+        `SELECT id, name, access, trust, space_trust, acts_alone, team_ids, personal
+           FROM agent_grants
+          WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE`,
+        [grantId, userId],
+      )
+    ).rows[0];
+    if (!row) fail(404, "Connection not found");
+    const wanted = [
+      d.trust,
+      ...Object.values(d.spaces ?? {}).filter((t) => t !== null),
+    ].filter((t) => t && t !== "suggest");
+    if (wanted.length && row.access !== "write")
+      fail(
+        422,
+        row.access === "read"
+          ? "This connection can only read. Connect it again and allow changes first."
+          : "This connection can only suggest. Connect it again and allow changes to give it more.",
+      );
+    const names = await teamNames(db, userId);
+    const spaces: AgentSpaceTrust = { ...(row.space_trust ?? {}) };
+    for (const [key, value] of Object.entries(d.spaces ?? {})) {
+      const space = key.toLowerCase();
+      if (space !== "personal") {
+        const reaches =
+          names.has(space) && (!row.team_ids || row.team_ids.includes(space));
+        if (!reaches) fail(404, "Team not found");
+      } else if (!row.personal)
+        fail(404, "This connection can't reach Personal.");
+      if (value === null) delete spaces[space];
+      else spaces[space] = value;
+    }
+    const trust = d.trust ?? row.trust;
+    // A space set to the connection's own level needs no entry.
+    for (const [space, value] of Object.entries(spaces))
+      if (value === trust) delete spaces[space];
+    const actsAlone = d.acts_alone
+      ? AGENT_ASK_FIRST.filter((k) => d.acts_alone!.includes(k))
+      : row.acts_alone;
+    await db.query(
+      `UPDATE agent_grants SET trust = $2, space_trust = $3::jsonb, acts_alone = $4
+        WHERE id = $1`,
+      [row.id, trust, JSON.stringify(spaces), actsAlone],
+    );
+    await announceAuthChange(db, { grants: [row.id], reason: "trust" });
+    await audit(
+      {
+        actorId: userId,
+        action: "agent_grant.trust",
+        targetType: "agent_grant",
+        targetId: row.id,
+        details: {
+          name: row.name,
+          from: {
+            trust: row.trust,
+            spaces: row.space_trust,
+            acts_alone: row.acts_alone,
+          },
+          to: { trust, spaces, acts_alone: actsAlone },
+        },
         requestId,
       },
       db,

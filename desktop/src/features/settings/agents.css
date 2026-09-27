@@ -109,23 +109,62 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 6px;
-  max-height: 240px;
+  gap: 8px;
+  max-height: 360px;
   overflow: auto;
 }
 .agents-activity li {
   display: flex;
+  align-items: baseline;
   gap: 10px;
   font-size: 13px;
   color: var(--color-text);
 }
-.agents-activity li > span:nth-child(2) {
-  flex: 1;
-  min-width: 0;
-}
-.agents-activity li .link-button {
+.agents-activity .link-button {
   flex: none;
   font-size: 13px;
+}
+/* One job: its time, what it did (and what it touched), its buttons. */
+.agents-job-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.agents-job-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.agents-job-links .link-button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agents-job-acts {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.agents-job-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* A job's changes, one by one, opened under it. */
+.agents-activity .agents-job-steps {
+  max-height: none;
+  overflow: visible;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 6px 0 2px 10px;
+  border-left: 2px solid var(--color-divider);
+}
+.agents-job-steps li > span:first-child {
+  flex: 1;
+  min-width: 0;
 }
 .agents-activity-time {
   flex: none;
@@ -307,4 +346,158 @@
 .agents-install-links a.secondary:hover {
   border-color: var(--color-borderHover);
   background: var(--color-hover);
+}
+
+/* How it acts: trust, per space, and the ask-first list. */
+.agents-trust fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.agents-trust legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 550;
+}
+.agents-trust-space {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.agents-trust-list .switch-line span {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.agents-trust-list .switch-line small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+@media (max-width: 560px) {
+  .agents-trust-space {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
+/* What it hears: kinds sent to the agent, and its wake-up address (H0). */
+.agents-inbox > p {
+  margin: 0;
+  font-size: 13px;
+}
+.agents-wake {
+  display: grid;
+  gap: 10px;
+}
+.agents-wake-row {
+  display: flex;
+  gap: 8px;
+}
+.agents-wake-row input {
+  flex: 1;
+  min-width: 0;
+}
+.agents-wake-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.agents-wake-status .muted {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Standing rules for every agent. */
+.agents-rules {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.agents-rules h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.agents-rules > p {
+  margin: 0;
+  font-size: 13px;
+}
+.agents-rules-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agents-rules-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.agents-rules-list li > form {
+  flex: 1;
+}
+.agents-rule-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agents-about {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+}
+.agents-about > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agents-instructions-form {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.agents-instructions-form textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 13px;
+}
+.agents-instructions-actions {
+  display: flex;
+  gap: 8px;
+}
+.agents-instructions-meta {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.agents-rule-form {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+.agents-rule-form > .primary:last-child {
+  grid-column: auto / span 2;
+}
+@media (max-width: 560px) {
+  .agents-wake-row {
+    flex-direction: column;
+  }
+  .agents-rule-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agents-rule-form > .primary:last-child {
+    grid-column: auto;
+  }
 }

@@ -28,6 +28,7 @@ import {
 } from "./service.js";
 import { readableLinks } from "../links/privacy.js";
 import { carryRanges } from "./ranges.js";
+import { emitInbox, placeOf } from "../agent-inbox/emit.js";
 
 /**
  * What people say about a page and propose for it: comments (with
@@ -144,6 +145,28 @@ export async function addComment(
     )
   ).rows[0].id;
   await nameMentions(db, doc, made, u, input.body, input.mentions);
+  // The page's owner's agents hear of a remark by someone else (H0); a
+  // mention already tells them through its notice.
+  if (doc.user_id !== u.id && !input.mentions.includes(doc.user_id)) {
+    const place = await placeOf(db, "doc", doc.id);
+    const title = (
+      await db.query<{ title: string }>(
+        "SELECT title FROM docs WHERE id = $1",
+        [doc.id],
+      )
+    ).rows[0]?.title;
+    await emitInbox(db, {
+      userId: doc.user_id,
+      kind: "mention",
+      key: `comment:${made}`,
+      title: `${u.name} commented on ${title ?? "a page"} of yours`,
+      body: input.body.slice(0, 400),
+      source: "teammate",
+      entity: { type: "doc", id: doc.id },
+      teamId: place?.team_id ?? null,
+      projectId: place?.project_id ?? null,
+    });
+  }
   const comment = (
     await db.query<DocComment>(`${COMMENT_SELECT} WHERE c.id = $1`, [made])
   ).rows[0];

@@ -15,11 +15,11 @@ export const EXCLUSION_REASONS = {
   sign_in:
     "Signing in and how an account signs in (sessions, two-step, passkeys): people only.",
   account:
-    "Account settings, privacy, consent, the email-to-task address, export and deleting the account: people only.",
+    "The account itself: name and email, public profile, privacy, consent, first-run, the email-to-task address, export and deleting the account: people only. (Planner, notice and keep-originals settings are the agent's to change since H6a: update_planner_settings.)",
   credentials:
     "Keys, webhooks, chat delivery, calendar feed links and agent connections: an agent must never mint access or send data somewhere new.",
   outside_fetch:
-    "Adding or refreshing a subscribed calendar makes Orbyn fetch an outside address.",
+    "Previewing a captured link makes Orbyn fetch an outside address for the agent. (Subscribing to a calendar by link, changing its link and refreshing it are the agent's since H6a/H6b, through the app's own subscription service and its public-address check.)",
   hosted_ai:
     "Orbyn's own assistant: agents bring their own model and never spend the hosted one.",
   people_only:
@@ -30,33 +30,23 @@ export const EXCLUSION_REASONS = {
   stream: "Long-lived event streams (subscriptions/listen arrives in phase 6).",
   mcp: "The MCP address itself.",
   device:
-    "Devices, presence and the person's own activity: an agent polling isn't the person being there.",
+    "Devices, presence and the person's own activity (marking something opened): an agent polling isn't the person being there. (The recent list itself is get_history \"recent\" since H6b.)",
   export_file: "Files for download (PDF, Word, CSV), not data an agent needs.",
   team_admin:
-    "Making, renaming and deleting teams, members, roles and team policies: people only.",
+    "Deleting a team, and a team's agent policy, publishing switch and policies: people only. (Making and renaming a team, members, roles and the meeting budget are asked for through organize since H6b.)",
   sends_outside: "Sends an email to test delivery.",
-  self_report:
-    "Checking in a session or starting it: the person's own account of their time, which an agent can't give.",
-  project_setup:
-    "A project's milestones, and whether AI may read the project at all: set up by people in the apps.",
   kept_files:
     "Originals kept in Orbyn's file store (downloading or deleting one): people only, in the apps.",
-  app_pages:
-    "Pages the app writes for itself from the calendar (the daily agenda): agents read them as pages (fetch, query) and write pages of their own instead.",
   trash:
-    "The Trash: agents never see trashed pages, and restoring or deleting for good is for people.",
+    "Deleting a page in the Trash for good: people only. (Listing the Trash and bringing a page back are the agent's since H6b: get_history, propose_changes.)",
   arrangement:
     "Dragging things into an order on screen (a task's place in a list): how a person lays out their own view.",
   editor_shortcut:
-    "An editor's shortcut over a page's own lines (naming a line for a link, linking a mention, moving lines to a new page, merging pages, other names): agents change pages with their own page tools, under review.",
-  view_state:
-    "How a page is shown to one person (the headings they folded): not data.",
+    "Naming a line so a link can point at it: the editor's own step; agents link to lines by their anchors (^b…).",
   file_bytes:
     "Uploading, showing and downloading pictures and files in pages through short-lived signed links: people's apps only; agents read pages as words.",
   publishing:
     "Putting a page or folder on the public web, its password, and a team's switch for it: people only, since it shows words to anyone.",
-  catch_up:
-    "A team's Recent changes list, for people catching up after time away; agents read what changed through the page and task tools.",
   bring_in:
     "Bringing in another app's export (a Markdown or Notion zip): people choose the file and read the dry run.",
   navigation:
@@ -67,8 +57,6 @@ export const EXCLUSION_REASONS = {
     "The Connections map: a drawing of a page's or project's links for the Info panel; agents read the same links through fetch and search.",
   clipper:
     "The Orbyn Clipper browser extension's own routes, signed in with a Clipper key that works nowhere else.",
-  own_fields:
-    "Your own fields on pages and projects (making them and filling them in): set up by people in the apps; query says a view's field filters apply in the app only, and date fields reach agents as deadlines in get_calendar.",
 } as const;
 export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
@@ -137,7 +125,7 @@ export const COVERED: Record<string, string[]> = {
   "POST /asks/:id/reply": ["answer_ask"],
   "POST /asks/:id/settle": ["answer_ask"],
   "GET /availability": ["find_time"],
-  "POST /blocks/:id/duplicate": ["schedule_sessions"],
+  "POST /blocks/:id/duplicate": ["schedule_sessions", "reschedule_sessions"],
   "GET /booking-pages": ["get_bookings"],
   "POST /booking-pages": ["booking_action"],
   "DELETE /booking-pages/:id": ["booking_action"],
@@ -196,7 +184,9 @@ export const COVERED: Record<string, string[]> = {
   "DELETE /lists/:id": ["propose_changes"],
   "PUT /lists/:id": ["organize"],
   "GET /notifications": ["get_follow_through"],
-  "POST /notifications/:id/read": ["mark_notifications_read"],
+  // H6a folded mark_notifications_read into ack_inbox (notices); the old
+  // name still answers for connections that call it.
+  "POST /notifications/:id/read": ["ack_inbox"],
   "GET /open-invites": ["get_bookings"],
   "POST /open-invites": ["booking_action"],
   "DELETE /open-invites/:id": ["booking_action"],
@@ -225,7 +215,7 @@ export const COVERED: Record<string, string[]> = {
   "PATCH /planner/plans/:id": ["plan_schedule"],
   "GET /planner/reality": ["get_work_patterns"],
   "GET /planner/review": ["get_work_patterns", "plan_schedule"],
-  "POST /planner/roll-forward": ["plan_schedule"],
+  "POST /planner/roll-forward": ["plan_schedule", "reschedule_sessions"],
   "POST /planner/what-if": ["what_if"],
   "GET /progress": ["get_follow_through"],
   "PUT /projects/:id": ["update_project"],
@@ -293,6 +283,74 @@ export const COVERED: Record<string, string[]> = {
   "PUT /views/:id": ["save_view"],
   "DELETE /views/:id": ["propose_changes"],
   "POST /views/run": ["query"],
+  // H6a: every feature, no gaps. The agent acts for the person, so it may
+  // start a session and say how one went (attributed to it); it changes
+  // every planner setting, the time zone, digest emails and notices, keeps
+  // originals or not, subscribes to calendars by link (Orbyn's own fetch,
+  // with its public-address check) and writes a day's agenda page from the
+  // calendar (never the hosted brief).
+  "GET /blocks/check-ins": ["get_work_patterns"],
+  "POST /blocks/:id/check-in": ["reschedule_sessions"],
+  "POST /blocks/:id/start": ["reschedule_sessions"],
+  "PUT /planner/prefs": ["update_planner_settings"],
+  "POST /me/timezone": ["update_planner_settings"],
+  "PUT /me/originals": ["update_planner_settings"],
+  "GET /me/calendar-subscriptions": ["get_work_patterns"],
+  "POST /me/calendar-subscriptions": ["update_planner_settings"],
+  "DELETE /me/calendar-subscriptions/:id": ["update_planner_settings"],
+  "POST /agenda/today": ["create_doc"],
+  "GET /agenda/today": ["create_doc"],
+  "POST /agenda/:date": ["create_doc"],
+  // H6b: every feature, no gaps. Pages (other names, folds, linking a
+  // mention, moving lines to a new page, merging, taking a source off, the
+  // Trash list and bringing a page back), your own fields, pinning and
+  // exporting views (CSV as text), milestones and the keep-out switch
+  // (switching back in is always asked), running a team (always asked
+  // first: team admin and invites are on the ask-first list), a team's
+  // recent changes, and changing or refreshing a subscribed calendar.
+  "POST /links/mentions/link": ["organize"],
+  "POST /docs/:id/extract": ["organize"],
+  "POST /docs/:id/merge": ["organize"],
+  "PUT /docs/:id/aliases": ["organize"],
+  "GET /docs/:id/folds": ["fetch"],
+  "PUT /docs/:id/folds": ["organize"],
+  "DELETE /docs/:id/sources/:sourceId": ["organize"],
+  "GET /docs/trash": ["get_history"],
+  "POST /docs/:id/restore": ["propose_changes"],
+  "PUT /views/:id/pin": ["save_view"],
+  "GET /views/:id/export.csv": ["save_view"],
+  "GET /fields": ["fetch"],
+  "POST /fields": ["organize"],
+  "PUT /fields/:id": ["organize"],
+  "DELETE /fields/:id": ["propose_changes"],
+  "GET /fields/values": ["fetch"],
+  "PUT /fields/:id/value": ["organize"],
+  "GET /projects/:id/milestones": ["get_project"],
+  "POST /projects/:id/milestones": ["update_project"],
+  "PUT /projects/:id/milestones/:milestoneId": ["update_project"],
+  "DELETE /projects/:id/milestones/:milestoneId": [
+    "update_project",
+    "propose_changes",
+  ],
+  "PUT /items/:id/milestone": ["update_project"],
+  "PUT /projects/:id/assistant": ["update_project"],
+  "POST /teams": ["organize"],
+  "PUT /teams/:id": ["organize"],
+  "POST /teams/:id/members": ["organize"],
+  "DELETE /teams/:id/members/:userId": ["organize"],
+  "PUT /teams/:id/members/:userId": ["organize"],
+  "PUT /teams/:id/attention": ["organize"],
+  "GET /changes": ["get_history"],
+  "PUT /me/calendar-subscriptions/:id": ["update_planner_settings"],
+  "POST /me/calendar-subscriptions/:id/refresh": ["update_planner_settings"],
+  // H8: agents start warm. The "About me for agents" page (read with
+  // get_context, made with create_doc kind "profile", changed with
+  // edit_doc) and each space's instructions (read with get_context,
+  // changed with organize; a team's are asked first).
+  "GET /me/agent-context": ["get_context"],
+  "POST /me/agent-profile": ["create_doc"],
+  "PUT /me/agent-instructions": ["organize"],
+  "PUT /teams/:id/agent-instructions": ["organize"],
 };
 
 /** Routes agents never reach, with the reason. */
@@ -349,7 +407,24 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /proposals/:id": "people_only",
   "POST /proposals/:id/apply": "people_only",
   "POST /proposals/:id/decline": "people_only",
+  "POST /proposals/:id/respond": "people_only",
   "POST /me/agents/activity/:id/undo": "people_only",
+  "POST /me/agents/:id/jobs/:job/undo": "people_only",
+  // Agent 2 (H0): answering an agent's question is the person's own
+  // answer (agents ask with ask_person and read the answer in get_inbox).
+  "GET /me/questions": "people_only",
+  "POST /me/questions/:id/answer": "people_only",
+  // What each connection hears, its wake-up address and the person's
+  // standing rules: set by the person (agents read the rules in get_inbox).
+  "GET /me/agents/:id/inbox": "credentials",
+  "PUT /me/agents/:id/inbox": "credentials",
+  "PUT /me/agents/:id/wake": "credentials",
+  "DELETE /me/agents/:id/wake": "credentials",
+  "POST /me/agents/:id/wake/test": "credentials",
+  "GET /me/agent-rules": "credentials",
+  "POST /me/agent-rules": "credentials",
+  "PUT /me/agent-rules/:id": "credentials",
+  "DELETE /me/agent-rules/:id": "credentials",
   "GET /ai/providers": "admin",
   "POST /ai/providers": "admin",
   "DELETE /ai/providers/:id": "admin",
@@ -362,20 +437,11 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /ai/chats/:id": "hosted_ai",
   "PUT /ai/chats/:id": "hosted_ai",
   "DELETE /ai/chats/:id": "hosted_ai",
-  "GET /me/originals": "account",
-  "PUT /me/originals": "account",
+  // The list of kept originals (files to download); the setting is covered.
+  "GET /me/originals": "kept_files",
   "GET /docs/:id/original": "kept_files",
   "DELETE /docs/:id/original": "kept_files",
   "GET /me/mentions": "device",
-  "GET /projects/:id/milestones": "project_setup",
-  "POST /projects/:id/milestones": "project_setup",
-  "PUT /projects/:id/milestones/:milestoneId": "project_setup",
-  "DELETE /projects/:id/milestones/:milestoneId": "project_setup",
-  "PUT /items/:id/milestone": "project_setup",
-  "PUT /projects/:id/assistant": "project_setup",
-  "GET /blocks/check-ins": "self_report",
-  "POST /blocks/:id/check-in": "self_report",
-  "POST /blocks/:id/start": "self_report",
   "POST /ai/study/cards/:id/explain": "hosted_ai",
   "POST /ai/study/grade": "hosted_ai",
   "POST /ai/study/pages/:id/cards": "hosted_ai",
@@ -383,7 +449,6 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /auth/logout": "sign_in",
   "POST /auth/resend-verification": "sign_in",
   "GET /bookings/export.csv": "export_file",
-  "GET /views/:id/export.csv": "export_file",
   "PROPFIND /dav/*": "caldav",
   "REPORT /dav/cal/default/*": "caldav",
   "DELETE /dav/cal/default/:file": "caldav",
@@ -422,10 +487,6 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /me/calendar-feed": "credentials",
   "POST /me/calendar-feed": "credentials",
   "PUT /me/calendar-feed": "credentials",
-  "POST /me/calendar-subscriptions": "outside_fetch",
-  "DELETE /me/calendar-subscriptions/:id": "outside_fetch",
-  "PUT /me/calendar-subscriptions/:id": "outside_fetch",
-  "POST /me/calendar-subscriptions/:id/refresh": "outside_fetch",
   "DELETE /me/chat": "credentials",
   "GET /me/chat": "credentials",
   "PUT /me/chat": "credentials",
@@ -437,7 +498,6 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /capture/preview": "outside_fetch",
   "POST /me/first-run": "account",
   "POST /me/first-run/skip": "account",
-  "GET /changes": "catch_up",
   "POST /imports/pages": "bring_in",
   "GET /docs/:id/publish": "publishing",
   "PUT /docs/:id/publish": "publishing",
@@ -464,50 +524,31 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /me/sessions": "sign_in",
   "DELETE /me/sessions/:id": "sign_in",
   "POST /me/sessions/revoke-others": "sign_in",
-  "POST /me/timezone": "account",
   "GET /me/webhooks": "credentials",
   "POST /me/webhooks": "credentials",
   "DELETE /me/webhooks/:id": "credentials",
   "PUT /me/webhooks/:id": "credentials",
   "POST /me/webhooks/:id/test": "credentials",
   "POST /planner/digest/test": "sends_outside",
-  "PUT /planner/prefs": "account",
   "GET /presence/devices": "device",
   "DELETE /presence/devices/:deviceId": "device",
   "POST /presence/heartbeat": "device",
   "POST /presence/leave": "device",
   "GET /presence/settings": "device",
   "PUT /presence/settings": "device",
-  "POST /teams": "team_admin",
   "DELETE /teams/:id": "team_admin",
-  "PUT /teams/:id": "team_admin",
   "PUT /teams/:id/agent-access": "team_admin",
   "GET /teams/:id/agents": "team_admin",
-  "PUT /teams/:id/attention": "team_admin",
-  "POST /teams/:id/members": "team_admin",
-  "DELETE /teams/:id/members/:userId": "team_admin",
-  "PUT /teams/:id/members/:userId": "team_admin",
   "GET /teams/:id/presence": "device",
   // Merged in the M1–M4 integration and classified in A1-late.
-  "POST /agenda/today": "app_pages",
-  "GET /agenda/today": "app_pages",
-  "POST /agenda/:date": "app_pages",
   "POST /projects/:id/visit": "device",
-  "GET /docs/trash": "trash",
-  "POST /docs/:id/restore": "trash",
   "DELETE /docs/:id/forever": "trash",
   // Classified with the toolsets (A5).
   "PUT /me/agents/:id/toolsets": "credentials",
-  "GET /me/calendar-subscriptions": "credentials",
+  "PUT /me/agents/:id/trust": "credentials",
   "PUT /items/:id/position": "arrangement",
   // D4b: richer links and pages.
-  "POST /links/mentions/link": "editor_shortcut",
   "POST /docs/:id/anchor": "editor_shortcut",
-  "POST /docs/:id/extract": "editor_shortcut",
-  "POST /docs/:id/merge": "editor_shortcut",
-  "PUT /docs/:id/aliases": "editor_shortcut",
-  "GET /docs/:id/folds": "view_state",
-  "PUT /docs/:id/folds": "view_state",
   "POST /docs/:id/files": "file_bytes",
   "GET /docs/:id/files": "file_bytes",
   "GET /docs/files/:id": "file_bytes",
@@ -530,14 +571,6 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /clips/destinations": "clipper",
   "POST /clips": "clipper",
   "POST /ai/recordings/:id/summary": "hosted_ai",
-  // D4a: pinning a view to your own sidebar, and your own fields.
-  "PUT /views/:id/pin": "navigation",
-  "GET /fields": "own_fields",
-  "POST /fields": "own_fields",
-  "PUT /fields/:id": "own_fields",
-  "DELETE /fields/:id": "own_fields",
-  "GET /fields/values": "own_fields",
-  "PUT /fields/:id/value": "own_fields",
 };
 
 /**

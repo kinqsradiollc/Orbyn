@@ -372,7 +372,7 @@ export const search = defineCapability({
   name: "search",
   title: "Search Orbyn",
   description:
-    'Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, a title, an https url, a snippet with matched words in **bold**, the matching line of a page (block_id) and who wrote it (provenance). Pages with next_cursor.',
+    'Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by match and recency. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result: a typed id for fetch, title, url, a snippet with matches in **bold**, the page line (block_id) and provenance. Pages with next_cursor.',
   input: searchInput,
   output: z.object({
     results: z.array(hit),
@@ -431,7 +431,7 @@ export const findPassages = defineCapability({
   name: "find_passages",
   title: "Find passages with citations",
   description:
-    "The lines of pages (and task notes and decisions) that best match a question, for answering with citations. Each passage has a quote of at most 600 characters, the headings above it, its source, a citation url that opens the page at that line, and who wrote it. Scope it with project, doc, folder or team. Ranked by words, letters and recency only; you write the answer.",
+    "The lines of pages (and task notes and decisions) that best match a question, for answering with citations. Each passage has a quote of at most 600 characters, the headings above it, its source, a citation url that opens the page at that line, and who wrote it. Scope it with project, doc, folder or team. Ranked without AI; you write the answer.",
   input: z
     .object({
       query: z

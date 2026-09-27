@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import {
   addDays,
+  agentJobText,
   clockMinutes,
   dayTime,
   localDateKey,
+  mergeAgentKinds,
   type AgendaEntry,
   type DigestPrefs,
 } from "@orbyn/core";
 import { pool } from "../db/pool.js";
+import { namedThings } from "../lib/named-things.js";
 import {
   agendaEntries,
   calendarEntries,
@@ -40,12 +43,149 @@ function agendaLine(e: AgendaEntry, tz: string) {
   return bullet(`${when} — ${e.title}${e.calendar ? ` (${e.calendar})` : ""}`);
 }
 
+/** The most things by name the agents section lists. */
+const AGENT_TOP_ITEMS = 5;
+
+/**
+ * "What your agents did" (H7): since yesterday's digest, per connected
+ * agent what it changed in plain words, the top things it touched with
+ * their links, questions and suggestions still waiting for the person, and
+ * where to undo any of it. Empty (no section) when no agent changed or
+ * suggested anything.
+ */
+export async function buildAgentSection(
+  userId: string,
+  now: Date,
+): Promise<string[]> {
+  const since = new Date(now.getTime() - 24 * 3_600_000);
+  const rows = (
+    await pool.query<{
+      grant_id: string | null;
+      agent: string;
+      team: string | null;
+      team_id: string | null;
+      outcome: string;
+      changes: number;
+      kinds: Record<string, number> | null;
+      target_ids: string[];
+    }>(
+      `SELECT a.grant_id, coalesce(nullif(g.client_name, ''), g.name,
+                nullif(a.client_name, ''), 'An agent') AS agent,
+              t.name AS team, a.team_id, a.outcome, a.changes, a.kinds,
+              a.target_ids
+         FROM agent_activity a
+         LEFT JOIN agent_grants g ON g.id = a.grant_id
+         LEFT JOIN teams t ON t.id = a.team_id
+        WHERE a.user_id = $1 AND a.tier <> 'R' AND a.at >= $2 AND a.at < $3
+          AND a.undone_at IS NULL AND a.tool <> 'apply_plan'
+          AND (a.changes > 0 OR a.outcome = 'proposed')
+        ORDER BY a.at DESC
+        LIMIT 1000`,
+      [userId, since, now],
+    )
+  ).rows;
+  if (!rows.length) return [];
+  // Per agent: what it changed, and the one team it was all in, if one.
+  const agents = new Map<
+    string,
+    {
+      name: string;
+      kinds: Record<string, number>[];
+      teams: Set<string | null>;
+      proposed: number;
+    }
+  >();
+  for (const r of rows) {
+    const key = r.grant_id ?? r.agent;
+    const a = agents.get(key) ?? {
+      name: r.agent,
+      kinds: [],
+      teams: new Set<string | null>(),
+      proposed: 0,
+    };
+    if (r.changes > 0) {
+      a.kinds.push(r.kinds ?? {});
+      a.teams.add(r.team);
+    }
+    if (r.outcome === "proposed") a.proposed++;
+    agents.set(key, a);
+  }
+  const lines = ["What your agents did:"];
+  for (const a of agents.values()) {
+    const kinds = mergeAgentKinds(a.kinds);
+    const space = a.teams.size === 1 ? [...a.teams][0] : null;
+    const did = Object.keys(kinds).length
+      ? agentJobText(a.name, kinds, space)
+      : "";
+    const asked = a.proposed
+      ? `${a.name} suggested ${a.proposed === 1 ? "a change" : `${a.proposed} changes`} for your review.`
+      : "";
+    lines.push(bullet([did, asked].filter(Boolean).join(" ")));
+  }
+  // The things touched most recently, by name, that still open.
+  const seen = new Set<string>();
+  const wanted: { kind: "task" | "doc" | "project"; id: string }[] = [];
+  for (const r of rows)
+    for (const t of r.target_ids ?? []) {
+      const m = /^(task|event|doc|project):([0-9a-f-]{36})/i.exec(t);
+      if (!m || wanted.length >= AGENT_TOP_ITEMS * 3) continue;
+      const kind = (
+        m[1].toLowerCase() === "event" ? "task" : m[1].toLowerCase()
+      ) as "task" | "doc" | "project";
+      const key = `${kind}:${m[2].toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      wanted.push({ kind, id: m[2].toLowerCase() });
+    }
+  const titles = await namedThings(pool, userId, wanted);
+  const top = wanted
+    .filter((w) => titles.has(`${w.kind}:${w.id}`))
+    .slice(0, AGENT_TOP_ITEMS);
+  if (top.length) {
+    lines.push("Things they touched:");
+    lines.push(
+      ...top.map((w) =>
+        bullet(
+          `${titles.get(`${w.kind}:${w.id}`)} — ${appLink(`/app/${w.kind}/${w.id}`)}`,
+        ),
+      ),
+    );
+  }
+  const waiting = (
+    await pool.query<{ reviews: number; questions: number }>(
+      `SELECT (SELECT count(*)::int FROM proposals
+                WHERE user_id = $1 AND source = 'agent' AND status = 'pending'
+                  AND expires_at > $2) AS reviews,
+              (SELECT count(*)::int FROM agent_questions
+                WHERE user_id = $1 AND status = 'open' AND expires_at > $2) AS questions`,
+      [userId, now],
+    )
+  ).rows[0];
+  const waits = [
+    waiting.questions
+      ? `${waiting.questions} question${waiting.questions === 1 ? "" : "s"}`
+      : "",
+    waiting.reviews
+      ? `${waiting.reviews} suggestion${waiting.reviews === 1 ? "" : "s"} to review`
+      : "",
+  ].filter(Boolean);
+  if (waits.length)
+    lines.push(
+      `Waiting for you: ${waits.join(" and ")} — ${appLink("/app/review")}`,
+    );
+  lines.push(
+    `Something not right? Undo any change, or a whole job, in Settings → Connected agents: ${appLink("/app/agents")}`,
+  );
+  return lines;
+}
+
 /** The morning agenda: today's events, due tasks, set-aside time and habits. */
 export async function buildMorning(
   userId: string,
   name: string,
   now: Date,
   tz: string,
+  options: { agents?: boolean } = {},
 ): Promise<{ subject: string; lines: string[] }> {
   const today = localDateKey(now, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
@@ -125,6 +265,9 @@ export async function buildMorning(
     lines.push(
       `Study: ${cardsDue} card${cardsDue === 1 ? "" : "s"} to review today.`,
     );
+  // What connected agents did since yesterday's digest, unless turned off.
+  if (options.agents !== false)
+    lines.push(...(await buildAgentSection(userId, now)));
   lines.push(`Open your day: ${appLink("/app")}`);
   return { subject: "Your day ahead", lines };
 }
@@ -135,6 +278,7 @@ export async function buildEvening(
   name: string,
   now: Date,
   tz: string,
+  _options: { agents?: boolean } = {},
 ): Promise<{ subject: string; lines: string[] }> {
   const today = localDateKey(now, tz);
   const tomorrow = addDays(today, 1);
@@ -256,6 +400,7 @@ export async function scanDigests(now = new Date()) {
           row.name,
           now,
           tz,
+          { agents: d.agents !== false },
         );
         const text = lines.filter(Boolean).join("\n\n");
         if (mailOn)

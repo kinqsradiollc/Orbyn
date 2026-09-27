@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { OriginalSection } from "./OriginalFile";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
   fileSize,
   MODE_LABELS,
   modesFor,
   savedAgo,
+  sourceReadLabel,
   type Doc,
   type DocInfo,
   type DocMode,
@@ -14,12 +15,14 @@ import {
   type OutlineEntry,
   type PageFile,
   type PageFilesUsage,
+  type PageSource,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { ContentsList } from "./ContentsSheet";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
+import { MoreMenu } from "../../components/MoreMenu";
 import { PageFreshness } from "../../components/followthrough/PageFreshness";
 import { colors, fonts, radii, themed } from "../../theme";
 import { DocViewers } from "./DocViewers";
@@ -94,6 +97,7 @@ export function PageInfo({
   const [aliases, setAliases] = useState(doc.aliases ?? []);
   useEffect(() => setAliases(doc.aliases ?? []), [doc.id, doc.aliases]);
   const [info, setInfo] = useState<DocInfo | null>(null);
+  const [infoAsked, setInfoAsked] = useState(0);
   const reportRef = useRef(report);
   reportRef.current = report;
   useEffect(() => {
@@ -106,7 +110,7 @@ export function PageInfo({
     return () => {
       live = false;
     };
-  }, [visible, doc.id, doc.version]);
+  }, [visible, doc.id, doc.version, infoAsked]);
   const belongs = [
     KIND_NAMES[doc.kind],
     doc.team_name ? `in ${doc.team_name}` : "Only you",
@@ -177,6 +181,15 @@ export function PageInfo({
             docId={doc.id}
             canWrite={canWrite && !reading}
             revision={doc.version}
+            report={report}
+          />
+        )}
+        {!!info?.sources?.length && (
+          <SourcesBlock
+            docId={doc.id}
+            sources={info.sources}
+            canWrite={(info.can_write ?? canWrite) && !reading}
+            onRemoved={() => setInfoAsked((n) => n + 1)}
             report={report}
           />
         )}
@@ -391,6 +404,85 @@ function FieldsBlock({
   );
 }
 
+/**
+ * Sources an agent read and saved for this page (H2): title (opens the
+ * address), site, author, the day it was read and the words it quoted.
+ */
+function SourcesBlock({
+  docId,
+  sources,
+  canWrite,
+  onRemoved,
+  report,
+}: {
+  docId: string;
+  sources: PageSource[];
+  canWrite: boolean;
+  onRemoved: () => void;
+  report: (e: unknown) => void;
+}) {
+  // Taking a source off the page (H6b), behind its ⋯: the page's words
+  // stay, and the source stays for other pages that cite it.
+  const remove = (src: PageSource) =>
+    Alert.alert(
+      `Take ${src.title} off this page?`,
+      "The page's words stay. Other pages that cite it keep it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () =>
+            void client.removePageSource(docId, src.id).then(onRemoved, report),
+        },
+      ],
+    );
+  return (
+    <Section label="Sources">
+      {sources.map((src) => (
+        <View key={src.id} style={s.sourceRow}>
+          <View style={s.source}>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Open ${src.title}`}
+              hitSlop={8}
+              onPress={() => void Linking.openURL(src.url)}
+            >
+              <Text style={s.link} numberOfLines={2}>
+                {src.title}
+              </Text>
+            </Pressable>
+            <Text style={s.small} numberOfLines={1}>
+              {[src.site, src.author, sourceReadLabel(src.accessed_on)]
+                .filter(Boolean)
+                .join(" · ")}
+            </Text>
+            {!!src.quote && (
+              <Text style={s.quote} numberOfLines={3}>
+                {src.quote}
+              </Text>
+            )}
+          </View>
+          {canWrite && (
+            <MoreMenu
+              label={`Options for ${src.title}`}
+              title={src.title}
+              actions={[
+                {
+                  label: "Remove from this page",
+                  icon: "trash",
+                  destructive: true,
+                  onPress: () => remove(src),
+                },
+              ]}
+            />
+          )}
+        </View>
+      ))}
+    </Section>
+  );
+}
+
 function Section({
   label,
   children,
@@ -422,6 +514,17 @@ const s = themed(() =>
     actions: { flexDirection: "row", gap: 8 },
     link: { fontFamily: fonts.medium, fontSize: 15, color: colors.accent },
     fileRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    sourceRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+    source: { flex: 1, minWidth: 0, gap: 2 },
+    quote: {
+      marginTop: 2,
+      paddingLeft: 8,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.border,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
     fileName: { flex: 1, minWidth: 0 },
     space: { gap: 6 },
     spaceBar: {

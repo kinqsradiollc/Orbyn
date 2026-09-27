@@ -5,7 +5,10 @@ import {
   AGENT_TOOLSET_LABELS,
   DEFAULT_AGENT_LIMITS,
 } from "@orbyn/core";
-import { SUSPEND_AFTER } from "../modules/mcp-server/limits.js";
+import {
+  HEAVY_PER_MINUTE,
+  SUSPEND_AFTER,
+} from "../modules/mcp-server/limits.js";
 import { EXCLUDED, PENDING, COVERED } from "./exclusions.js";
 import { registry } from "./index.js";
 import { describe, type Capability } from "./registry.js";
@@ -38,7 +41,7 @@ const kindOf = (c: Capability) =>
  * The catalog's version: the date of the last change to any tool's
  * contract. Bump it (and add a CHANGELOG entry) with every change.
  */
-export const CATALOG_VERSION = "2026-09-26";
+export const CATALOG_VERSION = "2026-09-27";
 
 /**
  * How tools change (the versioning and deprecation policy), in the words
@@ -54,6 +57,28 @@ export const VERSIONING_POLICY = [
 
 /** What changed in the MCP server, newest first. */
 export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-09-27",
+    changes: [
+      "Proven end to end (H9), still 60 tools: scenario tests play an MCP client through each flow (a lecture into notes, cards, tasks and a first review; research into a sourced brief; a project kickoff; quiz and exam prep; the inbox loop; each trust level; a big job's push and digest). From them: schedule_sessions takes a project plan's plan_token (it was refused); sessions go on the calendar directly at full power, team tasks' too, up to 50 at once (a connection that asks or suggests still asks); plan_schedule says it plans the person's tasks (a team's once assigned to them), and says so when nothing needs time; create_tasks puts a task in its project's space when team is left out; save_source lines take doc:<id>#<anchor> (as apply_plan's \"$notes.lines.x\" gives them); a mention's next tools include get_history (the comment to reply to); append_doc parts hold up to 2,000 lines, and more is refused in words. Agents' plans (plan_schedule, schedule_sessions) and get_follow_through's notices leave out projects kept out of AI (and notices about teams the connection wasn't given). apply_plan and add_file count as heavy calls (10 a minute) besides changes; add_file's 500 MB a day answers LIMITED with retry_after. The server's instructions say the workflow: you do the thinking, one apply_plan, practice first, what asks first. The docs list the limits for heavy calls, files and long pages, and every error code.",
+      "Agents start warm (H8), still 60 tools: get_context also returns the person's \"About me for agents\" page (profile: Orbyn Markdown with line anchors, trimmed to about 6,000 characters with a link to the rest), its learning profile in fields (card_style, cards, session_minutes, study_times), the instructions for each space the connection reaches (Personal, and each team it is given), the standing rules, and since: what changed since the connection last spoke (its last call before a gap of half an hour): new inbox items, tasks the person added and finished, pages they edited, sessions they moved, changes by teammates and other agents where it reaches, questions and suggestions waiting, and the newest few with links. create_doc kind \"profile\" makes the page (one per person; asked again, the one there is), edited with edit_doc like any page. organize \"instructions\" (id: personal or a team; value: the words) changes a space's instructions: Personal's directly (undo), a team's asked first (team admin). get_study's queue is sized to the person's session length and puts their card style first; plan_revision and update_study exam.plan take their session length and study times when minutes aren't given; the study_session, lecture_to_notes and exam_prep prompts carry the learning profile. get_context's and get_today's answer schemas use plain strings for enums and drop repeated descriptions (the same answers, fewer tokens).",
+      "You always know what happened (H7), still 60 tools: every change's done entries carry app_url (the phone app's orbyn:// link) beside url (the web app's), apply_plan's steps too, and add_file and save_source answer with url and app_url of the page; each change's summary ends with its links in words. An object-or-null in an answer's schema is written type [\"object\", \"null\"] (the same meaning, fewer tokens). The person sees \"via <agent>\" on a task's updates, comments and suggestions, Recent changes (shown even with their own hidden), notices a change caused and the page an agent last wrote (agenda pages too); gets one notice and push when a job (one apply_plan, or calls from one connection under two minutes apart) makes more than 20 changes; and a \"What your agents did\" section in the morning digest. Both can be turned off in Settings; agents can't turn them off. Connected agents lists changes by job with Undo per change and per job.",
+      'Every feature, no gaps (H6b), still 60 tools: organize takes page changes (aliases: other names; fold; link_mention; extract: lines to a new page, linked where they were; merge: into another page, this one to Trash; remove_source), your own fields (create_field, change_field, set_field on pages and projects; deleting one is propose_changes delete what "field") and running a team, always asked first (create_team, rename_team, invite, remove_member, set_role, meeting_budget; the Review inbox action team.admin; deleting a team and its agent policy stay people only). update_project adds, changes, fills and removes milestones (removing is a delete: what "milestone" in propose_changes too) and keeps a project out of AI (assistant "off"; "on" always asks the person, and its proposal doesn\'t name the project to the agent). get_project lists milestones. save_view pins a view in the sidebar (pin) and returns a saved view\'s rows as CSV text (export "csv", in csv). get_history lists "recent" (opened and changed lately), "trash" and a team\'s recent changes ("changes" or team:<id>). propose_changes restore_doc brings a page back from Trash (emptying it stays the person\'s). fetch shows a page\'s Info (other names, tags, links here, versions, folds, fields with ids) and a project\'s fields. add_file takes project (a new page in it holding the file). update_planner_settings subscribe with id changes a subscribed calendar (link, name, colour, kind, busy, shown) or refreshes it (refresh). Every change is undoable except a new team and keeping a project out of AI. Every command in Orbyn\'s command list maps to a tool or a written reason.',
+      "Every feature, no gaps (H6a), by extending tools (no new ones): create_tasks and update_tasks take alerts, colour, web links, busy or free and a meeting link; update_tasks also status, all-day, targets (target_value, current_value, value_unit), a repeat change or stop (rrule, null), a new parent or top level (parent, null; cycles refused), and scope this or following with occurrence for one occurrence of a repeating item or it and later ones (one occurrence's change can be undone). edit_checklist moves steps (move: id, position). reschedule_sessions pins, unpins, duplicates, rolls forward, starts and checks in sessions (outcome done, more with more_minutes, or skipped), attributed to the agent, with undo. update_planner_settings changes every planner setting (time zone, extra time zones, calendar sets, pinned teammates, default alerts, planner notices, buffer scope, travel padding, counting sessions as spent, session reminders, digest emails), keep_originals, and subscribes to a calendar by link (Orbyn fetches it after its public-address check) or unsubscribes; get_work_patterns lists subscribed calendars (never their links) and gives each unfinished session's id and whether it was checked in. create_doc kind agenda writes a day's agenda page from the calendar (today's again, keeping Notes). ack_inbox takes notices (ids or \"all\") and marks the person's in-app notices read: mark_notifications_read is folded into it and no longer listed, but still answers when called. Answer schemas no longer repeat additionalProperties: false on every object.",
+      'One call, whole job (H5): apply_plan (core) takes up to 50 steps of write tools ({id, tool, args}: create_doc, append_doc with finish, edit_doc, create_tasks, update_tasks, complete_tasks, edit_checklist, create_project, update_project, link, organize, tasks_from_doc, comment_on_doc, update_study, schedule_sessions, save_source, save_record, add_progress). Every step is checked first (tool, access, schema, spaces, $refs only to earlier steps) and a wrong plan is refused whole with a report per step. Arguments may use earlier results ("$notes.id", ".uri", ".ids", ".lines.<anchor>", "$proj.stages[0].id", or "{$notes.uri}" inside words). The steps run in one transaction, all or nothing; anything on the ask-first list (or a connection that asks or suggests) asks once for the whole plan: in the chat, by URL, or as one Review inbox proposal that makes the whole plan when approved. Every step is recorded with one job id: undo({job}) takes the plan back. client_ref applies to the whole plan. New prompts: lecture_to_notes, research_brief, exam_prep and meeting_to_actions (the agent does the thinking and applies it with one apply_plan call). client_ref\'s description is shorter.',
+      "Study from anything, practice first (no AI of Orbyn's: the agent writes and judges, Orbyn stores and schedules). update_study cards adds question/answer, cloze and picture cards to a page's Cards section or a new deck, each linked to the notes line it came from (from: doc:<id>#<anchor>, kept as a [src: …](orbyn://doc/…#…) link on the card's line); undo removes them. get_study queue now quizzes in practice order (cards marked needs work, then the ones most often answered again, then due, then new; decks interleaved), answers hidden, with left_today; get_study card gives one card's answer once the person has tried; get_study explain returns the person's own notes lines and cards with answers on a topic or cards so the agent can judge an explanation, and update_study needs_work records one that fell short. get_study lists what the person keeps getting wrong (wrong) and each card's source (from) and picture. update_study exam names or changes an exam (title, date, pages, target), and exam.plan books its revision sessions in the same call.",
+      "Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.",
+      "Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.",
+      "list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.",
+      "Everything routes to your agent: each connection has an inbox (booking requests, mentions and comments, invites, deadlines at risk, finished imports, study due and exams near, tasks from email, review decisions, teammates' asks, answers to its questions), only for spaces it reaches, never kept-out projects, kept 14 days. get_inbox (not dealt with first, with refs, suggested tools and the person's standing rules) and ack_inbox (done, snooze, dismiss with a note) in core. The resource orbyn://inbox; following it with subscriptions/listen tells the agent at once. People mute kinds per connection and can set a signed wake-up address that gets only a count and a link, at most every 5 minutes.",
+      "ask_person in core: a question with up to 5 choices (or yes/no), an optional default and expiry (24 h). Answered in the chat with a one-field form when the client declares form elicitation; otherwise a card in Orbyn and a push (Approve/Decline for yes/no), and the answer, default or expiry arrives as an answer item in get_inbox. question_id looks up its status.",
+      "Write pages like a person: one documented Orbyn Markdown dialect (orbyn://spec/markdown) for every kind of line: callouts, tables, footnotes, highlights and strikes, mermaid diagrams, embeds (orbyn-embed), live lists (orbyn-list), pictures and files by orbyn://file/<id> (only ones the person can already read), study-card lines. create_doc and edit_doc store them as real blocks and read [[Page]], [[Page#Heading]] and [[#Heading]] as links; fetch returns pages in the same dialect with every line's anchor, nested lists indented, so reading and writing back changes nothing.",
+      "edit_doc sections by heading words or anchor: replace_section, append_to_section, delete_section and move_section (a section runs to the next heading as big or bigger). Anchors written in the Markdown are kept (new ones may be named); all or none, version-checked and undoable; team pages keep suggestions (a deleted section's lines struck through) or go to review.",
+      "The agent reads, Orbyn keeps the result (H2): append_doc (workspace) takes long Orbyn Markdown in parts (up to 512 KB each, 2 MB in all; a draft per connection, parts in any order, a part number sent again replaces it, each checked as it arrives) and makes the page on finish: true, all or nothing (finish sent again answers the same); over 60 KB it becomes linked pages. Unfinished drafts go a day after their last part.",
+      "Source lines: [src: Lecture 5 slides, slide 12] in a line says where it came from, drawn as a small chip on the web and phone and kept exactly (orbyn://spec/markdown). save_source (study) keeps a web source the agent read (https address, title, quote, day read, author, site) once per address per space, linked to a page and its lines; the page's Info lists it under Sources, fetch names a page's sources and opens source:<id> (the quote fenced as outside content). Orbyn never opens the address.",
+      "add_file (files): a file in the call (base64, up to 25 MB, 500 MB a person a day, error code LIMITED past it or past the person's space) as a picture or file line on a page, or kept as the page's original. PDF, Word, PowerPoint, pictures and text, typed from the bytes; stored in Orbyn's own file store; undo removes it. MCP requests may now be up to 36 MB.",
+    ],
+  },
   {
     date: "2026-09-26",
     changes: [
@@ -335,6 +360,11 @@ export function catalogMarkdown(catalog: Catalog): string {
     `| Calls in flight at once per connection | ${limits.concurrent} |`,
     `| Calls a day per connection | ${limits.calls_per_day} |`,
     `| Changes a minute / a day per connection | ${limits.writes_per_minute} / ${limits.writes_per_day} |`,
+    `| Heavy calls a minute per connection (\`what_if\`, \`apply_plan\`, \`add_file\`; a heavy change is a change too) | ${HEAVY_PER_MINUTE} |`,
+    '| Files an agent sends (`add_file`) | 25 MB a file (`INVALID` over it); 500 MB a day per person (`LIMITED`, with `retry_after` in `_meta["orbyn/data"]`) |',
+    "| A long page (`append_doc`) | 512 KB and 2,000 lines a part; 2 MB a page (`INVALID` over it) |",
+    "",
+    "Past a minute's or a day's limit, the error's `data.retry_after` and the `Retry-After` header say how many seconds to wait: until the oldest call in the minute leaves it, or until the next day (UTC).",
     "",
     "## Errors",
     "",
@@ -356,6 +386,10 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- `AMBIGUOUS`: several things have that title. The candidates are listed.",
     "- `FORBIDDEN`: the connection can't do this here (its access level, or a tool it lacks).",
     "- `READ_ONLY`: the administrator has paused changes by agents.",
+    "- `VERSION_CONFLICT`: it changed since it was read. Read it again and retry with its version.",
+    "- `STALE`: a plan, undo or review no longer matches how things are now. Preview or read again.",
+    "- `DECLINED` / `CANCELLED`: the person said no to the question in the chat, or dismissed it. Nothing was changed.",
+    "- `LIMITED`: a person's daily or space limit is reached (files a day, space for pages' files or originals).",
     "- `UNAVAILABLE`: not available to agents yet.",
     "- `INTERNAL`: something went wrong on Orbyn's side. Try again.",
     "",
@@ -483,7 +517,7 @@ const TIER_REVIEW: Record<Capability["tier"], string> = {
   R: "Runs directly; changes nothing.",
   W1: "Runs directly; adds only private things (undoable).",
   W2: "Runs directly where the connection may change things (undoable); team pages get suggestions; a suggest-only connection files a proposal.",
-  W3: "Always waits in the Review inbox for the signed-in person.",
+  W3: "Deletes, moves and restores: made directly at full power (undoable for 30 days) unless on the ask-first list, which asks the person first; a connection that asks or suggests sends it to the person.",
 };
 
 export type AnnotationAudit = {
@@ -526,7 +560,7 @@ export function auditAnnotations(): AnnotationAudit[] {
           ) &&
           c.tier !== "W3"
         )
-          issues.push("outward effects always go to review (W3)");
+          issues.push("outward effects are W3 (the ask-first list decides)");
       }
       return {
         name: c.name,

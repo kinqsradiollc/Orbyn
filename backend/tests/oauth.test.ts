@@ -825,6 +825,12 @@ test("step-up auth: write access needs a password (and two-step) or passkey with
 // ---- registration and client documents ----
 
 test("DCR: public clients only, application type checked, limited per address, switchable", async () => {
+  // The limits count registrations over the last hour and day, and the test
+  // database outlives a run: earlier runs' apps count as older, so this run
+  // starts under the limits whenever it runs.
+  await pool.query(
+    "UPDATE oauth_clients SET created_at = created_at - interval '2 days' WHERE kind = 'dcr'",
+  );
   const from = "10.92.0.1";
   const reg = (body: unknown, at = from) =>
     inject("POST", "/oauth/register", { json: body, from: at });

@@ -51,12 +51,10 @@ import { itemSourceSql, itemSources } from "./sources.js";
  * get_today and the orbyn://today resource both come through it.
  */
 
-const when = z
-  .object({
-    at: z.string().describe("ISO 8601 instant."),
-    local: z.string().describe("The same, in the person's time zone."),
-  })
-  .describe("An instant, exact and local.");
+// An instant, exact (ISO 8601) and in the person's time zone, as
+// get_context's conventions say: no descriptions, since it repeats (H8's
+// budget).
+const when = z.object({ at: z.string(), local: z.string() });
 
 const entry = z.object({
   kind: z
@@ -91,7 +89,8 @@ const task = z.object({
     .number()
     .describe("Minutes of the person's sessions that end before the deadline."),
   estimate_minutes: z.number().nullable(),
-  provenance: z.string().describe('"you", or where the title came from.'),
+  // As a planned entry's: "you", or where the title came from.
+  provenance: z.string(),
 });
 
 /**
@@ -114,9 +113,7 @@ export const todayOutput = z.object({
     .describe("Sessions and events today, in order; repeats expanded."),
   due: z
     .array(task)
-    .describe(
-      "The person's open tasks (their own, or assigned to them) with a deadline today, as the app's Today list shows them.",
-    ),
+    .describe("The person's open tasks (own or assigned to them) due today."),
   late: z
     .array(task)
     .describe(
@@ -131,7 +128,7 @@ export const todayOutput = z.object({
         url: z.string(),
         minutes: z.number(),
         why: z.array(z.string()),
-        provenance: z.string().describe('"you", or where the title came from.'),
+        provenance: z.string(),
       }),
     )
     .describe("What to do next, with the reasons."),

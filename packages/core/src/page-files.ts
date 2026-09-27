@@ -210,3 +210,108 @@ export const IMAGE_MAX_SIDE = 2400;
 
 /** How long a link to show a file lasts. */
 export const FILE_LINK_MINUTES = 60;
+
+// ------------------------------------------------ files from agents (H2) ---
+
+/**
+ * What an outside agent may send in a call (add_file): a picture or file
+ * for a page, or a page's original. Checked against what the bytes are,
+ * never only the name.
+ */
+export const AGENT_FILE_LIMITS = {
+  /** One file. */
+  maxBytes: 25 * 1024 * 1024,
+  /** Everything one person's agents send in a day (UTC). */
+  perDayBytes: 500 * 1024 * 1024,
+} as const;
+
+/** The types an agent may send: PDF, Word, PowerPoint, pictures, text. */
+export const AGENT_FILE_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+] as const;
+
+const DOCX =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PPTX =
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const XLSX =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+/** Whether `bytes` holds `word` (ASCII) anywhere: a zip's entry names. */
+function holds(bytes: Uint8Array, word: string): boolean {
+  const first = word.charCodeAt(0);
+  const last = bytes.length - word.length;
+  outer: for (let i = bytes.indexOf(first); i >= 0 && i <= last;) {
+    for (let j = 1; j < word.length; j++)
+      if (bytes[i + j] !== word.charCodeAt(j)) {
+        i = bytes.indexOf(first, i + 1);
+        continue outer;
+      }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * What a file is, from its bytes alone: a picture, a PDF, an Office file
+ * (a zip, told apart by the parts it holds), or text (valid UTF-8 without
+ * NUL bytes); null for anything else (old .doc and .ppt files included).
+ */
+export function sniffFileType(bytes: Uint8Array): string | null {
+  const starts = (...b: number[]) => b.every((x, i) => bytes[i] === x);
+  if (!bytes.length) return null;
+  if (starts(0x89, 0x50, 0x4e, 0x47)) return "image/png";
+  if (starts(0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (starts(0x47, 0x49, 0x46, 0x38)) return "image/gif";
+  if (sniffPageFile(bytes, "image/webp")) return "image/webp";
+  if (starts(0x25, 0x50, 0x44, 0x46)) return "application/pdf";
+  if (starts(0x50, 0x4b, 0x03, 0x04)) {
+    if (holds(bytes, "word/document.xml")) return DOCX;
+    if (holds(bytes, "ppt/presentation.xml")) return PPTX;
+    if (holds(bytes, "xl/workbook.xml")) return XLSX;
+    return null;
+  }
+  if (bytes.includes(0)) return null;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return "text/plain";
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The type an agent's file is kept as, from its bytes and name: text keeps
+ * the kind its name says (Markdown, CSV); anything else must be what its
+ * name says, when the name says. `{ error }` in plain words otherwise.
+ */
+export function agentFileType(
+  name: string,
+  bytes: Uint8Array,
+): { mime: string } | { error: string } {
+  const found = sniffFileType(bytes);
+  const allowed = AGENT_FILE_TYPES as readonly string[];
+  const named = pageFileType(name);
+  const label = (m: string) => PAGE_FILE_TYPES[m] ?? m;
+  if (!found || !allowed.includes(found))
+    return {
+      error: `Orbyn keeps PDF, Word, PowerPoint, pictures (PNG, JPEG, GIF, WebP) and text files; ${found ? `this is ${/^[AEIOU]/.test(label(found)) ? "an" : "a"} ${label(found)}` : "this file is none of those"}.`,
+    };
+  const text = (m: string | null) => !!m && m.startsWith("text/");
+  if (found === "text/plain" && (!named || text(named)))
+    return { mime: named ?? found };
+  if (named && named !== found)
+    return {
+      error: `This file is ${/^[AEIOU]/.test(label(found)) ? "an" : "a"} ${label(found)}, but its name says ${label(named)}. Name it for what it is.`,
+    };
+  return { mime: found };
+}

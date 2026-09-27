@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Bot,
+  ChevronDown,
+  ChevronRight,
   Copy,
   ExternalLink,
   Globe,
@@ -11,6 +13,11 @@ import {
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
+  AGENT_ASK_FIRST,
+  AGENT_ASK_FIRST_LABELS,
+  AGENT_NEVER,
+  AGENT_TRUST,
+  AGENT_TRUST_LABELS,
   AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_TOOLSETS,
   AGENT_TOOLSET_LABELS,
@@ -19,11 +26,17 @@ import {
   AGENT_SIGN_IN_STEPS,
   agentExpiryText,
   agentInstallLinks,
+  agentJobText,
+  groupAgentActivity,
   agentSetup,
   isSignInClient,
   type AgentAccess,
   type AgentActivity,
+  type AgentActivityLink,
+  type AgentAskFirst,
+  type AgentJob,
   type AgentGrant,
+  type AgentTrust,
   type AgentSetupClient,
   type AgentToolset,
   type AgentsOverview,
@@ -33,10 +46,13 @@ import { client } from "../../lib/api";
 import { copyText } from "../../lib/planning";
 import { timeAgo } from "../../lib/tasks";
 import { openReview } from "../../lib/review";
+import { openObject } from "../docs/DocLinks";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";
 import { SettingsSection } from "./SettingsSection";
+import { AgentRules, InboxEdit } from "./AgentInbox";
+import { AgentWarmStart } from "./AgentContext";
 import "./agents.css";
 
 type Props = {
@@ -114,6 +130,170 @@ function ToolsetChoice({
   );
 }
 
+/** Short names for the trust levels, as tags. */
+const TRUST_TAG: Record<AgentTrust, string> = {
+  full: "Full power",
+  ask: "Asks first",
+  suggest: "Suggests",
+};
+
+/** What "How it acts" is changing: trust, per space, and ask-first items. */
+type TrustDraft = {
+  id: string;
+  trust: AgentTrust;
+  /** "personal" or a team id → its own level ("" = same as the default). */
+  spaces: Record<string, AgentTrust | "">;
+  actsAlone: AgentAskFirst[];
+};
+
+/**
+ * How a connection acts: its trust, per space where it differs, and which
+ * ask-first items it may do alone. Only a connection that may change
+ * things can be set to full power or ask; one that suggests stays so.
+ */
+function TrustEdit({
+  grant,
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+  pending,
+}: {
+  grant: AgentGrant;
+  draft: TrustDraft;
+  onChange: (next: TrustDraft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  pending: boolean;
+}) {
+  const changes = grant.access === "write";
+  const spaces = [
+    ...(grant.personal ? [{ id: "personal", name: "Personal" }] : []),
+    ...grant.teams,
+  ];
+  return (
+    <div className="agents-tools-edit agents-trust">
+      {!changes ? (
+        <p className="muted">
+          {grant.access === "read"
+            ? "It can only read. To let it change things, connect it again and allow changes."
+            : "It can only suggest: every change waits in your Review inbox. To give it more, connect it again and allow changes."}
+        </p>
+      ) : (
+        <>
+          <div className="settings-field">
+            <label htmlFor={`trust-${grant.id}`}>How much it does alone</label>
+            <Select
+              id={`trust-${grant.id}`}
+              value={draft.trust}
+              onChange={(e) =>
+                onChange({ ...draft, trust: e.target.value as AgentTrust })
+              }
+            >
+              {AGENT_TRUST.map((t) => (
+                <option key={t} value={t}>
+                  {AGENT_TRUST_LABELS[t].name}
+                </option>
+              ))}
+            </Select>
+            <small className="muted">
+              {AGENT_TRUST_LABELS[draft.trust].blurb}
+            </small>
+          </div>
+          {spaces.length > 1 && (
+            <fieldset className="agents-trust-spaces">
+              <legend>In each space</legend>
+              {spaces.map((sp) => (
+                <div key={sp.id} className="agents-trust-space">
+                  <label htmlFor={`trust-${grant.id}-${sp.id}`}>
+                    {sp.name}
+                  </label>
+                  <Select
+                    id={`trust-${grant.id}-${sp.id}`}
+                    value={draft.spaces[sp.id] ?? ""}
+                    onChange={(e) =>
+                      onChange({
+                        ...draft,
+                        spaces: {
+                          ...draft.spaces,
+                          [sp.id]: e.target.value as AgentTrust | "",
+                        },
+                      })
+                    }
+                  >
+                    <option value="">
+                      Same ({AGENT_TRUST_LABELS[draft.trust].name})
+                    </option>
+                    {AGENT_TRUST.filter((t) => t !== draft.trust).map((t) => (
+                      <option key={t} value={t}>
+                        {AGENT_TRUST_LABELS[t].name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
+            </fieldset>
+          )}
+          {draft.trust === "full" && (
+            <fieldset className="agents-trust-list">
+              <legend>At full power it still asks first about</legend>
+              {AGENT_ASK_FIRST.map((k) => {
+                const asks = !draft.actsAlone.includes(k);
+                return (
+                  <label
+                    key={k}
+                    className="switch-line"
+                    htmlFor={`ask-${grant.id}-${k}`}
+                  >
+                    <input
+                      id={`ask-${grant.id}-${k}`}
+                      type="checkbox"
+                      role="switch"
+                      className="ai-switch"
+                      checked={asks}
+                      onChange={(e) =>
+                        onChange({
+                          ...draft,
+                          actsAlone: e.target.checked
+                            ? draft.actsAlone.filter((x) => x !== k)
+                            : [...draft.actsAlone, k],
+                        })
+                      }
+                    />
+                    <span>
+                      {AGENT_ASK_FIRST_LABELS[k].name}
+                      <small>
+                        {asks ? "Asks first" : "Acts alone"} ·{" "}
+                        {AGENT_ASK_FIRST_LABELS[k].blurb}
+                      </small>
+                    </span>
+                  </label>
+                );
+              })}
+            </fieldset>
+          )}
+        </>
+      )}
+      <small className="muted">Never through an agent: {AGENT_NEVER}</small>
+      <div className="agents-tools-actions">
+        {changes && (
+          <button
+            type="button"
+            className="primary"
+            disabled={pending}
+            onClick={onSave}
+          >
+            Save
+          </button>
+        )}
+        <button type="button" className="secondary" onClick={onCancel}>
+          {changes ? "Cancel" : "Close"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The app a connection is for, in the list's first column. */
 function clientLabel(g: AgentGrant) {
   if (g.kind === "legacy") return "API key";
@@ -155,6 +335,34 @@ function activityText(a: AgentActivity) {
   return `${a.summary}${outcome}`;
 }
 
+/** A job in words: what it changed, or its one line (reads, refusals). */
+function jobText(g: AgentGrant, job: AgentJob) {
+  return job.changes > 0
+    ? agentJobText(grantTitle(g), job.kinds)
+    : activityText(job.rows[0]);
+}
+
+/** " · undone" when all of a job was undone, " · partly undone" for some. */
+function undoneText(job: AgentJob) {
+  const undone = job.rows.filter((a) => a.undone_at).length;
+  if (!undone) return "";
+  return undone === job.rows.length ? " · undone" : " · partly undone";
+}
+
+/** What a job touched that still opens, each once, at most five. */
+function jobLinks(job: AgentJob): AgentActivityLink[] {
+  const seen = new Set<string>();
+  const out: AgentActivityLink[] = [];
+  for (const a of job.rows)
+    for (const l of a.links ?? []) {
+      const key = `${l.kind}:${l.id}`;
+      if (seen.has(key) || out.length >= 5) continue;
+      seen.add(key);
+      out.push(l);
+    }
+  return out;
+}
+
 /**
  * Settings → Connections → Connected agents: the AI agents let into Orbyn
  * over MCP (agent keys, and old API keys used there), what each did, and how
@@ -173,8 +381,54 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
     id: string;
     toolsets: AgentToolset[];
   } | null>(null);
+  /** The connection whose trust is being changed, and the choice so far. */
+  const [trusting, setTrusting] = useState<TrustDraft | null>(null);
+  /** The connection whose inbox choices (kinds, wake-up) are open. */
+  const [hearing, setHearing] = useState<string | null>(null);
+  /** Jobs in the activity opened to show each change. */
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleJob = (id: string) =>
+    setExpanded((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const connectRef = useRef<HTMLDivElement>(null);
   const action = useAction(report);
+
+  const openTrust = (g: AgentGrant) =>
+    setTrusting(
+      trusting?.id === g.id
+        ? null
+        : {
+            id: g.id,
+            trust: g.trust,
+            spaces: { ...g.space_trust },
+            actsAlone: [...g.acts_alone],
+          },
+    );
+
+  const saveTrust = (g: AgentGrant) => {
+    if (!trusting) return;
+    const d = trusting;
+    const reach = [
+      ...(g.personal ? ["personal"] : []),
+      ...g.teams.map((t) => t.id),
+    ];
+    void action.run(async () => {
+      await client.setAgentTrust(d.id, {
+        trust: d.trust,
+        spaces: Object.fromEntries(
+          reach.map((id) => [id, d.spaces[id] ? d.spaces[id] : null]),
+        ),
+        acts_alone: d.actsAlone,
+      });
+      setTrusting(null);
+      await load();
+      return `${grantTitle(g)} now: ${AGENT_TRUST_LABELS[d.trust].name.toLowerCase()}.`;
+    });
+  };
 
   const load = () =>
     client.agents().then(setOverview, (e) => {
@@ -220,6 +474,53 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       return `Undid “${a.summary}”.`;
     });
   };
+
+  // Take back a whole job (every step of a plan, or one call's changes):
+  // all of it or, if anything changed since, none of it.
+  const undoJob = async (g: AgentGrant, job: AgentJob) => {
+    const id = job.job;
+    if (!id) return;
+    const who = grantTitle(g);
+    if (
+      !(await ask({
+        title: `Undo everything ${who} did in this job?`,
+        body: "Orbyn puts every change in it back as it was before. If anything changed since, nothing is undone, and you can still undo the changes one by one.",
+        confirmLabel: "Undo job",
+      }))
+    )
+      return;
+    await action.run(async () => {
+      const { undone } = await client.undoAgentJob(g.id, id);
+      const list = await client.agentActivity(g.id);
+      setActivity((all) => ({ ...all, [g.id]: list }));
+      return `Undid ${undone} ${undone === 1 ? "change" : "changes"} ${who} made.`;
+    });
+  };
+
+  /** A change's own buttons: Review its proposal, Undo it. */
+  const rowActions = (g: AgentGrant, a: AgentActivity) => (
+    <>
+      {a.proposal_id && onOpenReview && (
+        <button
+          type="button"
+          className="link-button"
+          onClick={() => onOpenReview(a.proposal_id!)}
+        >
+          Review
+        </button>
+      )}
+      {a.undoable && (
+        <button
+          type="button"
+          className="link-button"
+          disabled={action.pending}
+          onClick={() => void undo(g, a)}
+        >
+          Undo
+        </button>
+      )}
+    </>
+  );
 
   const revoke = async (g: AgentGrant) => {
     const legacy = g.kind === "legacy";
@@ -333,9 +634,15 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     <span className="agents-tag is-read">See</span>
                     {g.access !== "read" && (
                       <span className="agents-tag is-write">
-                        {ACCESS_TAG[g.access]}
+                        {g.access === "write"
+                          ? TRUST_TAG[g.trust]
+                          : ACCESS_TAG[g.access]}
                       </span>
                     )}
+                    {g.access === "write" &&
+                      Object.keys(g.space_trust).length > 0 && (
+                        <span className="agents-tag">Differs by space</span>
+                      )}
                     <span className="agents-tag">{spacesText(g)}</span>
                     {g.kind !== "legacy" && (
                       <span className="agents-tag">{toolsetsText(g)}</span>
@@ -397,6 +704,22 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     >
                       Activity
                     </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      aria-expanded={trusting?.id === g.id}
+                      onClick={() => openTrust(g)}
+                    >
+                      How it acts
+                    </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      aria-expanded={hearing === g.id}
+                      onClick={() => setHearing(hearing === g.id ? null : g.id)}
+                    >
+                      What it hears
+                    </button>
                     {g.kind !== "legacy" && (
                       <button
                         type="button"
@@ -437,6 +760,23 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                       {g.kind === "key" ? "Revoke" : "Disconnect"}
                     </button>
                   </div>
+                  {trusting?.id === g.id && (
+                    <TrustEdit
+                      grant={g}
+                      draft={trusting}
+                      onChange={setTrusting}
+                      onSave={() => saveTrust(g)}
+                      onCancel={() => setTrusting(null)}
+                      pending={action.pending}
+                    />
+                  )}
+                  {hearing === g.id && (
+                    <InboxEdit
+                      grant={g}
+                      report={report}
+                      onClose={() => setHearing(null)}
+                    />
+                  )}
                   {editing?.id === g.id && (
                     <div className="agents-tools-edit">
                       <ToolsetChoice
@@ -481,36 +821,106 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                         <p className="muted">Loading activity…</p>
                       ) : open.length ? (
                         <ul>
-                          {open.map((a) => (
-                            <li key={a.id}>
-                              <span className="agents-activity-time">
-                                {timeAgo(a.at)}
-                              </span>
-                              <span>
-                                {activityText(a)}
-                                {a.undone_at && (
-                                  <span className="muted"> · undone</span>
-                                )}
-                              </span>
-                              {a.proposal_id && onOpenReview && (
-                                <button
-                                  className="link-button"
-                                  onClick={() => onOpenReview(a.proposal_id!)}
-                                >
-                                  Review
-                                </button>
-                              )}
-                              {a.undoable && (
-                                <button
-                                  className="link-button"
-                                  disabled={action.pending}
-                                  onClick={() => void undo(g, a)}
-                                >
-                                  Undo
-                                </button>
-                              )}
-                            </li>
-                          ))}
+                          {groupAgentActivity(open).map((job) => {
+                            const many = job.rows.length > 1;
+                            const shown = expanded.has(job.id);
+                            const links = jobLinks(job);
+                            const undoable = job.rows.filter(
+                              (a) => a.undoable,
+                            ).length;
+                            return (
+                              <li key={job.id} className="agents-job">
+                                <span className="agents-activity-time">
+                                  {timeAgo(job.at)}
+                                </span>
+                                <div className="agents-job-main">
+                                  <span>
+                                    {jobText(g, job)}
+                                    {undoneText(job) && (
+                                      <span className="muted">
+                                        {undoneText(job)}
+                                      </span>
+                                    )}
+                                  </span>
+                                  {links.length > 0 && (
+                                    <span className="agents-job-links">
+                                      {links.map((l) => (
+                                        <button
+                                          key={`${l.kind}:${l.id}`}
+                                          type="button"
+                                          className="link-button"
+                                          title={`Open this ${l.kind === "doc" ? "page" : l.kind}`}
+                                          onClick={() =>
+                                            openObject({
+                                              kind: l.kind,
+                                              id: l.id,
+                                            })
+                                          }
+                                        >
+                                          {l.title || "Untitled"}
+                                        </button>
+                                      ))}
+                                    </span>
+                                  )}
+                                  {many && shown && (
+                                    <ul className="agents-job-steps">
+                                      {job.rows.map((a) => (
+                                        <li key={a.id}>
+                                          <span>
+                                            {activityText(a)}
+                                            {a.undone_at && (
+                                              <span className="muted">
+                                                {" "}
+                                                · undone
+                                              </span>
+                                            )}
+                                          </span>
+                                          {rowActions(g, a)}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                                <span className="agents-job-acts">
+                                  {many ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="link-button agents-job-toggle"
+                                        aria-expanded={shown}
+                                        onClick={() => toggleJob(job.id)}
+                                      >
+                                        {shown ? (
+                                          <ChevronDown
+                                            size={13}
+                                            aria-hidden="true"
+                                          />
+                                        ) : (
+                                          <ChevronRight
+                                            size={13}
+                                            aria-hidden="true"
+                                          />
+                                        )}
+                                        {job.rows.length} steps
+                                      </button>
+                                      {job.job && undoable > 1 && (
+                                        <button
+                                          type="button"
+                                          className="link-button"
+                                          disabled={action.pending}
+                                          onClick={() => void undoJob(g, job)}
+                                        >
+                                          Undo job
+                                        </button>
+                                      )}
+                                    </>
+                                  ) : (
+                                    rowActions(g, job.rows[0])
+                                  )}
+                                </span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <p className="muted">Nothing yet.</p>
@@ -542,6 +952,8 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
           </p>
         )}
       <OutcomeNote outcome={action.outcome} />
+      <AgentWarmStart report={report} />
+      {grants.length > 0 && <AgentRules report={report} />}
 
       <div ref={connectRef}>
         <ConnectAgent
@@ -576,7 +988,8 @@ function ConnectAgent({
   const [tab, setTab] = useState<AgentSetupClient>("claude");
   const signIn = isSignInClient(tab);
   const [name, setName] = useState("");
-  const [access, setAccess] = useState<AgentAccess>("read");
+  // New connections start at full power (see AGENT_TRUST).
+  const [access, setAccess] = useState<AgentAccess>("write");
   const [personal, setPersonal] = useState(true);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [days, setDays] = useState(30);
@@ -732,8 +1145,8 @@ function ConnectAgent({
                   </Select>
                   <small className="muted">
                     {AGENT_ACCESS_LABELS[access].blurb}
-                    {access !== "read" &&
-                      " Risky changes wait for you in Review; you can undo the rest from its activity."}
+                    {access === "write" &&
+                      " Change how much it does alone later with “How it acts”."}
                   </small>
                 </div>
                 <fieldset className="check-group">

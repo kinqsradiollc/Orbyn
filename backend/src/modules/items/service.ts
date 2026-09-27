@@ -41,6 +41,7 @@ import {
 import { carryEventNotes } from "./notes.js";
 import { inMyTeams, visibleItems, visibleOwned } from "../../lib/visibility.js";
 import { actAs } from "../../lib/actor.js";
+import { viaAgentColumn } from "../../lib/via-agent.js";
 
 type Actor = { id: string; role: "admin" | "member" };
 
@@ -1230,7 +1231,7 @@ export async function itemDetail(
   const updates = (
     await run(
       `SELECT u.id, u.item_id, u.user_id, coalesce(a.name, 'Former member') AS author_name,
-              u.body, u.status, u.progress, u.created_at
+              u.body, u.status, u.progress, u.created_at, ${viaAgentColumn("u")}
        FROM item_updates u LEFT JOIN users a ON a.id = u.user_id
        WHERE u.item_id = $1 ORDER BY u.created_at DESC, u.id DESC LIMIT 100`,
       [id],

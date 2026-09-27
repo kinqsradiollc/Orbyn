@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { dateLabel, type Notice, type PageMention } from "@orbyn/core";
+import {
+  dateLabel,
+  type AgentQuestion,
+  type Notice,
+  type PageMention,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { Icon, type IconName } from "../components/Icon";
 import { SmallAction } from "../components/SmallAction";
@@ -21,8 +26,65 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   mention: "atSign",
   session: "timer",
   review: "inbox",
+  question: "comment",
   system: "clock",
 };
+
+/**
+ * Questions your agents asked (ask_person) that wait for you: each choice
+ * is a button, and the answer goes straight back to the agent. Read again
+ * whenever the notices change (a new question arrives as one).
+ */
+function AgentQuestions({ notices }: { notices: Notice[] }) {
+  const [list, setList] = useState<AgentQuestion[]>([]);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    client.agentQuestions().then(setList, () => {});
+  }, [notices]);
+  if (!list.length) return null;
+  const answer = (q: AgentQuestion, choice: string) => {
+    setPending(q.id);
+    setError(null);
+    client
+      .answerAgentQuestion(q.id, choice)
+      .then(
+        () => setList((all) => all.filter((x) => x.id !== q.id)),
+        (e: Error) => setError(e.message),
+      )
+      .finally(() => setPending(null));
+  };
+  return (
+    <FadeIn style={[shared.card, s.questions]}>
+      <Text style={shared.sectionTitle} accessibilityRole="header">
+        Your agents ask
+      </Text>
+      {list.map((q, n) => (
+        <View key={q.id} style={[s.question, n > 0 && s.divider]}>
+          <Text style={s.title}>{q.question}</Text>
+          {!!q.detail && <Text style={s.body}>{q.detail}</Text>}
+          <Text style={shared.small}>
+            {q.agent} · {dateLabel(q.created_at)}
+            {q.default_choice
+              ? ` · “${q.default_choice}” if you don’t answer in time`
+              : ""}
+          </Text>
+          <View style={s.choices}>
+            {q.choices.map((c) => (
+              <SmallAction
+                key={c}
+                label={c}
+                disabled={pending === q.id}
+                onPress={() => answer(q, c)}
+              />
+            ))}
+          </View>
+        </View>
+      ))}
+      {!!error && <Text style={[shared.small, s.error]}>{error}</Text>}
+    </FadeIn>
+  );
+}
 
 /**
  * "Mentioned in": the pages that name you, newest first, with the line
@@ -93,6 +155,7 @@ export function InboxScreen({
   onStartSession,
   reviewPending = 0,
   onOpenReview,
+  onOpenAgents,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -122,6 +185,11 @@ export function InboxScreen({
   reviewPending?: number;
   /** Open Review, on one proposal (a "review" notice) or the whole inbox. */
   onOpenReview?: (proposalId: string | null, notice?: Notice) => void;
+  /**
+   * Open Settings → Connected agents, from an "agent" notice about one
+   * connection (`ref` = "grant:<id>"), e.g. a big job it finished.
+   */
+  onOpenAgents?: (notice: Notice) => void;
 }) {
   const review =
     reviewPending > 0 && onOpenReview ? (
@@ -152,6 +220,7 @@ export function InboxScreen({
     ) : null;
   const asks = (
     <>
+      <AgentQuestions notices={notices} />
       {review}
       {onOpenPage && <MentionedIn onOpen={onOpenPage} />}
       {onOpenItemById ? <AsksList onOpenItem={onOpenItemById} /> : null}
@@ -187,6 +256,8 @@ export function InboxScreen({
           n.kind === "review" && n.ref?.startsWith("proposal:")
             ? n.ref.slice("proposal:".length)
             : null;
+        const grant =
+          n.kind === "agent" && !!n.ref?.startsWith("grant:") && !!onOpenAgents;
         const action =
           n.kind === "session" && n.ref && n.item_id && onStartSession
             ? { label: "Start", run: onStartSession }
@@ -212,7 +283,12 @@ export function InboxScreen({
                                 label: "Open page",
                                 run: (x: Notice) => onOpenDoc(x, docId),
                               }
-                            : null;
+                            : grant && onOpenAgents
+                              ? {
+                                  label: "Open Connected agents",
+                                  run: onOpenAgents,
+                                }
+                              : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable
@@ -253,6 +329,7 @@ export function InboxScreen({
                 <Text style={s.body}>{n.body}</Text>
                 <Text style={shared.small}>
                   {dateLabel(n.created_at)}
+                  {n.via_agent ? ` · via ${n.via_agent}` : ""}
                   {booking
                     ? " · Tap to open"
                     : n.read
@@ -288,6 +365,10 @@ const s = themed(() =>
     },
     row: { flexDirection: "row", gap: 12, padding: 16 },
     mentions: { marginBottom: 12, gap: 2 },
+    questions: { marginBottom: 12, gap: 2 },
+    question: { gap: 3, paddingVertical: 10 },
+    choices: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
+    error: { color: colors.danger },
     mention: { gap: 3, paddingVertical: 10 },
     review: {
       flexDirection: "row",

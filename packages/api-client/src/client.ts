@@ -2,6 +2,15 @@ import {
   HttpError,
   type AgentGrant,
   type AgentToolset,
+  type AgentTrustInput,
+  type AgentInboxKind,
+  type AgentInboxSettings,
+  type AgentQuestion,
+  type AgentRule,
+  type AgentRuleInput,
+  type AgentContextSettings,
+  type NewAgentWake,
+  type ProposalStatus,
   type McpCatalog,
   type AgendaDay,
   type CaptureRequest,
@@ -1777,6 +1786,12 @@ export class OrbynClient {
   docInfo(id: string) {
     return this.request<DocInfo>(`/docs/${id}/info`);
   }
+  /** Take a source off a page (H6b); the source stays for other pages. */
+  removePageSource(docId: string, sourceId: string) {
+    return this.request<void>(`/docs/${docId}/sources/${sourceId}`, {
+      method: "DELETE",
+    });
+  }
   /** Put exactly these tags (by id) on a page. */
   setDocTags(id: string, tags: string[]) {
     return this.request<{ tags: DocTag[] }>(`/docs/${id}/tags`, {
@@ -2658,6 +2673,95 @@ export class OrbynClient {
       body: { toolsets },
     });
   }
+  /**
+   * A connection's trust: full power, ask first or suggest only, per space,
+   * and which ask-first items it may do alone (Settings → Connected agents).
+   */
+  setAgentTrust(id: string, input: AgentTrustInput) {
+    return this.request<AgentGrant>(`/me/agents/${id}/trust`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  /** What a connection is sent, its wake-up address and unread count (H0). */
+  agentInbox(id: string) {
+    return this.request<AgentInboxSettings>(`/me/agents/${id}/inbox`);
+  }
+  /** The kinds a connection is not sent ("Send to this agent" off). */
+  setAgentInboxMutes(id: string, muted: AgentInboxKind[]) {
+    return this.request<AgentInboxSettings>(`/me/agents/${id}/inbox`, {
+      method: "PUT",
+      body: { muted },
+    });
+  }
+  /** Sets the wake-up address; the signing secret comes back once. */
+  setAgentWake(id: string, url: string) {
+    return this.request<NewAgentWake>(`/me/agents/${id}/wake`, {
+      method: "PUT",
+      body: { url },
+    });
+  }
+  clearAgentWake(id: string) {
+    return this.request<AgentInboxSettings>(`/me/agents/${id}/wake`, {
+      method: "DELETE",
+    });
+  }
+  /** Calls the wake-up address now and says what it answered. */
+  testAgentWake(id: string) {
+    return this.request<{
+      ok: boolean;
+      status: number | null;
+      error: string | null;
+    }>(`/me/agents/${id}/wake/test`, { method: "POST" });
+  }
+  /** The person's standing rules for their agents. */
+  agentRules() {
+    return this.request<AgentRule[]>("/me/agent-rules");
+  }
+  addAgentRule(input: AgentRuleInput) {
+    return this.request<AgentRule>("/me/agent-rules", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateAgentRule(id: string, input: AgentRuleInput) {
+    return this.request<AgentRule>(`/me/agent-rules/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteAgentRule(id: string) {
+    return this.request<void>(`/me/agent-rules/${id}`, { method: "DELETE" });
+  }
+  /** "About me for agents" and each space's instructions (H8). */
+  agentContext() {
+    return this.request<AgentContextSettings>("/me/agent-context");
+  }
+  /** Opens the About me page, making it first when there isn't one. */
+  openAgentProfile() {
+    return this.request<{ doc_id: string; title: string; created: boolean }>(
+      "/me/agent-profile",
+      { method: "POST" },
+    );
+  }
+  /** Changes a space's instructions for agents (null: Personal). */
+  setAgentInstructions(teamId: string | null, text: string) {
+    return this.request<AgentContextSettings>(
+      teamId ? `/teams/${teamId}/agent-instructions` : "/me/agent-instructions",
+      { method: "PUT", body: { text } },
+    );
+  }
+  /** Questions agents asked, waiting for an answer. */
+  agentQuestions() {
+    return this.request<AgentQuestion[]>("/me/questions");
+  }
+  /** Answers an agent's question (its card, or the push's buttons). */
+  answerAgentQuestion(id: string, answer: string, via: "app" | "push" = "app") {
+    return this.request<AgentQuestion>(`/me/questions/${id}/answer`, {
+      method: "POST",
+      body: { answer, via },
+    });
+  }
   /** A new agent key; the returned `key` is shown once. */
   createAgentKey(input: AgentKeyInput) {
     return this.request<NewAgentKey>("/me/agent-keys", {
@@ -2684,6 +2788,13 @@ export class OrbynClient {
       { method: "POST" },
     );
   }
+  /** Undo a whole job of one agent (a plan, or one call's changes). */
+  undoAgentJob(grantId: string, job: string) {
+    return this.request<{ undone: number }>(
+      `/me/agents/${grantId}/jobs/${encodeURIComponent(job)}/undo`,
+      { method: "POST" },
+    );
+  }
   // ---- The Review inbox ----
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {
@@ -2707,6 +2818,16 @@ export class OrbynClient {
   /** Decline a proposal: nothing changes. */
   declineReview(id: string) {
     return this.request<void>(`/proposals/${id}/decline`, { method: "POST" });
+  }
+  /**
+   * Approve or Decline from a notification's button: says how it ended,
+   * even when it was already decided.
+   */
+  respondToReview(id: string, decision: "approve" | "decline") {
+    return this.request<{ status: ProposalStatus }>(
+      `/proposals/${id}/respond`,
+      { method: "POST", body: { decision } },
+    );
   }
   /** Team settings → Outside agents: the policy, and (managers) who connects. */
   teamAgents(teamId: string) {

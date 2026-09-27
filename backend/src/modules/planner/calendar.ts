@@ -51,6 +51,10 @@ export const DEFAULT_DIGEST = {
   evening: false,
   morning_time: "07:00",
   evening_time: "17:00",
+  // What agents did (in the morning digest) and a push for big jobs: on
+  // unless turned off (H7).
+  agents: true,
+  agent_push: true,
 };
 
 export const DEFAULT_PREFS: PlannerPrefs = {

@@ -75,6 +75,17 @@ export function Inline({
             </Text>
           );
         }
+        // Where the line came from (`[src: …]`): a small quiet chip.
+        if (run.source)
+          return (
+            <Text
+              key={i}
+              style={[style, s.source]}
+              accessibilityLabel={`Source: ${run.text}`}
+            >
+              {` ${run.text} `}
+            </Text>
+          );
         // Maths with a fraction, a script or a root is set as maths
         // (EDT-12); a plain run of symbols reads fine as text.
         if (run.math && typeset(run.text)) {
@@ -155,6 +166,12 @@ const s = themed(() =>
     rose: { backgroundColor: colors.highBg },
     strike: { textDecorationLine: "line-through", color: colors.muted },
     footnote: { color: colors.accent, fontSize: 11, lineHeight: 14 },
+    // A line's source, small and quiet like the chip the web draws.
+    source: {
+      backgroundColor: colors.surfaceMuted,
+      color: colors.muted,
+      fontSize: 11,
+    },
     // A #tag, quiet like the chip the web draws.
     tag: { backgroundColor: colors.surfaceMuted, color: colors.textSoft },
   }),

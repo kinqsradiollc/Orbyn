@@ -308,6 +308,12 @@
   font-size: 11px;
   cursor: pointer;
 }
+.study-from-line {
+  justify-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .study-source:hover {
   color: var(--color-text);
   border-color: var(--color-borderHover);

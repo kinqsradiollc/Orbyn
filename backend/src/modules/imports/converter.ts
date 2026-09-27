@@ -9,6 +9,7 @@ import {
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
+import { emitInbox } from "../agent-inbox/emit.js";
 import { announceTo } from "../presence/live.js";
 import { NotAWordFile, docxToMarkdown } from "./docx.js";
 import { PdfLocked, PdfUnreadable, readPdf, singlePage } from "./pdf.js";
@@ -48,6 +49,22 @@ const log = (message: string, extra: Record<string, unknown> = {}) =>
 
 const changed = (userId: string) =>
   announceTo(pool, { user_id: userId }, "changed").catch(() => {});
+
+/**
+ * An import that couldn't be read: the person's agents hear of it (H0), as
+ * they hear of a finished one through its notice.
+ */
+const tellAgentsFailed = (
+  row: Pick<ImportRow, "id" | "user_id" | "file_name">,
+  message: string,
+) =>
+  emitInbox(pool, {
+    userId: row.user_id,
+    kind: "import",
+    key: `import:${row.id}:failed`,
+    title: `The import of ${row.file_name} couldn't be read`,
+    body: message,
+  }).catch(() => 0);
 
 // ------------------------------------------------------------ the store ---
 
@@ -108,7 +125,10 @@ async function failImport(row: ImportRow, message: string) {
     [row.id],
   );
   await deleteFile(row.id, row.object_id);
-  if (updated) await changed(row.user_id);
+  if (updated) {
+    await changed(row.user_id);
+    await tellAgentsFailed(row, message);
+  }
 }
 
 // ------------------------------------------------------------ reading ---
@@ -624,15 +644,15 @@ async function finish(importId: string) {
     });
   } catch (error) {
     log("finish failed", { import: row.id, error: (error as Error).message });
+    const message =
+      error instanceof ImportFailure
+        ? error.message
+        : "This file couldn't be turned into a page. Please try again.";
     await pool.query(
       `UPDATE imports SET status = 'failed', error = $2 WHERE id = $1`,
-      [
-        row.id,
-        error instanceof ImportFailure
-          ? error.message
-          : "This file couldn't be turned into a page. Please try again.",
-      ],
+      [row.id, message],
     );
+    await tellAgentsFailed(row, message);
   }
   if (cached?.id === row.id) cached = null;
   // "Keep the original": the file stays, beside its page, within the

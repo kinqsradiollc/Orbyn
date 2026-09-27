@@ -24,7 +24,7 @@ import {
   visibleProjects,
   writableOwned,
 } from "../../lib/visibility.js";
-import { hasVectors, semanticOn } from "../search/semantic.js";
+import { hasVectors, semanticOn } from "../search/vectors.js";
 import { announceDocChange } from "../docs/live.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { requireDoc, snapshot } from "../docs/service.js";
@@ -515,56 +515,72 @@ export async function relatedPages(
  * are said as words of their own in that line becomes a link to the page
  * or project, saved as a new version of the page it's in.
  */
-export async function linkUnlinkedMention(
+type MentionLink = {
+  doc_id: string;
+  block_id: string;
+  matched: string;
+  target: { kind: "doc" | "project"; id: string };
+};
+
+/**
+ * Make an unlinked mention a link in `db`'s transaction (a new version of
+ * the page it's in). Returns the version before and after, for undo.
+ */
+export async function linkMentionIn(
+  db: Db,
   u: UserRow,
-  input: {
-    doc_id: string;
-    block_id: string;
-    matched: string;
-    target: { kind: "doc" | "project"; id: string };
-  },
-): Promise<{ doc_id: string; version: number }> {
+  input: MentionLink,
+  /** Always keep the state before (an agent's change, so it can be undone). */
+  always = false,
+): Promise<{ before: number; version: number }> {
   // The thing linked to has to be yours to open, as with any link.
   const visible =
     input.target.kind === "doc"
-      ? await pool.query(
+      ? await db.query(
           `SELECT 1 FROM docs d WHERE d.id = $2 AND ${docVisibleTo("$1")}`,
           [u.id, input.target.id],
         )
-      : await pool.query(
+      : await db.query(
           `SELECT 1 FROM projects p WHERE p.id = $2 AND ${visibleProjects("p")}`,
           [u.id, input.target.id],
         );
   if (!visible.rowCount) fail(404, "Not found");
-  const saved = await transaction(async (db) => {
-    await actAs(db, u.id);
-    await requireDoc(db, input.doc_id, u, "items:write");
-    const content =
-      (
-        await db.query<{ content: DocBlock[] | null }>(
-          "SELECT content FROM docs WHERE id = $1",
-          [input.doc_id],
-        )
-      ).rows[0].content ?? [];
-    const at = content.findIndex((b) => b.id === input.block_id);
-    const block = content[at];
-    const text =
-      block && block.type !== "divider"
-        ? linkMention(block.text, input.matched, input.target)
-        : null;
-    if (!block || block.type === "divider" || text === null)
-      fail(409, "Those words aren't on that line any more.");
-    const next = content.slice();
-    next[at] = { ...block, text } as DocBlock;
-    await snapshot(db, input.doc_id, u.id);
-    return (
-      await db.query<{ version: number }>(
-        `UPDATE docs SET content = $2::jsonb, version = version + 1,
-           updated_at = now() WHERE id = $1 RETURNING version`,
-        [input.doc_id, JSON.stringify(next)],
+  await actAs(db, u.id);
+  const doc = await requireDoc(db, input.doc_id, u, "items:write");
+  const content =
+    (
+      await db.query<{ content: DocBlock[] | null }>(
+        "SELECT content FROM docs WHERE id = $1",
+        [input.doc_id],
       )
-    ).rows[0].version;
-  });
+    ).rows[0].content ?? [];
+  const at = content.findIndex((b) => b.id === input.block_id);
+  const block = content[at];
+  const text =
+    block && block.type !== "divider"
+      ? linkMention(block.text, input.matched, input.target)
+      : null;
+  if (!block || block.type === "divider" || text === null)
+    fail(409, "Those words aren't on that line any more.");
+  const next = content.slice();
+  next[at] = { ...block, text } as DocBlock;
+  await snapshot(db, input.doc_id, u.id, always);
+  const version = (
+    await db.query<{ version: number }>(
+      `UPDATE docs SET content = $2::jsonb, version = version + 1,
+           updated_at = now() WHERE id = $1 RETURNING version`,
+      [input.doc_id, JSON.stringify(next)],
+    )
+  ).rows[0].version;
+  return { before: doc.version, version };
+}
+
+export async function linkUnlinkedMention(
+  u: UserRow,
+  input: MentionLink,
+): Promise<{ doc_id: string; version: number }> {
+  const saved = (await transaction((db) => linkMentionIn(db, u, input)))
+    .version;
   await announceDocChange(pool, input.doc_id, saved, "link").catch(() => {});
   return { doc_id: input.doc_id, version: saved };
 }

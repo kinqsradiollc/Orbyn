@@ -25,6 +25,7 @@ import type { UserRow } from "../../lib/auth.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { addSession } from "../planner/blocks.js";
+import { emitInbox } from "../agent-inbox/emit.js";
 import { announceTo } from "../presence/live.js";
 import {
   lockItem,
@@ -318,7 +319,7 @@ function fieldRows(
 const quote = (t: string) => `“${t.trim() || "Untitled"}”`;
 
 /** Why a change can't be applied as proposed any more, or null. */
-async function staleness(
+export async function staleness(
   db: Queryable,
   userId: string,
   c: ReviewChange,
@@ -452,6 +453,9 @@ function diffOf(c: ReviewChange, index: number, n: Names): ReviewDiff {
             before: null,
             after: r.title,
           })),
+          ...(c.move.length
+            ? [{ label: "Move steps", before: null, after: `${c.move.length}` }]
+            : []),
           ...(c.tick.length
             ? [{ label: "Tick", before: null, after: `${c.tick.length}` }]
             : []),
@@ -1008,6 +1012,7 @@ export async function editSteps(
     tick?: string[];
     untick?: string[];
     rename?: { id: string; title: string }[];
+    move?: { id: string; position: number }[];
   },
 ) {
   const item = await lockItem(db, itemId);
@@ -1028,6 +1033,7 @@ export async function editSteps(
     ...(e.tick ?? []),
     ...(e.untick ?? []),
     ...(e.rename ?? []).map((r) => r.id),
+    ...(e.move ?? []).map((m) => m.id),
   ])
     if (!known.has(id)) fail(404, "That step isn't on this task's checklist.");
   for (const title of e.add ?? [])
@@ -1051,6 +1057,28 @@ export async function editSteps(
       "UPDATE item_steps SET done = false WHERE item_id = $1 AND id = ANY($2::uuid[])",
       [itemId, e.untick],
     );
+  if (e.move?.length) {
+    // Each step taken out and put back at its place (0 is the top), in the
+    // order given; then the list is numbered again from 0.
+    const order = (
+      await db.query<{ id: string }>(
+        "SELECT id FROM item_steps WHERE item_id = $1 ORDER BY position, id",
+        [itemId],
+      )
+    ).rows.map((r) => r.id);
+    for (const m of e.move) {
+      const at = order.indexOf(m.id);
+      if (at < 0) continue;
+      order.splice(at, 1);
+      order.splice(Math.min(m.position, order.length), 0, m.id);
+    }
+    await db.query(
+      `UPDATE item_steps s SET position = x.n - 1
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS x(id, n)
+        WHERE s.id = x.id AND s.item_id = $1`,
+      [itemId, order],
+    );
+  }
   await recomputeProgress(db, itemId);
   await announceTo(
     db as never,
@@ -1203,6 +1231,20 @@ export async function applyProposal(
     "UPDATE notifications SET read = true WHERE kind = 'review' AND ref = $1",
     [`proposal:${row.id}`],
   );
+  // The agent that suggested it hears how it went (its inbox, H0).
+  if (row.source === "agent" && row.grant_id)
+    await emitInbox(db, {
+      userId: row.user_id,
+      grantId: row.grant_id,
+      kind: "review",
+      key: `proposal:${row.id}`,
+      title: `Approved: ${row.summary}`,
+      body:
+        made.length < row.changes.length
+          ? `${made.length} of ${row.changes.length} changes were approved and made; the rest were left out.`
+          : "Every change was made.",
+      entity: { type: "proposal", id: row.id },
+    });
   await audit(
     {
       actorId: u.id,
@@ -1245,6 +1287,16 @@ export async function declineProposal(db: Db, u: UserRow, id: string) {
     "UPDATE notifications SET read = true WHERE kind = 'review' AND ref = $1",
     [`proposal:${row.id}`],
   );
+  if (row.source === "agent" && row.grant_id)
+    await emitInbox(db, {
+      userId: row.user_id,
+      grantId: row.grant_id,
+      kind: "review",
+      key: `proposal:${row.id}`,
+      title: `Declined: ${row.summary}`,
+      body: "Nothing was changed.",
+      entity: { type: "proposal", id: row.id },
+    });
   await audit(
     {
       actorId: u.id,

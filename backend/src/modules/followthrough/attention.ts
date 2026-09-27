@@ -5,13 +5,13 @@ import {
   attentionBudgetInput,
   attentionCheckInput,
   dayTime,
-  fail,
   localDateKey,
   weekStartOf,
   type AttentionCheck,
   type TeamAttention,
 } from "@orbyn/core";
-import { pool, reader, type Queryable } from "../../db/pool.js";
+import { reader, transaction, type Queryable } from "../../db/pool.js";
+import { setMeetingBudget } from "../teams/admin.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -90,12 +90,8 @@ export async function attentionRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const teamId = idParam(r);
     const d = attentionBudgetInput.parse(r.body);
-    const { effective } = await requireTeam(teamId, u, "items:read");
-    if (effective !== "owner" && effective !== "admin")
-      fail(403, "Only a team's owners and admins set its meeting budget.");
-    await pool.query(
-      "UPDATE teams SET meeting_budget_minutes = $2 WHERE id = $1",
-      [teamId, d.meeting_budget_minutes],
+    await transaction((db) =>
+      setMeetingBudget(db, u, teamId, d.meeting_budget_minutes),
     );
     return d;
   });

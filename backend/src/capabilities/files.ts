@@ -16,12 +16,14 @@ import {
   type CapabilityContext,
 } from "./registry.js";
 import { actionChange, seeProject } from "./shared.js";
+import { itemEntry } from "./write-tasks.js";
 import {
   ADDS,
   EDITS,
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   refuseSecrets,
@@ -151,7 +153,7 @@ export const startImportCapability = defineCapability({
   name: "start_import",
   title: "Start an import",
   description:
-    "Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (valid 10 minutes): PUT the file's bytes to it, then poll list_imports with the import id until its page is ready.",
+    "Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (10 minutes): PUT the file's bytes there, then poll list_imports until its page is ready.",
   input: z
     .object({
       file_name: z.string().trim().min(1).max(200),
@@ -182,10 +184,7 @@ export const startImportCapability = defineCapability({
         project?.team_id ? "W2" : "W1",
       ) === "review"
     )
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes, and imports don't go through review.",
-      );
+      throw cantWait(ctx, project?.team_id ?? null);
     const started = await startImport(dbOf(ctx), actorOf(ctx.principal), {
       file_name: a.file_name,
       bytes: a.bytes,
@@ -249,11 +248,7 @@ export const cancelImportCapability = defineCapability({
           )
         ).rows[0]?.project_team_id ?? null)
       : null;
-    if (destination(ctx, team, "W2") === "review")
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes.",
-      );
+    if (destination(ctx, team, "W2") === "review") throw cantWait(ctx, team);
     if (!before)
       throw new CapabilityError(
         "NOT_FOUND",
@@ -284,7 +279,7 @@ export const importTasks = defineCapability({
   name: "import_tasks",
   title: "Import tasks",
   description:
-    "Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, list, tags, …) into Personal. A dry run (the default) counts and checks without writing; a real run is a bulk change, so it waits in the person's Review inbox.",
+    "Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, list, tags, …) into Personal. A dry run (the default) counts and checks without writing. A real run is made at once at full power (each task can be undone for 30 days); more than 50 tasks, or a connection that asks first or only suggests, asks the person first.",
   input: z
     .object({
       format: z.enum(["orbyn", "csv"]),
@@ -311,7 +306,6 @@ export const importTasks = defineCapability({
   async run(ctx, a) {
     personal(ctx);
     refuseSecrets(a.data);
-    destination(ctx, null, "W3");
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
     // A dry run never writes, whatever the file says.
@@ -343,6 +337,41 @@ export const importTasks = defineCapability({
         "INVALID",
         preview.errors[0] ?? "There are no tasks to import.",
       );
+    // At full power an import is made at once (each task can be undone),
+    // unless it's more than 50 tasks, which asks first.
+    if (
+      destination(ctx, null, "W2", [], { count: preview.tasks }) === "direct"
+    ) {
+      const made = await importData(db, actor, a.format, a.data, false);
+      const rows = (
+        await db.query<{
+          id: string;
+          kind: string;
+          title: string;
+          version: number;
+        }>(
+          `SELECT id, kind, title, version FROM items
+            WHERE user_id = $1 AND created_at = now() AND team_id IS NULL
+            ORDER BY created_at, id`,
+          [ctx.principal.user.id],
+        )
+      ).rows;
+      const answer = await finishWrite(ctx, "Importing tasks", {
+        done: rows.slice(0, 50).map((r) => itemEntry(r, "Imported")),
+        undo: rows.map((r) => ({
+          op: "item.delete" as const,
+          id: r.id,
+          version: r.version,
+        })),
+      });
+      return {
+        ...answer,
+        structured: {
+          ...answer.structured,
+          preview: { ...preview, tasks: made.created },
+        },
+      };
+    }
     const answer = await finishWrite(ctx, "Importing tasks", {
       done: [],
       review: [

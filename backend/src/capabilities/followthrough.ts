@@ -28,6 +28,7 @@ import {
   markNotificationsRead,
 } from "../modules/notifications/service.js";
 import { atRiskFor } from "../modules/planner/plans.js";
+import { keptOutFor } from "../lib/assistant-off.js";
 import { READ, spaceName, teamFilter } from "./common.js";
 import { both, clean, cleanTitle, labelled } from "./format.js";
 import { appUrl, refs } from "./refs.js";
@@ -51,6 +52,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   idField,
@@ -263,8 +265,9 @@ export const getFollowThrough = defineCapability({
         ? ctx.spaces.personal
         : ctx.spaces.teamIds === null || ctx.spaces.teamIds.includes(d.team_id),
     );
-    const notices = (await listNotifications(ctx.db, me, 30)).filter(
-      (n) => !n.read,
+    const notices = await noticesInSight(
+      ctx,
+      (await listNotifications(ctx.db, me, 30)).filter((n) => !n.read),
     );
     let evidence = null;
     if (a.evidence) {
@@ -416,10 +419,7 @@ export const addProgress = defineCapability({
     const actor = actorOf(ctx.principal);
     const item = await seeItem(ctx, a.task);
     if (destination(ctx, item.team_id, "W2") === "review")
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes there.",
-      );
+      throw cantWait(ctx, item.team_id);
     const done: DoneEntry[] = [];
     let version = item.version;
     if (a.note || a.status || a.percent !== undefined) {
@@ -627,10 +627,7 @@ export const saveRecord = defineCapability({
         });
       }
       if (destination(ctx, teamId, "W2") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there.",
-        );
+        throw cantWait(ctx, teamId);
       if (!a.version)
         throw new CapabilityError(
           "INVALID",
@@ -732,13 +729,85 @@ export const saveRecord = defineCapability({
   },
 });
 
-// --- mark_notifications_read ---------------------------------------------
+/**
+ * The notices an agent may be told of: none about anything in a project
+ * kept out of AI (a task, page, record or the project itself, by the
+ * notice's task or its ref), nor about a team's task this connection
+ * wasn't given.
+ */
+async function noticesInSight<
+  N extends { item_id: string | null; ref: string | null },
+>(ctx: CapabilityContext, notices: N[]): Promise<N[]> {
+  if (!notices.length) return notices;
+  const out = await keptOutFor(ctx.db, ctx.principal.user.id);
+  const items = [
+    ...new Set(notices.map((n) => n.item_id).filter(Boolean)),
+  ] as string[];
+  const teamOf = new Map(
+    items.length
+      ? (
+          await ctx.db.query<{ id: string; team_id: string | null }>(
+            "SELECT id, team_id FROM items WHERE id = ANY ($1::uuid[])",
+            [items],
+          )
+        ).rows.map((r) => [r.id, r.team_id])
+      : [],
+  );
+  const reaches = (team: string | null | undefined) =>
+    team == null
+      ? ctx.spaces.personal
+      : ctx.spaces.teamIds === null || ctx.spaces.teamIds.includes(team);
+  return notices.filter((n) => {
+    const ids = [
+      ...(n.item_id ? [n.item_id] : []),
+      ...(n.ref?.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      ) ?? []),
+    ];
+    if (ids.some((id) => out.ids.has(id) || out.projects.has(id))) return false;
+    return !n.item_id || reaches(teamOf.get(n.item_id));
+  });
+}
 
+// --- mark_notifications_read (folded into ack_inbox) --------------------
+
+/**
+ * Marks the person's in-app notices read: these ids, or every unread one.
+ * Notices are the person's own, so the connection needs Personal. Returns
+ * how many were marked. ack_inbox's `notices` runs this (H6a folded the
+ * old mark_notifications_read tool into it).
+ */
+export async function markNotices(
+  ctx: CapabilityContext,
+  notices: string[] | "all",
+): Promise<number> {
+  if (!ctx.principal.personal)
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "Notices are the person's own: the connection needs Personal.",
+    );
+  if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
+  const db = dbOf(ctx);
+  const me = ctx.principal.user.id;
+  const ids =
+    notices === "all"
+      ? (await listNotifications(db, me, 100))
+          .filter((n) => !n.read)
+          .map((n) => n.id)
+      : notices;
+  return ids.length ? markNotificationsRead(db, me, ids) : 0;
+}
+
+/**
+ * The retired name, for connections that still call it: ack_inbox with
+ * `notices` does the same. Not listed and not counted (legacyOnly), but
+ * callable by any connection with the follow-through toolset.
+ */
 export const markNotificationsReadCapability = defineCapability({
   name: "mark_notifications_read",
-  title: "Mark notices read",
+  title: "Mark notices read (older tool)",
   description:
-    "Marks in-app notices read: up to 100 by id (from get_follow_through or get_today), or all unread with all.",
+    "Deprecated: use ack_inbox with notices. Marks in-app notices read: ids, or all unread with all.",
   input: z
     .object({
       ids: z.array(idField).max(100).optional(),
@@ -752,27 +821,12 @@ export const markNotificationsReadCapability = defineCapability({
   toolset: "followthrough",
   mode: "write",
   tier: "W1",
+  legacyOnly: true,
+  aliasOf: "ack_inbox",
   async run(ctx, a) {
-    if (!ctx.principal.personal)
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "Notices are the person's own: the connection needs Personal.",
-      );
-    if (destination(ctx, null, "W1") === "review")
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes.",
-      );
-    const db = dbOf(ctx);
-    const me = ctx.principal.user.id;
-    const ids = a.all
-      ? (await listNotifications(db, me, 100))
-          .filter((n) => !n.read)
-          .map((n) => n.id)
-      : (a.ids ?? []);
-    if (!ids.length && !a.all)
+    if (!a.ids?.length && !a.all)
       throw new CapabilityError("INVALID", "Give ids, or all.");
-    const count = ids.length ? await markNotificationsRead(db, me, ids) : 0;
+    const count = await markNotices(ctx, a.all ? "all" : a.ids!);
     return finishWrite(ctx, "Notices", {
       done: [
         {

@@ -3,6 +3,7 @@ import {
   itemData,
   parseQuickAdd,
   PRIORITIES,
+  STATUSES,
   type ReviewChangeInput,
 } from "@orbyn/core";
 import { Params, scopeFor, visibleItems } from "../lib/visibility.js";
@@ -14,7 +15,13 @@ import {
   type ItemRow,
 } from "../modules/items/service.js";
 import { editSteps, mergedItem } from "../modules/proposals/service.js";
-import { skipOccurrence } from "../modules/items/occurrences.js";
+import {
+  editFollowing,
+  editOccurrence,
+  seriesOf,
+  skipOccurrence,
+} from "../modules/items/occurrences.js";
+import { occurrenceEnd } from "../modules/planner/calendar.js";
 import { cleanTitle } from "./format.js";
 import { projectId, teamFilter, uuidOf } from "./common.js";
 import { parseRef, refUrl } from "./refs.js";
@@ -32,6 +39,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   refuseSecrets,
@@ -119,6 +127,35 @@ async function effectsFor(
   return effects;
 }
 
+/**
+ * Fields a task or event takes on create and update alike (H6a): alerts,
+ * colour, web links, busy or free and the meeting link. Checked again by
+ * the items service, as the app's own changes are.
+ */
+const itemExtras = {
+  all_day: z.boolean().optional(),
+  alerts: z
+    .array(z.number().int().min(0).max(40_320))
+    .max(5)
+    .optional()
+    .describe("Minutes before (0: at the time); [] clears."),
+  color: z.string().max(7).nullable().optional(),
+  links: z
+    .array(
+      z
+        .object({
+          url: z.string().trim().max(2000),
+          title: z.string().trim().max(200).optional(),
+        })
+        .strict(),
+    )
+    .max(20)
+    .optional()
+    .describe("Replaces the list."),
+  busy: z.boolean().optional().describe("false: shown as free."),
+  meeting_url: z.string().trim().max(500).optional(),
+};
+
 // --- create_tasks ------------------------------------------------------
 
 const newTask = z
@@ -130,7 +167,7 @@ const newTask = z
       .max(500)
       .optional()
       .describe(
-        'One quick-add line, such as "Essay fri 3pm !high 90m #uni @Sam". Fields given beside it win over what the line says.',
+        'One quick-add line, such as "Essay fri 3pm !high 90m #uni @Sam". Fields given too win.',
       ),
     title: z.string().trim().min(1).max(200).optional(),
     notes: z.string().max(10_000).optional(),
@@ -140,7 +177,7 @@ const newTask = z
       .optional()
       .describe("A task's deadline, or an event's start (ISO 8601)."),
     end_at: iso.nullable().optional().describe("An event's end."),
-    all_day: z.boolean().optional(),
+    ...itemExtras,
     priority: z.enum(PRIORITIES).optional(),
     estimate_minutes: z.number().int().min(1).max(10_080).optional(),
     team: z
@@ -149,7 +186,12 @@ const newTask = z
       .max(100)
       .optional()
       .describe('"personal" (the default), or a team id from get_context.'),
-    project: z.string().trim().max(300).optional(),
+    project: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .describe("Without team: the project's space."),
     stage_id: idField.optional(),
     parent: z
       .string()
@@ -184,7 +226,7 @@ export const createTasks = defineCapability({
   name: "create_tasks",
   title: "Add tasks or events",
   description:
-    'Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !high 90m #uni @Sam", parsed without AI). Sets space, project and stage, parent, list, tags, estimate, repeat, steps and invites. Events that invite people, assigning someone else (without notify-teammates) and spaces it may only suggest in go to the Review inbox. Habit lines are left out.',
+    'Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !high 90m #uni @Sam", parsed without AI): space, project and stage, parent, list, tags, estimate, repeat, alerts, steps and invites. Invites, assigning someone else and spaces it may only suggest in may ask first. Habit lines are left out.',
   input: z
     .object({
       tasks: z.array(newTask).min(1).max(MAX_BATCH),
@@ -228,8 +270,22 @@ export const createTasks = defineCapability({
         continue;
       }
       const team = teamOf(t.team);
-      const teamId =
-        team !== undefined ? team : (parsed?.input.team_id ?? null);
+      let teamId = team !== undefined ? team : (parsed?.input.team_id ?? null);
+      // A task in a project goes in the project's space, so team can be
+      // left out (a team project reached through this connection).
+      if (team === undefined && !parsed?.input.team_id && t.project) {
+        const home = (
+          await db.query<{ team_id: string | null }>(
+            "SELECT team_id FROM projects WHERE id = $1",
+            [projectId(t.project)],
+          )
+        ).rows[0];
+        if (
+          home?.team_id &&
+          (p.team_ids === null || p.team_ids.includes(home.team_id))
+        )
+          teamId = home.team_id;
+      }
       const parent = t.parent ? uuidOf(t.parent, "parent") : undefined;
       const data = itemData.parse({
         ...(parsed?.input ?? {}),
@@ -239,6 +295,11 @@ export const createTasks = defineCapability({
         ...(t.due_at !== undefined ? { due_at: t.due_at } : {}),
         ...(t.end_at !== undefined ? { end_at: t.end_at } : {}),
         ...(t.all_day !== undefined ? { all_day: t.all_day } : {}),
+        ...(t.alerts ? { alerts: t.alerts } : {}),
+        ...(t.color !== undefined ? { color: t.color } : {}),
+        ...(t.links ? { links: t.links } : {}),
+        ...(t.busy !== undefined ? { busy: t.busy } : {}),
+        ...(t.meeting_url !== undefined ? { meeting_url: t.meeting_url } : {}),
         ...(t.priority ? { priority: t.priority } : {}),
         ...(t.estimate_minutes ? { estimate_minutes: t.estimate_minutes } : {}),
         team_id: teamId,
@@ -331,12 +392,34 @@ const change = z
       .trim()
       .max(100)
       .optional()
-      .describe(
-        'Move it to "personal" or another team: always goes to review.',
-      ),
+      .describe('Move it to "personal" or another team.'),
     skip: iso
       .optional()
       .describe("A repeating item: skip this one occurrence (its start)."),
+    ...itemExtras,
+    status: z.enum(STATUSES).optional(),
+    rrule: z
+      .string()
+      .trim()
+      .max(200)
+      .nullable()
+      .optional()
+      .describe("null stops the repeat."),
+    parent: z
+      .string()
+      .trim()
+      .max(300)
+      .nullable()
+      .optional()
+      .describe("A task to nest under; null: top level."),
+    target_value: z.number().nullable().optional(),
+    current_value: z.number().nullable().optional(),
+    value_unit: z.string().trim().max(16).optional(),
+    scope: z
+      .enum(["this", "following"])
+      .optional()
+      .describe("Change just `occurrence`, or it and later ones."),
+    occurrence: iso.optional(),
   })
   .strict();
 
@@ -350,11 +433,28 @@ function beforeOf(row: ItemRow, patch: Record<string, unknown>) {
   return out;
 }
 
+/** The fields a patch names as they are now, links included (for Undo). */
+async function priorFields(
+  db: ReturnType<typeof dbOf>,
+  row: ItemRow,
+  patch: Record<string, unknown>,
+) {
+  const before = beforeOf(row, patch);
+  if ("links" in patch)
+    before.links = (
+      await db.query<{ url: string; title: string }>(
+        "SELECT url, title FROM item_links WHERE item_id = $1 ORDER BY position, id",
+        [row.id],
+      )
+    ).rows;
+  return before;
+}
+
 export const updateTasks = defineCapability({
   name: "update_tasks",
   title: "Change tasks or events",
   description:
-    "Changes up to 25 tasks or events. Only named fields change; the version you give is checked (VERSION_CONFLICT otherwise), so nothing left out is wiped. A repeating item changes as a series. Moving between Personal and a team, emailing invitees or notifying a teammate (without notify-teammates) goes to review. Undo keeps the old values.",
+    "Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first. Undo keeps the old values.",
   input: z
     .object({
       changes: z.array(change).min(1).max(MAX_BATCH),
@@ -375,7 +475,13 @@ export const updateTasks = defineCapability({
     const undo: UndoOp[] = [];
     let lastTeam: string | null = null;
     for (const c of a.changes) {
-      refuseSecrets(c.title, c.notes, c.location);
+      refuseSecrets(
+        c.title,
+        c.notes,
+        c.location,
+        c.meeting_url,
+        ...(c.links ?? []).map((l) => `${l.url} ${l.title ?? ""}`),
+      );
       const row = await visibleItem(ctx, c.id);
       if (row.version !== c.version)
         throw new CapabilityError(
@@ -384,9 +490,22 @@ export const updateTasks = defineCapability({
           "Fetch it again for its current version, then retry with that version.",
           { id: `task:${row.id}`, version: row.version },
         );
-      const { id: _id, version: _v, team, project, skip, ...fields } = c;
+      const {
+        id: _id,
+        version: _v,
+        team,
+        project,
+        skip,
+        parent,
+        scope,
+        occurrence,
+        ...fields
+      } = c;
       if (skip) {
-        destination(ctx, row.team_id, "W2");
+        if (
+          destination(ctx, row.team_id, "W2", [], { owner: row }) === "review"
+        )
+          throw cantWait(ctx, row.team_id);
         await skipOccurrence(db, actor, row.id, skip);
         const after = await lockItem(db, row.id);
         done.push(itemEntry(after, "Skipped one occurrence"));
@@ -401,6 +520,34 @@ export const updateTasks = defineCapability({
       const patch: Record<string, unknown> = { ...fields };
       if (project !== undefined)
         patch.project_id = project === null ? null : projectId(project);
+      if (parent !== undefined)
+        patch.parent_id = parent === null ? null : uuidOf(parent, "parent");
+      if (scope) {
+        if (!occurrence)
+          throw new CapabilityError(
+            "INVALID",
+            "A change to part of a series needs occurrence: that occurrence's start.",
+          );
+        if (team !== undefined || project !== undefined)
+          throw new CapabilityError(
+            "INVALID",
+            "Moving it to another space or project changes the whole series: leave out scope.",
+          );
+        if (!Object.keys(patch).length)
+          throw new CapabilityError(
+            "INVALID",
+            "Name at least one field to change.",
+          );
+        if (
+          destination(ctx, row.team_id, row.team_id ? "W2" : "W1", [], {
+            owner: row,
+          }) === "review"
+        )
+          throw cantWait(ctx, row.team_id);
+        done.push(await editPart(ctx, row, scope, occurrence, patch, undo));
+        lastTeam = row.team_id;
+        continue;
+      }
       const moveTo = teamOf(team);
       const moving = moveTo !== undefined && moveTo !== row.team_id;
       if (moving) patch.team_id = moveTo;
@@ -409,7 +556,7 @@ export const updateTasks = defineCapability({
           "INVALID",
           "Name at least one field to change.",
         );
-      const before = beforeOf(row, patch);
+      const before = await priorFields(db, row, patch);
       const emails =
         row.kind === "event"
           ? (
@@ -431,13 +578,18 @@ export const updateTasks = defineCapability({
           : null,
         noticeable ? emails : [],
       );
-      const where = destination(
+      const home = destination(
         ctx,
         row.team_id,
         moving ? "W3" : row.team_id ? "W2" : "W1",
         effects,
+        { owner: row },
       );
-      if (moving && moveTo) destination(ctx, moveTo, "W3");
+      // Moving: both spaces must allow it; the stricter one decides.
+      const where =
+        moving && moveTo && destination(ctx, moveTo, "W3") === "review"
+          ? "review"
+          : home;
       lastTeam = row.team_id;
       if (where === "review") {
         review.push({
@@ -478,6 +630,87 @@ export const updateTasks = defineCapability({
     });
   },
 });
+
+/**
+ * Changes one occurrence of a repeating item ("this"), or it and every later
+ * one ("following"), through the app's own occurrence edits: the fields not
+ * named keep the occurrence's own values. One occurrence's change can be
+ * undone; "following" starts a new series, which Undo can't take back.
+ */
+async function editPart(
+  ctx: CapabilityContext,
+  row: ItemRow,
+  scope: "this" | "following",
+  occurrence: string,
+  patch: Record<string, unknown>,
+  undo: UndoOp[],
+): Promise<DoneEntry> {
+  const db = dbOf(ctx);
+  const actor = actorOf(ctx.principal);
+  if (!row.rrule || !row.due_at)
+    throw new CapabilityError(
+      "INVALID",
+      `“${cleanTitle(row.title)}” doesn't repeat: leave out scope.`,
+    );
+  const when = new Date(occurrence);
+  const usualEnd = occurrenceEnd(seriesOf(row), when);
+  const data = mergedItem(row as never, {
+    due_at: when.toISOString(),
+    end_at: usualEnd ? usualEnd.toISOString() : null,
+    ...patch,
+  });
+  if (scope === "this") {
+    const kept = (
+      await db.query<{ data: unknown }>(
+        "SELECT data FROM item_overrides WHERE item_id = $1 AND occurrence = $2",
+        [row.id, when],
+      )
+    ).rows[0];
+    const item = await editOccurrence(
+      db,
+      actor,
+      row.id,
+      row.version,
+      occurrence,
+      data,
+    );
+    undo.push({
+      op: "occurrence.restore",
+      id: row.id,
+      version: item.version,
+      occurrence: when.toISOString(),
+      data: kept?.data ?? null,
+    });
+    return itemEntry(
+      { ...row, version: item.version },
+      `Changed the occurrence at ${when.toISOString()}`,
+    );
+  }
+  const prior = await priorFields(db, row, patch);
+  const made = await editFollowing(
+    db,
+    actor,
+    row.id,
+    row.version,
+    occurrence,
+    data,
+  );
+  const now = made ?? (await lockItem(db, row.id));
+  if (now.id === row.id) {
+    // From the first occurrence, "following" is the whole series.
+    undo.push({
+      op: "item.restore",
+      id: row.id,
+      version: now.version,
+      fields: prior,
+    });
+    return itemEntry(now as ItemRow, "Changed the whole series");
+  }
+  return itemEntry(
+    now as ItemRow,
+    `Changed from ${when.toISOString()} on, as a new series (no undo)`,
+  );
+}
 
 // --- complete_tasks ----------------------------------------------------
 
@@ -559,6 +792,7 @@ export const completeTasks = defineCapability({
         row.team_id,
         row.team_id ? "W2" : "W1",
         effects,
+        { owner: row },
       );
       lastTeam = row.team_id;
       if (where === "review") {
@@ -655,7 +889,7 @@ export const editChecklist = defineCapability({
   name: "edit_checklist",
   title: "Edit a task's checklist",
   description:
-    "Adds, ticks, unticks or renames checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.",
+    "Adds, ticks, unticks, renames or moves (position 0 is the top) checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.",
   input: z
     .object({
       task: z.string().trim().min(1).max(300),
@@ -670,13 +904,28 @@ export const editChecklist = defineCapability({
         )
         .max(100)
         .optional(),
+      move: z
+        .array(
+          z
+            .object({
+              id: idField,
+              position: z.number().int().min(0).max(1000),
+            })
+            .strict(),
+        )
+        .max(100)
+        .optional(),
       client_ref: clientRefInput,
     })
     .strict()
     .refine(
       (e) =>
-        e.add?.length || e.tick?.length || e.untick?.length || e.rename?.length,
-      { message: "Add, tick, untick or rename at least one step." },
+        e.add?.length ||
+        e.tick?.length ||
+        e.untick?.length ||
+        e.rename?.length ||
+        e.move?.length,
+      { message: "Add, tick, untick, rename or move at least one step." },
     ),
   output: writeOutput,
   annotations: EDITS,
@@ -687,7 +936,9 @@ export const editChecklist = defineCapability({
   async run(ctx, a) {
     refuseSecrets(...(a.add ?? []), ...(a.rename ?? []).map((r) => r.title));
     const row = await visibleItem(ctx, a.task);
-    const where = destination(ctx, row.team_id, row.team_id ? "W2" : "W1");
+    const where = destination(ctx, row.team_id, row.team_id ? "W2" : "W1", [], {
+      owner: row,
+    });
     if (where === "review")
       return finishWrite(ctx, "Editing the checklist", {
         done: [],
@@ -701,6 +952,7 @@ export const editChecklist = defineCapability({
             tick: a.tick ?? [],
             untick: a.untick ?? [],
             rename: a.rename ?? [],
+            move: a.move ?? [],
           },
         ],
         reviewSummary: `Change the checklist of “${cleanTitle(row.title)}”`,

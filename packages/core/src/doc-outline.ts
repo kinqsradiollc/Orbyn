@@ -7,7 +7,12 @@
  * on a wide screen and as a Contents sheet on a phone; the Info panel lists
  * it for any page that has headings.
  */
-import { plainText, type DocBlock, type DocVersion } from "./docs.js";
+import {
+  plainText,
+  type DocBlock,
+  type PageSource,
+  type DocVersion,
+} from "./docs.js";
 
 /** One heading in a page's contents. */
 export type OutlineEntry = {
@@ -178,6 +183,8 @@ export type DocInfo = {
   reviewed_at: string | null;
   /** Whether you may confirm it or ask for it to be updated. */
   can_write: boolean;
+  /** Web sources an agent read and saved for this page (H2), newest first. */
+  sources: PageSource[];
 };
 
 /** How many recent versions the Info panel lists. */

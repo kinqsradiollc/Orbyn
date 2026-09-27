@@ -28,6 +28,8 @@ export type TeamChange = {
   at: string;
   /** Whether it can still be opened (not deleted since). */
   open: boolean;
+  /** The connected agent it was made through ("Claude"), if one. */
+  via_agent?: string | null;
 };
 
 export type TeamChangesPage = {

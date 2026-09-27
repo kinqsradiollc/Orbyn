@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   deadlineOf,
+  docLines,
   serializeBlock,
   type DocBlock,
   type TemplateTask,
@@ -27,6 +28,7 @@ import {
   cleanTitle,
   fence,
   fencedTitle,
+  hiddenText,
   labelled,
   lineTitle,
   mdLink,
@@ -35,8 +37,11 @@ import {
   titleFor,
 } from "./format.js";
 import { projectHub, projectMarkdown } from "./project.js";
-import { parseRef, refs, type Ref, type RefType } from "./refs.js";
+import { parseRef, refUrl, refs, type Ref, type RefType } from "./refs.js";
 import { docEditorsSql, itemSourceSql } from "./sources.js";
+import { visibleSource } from "./citations.js";
+import { pageSources } from "../modules/sources/service.js";
+import { fieldsLine, pageInfoLines } from "./page-info.js";
 import {
   CapabilityError,
   defineCapability,
@@ -62,6 +67,7 @@ const FETCH_TYPES = [
   "proposal",
   "view",
   "import",
+  "source",
 ] as const;
 
 const output = z.object({
@@ -284,15 +290,6 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   };
 }
 
-/** A block as Markdown with its anchor, so edits and citations can point at it. */
-function anchored(b: DocBlock): string {
-  const text = serializeBlock(b);
-  if (!b.id) return text;
-  return b.type === "code" || b.type === "math" || b.type === "divider"
-    ? `${text}\n^${b.id}`
-    : `${text} ^${b.id}`;
-}
-
 async function fetchDoc(
   ctx: CapabilityContext,
   ref: Ref,
@@ -357,8 +354,10 @@ async function fetchDoc(
   const parts: string[] = [];
   let size = 0;
   let next: string | null = null;
+  // Orbyn Markdown with anchors (MARKDOWN_SPEC): what edit_doc takes back.
+  const lines = docLines(blocks, { anchors: true });
   for (let i = start; i < blocks.length; i++) {
-    const text = anchored(blocks[i]);
+    const text = lines[i];
     if (size + text.length > PAGE_CHARS && parts.length) {
       next = blocks[i].id ?? `@${i}`;
       break;
@@ -373,9 +372,21 @@ async function fetchDoc(
     id: d.id,
     ...(ref.block ? { block: ref.block } : {}),
   });
+  // Sources an agent saved for the page (H2), named on its first part.
+  const cited = start > 0 ? [] : await pageSources(ctx.db, d.id);
+  // The page's Info (H6b): other names, tags, links here, versions, folds
+  // and fields, on its first part.
+  const info = start > 0 ? [] : await pageInfoLines(ctx, d);
   const header = [
     `# ${cleanTitle(d.title) || "Untitled"}`,
     `${spaceName(d.team_id, ctx.principal.teams)}${d.folder_name ? ` · folder ${cleanTitle(d.folder_name)}` : ""} · version ${d.version} · changed ${d.updated_at.toISOString()}`,
+    ...info,
+    cited.length
+      ? `Sources: ${cited
+          .slice(0, 10)
+          .map((c) => `source:${c.id} ${cleanTitle(c.title)}`)
+          .join("; ")}${cited.length > 10 ? `; ${cited.length - 10} more` : ""}`
+      : "",
     start > 0 ? `(From line ${start + 1} of ${blocks.length}.)` : "",
   ]
     .filter(Boolean)
@@ -409,10 +420,26 @@ async function fetchProject(
   ref: Ref,
 ): Promise<Fetched> {
   const hub = await projectHub(ctx, ref.id);
+  // Your own fields on it (H6b), with ids for organize set_field.
+  const owner = (
+    await ctx.db.query<{ user_id: string }>(
+      "SELECT user_id FROM projects WHERE id = $1",
+      [ref.id],
+    )
+  ).rows[0];
+  const fields = owner
+    ? await fieldsLine(
+        ctx,
+        "project",
+        ref.id,
+        hub.project.team_id,
+        owner.user_id,
+      )
+    : null;
   return {
     id: hub.project.id,
     title: hub.project.title,
-    text: projectMarkdown(hub),
+    text: [projectMarkdown(hub), fields ? `\n${fields}` : ""].join(""),
     url: hub.project.url,
     metadata: {
       type: "project",
@@ -767,6 +794,43 @@ async function fetchImport(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   };
 }
 
+/** A source an agent saved (H2): where it is, what it said, who uses it. */
+async function fetchSource(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
+  const src = await visibleSource(ctx, ref.id);
+  if (!src) throw notFound();
+  const r = refs({ type: "source", id: src.id });
+  const pages = src.pages.slice(0, 20);
+  return {
+    id: r.id,
+    title: cleanTitle(src.title),
+    text: [
+      `# Source: ${cleanTitle(src.title)}`,
+      `- ${src.url}`,
+      `- ${[src.site, src.author, `read ${src.accessed_on}`].filter(Boolean).join(" · ")}`,
+      ...(src.quote
+        ? [
+            `- Quote: ${hide(ctx) ? hiddenText("web_source") : `\n${fence(src.quote, "web_source")}`}`,
+          ]
+        : []),
+      ...pages.map((p) => `- Used on: doc:${p.id} ${cleanTitle(p.title)}`),
+    ].join("\n"),
+    url: pages[0] ? refUrl({ type: "doc", id: pages[0].id }) : r.url,
+    metadata: {
+      type: "source",
+      uri: r.uri,
+      team: spaceName(src.team_id, ctx.principal.teams),
+      team_id: src.team_id,
+      project_id: null,
+      status: null,
+      version: null,
+      updated_at: null,
+      provenance: "web_source",
+      truncated: false,
+      next_block: null,
+    },
+  };
+}
+
 export async function fetchAny(
   ctx: CapabilityContext,
   input: string,
@@ -800,6 +864,8 @@ export async function fetchAny(
       return fetchView(ctx, ref);
     case "import":
       return fetchImport(ctx, ref);
+    case "source":
+      return fetchSource(ctx, ref);
     default:
       throw new CapabilityError(
         "UNAVAILABLE",
@@ -813,7 +879,7 @@ export const fetchCapability = defineCapability({
   name: "fetch",
   title: "Open by id",
   description:
-    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table), proposal: or import:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.",
+    "Open one thing: task:, event:<id>@<occurrence>, doc:<id>#<line>, project:, record:, template:, view: (run: its rows as a table), proposal:, import: or source:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Others' text is fenced as untrusted.",
   input: z
     .object({
       id: z.string().trim().min(1).max(500).describe("What to open."),

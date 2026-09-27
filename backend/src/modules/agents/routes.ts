@@ -36,6 +36,7 @@ import {
   revokeConnections,
   revokeGrant,
   setGrantToolsets,
+  setGrantTrust,
 } from "./service.js";
 import { cancelTeamProposals } from "../proposals/service.js";
 
@@ -94,6 +95,17 @@ export async function agentRoutes(app: FastifyInstance) {
   // Which toolsets a connection has, besides core (Settings).
   app.put("/me/agents/:id/toolsets", async (r) =>
     setGrantToolsets(
+      (await authenticate(r)).id,
+      idParam(r),
+      r.body as never,
+      r.id,
+    ),
+  );
+
+  // How much a connection does alone: full power, ask first or suggest
+  // only, per space, and the ask-first items it may do alone.
+  app.put("/me/agents/:id/trust", async (r) =>
+    setGrantTrust(
       (await authenticate(r)).id,
       idParam(r),
       r.body as never,

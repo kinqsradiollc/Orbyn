@@ -889,7 +889,7 @@ test("cards on a page in Trash leave every study count, and come back", async ()
     clarification: null,
   };
   const agendaText = async () =>
-    ((await rewriteAgenda(userId, { withBrief: false })).content as DocBlock[])
+    ((await rewriteAgenda(userId)).content as DocBlock[])
       .map((b) => b.text)
       .join("\n");
   const counts = async () => {

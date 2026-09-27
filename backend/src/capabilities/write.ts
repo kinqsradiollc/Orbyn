@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { AgentOutcome, ReviewChangeInput } from "@orbyn/core";
+import {
+  AGENT_BULK_LIMIT,
+  agentToolVerb,
+  type AgentAskFirst,
+  type AgentOutcome,
+  type ReviewChangeInput,
+} from "@orbyn/core";
 import { pool, type Db, type Queryable } from "../db/pool.js";
 import type { UserRow } from "../lib/auth.js";
 import { createAgentProposal } from "../modules/proposals/service.js";
@@ -9,29 +15,33 @@ import { policy, type Principal } from "./policy.js";
 import {
   CapabilityError,
   type Annotations,
+  type AskReason,
   type CapabilityContext,
   type Effect,
   type Tier,
 } from "./registry.js";
-import { refUrl } from "./refs.js";
+import { appLinkFor, refUrl } from "./refs.js";
 import { UNDO_DAYS, type UndoOp } from "./undo.js";
 
 /**
  * What every change an agent makes shares: where it goes (made directly,
- * as suggestions, or to the Review inbox), idempotency by client_ref, the
+ * asked about, or to the Review inbox), idempotency by client_ref, the
  * activity row with its undo, and refusing credentials in what is written.
  *
- * Where a change goes follows the risk tiers:
- * - W1 (adds, privately) and W2 (edits, or visible to teammates) are made
- *   directly when the connection may write in that space;
- * - W3 (deletes, team moves, stage removal, restoring a version, over 25
- *   at once) always goes to review;
- * - anything that reaches beyond Orbyn goes to review unless it may:
- *   notifying a teammate (assigning) needs the connection's "notify
- *   teammates" switch; emailing people outside Orbyn (event invites) and
- *   publishing always go to review;
- * - a connection that may only suggest in a space sends everything to
- *   review (and team pages get suggestions, see edit_doc).
+ * Where a change goes follows the connection's trust in the space
+ * (policy.trustIn):
+ * - full power: made directly, deletes and moves included (each with its
+ *   undo for 30 days), except the ask-first list (AGENT_ASK_FIRST): a
+ *   teammate's work, emailing or inviting people, publishing, bookings
+ *   with people not met yet, team admin, the person's profile, and more
+ *   than 50 changes at once. The person can let a connection do any of
+ *   those alone;
+ * - ask: every change asks first;
+ * - suggest (or a space the connection or team caps at suggesting):
+ *   everything goes to the Review inbox (team pages get suggestions).
+ * Asking happens in the chat when the app can (form elicitation, see
+ * ctx.asking); otherwise the change waits in the Review inbox, with a
+ * push that can approve or decline it.
  */
 
 /** Annotations for a change that only adds. */
@@ -58,13 +68,54 @@ export const clientRefInput = z
   .regex(/^[\w.:@-]+$/, "Use letters, digits and . : @ _ -")
   .optional()
   .describe(
-    "Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice.",
+    "Idempotency key: sent again within 24 h, the first answer comes back.",
   );
 
 /** The most items one call changes (proposals hold up to 50). */
 export const MAX_BATCH = 25;
 
 export type Destination = "direct" | "review";
+
+/** What destination() needs to know beyond the space and tier. */
+export type DestinationOptions = {
+  /**
+   * Who an existing thing belongs to: a team thing someone else made (or
+   * was given) is a teammate's work.
+   */
+  owner?: { user_id: string | null; assignee_id?: string | null } | null;
+  /** An ask-first item the change is, with why in words. */
+  asks?: AgentAskFirst;
+  why?: string;
+  /** How many things the call changes (over 50 asks first). */
+  count?: number;
+};
+
+/** Why each ask-first item asks, when nothing more specific is known. */
+const ASK_WHY: Record<AgentAskFirst, string> = {
+  teammates: "it changes a teammate's work",
+  people: "it invites or emails people",
+  publishing: "it shares or publishes outside the team",
+  bookings: "it's a booking with someone you haven't met",
+  team_admin: "it changes how a team is run",
+  profile: "it changes your profile",
+  bulk: `it changes more than ${AGENT_BULK_LIMIT} things at once`,
+};
+
+/**
+ * Whether a thing in a team is a teammate's: it was given to someone else,
+ * or (given to nobody) someone else made it. Something given to the
+ * person is theirs, whoever made it.
+ */
+export function teammatesWork(
+  p: Principal,
+  teamId: string | null,
+  owner: DestinationOptions["owner"],
+): boolean {
+  if (!teamId || !owner) return false;
+  const me = p.user.id;
+  if (owner.assignee_id) return owner.assignee_id !== me;
+  return !!owner.user_id && owner.user_id !== me;
+}
 
 /**
  * Where a change in `teamId`'s space goes. NOT_FOUND when the connection
@@ -75,6 +126,7 @@ export function destination(
   teamId: string | null,
   tier: Tier,
   effects: Effect[] = [],
+  options: DestinationOptions = {},
 ): Destination {
   const p = ctx.principal;
   const level = policy.levelIn(p, teamId);
@@ -92,12 +144,75 @@ export function destination(
         : "This connection can only read your Personal space.",
       "Ask the person to allow changes, or make the change in Orbyn.",
     );
-  if (level === "suggest" || tier === "W3") return "review";
-  if (effects.includes("email_outside") || effects.includes("publish"))
+  const trust = policy.trustIn(p, teamId);
+  if ((level === "suggest" || trust === "suggest") && !ctx.asking?.reviewed)
     return "review";
-  if (effects.includes("notify_member") && !p.flags.notify_teammates)
-    return "review";
-  return "direct";
+  const reasons: AskReason[] = [];
+  const need = (kind: AgentAskFirst, text = ASK_WHY[kind]) => {
+    if (!p.trust.acts_alone.includes(kind)) reasons.push({ kind, text });
+  };
+  if (trust === "ask")
+    reasons.push({
+      kind: "every_change",
+      text: "this connection asks you before every change",
+    });
+  else {
+    if (effects.includes("email_outside"))
+      need("people", "it emails people outside Orbyn");
+    if (effects.includes("publish")) need("publishing");
+    if (effects.includes("notify_member") && !p.flags.notify_teammates)
+      need("teammates", "it notifies a teammate");
+    if (tier !== "W1" && teammatesWork(p, teamId, options.owner))
+      need("teammates");
+    if (options.asks) need(options.asks, options.why);
+    if ((options.count ?? 0) > AGENT_BULK_LIMIT)
+      need("bulk", `it changes ${options.count} things at once`);
+  }
+  if (!reasons.length) return "direct";
+  return askFirst(ctx, reasons);
+}
+
+/**
+ * A change that needs the person first: made directly once they said yes
+ * in the chat; noted (and carried on with, to be asked about as a whole)
+ * while collecting; otherwise to the Review inbox.
+ */
+function askFirst(ctx: CapabilityContext, reasons: AskReason[]): Destination {
+  const asking = ctx.asking;
+  if (asking?.mode === "approved") return "direct";
+  if (asking?.mode === "collect") {
+    for (const r of reasons)
+      if (!asking.reasons.some((x) => x.text === r.text))
+        asking.reasons.push(r);
+    return "direct";
+  }
+  return "review";
+}
+
+/**
+ * The refusal for a change that can't wait in the Review inbox when it
+ * would have to: the connection only suggests there, or asks first and the
+ * app can't ask in the chat.
+ */
+export function cantWait(
+  ctx: CapabilityContext,
+  teamId: string | null,
+): CapabilityError {
+  const p = ctx.principal;
+  const suggests =
+    policy.levelIn(p, teamId) === "suggest" ||
+    policy.trustIn(p, teamId) === "suggest";
+  return suggests
+    ? new CapabilityError(
+        "FORBIDDEN",
+        "This connection can only suggest changes there.",
+        "Use propose_changes, or ask the person to make the change in Orbyn.",
+      )
+    : new CapabilityError(
+        "FORBIDDEN",
+        "This change needs the person's yes first, and this app can't ask them in the chat.",
+        "Use propose_changes, ask the person to let this connection do it alone in Settings → Connected agents, or ask them to make it in Orbyn.",
+      );
 }
 
 /** What a change sent to review answers with. */
@@ -174,7 +289,51 @@ export type WriteMeta = {
   team_id?: string | null;
   /** Work to do once the change is committed (live news, Study). */
   after?: (() => Promise<void>)[];
+  /**
+   * The job the change belongs to, when not the request's own (apply_plan
+   * gives every step one job id, so undo({job}) takes the plan back).
+   */
+  job?: string;
+  /**
+   * What the change made, counted by kind, when its targets don't say it
+   * (a new deck is one page but so many cards). Otherwise counted from
+   * the targets.
+   */
+  counts?: Record<string, number>;
 };
+
+/** Kinds of things as changes count them (an event is a task). */
+const KIND_OF: Record<string, string> = { event: "task" };
+
+/**
+ * What a change made, by "verb:kind" ({"added:task": 3}), from its targets
+ * (proposals it filed are not changes) or the counts it gave; a count
+ * without a verb takes the tool's (agentToolVerb).
+ */
+export function changeKinds(
+  tool: string,
+  targets: string[],
+  counts?: Record<string, number>,
+): Record<string, number> {
+  const verb = agentToolVerb(tool);
+  const kinds: Record<string, number> = {};
+  const add = (key: string, n: number) => {
+    const k = key.includes(":") ? key : `${verb}:${key}`;
+    kinds[k] = (kinds[k] ?? 0) + n;
+  };
+  if (counts && Object.keys(counts).length) {
+    for (const [k, n] of Object.entries(counts)) if (n > 0) add(k, n);
+    return kinds;
+  }
+  for (const t of new Set(targets)) {
+    const m = /^([a-z_]+):/i.exec(t);
+    if (!m) continue;
+    const raw = m[1].toLowerCase();
+    if (raw === "proposal" || raw === "change") continue;
+    add(KIND_OF[raw] ?? raw, 1);
+  }
+  return kinds;
+}
 
 // --- client_ref idempotency ---------------------------------------------
 
@@ -248,14 +407,21 @@ export async function recordChange(
   },
 ): Promise<string> {
   const undo = entry.meta.undo?.length ? entry.meta.undo : null;
+  // Only what was made counts as changes: a proposal, a refusal or a
+  // whole plan's own row (its steps are counted one by one) doesn't.
+  const kinds =
+    entry.outcome === "ok" && entry.tool !== "apply_plan"
+      ? changeKinds(entry.tool, entry.targets, entry.meta.counts)
+      : {};
+  const changes = Object.values(kinds).reduce((n, k) => n + k, 0);
   return (
     await db.query<{ id: string }>(
       `INSERT INTO agent_activity (user_id, grant_id, client_name, tool, tier,
          team_id, target_ids, args_digest, summary, outcome, proposal_id,
-         request_id, undo, undo_until)
+         request_id, undo, undo_until, changes, kinds)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb,
          CASE WHEN $13::jsonb IS NULL THEN NULL
-              ELSE now() + make_interval(days => $14) END)
+              ELSE now() + make_interval(days => $14) END, $15, $16::jsonb)
        RETURNING id::text`,
       [
         p.user.id,
@@ -269,9 +435,11 @@ export async function recordChange(
         entry.summary.slice(0, 300),
         entry.outcome,
         entry.meta.proposal_id?.replace(/^proposal:/, "") ?? null,
-        entry.requestId?.slice(0, 64) ?? null,
+        (entry.meta.job ?? entry.requestId)?.slice(0, 64) ?? null,
         undo ? JSON.stringify(undo) : null,
         UNDO_DAYS,
+        changes,
+        changes ? JSON.stringify(kinds) : null,
       ],
     )
   ).rows[0].id;
@@ -282,16 +450,56 @@ export const dbOf = (ctx: CapabilityContext) => ctx.db as Db;
 
 // --- What the write tools share -------------------------------------------
 
-/** One thing a change made or changed, as the answer lists it. */
+/**
+ * One thing a change made or changed, as the answer lists it: `url` opens
+ * it in the web app, `app_url` in the phone app (orbyn://…, H7).
+ */
 export const doneEntry = z.object({
   id: z.string(),
   title: z.string(),
   url: z.string(),
+  app_url: z.string(),
   /** Its version now (tasks and pages), for the next change. */
   version: z.number().nullable(),
   change: z.string(),
 });
-export type DoneEntry = z.output<typeof doneEntry>;
+/** A done entry as the tools build it: finishWrite adds the app link. */
+export type DoneEntry = Omit<z.output<typeof doneEntry>, "app_url"> & {
+  app_url?: string;
+};
+
+/** A done entry with both links, as answers carry it. */
+export const withAppLink = (d: DoneEntry): z.output<typeof doneEntry> => ({
+  ...d,
+  app_url: d.app_url || appLinkFor(d.url),
+});
+
+/** The most things whose links a summary spells out. */
+const LINKS_SHOWN = 10;
+
+/**
+ * The closing lines of a change's summary: where each thing opens, on the
+ * web and in the phone app, in plain words (H7).
+ */
+export function linkLines(
+  done: { id: string; title: string; url: string; app_url: string }[],
+): string[] {
+  const open = done.filter((d) => d.url || d.app_url);
+  if (!open.length) return [];
+  const shown = open.slice(0, LINKS_SHOWN).map((d) => {
+    const where = [
+      d.url ? `on the web: ${d.url}` : "",
+      d.app_url ? `in the Orbyn app: ${d.app_url}` : "",
+    ].filter(Boolean);
+    return `- ${d.title || d.id} — open it ${where.join(" · ")}`;
+  });
+  const more = open.length - shown.length;
+  return [
+    "Links:",
+    ...shown,
+    ...(more > 0 ? [`- …and ${more} more (their links are in done).`] : []),
+  ];
+}
 
 /** Something asked for that wasn't done, and why. */
 export const skippedEntry = z.object({ index: z.number(), reason: z.string() });
@@ -324,6 +532,8 @@ export async function finishWrite(
     after?: (() => Promise<void>)[];
     teamId?: string | null;
     outcome?: AgentOutcome;
+    /** What was made by kind, when the done entries don't say it. */
+    counts?: Record<string, number>;
   },
 ) {
   const review = parts.review ?? [];
@@ -331,6 +541,7 @@ export async function finishWrite(
     ? await toReview(ctx, parts.reviewSummary ?? what, review)
     : null;
   const skipped = parts.skipped ?? [];
+  const done = parts.done.map(withAppLink);
   const status: WriteAnswer["status"] = !pending
     ? "done"
     : parts.done.length
@@ -339,14 +550,12 @@ export async function finishWrite(
   const { targets: pendingTargets = [], ...pendingOut } = pending ?? {};
   const structured: WriteAnswer = {
     status,
-    done: parts.done,
+    done,
     pending: pending ? (pendingOut as Pending) : null,
     skipped,
   };
   const lines = [
-    ...parts.done.map(
-      (d) => `- ${d.change}: ${d.title}\n  id: ${d.id} · open: ${d.url}`,
-    ),
+    ...done.map((d) => `- ${d.change}: ${d.title} (${d.id})`),
     ...skipped.map((s) => `- Not done (#${s.index + 1}): ${s.reason}`),
   ];
   const head = parts.done.length
@@ -360,6 +569,7 @@ export async function finishWrite(
     ...(pending
       ? [pendingText(parts.done.length ? "The rest" : what, pending)]
       : []),
+    ...linkLines(done),
   ]
     .filter(Boolean)
     .join("\n");
@@ -411,6 +621,7 @@ export async function finishWrite(
       undo: parts.undo,
       team_id: parts.teamId ?? null,
       after: after.length ? after : undefined,
+      ...(parts.counts ? { counts: parts.counts } : {}),
     } satisfies WriteMeta,
   };
 }

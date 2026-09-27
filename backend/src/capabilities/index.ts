@@ -1,5 +1,8 @@
 import { getCalendar } from "./calendar-view.js";
 import { getContext, getProfile } from "./context.js";
+import { listAgentChanges, undoCapability } from "./changes.js";
+import { ackInbox, askPerson, getInbox } from "./inbox.js";
+import { applyPlan } from "./plan.js";
 import { fetchCapability } from "./fetch.js";
 import { addTask, getAgenda, searchItems } from "./legacy.js";
 import { getProject } from "./project.js";
@@ -54,6 +57,9 @@ import {
   scheduleSessions,
 } from "./write-sessions.js";
 import { createDocCapability, editDoc } from "./write-docs.js";
+import { appendDoc } from "./long-docs.js";
+import { saveSource } from "./citations.js";
+import { addFile } from "./agent-files.js";
 import {
   createProjectCapability,
   link,
@@ -96,6 +102,15 @@ export const registry = new Registry([
   proposeChanges,
   // Links (phase A4): the core toolset's 21st tool.
   getLinks,
+  // Agent 2 (H1): what this connection changed, and taking it back.
+  listAgentChanges,
+  undoCapability,
+  // Agent 2 (H0): everything routes to your agent, and asking the person.
+  getInbox,
+  ackInbox,
+  askPerson,
+  // Agent 2 (H5): one call, whole job.
+  applyPlan,
   // The workspace toolset (A4-A5).
   saveView,
   updateProjectCapability,
@@ -105,6 +120,8 @@ export const registry = new Registry([
   commentOnDoc,
   resolveSuggestions,
   tasksFromDoc,
+  // Agent 2 (H2): long pages in parts.
+  appendDoc,
   // The planner toolset (A5).
   getWorkPatterns,
   whatIfCapability,
@@ -116,6 +133,8 @@ export const registry = new Registry([
   getStudy,
   updateStudy,
   planRevisionCapability,
+  // Agent 2 (H2): sources the agent read.
+  saveSource,
   // The follow-through toolset (A5).
   getFollowThrough,
   addProgress,
@@ -133,6 +152,8 @@ export const registry = new Registry([
   startImportCapability,
   cancelImportCapability,
   importTasks,
+  // Agent 2 (H2): files the agent sends.
+  addFile,
 ]);
 
 export { Registry };

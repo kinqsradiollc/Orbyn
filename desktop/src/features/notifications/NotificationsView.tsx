@@ -3,6 +3,7 @@ import {
   Inbox,
   AlertTriangle,
   Bell,
+  Bot,
   CalendarCheck,
   CalendarClock,
   Clock,
@@ -17,12 +18,20 @@ import {
   Wand2,
   type LucideIcon,
   LayoutTemplate,
+  MessageCircleQuestion,
 } from "lucide-react";
-import { dateLabel, type Notice, type PageMention } from "@orbyn/core";
+import {
+  activityOriginLabel,
+  dateLabel,
+  type AgentQuestion,
+  type Notice,
+  type PageMention,
+} from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { stagger } from "../../lib/motion";
 import { client } from "../../lib/api";
 import { CONCEPT_ICON } from "../../app/concept-icons";
+import { onLive } from "../../lib/live";
 
 type Props = {
   notices: Notice[];
@@ -47,6 +56,11 @@ type Props = {
   onStartSession?: (blockId: string, itemId: string) => Promise<void>;
   /** Opens Review on the proposal in a "review" notice's `ref`. */
   onOpenReview?: (proposalId: string) => void;
+  /**
+   * Opens Settings at one setting: "agents" for an agent notice about a
+   * connection (a big job finished, say), where each change can be undone.
+   */
+  onOpenSetting?: (id: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -63,8 +77,83 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   mention: AtSign,
   session: Timer,
   review: Inbox,
+  question: MessageCircleQuestion,
+  agent: Bot,
   system: Clock,
 };
+
+/**
+ * Questions your agents asked (ask_person) that wait for you: each choice
+ * is a button, and the answer goes straight back to the agent. Re-read when
+ * anything changes (a new question, or one answered on the phone).
+ */
+function AgentQuestions() {
+  const [list, setList] = useState<AgentQuestion[]>([]);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const load = () => client.agentQuestions().then(setList, () => {});
+    void load();
+    return onLive((news) => news.kind === "changed" && void load());
+  }, []);
+  if (!list.length) return null;
+  const answer = (q: AgentQuestion, choice: string) => {
+    setPending(q.id);
+    setError(null);
+    client
+      .answerAgentQuestion(q.id, choice)
+      .then(
+        () => setList((all) => all.filter((x) => x.id !== q.id)),
+        (e: Error) => setError(e.message),
+      )
+      .finally(() => setPending(null));
+  };
+  return (
+    <section className="card agent-questions" aria-labelledby="agent-questions">
+      <h2 id="agent-questions">
+        <MessageCircleQuestion size={16} aria-hidden="true" /> Your agents ask
+      </h2>
+      <ul>
+        {list.map((q) => (
+          <li key={q.id}>
+            <strong>{q.question}</strong>
+            {q.detail && <p>{q.detail}</p>}
+            <small className="muted">
+              {q.agent} · {dateLabel(q.created_at)}
+              {q.default_choice
+                ? ` · “${q.default_choice}” if you don’t answer by ${new Date(
+                    q.expires_at,
+                  ).toLocaleString([], {
+                    weekday: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}`
+                : ""}
+            </small>
+            <div className="agent-question-choices">
+              {q.choices.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="secondary"
+                  disabled={pending === q.id}
+                  onClick={() => answer(q, c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <div role="alert" className="error">
+          {error}
+        </div>
+      )}
+    </section>
+  );
+}
 
 /**
  * "Mentioned in": the pages that name you, newest first, with the line
@@ -118,10 +207,12 @@ export function NotificationsView({
   onOpenDoc,
   onStartSession,
   onOpenReview,
+  onOpenSetting,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
     <>
+      <AgentQuestions />
       <MentionedIn onOpenDoc={onOpenDoc} />
       <section className="card">
         {notices.map((n, index) => {
@@ -177,6 +268,9 @@ export function NotificationsView({
                   <p>{n.body}</p>
                   <small>
                     {dateLabel(n.created_at)}
+                    {n.via_agent
+                      ? ` · ${activityOriginLabel({ via_agent: n.via_agent })}`
+                      : ""}
                     {n.read ? " · Read" : ""}
                   </small>
                 </span>
@@ -228,6 +322,19 @@ export function NotificationsView({
                     }}
                   >
                     <Inbox size={14} /> Review
+                  </button>
+                )}
+              {n.kind === "agent" &&
+                n.ref?.startsWith("grant:") &&
+                onOpenSetting && (
+                  <button
+                    className="secondary notice-action"
+                    onClick={() => {
+                      if (!n.read) onRead(n);
+                      onOpenSetting("agents");
+                    }}
+                  >
+                    <Bot size={14} /> Open Connected agents
                   </button>
                 )}
               {n.kind === "project" && n.ref && onOpenProject && (

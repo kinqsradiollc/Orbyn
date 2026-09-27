@@ -439,7 +439,7 @@ function Consent({
               <strong>{AGENT_ACCESS_LABELS[a].name}</strong>
               <small>
                 {a === "write"
-                  ? "Low-risk changes happen directly. Deleting, anything that emails people, and changes to teammates’ pages still wait for you."
+                  ? "Full power: it works for you directly, deletes of your own things included (30 days to undo). It asks you first about a teammate’s work, inviting people, publishing and more than 50 changes at once. Change this any time in Settings → Connected agents."
                   : AGENT_ACCESS_LABELS[a].blurb}
               </small>
             </span>

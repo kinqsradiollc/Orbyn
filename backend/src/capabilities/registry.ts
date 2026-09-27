@@ -23,7 +23,8 @@ import type { WriteMeta } from "./write.js";
 export type Mode = "read" | "propose" | "write";
 /**
  * Risk tier: R reads; W1 only adds, privately; W2 edits or is visible to
- * teammates; W3 always goes to review.
+ * teammates; W3 deletes, moves between spaces, or restores (made directly
+ * at full power, with undo; otherwise asked about or reviewed).
  */
 export type Tier = "R" | "W1" | "W2" | "W3";
 /** What a call can reach beyond Orbyn. */
@@ -48,6 +49,10 @@ export type ErrorCode =
   | "STALE"
   | "MAINTENANCE"
   | "UNAVAILABLE"
+  | "DECLINED"
+  | "CANCELLED"
+  /** A person's daily or space limit is reached (like HTTP 429). */
+  | "LIMITED"
   | "INTERNAL";
 
 /** A failure the agent can read and correct (an isError tool result). */
@@ -83,6 +88,49 @@ export type CapabilityContext = {
    * long job's status), when the caller asked to hear it. Never required.
    */
   progress?: Progress;
+  /**
+   * Asking the person in the chat (form elicitation), when the app can.
+   * "collect": a change that needs asking is noted here and carried on
+   * with, and the call is then rolled back and asked about as a whole;
+   * "approved": the person said yes in the chat, so it's made directly.
+   * Without it, a change that needs asking waits in the Review inbox.
+   */
+  asking?: Asking;
+};
+
+/** Why a change needs the person first, in words for them. */
+export type AskReason = { kind: string; text: string };
+
+export type Asking = {
+  mode: "collect" | "approved";
+  reasons: AskReason[];
+  /**
+   * The person approved this very change in the Review inbox (a whole
+   * plan, apply_plan): made directly, even where the connection suggests.
+   */
+  reviewed?: boolean;
+  /**
+   * A question for the person in the chat (ask_person), instead of the
+   * usual yes/no about a change: set by the capability while collecting.
+   */
+  question?: ChatQuestion;
+  /** What the person answered to that question in the chat. */
+  answer?: ChatAnswer;
+};
+
+/** A question an agent puts to its person in the chat (a one-field form). */
+export type ChatQuestion = {
+  question: string;
+  detail: string | null;
+  choices: string[];
+  yes_no: boolean;
+  default_choice: string | null;
+};
+
+/** The person's answer in the chat: a choice (or yes/no), or none. */
+export type ChatAnswer = {
+  outcome: "answered" | "declined" | "cancelled";
+  answer: string | boolean | null;
 };
 
 /** How far a call has got: steps done, of how many, and what it's doing. */
@@ -130,6 +178,13 @@ export type Capability<
   jsonText?: boolean;
   /** Only for old personal API keys on the legacy address (aliases). */
   legacyOnly?: boolean;
+  /**
+   * A retired tool name kept for connections that still call it, run by the
+   * tool it was folded into (named here). With legacyOnly it stays out of
+   * tools/list and the budgets, but any connection allowed its toolset may
+   * still call it.
+   */
+  aliasOf?: string;
   /** Extra `_meta` on the tool as tools/list gives it (e.g. openai/profile). */
   meta?: Record<string, unknown>;
   /** Counted against the lower search limit, or the CPU-heavy one. */
@@ -169,7 +224,62 @@ function jsonSchema(schema: z.ZodType, io: "input" | "output"): ObjectSchema {
   delete out.$schema;
   if (out.type !== "object")
     throw new Error("Tool schemas must describe an object.");
+  if (io === "output") {
+    looseAnswers(out);
+    return foldNullables(out) as ObjectSchema;
+  }
   return out as ObjectSchema;
+}
+
+/**
+ * Writes "an object, or null" in an answer's schema as one schema with
+ * `type: ["object", "null"]` instead of an anyOf of the two: the same
+ * meaning in fewer tokens (H7's budget, which paid for every change's app
+ * link). Plain values already come out this way.
+ */
+function foldNullables(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(foldNullables);
+  if (!node || typeof node !== "object") return node;
+  const o: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node)) o[k] = foldNullables(v);
+  const any = o.anyOf;
+  if (Array.isArray(any) && any.length === 2 && Object.keys(o).length === 1) {
+    const isNull = (x: unknown) =>
+      !!x &&
+      typeof x === "object" &&
+      (x as { type?: unknown }).type === "null" &&
+      Object.keys(x).length === 1;
+    const at = any.findIndex(isNull);
+    const other = any[1 - at] as Record<string, unknown> | undefined;
+    // An enum or const would refuse the null, so those stay as they are.
+    if (
+      at >= 0 &&
+      other &&
+      typeof other.type === "string" &&
+      !other.anyOf &&
+      !("enum" in other) &&
+      !("const" in other)
+    )
+      return { ...other, type: [other.type, "null"] };
+  }
+  return o;
+}
+
+/**
+ * Drops `additionalProperties: false` from an answer's schema. Inputs stay
+ * strict (an unknown field is refused); an answer only ever carries what
+ * its schema names, so saying so again on every object is tokens a client
+ * reads for nothing (H6a's budget).
+ */
+function looseAnswers(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const x of node) looseAnswers(x);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const o = node as Record<string, unknown>;
+  if (o.additionalProperties === false) delete o.additionalProperties;
+  for (const v of Object.values(o)) looseAnswers(v);
 }
 
 /** tools/list's entry for a capability (computed once). */
@@ -203,7 +313,7 @@ export class Registry {
   }
   /** What `p` may call, in the registry's order (stable for caches). */
   for(p: Principal): Capability[] {
-    return this.all.filter((c) => policy.allows(p, c));
+    return this.all.filter((c) => !c.aliasOf && policy.allows(p, c));
   }
   /**
    * Adds capabilities for a while (tests of tools a later phase brings):

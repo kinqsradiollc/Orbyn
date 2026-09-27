@@ -1,10 +1,15 @@
 import { readdir, stat } from "node:fs/promises";
 import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
-import { sniffPageFile } from "@orbyn/core";
+import {
+  AGENT_FILE_LIMITS,
+  AGENT_FILE_TYPES,
+  sniffPageFile,
+} from "@orbyn/core";
 import { pool } from "../../db/pool.js";
 import {
   diskFull,
+  keptDir,
   objectPaths,
   pageFilesDir,
   readObject,
@@ -12,7 +17,7 @@ import {
   storeStream,
   UploadError,
 } from "../imports/store.js";
-import { readClaimToken } from "../imports/tokens.js";
+import { isService, readClaimToken } from "../imports/tokens.js";
 
 /**
  * Pictures and files in pages (EDT-01), on the file store's side. Uploads
@@ -148,6 +153,56 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
       return reply.code(201).send({ id: claim.f, bytes });
     },
   );
+
+  /**
+   * A file an outside agent sent (H2), from the mcp service, which has
+   * checked who may add it, the limits and what it is: kept with the page
+   * files or with the originals, and checked again here from its first
+   * bytes. The mcp service writes its row once this has answered.
+   */
+  app.put("/internal/agent-files/:place/:id", async (r, reply) => {
+    if (!isService(r.headers["x-orbyn-service"]))
+      return reply.code(403).send({ message: "Forbidden" });
+    const { place, id } = r.params as { place: string; id: string };
+    if (
+      (place !== "page" && place !== "kept") ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)
+    )
+      return reply.code(404).send({ message: "Not found" });
+    const type = String(r.headers["x-orbyn-type"] ?? "");
+    if (!(AGENT_FILE_TYPES as readonly string[]).includes(type))
+      return reply.code(415).send({ message: "Orbyn doesn't keep that type." });
+    const max = AGENT_FILE_LIMITS.maxBytes;
+    const length = Number(r.headers["content-length"] ?? 0);
+    if (length > max)
+      return reply.code(413).send({ message: "That file is over 25 MB." });
+    const dir = place === "kept" ? keptDir() : pageFilesDir();
+    if (await diskFull(length || max, dir))
+      return reply.code(507).send({
+        message:
+          "Orbyn can't take new files right now. Try again in a few minutes.",
+      });
+    try {
+      const bytes = await storeStream(id, r.body as Readable, max, {
+        dir,
+        type,
+        tooBig: "That file is over 25 MB.",
+        sniff: (head) => sniffPageFile(head, type),
+        wrongType: "That file isn't what it says it is.",
+      });
+      return reply.code(201).send({ id, bytes });
+    } catch (error) {
+      const e = error as UploadError;
+      if (!(e instanceof UploadError))
+        r.log.warn({ err: e }, "Agent file failed");
+      return reply.code(e instanceof UploadError ? e.statusCode : 400).send({
+        message:
+          e instanceof UploadError
+            ? e.message
+            : "The file didn't arrive whole. Try again.",
+      });
+    }
+  });
 
   /** A picture shown, or a file downloaded, with a link the API signed. */
   app.get(
