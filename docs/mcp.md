@@ -379,7 +379,7 @@ Moves sessions, pushes them to the next free working slot, or removes them (ids 
 
 ### `create_doc`
 
-Makes a page, note or meeting note from Markdown (at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an id. Where this connection may only suggest, it waits in the Review inbox.
+Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox.
 
 | Argument           | Type                     | Notes                                                                                                                                      |
 | ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -395,15 +395,15 @@ Makes a page, note or meeting note from Markdown (at most about 60 KB), in Perso
 
 ### `edit_doc`
 
-Version-checked edits to one page, all or none: append, prepend, insert_after, replace or delete a line (by its ^b… anchor), find_replace, and a title. Personal pages change directly, keeping the old state in history labelled with this agent; team pages get Take/Leave suggestions (edits suggestions can't hold go to review).
+Version-checked edits to one page, all or none, in Orbyn Markdown (orbyn://spec/markdown): append, prepend, insert_after, replace or delete a line (by anchor), find_replace, a title, and sections by heading: replace_section, append_to_section, delete_section, move_section. Personal pages change directly (history keeps the old state, labelled with this agent; undo works); team pages get Take/Leave suggestions (edits suggestions can't hold go to review).
 
-| Argument             | Type        | Notes                                                                                                                                      |
-| -------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `doc` (required)     | string      |                                                                                                                                            |
-| `version` (required) | integer     |                                                                                                                                            |
-| `edits`              | list of any | Default [].                                                                                                                                |
-| `title`              | string      |                                                                                                                                            |
-| `client_ref`         | string      | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+| Argument             | Type           | Notes                                                                                                                                      |
+| -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doc` (required)     | string         |                                                                                                                                            |
+| `version` (required) | integer        |                                                                                                                                            |
+| `edits`              | list of object | Default [].                                                                                                                                |
+| `title`              | string         |                                                                                                                                            |
+| `client_ref`         | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `link`
 
@@ -950,6 +950,8 @@ Catalog version: `2026-09-27`.
 - list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.
 - Everything routes to your agent: each connection has an inbox (booking requests, mentions and comments, invites, deadlines at risk, finished imports, study due and exams near, tasks from email, review decisions, teammates' asks, answers to its questions), only for spaces it reaches, never kept-out projects, kept 14 days. get_inbox (not dealt with first, with refs, suggested tools and the person's standing rules) and ack_inbox (done, snooze, dismiss with a note) in core. The resource orbyn://inbox; following it with subscriptions/listen tells the agent at once. People mute kinds per connection and can set a signed wake-up address that gets only a count and a link, at most every 5 minutes.
 - ask_person in core: a question with up to 5 choices (or yes/no), an optional default and expiry (24 h). Answered in the chat with a one-field form when the client declares form elicitation; otherwise a card in Orbyn and a push (Approve/Decline for yes/no), and the answer, default or expiry arrives as an answer item in get_inbox. question_id looks up its status.
+- Write pages like a person: one documented Orbyn Markdown dialect (orbyn://spec/markdown) for every kind of line: callouts, tables, footnotes, highlights and strikes, mermaid diagrams, embeds (orbyn-embed), live lists (orbyn-list), pictures and files by `orbyn://file/<id>` (only ones the person can already read), study-card lines. create_doc and edit_doc store them as real blocks and read [[Page]], [[Page#Heading]] and [[#Heading]] as links; fetch returns pages in the same dialect with every line's anchor, nested lists indented, so reading and writing back changes nothing.
+- edit_doc sections by heading words or anchor: replace_section, append_to_section, delete_section and move_section (a section runs to the next heading as big or bigger). Anchors written in the Markdown are kept (new ones may be named); all or none, version-checked and undoable; team pages keep suggestions (a deleted section's lines struck through) or go to review.
 
 ### 2026-09-26
 

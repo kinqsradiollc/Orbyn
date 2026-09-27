@@ -782,6 +782,80 @@ export function parseDocInline(text: string): DocInline[] {
 const UUID_SHAPE_EARLY =
   "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
+// --------------------------------------------------------------- anchors ---
+
+/**
+ * How Markdown is read and written for agents (H3): the exact form, where
+ * every line carries its id as an anchor (` ^b3f9a2` at a line's end, or
+ * `^b3f9a2` on its own line under a code block, maths, a table or a
+ * divider), an empty line is written `\`, and a maths line's check mark is
+ * `$$ % check`. `parseDoc(serializeDoc(blocks, o), o)` then gives back
+ * every block exactly: its kind, settings, words and id. Left off, Markdown
+ * is what exports and the editors use: no anchors, empty lines dropped.
+ */
+export type DocMarkdownOptions = { anchors?: boolean };
+
+const ANCHOR_ID = "[A-Za-z0-9_-]{1,64}";
+/** A line that is only an anchor: it names the block just above it. */
+const OWN_ANCHOR = new RegExp(`^\\^(${ANCHOR_ID})\\s*$`);
+/** An anchor at the end of a line, after a space. */
+const END_ANCHOR = new RegExp(`(\\s)\\^(${ANCHOR_ID})\\s*$`);
+/** Words ending the way an anchor does, which are written with a backslash. */
+const ANCHOR_LIKE = new RegExp(`(\\s)(\\\\*\\^${ANCHOR_ID})$`);
+/** Such words read back: one backslash comes off. */
+const ESCAPED_ANCHOR = new RegExp(`(\\s)\\\\(\\\\*\\^${ANCHOR_ID})(\\s*)$`);
+/** An id that can be written as an anchor. */
+const WRITABLE_ID = new RegExp(`^${ANCHOR_ID}$`);
+
+/** Kinds whose anchor goes on a line of its own, under them. */
+const ownLineAnchor = (b: DocBlock) =>
+  b.type === "code" ||
+  b.type === "math" ||
+  b.type === "table" ||
+  b.type === "divider";
+
+/**
+ * Whether a paragraph's words would read back as something else — a
+ * heading, a list line, a quote, a fence, an anchor — and so are written
+ * after a backslash (`\# not a heading`), which reading takes off again.
+ */
+function paragraphNeedsEscape(text: string, anchors: boolean): boolean {
+  const t = text.trim();
+  if (anchors && /^\\*$/.test(t)) return true;
+  if (OWN_ANCHOR.test(t)) return true;
+  if (t.startsWith("\\")) return paragraphNeedsEscape(t.slice(1), anchors);
+  const same = (line: string) => {
+    const read = parseDoc(line);
+    return (
+      read.length === 1 && read[0].type === "paragraph" && read[0].text === t
+    );
+  };
+  // An anchor after the words leaves a space behind them ("2) ^b1").
+  return !same(t) || (anchors && !same(`${t} `));
+}
+
+/** A bullet's words that would read as a checklist box. */
+const TICK_LIKE = /^\\*\[( |x|X)\](\s|$)/;
+const ESCAPED_TICK = /^\\+\[( |x|X)\](\s|$)/;
+
+/** A quote's words that would read as a callout. */
+function calloutLike(text: string, escaped: boolean): boolean {
+  const m = (escaped ? /^\\+\[!([A-Za-z]+)\]/ : /^\\*\[!([A-Za-z]+)\]/).exec(
+    text,
+  );
+  return !!m && calloutKindOf(m[1]) !== null;
+}
+
+/** The fence a code block needs: longer than any fence-like line inside. */
+function codeFence(text: string): string {
+  let ticks = 3;
+  for (const l of text.split("\n")) {
+    const m = /^(`{3,})\s*$/.exec(l);
+    if (m && m[1].length >= ticks) ticks = m[1].length + 1;
+  }
+  return "`".repeat(ticks);
+}
+
 // ----------------------------------------------------------------- parse ---
 
 /** How wide a run of leading spaces and tabs is, a tab counting as four. */
@@ -794,14 +868,17 @@ const indentWidth = (lead: string) =>
  * Nested lists are read by how far each item is indented compared with the
  * items above it, not by a fixed number of spaces, so two-space, four-space
  * and tab-indented lists from anywhere all come in with the same shape.
+ * With `anchors`, lines' anchors are read as their ids (see
+ * {@link DocMarkdownOptions}).
  */
 export function parseDoc(
   markdown: string,
-  opts: {
+  opts: DocMarkdownOptions & {
     /** Told of each table too big for one table line, which is split. */
     onTableSplit?: () => void;
   } = {},
 ): DocBlock[] {
+  const anchors = !!opts.anchors;
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: DocBlock[] = [];
   let i = 0;
@@ -809,6 +886,14 @@ export function parseDoc(
   let indents: number[] = [];
   /** The number each numbered item was written with, by block. */
   const written = new Map<DocBlock, number>();
+  /** The anchor read at the end of the line being read. */
+  let pending: string | null = null;
+  const push = <B extends DocBlock>(b: B): B => {
+    const named = pending && !b.id ? { ...b, id: pending } : b;
+    pending = null;
+    out.push(named);
+    return named;
+  };
   const depthAt = (width: number): number => {
     if (!indents.length || width <= indents[0]) {
       indents = [width];
@@ -832,22 +917,51 @@ export function parseDoc(
     const depth = depthAt(indentWidth(lead));
     return depth ? { ...block, depth } : block;
   };
+  /** A line's words without its anchor, the anchor kept for its block. */
+  const unanchor = (raw: string): string => {
+    const end = END_ANCHOR.exec(raw);
+    let line = raw;
+    if (end) {
+      pending = end[2];
+      line = raw.slice(0, end.index) + end[1];
+    }
+    return line.replace(ESCAPED_ANCHOR, "$1$2$3");
+  };
 
   while (i < lines.length) {
-    const line = lines[i];
+    let line = lines[i];
+    pending = null;
+    if (anchors) {
+      // `^b…` on its own line names the block above it.
+      const own = OWN_ANCHOR.exec(line.trim());
+      const last = out[out.length - 1];
+      if (own && last && !last.id) {
+        const named = { ...last, id: own[1] } as DocBlock;
+        const typed = written.get(last);
+        if (typed !== undefined) written.set(named, typed);
+        out[out.length - 1] = named;
+        i++;
+        continue;
+      }
+      line = unanchor(line);
+    }
     // Anything but a list item (or a blank line between items) ends a list.
     if (line.trim() && !/^\s*([-*]|\d+[.)])\s/.test(line)) indents = [];
 
-    // Fenced code: ```lang … ```
-    const fence = /^```([\w+#.-]*)\s*$/.exec(line);
+    // Fenced code: ```lang … ```, closed by a fence at least as long.
+    const fence = /^(`{3,})([\w+#.-]*)\s*$/.exec(line);
     if (fence) {
-      const lang = fence[1] ?? "";
+      const ticks = fence[1].length;
+      const lang = fence[2] ?? "";
       const body: string[] = [];
       i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i]))
+      while (i < lines.length) {
+        const close = /^(`{3,})\s*$/.exec(lines[i]);
+        if (close && close[1].length >= ticks) break;
         body.push(lines[i++]);
+      }
       i++; // closing fence (or end of input)
-      out.push({ type: "code", text: body.join("\n"), lang });
+      push({ type: "code", text: body.join("\n"), lang });
       continue;
     }
 
@@ -855,16 +969,21 @@ export function parseDoc(
     if (/^\$\$/.test(line.trim())) {
       const single = /^\$\$(.+)\$\$$/.exec(line.trim());
       if (single) {
-        out.push({ type: "math", text: single[1].trim() });
+        push({ type: "math", text: single[1].trim() });
         i++;
         continue;
       }
+      const check = anchors && /^\$\$\s*%\s*check\s*$/.test(line.trim());
       const body: string[] = [];
       i++;
       while (i < lines.length && !/^\$\$\s*$/.test(lines[i].trim()))
         body.push(lines[i++]);
       i++;
-      out.push({ type: "math", text: body.join("\n").trim() });
+      push({
+        type: "math",
+        text: body.join("\n").trim(),
+        ...(check ? { check: true } : {}),
+      });
       continue;
     }
 
@@ -874,14 +993,14 @@ export function parseDoc(
     }
 
     if (/^(---|\*\*\*|___)\s*$/.test(line.trim())) {
-      out.push({ type: "divider" });
+      push({ type: "divider" });
       i++;
       continue;
     }
 
     const heading = /^(#{1,3})\s+(.*)$/.exec(line);
     if (heading) {
-      out.push({
+      push({
         type: "heading",
         level: heading[1].length as 1 | 2 | 3,
         text: heading[2].trim(),
@@ -892,7 +1011,7 @@ export function parseDoc(
 
     const todo = /^(\s*)[-*]\s+\[( |x|X)\]\s+(.*)$/.exec(line);
     if (todo) {
-      out.push(
+      push(
         listItem(todo[1], {
           type: "todo",
           done: todo[2].toLowerCase() === "x",
@@ -905,19 +1024,26 @@ export function parseDoc(
 
     const bullet = /^(\s*)[-*]\s+(.*)$/.exec(line);
     if (bullet) {
-      out.push(listItem(bullet[1], { type: "bullet", text: bullet[2].trim() }));
+      const text = bullet[2].trim();
+      push(
+        listItem(bullet[1], {
+          type: "bullet",
+          text: ESCAPED_TICK.test(text) ? text.slice(1) : text,
+        }),
+      );
       i++;
       continue;
     }
 
     const numbered = /^(\s*)(\d{1,9})[.)]\s+(.*)$/.exec(line);
     if (numbered) {
-      const block = listItem(numbered[1], {
-        type: "numbered",
-        text: numbered[3].trim(),
-      });
+      const block = push(
+        listItem(numbered[1], {
+          type: "numbered",
+          text: numbered[3].trim(),
+        }),
+      );
       written.set(block, Number(numbered[2]));
-      out.push(block);
       i++;
       continue;
     }
@@ -926,14 +1052,22 @@ export function parseDoc(
     const callout = /^>\s?\[!([A-Za-z]+)\]([-+]?)\s*(.*)$/.exec(line);
     if (callout && calloutKindOf(callout[1])) {
       const body = [callout[3].trim()];
+      let id: string | null = pending;
       i++;
       // Its further lines are the quote lines that follow it.
       while (i < lines.length && /^>\s?(?!\[!)/.test(lines[i])) {
-        const more = lines[i].replace(/^>\s?/, "").trim();
+        let more = lines[i].replace(/^>\s?/, "");
+        const end = anchors ? END_ANCHOR.exec(more) : null;
+        if (end) {
+          id = end[2];
+          more = more.slice(0, end.index);
+        }
+        more = more.trim();
         if (more) body.push(more);
         i++;
       }
-      out.push({
+      pending = id;
+      push({
         type: "callout",
         kind: calloutKindOf(callout[1])!,
         text: body.filter(Boolean).join(" "),
@@ -944,17 +1078,33 @@ export function parseDoc(
 
     // A table: pipe rows with a `| --- |` line under the first.
     if (TABLE_ROW.test(line) && TABLE_RULE.test(lines[i + 1] ?? "")) {
-      const rows: string[] = [];
-      while (i < lines.length && TABLE_ROW.test(lines[i]))
-        rows.push(lines[i++]);
+      const rows: string[] = [line];
+      let id: string | null = pending;
+      i++;
+      while (i < lines.length) {
+        let row = lines[i];
+        if (anchors) {
+          const end = END_ANCHOR.exec(row);
+          const bare = end ? row.slice(0, end.index) + end[1] : row;
+          if (end && TABLE_ROW.test(bare)) {
+            id = end[2];
+            row = bare;
+          }
+        }
+        if (!TABLE_ROW.test(row)) break;
+        rows.push(row);
+        i++;
+      }
       const parts = splitTable(rows.join("\n"));
       if (parts.length > 1) opts.onTableSplit?.();
-      for (const part of parts)
-        out.push(
+      parts.forEach((part, n) => {
+        pending = n === 0 ? id : null;
+        push(
           "table" in part
             ? { type: "table", text: part.table }
             : { type: "bullet", text: part.line },
         );
+      });
       continue;
     }
 
@@ -962,7 +1112,7 @@ export function parseDoc(
     const image = FILE_IMAGE.exec(line.trim());
     if (image) {
       const width = Number(image[3]);
-      out.push({
+      push({
         type: "image",
         file: image[2].toLowerCase(),
         text: image[1].trim(),
@@ -973,7 +1123,7 @@ export function parseDoc(
     }
     const file = FILE_LINE.exec(line.trim());
     if (file) {
-      out.push({ type: "file", file: file[2].toLowerCase(), text: file[1] });
+      push({ type: "file", file: file[2].toLowerCase(), text: file[1] });
       i++;
       continue;
     }
@@ -981,19 +1131,32 @@ export function parseDoc(
     // A footnote's words: `[^1]: words`.
     const note = /^\[\^([\w-]{1,24})\]:\s*(.*)$/.exec(line.trim());
     if (note) {
-      out.push({ type: "footnote", label: note[1], text: note[2].trim() });
+      push({ type: "footnote", label: note[1], text: note[2].trim() });
       i++;
       continue;
     }
 
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
-      out.push({ type: "quote", text: quote[1].trim() });
+      const text = quote[1].trim();
+      push({
+        type: "quote",
+        text: calloutLike(text, true) ? text.slice(1) : text,
+      });
       i++;
       continue;
     }
 
-    out.push({ type: "paragraph", text: line.trim() });
+    // A paragraph; a backslash before words that would read as something
+    // else keeps them words.
+    const t = line.trim();
+    push({
+      type: "paragraph",
+      text:
+        t.startsWith("\\") && paragraphNeedsEscape(t.slice(1), anchors)
+          ? t.slice(1)
+          : t,
+    });
     i++;
   }
 
@@ -1023,21 +1186,33 @@ export function parseDoc(
  * with, when the caller knows where it sits in its list.
  */
 export function serializeBlock(b: DocBlock, number?: number | null): string {
+  return blockMarkdown(b, number, false);
+}
+
+function blockMarkdown(
+  b: DocBlock,
+  number: number | null | undefined,
+  anchors: boolean,
+): string {
   switch (b.type) {
     case "heading":
       return `${"#".repeat(b.level)} ${b.text}`;
+    case "paragraph":
+      return paragraphNeedsEscape(b.text, anchors) ? `\\${b.text}` : b.text;
     case "bullet":
-      return `- ${b.text}`;
+      return `- ${TICK_LIKE.test(b.text) ? "\\" : ""}${b.text}`;
     case "numbered":
       return `${number ?? b.start ?? 1}. ${b.text}`;
     case "todo":
       return `- [${b.done ? "x" : " "}] ${b.text}`;
     case "quote":
-      return `> ${b.text}`;
-    case "code":
-      return `\`\`\`${b.lang}\n${b.text}\n\`\`\``;
+      return `> ${calloutLike(b.text, false) ? "\\" : ""}${b.text}`;
+    case "code": {
+      const fence = codeFence(b.text);
+      return `${fence}${b.lang}\n${b.text}\n${fence}`;
+    }
     case "math":
-      return `$$\n${b.text}\n$$`;
+      return `$$${anchors && b.check ? " % check" : ""}\n${b.text}\n$$`;
     case "divider":
       return "---";
     case "callout":
@@ -1050,9 +1225,30 @@ export function serializeBlock(b: DocBlock, number?: number | null): string {
       return `[${fileLabel(b.text) || "File"}](${fileHref(b.file)})`;
     case "footnote":
       return `[^${b.label}]: ${b.text}`;
-    default:
-      return b.text;
   }
+}
+
+/**
+ * Each block as the Markdown `serializeDoc` writes for it, in order: nested
+ * list lines indented, numbered lines with the numbers they show, and with
+ * `anchors`, each line's anchor. Reading part of a page (fetch) slices this.
+ */
+export function docLines(
+  blocks: DocBlock[],
+  opts: DocMarkdownOptions = {},
+): string[] {
+  const anchors = !!opts.anchors;
+  const layout = listLayout(blocks);
+  return blocks.map((b, i) => {
+    let line =
+      "    ".repeat(layout[i].depth) +
+      blockMarkdown(b, layout[i].number, anchors);
+    if (!anchors) return line;
+    const own = ownLineAnchor(b);
+    if (!own) line = line.replace(ANCHOR_LIKE, "$1\\$2");
+    if (!b.id || !WRITABLE_ID.test(b.id)) return line;
+    return own ? `${line}\n^${b.id}` : `${line} ^${b.id}`;
+  });
 }
 
 // ---------------------------------------------------------------- files ---
@@ -1312,18 +1508,17 @@ export const footnoteTexts = (blocks: DocBlock[]): Map<string, string> =>
  * Write a whole document back to Markdown, LaTeX included. Numbered lists
  * are written with the numbers they show, and nested items are indented by
  * four spaces a step, which every Markdown reader takes as nesting under a
- * bullet or a numbered item alike.
+ * bullet or a numbered item alike. With `anchors`, the exact form agents
+ * read and write (see {@link DocMarkdownOptions}).
  */
-export function serializeDoc(blocks: DocBlock[]): string {
-  const layout = listLayout(blocks);
+export function serializeDoc(
+  blocks: DocBlock[],
+  opts: DocMarkdownOptions = {},
+): string {
   return (
-    blocks
-      .map(
-        (b, i) =>
-          "    ".repeat(layout[i].depth) + serializeBlock(b, layout[i].number),
-      )
+    docLines(blocks, opts)
       .join("\n\n")
-      .trim() + "\n"
+      .replace(/^\n+|\n+$/g, "") + "\n"
   );
 }
 

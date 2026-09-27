@@ -335,13 +335,21 @@ function ownHost(): string | null {
   }
 }
 
+/** A picture in Orbyn's own file store, as a page line writes it. */
+const ORBYN_FILE =
+  /^orbyn:\/\/file\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\?w=\d{1,3})?$/;
+
 /**
  * The address an image may keep: one on the web app's own host, written
  * plainly (no escapes, entities, credentials or spaces that a Markdown
  * renderer and a URL parser could read differently). A path on its own is
- * made absolute on the web app. null for everything else.
+ * made absolute on the web app, and Orbyn's own file store is kept. null
+ * for everything else.
  */
 function ownImageUrl(raw: string, own: string | null): string | null {
+  // A picture in Orbyn's own file store, as pages keep it: nothing loads
+  // from it outside the apps, and agents show it again by this address.
+  if (ORBYN_FILE.test(raw)) return raw;
   if (!own || !/^[A-Za-z0-9\-._~:/?#[\]!$'()*+,;=%]+$/.test(raw)) return null;
   if (raw.includes("@") || raw.includes("\\")) return null;
   if (raw.startsWith("/") && !raw.startsWith("//"))

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { serializeBlock, type DocBlock, type TemplateTask } from "@orbyn/core";
+import { docLines, type DocBlock, type TemplateTask } from "@orbyn/core";
 import {
   Params,
   scopeFor,
@@ -274,15 +274,6 @@ async function fetchTask(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
   };
 }
 
-/** A block as Markdown with its anchor, so edits and citations can point at it. */
-function anchored(b: DocBlock): string {
-  const text = serializeBlock(b);
-  if (!b.id) return text;
-  return b.type === "code" || b.type === "math" || b.type === "divider"
-    ? `${text}\n^${b.id}`
-    : `${text} ^${b.id}`;
-}
-
 async function fetchDoc(
   ctx: CapabilityContext,
   ref: Ref,
@@ -347,8 +338,10 @@ async function fetchDoc(
   const parts: string[] = [];
   let size = 0;
   let next: string | null = null;
+  // Orbyn Markdown with anchors (MARKDOWN_SPEC): what edit_doc takes back.
+  const lines = docLines(blocks, { anchors: true });
   for (let i = start; i < blocks.length; i++) {
-    const text = anchored(blocks[i]);
+    const text = lines[i];
     if (size + text.length > PAGE_CHARS && parts.length) {
       next = blocks[i].id ?? `@${i}`;
       break;

@@ -2,8 +2,10 @@ import { z } from "zod";
 import {
   blockText,
   carryBlockIds,
+  moveSection,
   newBlockId,
-  parseDoc,
+  plainText,
+  sectionRange,
   serializeDoc,
   type DocBlock,
   type ReviewChangeInput,
@@ -20,6 +22,7 @@ import { announceDocChange } from "../modules/docs/live.js";
 import { usePageTemplateById } from "../modules/templates/pages.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import { cleanTitle } from "./format.js";
+import { readMarkdown } from "./doc-markdown.js";
 import { docId, projectId, teamFilter } from "./common.js";
 import { visibleItem } from "./write-tasks.js";
 import { refUrl } from "./refs.js";
@@ -100,7 +103,7 @@ export const createDocCapability = defineCapability({
   name: "create_doc",
   title: "Write a new page",
   description:
-    "Makes a page, note or meeting note from Markdown (at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an id. Where this connection may only suggest, it waits in the Review inbox.",
+    "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox.",
   input: z
     .object({
       title: z.string().trim().min(1).max(200),
@@ -151,9 +154,12 @@ export const createDocCapability = defineCapability({
         "INVALID",
         "Give the page's markdown, or a template.",
       );
-    const markdown = a.markdown;
-    const content = withIds(parseDoc(markdown));
+    const content = withIds(await readMarkdown(ctx, a.markdown, null));
     checkSize(content);
+    // Proposals keep Markdown: links resolved, without the anchors.
+    const markdown = serializeDoc(
+      content.map(({ id: _id, ...b }) => b as DocBlock),
+    );
     const project = a.project ? (projectId(a.project) ?? null) : null;
     const where = destination(ctx, teamId, teamId ? "W2" : "W1");
     if (where === "review")
@@ -244,75 +250,207 @@ async function fromTemplate(
 
 // --- edit_doc ----------------------------------------------------------
 
-const edit = z.discriminatedUnion("op", [
-  z.object({
-    op: z.literal("append"),
-    markdown: z.string().max(MAX_DOC_BYTES),
-  }),
-  z.object({
-    op: z.literal("prepend"),
-    markdown: z.string().max(MAX_DOC_BYTES),
-  }),
-  z.object({
-    op: z.literal("insert_after"),
-    block: z.string().max(64).describe("The line's id (the ^b… anchor)."),
-    markdown: z.string().max(MAX_DOC_BYTES),
-  }),
-  z.object({
-    op: z.literal("replace"),
-    block: z.string().max(64),
-    markdown: z.string().max(MAX_DOC_BYTES),
-  }),
-  z.object({ op: z.literal("delete"), block: z.string().max(64) }),
-  z.object({
-    op: z.literal("find_replace"),
-    find: z.string().min(1).max(2000),
-    replace: z.string().max(2000),
-  }),
-]);
-type Edit = z.output<typeof edit>;
+export const EDIT_OPS = [
+  "append",
+  "prepend",
+  "insert_after",
+  "replace",
+  "delete",
+  "find_replace",
+  "replace_section",
+  "append_to_section",
+  "delete_section",
+  "move_section",
+] as const;
+type EditOp = (typeof EDIT_OPS)[number];
 
-/** The page after `edits`, all or nothing; INVALID naming what failed. */
-export function applyEdits(content: DocBlock[], edits: Edit[]): DocBlock[] {
+/** What each kind of edit needs besides its op. */
+const NEEDS: Record<EditOp, ("block" | "heading" | "markdown" | "find")[]> = {
+  append: ["markdown"],
+  prepend: ["markdown"],
+  insert_after: ["block", "markdown"],
+  replace: ["block", "markdown"],
+  delete: ["block"],
+  find_replace: ["find"],
+  replace_section: ["heading", "markdown"],
+  append_to_section: ["heading", "markdown"],
+  delete_section: ["heading"],
+  move_section: ["heading"],
+};
+
+// One flat shape for every op (it lists far smaller than a union of ten).
+const edit = z
+  .object({
+    op: z.enum(EDIT_OPS),
+    block: z
+      .string()
+      .max(64)
+      .optional()
+      .describe(
+        "A line's ^b… anchor. move_section: the line to put the section before (else the end).",
+      ),
+    heading: z
+      .string()
+      .max(300)
+      .optional()
+      .describe(
+        "*_section: a heading's words or anchor. Its section runs to the next heading as big or bigger.",
+      ),
+    markdown: z.string().max(MAX_DOC_BYTES).optional(),
+    find: z.string().min(1).max(2000).optional(),
+    replace: z.string().max(2000).optional(),
+  })
+  .superRefine((e, c) => {
+    for (const k of NEEDS[e.op])
+      if (e[k] === undefined)
+        c.addIssue({
+          code: "custom",
+          path: [k],
+          message: `${e.op} needs ${k}`,
+        });
+    if (e.op === "find_replace" && e.replace === undefined)
+      c.addIssue({
+        code: "custom",
+        path: ["replace"],
+        message: "find_replace needs replace",
+      });
+  });
+export type Edit = z.output<typeof edit>;
+
+/** Each edit's Markdown read as blocks (null for edits without Markdown). */
+export type ReadEdits = (DocBlock[] | null)[];
+
+const noLine = (block: string) =>
+  new CapabilityError(
+    "INVALID",
+    `There is no line ${block} on this page.`,
+    "Fetch the page again and use a line's ^b… anchor.",
+  );
+
+const words = (s: string) =>
+  plainText(s.replace(/^#{1,3}\s+/, ""))
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+/**
+ * Where a heading is: by its anchor, or by its words when exactly one
+ * heading reads that way.
+ */
+function headingIndex(blocks: DocBlock[], heading: string): number {
+  const anchor = heading.trim().replace(/^\^/, "");
+  const byId = blocks.findIndex((b) => b.id === anchor);
+  if (byId >= 0) {
+    if (blocks[byId].type !== "heading")
+      throw new CapabilityError(
+        "INVALID",
+        `The line ${heading} isn't a heading.`,
+        "Give a heading's words or anchor; replace a single line with op replace.",
+      );
+    return byId;
+  }
+  const want = words(heading);
+  const hits = blocks.flatMap((b, i) =>
+    b.type === "heading" && words(b.text) === want ? [i] : [],
+  );
+  const listed = () =>
+    blocks
+      .filter((b) => b.type === "heading")
+      .slice(0, 15)
+      .map(
+        (b) => `“${plainText((b as { text: string }).text).trim()}” ^${b.id}`,
+      )
+      .join(", ");
+  if (hits.length > 1)
+    throw new CapabilityError(
+      "INVALID",
+      `${hits.length} headings read “${heading.trim()}”.`,
+      `Give the one you mean by its anchor: ${hits.map((i) => `^${blocks[i].id}`).join(", ")}.`,
+    );
+  if (!hits.length)
+    throw new CapabilityError(
+      "INVALID",
+      `There is no heading “${heading.trim()}” on this page.`,
+      listed()
+        ? `Its headings: ${listed()}.`
+        : "This page has no headings; use append or insert_after.",
+    );
+  return hits[0];
+}
+
+/**
+ * New lines' ids: an anchor the Markdown gave is kept unless another line
+ * (outside what is being replaced, `keep`) already has it; every line
+ * without one gets a fresh id.
+ */
+function claim(
+  out: DocBlock[],
+  fresh: DocBlock[],
+  keep: Set<string> = new Set(),
+): DocBlock[] {
+  const taken = new Set(
+    out.flatMap((b) => (b.id && !keep.has(b.id) ? [b.id] : [])),
+  );
+  const seen = new Set<string>();
+  return withIds(
+    fresh.map((b) => {
+      if (!b.id) return b;
+      if (taken.has(b.id) || seen.has(b.id)) {
+        const { id: _id, ...rest } = b;
+        return rest as DocBlock;
+      }
+      seen.add(b.id);
+      return b;
+    }),
+  );
+}
+
+/**
+ * The page after `edits`, all or nothing; INVALID naming what failed.
+ * `read` holds each edit's Markdown already read (readMarkdown).
+ */
+export function applyEdits(
+  content: DocBlock[],
+  edits: Edit[],
+  read: ReadEdits,
+): DocBlock[] {
   let out = [...content];
   const at = (block: string) => {
     const i = out.findIndex((b) => b.id === block.replace(/^\^/, ""));
-    if (i < 0)
-      throw new CapabilityError(
-        "INVALID",
-        `There is no line ${block} on this page.`,
-        "Fetch the page again and use a line's ^b… anchor.",
-      );
+    if (i < 0) throw noLine(block);
     return i;
   };
-  for (const e of edits) {
+  const idsIn = (from: number, to: number) =>
+    new Set(out.slice(from, to).flatMap((b) => (b.id ? [b.id] : [])));
+  edits.forEach((e, n) => {
+    const fresh = read[n] ?? [];
     switch (e.op) {
       case "append":
-        out = [...out, ...withIds(parseDoc(e.markdown))];
+        out = [...out, ...claim(out, fresh)];
         break;
       case "prepend":
-        out = [...withIds(parseDoc(e.markdown)), ...out];
+        out = [...claim(out, fresh), ...out];
         break;
       case "insert_after": {
-        const i = at(e.block);
-        out.splice(i + 1, 0, ...withIds(parseDoc(e.markdown)));
+        const i = at(e.block!);
+        out.splice(i + 1, 0, ...claim(out, fresh));
         break;
       }
       case "replace": {
-        const i = at(e.block);
-        const fresh = withIds(carryBlockIds(out[i], parseDoc(e.markdown)));
-        out.splice(i, 1, ...fresh);
+        const i = at(e.block!);
+        const lines = claim(out, carryBlockIds(out[i], fresh), idsIn(i, i + 1));
+        out.splice(i, 1, ...lines);
         break;
       }
       case "delete":
-        out.splice(at(e.block), 1);
+        out.splice(at(e.block!), 1);
         break;
       case "find_replace": {
         let hits = 0;
         out = out.map((b) => {
-          if (!("text" in b) || !b.text.includes(e.find)) return b;
+          if (!("text" in b) || !b.text.includes(e.find!)) return b;
           hits++;
-          return { ...b, text: b.text.split(e.find).join(e.replace) };
+          return { ...b, text: b.text.split(e.find!).join(e.replace!) };
         });
         if (!hits)
           throw new CapabilityError(
@@ -322,39 +460,91 @@ export function applyEdits(content: DocBlock[], edits: Edit[]): DocBlock[] {
           );
         break;
       }
+      case "replace_section": {
+        const { start, end } = sectionRange(out, headingIndex(out, e.heading!));
+        // Markdown that starts with a heading replaces the heading too
+        // (keeping its anchor); otherwise only what is under it.
+        const whole = fresh[0]?.type === "heading";
+        const from = whole ? start : start + 1;
+        const head = out[start];
+        const named =
+          whole &&
+          !fresh[0].id &&
+          head.id &&
+          !fresh.some((b) => b.id === head.id)
+            ? [{ ...fresh[0], id: head.id }, ...fresh.slice(1)]
+            : fresh;
+        out.splice(from, end - from, ...claim(out, named, idsIn(from, end)));
+        break;
+      }
+      case "append_to_section": {
+        const { end } = sectionRange(out, headingIndex(out, e.heading!));
+        out.splice(end, 0, ...claim(out, fresh));
+        break;
+      }
+      case "delete_section": {
+        const { start, end } = sectionRange(out, headingIndex(out, e.heading!));
+        out.splice(start, end - start);
+        break;
+      }
+      case "move_section": {
+        const i = headingIndex(out, e.heading!);
+        const { start, end } = sectionRange(out, i);
+        const before = e.block ? at(e.block) : out.length;
+        if (before > start && before < end)
+          throw new CapabilityError(
+            "INVALID",
+            "A section can't move inside itself.",
+            "Put it before a line outside the section, or leave block out for the end.",
+          );
+        out = moveSection(out, i, before);
+        break;
+      }
     }
-  }
+  });
   return out;
 }
 
 /**
  * The same edits as Take/Leave suggestions beside the page's words, or
- * null when one of them can't be a suggestion (new lines, or a line
- * replaced by several).
+ * null when one of them can't be a suggestion (new lines, a line replaced
+ * by several, sections replaced or moved).
  */
 export function asSuggestions(
   content: DocBlock[],
   edits: Edit[],
+  read: ReadEdits,
 ): ProposedChange[] | null {
   const out: ProposedChange[] = [];
-  for (const e of edits) {
+  const deleteLine = (b: DocBlock) => {
+    const text = blockText(b);
+    out.push({
+      block_id: b.id!,
+      kind: "delete",
+      range_start: 0,
+      range_end: text.length,
+      text: "",
+      quote: text,
+    });
+  };
+  for (const [n, e] of edits.entries()) {
     if (e.op === "find_replace") {
       let found = false;
       for (const b of content) {
         if (!b.id || !("text" in b)) continue;
         const text = blockText(b);
-        let from = text.indexOf(e.find);
+        let from = text.indexOf(e.find!);
         while (from >= 0) {
           found = true;
           out.push({
             block_id: b.id,
             kind: e.replace ? "replace" : "delete",
             range_start: from,
-            range_end: from + e.find.length,
-            text: e.replace,
-            quote: e.find,
+            range_end: from + e.find!.length,
+            text: e.replace!,
+            quote: e.find!,
           });
-          from = text.indexOf(e.find, from + e.find.length);
+          from = text.indexOf(e.find!, from + e.find!.length);
         }
       }
       if (!found)
@@ -365,29 +555,28 @@ export function asSuggestions(
         );
       continue;
     }
-    if (e.op !== "replace" && e.op !== "delete") return null;
-    const b = content.find((x) => x.id === e.block.replace(/^\^/, ""));
-    if (!b)
-      throw new CapabilityError(
-        "INVALID",
-        `There is no line ${e.block} on this page.`,
-        "Fetch the page again and use a line's ^b… anchor.",
+    if (e.op === "delete_section") {
+      // Every line of the section struck through, for someone to take.
+      const { start, end } = sectionRange(
+        content,
+        headingIndex(content, e.heading!),
       );
-    if (!("text" in b)) return null;
-    const text = blockText(b);
-    if (e.op === "delete") {
-      out.push({
-        block_id: b.id!,
-        kind: "delete",
-        range_start: 0,
-        range_end: text.length,
-        text: "",
-        quote: text,
-      });
+      const lines = content.slice(start, end);
+      if (lines.some((b) => !b.id || !("text" in b))) return null;
+      lines.forEach(deleteLine);
       continue;
     }
-    const fresh = parseDoc(e.markdown);
+    if (e.op !== "replace" && e.op !== "delete") return null;
+    const b = content.find((x) => x.id === e.block!.replace(/^\^/, ""));
+    if (!b) throw noLine(e.block!);
+    if (!("text" in b)) return null;
+    if (e.op === "delete") {
+      deleteLine(b);
+      continue;
+    }
+    const fresh = read[n] ?? [];
     if (fresh.length !== 1 || !("text" in fresh[0])) return null;
+    const text = blockText(b);
     out.push({
       block_id: b.id!,
       kind: "replace",
@@ -423,7 +612,7 @@ export const editDoc = defineCapability({
   name: "edit_doc",
   title: "Edit a page",
   description:
-    "Version-checked edits to one page, all or none: append, prepend, insert_after, replace or delete a line (by its ^b\u2026 anchor), find_replace, and a title. Personal pages change directly, keeping the old state in history labelled with this agent; team pages get Take/Leave suggestions (edits suggestions can't hold go to review).",
+    "Version-checked edits to one page, all or none, in Orbyn Markdown (orbyn://spec/markdown): append, prepend, insert_after, replace or delete a line (by anchor), find_replace, a title, and sections by heading: replace_section, append_to_section, delete_section, move_section. Personal pages change directly (history keeps the old state, labelled with this agent; undo works); team pages get Take/Leave suggestions (edits suggestions can't hold go to review).",
   input: z
     .object({
       doc: z.string().trim().min(1).max(300),
@@ -443,12 +632,7 @@ export const editDoc = defineCapability({
   mode: "write",
   tier: "W2",
   async run(ctx, a) {
-    refuseSecrets(
-      a.title,
-      ...a.edits.map((e) =>
-        "markdown" in e ? e.markdown : "replace" in e ? e.replace : null,
-      ),
-    );
+    refuseSecrets(a.title, ...a.edits.flatMap((e) => [e.markdown, e.replace]));
     const id = docId(a.doc)!;
     const params = new Params();
     const scope = scopeFor(ctx.spaces, params);
@@ -480,7 +664,15 @@ export const editDoc = defineCapability({
         { id: `doc:${doc.id}`, version: doc.version },
       );
     const content = doc.content ?? [];
-    const after = applyEdits(content, a.edits);
+    const home = { id: doc.id, blocks: content };
+    const read: ReadEdits = [];
+    for (const e of a.edits)
+      read.push(
+        e.markdown === undefined
+          ? null
+          : await readMarkdown(ctx, e.markdown, home),
+      );
+    const after = applyEdits(content, a.edits, read);
     checkSize(after);
     const where = destination(ctx, doc.team_id, "W2");
     const direct = where === "direct" && !doc.team_id;
@@ -513,7 +705,7 @@ export const editDoc = defineCapability({
       });
     }
     // Team pages, and pages this connection may only suggest on.
-    const suggestions = a.title ? null : asSuggestions(content, a.edits);
+    const suggestions = a.title ? null : asSuggestions(content, a.edits, read);
     if (suggestions?.length) {
       const made = await proposeChanges(
         ctx.db,

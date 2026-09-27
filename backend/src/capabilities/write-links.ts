@@ -29,6 +29,7 @@ import {
 import type { UndoOp } from "./undo.js";
 import { applyDirect } from "./direct.js";
 import { MAX_DOC_BYTES, withIds } from "./write-docs.js";
+import { readMarkdown } from "./doc-markdown.js";
 import { itemEntry, visibleItem } from "./write-tasks.js";
 import {
   ADDS,
@@ -48,7 +49,7 @@ import {
   writeOutput,
   type DoneEntry,
 } from "./write.js";
-import { parseDoc, REVIEW_DELETABLE } from "@orbyn/core";
+import { REVIEW_DELETABLE } from "@orbyn/core";
 import { actionChange, quoted } from "./shared.js";
 
 /**
@@ -641,7 +642,7 @@ export const createProjectCapability = defineCapability({
       }
     const after: (() => Promise<void>)[] = [];
     if (a.page) {
-      const content = withIds(parseDoc(a.page.markdown));
+      const content = withIds(await readMarkdown(ctx, a.page.markdown, null));
       if (Buffer.byteLength(JSON.stringify(content)) > MAX_DOC_BYTES)
         throw new CapabilityError(
           "INVALID",
