@@ -251,6 +251,42 @@ test("Settings: the profile page, one per person (401, 403 for API keys, 422, 42
   assert.deepEqual(COVERED["PUT /teams/:id/agent-instructions"], ["organize"]);
 });
 
+test("M1: a person names their Orbyn assistant and keeps its optional persona", async () => {
+  const anon = await h.call(null, "GET", "/me/agent");
+  assert.equal(anon.statusCode, 401);
+  const initial = await h.call(olga.token, "GET", "/me/agent");
+  assert.equal(initial.statusCode, 200, initial.body);
+  assert.deepEqual(initial.json(), {
+    name: "Orbyn",
+    persona: "",
+    named_at: null,
+    updated_at: initial.json().updated_at,
+  });
+  const saved = await h.call(olga.token, "PUT", "/me/agent", {
+    name: "Mira",
+    persona: "Warm, direct, and curious.",
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.equal(saved.json().name, "Mira");
+  assert.equal(saved.json().persona, "Warm, direct, and curious.");
+  assert.ok(saved.json().named_at);
+  const tooLong = await h.call(olga.token, "PUT", "/me/agent", {
+    name: "x".repeat(41),
+    persona: "",
+  });
+  assert.equal(tooLong.statusCode, 422);
+  const apiKey = (
+    await h.call(olga.token, "POST", "/me/api-keys", { name: "m1" })
+  ).json().key;
+  assert.equal(
+    (await h.call(apiKey, "PUT", "/me/agent", { name: "No", persona: "" }))
+      .statusCode,
+    403,
+  );
+  const roundTrip = await h.call(olga.token, "GET", "/me/agent");
+  assert.equal(roundTrip.json().name, "Mira");
+});
+
 test("an agent makes the profile once (create_doc kind profile) and edits it by section", async () => {
   const stu = await h.register("h8-stu", "Stu");
   const k = await h.agentKey(stu, { access: "write", toolsets: ALL });

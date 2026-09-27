@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Alert,
   Easing,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -13,12 +15,15 @@ import {
   type AssistantSource,
   type Item,
   type Plan,
+  type PersonalAgentSettings,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
 import { ProposalReview } from "../components/ProposalReview";
+import { Field } from "../components/Field";
+import { client } from "../lib/api";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
@@ -66,6 +71,43 @@ export function AssistantScreen({
     deleteChat,
   } = assistant;
   const { height } = useWindowDimensions();
+  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identityName, setIdentityName] = useState("Orbyn");
+  const [identityPersona, setIdentityPersona] = useState("");
+  const [identitySaving, setIdentitySaving] = useState(false);
+  useEffect(() => {
+    void client
+      .agentSettings()
+      .then((value) => {
+        setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+      })
+      .catch(() => undefined);
+  }, []);
+  const saveIdentity = async (skip = false) => {
+    if (identitySaving) return;
+    setIdentitySaving(true);
+    try {
+      setIdentity(
+        await client.updateAgentSettings(
+          skip
+            ? { name: "Orbyn", persona: "" }
+            : {
+                name: identityName.trim() || "Orbyn",
+                persona: identityPersona,
+              },
+        ),
+      );
+    } catch {
+      Alert.alert(
+        "Couldn't save",
+        "Your assistant details could not be saved. Try again.",
+      );
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
   const locked = busy || thinking;
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
@@ -83,6 +125,54 @@ export function AssistantScreen({
 
   return (
     <>
+      <Modal
+        visible={!!identity && !identity.named_at}
+        transparent
+        animationType="fade"
+        onRequestClose={() => void saveIdentity(true)}
+      >
+        <View style={s.identityBackdrop}>
+          <View style={s.identitySheet}>
+            <Text style={shared.title}>Give your assistant a name</Text>
+            <Text style={[shared.subtitle, s.identityIntro]}>
+              Choose a name and an optional persona. You can change both later
+              in Settings.
+            </Text>
+            <Field label="Name">
+              <TextInput
+                autoFocus
+                maxLength={40}
+                value={identityName}
+                onChangeText={setIdentityName}
+                style={shared.input}
+              />
+            </Field>
+            <Field label="Persona">
+              <TextInput
+                multiline
+                maxLength={1000}
+                value={identityPersona}
+                onChangeText={setIdentityPersona}
+                placeholder="Warm, direct, and concise"
+                style={[shared.input, s.identityPersona]}
+              />
+            </Field>
+            <View style={s.identityActions}>
+              <Button
+                title="Save"
+                onPress={() => void saveIdentity()}
+                disabled={identitySaving}
+              />
+              <Button
+                title="Skip"
+                secondary
+                onPress={() => void saveIdentity(true)}
+                disabled={identitySaving}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
       {scope && (
         <View style={s.scopeRow}>
           <SmallAction
@@ -443,6 +533,21 @@ const LINE = 21;
 
 const s = themed(() =>
   StyleSheet.create({
+    identityBackdrop: {
+      flex: 1,
+      justifyContent: "center",
+      padding: 24,
+      backgroundColor: "rgba(10, 15, 25, 0.55)",
+    },
+    identitySheet: {
+      padding: 22,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+      gap: 14,
+    },
+    identityIntro: { marginBottom: 2 },
+    identityPersona: { minHeight: 78, textAlignVertical: "top" },
+    identityActions: { flexDirection: "row", gap: 8, alignItems: "center" },
     saved: {
       alignSelf: "stretch",
       gap: 6,

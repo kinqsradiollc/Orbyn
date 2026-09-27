@@ -112,11 +112,16 @@ export async function runAgent(
   const fitted = ai.limits
     ? fitData(
         overview,
-        ai.limits.maxMessageChars - agentPrompt(ctx.timezone, {}).length - 200,
+        ai.limits.maxMessageChars -
+          agentPrompt(ctx.timezone, {}, new Date(), ctx.identity).length -
+          200,
       )
     : overview;
   const messages: AgentMessage[] = [
-    { role: "system", content: agentPrompt(ctx.timezone, fitted) },
+    {
+      role: "system",
+      content: agentPrompt(ctx.timezone, fitted, new Date(), ctx.identity),
+    },
     ...history.slice(-12).map((t) => ({
       role: t.role,
       content:

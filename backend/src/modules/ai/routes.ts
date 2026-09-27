@@ -198,6 +198,12 @@ async function answer(
     );
   const ctx: AgentContext = {
     user: { id: u.id, role: u.role },
+    identity: (
+      await pool.query<{ name: string; persona: string }>(
+        `SELECT name, persona FROM agent_settings WHERE user_id = $1`,
+        [u.id],
+      )
+    ).rows[0] ?? { name: "Orbyn", persona: "" },
     timezone: d.timezone,
     intentText: intentOf(d.message, d.history),
     actions: [],

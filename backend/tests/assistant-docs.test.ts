@@ -160,3 +160,13 @@ test("the kind filter narrows the search", async () => {
   );
   assert.equal(meetings.items.length, 1);
 });
+
+test("M1 persona is included in the built-in assistant prompt", () => {
+  const prompt = agentPrompt("UTC", {}, new Date("2026-09-27T00:00:00Z"), {
+    name: "Mira",
+    persona: "Warm, direct, and curious.",
+  });
+  assert.match(prompt, /^You are Mira,/);
+  assert.match(prompt, /Persona: Warm, direct, and curious\./);
+  assert.match(agentPrompt("UTC", {}), /^You are Orbyn,/);
+});

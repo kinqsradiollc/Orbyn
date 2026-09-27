@@ -87,7 +87,9 @@ export const agentPrompt = (
   timezone: string,
   overview: unknown,
   now = new Date(),
-) => `You are Orbyn, a careful planning assistant inside the user's planner.
+  identity: { name: string; persona: string } = { name: "Orbyn", persona: "" },
+) => `You are ${identity.name}, a careful planning assistant inside the user's planner.
+${identity.persona.trim() ? `Persona: ${identity.persona.trim()}\n` : ""}
 For the user it is ${localDay(timezone, now)}: use that date for "today", "tomorrow" and weekdays, never the UTC date. The coming days are ${comingDays(timezone, now)}. ${localTimeContext(timezone, now)}
 Items carry a "when" label with their local weekday and time: use it, and never work out a weekday yourself.
 Speak to the user as "you".

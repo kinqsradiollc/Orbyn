@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   MAX_AGENT_INSTRUCTIONS,
   type AgentContextSettings,
+  type PersonalAgentSettings,
   type AgentInstructions,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
@@ -31,6 +32,9 @@ export function AgentWarmStartCards({
   run: Run;
 }) {
   const [data, setData] = useState<AgentContextSettings | null>(null);
+  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identityName, setIdentityName] = useState("Orbyn");
+  const [identityPersona, setIdentityPersona] = useState("");
   const [editing, setEditing] = useState<{
     team_id: string | null;
     text: string;
@@ -39,6 +43,12 @@ export function AgentWarmStartCards({
   const load = async () => setData(await client.agentContext());
   useEffect(() => {
     void run(load);
+    void run(async () => {
+      const value = await client.agentSettings();
+      setIdentity(value);
+      setIdentityName(value.name);
+      setIdentityPersona(value.persona);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -55,6 +65,16 @@ export function AgentWarmStartCards({
     void run(async () => {
       setData(await client.setAgentInstructions(d.team_id, d.text.trim()));
       setEditing(null);
+    });
+  };
+
+  const saveIdentity = () => {
+    void run(async () => {
+      const value = await client.updateAgentSettings({
+        name: identityName,
+        persona: identityPersona,
+      });
+      setIdentity(value);
     });
   };
 
@@ -87,6 +107,38 @@ export function AgentWarmStartCards({
 
   return (
     <>
+      <View style={shared.card}>
+        <Text style={shared.label}>Your assistant</Text>
+        <Text style={[shared.small, s.gap]}>
+          Give your Orbyn assistant a name and describe how it should come
+          across.
+        </Text>
+        <Field label="Name">
+          <TextInput
+            value={identityName}
+            onChangeText={setIdentityName}
+            maxLength={40}
+            autoCapitalize="words"
+            style={shared.input}
+          />
+        </Field>
+        <Field label="Persona">
+          <TextInput
+            value={identityPersona}
+            onChangeText={setIdentityPersona}
+            maxLength={1000}
+            multiline
+            style={[shared.input, { minHeight: 72 }]}
+            placeholder="Warm, direct, and concise"
+          />
+        </Field>
+        <Button
+          title="Save"
+          onPress={saveIdentity}
+          disabled={busy || identity === null}
+          style={s.last}
+        />
+      </View>
       <View style={shared.card}>
         <Text style={shared.label}>About me for agents</Text>
         <Text style={[shared.small, s.gap]}>

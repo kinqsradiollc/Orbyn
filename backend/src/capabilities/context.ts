@@ -100,6 +100,12 @@ export const getContext = defineCapability({
   async run(ctx) {
     const p = ctx.principal;
     const prefs = await loadPrefs(ctx.db, p.user.id);
+    const agent = (
+      await ctx.db.query<{ name: string; persona: string }>(
+        `SELECT name, persona FROM agent_settings WHERE user_id = $1`,
+        [p.user.id],
+      )
+    ).rows[0] ?? { name: "Orbyn", persona: "" };
     const grant = p.grant_id
       ? (
           await ctx.db.query<{ expires_at: Date | null; calls: number }>(
@@ -172,6 +178,7 @@ export const getContext = defineCapability({
     const u = structured.user;
     const markdown = [
       `Acting for ${u.name}. It is ${u.now_local} (${u.timezone}); working hours ${u.working_hours.start}–${u.working_hours.end}.`,
+      `Their Orbyn assistant is named ${agent.name}${agent.persona ? `: ${agent.persona}` : ""}.`,
       `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust as AgentTrust].name.toLowerCase()})` : ""}, ${
         [
           ...(p.personal ? ["Personal"] : []),

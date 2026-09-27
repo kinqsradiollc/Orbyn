@@ -9,6 +9,8 @@ import {
   type AgentRule,
   type AgentRuleInput,
   type AgentContextSettings,
+  type PersonalAgentSettings,
+  type AgentIdentityInput,
   type NewAgentWake,
   type ProposalStatus,
   type McpCatalog,
@@ -2736,6 +2738,15 @@ export class OrbynClient {
   /** "About me for agents" and each space's instructions (H8). */
   agentContext() {
     return this.request<AgentContextSettings>("/me/agent-context");
+  }
+  agentSettings() {
+    return this.request<PersonalAgentSettings>("/me/agent");
+  }
+  updateAgentSettings(input: AgentIdentityInput) {
+    return this.request<PersonalAgentSettings>("/me/agent", {
+      method: "PUT",
+      body: input,
+    });
   }
   /** Opens the About me page, making it first when there isn't one. */
   openAgentProfile() {

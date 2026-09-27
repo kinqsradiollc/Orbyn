@@ -1,4 +1,46 @@
 /* Assistant chat. Namespaced "ai-" so it never collides with global.css. */
+.ai-name-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 20 30 / 45%);
+}
+.ai-name-sheet {
+  display: grid;
+  gap: 14px;
+  width: min(440px, 100%);
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--color-surface);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 22%);
+}
+.ai-name-sheet h2,
+.ai-name-sheet p {
+  margin: 0;
+}
+.ai-name-sheet label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.ai-name-sheet input,
+.ai-name-sheet textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: inherit;
+  background: var(--color-surface);
+  font: inherit;
+}
+.ai-name-sheet > div {
+  display: flex;
+  gap: 8px;
+}
 /* The whole content area is the chat: one screen tall under the pinned top
    bar (and any banner above it), on one flat surface, with no page heading
    or footer. Only the conversation scrolls; the slim top row and the

@@ -6,7 +6,7 @@ import type { DocBlock } from "@orbyn/core";
 import { helpers, trapNetwork, type Person } from "./mcp-helpers.js";
 
 /**
- * H6b: every feature, no gaps, by extending the tools there are (still 60).
+ * H6b: every feature, no gaps, by extending the tools there are (now 61).
  * Pages (other names, folds, linking a mention, moving lines to a new page,
  * merging, taking a source off, Info through fetch, restoring a version,
  * the Trash), your own fields, pinning and exporting views, milestones and

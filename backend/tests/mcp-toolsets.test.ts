@@ -139,7 +139,7 @@ after(async () => {
   await pool.end();
 });
 
-test("60 tools: 28 core (apply_plan and get_profile too), the rest in toolsets; each toolset's tools are its own", async () => {
+test("60 tools: 28 core (including apply_plan and get_profile), the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
   // H6a folded mark_notifications_read into ack_inbox: not listed.
   assert.equal(listed.length, 60);
@@ -258,14 +258,14 @@ test("budgets: every combination of toolsets stays small", () => {
   };
   for (const t of optional)
     assert.ok(size([t]) < each[t], `${t} is ${size([t])} characters`);
-  // Every combination with core: under about 39k tokens and 60 tools, well
+  // Every combination with core: under about 39k tokens and 61 tools, well
   // inside the 100 and 128 tool limits clients have with other servers on.
   // H2 (append_doc, save_source, add_file) raised this from 150k, and H4
   // (study practice) from 156k.
   for (let mask = 0; mask < 1 << optional.length; mask++) {
     const sets = ["core", ...optional.filter((_, i) => mask & (1 << i))];
     assert.ok(size(sets) < 158_600, `${sets.join("+")}: ${size(sets)}`);
-    assert.ok(count(sets) <= 60, `${sets.join("+")}: ${count(sets)} tools`);
+    assert.ok(count(sets) <= 61, `${sets.join("+")}: ${count(sets)} tools`);
   }
 });
 

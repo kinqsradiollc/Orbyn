@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowUp,
   CalendarDays,
@@ -18,9 +18,11 @@ import {
   type AssistantSource,
   type Item,
   type Plan,
+  type PersonalAgentSettings,
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
 import { ProposalReview } from "../../components/ProposalReview";
+import { client } from "../../lib/api";
 import type { Assistant } from "../../hooks/useAssistant";
 import { stagger } from "../../lib/motion";
 import "./assistant.css";
@@ -97,6 +99,55 @@ export function AssistantView({
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
+  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identityName, setIdentityName] = useState("Orbyn");
+  const [identityPersona, setIdentityPersona] = useState("");
+  const [identityLoading, setIdentityLoading] = useState(true);
+  const [identitySaving, setIdentitySaving] = useState(false);
+  const [identityError, setIdentityError] = useState("");
+  useEffect(() => {
+    void client
+      .agentSettings()
+      .then((value) => {
+        setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+      })
+      .catch(() => undefined)
+      .finally(() => setIdentityLoading(false));
+  }, []);
+  const saveIdentity = async (e: FormEvent) => {
+    e.preventDefault();
+    if (identitySaving) return;
+    setIdentitySaving(true);
+    setIdentityError("");
+    try {
+      setIdentity(
+        await client.updateAgentSettings({
+          name: identityName.trim() || "Orbyn",
+          persona: identityPersona,
+        }),
+      );
+    } catch {
+      setIdentityError("Your assistant details could not be saved. Try again.");
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
+  const skipIdentity = async () => {
+    if (identitySaving) return;
+    setIdentitySaving(true);
+    setIdentityError("");
+    try {
+      setIdentity(
+        await client.updateAgentSettings({ name: "Orbyn", persona: "" }),
+      );
+    } catch {
+      setIdentityError("Your assistant details could not be saved. Try again.");
+    } finally {
+      setIdentitySaving(false);
+    }
+  };
   const locked = busy || thinking;
   const empty = turns.length === 0 && !thinking;
   // Quick replies only make sense on the newest assistant reply.
@@ -165,6 +216,60 @@ export function AssistantView({
 
   return (
     <section className={"ai-chat" + (empty ? " is-empty" : "")}>
+      {!identityLoading && identity && !identity.named_at && (
+        <div className="ai-name-overlay">
+          <form
+            className="ai-name-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-name-title"
+            onSubmit={saveIdentity}
+          >
+            <h2 id="ai-name-title">Give your assistant a name</h2>
+            <p>
+              Choose a name and an optional persona. You can change both later
+              in Settings.
+            </p>
+            <label>
+              Name
+              <input
+                autoFocus
+                maxLength={40}
+                value={identityName}
+                onChange={(e) => setIdentityName(e.target.value)}
+              />
+            </label>
+            <label>
+              Persona
+              <textarea
+                maxLength={1000}
+                rows={3}
+                placeholder="Warm, direct, and concise"
+                value={identityPersona}
+                onChange={(e) => setIdentityPersona(e.target.value)}
+              />
+            </label>
+            {identityError && <p role="alert">{identityError}</p>}
+            <div>
+              <button
+                type="submit"
+                className="ai-primary"
+                disabled={identitySaving}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="ai-ghost"
+                disabled={identitySaving}
+                onClick={() => void skipIdentity()}
+              >
+                Skip
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       <div className="ai-chat-head">
         {scope && (
           <button
