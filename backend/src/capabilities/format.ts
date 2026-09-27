@@ -25,7 +25,9 @@ export type Provenance =
   | "subscribed_feed"
   | "booking_guest"
   | "inbound_email"
-  | "import";
+  | "import"
+  /** Words an agent quoted from a web page it read (save_source). */
+  | "web_source";
 
 /** Zero-width, joiner, word-joiner, invisible operator and BOM characters. */
 const INVISIBLE =
@@ -756,6 +758,7 @@ const OUTSIDE: Record<string, string> = {
   import: "an imported file",
   inbound_email: "an email",
   booking_guest: "a booking guest",
+  web_source: "a web page",
 };
 
 /** Whether text from `source` came from outside Orbyn. */

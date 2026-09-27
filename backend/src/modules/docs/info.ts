@@ -12,6 +12,7 @@ import { authenticate } from "../../lib/auth.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { idParam } from "../../lib/params.js";
 import { linksHere } from "../links/service.js";
+import { pageSources } from "../sources/service.js";
 
 type InfoRow = {
   id: string;
@@ -80,7 +81,10 @@ export async function docInfoRoutes(app: FastifyInstance) {
         [id],
       )
     ).rows;
-    const linked = await linksHere(db, u.id, { kind: "doc", id });
+    const [linked, sources] = await Promise.all([
+      linksHere(db, u.id, { kind: "doc", id }),
+      pageSources(db, id),
+    ]);
     return {
       id: row.id,
       kind: row.kind,
@@ -112,6 +116,7 @@ export async function docInfoRoutes(app: FastifyInstance) {
       can_write: row.team_id
         ? !!row.role && hasTeamPermission(row.role, "items:write")
         : row.user_id === u.id,
+      sources,
     };
   });
 }

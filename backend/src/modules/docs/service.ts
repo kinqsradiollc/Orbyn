@@ -48,10 +48,9 @@ import type { z } from "zod";
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
   d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
-  CASE WHEN d.imported_from IS NOT NULL THEN (
-    SELECT json_build_object('id', k.id, 'doc_id', k.doc_id, 'file_name', k.file_name,
+  (SELECT json_build_object('id', k.id, 'doc_id', k.doc_id, 'file_name', k.file_name,
       'file_type', k.file_type, 'bytes', k.bytes, 'created_at', k.created_at)
-      FROM kept_files k WHERE k.doc_id = d.id) END AS original,
+      FROM kept_files k WHERE k.doc_id = d.id) AS original,
   to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
   d.aliases, d.archived_at,
   (d.archived_at IS NOT NULL OR EXISTS (

@@ -139,9 +139,9 @@ after(async () => {
   await pool.end();
 });
 
-test("56 tools: 26 core, the rest in toolsets; each toolset's tools are its own", async () => {
+test("59 tools: 26 core, the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
-  assert.equal(listed.length, 56);
+  assert.equal(listed.length, 59);
   const core = (await h.legacy(keys.core, "tools/list")).body.result.tools;
   assert.equal(core.length, 26);
   assert.ok(!core.some((t: any) => t.name === "get_team"));
@@ -253,11 +253,12 @@ test("budgets: every combination of toolsets stays small", () => {
   };
   for (const t of optional)
     assert.ok(size([t]) < each[t], `${t} is ${size([t])} characters`);
-  // Every combination with core: under about 37k tokens and 60 tools, well
+  // Every combination with core: under about 39k tokens and 60 tools, well
   // inside the 100 and 128 tool limits clients have with other servers on.
+  // H2 (append_doc, save_source, add_file) raised this from 150k.
   for (let mask = 0; mask < 1 << optional.length; mask++) {
     const sets = ["core", ...optional.filter((_, i) => mask & (1 << i))];
-    assert.ok(size(sets) < 150_000, `${sets.join("+")}: ${size(sets)}`);
+    assert.ok(size(sets) < 156_000, `${sets.join("+")}: ${size(sets)}`);
     assert.ok(count(sets) <= 60, `${sets.join("+")}: ${count(sets)} tools`);
   }
 });
@@ -1337,7 +1338,7 @@ test("the developer page's catalog and security.txt are public", async () => {
   const r = await h.call(null, "GET", "/developers/mcp");
   assert.equal(r.statusCode, 200);
   const c = r.json();
-  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 56);
+  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 59);
   assert.equal(c.toolsets.length, 8);
   assert.ok(c.versioning.length >= 3);
   assert.ok(c.changelog[0].date);

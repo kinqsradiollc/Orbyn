@@ -298,7 +298,8 @@ export async function mcpServerRoutes(app: FastifyInstance) {
 
   app.post(
     "/mcp",
-    { errorHandler: mcpErrorHandler, bodyLimit: 1_048_576 },
+    // add_file carries a file of up to 25 MB as base64 (H2): about 34 MB.
+    { errorHandler: mcpErrorHandler, bodyLimit: 36 * 1024 * 1024 },
     async (r, reply) => {
       agentRequests.add(r);
       routeLabels.set(r, "mcp");

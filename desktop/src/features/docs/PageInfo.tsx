@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Download,
+  ExternalLink,
   File as FileIcon,
   Folder,
   Image as ImageIcon,
@@ -14,6 +15,7 @@ import {
   dateLabel,
   fileSize,
   savedAgo,
+  sourceReadLabel,
   type Doc,
   type DocInfo,
   type DocTag,
@@ -21,6 +23,7 @@ import {
   type OutlineEntry,
   type PageFile,
   type PageFilesUsage,
+  type PageSource,
 } from "@orbyn/core";
 import { useConfirm } from "../../components/Confirm";
 import { client } from "../../lib/api";
@@ -177,6 +180,8 @@ export function PageInfo({
         report={report}
       />
 
+      {!!info?.sources?.length && <SourcesSection sources={info.sources} />}
+
       {(tags.length > 0 || (canWrite && !reading)) && (
         <section className="page-info-section">
           <h3>Tags</h3>
@@ -271,6 +276,41 @@ export function PageInfo({
         </section>
       )}
     </aside>
+  );
+}
+
+/**
+ * Sources an agent read and saved for this page (H2): each one's title
+ * (opening its address in a new tab), site, author, the day it was read
+ * and the words it quoted. Orbyn itself never opens them.
+ */
+function SourcesSection({ sources }: { sources: PageSource[] }) {
+  return (
+    <section className="page-info-section">
+      <h3>Sources</h3>
+      <ul className="page-info-sources">
+        {sources.map((src) => (
+          <li key={src.id}>
+            <a
+              className="page-info-link"
+              href={src.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              title={src.url}
+            >
+              <span>{src.title}</span>
+              <ExternalLink size={13} aria-hidden="true" />
+            </a>
+            <small>
+              {[src.site, src.author, sourceReadLabel(src.accessed_on)]
+                .filter(Boolean)
+                .join(" · ")}
+            </small>
+            {src.quote && <blockquote>{src.quote}</blockquote>}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

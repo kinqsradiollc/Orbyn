@@ -316,6 +316,26 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "agent_doc_drafts",
+    label: "Agents' unfinished long pages",
+    detail:
+      "Parts of long pages an agent sent but never finished, a day after the last part.",
+    table: "agent_doc_drafts",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "agent_file_days",
+    label: "Agents' file totals",
+    detail:
+      "How much each person's agents sent in files a day, for the daily cap.",
+    table: "agent_file_days",
+    where: "day < current_date - 7",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "mcp_tasks",
     label: "Agents' long jobs",
     detail:

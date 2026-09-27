@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { OriginalSection } from "./OriginalFile";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
   fileSize,
   MODE_LABELS,
   modesFor,
   savedAgo,
+  sourceReadLabel,
   type Doc,
   type DocInfo,
   type DocMode,
@@ -14,6 +15,7 @@ import {
   type OutlineEntry,
   type PageFile,
   type PageFilesUsage,
+  type PageSource,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { ContentsList } from "./ContentsSheet";
@@ -180,6 +182,7 @@ export function PageInfo({
             report={report}
           />
         )}
+        {!!info?.sources?.length && <SourcesBlock sources={info.sources} />}
         <FieldsBlock
           docId={doc.id}
           revision={`${doc.version}:${fieldsStamp ?? 0}`}
@@ -391,6 +394,41 @@ function FieldsBlock({
   );
 }
 
+/**
+ * Sources an agent read and saved for this page (H2): title (opens the
+ * address), site, author, the day it was read and the words it quoted.
+ */
+function SourcesBlock({ sources }: { sources: PageSource[] }) {
+  return (
+    <Section label="Sources">
+      {sources.map((src) => (
+        <View key={src.id} style={s.source}>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${src.title}`}
+            hitSlop={8}
+            onPress={() => void Linking.openURL(src.url)}
+          >
+            <Text style={s.link} numberOfLines={2}>
+              {src.title}
+            </Text>
+          </Pressable>
+          <Text style={s.small} numberOfLines={1}>
+            {[src.site, src.author, sourceReadLabel(src.accessed_on)]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
+          {!!src.quote && (
+            <Text style={s.quote} numberOfLines={3}>
+              {src.quote}
+            </Text>
+          )}
+        </View>
+      ))}
+    </Section>
+  );
+}
+
 function Section({
   label,
   children,
@@ -422,6 +460,16 @@ const s = themed(() =>
     actions: { flexDirection: "row", gap: 8 },
     link: { fontFamily: fonts.medium, fontSize: 15, color: colors.accent },
     fileRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    source: { gap: 2 },
+    quote: {
+      marginTop: 2,
+      paddingLeft: 8,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.border,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
     fileName: { flex: 1, minWidth: 0 },
     space: { gap: 6 },
     spaceBar: {

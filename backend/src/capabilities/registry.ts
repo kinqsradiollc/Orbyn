@@ -51,6 +51,8 @@ export type ErrorCode =
   | "UNAVAILABLE"
   | "DECLINED"
   | "CANCELLED"
+  /** A person's daily or space limit is reached (like HTTP 429). */
+  | "LIMITED"
   | "INTERNAL";
 
 /** A failure the agent can read and correct (an isError tool result). */

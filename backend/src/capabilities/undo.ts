@@ -152,7 +152,28 @@ export type UndoOp =
       id: string;
       version: number;
       fields: { name: string; definition: unknown };
-    };
+    }
+  /** A source it saved (H2): remove it, with its links to pages. */
+  | { op: "source.delete"; id: string }
+  /** A source it changed: put its words back. */
+  | {
+      op: "source.restore";
+      id: string;
+      fields: {
+        title: string;
+        site: string;
+        author: string | null;
+        quote: string | null;
+        accessed_on: string;
+      };
+    }
+  /** Lines of a page it linked to a source that was already saved. */
+  | { op: "source.unlink"; id: string; doc_id: string; lines: string[] }
+  /**
+   * A picture or file it sent (H2): delete it, unless another page shows
+   * it now; `kept` is a page's original rather than a line's file.
+   */
+  | { op: "file.delete"; id: string; kept?: boolean };
 
 /** Undo is kept this long after the change. */
 export const UNDO_DAYS = 30;
@@ -421,6 +442,46 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
         await deleteView(db, u, op.id);
         break;
       }
+      case "source.delete":
+        await db.query("DELETE FROM sources WHERE id = $1", [op.id]);
+        break;
+      case "source.restore":
+        await db.query(
+          `UPDATE sources SET title = $2, site = $3, author = $4, quote = $5,
+                  accessed_on = $6, updated_at = now()
+            WHERE id = $1`,
+          [
+            op.id,
+            op.fields.title,
+            op.fields.site,
+            op.fields.author,
+            op.fields.quote,
+            op.fields.accessed_on,
+          ],
+        );
+        break;
+      case "source.unlink":
+        await db.query(
+          `DELETE FROM source_uses
+            WHERE source_id = $1 AND doc_id = $2 AND block_id = ANY ($3::text[])`,
+          [op.id, op.doc_id, op.lines],
+        );
+        break;
+      case "file.delete":
+        if (op.kept)
+          await db.query(
+            "DELETE FROM kept_files WHERE id = $1 AND user_id = $2",
+            [op.id, u.id],
+          );
+        else
+          // A page that still shows it keeps it (the line was copied on).
+          await db.query(
+            `DELETE FROM page_files f WHERE f.id = $1 AND f.user_id = $2
+                AND NOT EXISTS (SELECT 1 FROM page_file_refs r
+                                 WHERE r.file_id = f.id)`,
+            [op.id, u.id],
+          );
+        break;
       case "view.restore": {
         const view = await findView(db, everySpace(u.id), op.id, true);
         if (!view) break;

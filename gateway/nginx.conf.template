@@ -241,6 +241,8 @@ ${UPSTREAM_MCP}
     # service, as on mcp.orbyn.dev.
     location = /mcp {
       ${MCP_GATE}
+      # add_file sends a file of up to 25 MB as base64 (about 34 MB).
+      client_max_body_size 36m;
       if ($mcp_listen) {
         rewrite ^ /.mcp-listen last;
       }
@@ -478,6 +480,8 @@ ${UPSTREAM_MCP}
 
     location = /mcp {
       ${MCP_GATE}
+      # add_file sends a file of up to 25 MB as base64 (about 34 MB).
+      client_max_body_size 36m;
       if ($mcp_listen) {
         rewrite ^ /.mcp-listen last;
       }

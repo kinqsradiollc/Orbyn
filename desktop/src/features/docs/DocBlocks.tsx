@@ -103,6 +103,18 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
           );
         if (run.footnote)
           return <FootnoteRef key={i} label={run.footnote} start={run.start} />;
+        // Where the line came from (`[src: …]`): a small quiet chip.
+        if (run.source)
+          return (
+            <span
+              key={i}
+              data-src={run.start}
+              className="doc-inline-source"
+              title={`Source: ${run.text}`}
+            >
+              {shade(run.text)}
+            </span>
+          );
         // A mention of someone who can open the page: a quiet pill, not a
         // link to follow.
         if (run.link && mentionedPerson(run.link))

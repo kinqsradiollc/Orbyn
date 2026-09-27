@@ -2506,6 +2506,23 @@ h4.doc-heading {
   white-space: nowrap;
 }
 
+/* "[src: …]": where a line came from (H2), a small quiet chip. */
+.doc-inline-source {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 2px;
+  padding: 0 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+
 /* "@Anna": someone named in the page, as a soft pill. */
 .doc-mention {
   padding: 0 6px;
@@ -3078,6 +3095,41 @@ h4.doc-heading {
   color: var(--color-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+.page-info-sources {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.page-info-sources li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.page-info-sources .page-info-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-info-sources .page-info-link {
+  max-width: 100%;
+}
+.page-info-sources small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.page-info-sources blockquote {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  padding: 0 0 0 8px;
+  overflow: hidden;
+  border-left: 2px solid var(--color-border);
+  color: var(--color-textSoft);
+  font-size: 13px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 .page-info-space {
   display: grid;

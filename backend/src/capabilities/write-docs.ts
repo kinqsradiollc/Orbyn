@@ -103,7 +103,7 @@ export const createDocCapability = defineCapability({
   name: "create_doc",
   title: "Write a new page",
   description:
-    "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox.",
+    "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox. Longer text: append_doc (workspace).",
   input: z
     .object({
       title: z.string().trim().min(1).max(200),

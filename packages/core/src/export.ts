@@ -100,6 +100,7 @@ function inlineHtml(text: string, o: HtmlOptions = {}): string {
         const n = o.notes?.get(run.footnote) ?? run.footnote;
         return `<sup><a href="#fn-${escapeHtml(String(n))}">${escapeHtml(String(n))}</a></sup>`;
       }
+      if (run.source) return `<small class="src">[${body}]</small>`;
       if (run.link) {
         const href = o.linkUrl ? o.linkUrl(run.link) : run.link;
         return href ? `<a href="${escapeHtml(href)}">${body}</a>` : body;
@@ -376,7 +377,13 @@ export function docToText(title: string, blocks: DocBlock[]): string {
 const plainRuns = (text: string) =>
   parseDocInline(text)
     .map((r) =>
-      r.footnote ? `[${r.footnote}]` : r.math ? mathToText(r.text) : r.text,
+      r.footnote
+        ? `[${r.footnote}]`
+        : r.source
+          ? `[${r.text}]`
+          : r.math
+            ? mathToText(r.text)
+            : r.text,
     )
     .join("");
 

@@ -24,6 +24,7 @@ export const REF_TYPES = [
   "view",
   "proposal",
   "import",
+  "source",
 ] as const;
 export type RefType = (typeof REF_TYPES)[number];
 

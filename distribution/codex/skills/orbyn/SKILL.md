@@ -168,6 +168,7 @@ Pages in Orbyn are made of lines (blocks). Agents read them as Markdown (fetch, 
 | Divider               | `---`                                                                                                                                    |
 | Table                 | pipe rows, a row of dashes under the header (below)                                                                                      |
 | Footnote              | `[^1]` in a line, and the note as its own line `[^1]: words`                                                                             |
+| Source                | `[src: Lecture 5 slides, slide 12]` in a line (usually at its end): where its words came from, drawn as a small source chip              |
 | Picture               | `![caption](orbyn://file/<id>)` on its own line; `?w=60` draws it at 60% width                                                           |
 | File                  | `[Slides.pdf](orbyn://file/<id>)` on its own line                                                                                        |
 | Embed                 | a code block in `orbyn-embed` holding `orbyn://doc/<id>#<anchor>` (a section of another page, live) or `tasks: linked`                   |
@@ -212,6 +213,12 @@ When writing, `[[Page title]]`, `[[Page title#Heading]]`, `[[Page title#^anchor]
 
 Only pictures and files already in Orbyn can be shown: ones on a page this connection can read (fetch shows their `orbyn://file/<id>` lines). The same file can appear on several pages. Pictures from other addresses are refused.
 
+### Sources
+
+A line that came from somewhere says so with a source marker: `The mitochondria makes ATP. [src: Lecture 5 slides, slide 12]`. The words inside are yours (a slide, a page, a timestamp, a book and page); the marker is part of the line, so it moves, copies and is edited with it, and it reads back exactly as written. `[src: …](https://…)` is an ordinary link instead. Study cards leave markers out of their question and answer.
+
+A web page you read can also be saved with save_source (its address, title, a quote, the day you read it and its author): it is kept once per address in the page's space, linked to the page and the lines that use it, and listed in the page's Info under Sources; fetch names a page's sources and opens `source:<id>`. Mark those lines with `[src: its title]` as well. Orbyn never opens the address.
+
 ### Checklists and tasks
 
 A checklist line can be tied to a task (tasks_from_doc, or "Make tasks" in the app). Ticking either one ticks the other. Keep such a line's anchor when editing, or it loses its task.
@@ -222,7 +229,7 @@ A line written as `Question :: Answer` (a paragraph, bullet or numbered line) is
 
 ### Limits
 
-A page an agent writes is at most 60 KB of Markdown, so the apps can still open and save it. Credentials (keys, tokens, passwords) are refused.
+A page an agent writes is at most 60 KB of Markdown, so the apps can still open and save it. Longer text (a lecture transcript, up to 2 MB) goes through append_doc in parts of up to 512 KB, each ending between lines; finishing joins them in number order, all or nothing, and over 60 KB makes linked pages ("Title (part 2 of 3)"), each ending with a link to the next. Credentials (keys, tokens, passwords) are refused.
 
 ## Saved views
 

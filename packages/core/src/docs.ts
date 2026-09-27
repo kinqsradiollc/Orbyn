@@ -716,6 +716,11 @@ export type DocInline = {
   strike?: boolean;
   /** `[^1]`: a footnote marker (EDT-13); `text` is its label. */
   footnote?: string;
+  /**
+   * `[src: Lecture 5 slides, slide 12]`: where the line came from (H2),
+   * drawn as a small source chip; `text` is those words.
+   */
+  source?: boolean;
 };
 
 /** Whether a run carries any style: it can't take another one on top. */
@@ -728,15 +733,17 @@ export const isStyledRun = (run: DocInline): boolean =>
     run.link ||
     run.highlight ||
     run.strike ||
-    run.footnote
+    run.footnote ||
+    run.source
   );
 
 // Inline maths first so `$x_1$` isn't mistaken for emphasis, then code (which
 // is literal), then footnote markers, links, highlights, strikes, then
 // emphasis. A highlight or a strike must hug its words (`==this==`), so
-// "a == b" in a note about code stays text.
+// "a == b" in a note about code stays text. A source marker (`[src: …]`)
+// is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|`([^`\n]+)`|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
+  /\$([^$\n]+?)\$|`([^`\n]+)`|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]/g;
 
 /**
  * Split one line into styled runs. Unmatched text passes through unchanged, so
@@ -772,11 +779,65 @@ export function parseDocInline(text: string): DocInline[] {
       out.push({ text: m[9], start: start + 2, bold: true });
     else if (m[10] !== undefined)
       out.push({ text: m[10], start: start + 1, italic: true });
+    else if (m[11] !== undefined)
+      out.push({
+        text: m[11],
+        start: start + m[0].indexOf(m[11], 5),
+        source: true,
+      });
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: text.slice(at), start: at });
   return out.length ? out : [{ text: "", start: 0 }];
 }
+
+// --------------------------------------------------------------- sources ---
+
+/**
+ * A line's source (H2): `[src: Lecture 5 slides, slide 12]`, usually at the
+ * end of the line, says where its words came from. It is part of the line's
+ * text (so it round-trips, moves and is edited with the line) and is drawn
+ * as a small source chip. A web source an agent read can be saved as well
+ * (save_source) and then shows in the page's Info under Sources.
+ */
+export const SOURCE_MARK = /\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]/g;
+
+/** The words of each source marker in a line, in order. */
+export const sourcesIn = (text: string): string[] =>
+  [...text.matchAll(SOURCE_MARK)].map((m) => m[1]);
+
+/** A line with its source markers taken out (for cards and previews). */
+export const withoutSources = (text: string): string =>
+  text.includes("[src:")
+    ? text
+        .replace(SOURCE_MARK, "")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim()
+    : text;
+
+/** "Read Sep 20, 2026": the day a source was read (YYYY-MM-DD), as Info shows it. */
+export function sourceReadLabel(day: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return "";
+  const at = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return `Read ${at.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+/** A source an agent read and saved for a page (save_source), as Info lists it. */
+export type PageSource = {
+  id: string;
+  url: string;
+  title: string;
+  /** The website's name, or the address's host. */
+  site: string;
+  author: string | null;
+  /** What it said, in its own words (at most 2,000 characters). */
+  quote: string | null;
+  /** The day it was read, YYYY-MM-DD. */
+  accessed_on: string;
+  /** The lines of this page that use it (anchors), when it said. */
+  lines: string[];
+};
 
 /** The shape of an id, as links and embeds write it. */
 const UUID_SHAPE_EARLY =

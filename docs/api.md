@@ -955,10 +955,13 @@ Kept for anything already pointing at it; `export?format=md` is the same bytes.
 ### `GET /docs/:id/info` (auth)
 
 A page's Info panel in one request (NAV-04):
-`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write }`.
+`{ id, kind, team, project, event, folder, tags, linked_here, versions: { count, recent }, updated_at, reviewed_at, can_write, sources }`.
 `team`, `project`, `event` (`{ id, title, due_at }`) and `folder` are `null` when the page has none;
 `recent` is the latest three versions as `GET /docs/:id/versions` lists them. `linked_here` counts only
-places the reader can open. `404` for a page the reader can't open or one in the Trash.
+places the reader can open. `sources` are web sources an agent read and saved for the page
+(save_source): `[ { id, url, title, site, author, quote, accessed_on, lines } ]`, newest first, where
+`lines` are the anchors of the lines that use each one; Orbyn never opens them. `404` for a page the
+reader can't open or one in the Trash.
 
 ### `GET /docs/:id/versions` (auth)
 

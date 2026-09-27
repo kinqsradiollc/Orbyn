@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { newBlockId, parseDocInline, type DocBlock } from "./docs.js";
+import {
+  newBlockId,
+  parseDocInline,
+  withoutSources,
+  type DocBlock,
+} from "./docs.js";
 
 /**
  * Study: flashcards written in your own pages, reviewed with spaced
@@ -67,7 +72,9 @@ export function cardsInBlocks(blocks: DocBlock[]): PageCard[] {
       seen.add(key);
       out.push({ key, block_id: b.id ?? null, question, answer });
     };
-    const both = b.text.match(BOTH_WAYS);
+    // A card's source (`[src: …]`) says where it came from; it isn't asked.
+    const text = withoutSources(b.text);
+    const both = text.match(BOTH_WAYS);
     if (both) {
       const front = both[1].trim();
       const back = both[2].trim();
@@ -76,15 +83,15 @@ export function cardsInBlocks(blocks: DocBlock[]): PageCard[] {
       add(`${key}#r`, back, front);
       continue;
     }
-    const m = b.text.match(CARD_LINE);
+    const m = text.match(CARD_LINE);
     if (m) {
       const question = m[1].trim();
       add(b.id ?? questionKey(question), question, m[2].trim());
       continue;
     }
-    const cloze = clozeCards(b.text);
+    const cloze = clozeCards(text);
     if (cloze.length) {
-      const base = b.id ?? questionKey(b.text.replace(CLOZE, "$1"));
+      const base = b.id ?? questionKey(text.replace(CLOZE, "$1"));
       cloze.forEach((c, n) => add(`${base}#c${n + 1}`, c.question, c.answer));
     }
   }
@@ -168,7 +175,7 @@ export function highlightCards(blocks: DocBlock[]): string[] {
       .map((r) =>
         r.highlight
           ? `{{${r.text.replace(/[{}]/g, "")}}}`
-          : r.footnote
+          : r.footnote || r.source
             ? ""
             : r.link
               ? r.text

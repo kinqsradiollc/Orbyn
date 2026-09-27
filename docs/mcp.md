@@ -139,13 +139,13 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                                                             |
 | --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo`, `get_inbox`, `ack_inbox`, `ask_person` |
-| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`                                                                                                                                                                                                                                                              |
+| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`, `append_doc`                                                                                                                                                                                                                                                |
 | `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                      |
-| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`                                                                                                                                                                                                                                                                                                                                                      |
+| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`, `save_source`                                                                                                                                                                                                                                                                                                                                       |
 | `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                                                                                      |
 | `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                           |
 | `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                  |
-| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`                                                                                                                                                                                                                                                                                                                                   |
+| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`, `add_file`                                                                                                                                                                                                                                                                                                                       |
 
 ## Tools
 
@@ -185,6 +185,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `comment_on_doc`          | Comment on a page                      | write       | write, workspace     |
 | `resolve_suggestions`     | Take or leave suggestions              | destructive | write, workspace     |
 | `tasks_from_doc`          | Make tasks from a page                 | write       | write, workspace     |
+| `append_doc`              | Write a long page in parts             | write       | suggest, workspace   |
 | `get_work_patterns`       | How you work                           | read        | read, planner        |
 | `what_if`                 | What if…                               | read        | read, planner        |
 | `log_focus`               | Log focus time                         | write       | write, planner       |
@@ -194,6 +195,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `get_study`               | Study overview                         | read        | read, study          |
 | `update_study`            | Record reviews and exams               | write       | write, study         |
 | `plan_revision`           | Preview revision sessions              | read        | read, study          |
+| `save_source`             | Save a source                          | write       | suggest, study       |
 | `get_follow_through`      | Follow-through                         | read        | read, followthrough  |
 | `add_progress`            | Add a progress note                    | write       | write, followthrough |
 | `answer_ask`              | Answer an ask                          | destructive | write, followthrough |
@@ -207,6 +209,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `start_import`            | Start an import                        | write       | write, files         |
 | `cancel_import`           | Cancel an import                       | destructive | write, files         |
 | `import_tasks`            | Import tasks                           | write       | write, files         |
+| `add_file`                | Add a file                             | write       | suggest, files       |
 
 ### `get_context`
 
@@ -232,7 +235,7 @@ Find tasks, events, pages, projects, work records, saved views, templates, folde
 
 ### `fetch`
 
-Open one thing: task:, `event:<id>@<occurrence>`, `doc:<id>#<line>`, project:, record:, template:, view: (run: its rows as a table), proposal: or import:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.
+Open one thing: task:, `event:<id>@<occurrence>`, `doc:<id>#<line>`, project:, record:, template:, view: (run: its rows as a table), proposal:, import: or source:, an orbyn:// URI, an Orbyn link, a bare id or an exact title (several matches come back as AMBIGUOUS with candidates). Returns {id, title, text, url, metadata}; pages are Markdown with each line's anchor (^b…), in parts when long (continue with metadata.next_block). Text by others is fenced as untrusted content.
 
 | Argument        | Type   | Notes                                                      |
 | --------------- | ------ | ---------------------------------------------------------- |
@@ -379,7 +382,7 @@ Moves sessions, pushes them to the next free working slot, or removes them (ids 
 
 ### `create_doc`
 
-Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox.
+Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox. Longer text: append_doc (workspace).
 
 | Argument           | Type                     | Notes                                                                                                                                      |
 | ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -628,6 +631,23 @@ Turns a page's open checklist lines (all of them, or lines: their anchors) into 
 | `project`        | string         | Put the tasks in this project.                                                                                                             |
 | `client_ref`     | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
+### `append_doc`
+
+For pages longer than create_doc takes (a lecture transcript, a long brief): send Orbyn Markdown in parts of up to 512 KB, 2 MB in all. The first call gives title (and team, folder_id, project) and returns a draft id; later calls send draft with the next part; finish: true makes the page from every part in number order, all or nothing. Over about 60 KB it becomes linked pages. Unfinished drafts go a day after their last part.
+
+| Argument     | Type                     | Notes                                                                                                                                      |
+| ------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `draft`      | string                   | `draft:<id>` from the first call; leave out to start one.                                                                                  |
+| `title`      | string                   |                                                                                                                                            |
+| `part`       | integer                  | This part's number; parts join in number order (default: the next). Sending a number again replaces that part.                             |
+| `markdown`   | string                   |                                                                                                                                            |
+| `finish`     | boolean                  | Make the page from every part, all or nothing. Default false.                                                                              |
+| `kind`       | `doc`, `note`, `meeting` | Default "doc".                                                                                                                             |
+| `team`       | string                   |                                                                                                                                            |
+| `folder_id`  | id                       |                                                                                                                                            |
+| `project`    | string                   |                                                                                                                                            |
+| `client_ref` | string                   | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
 ### `get_work_patterns`
 
 What the planner has learned: how long tasks really take against their estimates, the hours that usually go well, how much a day usually holds, planned against done over four weeks by weekday, focus totals (and the timer, if running), where planned time went, unfinished sessions from the last two weeks, and the person's routines (frames, habits, places, with ids).
@@ -721,6 +741,23 @@ Previews revision sessions in free working time before an exam (one a day from u
 | ----------------- | ------- | ------------------------------ |
 | `exam` (required) | string  | The exam's key from get_study. |
 | `minutes`         | integer | Default 30.                    |
+
+### `save_source`
+
+Keeps a source you read (its https address, title, a quote, the day read, author, site) in Personal or a team, once per address there, linked to a page and its lines: the page's Info lists it under Sources. Orbyn never opens the address. Mark lines with [src: …] too (orbyn://spec/markdown).
+
+| Argument           | Type           | Notes                                                                                                                                      |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `url` (required)   | string         |                                                                                                                                            |
+| `title` (required) | string         |                                                                                                                                            |
+| `quote`            | string         |                                                                                                                                            |
+| `accessed`         | string         | YYYY-MM-DD; default today.                                                                                                                 |
+| `author`           | string         |                                                                                                                                            |
+| `site`             | string         |                                                                                                                                            |
+| `doc`              | string         | The page that uses it (its space is the source's).                                                                                         |
+| `lines`            | list of string | Anchors of the lines on doc that use it.                                                                                                   |
+| `team`             | string         |                                                                                                                                            |
+| `client_ref`       | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `get_follow_through`
 
@@ -852,7 +889,7 @@ The person's imports into Docs (still going, and the last week's), each with its
 
 ### `start_import`
 
-Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (valid 10 minutes): PUT the file's bytes to it, then poll list_imports with the import id until its page is ready.
+Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (10 minutes): PUT the file's bytes there, then poll list_imports until its page is ready.
 
 | Argument               | Type    | Notes                                                                                                                                      |
 | ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -881,6 +918,20 @@ Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, l
 | `data` (required)   | string         |                                                                                                                                            |
 | `dry_run`           | boolean        | Default true.                                                                                                                              |
 | `client_ref`        | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `add_file`
+
+Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file line, or as the page's original. PDF, Word, PowerPoint, pictures, text; typed by its bytes; undoable.
+
+| Argument             | Type               | Notes                                                                                                                                      |
+| -------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `doc` (required)     | string             |                                                                                                                                            |
+| `name` (required)    | string             |                                                                                                                                            |
+| `content` (required) | string             |                                                                                                                                            |
+| `keep`               | `line`, `original` | Default "line".                                                                                                                            |
+| `after`              | string             | A line's anchor.                                                                                                                           |
+| `caption`            | string             |                                                                                                                                            |
+| `client_ref`         | string             | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ## Resources
 
@@ -952,6 +1003,9 @@ Catalog version: `2026-09-27`.
 - ask_person in core: a question with up to 5 choices (or yes/no), an optional default and expiry (24 h). Answered in the chat with a one-field form when the client declares form elicitation; otherwise a card in Orbyn and a push (Approve/Decline for yes/no), and the answer, default or expiry arrives as an answer item in get_inbox. question_id looks up its status.
 - Write pages like a person: one documented Orbyn Markdown dialect (orbyn://spec/markdown) for every kind of line: callouts, tables, footnotes, highlights and strikes, mermaid diagrams, embeds (orbyn-embed), live lists (orbyn-list), pictures and files by `orbyn://file/<id>` (only ones the person can already read), study-card lines. create_doc and edit_doc store them as real blocks and read [[Page]], [[Page#Heading]] and [[#Heading]] as links; fetch returns pages in the same dialect with every line's anchor, nested lists indented, so reading and writing back changes nothing.
 - edit_doc sections by heading words or anchor: replace_section, append_to_section, delete_section and move_section (a section runs to the next heading as big or bigger). Anchors written in the Markdown are kept (new ones may be named); all or none, version-checked and undoable; team pages keep suggestions (a deleted section's lines struck through) or go to review.
+- The agent reads, Orbyn keeps the result (H2): append_doc (workspace) takes long Orbyn Markdown in parts (up to 512 KB each, 2 MB in all; a draft per connection, parts in any order, a part number sent again replaces it, each checked as it arrives) and makes the page on finish: true, all or nothing (finish sent again answers the same); over 60 KB it becomes linked pages. Unfinished drafts go a day after their last part.
+- Source lines: [src: Lecture 5 slides, slide 12] in a line says where it came from, drawn as a small chip on the web and phone and kept exactly (orbyn://spec/markdown). save_source (study) keeps a web source the agent read (https address, title, quote, day read, author, site) once per address per space, linked to a page and its lines; the page's Info lists it under Sources, fetch names a page's sources and opens `source:<id>` (the quote fenced as outside content). Orbyn never opens the address.
+- add_file (files): a file in the call (base64, up to 25 MB, 500 MB a person a day, error code LIMITED past it or past the person's space) as a picture or file line on a page, or kept as the page's original. PDF, Word, PowerPoint, pictures and text, typed from the bytes; stored in Orbyn's own file store; undo removes it. MCP requests may now be up to 36 MB.
 
 ### 2026-09-26
 

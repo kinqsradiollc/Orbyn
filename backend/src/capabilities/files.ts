@@ -153,7 +153,7 @@ export const startImportCapability = defineCapability({
   name: "start_import",
   title: "Start an import",
   description:
-    "Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (valid 10 minutes): PUT the file's bytes to it, then poll list_imports with the import id until its page is ready.",
+    "Starts importing a PDF, Word (.docx), PNG or JPEG file into Docs, optionally into a project. Returns a single-use upload URL (10 minutes): PUT the file's bytes there, then poll list_imports until its page is ready.",
   input: z
     .object({
       file_name: z.string().trim().min(1).max(200),
