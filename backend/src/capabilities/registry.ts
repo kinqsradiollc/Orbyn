@@ -102,6 +102,28 @@ export type AskReason = { kind: string; text: string };
 export type Asking = {
   mode: "collect" | "approved";
   reasons: AskReason[];
+  /**
+   * A question for the person in the chat (ask_person), instead of the
+   * usual yes/no about a change: set by the capability while collecting.
+   */
+  question?: ChatQuestion;
+  /** What the person answered to that question in the chat. */
+  answer?: ChatAnswer;
+};
+
+/** A question an agent puts to its person in the chat (a one-field form). */
+export type ChatQuestion = {
+  question: string;
+  detail: string | null;
+  choices: string[];
+  yes_no: boolean;
+  default_choice: string | null;
+};
+
+/** The person's answer in the chat: a choice (or yes/no), or none. */
+export type ChatAnswer = {
+  outcome: "answered" | "declined" | "cancelled";
+  answer: string | boolean | null;
 };
 
 /** How far a call has got: steps done, of how many, and what it's doing. */

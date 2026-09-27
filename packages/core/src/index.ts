@@ -46,6 +46,7 @@ export * from "./pdftext.js";
 export * from "./omml.js";
 export * from "./learning.js";
 export * from "./agents.js";
+export * from "./agent-inbox.js";
 export * from "./page-tags.js";
 export * from "./page-templates.js";
 export * from "./line-toolbar.js";

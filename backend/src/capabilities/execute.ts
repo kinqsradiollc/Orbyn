@@ -16,6 +16,8 @@ import {
   argsDigest,
   type AskReason,
   type Asking,
+  type ChatAnswer,
+  type ChatQuestion,
   cursorCodec,
   cursorKey,
   type Capability,
@@ -71,7 +73,7 @@ export type Execution = {
    * nothing was changed (the call was rolled back); this says what it
    * would do and why it asks.
    */
-  ask?: { what: string[]; why: string[] };
+  ask?: { what: string[]; why: string[]; question?: ChatQuestion };
 };
 
 /** Rolls a collecting call back once it knows what it would do. */
@@ -79,6 +81,7 @@ class AskFirst extends Error {
   constructor(
     readonly answer: CapabilityResult<unknown>,
     readonly reasons: AskReason[],
+    readonly question?: ChatQuestion,
   ) {
     super("ask first");
   }
@@ -260,6 +263,8 @@ export type ExecuteOptions = {
    * once the person said yes there.
    */
   asking?: Asking["mode"];
+  /** The person's answer to a question asked in the chat (ask_person). */
+  chatAnswer?: ChatAnswer;
 };
 
 /** Calls `name` for `p` with `args`, as an MCP tool result. */
@@ -305,7 +310,11 @@ export async function execute(
   let replayed: Recorded | null = null;
   const asking: Asking | undefined =
     options.asking && cap.mode !== "read"
-      ? { mode: options.asking, reasons: [] }
+      ? {
+          mode: options.asking,
+          reasons: [],
+          ...(options.chatAnswer ? { answer: options.chatAnswer } : {}),
+        }
       : undefined;
   const run = async (db: Queryable) => {
     if (grantId && clientRef) {
@@ -332,7 +341,7 @@ export async function execute(
     const answer = await cap.run(ctx, input as z.output<typeof cap.input>);
     // Something in it needs the person first: undo it all and ask.
     if (asking?.mode === "collect" && asking.reasons.length)
-      throw new AskFirst(answer, asking.reasons);
+      throw new AskFirst(answer, asking.reasons, asking.question);
     if (grantId) {
       const outcome = answer.write?.outcome ?? "ok";
       const targets = answer.targets ?? [];
@@ -406,8 +415,9 @@ export async function execute(
         outcome: "proposed",
         targets: [],
         ask: {
-          what: wouldDo(e.answer),
+          what: e.question ? [] : wouldDo(e.answer),
           why: e.reasons.map((r) => r.text),
+          ...(e.question ? { question: e.question } : {}),
         },
       };
     return fail(asCapabilityError(e, options.log));

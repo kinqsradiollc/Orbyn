@@ -1,6 +1,7 @@
 import { getCalendar } from "./calendar-view.js";
 import { getContext } from "./context.js";
 import { listAgentChanges, undoCapability } from "./changes.js";
+import { ackInbox, askPerson, getInbox } from "./inbox.js";
 import { fetchCapability } from "./fetch.js";
 import { addTask, getAgenda, searchItems } from "./legacy.js";
 import { getProject } from "./project.js";
@@ -98,6 +99,10 @@ export const registry = new Registry([
   // Agent 2 (H1): what this connection changed, and taking it back.
   listAgentChanges,
   undoCapability,
+  // Agent 2 (H0): everything routes to your agent, and asking the person.
+  getInbox,
+  ackInbox,
+  askPerson,
   // The workspace toolset (A4-A5).
   saveView,
   updateProjectCapability,

@@ -351,6 +351,21 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /proposals/:id/decline": "people_only",
   "POST /proposals/:id/respond": "people_only",
   "POST /me/agents/activity/:id/undo": "people_only",
+  // Agent 2 (H0): answering an agent's question is the person's own
+  // answer (agents ask with ask_person and read the answer in get_inbox).
+  "GET /me/questions": "people_only",
+  "POST /me/questions/:id/answer": "people_only",
+  // What each connection hears, its wake-up address and the person's
+  // standing rules: set by the person (agents read the rules in get_inbox).
+  "GET /me/agents/:id/inbox": "credentials",
+  "PUT /me/agents/:id/inbox": "credentials",
+  "PUT /me/agents/:id/wake": "credentials",
+  "DELETE /me/agents/:id/wake": "credentials",
+  "POST /me/agents/:id/wake/test": "credentials",
+  "GET /me/agent-rules": "credentials",
+  "POST /me/agent-rules": "credentials",
+  "PUT /me/agent-rules/:id": "credentials",
+  "DELETE /me/agent-rules/:id": "credentials",
   "GET /ai/providers": "admin",
   "POST /ai/providers": "admin",
   "DELETE /ai/providers/:id": "admin",

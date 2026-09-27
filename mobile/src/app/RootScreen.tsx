@@ -967,7 +967,9 @@ export function RootScreen() {
     else if (kind === "project" && text("ref")) {
       setProjectToOpen(text("ref").split(":")[0]);
       present({ sheet: "projects" });
-    } else if (kind === "conflict") setTab("Inbox");
+    } else if (kind === "conflict" || kind === "question")
+      // An agent's question opens on its card, with the choices as buttons.
+      setTab("Inbox");
     else if (kind === "template" && text("ref")) {
       setTemplateToOpen(text("ref"));
       present({ sheet: "projects" });

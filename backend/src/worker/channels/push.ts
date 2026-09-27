@@ -26,9 +26,14 @@ export type PushNotification = {
  */
 export const REVIEW_CATEGORY = "orbyn-review";
 
-/** Whether a push is a proposal the person can answer from the notice. */
+/**
+ * Whether a push can be answered from the notice with Approve and Decline:
+ * a proposal, or an agent's yes/no question (H0; Approve is yes).
+ */
 export const reviewCategory = (n: { kind?: string; ref?: string }) =>
-  n.kind === "review" && /^proposal:[0-9a-f-]{36}$/.test(n.ref ?? "");
+  (n.kind === "review" && /^proposal:[0-9a-f-]{36}$/.test(n.ref ?? "")) ||
+  (n.kind === "question" &&
+    /^question:[0-9a-f-]{36}:yes_no$/.test(n.ref ?? ""));
 
 export type PushOutcome =
   | { kind: "ticket"; receiptId: string }

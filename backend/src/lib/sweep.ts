@@ -243,6 +243,27 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 30,
   },
   {
+    key: "agent_inbox",
+    label: "Agents' inboxes",
+    detail:
+      "What happened, for each connected agent to act on (Agent inbox), handled or not.",
+    table: "agent_inbox",
+    where: olderThan("created_at"),
+    days: 14,
+    configurable: true,
+    min: 1,
+  },
+  {
+    key: "agent_questions",
+    label: "Agents' questions",
+    detail: "Questions agents asked, once answered or run out.",
+    table: "agent_questions",
+    where: `${olderThan("created_at")} AND status <> 'open'`,
+    days: 14,
+    configurable: true,
+    min: 1,
+  },
+  {
     key: "agent_usage_daily",
     label: "Agent usage",
     detail: "Calls per connected agent per day, for its daily limits.",

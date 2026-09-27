@@ -374,7 +374,9 @@ export type Notice = {
     /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */
     | "session"
     /** A change waits for your approval in the Review inbox (`ref` = "proposal:<id>"). */
-    | "review";
+    | "review"
+    /** One of your agents asked you something (`ref` = "question:<id>"). */
+    | "question";
   /** Null for booking notices, which point at the booking in `ref`. */
   item_id?: string | null;
   ref?: string;

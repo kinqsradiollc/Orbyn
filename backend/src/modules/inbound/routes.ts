@@ -6,6 +6,7 @@ import { authenticate } from "../../lib/auth.js";
 import { env } from "../../config/env.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { mutate } from "../items/service.js";
+import { emitInbox } from "../agent-inbox/emit.js";
 
 /** The address for a slug, or null when inbound mail isn't set up. */
 const addressFor = (slug: string | null) =>
@@ -112,11 +113,24 @@ export async function inboundRoutes(app: FastifyInstance) {
       );
       // Its text came from an email: outside agents are told, and get it
       // fenced as outside content.
-      if (item)
+      if (item) {
         await db.query(
           "INSERT INTO item_sources (item_id, source) VALUES ($1, 'inbound_email') ON CONFLICT DO NOTHING",
           [item.id],
         );
+        // The person's agents hear of it (H0); its words are from an email.
+        await emitInbox(db, {
+          userId: user.id,
+          kind: "email_task",
+          key: `email_task:${item.id}`,
+          title: "A task arrived by email",
+          body: item.title,
+          source: "inbound_email",
+          entity: { type: "task", id: item.id },
+          teamId: item.team_id ?? null,
+          projectId: item.project_id ?? null,
+        });
+      }
     });
     return done("filed");
   });

@@ -3808,6 +3808,257 @@
       }
     },
     {
+      "name": "get_inbox",
+      "title": "What happened for you",
+      "description": "This connection's inbox of what happened in Orbyn (bookings, mentions, invites, deadlines, imports, study, email tasks, review decisions, asks, answers to ask_person), open items first. Each item says what happened, with refs, next (tools to act with) and rules (the person's standing rules: follow them). Kept 14 days; mark items with ack_inbox. question looks up an ask_person question.",
+      "kind": "read",
+      "access": "read",
+      "toolset": "core",
+      "mode": "read",
+      "tier": "R",
+      "annotations": {
+        "title": "What happened for you",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "kinds": {
+            "maxItems": 10,
+            "type": "array",
+            "items": { "type": "string", "maxLength": 20 }
+          },
+          "include_done": { "default": false, "type": "boolean" },
+          "question": { "type": "string", "maxLength": 50 },
+          "limit": {
+            "default": 20,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "cursor": {
+            "description": "next_cursor from the previous page of the same call.",
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "kind": { "type": "string" },
+                "at": { "type": "string" },
+                "at_local": { "type": "string" },
+                "state": { "type": "string" },
+                "snooze_until": { "type": ["string", "null"] },
+                "what": { "type": "string" },
+                "from": { "type": "string" },
+                "refs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "uri": { "type": ["string", "null"] },
+                      "url": { "type": "string" }
+                    },
+                    "required": ["id", "uri", "url"],
+                    "additionalProperties": false
+                  }
+                },
+                "next": { "type": "array", "items": { "type": "string" } },
+                "rules": { "type": "array", "items": { "type": "string" } },
+                "note": { "type": ["string", "null"] }
+              },
+              "required": [
+                "id",
+                "kind",
+                "at",
+                "at_local",
+                "state",
+                "snooze_until",
+                "what",
+                "from",
+                "refs",
+                "next",
+                "rules",
+                "note"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "unread": { "type": "number" },
+          "question": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "question": { "type": "string" },
+                  "choices": { "type": "array", "items": { "type": "string" } },
+                  "status": { "type": "string" },
+                  "answer": { "type": ["string", "null"] },
+                  "answered_via": { "type": ["string", "null"] },
+                  "expires_at": { "type": "string" }
+                },
+                "required": [
+                  "id",
+                  "question",
+                  "choices",
+                  "status",
+                  "answer",
+                  "answered_via",
+                  "expires_at"
+                ],
+                "additionalProperties": false
+              },
+              { "type": "null" }
+            ]
+          },
+          "next_cursor": { "type": ["string", "null"] }
+        },
+        "required": ["items", "unread", "question", "next_cursor"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ack_inbox",
+      "title": "Mark inbox items",
+      "description": "Marks up to 50 of this connection's inbox items (inbox:<n>): done, snooze (back at until) or dismiss, with an optional note.",
+      "kind": "write",
+      "access": "suggest",
+      "toolset": "core",
+      "mode": "write",
+      "tier": "W1",
+      "annotations": {
+        "title": "Mark inbox items",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": { "type": "string", "maxLength": 30 }
+          },
+          "action": { "type": "string", "enum": ["done", "snooze", "dismiss"] },
+          "until": { "type": "string", "maxLength": 40, "format": "date-time" },
+          "note": { "type": "string", "maxLength": 500 },
+          "client_ref": {
+            "description": "Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "required": ["ids", "action"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "acked": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "state": { "type": "string" },
+                "snooze_until": { "type": ["string", "null"] }
+              },
+              "required": ["id", "state", "snooze_until"],
+              "additionalProperties": false
+            }
+          },
+          "missing": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["acked", "missing"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "ask_person",
+      "title": "Ask the person",
+      "description": "Asks your person a question: up to 5 choices (none: yes/no), optional default (used if it runs out) and expiry (24 h). Apps with forms answer in the chat at once; otherwise it returns status open and the answer arrives in get_inbox as an answer item (a card and push in Orbyn). question_id alone looks up its status.",
+      "kind": "write",
+      "access": "suggest",
+      "toolset": "core",
+      "mode": "write",
+      "tier": "W1",
+      "annotations": {
+        "title": "Ask the person",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "question": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "detail": { "type": "string", "maxLength": 1000 },
+          "choices": {
+            "minItems": 2,
+            "maxItems": 5,
+            "type": "array",
+            "items": { "type": "string", "minLength": 1, "maxLength": 60 }
+          },
+          "default": { "type": "string", "minLength": 1, "maxLength": 60 },
+          "expires_in_hours": {
+            "default": 24,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 168
+          },
+          "question_id": { "type": "string", "maxLength": 50 },
+          "client_ref": {
+            "description": "Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "question_id": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "answer": { "type": ["string", "null"] },
+          "answered_via": { "type": ["string", "null"] },
+          "choices": { "type": "array", "items": { "type": "string" } },
+          "expires_at": { "type": ["string", "null"] }
+        },
+        "required": [
+          "question_id",
+          "status",
+          "answer",
+          "answered_via",
+          "choices",
+          "expires_at"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "save_view",
       "title": "Save a view",
       "description": "Creates a saved view, or changes one (view + version): a name, what it lists (source: tasks, pages or projects), filters, sort ({by, dir}), group_by, columns and layout (list, board, table, calendar; gallery for pages). The same definition the app's Views screen uses, so the view opens there too. space: \"personal\" (default) or a team id to share it with the team. star pins it in the person's favourites. Run it with query(view). The definition language is in orbyn://spec/views.",
@@ -7857,7 +8108,10 @@
         "propose_changes",
         "get_links",
         "list_agent_changes",
-        "undo"
+        "undo",
+        "get_inbox",
+        "ack_inbox",
+        "ask_person"
       ]
     },
     {
@@ -7956,7 +8210,9 @@
       "changes": [
         "Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.",
         "Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.",
-        "list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first."
+        "list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.",
+        "Everything routes to your agent: each connection has an inbox (booking requests, mentions and comments, invites, deadlines at risk, finished imports, study due and exams near, tasks from email, review decisions, teammates' asks, answers to its questions), only for spaces it reaches, never kept-out projects, kept 14 days. get_inbox (not dealt with first, with refs, suggested tools and the person's standing rules) and ack_inbox (done, snooze, dismiss with a note) in core. The resource orbyn://inbox; following it with subscriptions/listen tells the agent at once. People mute kinds per connection and can set a signed wake-up address that gets only a count and a link, at most every 5 minutes.",
+        "ask_person in core: a question with up to 5 choices (or yes/no), an optional default and expiry (24 h). Answered in the chat with a one-field form when the client declares form elicitation; otherwise a card in Orbyn and a push (Approve/Decline for yes/no), and the answer, default or expiry arrives as an answer item in get_inbox. question_id looks up its status."
       ]
     },
     {
@@ -7979,5 +8235,5 @@
       ]
     }
   ],
-  "routes": { "covered": 205, "excluded": 236, "pending": 0 }
+  "routes": { "covered": 205, "excluded": 247, "pending": 0 }
 }

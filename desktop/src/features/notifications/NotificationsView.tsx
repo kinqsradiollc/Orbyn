@@ -16,12 +16,19 @@ import {
   Wand2,
   type LucideIcon,
   LayoutTemplate,
+  MessageCircleQuestion,
 } from "lucide-react";
-import { dateLabel, type Notice, type PageMention } from "@orbyn/core";
+import {
+  dateLabel,
+  type AgentQuestion,
+  type Notice,
+  type PageMention,
+} from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
 import { stagger } from "../../lib/motion";
 import { client } from "../../lib/api";
 import { CONCEPT_ICON } from "../../app/concept-icons";
+import { onLive } from "../../lib/live";
 
 type Props = {
   notices: Notice[];
@@ -62,7 +69,81 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   mention: AtSign,
   session: Timer,
   review: Inbox,
+  question: MessageCircleQuestion,
 };
+
+/**
+ * Questions your agents asked (ask_person) that wait for you: each choice
+ * is a button, and the answer goes straight back to the agent. Re-read when
+ * anything changes (a new question, or one answered on the phone).
+ */
+function AgentQuestions() {
+  const [list, setList] = useState<AgentQuestion[]>([]);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const load = () => client.agentQuestions().then(setList, () => {});
+    void load();
+    return onLive((news) => news.kind === "changed" && void load());
+  }, []);
+  if (!list.length) return null;
+  const answer = (q: AgentQuestion, choice: string) => {
+    setPending(q.id);
+    setError(null);
+    client
+      .answerAgentQuestion(q.id, choice)
+      .then(
+        () => setList((all) => all.filter((x) => x.id !== q.id)),
+        (e: Error) => setError(e.message),
+      )
+      .finally(() => setPending(null));
+  };
+  return (
+    <section className="card agent-questions" aria-labelledby="agent-questions">
+      <h2 id="agent-questions">
+        <MessageCircleQuestion size={16} aria-hidden="true" /> Your agents ask
+      </h2>
+      <ul>
+        {list.map((q) => (
+          <li key={q.id}>
+            <strong>{q.question}</strong>
+            {q.detail && <p>{q.detail}</p>}
+            <small className="muted">
+              {q.agent} · {dateLabel(q.created_at)}
+              {q.default_choice
+                ? ` · “${q.default_choice}” if you don’t answer by ${new Date(
+                    q.expires_at,
+                  ).toLocaleString([], {
+                    weekday: "short",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}`
+                : ""}
+            </small>
+            <div className="agent-question-choices">
+              {q.choices.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="secondary"
+                  disabled={pending === q.id}
+                  onClick={() => answer(q, c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <div role="alert" className="error">
+          {error}
+        </div>
+      )}
+    </section>
+  );
+}
 
 /**
  * "Mentioned in": the pages that name you, newest first, with the line
@@ -120,6 +201,7 @@ export function NotificationsView({
   const [pending, setPending] = useState<string | null>(null);
   return (
     <>
+      <AgentQuestions />
       <MentionedIn onOpenDoc={onOpenDoc} />
       <section className="card">
         {notices.map((n, index) => {

@@ -136,16 +136,16 @@ A tool that can't do what was asked answers with `isError: true` and one of thes
 
 Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.
 
-| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                     |
-| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo` |
-| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`                                                                                                                                                                                                                      |
-| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                              |
-| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`                                                                                                                                                                                                                                                                                                              |
-| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                                              |
-| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                   |
-| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                          |
-| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`                                                                                                                                                                                                                                                                                           |
+| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo`, `get_inbox`, `ack_inbox`, `ask_person` |
+| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`                                                                                                                                                                                                                                                              |
+| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                      |
+| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`                                                                                                                                                                                                                                                                                                                                                      |
+| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                                                                                      |
+| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                           |
+| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                  |
+| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`                                                                                                                                                                                                                                                                                                                                   |
 
 ## Tools
 
@@ -174,6 +174,9 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `get_links`               | Backlinks and links                    | read        | read, core           |
 | `list_agent_changes`      | What this connection changed           | read        | read, core           |
 | `undo`                    | Undo a change                          | destructive | write, core          |
+| `get_inbox`               | What happened for you                  | read        | read, core           |
+| `ack_inbox`               | Mark inbox items                       | write       | suggest, core        |
+| `ask_person`              | Ask the person                         | write       | suggest, core        |
 | `save_view`               | Save a view                            | write       | write, workspace     |
 | `update_project`          | Change a project                       | destructive | write, workspace     |
 | `get_history`             | Show history                           | read        | read, workspace      |
@@ -473,6 +476,44 @@ Takes back this connection's own change (change id) or every change of one call 
 | `change`     | string |                                                                                                                                            |
 | `job`        | string |                                                                                                                                            |
 | `client_ref` | string | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `get_inbox`
+
+This connection's inbox of what happened in Orbyn (bookings, mentions, invites, deadlines, imports, study, email tasks, review decisions, asks, answers to ask_person), open items first. Each item says what happened, with refs, next (tools to act with) and rules (the person's standing rules: follow them). Kept 14 days; mark items with ack_inbox. question looks up an ask_person question.
+
+| Argument       | Type           | Notes                                                |
+| -------------- | -------------- | ---------------------------------------------------- |
+| `kinds`        | list of string |                                                      |
+| `include_done` | boolean        | Default false.                                       |
+| `question`     | string         |                                                      |
+| `limit`        | integer        | Default 20.                                          |
+| `cursor`       | string         | next_cursor from the previous page of the same call. |
+
+### `ack_inbox`
+
+Marks up to 50 of this connection's inbox items `(inbox:<n>)`: done, snooze (back at until) or dismiss, with an optional note.
+
+| Argument            | Type                        | Notes                                                                                                                                      |
+| ------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ids` (required)    | list of string              |                                                                                                                                            |
+| `action` (required) | `done`, `snooze`, `dismiss` |                                                                                                                                            |
+| `until`             | ISO 8601 instant            |                                                                                                                                            |
+| `note`              | string                      |                                                                                                                                            |
+| `client_ref`        | string                      | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
+
+### `ask_person`
+
+Asks your person a question: up to 5 choices (none: yes/no), optional default (used if it runs out) and expiry (24 h). Apps with forms answer in the chat at once; otherwise it returns status open and the answer arrives in get_inbox as an answer item (a card and push in Orbyn). question_id alone looks up its status.
+
+| Argument           | Type           | Notes                                                                                                                                      |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `question`         | string         |                                                                                                                                            |
+| `detail`           | string         |                                                                                                                                            |
+| `choices`          | list of string |                                                                                                                                            |
+| `default`          | string         |                                                                                                                                            |
+| `expires_in_hours` | integer        | Default 24.                                                                                                                                |
+| `question_id`      | string         |                                                                                                                                            |
+| `client_ref`       | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `save_view`
 
@@ -907,6 +948,8 @@ Catalog version: `2026-09-27`.
 - Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.
 - Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.
 - list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.
+- Everything routes to your agent: each connection has an inbox (booking requests, mentions and comments, invites, deadlines at risk, finished imports, study due and exams near, tasks from email, review decisions, teammates' asks, answers to its questions), only for spaces it reaches, never kept-out projects, kept 14 days. get_inbox (not dealt with first, with refs, suggested tools and the person's standing rules) and ack_inbox (done, snooze, dismiss with a note) in core. The resource orbyn://inbox; following it with subscriptions/listen tells the agent at once. People mute kinds per connection and can set a signed wake-up address that gets only a count and a link, at most every 5 minutes.
+- ask_person in core: a question with up to 5 choices (or yes/no), an optional default and expiry (24 h). Answered in the chat with a one-field form when the client declares form elicitation; otherwise a card in Orbyn and a push (Approve/Decline for yes/no), and the answer, default or expiry arrives as an answer item in get_inbox. question_id looks up its status.
 
 ### 2026-09-26
 
@@ -929,4 +972,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 205 of the app's signed-in routes are covered by tools, 236 are never for agents, and 0 are still to come.
+Routes: 205 of the app's signed-in routes are covered by tools, 247 are never for agents, and 0 are still to come.

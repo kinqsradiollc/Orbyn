@@ -16,7 +16,9 @@ import {
   visibleViews,
 } from "../../lib/visibility.js";
 import type { LiveSettings } from "../../lib/settings.js";
+import { AGENT_INBOX_URI } from "@orbyn/core";
 import { getContext } from "../../capabilities/context.js";
+import { getInbox } from "../../capabilities/inbox.js";
 import { getCalendar } from "../../capabilities/calendar-view.js";
 import { query } from "../../capabilities/query.js";
 import {
@@ -44,6 +46,7 @@ import {
   argsDigest,
   describe,
   type Capability,
+  type ChatAnswer,
   type CapabilityContext,
   type Progress,
 } from "../../capabilities/registry.js";
@@ -67,7 +70,9 @@ import {
 import {
   answerOf,
   askInChat,
+  askQuestionInChat,
   asksInChat,
+  questionAnswerOf,
   isAskState,
   notAllowed,
   openAsk,
@@ -235,6 +240,17 @@ async function listedResources(ctx: CapabilityContext) {
       mimeType: "application/json",
       description: "The same as get_context.",
     },
+    ...(ctx.principal.grant_id
+      ? [
+          {
+            uri: AGENT_INBOX_URI,
+            name: "Inbox",
+            mimeType: "text/markdown",
+            description:
+              "What happened in Orbyn for this connection, not yet dealt with (the same as get_inbox). Follow it with subscriptions/listen to hear new items at once.",
+          },
+        ]
+      : []),
     ...Object.entries(GUIDES).map(([uri, g]) => ({
       uri,
       name: g.name,
@@ -356,7 +372,24 @@ export function buildServer(call: CallContext): Server {
     // a yes, never on a no; only for the very call that was asked about.
     const state = ctx.mcpReq.requestState<string>();
     let approved = false;
-    if (isAskState(state)) {
+    let chatAnswer: ChatAnswer | undefined;
+    if (isAskState(state) && cap.name === "ask_person") {
+      // The agent's own question, answered in the chat: the tool records
+      // the answer (or that there was none) and returns it.
+      if (!(await openAsk(p, name, digest, state)))
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          "Invalid or expired requestState",
+        );
+      const reply = questionAnswerOf(ctx.mcpReq.inputResponses);
+      if (!reply)
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          "The retried call carries no answer to the question.",
+        );
+      chatAnswer = reply;
+      approved = true;
+    } else if (isAskState(state)) {
       if (!(await openAsk(p, name, digest, state)))
         throw new ProtocolError(
           ProtocolErrorCode.InvalidParams,
@@ -441,7 +474,10 @@ export function buildServer(call: CallContext): Server {
         progress: progressFor(ctx),
         // An app that can show a form asks the person there first.
         ...(approved
-          ? { asking: "approved" as const }
+          ? {
+              asking: "approved" as const,
+              ...(chatAnswer ? { chatAnswer } : {}),
+            }
           : cap.mode !== "read" && asksInChat(clientCaps)
             ? { asking: "collect" as const }
             : {}),
@@ -453,6 +489,8 @@ export function buildServer(call: CallContext): Server {
       };
     call.onCall(cap, name, exec, Date.now() - started, digest);
     // It needs the person's yes, and the app can ask them in the chat.
+    if (exec.ask?.question)
+      return askQuestionInChat(p, name, digest, exec.ask.question);
     if (exec.ask) return askInChat(p, name, digest, exec.ask);
     // A change that went to review, for a client that can open a link for
     // the person: send them to the Review inbox (URL-mode elicitation).
@@ -615,6 +653,10 @@ export function buildServer(call: CallContext): Server {
           if (guide) return readResource(uri, guide.text);
           const day = /^orbyn:\/\/day\/(\d{4}-\d{2}-\d{2})$/.exec(uri);
           if (day) return readResource(uri, await dayMarkdown(ctx, day[1]));
+          if (uri === AGENT_INBOX_URI && p.grant_id) {
+            const inbox = await getInbox.run(ctx, getInbox.input.parse({}));
+            return readResource(uri, inbox.markdown);
+          }
           if (uri === "orbyn://me") {
             const me = await getContext.run(ctx, {});
             return {

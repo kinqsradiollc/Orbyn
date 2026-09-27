@@ -3,6 +3,12 @@ import {
   type AgentGrant,
   type AgentToolset,
   type AgentTrustInput,
+  type AgentInboxKind,
+  type AgentInboxSettings,
+  type AgentQuestion,
+  type AgentRule,
+  type AgentRuleInput,
+  type NewAgentWake,
   type ProposalStatus,
   type McpCatalog,
   type AgendaDay,
@@ -2667,6 +2673,67 @@ export class OrbynClient {
     return this.request<AgentGrant>(`/me/agents/${id}/trust`, {
       method: "PUT",
       body: input,
+    });
+  }
+  /** What a connection is sent, its wake-up address and unread count (H0). */
+  agentInbox(id: string) {
+    return this.request<AgentInboxSettings>(`/me/agents/${id}/inbox`);
+  }
+  /** The kinds a connection is not sent ("Send to this agent" off). */
+  setAgentInboxMutes(id: string, muted: AgentInboxKind[]) {
+    return this.request<AgentInboxSettings>(`/me/agents/${id}/inbox`, {
+      method: "PUT",
+      body: { muted },
+    });
+  }
+  /** Sets the wake-up address; the signing secret comes back once. */
+  setAgentWake(id: string, url: string) {
+    return this.request<NewAgentWake>(`/me/agents/${id}/wake`, {
+      method: "PUT",
+      body: { url },
+    });
+  }
+  clearAgentWake(id: string) {
+    return this.request<AgentInboxSettings>(`/me/agents/${id}/wake`, {
+      method: "DELETE",
+    });
+  }
+  /** Calls the wake-up address now and says what it answered. */
+  testAgentWake(id: string) {
+    return this.request<{
+      ok: boolean;
+      status: number | null;
+      error: string | null;
+    }>(`/me/agents/${id}/wake/test`, { method: "POST" });
+  }
+  /** The person's standing rules for their agents. */
+  agentRules() {
+    return this.request<AgentRule[]>("/me/agent-rules");
+  }
+  addAgentRule(input: AgentRuleInput) {
+    return this.request<AgentRule>("/me/agent-rules", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateAgentRule(id: string, input: AgentRuleInput) {
+    return this.request<AgentRule>(`/me/agent-rules/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteAgentRule(id: string) {
+    return this.request<void>(`/me/agent-rules/${id}`, { method: "DELETE" });
+  }
+  /** Questions agents asked, waiting for an answer. */
+  agentQuestions() {
+    return this.request<AgentQuestion[]>("/me/questions");
+  }
+  /** Answers an agent's question (its card, or the push's buttons). */
+  answerAgentQuestion(id: string, answer: string, via: "app" | "push" = "app") {
+    return this.request<AgentQuestion>(`/me/questions/${id}/answer`, {
+      method: "POST",
+      body: { answer, via },
     });
   }
   /** A new agent key; the returned `key` is shown once. */

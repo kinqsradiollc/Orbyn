@@ -57,26 +57,39 @@ export async function registerReviewActions() {
   ]).catch(() => {});
 }
 
-/** The proposal and answer a tapped Approve or Decline stands for, if any. */
+/** What a tapped Approve or Decline answers: a proposal, or an agent's yes/no question. */
+export type ReviewAnswer =
+  | { proposal: string; decision: "approve" | "decline" }
+  | { question: string; decision: "approve" | "decline" };
+
+/** The proposal or question, and the answer, a tapped button stands for. */
 export function reviewAction(
   response: Notifications.NotificationResponse,
-): { proposal: string; decision: "approve" | "decline" } | null {
+): ReviewAnswer | null {
   const decision = response.actionIdentifier as (typeof REVIEW_ACTIONS)[number];
   if (!REVIEW_ACTIONS.includes(decision)) return null;
   const ref = String(response.notification.request.content.data?.ref ?? "");
   const proposal = /^proposal:([0-9a-f-]{36})$/.exec(ref)?.[1];
-  return proposal ? { proposal, decision } : null;
+  if (proposal) return { proposal, decision };
+  // An agent's yes/no question (ask_person): Approve is yes.
+  const question = /^question:([0-9a-f-]{36}):yes_no$/.exec(ref)?.[1];
+  return question ? { question, decision } : null;
 }
 
 /**
- * Answers a proposal from its notification's button, signed in as the
- * person. Says how it ended ("applied", "declined", or how it had already
- * been decided).
+ * Answers from a notification's button, signed in as the person: a
+ * proposal (applied or declined), or an agent's question (yes or no). Says
+ * how it ended, even when it was already decided.
  */
-export async function answerReview(action: {
-  proposal: string;
-  decision: "approve" | "decline";
-}) {
+export async function answerReview(action: ReviewAnswer) {
+  if ("question" in action) {
+    const q = await client.answerAgentQuestion(
+      action.question,
+      action.decision === "approve" ? "yes" : "no",
+      "push",
+    );
+    return q.status;
+  }
   const { status } = await client.respondToReview(
     action.proposal,
     action.decision,

@@ -131,8 +131,10 @@ test("budgets: the tool list stays small, and the instructions short", () => {
   // from a template, skipping an occurrence, starred, pinned links). The
   // optional toolsets have their own budgets (mcp-toolsets.test.ts). H1
   // adds list_agent_changes and undo (full power needs a way back), kept
-  // to compact answers, and the connection's trust in get_context.
-  assert.ok(size < 70_000, `tools/list for core is ${size} characters`);
+  // to compact answers, and the connection's trust in get_context. H0
+  // adds get_inbox, ack_inbox and ask_person (everything routes to the
+  // agent), with pattern-free ids and plain-string enums in answers.
+  assert.ok(size < 76_000, `tools/list for core is ${size} characters`);
   assert.ok(
     INSTRUCTIONS.length <= 2048,
     `instructions are ${INSTRUCTIONS.length} characters`,

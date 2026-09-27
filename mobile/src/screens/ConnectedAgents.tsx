@@ -41,6 +41,7 @@ import { timeAgo } from "../lib/progress";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { AgentRulesCard, InboxPanel } from "./AgentInbox";
 
 const ACCESS_TAG: Record<AgentAccess, string> = {
   read: "See",
@@ -310,6 +311,8 @@ export function ConnectedAgentsCard({
 
   /** The connection whose trust is being changed, and the choice so far. */
   const [trusting, setTrusting] = useState<TrustDraft | null>(null);
+  /** The connection whose inbox choices (kinds, wake-up) are open. */
+  const [hearing, setHearing] = useState<string | null>(null);
 
   const reload = async () => setOverview(await client.agents());
 
@@ -523,7 +526,7 @@ export function ConnectedAgentsCard({
                     restore it or revoke it.
                   </Text>
                 )}
-                <View style={s.actions}>
+                <View style={[s.actions, s.wrap]}>
                   <SmallAction
                     label={open !== undefined ? "Hide activity" : "Activity"}
                     disabled={busy}
@@ -533,6 +536,14 @@ export function ConnectedAgentsCard({
                     label="How it acts"
                     disabled={busy}
                     onPress={() => openTrust(g)}
+                  />
+                  <SmallAction
+                    label="What it hears"
+                    disabled={busy}
+                    onPress={() => {
+                      animateLayout();
+                      setHearing(hearing === g.id ? null : g.id);
+                    }}
                   />
                   {g.kind !== "legacy" && (
                     <SmallAction
@@ -567,6 +578,17 @@ export function ConnectedAgentsCard({
                     onPress={() => revoke(g)}
                   />
                 </View>
+                {hearing === g.id && (
+                  <InboxPanel
+                    grant={g}
+                    busy={busy}
+                    run={run}
+                    onClose={() => {
+                      animateLayout();
+                      setHearing(null);
+                    }}
+                  />
+                )}
                 {trusting?.id === g.id && (
                   <TrustPanel
                     grant={g}
@@ -660,6 +682,13 @@ export function ConnectedAgentsCard({
           <Text style={shared.small}>No agents yet.</Text>
         )}
       </View>
+
+      {!!overview?.grants.length && (
+        <>
+          <Text style={[shared.eyebrow, s.eyebrow]}>STANDING RULES</Text>
+          <AgentRulesCard busy={busy} run={run} />
+        </>
+      )}
 
       <Text style={[shared.eyebrow, s.eyebrow]}>CONNECT AN AGENT</Text>
       <View style={shared.card}>
@@ -881,6 +910,7 @@ const s = themed(() =>
     },
     tags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     actions: { flexDirection: "row", gap: 10, alignItems: "center" },
+    wrap: { flexWrap: "wrap" },
     activity: {
       backgroundColor: colors.surfaceMuted,
       borderRadius: radii.input,

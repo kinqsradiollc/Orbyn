@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/server";
 import type { ToolResult } from "../../capabilities/execute.js";
 import type { Principal } from "../../capabilities/policy.js";
+import type { ChatAnswer, ChatQuestion } from "../../capabilities/registry.js";
 import { derivedKey } from "../../lib/secrets.js";
 
 /**
@@ -145,6 +146,71 @@ export async function askInChat(
     },
     requestState: await seal(p, tool, digest, now),
   });
+}
+
+/** The question form's one field (ask_person). */
+export const ANSWER_KEY = "answer";
+
+/**
+ * "Input required" for an agent's question (ask_person, H0): a flat form
+ * with one field, yes/no or one of up to five choices, with the default
+ * already chosen when there is one. Sealed like a change's ask, to this
+ * person, connection, tool and exact arguments.
+ */
+export async function askQuestionInChat(
+  p: Principal,
+  tool: string,
+  digest: string,
+  q: ChatQuestion,
+  now = new Date(),
+): Promise<InputRequiredResult> {
+  const who = p.client.name.trim() || "Your agent";
+  const message =
+    `${who} asks: ${q.question}${q.detail ? `\n\n${q.detail}` : ""}`.slice(
+      0,
+      2000,
+    );
+  const field = q.yes_no
+    ? {
+        type: "boolean" as const,
+        title: q.question.slice(0, 100),
+        ...(q.default_choice
+          ? { default: q.default_choice === q.choices[0] }
+          : {}),
+      }
+    : {
+        type: "string" as const,
+        title: "Answer",
+        enum: q.choices,
+        ...(q.default_choice ? { default: q.default_choice } : {}),
+      };
+  return inputRequired({
+    inputRequests: {
+      [ANSWER_KEY]: inputRequired.elicit({
+        mode: "form",
+        message,
+        requestedSchema: {
+          type: "object",
+          properties: { [ANSWER_KEY]: field },
+          required: [ANSWER_KEY],
+        },
+      }),
+    },
+    requestState: await seal(p, tool, digest, now),
+  });
+}
+
+/** What the person answered to a question: a choice, yes/no, or none. */
+export function questionAnswerOf(responses: unknown): ChatAnswer | null {
+  const view = inputResponse(responses as never, ANSWER_KEY);
+  if (view.kind !== "elicit") return null;
+  if (view.action === "cancel") return { outcome: "cancelled", answer: null };
+  if (view.action === "decline") return { outcome: "declined", answer: null };
+  const value = (view.content as Record<string, unknown> | undefined)?.[
+    ANSWER_KEY
+  ];
+  if (typeof value !== "string" && typeof value !== "boolean") return null;
+  return { outcome: "answered", answer: value };
 }
 
 /** What the person answered: yes, no, dismissed, or nothing yet. */

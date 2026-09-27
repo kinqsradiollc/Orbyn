@@ -25,6 +25,7 @@ import type { UserRow } from "../../lib/auth.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { addSession } from "../planner/blocks.js";
+import { emitInbox } from "../agent-inbox/emit.js";
 import { announceTo } from "../presence/live.js";
 import {
   lockItem,
@@ -1203,6 +1204,20 @@ export async function applyProposal(
     "UPDATE notifications SET read = true WHERE kind = 'review' AND ref = $1",
     [`proposal:${row.id}`],
   );
+  // The agent that suggested it hears how it went (its inbox, H0).
+  if (row.source === "agent" && row.grant_id)
+    await emitInbox(db, {
+      userId: row.user_id,
+      grantId: row.grant_id,
+      kind: "review",
+      key: `proposal:${row.id}`,
+      title: `Approved: ${row.summary}`,
+      body:
+        made.length < row.changes.length
+          ? `${made.length} of ${row.changes.length} changes were approved and made; the rest were left out.`
+          : "Every change was made.",
+      entity: { type: "proposal", id: row.id },
+    });
   await audit(
     {
       actorId: u.id,
@@ -1245,6 +1260,16 @@ export async function declineProposal(db: Db, u: UserRow, id: string) {
     "UPDATE notifications SET read = true WHERE kind = 'review' AND ref = $1",
     [`proposal:${row.id}`],
   );
+  if (row.source === "agent" && row.grant_id)
+    await emitInbox(db, {
+      userId: row.user_id,
+      grantId: row.grant_id,
+      kind: "review",
+      key: `proposal:${row.id}`,
+      title: `Declined: ${row.summary}`,
+      body: "Nothing was changed.",
+      entity: { type: "proposal", id: row.id },
+    });
   await audit(
     {
       actorId: u.id,

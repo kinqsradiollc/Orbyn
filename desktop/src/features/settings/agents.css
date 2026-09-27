@@ -344,3 +344,91 @@
     gap: 4px;
   }
 }
+
+/* What it hears: kinds sent to the agent, and its wake-up address (H0). */
+.agents-inbox > p {
+  margin: 0;
+  font-size: 13px;
+}
+.agents-wake {
+  display: grid;
+  gap: 10px;
+}
+.agents-wake-row {
+  display: flex;
+  gap: 8px;
+}
+.agents-wake-row input {
+  flex: 1;
+  min-width: 0;
+}
+.agents-wake-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+.agents-wake-status .muted {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Standing rules for every agent. */
+.agents-rules {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.agents-rules h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.agents-rules > p {
+  margin: 0;
+  font-size: 13px;
+}
+.agents-rules-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agents-rules-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.agents-rules-list li > form {
+  flex: 1;
+}
+.agents-rule-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agents-rule-form {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+.agents-rule-form > .primary:last-child {
+  grid-column: auto / span 2;
+}
+@media (max-width: 560px) {
+  .agents-wake-row {
+    flex-direction: column;
+  }
+  .agents-rule-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agents-rule-form > .primary:last-child {
+    grid-column: auto;
+  }
+}

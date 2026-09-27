@@ -139,11 +139,11 @@ after(async () => {
   await pool.end();
 });
 
-test("53 tools: 23 core, the rest in toolsets; each toolset's tools are its own", async () => {
+test("56 tools: 26 core, the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
-  assert.equal(listed.length, 53);
+  assert.equal(listed.length, 56);
   const core = (await h.legacy(keys.core, "tools/list")).body.result.tools;
-  assert.equal(core.length, 23);
+  assert.equal(core.length, 26);
   assert.ok(!core.some((t: any) => t.name === "get_team"));
   // A core-only key can't call a toolset's tool.
   assert.equal(
@@ -165,7 +165,7 @@ test("X-MCP-Toolsets and X-MCP-Readonly narrow a connection for one call, and ne
       await h.legacy(key, "tools/list", undefined, headers)
     ).body.result.tools.map((t: any) => t.name) as string[];
   const planner = await narrow(keys.all, { "x-mcp-toolsets": "core,planner" });
-  assert.equal(planner.length, 29);
+  assert.equal(planner.length, 32);
   assert.ok(planner.includes("what_if") && !planner.includes("get_team"));
   const ro = await narrow(keys.all, {
     "x-mcp-toolsets": "planner",
@@ -1337,7 +1337,7 @@ test("the developer page's catalog and security.txt are public", async () => {
   const r = await h.call(null, "GET", "/developers/mcp");
   assert.equal(r.statusCode, 200);
   const c = r.json();
-  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 53);
+  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 56);
   assert.equal(c.toolsets.length, 8);
   assert.ok(c.versioning.length >= 3);
   assert.ok(c.changelog[0].date);

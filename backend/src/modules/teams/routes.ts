@@ -15,6 +15,7 @@ import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { syncTeamPages } from "../study/service.js";
 import { announceAuthChange } from "../agents/service.js";
+import { emitInbox } from "../agent-inbox/emit.js";
 import {
   LAST_OWNER,
   TEAM_COLUMNS,
@@ -135,6 +136,22 @@ export async function teamRoutes(app: FastifyInstance) {
         [id, target.id, d.role],
       );
       if (!inserted.rowCount) fail(409, "They're already in this team.");
+      // Their agents hear of it (H0), unless the team keeps agents out.
+      const joined = (
+        await db.query<{ name: string; agent_access: string }>(
+          "SELECT name, agent_access FROM teams WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+      if (target.id !== u.id && joined && joined.agent_access !== "off")
+        await emitInbox(db, {
+          userId: target.id,
+          kind: "invite",
+          key: `team:${id}:${target.id}`,
+          title: `${u.name} added you to the team ${joined.name} as ${d.role}`,
+          body: "get_context lists your teams; connect this agent to the team in Settings → Connected agents if it should work there.",
+          entity: { type: "team", id },
+        });
       await audit(
         {
           actorId: u.id,

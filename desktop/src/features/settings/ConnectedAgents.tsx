@@ -44,6 +44,7 @@ import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";
 import { SettingsSection } from "./SettingsSection";
+import { AgentRules, InboxEdit } from "./AgentInbox";
 import "./agents.css";
 
 type Props = {
@@ -346,6 +347,8 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
   } | null>(null);
   /** The connection whose trust is being changed, and the choice so far. */
   const [trusting, setTrusting] = useState<TrustDraft | null>(null);
+  /** The connection whose inbox choices (kinds, wake-up) are open. */
+  const [hearing, setHearing] = useState<string | null>(null);
   const connectRef = useRef<HTMLDivElement>(null);
   const action = useAction(report);
 
@@ -617,6 +620,14 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     >
                       How it acts
                     </button>
+                    <button
+                      type="button"
+                      className="link-button"
+                      aria-expanded={hearing === g.id}
+                      onClick={() => setHearing(hearing === g.id ? null : g.id)}
+                    >
+                      What it hears
+                    </button>
                     {g.kind !== "legacy" && (
                       <button
                         type="button"
@@ -665,6 +676,13 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                       onSave={() => saveTrust(g)}
                       onCancel={() => setTrusting(null)}
                       pending={action.pending}
+                    />
+                  )}
+                  {hearing === g.id && (
+                    <InboxEdit
+                      grant={g}
+                      report={report}
+                      onClose={() => setHearing(null)}
                     />
                   )}
                   {editing?.id === g.id && (
@@ -772,6 +790,7 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
           </p>
         )}
       <OutcomeNote outcome={action.outcome} />
+      {grants.length > 0 && <AgentRules report={report} />}
 
       <div ref={connectRef}>
         <ConnectAgent

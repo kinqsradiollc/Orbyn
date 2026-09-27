@@ -22,6 +22,7 @@ export const LIVE_KINDS = [
   "presence",
   "doc_presence",
   "agent_task",
+  "agent_inbox",
 ] as const;
 export type LiveKind = (typeof LIVE_KINDS)[number];
 
@@ -194,8 +195,12 @@ export async function streamLive(
   };
 }
 
-/** What the apps' stream leaves out: agents' own long jobs. */
-const APP_SKIPS: ReadonlySet<LiveKind> = new Set(["agent_task"]);
+/**
+ * What the apps' stream leaves out: agents' own long jobs, and news that
+ * an agent's inbox has something new (`entity_id` is the connection; its
+ * listen streams tell the agent, raised by agent_inbox_emit()).
+ */
+const APP_SKIPS: ReadonlySet<LiveKind> = new Set(["agent_task", "agent_inbox"]);
 
 /**
  * Hears a person's news (and their teams') on this copy, for a stream
