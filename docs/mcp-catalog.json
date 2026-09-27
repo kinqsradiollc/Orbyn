@@ -6131,7 +6131,7 @@
     {
       "name": "get_study",
       "title": "Study overview",
-      "description": "Decks (pages with Question :: Answer cards), cards due today and ahead, upcoming exams with their pages and readiness, and, with queue, the cards to review now (answers hidden unless reveal is true, so the person can be quizzed).",
+      "description": "Decks, cards due, exams and what the person keeps getting wrong (wrong). queue: cards to quiz, practice order (needs work, most missed, due, new; decks mixed), answers hidden; limit 1 for one at a time. card: that card with its answer, once they've tried. explain: their notes lines and cards with answers on a topic or cards, for you to judge an explanation.",
       "kind": "read",
       "access": "read",
       "toolset": "study",
@@ -6153,6 +6153,11 @@
             "type": "string",
             "maxLength": 300
           },
+          "exam": {
+            "description": "Only this exam's pages (key).",
+            "type": "string",
+            "maxLength": 300
+          },
           "ahead": {
             "default": false,
             "description": "Include cards not due yet.",
@@ -6164,6 +6169,19 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 100
+          },
+          "card": { "format": "uuid", "type": "string", "maxLength": 36 },
+          "explain": {
+            "type": "object",
+            "properties": {
+              "topic": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "cards": {
+                "maxItems": 25,
+                "type": "array",
+                "items": { "format": "uuid", "type": "string", "maxLength": 36 }
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -6209,7 +6227,8 @@
                 },
                 "days_left": { "type": "number" },
                 "pages": { "type": "array", "items": { "type": "string" } },
-                "readiness": { "type": ["number", "null"] }
+                "readiness": { "type": ["number", "null"] },
+                "target": { "type": ["string", "null"] }
               },
               "required": [
                 "key",
@@ -6217,8 +6236,23 @@
                 "starts",
                 "days_left",
                 "pages",
-                "readiness"
+                "readiness",
+                "target"
               ],
+              "additionalProperties": false
+            }
+          },
+          "wrong": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "card": { "type": "string" },
+                "question": { "type": "string" },
+                "misses": { "type": "number" },
+                "from": { "type": ["string", "null"] }
+              },
+              "required": ["card", "question", "misses", "from"],
               "additionalProperties": false
             }
           },
@@ -6231,9 +6265,35 @@
                 "doc": { "type": "string" },
                 "question": { "type": "string" },
                 "answer": { "type": ["string", "null"] },
-                "due": { "type": "string" }
+                "due": { "type": "string" },
+                "from": { "type": ["string", "null"] },
+                "picture": { "type": ["string", "null"] },
+                "misses": { "type": "number" }
               },
-              "required": ["card", "doc", "question", "answer", "due"],
+              "required": [
+                "card",
+                "doc",
+                "question",
+                "answer",
+                "due",
+                "from",
+                "picture",
+                "misses"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "left_today": { "type": ["number", "null"] },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "line": { "type": "string" },
+                "page": { "type": "string" },
+                "text": { "type": "string" }
+              },
+              "required": ["line", "page", "text"],
               "additionalProperties": false
             }
           }
@@ -6245,22 +6305,25 @@
           "streak",
           "decks",
           "exams",
-          "queue"
+          "wrong",
+          "queue",
+          "left_today",
+          "notes"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "update_study",
-      "title": "Record reviews and exams",
-      "description": "Records how the person recalled cards (again, hard, good or easy) after quizzing them, and sets which pages are revised for an exam (key from get_study; pages they can't read are left out). New cards come from editing pages with Question :: Answer lines.",
+      "title": "Cards, reviews and exams",
+      "description": "cards: your q/a, cloze or picture cards into a page's Cards section or a new deck, each linked to its notes line (from); undo removes them. reviews: how each card was recalled. needs_work: explanations that fell short (asked first next quiz). exam: name or change one (title, date, pages, target); plan also books revision sessions.",
       "kind": "write",
       "access": "write",
       "toolset": "study",
       "mode": "write",
       "tier": "W1",
       "annotations": {
-        "title": "Record reviews and exams",
+        "title": "Cards, reviews and exams",
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false,
@@ -6269,6 +6332,54 @@
       "input_schema": {
         "type": "object",
         "properties": {
+          "cards": {
+            "type": "object",
+            "properties": {
+              "page": { "type": "string", "maxLength": 300 },
+              "new_deck": {
+                "description": "A new deck's title.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "team": { "type": "string", "maxLength": 100 },
+              "items": {
+                "minItems": 1,
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "q": { "type": "string", "minLength": 1, "maxLength": 500 },
+                    "a": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "cloze": {
+                      "description": "A line with {{hidden}} words.",
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1000
+                    },
+                    "picture": {
+                      "description": "orbyn://file/<id> the q asks about.",
+                      "type": "string",
+                      "maxLength": 300
+                    },
+                    "from": {
+                      "description": "doc:<id>#<anchor>",
+                      "type": "string",
+                      "maxLength": 300
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["items"],
+            "additionalProperties": false
+          },
           "reviews": {
             "maxItems": 25,
             "type": "array",
@@ -6285,17 +6396,58 @@
               "additionalProperties": false
             }
           },
+          "needs_work": {
+            "maxItems": 25,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "card": { "format": "uuid", "type": "string", "maxLength": 36 },
+                "note": { "type": "string", "maxLength": 300 }
+              },
+              "required": ["card"],
+              "additionalProperties": false
+            }
+          },
           "exam": {
             "type": "object",
             "properties": {
-              "key": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "key": {
+                "description": "From get_study; none names a new one.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "date": {
+                "description": "YYYY-MM-DD or ISO time.",
+                "type": "string",
+                "maxLength": 40
+              },
               "pages": {
                 "maxItems": 30,
                 "type": "array",
                 "items": { "type": "string", "maxLength": 300 }
+              },
+              "target": {
+                "description": "e.g. \"80%\".",
+                "anyOf": [
+                  { "type": "string", "maxLength": 100 },
+                  { "type": "null" }
+                ]
+              },
+              "plan": {
+                "default": false,
+                "description": "Also book plan_revision's sessions.",
+                "type": "boolean"
+              },
+              "minutes": {
+                "default": 30,
+                "type": "integer",
+                "minimum": 15,
+                "maximum": 120
               }
             },
-            "required": ["key", "pages"],
             "additionalProperties": false
           },
           "client_ref": {
@@ -6373,7 +6525,7 @@
     {
       "name": "plan_revision",
       "title": "Preview revision sessions",
-      "description": "Previews revision sessions in free working time before an exam (one a day from up to three weeks out, longer in the last three days) without changing anything, and returns a plan_token: schedule_sessions puts them on the calendar with a \"Revise for …\" task.",
+      "description": "Previews revision sessions in free working time before an exam (one a day from up to three weeks out, longer in the last three days) without changing anything, and returns a plan_token: schedule_sessions puts them on the calendar with a \"Revise for …\" task. update_study exam.plan books them in one step.",
       "kind": "read",
       "access": "read",
       "toolset": "study",
@@ -8265,7 +8417,7 @@
     {
       "name": "study_session",
       "title": "Study session",
-      "description": "Quizzes you on due flashcards one at a time and records how each went.",
+      "description": "Quizzes you on your cards one at a time, practice first (what you keep getting wrong comes first), and records how each went.",
       "arguments": [{ "name": "exam", "required": false, "completes": "exam" }],
       "toolsets": ["study"]
     },
@@ -8427,6 +8579,7 @@
     {
       "date": "2026-09-27",
       "changes": [
+        "Study from anything, practice first (no AI of Orbyn's: the agent writes and judges, Orbyn stores and schedules). update_study cards adds question/answer, cloze and picture cards to a page's Cards section or a new deck, each linked to the notes line it came from (from: doc:<id>#<anchor>, kept as a [src: …](orbyn://doc/…#…) link on the card's line); undo removes them. get_study queue now quizzes in practice order (cards marked needs work, then the ones most often answered again, then due, then new; decks interleaved), answers hidden, with left_today; get_study card gives one card's answer once the person has tried; get_study explain returns the person's own notes lines and cards with answers on a topic or cards so the agent can judge an explanation, and update_study needs_work records one that fell short. get_study lists what the person keeps getting wrong (wrong) and each card's source (from) and picture. update_study exam names or changes an exam (title, date, pages, target), and exam.plan books its revision sessions in the same call.",
         "Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.",
         "Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.",
         "list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.",

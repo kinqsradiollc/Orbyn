@@ -283,6 +283,15 @@ without a name is matched by its question. Removing the line removes the card. S
 v4.5 with the standard parameters, aiming for 90% recall: Again brings a card back in 10 minutes,
 and the others in days. At most 20 new cards are introduced a day.
 
+A card line may end with a link to the notes line it was made from,
+`[src: Lecture 5 › Cells make energy](orbyn://doc/<id>#<line>)` (never part of the question or
+answer): each card then has `source { doc_id, block_id, doc_title, text }`, shown as "from: …" once
+the answer is revealed (only where the person can read that page). A card line right under a picture
+line asks about that picture (`picture`, a page file id). Every Again counts as a miss (`misses`);
+`weak[]` lists what the person keeps getting wrong, most misses first, with the notes to re-read
+(`source`). An outside agent can mark a card "needs work" (its explanation fell short): it comes
+first in the agent's next quiz and is cleared by a Good or Easy.
+
 Cards follow their pages, not the reading of Study: saving a page (and restoring a version or a
 page from Trash, taking a proposal or adding tasks from its lines) updates its cards for everyone
 who can read it before the answer comes back, and joining or leaving a team does the same for the
@@ -302,7 +311,8 @@ notifier within a few seconds. `GET /study` and `GET /study/queue` only read.
 | `POST /ai/study/cards/:id/explain`        | → `{ explanation, beyond_notes }`; `beyond_notes` is true when it needed more than the page                    |
 
 **Exams** are upcoming events (60 days) from a subscribed calendar of the Exams kind, or events named
-like one (exam, midterm, final, test, quiz). Each has a `key` built from its source and start.
+like one (exam, midterm, final, test, quiz), and exams named in Study itself by an outside agent
+(`own:<id>` keys). Each has a `key` built from its source and start, and an optional `target`.
 `readiness` is the share of the attached pages' cards known well (stable for a week or more).
 `projected` is the share known well by the exam if every review is done when due and new cards are
 learnt 20 a day. `forecast` gives reviews due on each of the next 7 days, with overdue ones counted

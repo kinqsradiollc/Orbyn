@@ -633,122 +633,136 @@ export const editDoc = defineCapability({
   tier: "W2",
   async run(ctx, a) {
     refuseSecrets(a.title, ...a.edits.flatMap((e) => [e.markdown, e.replace]));
-    const id = docId(a.doc)!;
-    const params = new Params();
-    const scope = scopeFor(ctx.spaces, params);
-    const doc = (
-      await ctx.db.query<{
-        id: string;
-        title: string;
-        team_id: string | null;
-        version: number;
-        content: DocBlock[];
-      }>(
-        `SELECT d.id, d.title, d.team_id, d.version, d.content FROM docs d
-          WHERE d.id = ${params.add(id)} AND ${visibleDocs("d", scope)}
-          FOR UPDATE`,
-        params.values,
-      )
-    ).rows[0];
-    if (!doc)
-      throw new CapabilityError(
-        "NOT_FOUND",
-        "Nothing with that id is reachable from this connection.",
-        "Search for it and use an id from the results.",
-      );
-    if (doc.version !== a.version)
-      throw new CapabilityError(
-        "VERSION_CONFLICT",
-        `The page changed since version ${a.version}.`,
-        "Fetch it again, then make the edits against the current version.",
-        { id: `doc:${doc.id}`, version: doc.version },
-      );
-    const content = doc.content ?? [];
-    const home = { id: doc.id, blocks: content };
-    const read: ReadEdits = [];
-    for (const e of a.edits)
-      read.push(
-        e.markdown === undefined
-          ? null
-          : await readMarkdown(ctx, e.markdown, home),
-      );
-    const after = applyEdits(content, a.edits, read);
-    checkSize(after);
-    const where = destination(ctx, doc.team_id, "W2");
-    const direct = where === "direct" && !doc.team_id;
-    const actor = actorOf(ctx.principal);
-    const db = dbOf(ctx);
-    if (direct) {
-      const saved = await saveDoc(
-        db,
-        actor,
-        doc.id,
-        {
-          version: doc.version,
-          content: after as never,
-          ...(a.title ? { title: a.title } : {}),
-        },
-        { always: true },
-      );
-      return finishWrite(ctx, "Editing the page", {
-        done: [docEntry(saved, "Edited")],
-        undo: [
-          {
-            op: "doc.restore",
-            doc_id: doc.id,
-            version: saved.version,
-            to_version: doc.version,
-          },
-        ],
-        after: afterSave(doc.id, saved.version, ctx.principal.grant_id),
-        teamId: doc.team_id,
-      });
-    }
-    // Team pages, and pages this connection may only suggest on.
-    const suggestions = a.title ? null : asSuggestions(content, a.edits, read);
-    if (suggestions?.length) {
-      const made = await proposeChanges(
-        ctx.db,
-        doc.id,
-        ctx.principal.user.id,
-        suggestions,
-        `Suggested by ${cleanTitle(ctx.principal.client.name) || "an outside agent"}`,
-      );
-      return finishWrite(ctx, "Suggesting edits", {
-        done: [
-          docEntry(
-            doc,
-            `${made.length} suggestion${made.length === 1 ? "" : "s"} beside the words, for someone to take or leave`,
-          ),
-        ],
-        undo: [
-          {
-            op: "suggestions.delete",
-            doc_id: doc.id,
-            ids: made.map((m) => m.id),
-          },
-        ],
-        teamId: doc.team_id,
-        outcome: "suggested",
-      });
-    }
-    const review: ReviewChangeInput[] = [
-      {
-        type: "doc.edit",
-        doc_id: doc.id,
-        version: doc.version,
-        title: doc.title,
-        team_id: doc.team_id,
-        content: after as never,
-        lines: changedLines(content, after),
-        ...(a.title ? { new_title: a.title } : {}),
-      },
-    ];
-    return finishWrite(ctx, "Editing the page", {
-      done: [],
-      review,
-      reviewSummary: `Edit the page “${cleanTitle(doc.title)}”`,
-      teamId: doc.team_id,
-    });
+    return editPage(ctx, a);
   },
 });
+
+/**
+ * Edits to one page, all or none (edit_doc, and cards added by
+ * update_study): personal pages change directly with a version kept for
+ * undo; team pages get suggestions, or a proposal when suggestions can't
+ * hold the edits. `version` null edits the page as it is now.
+ */
+export async function editPage(
+  ctx: CapabilityContext,
+  a: { doc: string; version: number | null; edits: Edit[]; title?: string },
+  change = "Edited",
+) {
+  const id = docId(a.doc)!;
+  const params = new Params();
+  const scope = scopeFor(ctx.spaces, params);
+  const doc = (
+    await ctx.db.query<{
+      id: string;
+      title: string;
+      team_id: string | null;
+      version: number;
+      content: DocBlock[];
+    }>(
+      `SELECT d.id, d.title, d.team_id, d.version, d.content FROM docs d
+          WHERE d.id = ${params.add(id)} AND ${visibleDocs("d", scope)}
+          FOR UPDATE`,
+      params.values,
+    )
+  ).rows[0];
+  if (!doc)
+    throw new CapabilityError(
+      "NOT_FOUND",
+      "Nothing with that id is reachable from this connection.",
+      "Search for it and use an id from the results.",
+    );
+  if (a.version !== null && doc.version !== a.version)
+    throw new CapabilityError(
+      "VERSION_CONFLICT",
+      `The page changed since version ${a.version}.`,
+      "Fetch it again, then make the edits against the current version.",
+      { id: `doc:${doc.id}`, version: doc.version },
+    );
+  const content = doc.content ?? [];
+  const home = { id: doc.id, blocks: content };
+  const read: ReadEdits = [];
+  for (const e of a.edits)
+    read.push(
+      e.markdown === undefined
+        ? null
+        : await readMarkdown(ctx, e.markdown, home),
+    );
+  const after = applyEdits(content, a.edits, read);
+  checkSize(after);
+  const where = destination(ctx, doc.team_id, "W2");
+  const direct = where === "direct" && !doc.team_id;
+  const actor = actorOf(ctx.principal);
+  const db = dbOf(ctx);
+  if (direct) {
+    const saved = await saveDoc(
+      db,
+      actor,
+      doc.id,
+      {
+        version: doc.version,
+        content: after as never,
+        ...(a.title ? { title: a.title } : {}),
+      },
+      { always: true },
+    );
+    return finishWrite(ctx, "Editing the page", {
+      done: [docEntry(saved, change)],
+      undo: [
+        {
+          op: "doc.restore",
+          doc_id: doc.id,
+          version: saved.version,
+          to_version: doc.version,
+        },
+      ],
+      after: afterSave(doc.id, saved.version, ctx.principal.grant_id),
+      teamId: doc.team_id,
+    });
+  }
+  // Team pages, and pages this connection may only suggest on.
+  const suggestions = a.title ? null : asSuggestions(content, a.edits, read);
+  if (suggestions?.length) {
+    const made = await proposeChanges(
+      ctx.db,
+      doc.id,
+      ctx.principal.user.id,
+      suggestions,
+      `Suggested by ${cleanTitle(ctx.principal.client.name) || "an outside agent"}`,
+    );
+    return finishWrite(ctx, "Suggesting edits", {
+      done: [
+        docEntry(
+          doc,
+          `${made.length} suggestion${made.length === 1 ? "" : "s"} beside the words, for someone to take or leave`,
+        ),
+      ],
+      undo: [
+        {
+          op: "suggestions.delete",
+          doc_id: doc.id,
+          ids: made.map((m) => m.id),
+        },
+      ],
+      teamId: doc.team_id,
+      outcome: "suggested",
+    });
+  }
+  const review: ReviewChangeInput[] = [
+    {
+      type: "doc.edit",
+      doc_id: doc.id,
+      version: doc.version,
+      title: doc.title,
+      team_id: doc.team_id,
+      content: after as never,
+      lines: changedLines(content, after),
+      ...(a.title ? { new_title: a.title } : {}),
+    },
+  ];
+  return finishWrite(ctx, "Editing the page", {
+    done: [],
+    review,
+    reviewSummary: `Edit the page “${cleanTitle(doc.title)}”`,
+    teamId: doc.team_id,
+  });
+}

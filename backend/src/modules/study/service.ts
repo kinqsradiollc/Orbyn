@@ -14,6 +14,7 @@ import {
   localDateKey,
   newCardState,
   nextIntervals,
+  plainText,
   projectKnown,
   type CardState,
   type DocBlock,
@@ -54,6 +55,8 @@ const EXAM_WORDS =
 const EXAM_HORIZON_DAYS = 60;
 /** New cards introduced per day, so a big page doesn't bury you. */
 export const NEW_PER_DAY = 20;
+/** Cards listed under "Keeps getting wrong". */
+export const WEAK_LIMIT = 6;
 
 type CardRow = {
   id: string;
@@ -69,6 +72,11 @@ type CardRow = {
   lapses: number;
   last_review_at: Date | null;
   due_at: Date;
+  source_doc_id: string | null;
+  source_block_id: string | null;
+  picture_file: string | null;
+  misses: number;
+  needs_work_at: Date | null;
 };
 
 export const stateOf = (r: CardRow): CardState => ({
@@ -92,6 +100,17 @@ export const cardOf = (r: CardRow, now = new Date()): StudyCard => {
     question: r.question,
     answer: r.answer,
     next: nextIntervals(state, now),
+    source: r.source_doc_id
+      ? {
+          doc_id: r.source_doc_id,
+          block_id: r.source_block_id,
+          doc_title: "",
+          text: "",
+        }
+      : null,
+    picture: r.picture_file,
+    misses: r.misses,
+    needs_work: !!r.needs_work_at,
   };
 };
 
@@ -104,7 +123,8 @@ export const LIVE_CARDS =
 
 export const CARD_SELECT = `SELECT c.id, c.doc_id, d.title AS doc_title, c.card_key, c.block_id,
     c.question, c.answer, c.stability, c.difficulty, c.reps, c.lapses,
-    c.last_review_at, c.due_at
+    c.last_review_at, c.due_at, c.source_doc_id, c.source_block_id,
+    c.picture_file, c.misses, c.needs_work_at
   FROM ${LIVE_CARDS}`;
 
 /**
@@ -147,18 +167,44 @@ export async function syncDocCards(db: Db, docId: string): Promise<void> {
     await db.query(
       // Page order is kept as each card's creation order, so new cards are
       // learnt top to bottom.
-      `INSERT INTO study_cards (user_id, doc_id, card_key, block_id, question, answer, created_at)
+      // A card's source page is kept only while it exists (a link to a
+      // page deleted for good, or never there, names nothing).
+      `INSERT INTO study_cards (user_id, doc_id, card_key, block_id, question, answer,
+                               source_doc_id, source_block_id, picture_file, created_at)
        SELECT u.id, $1, x.key, x.block_id, x.question, x.answer,
+              (SELECT s.id FROM docs s WHERE s.id = x.source_doc_id),
+              x.source_block_id, x.picture,
               now() + (x.ord * interval '1 millisecond')
          FROM unnest($2::uuid[]) AS u(id)
         CROSS JOIN jsonb_to_recordset($3::jsonb)
-           AS x(key text, block_id text, question text, answer text, ord int)
+           AS x(key text, block_id text, question text, answer text,
+                source_doc_id uuid, source_block_id text, picture text, ord int)
        ON CONFLICT (user_id, doc_id, card_key) DO UPDATE
-         SET question = EXCLUDED.question, answer = EXCLUDED.answer, block_id = EXCLUDED.block_id
+         SET question = EXCLUDED.question, answer = EXCLUDED.answer, block_id = EXCLUDED.block_id,
+             source_doc_id = EXCLUDED.source_doc_id, source_block_id = EXCLUDED.source_block_id,
+             picture_file = EXCLUDED.picture_file
          WHERE study_cards.question IS DISTINCT FROM EXCLUDED.question
             OR study_cards.answer IS DISTINCT FROM EXCLUDED.answer
-            OR study_cards.block_id IS DISTINCT FROM EXCLUDED.block_id`,
-      [doc.id, readers, JSON.stringify(cards.map((c, ord) => ({ ...c, ord })))],
+            OR study_cards.block_id IS DISTINCT FROM EXCLUDED.block_id
+            OR study_cards.source_doc_id IS DISTINCT FROM EXCLUDED.source_doc_id
+            OR study_cards.source_block_id IS DISTINCT FROM EXCLUDED.source_block_id
+            OR study_cards.picture_file IS DISTINCT FROM EXCLUDED.picture_file`,
+      [
+        doc.id,
+        readers,
+        JSON.stringify(
+          cards.map((c, ord) => ({
+            key: c.key,
+            block_id: c.block_id,
+            question: c.question,
+            answer: c.answer,
+            source_doc_id: c.source?.doc_id ?? null,
+            source_block_id: c.source?.block_id ?? null,
+            picture: c.picture,
+            ord,
+          })),
+        ),
+      ],
     );
   await db.query(
     `DELETE FROM study_cards
@@ -238,24 +284,48 @@ export async function upcomingExams(
   now = new Date(),
 ): Promise<Omit<StudyExam, "doc_ids" | "readiness">[]> {
   const to = new Date(now.getTime() + EXAM_HORIZON_DAYS * 86_400_000);
-  const entries = await agendaEntries(db, userId, now, to, { hidden: true });
-  return entries
-    .filter(
-      (e) => e.calendar_kind === "exams" || EXAM_WORDS.test(e.title ?? ""),
-    )
-    .filter((e) => e.calendar_kind !== "holidays")
-    .slice(0, 30)
-    .map((e) => ({
-      key: `${e.source === "subscription" ? `sub:${e.calendar}` : `item:${e.item_id}`}|${e.start_at}`,
+  const [entries, own] = await Promise.all([
+    agendaEntries(db, userId, now, to, { hidden: true }),
+    // Exams named in Study itself (H4), not on the calendar.
+    db.query<{
+      exam_key: string;
+      title: string;
+      starts_at: Date;
+      all_day: boolean;
+    }>(
+      `SELECT exam_key, title, starts_at, all_day FROM study_exams
+        WHERE user_id = $1 AND own AND starts_at > $2 AND starts_at <= $3
+        ORDER BY starts_at LIMIT 30`,
+      [userId, now, to],
+    ),
+  ]);
+  const daysLeft = (at: string) =>
+    Math.max(0, Math.ceil((Date.parse(at) - now.getTime()) / 86_400_000));
+  return [
+    ...entries
+      .filter(
+        (e) => e.calendar_kind === "exams" || EXAM_WORDS.test(e.title ?? ""),
+      )
+      .filter((e) => e.calendar_kind !== "holidays")
+      .map((e) => ({
+        key: `${e.source === "subscription" ? `sub:${e.calendar}` : `item:${e.item_id}`}|${e.start_at}`,
+        title: e.title,
+        starts_at: e.start_at,
+        all_day: e.all_day,
+        source: e.calendar ?? "yours",
+        days_left: daysLeft(e.start_at),
+      })),
+    ...own.rows.map((e) => ({
+      key: e.exam_key,
       title: e.title,
-      starts_at: e.start_at,
+      starts_at: e.starts_at.toISOString(),
       all_day: e.all_day,
-      source: e.calendar ?? "yours",
-      days_left: Math.max(
-        0,
-        Math.ceil((Date.parse(e.start_at) - now.getTime()) / 86_400_000),
-      ),
-    }));
+      source: "yours",
+      days_left: daysLeft(e.starts_at.toISOString()),
+    })),
+  ]
+    .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
+    .slice(0, 30);
 }
 
 /** Start of tomorrow in the person's zone. */
@@ -321,16 +391,26 @@ export async function studyOverview(
         doc_id: string;
         doc_title: string;
         lapses: number;
+        misses: number;
+        source_doc_id: string | null;
+        source_block_id: string | null;
+        source_title: string | null;
       }>(
-        `SELECT c.id, c.question, c.doc_id, d.title AS doc_title, c.lapses
+        // What the person keeps getting wrong: most "again" answers first.
+        // The notes line to re-read is named only while they can read it.
+        `SELECT c.id, c.question, c.doc_id, d.title AS doc_title, c.lapses, c.misses,
+                s.id AS source_doc_id, CASE WHEN s.id IS NULL THEN NULL ELSE c.source_block_id END AS source_block_id,
+                s.title AS source_title
            FROM ${LIVE_CARDS}
-          WHERE c.user_id = $1 AND c.lapses > 0
-          ORDER BY c.lapses DESC, c.difficulty DESC LIMIT 6`,
+           LEFT JOIN docs s ON s.id = c.source_doc_id AND s.deleted_at IS NULL
+                           AND ${readableDocs("s")}
+          WHERE c.user_id = $1 AND (c.misses > 0 OR c.lapses > 0)
+          ORDER BY c.misses DESC, c.lapses DESC, c.difficulty DESC LIMIT ${WEAK_LIMIT}`,
         [userId],
       ),
       upcomingExams(db, userId, now),
-      db.query<{ exam_key: string; doc_ids: string[] }>(
-        "SELECT exam_key, doc_ids FROM study_exams WHERE user_id = $1",
+      db.query<{ exam_key: string; doc_ids: string[]; target: string | null }>(
+        "SELECT exam_key, doc_ids, target FROM study_exams WHERE user_id = $1",
         [userId],
       ),
       // Reviews due on each of the next seven days (overdue counts today).
@@ -381,6 +461,7 @@ export async function studyOverview(
   }
   const byDoc = new Map(deckList.map((d) => [d.doc_id, d]));
   const attachedBy = new Map(attached.rows.map((a) => [a.exam_key, a.doc_ids]));
+  const targetBy = new Map(attached.rows.map((a) => [a.exam_key, a.target]));
   const newLeft = Math.max(0, NEW_PER_DAY - reviewed.rows[0].new_today);
   return {
     due_today: counts.rows[0].due,
@@ -399,6 +480,7 @@ export async function studyOverview(
         ...e,
         doc_ids: docIds,
         readiness: cards ? Math.round((known / cards) * 100) / 100 : null,
+        target: targetBy.get(e.key) ?? null,
         projected: projectKnown(
           docIds.flatMap((id) => statesBy.get(id) ?? []),
           new Date(e.starts_at),
@@ -407,10 +489,19 @@ export async function studyOverview(
         ),
       };
     }),
-    weak: (await readableLinks(pool, userId, weak.rows)).map((w) => ({
-      ...w,
-      doc_title: w.doc_title || "Untitled",
-    })),
+    weak: (await readableLinks(pool, userId, weak.rows)).map(
+      ({ source_doc_id, source_block_id, source_title, ...w }) => ({
+        ...w,
+        doc_title: w.doc_title || "Untitled",
+        source: source_doc_id
+          ? {
+              doc_id: source_doc_id,
+              block_id: source_block_id,
+              doc_title: source_title || "Untitled",
+            }
+          : null,
+      }),
+    ),
   };
 }
 
@@ -559,9 +650,14 @@ export async function reviewCard(
   const card = await cardById(db, userId, cardId);
   if (!card) fail(404, "Card not found");
   const next = review(stateOf(card), rating, now);
+  // "Again" counts as a miss (what the person keeps getting wrong); a card
+  // marked "needs work" is cleared once it's recalled well.
   await db.query(
     `UPDATE study_cards SET stability = $3, difficulty = $4, reps = $5,
-   lapses = $6, last_review_at = $7, due_at = $8
+   lapses = $6, last_review_at = $7, due_at = $8,
+   misses = misses + CASE WHEN $9 = 'again' THEN 1 ELSE 0 END,
+   needs_work_at = CASE WHEN $9 IN ('good', 'easy') THEN NULL ELSE needs_work_at END,
+   needs_work_note = CASE WHEN $9 IN ('good', 'easy') THEN NULL ELSE needs_work_note END
  WHERE id = $1 AND user_id = $2`,
     [
       card.id,
@@ -572,6 +668,7 @@ export async function reviewCard(
       next.lapses,
       next.last_review_at,
       next.due_at,
+      rating,
     ],
   );
   await db.query(
@@ -662,4 +759,252 @@ export async function applyRevision(
       ).rows[0].id,
     );
   return { item_id: task!.id, block_ids: blocks, minutes };
+}
+
+// ---- H4: practice first ---------------------------------------------------
+
+/**
+ * Round-robin over decks: one card from each page in turn, keeping each
+ * page's own order, so a quiz mixes subjects (interleaving) instead of
+ * running through one page at a time.
+ */
+export function interleave<T extends { doc_id: string }>(cards: T[]): T[] {
+  const by = new Map<string, T[]>();
+  for (const c of cards) {
+    const list = by.get(c.doc_id) ?? [];
+    list.push(c);
+    by.set(c.doc_id, list);
+  }
+  const lists = [...by.values()];
+  const out: T[] = [];
+  for (let i = 0; out.length < cards.length; i++)
+    for (const l of lists) if (i < l.length) out.push(l[i]);
+  return out;
+}
+
+/** How far today's practice has got. */
+export type QuizProgress = { done_today: number; left_today: number };
+
+/**
+ * The next cards to quiz, practice first: cards marked "needs work", then
+ * due cards the person keeps getting wrong (most misses first), then the
+ * rest of what's due, then today's new cards; decks interleaved within
+ * each group. `docIds` limits it to those pages (a deck or an exam's).
+ */
+export async function quizQueue(
+  userId: string,
+  options: { docIds?: string[]; limit: number },
+  now = new Date(),
+  db: Db = pool,
+): Promise<{ cards: StudyCard[]; progress: QuizProgress }> {
+  const tz = (await loadPrefs(db, userId)).timezone || "UTC";
+  const todayStart = dayTime(localDateKey(now, tz), 0, tz);
+  const docs = options.docIds ?? null;
+  const [today, due, fresh] = await Promise.all([
+    db.query<{ n: number; new_today: number }>(
+      `SELECT count(*)::int AS n,
+              count(DISTINCT r.card_id) FILTER (
+                WHERE NOT EXISTS (SELECT 1 FROM study_reviews p
+                                   WHERE p.card_id = r.card_id AND p.at < $2))::int AS new_today
+         FROM study_reviews r WHERE r.user_id = $1 AND r.at >= $2`,
+      [userId, todayStart],
+    ),
+    db.query<CardRow>(
+      `${CARD_SELECT}
+        WHERE c.user_id = $1 AND ($2::uuid[] IS NULL OR c.doc_id = ANY ($2::uuid[]))
+          AND ((c.reps > 0 AND c.due_at <= $3) OR c.needs_work_at IS NOT NULL)
+        ORDER BY (c.needs_work_at IS NOT NULL) DESC, c.misses DESC, c.due_at
+        LIMIT 500`,
+      [userId, docs, now],
+    ),
+    db.query<CardRow>(
+      `${CARD_SELECT}
+        WHERE c.user_id = $1 AND ($2::uuid[] IS NULL OR c.doc_id = ANY ($2::uuid[]))
+          AND c.reps = 0 AND c.needs_work_at IS NULL
+        ORDER BY c.created_at, c.id LIMIT $3`,
+      [userId, docs, NEW_PER_DAY],
+    ),
+  ]);
+  const room = Math.max(0, NEW_PER_DAY - today.rows[0].new_today);
+  const flagged = due.rows.filter((c) => c.needs_work_at);
+  const missed = due.rows.filter((c) => !c.needs_work_at && c.misses > 0);
+  const rest = due.rows.filter((c) => !c.needs_work_at && c.misses === 0);
+  const order = [
+    ...interleave(flagged),
+    ...interleave(missed),
+    ...interleave(rest),
+    ...interleave(fresh.rows.slice(0, room)),
+  ];
+  const picked = order.slice(0, options.limit);
+  const cards = (await readableLinks(pool, userId, picked)).map((r) =>
+    cardOf(r, now),
+  );
+  return {
+    cards: await withCardSources(db, userId, cards),
+    progress: { done_today: today.rows[0].n, left_today: order.length },
+  };
+}
+
+/**
+ * Fill in each card's source line (the page's title and the line's words)
+ * where the person can read that page; a source they can't read is left
+ * out.
+ */
+export async function withCardSources(
+  db: Db,
+  userId: string,
+  cards: StudyCard[],
+): Promise<StudyCard[]> {
+  const ids = [
+    ...new Set(cards.flatMap((c) => (c.source ? [c.source.doc_id] : []))),
+  ];
+  if (!ids.length) return cards;
+  const pages = new Map(
+    (
+      await db.query<{ id: string; title: string; content: DocBlock[] }>(
+        `SELECT d.id, d.title, d.content FROM docs d
+          WHERE d.id = ANY ($2::uuid[]) AND d.deleted_at IS NULL
+            AND ${readableDocs("d")}`,
+        [userId, ids],
+      )
+    ).rows.map((d) => [d.id, d]),
+  );
+  return cards.map((c) => {
+    const page = c.source ? pages.get(c.source.doc_id) : undefined;
+    if (!c.source || !page) return { ...c, source: null };
+    const line = c.source.block_id
+      ? (page.content ?? []).find((b) => b.id === c.source!.block_id)
+      : undefined;
+    return {
+      ...c,
+      source: {
+        ...c.source,
+        doc_title: page.title || "Untitled",
+        text: line && "text" in line ? plainText(line.text).slice(0, 300) : "",
+      },
+    };
+  });
+}
+
+/**
+ * Mark cards "needs work" (an explanation fell short): they come first in
+ * the next quiz and are due now, until they're recalled well.
+ */
+export async function markNeedsWork(
+  db: Db,
+  userId: string,
+  cardId: string,
+  note: string | null,
+  now = new Date(),
+): Promise<StudyCard> {
+  const card = await cardById(db, userId, cardId);
+  if (!card) fail(404, "Card not found");
+  await db.query(
+    `UPDATE study_cards SET needs_work_at = $3, needs_work_note = $4,
+            due_at = LEAST(due_at, $3)
+      WHERE id = $1 AND user_id = $2`,
+    [card.id, userId, now, note],
+  );
+  return cardOf((await cardById(db, userId, card.id))!, now);
+}
+
+/** An exam as Study keeps it (for undoing a change to it). */
+export type ExamRow = {
+  exam_key: string;
+  title: string;
+  starts_at: string;
+  all_day: boolean;
+  own: boolean;
+  doc_ids: string[];
+  target: string | null;
+};
+
+export async function examRow(
+  db: Db,
+  userId: string,
+  key: string,
+): Promise<ExamRow | null> {
+  const r = (
+    await db.query<Omit<ExamRow, "starts_at"> & { starts_at: Date }>(
+      `SELECT exam_key, title, starts_at, all_day, own, doc_ids, target
+         FROM study_exams WHERE user_id = $1 AND exam_key = $2`,
+      [userId, key],
+    )
+  ).rows[0];
+  return r ? { ...r, starts_at: r.starts_at.toISOString() } : null;
+}
+
+/**
+ * Save an exam: one of the person's own (`own`), or a calendar exam's
+ * pages and goal. Pages they can't read are left out; `doc_ids`
+ * undefined keeps the ones it has.
+ */
+export async function saveExam(
+  db: Db,
+  userId: string,
+  e: {
+    key: string;
+    title: string;
+    starts_at: string;
+    all_day: boolean;
+    own: boolean;
+    doc_ids?: string[];
+    target?: string | null;
+  },
+): Promise<void> {
+  const visible = e.doc_ids
+    ? (
+        await db.query<{ id: string }>(
+          `SELECT d.id FROM docs d WHERE d.id = ANY ($2::uuid[])
+             AND d.deleted_at IS NULL AND ${readableDocs("d")}`,
+          [userId, e.doc_ids],
+        )
+      ).rows.map((x) => x.id)
+    : null;
+  await db.query(
+    `INSERT INTO study_exams (user_id, exam_key, title, starts_at, all_day, own, doc_ids, target)
+     VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::uuid[], '{}'), $8)
+     ON CONFLICT (user_id, exam_key) DO UPDATE
+       SET title = EXCLUDED.title, starts_at = EXCLUDED.starts_at,
+           all_day = EXCLUDED.all_day, own = EXCLUDED.own,
+           doc_ids = COALESCE($7::uuid[], study_exams.doc_ids),
+           target = CASE WHEN $9 THEN EXCLUDED.target ELSE study_exams.target END,
+           updated_at = now()`,
+    [
+      userId,
+      e.key,
+      e.title,
+      e.starts_at,
+      e.all_day,
+      e.own,
+      visible ? e.doc_ids!.filter((id) => visible.includes(id)) : null,
+      e.target ?? null,
+      e.target !== undefined,
+    ],
+  );
+}
+
+/** Put an exam back as it was, or remove it when it wasn't there. */
+export async function restoreExam(
+  db: Db,
+  userId: string,
+  key: string,
+  was: ExamRow | null,
+): Promise<void> {
+  if (!was) {
+    await db.query(
+      "DELETE FROM study_exams WHERE user_id = $1 AND exam_key = $2",
+      [userId, key],
+    );
+    return;
+  }
+  await saveExam(db, userId, {
+    key,
+    title: was.title,
+    starts_at: was.starts_at,
+    all_day: was.all_day,
+    own: was.own,
+    doc_ids: was.doc_ids,
+    target: was.target,
+  });
 }

@@ -193,7 +193,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `manage_routines`         | Frames, habits and places              | destructive | write, planner       |
 | `update_planner_settings` | Change planner settings                | destructive | write, planner       |
 | `get_study`               | Study overview                         | read        | read, study          |
-| `update_study`            | Record reviews and exams               | write       | write, study         |
+| `update_study`            | Cards, reviews and exams               | write       | write, study         |
 | `plan_revision`           | Preview revision sessions              | read        | read, study          |
 | `save_source`             | Save a source                          | write       | suggest, study       |
 | `get_follow_through`      | Follow-through                         | read        | read, followthrough  |
@@ -713,29 +713,34 @@ Changes working days and hours ("HH:MM"), the planning horizon, padding, splitti
 
 ### `get_study`
 
-Decks (pages with Question :: Answer cards), cards due today and ahead, upcoming exams with their pages and readiness, and, with queue, the cards to review now (answers hidden unless reveal is true, so the person can be quizzed).
+Decks, cards due, exams and what the person keeps getting wrong (wrong). queue: cards to quiz, practice order (needs work, most missed, due, new; decks mixed), answers hidden; limit 1 for one at a time. card: that card with its answer, once they've tried. explain: their notes lines and cards with answers on a topic or cards, for you to judge an explanation.
 
-| Argument | Type    | Notes                                     |
-| -------- | ------- | ----------------------------------------- |
-| `queue`  | boolean | Default false.                            |
-| `deck`   | string  | Only this page's cards.                   |
-| `ahead`  | boolean | Include cards not due yet. Default false. |
-| `reveal` | boolean | Default false.                            |
-| `limit`  | integer | Default 20.                               |
+| Argument  | Type    | Notes                                     |
+| --------- | ------- | ----------------------------------------- |
+| `queue`   | boolean | Default false.                            |
+| `deck`    | string  | Only this page's cards.                   |
+| `exam`    | string  | Only this exam's pages (key).             |
+| `ahead`   | boolean | Include cards not due yet. Default false. |
+| `reveal`  | boolean | Default false.                            |
+| `limit`   | integer | Default 20.                               |
+| `card`    | id      |                                           |
+| `explain` | object  |                                           |
 
 ### `update_study`
 
-Records how the person recalled cards (again, hard, good or easy) after quizzing them, and sets which pages are revised for an exam (key from get_study; pages they can't read are left out). New cards come from editing pages with Question :: Answer lines.
+cards: your q/a, cloze or picture cards into a page's Cards section or a new deck, each linked to its notes line (from); undo removes them. reviews: how each card was recalled. needs_work: explanations that fell short (asked first next quiz). exam: name or change one (title, date, pages, target); plan also books revision sessions.
 
 | Argument     | Type           | Notes                                                                                                                                      |
 | ------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `cards`      | object         |                                                                                                                                            |
 | `reviews`    | list of object |                                                                                                                                            |
+| `needs_work` | list of object |                                                                                                                                            |
 | `exam`       | object         |                                                                                                                                            |
 | `client_ref` | string         | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `plan_revision`
 
-Previews revision sessions in free working time before an exam (one a day from up to three weeks out, longer in the last three days) without changing anything, and returns a plan_token: schedule_sessions puts them on the calendar with a "Revise for …" task.
+Previews revision sessions in free working time before an exam (one a day from up to three weeks out, longer in the last three days) without changing anything, and returns a plan_token: schedule_sessions puts them on the calendar with a "Revise for …" task. update_study exam.plan books them in one step.
 
 | Argument          | Type    | Notes                          |
 | ----------------- | ------- | ------------------------------ |
@@ -958,19 +963,19 @@ Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file l
 
 Workflows an agent's prompt menu can offer. Each is plain text naming only Orbyn's tools, and is offered only when the connection has the toolsets it uses.
 
-| Prompt                  | What                                                                                                             | Arguments                                   |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `plan_my_day`           | Looks at today in Orbyn and proposes sessions for the rest of it, then asks before adding them.                  | `focus`, `hours_available`                  |
-| `plan_my_week`          | Lines up the week's work around what's due and what's already on the calendar, and asks once before scheduling.  | `priorities`, `focus_project`               |
-| `daily_shutdown`        | Closes the day: what got done, what slipped, and a start on tomorrow.                                            | none                                        |
-| `weekly_review`         | Planned against done, follow-ups and overdue work, then a short summary with suggested changes filed for review. | `team`                                      |
-| `project_kickoff`       | Looks for similar projects and templates, drafts stages and first tasks, then plans the first sessions.          | `name` (required), `deadline`, `template`   |
-| `catch_up_on_project`   | A re-entry brief: where the project stands, what changed since you were last there, and what links to it.        | `project` (required)                        |
-| `ask_project`           | Answers a question from a project's pages, tasks and decisions, with numbered citations.                         | `project` (required), `question` (required) |
-| `study_session`         | Quizzes you on due flashcards one at a time and records how each went.                                           | `exam`                                      |
-| `meeting_prep`          | Gathers what's linked to a meeting and drafts a meeting note for it.                                             | `event` (required)                          |
-| `triage_inbox`          | Finds tasks with no date, project or estimate, and asks waiting on you, and drafts updates for you to confirm.   | none                                        |
-| `turn_notes_into_tasks` | Makes tasks from a page's open checklist lines, linked both ways.                                                | `doc` (required)                            |
+| Prompt                  | What                                                                                                                          | Arguments                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `plan_my_day`           | Looks at today in Orbyn and proposes sessions for the rest of it, then asks before adding them.                               | `focus`, `hours_available`                  |
+| `plan_my_week`          | Lines up the week's work around what's due and what's already on the calendar, and asks once before scheduling.               | `priorities`, `focus_project`               |
+| `daily_shutdown`        | Closes the day: what got done, what slipped, and a start on tomorrow.                                                         | none                                        |
+| `weekly_review`         | Planned against done, follow-ups and overdue work, then a short summary with suggested changes filed for review.              | `team`                                      |
+| `project_kickoff`       | Looks for similar projects and templates, drafts stages and first tasks, then plans the first sessions.                       | `name` (required), `deadline`, `template`   |
+| `catch_up_on_project`   | A re-entry brief: where the project stands, what changed since you were last there, and what links to it.                     | `project` (required)                        |
+| `ask_project`           | Answers a question from a project's pages, tasks and decisions, with numbered citations.                                      | `project` (required), `question` (required) |
+| `study_session`         | Quizzes you on your cards one at a time, practice first (what you keep getting wrong comes first), and records how each went. | `exam`                                      |
+| `meeting_prep`          | Gathers what's linked to a meeting and drafts a meeting note for it.                                                          | `event` (required)                          |
+| `triage_inbox`          | Finds tasks with no date, project or estimate, and asks waiting on you, and drafts updates for you to confirm.                | none                                        |
+| `turn_notes_into_tasks` | Makes tasks from a page's open checklist lines, linked both ways.                                                             | `doc` (required)                            |
 
 The same workflows, the Markdown and view guides and the planning etiquette ship as an Agent Skill for agents that load skills: [`agent-skill/orbyn/SKILL.md`](agent-skill/orbyn/SKILL.md).
 
@@ -996,6 +1001,7 @@ Catalog version: `2026-09-27`.
 
 ### 2026-09-27
 
+- Study from anything, practice first (no AI of Orbyn's: the agent writes and judges, Orbyn stores and schedules). update_study cards adds question/answer, cloze and picture cards to a page's Cards section or a new deck, each linked to the notes line it came from (from: `doc:<id>#<anchor>`, kept as a [src: …](orbyn://doc/…#…) link on the card's line); undo removes them. get_study queue now quizzes in practice order (cards marked needs work, then the ones most often answered again, then due, then new; decks interleaved), answers hidden, with left_today; get_study card gives one card's answer once the person has tried; get_study explain returns the person's own notes lines and cards with answers on a topic or cards so the agent can judge an explanation, and update_study needs_work records one that fell short. get_study lists what the person keeps getting wrong (wrong) and each card's source (from) and picture. update_study exam names or changes an exam (title, date, pages, target), and exam.plan books its revision sessions in the same call.
 - Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.
 - Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.
 - list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.

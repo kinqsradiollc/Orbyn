@@ -182,7 +182,7 @@ export const PROMPTS: PromptSpec[] = [
     name: "study_session",
     title: "Study session",
     description:
-      "Quizzes you on due flashcards one at a time and records how each went.",
+      "Quizzes you on your cards one at a time, practice first (what you keep getting wrong comes first), and records how each went.",
     arguments: [
       {
         name: "exam",
@@ -194,10 +194,12 @@ export const PROMPTS: PromptSpec[] = [
     text: (a) =>
       `Quiz me with my Orbyn flashcards.${given(a.exam, "For")}
 
-1. Get the cards due with get_study (queue). Keep each answer hidden until I've tried.
-2. Ask one card at a time, show the answer, and ask how it went (again, hard, good or easy).
-3. Record each with update_study.
-4. If the exam is close, preview revision sessions with plan_revision and ask before scheduling them.`,
+1. Get the next card with get_study (queue, limit 1${a.exam ? ", exam" : ""}). Answers stay hidden; ask me the question (show a picture card's picture) and let me answer in my own words before you look.
+2. Then get its answer with get_study (card), compare my answer yourself, tell me what I got right and what I missed, and ask "why?" or "how does that connect to …?" when I got it right too.
+3. Record how it went with update_study (reviews: again, hard, good or easy) and go on to the next card; stop when nothing is left for today or I say so. Cards I keep getting wrong come first; point me to the notes line a card came from (from) when I miss it.
+4. Now and then, ask me to explain a topic in my own words: get my notes and cards on it with get_study (explain), judge my explanation against them yourself, and mark what fell short with update_study (needs work).
+5. If an exam is close and not planned, offer to book revision with update_study (exam with plan: true).
+6. When a topic has no cards yet, write retrieval questions from my notes (not summaries): question/answer, cloze and "why" cards, each with from set to the line it came from, via update_study (cards).`,
   },
   {
     name: "meeting_prep",

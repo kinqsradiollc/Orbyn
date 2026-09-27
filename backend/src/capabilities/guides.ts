@@ -84,7 +84,7 @@ Only pictures and files already in Orbyn can be shown: ones on a page this conne
 
 ## Sources
 
-A line that came from somewhere says so with a source marker: \`The mitochondria makes ATP. [src: Lecture 5 slides, slide 12]\`. The words inside are yours (a slide, a page, a timestamp, a book and page); the marker is part of the line, so it moves, copies and is edited with it, and it reads back exactly as written. \`[src: …](https://…)\` is an ordinary link instead. Study cards leave markers out of their question and answer.
+A line that came from somewhere says so with a source marker: \`The mitochondria makes ATP. [src: Lecture 5 slides, slide 12]\`. The words inside are yours (a slide, a page, a timestamp, a book and page); the marker is part of the line, so it moves, copies and is edited with it, and it reads back exactly as written. \`[src: …](https://…)\` is an ordinary link instead (on a card line, a link to a page's line names the notes it came from; see Study cards). Study cards leave markers out of their question and answer.
 
 A web page you read can also be saved with save_source (its address, title, a quote, the day you read it and its author): it is kept once per address in the page's space, linked to the page and the lines that use it, and listed in the page's Info under Sources; fetch names a page's sources and opens \`source:<id>\`. Mark those lines with \`[src: its title]\` as well. Orbyn never opens the address.
 
@@ -94,7 +94,11 @@ A checklist line can be tied to a task (tasks_from_doc, or "Make tasks" in the a
 
 ## Study cards
 
-A line written as \`Question :: Answer\` (a paragraph, bullet or numbered line) is a flashcard. \`Front ::: Back\` makes one each way, and \`{{words}}\` in a line hides them as a cloze card. Cards follow their page: editing the line changes the card, and its review history stays with the anchor.
+A line written as \`Question :: Answer\` (a paragraph, bullet or numbered line) is a flashcard. \`Front ::: Back\` makes one each way, and \`{{words}}\` in a line hides them as a cloze card. A card line right under a picture line asks about that picture. Cards follow their page: editing the line changes the card, and its review history stays with the anchor.
+
+A card says which notes line it came from with a source link at its end: \`What makes ATP? :: The mitochondria [src: Lecture 5 › Cells make energy](orbyn://doc/<id>#<anchor>)\`. Study shows it as "from: Lecture 5 › …" so a missed card leads back to its notes; it is never part of the question or answer. update_study (cards) writes these lines for you, under the page's \`## Cards\` heading.
+
+Write cards for practice, not as a summary: one idea a card, asked the way a test would ask it. Mix plain recall (\`What does the Krebs cycle produce? :: …\`), cloze for terms and numbers, and "why" and "how" questions that make the person explain (\`Why does the Krebs cycle stop without oxygen? :: …\`). Keep answers short enough to say aloud, and link each card to the line it came from.
 
 ## Limits
 
@@ -161,7 +165,7 @@ export const PLANNING_GUIDE = `# Planning in Orbyn
 2. Show the person the plan. When they agree, schedule_sessions applies the plan_token. It checks again for clashes, closed tasks and changes since the preview, and skips anything that no longer fits.
 3. Personal plans of 20 sessions or fewer apply directly. Larger or team plans go to the person's Review inbox.
 
-Revision before an exam works the same way: plan_revision previews, schedule_sessions applies.
+Revision before an exam works the same way: plan_revision previews, schedule_sessions applies; update_study with exam.plan does both in one call (it still asks first when the connection must ask).
 
 ## What goes to review
 

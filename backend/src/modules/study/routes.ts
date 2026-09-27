@@ -21,6 +21,7 @@ import {
   reviewQueue,
   setExamDecks,
   studyOverview,
+  withCardSources,
 } from "./service.js";
 import { readableDocs } from "../../lib/visibility.js";
 
@@ -38,11 +39,16 @@ export async function studyRoutes(app: FastifyInstance) {
   app.get("/study/queue", async (r) => {
     const u = await authenticate(r);
     const q = studyQueueQuery.parse(r.query);
-    return reviewQueue(u.id, {
-      docId: q.doc_id,
-      limit: q.limit,
-      ahead: q.ahead,
-    });
+    // Each card with the notes line it came from, where they can read it.
+    return withCardSources(
+      pool,
+      u.id,
+      await reviewQueue(u.id, {
+        docId: q.doc_id,
+        limit: q.limit,
+        ahead: q.ahead,
+      }),
+    );
   });
 
   // One review: the card's next date comes from how well it was recalled.

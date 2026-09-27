@@ -635,17 +635,17 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
 
       {data.weak.length > 0 && (
         <section className="study-section">
-          <h2>Forgotten most</h2>
+          <h2>Keeps getting wrong</h2>
           <ul className="card study-weak">
             {data.weak.map((w) => (
               <li key={w.id}>
                 <span>{w.question}</span>
-                <small className="muted">forgotten {w.lapses}×</small>
+                <small className="muted">wrong {w.misses || w.lapses}×</small>
                 <button
                   className="text-button"
-                  onClick={() => void openPage(w.doc_id)}
+                  onClick={() => void openPage(w.source?.doc_id ?? w.doc_id)}
                 >
-                  Re-read {w.doc_title}
+                  Re-read {w.source?.doc_title ?? w.doc_title}
                 </button>
               </li>
             ))}

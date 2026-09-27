@@ -16,7 +16,11 @@ import {
   trashDoc,
   untrashDoc,
 } from "../modules/docs/service.js";
-import { syncSavedPages } from "../modules/study/service.js";
+import {
+  restoreExam,
+  syncSavedPages,
+  type ExamRow,
+} from "../modules/study/service.js";
 import { requireTeam } from "../lib/teams.js";
 import { restoreSnapshot, type Snapshot } from "./snapshot.js";
 import {
@@ -173,7 +177,9 @@ export type UndoOp =
    * A picture or file it sent (H2): delete it, unless another page shows
    * it now; `kept` is a page's original rather than a line's file.
    */
-  | { op: "file.delete"; id: string; kept?: boolean };
+  | { op: "file.delete"; id: string; kept?: boolean }
+  /** An exam it named or changed in Study (H4): put it back, or remove it. */
+  | { op: "exam.restore"; key: string; was: ExamRow | null };
 
 /** Undo is kept this long after the change. */
 export const UNDO_DAYS = 30;
@@ -271,8 +277,10 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
           op.doc_id,
           op.to_version,
         );
-        after.push(() =>
-          announceDocChange(pool, op.doc_id, restored.version, "undo"),
+        after.push(
+          () => announceDocChange(pool, op.doc_id, restored.version, "undo"),
+          // Cards it added go from Study at once.
+          () => syncSavedPages(op.doc_id),
         );
         break;
       }
@@ -296,10 +304,12 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
         if (!doc) break;
         if (doc.version !== op.version) changedSince();
         const gone = await trashDoc(db, u, op.doc_id);
-        after.push(() =>
-          announceDocChange(pool, op.doc_id, gone.version, "undo", {
-            trashed: true,
-          }),
+        after.push(
+          () =>
+            announceDocChange(pool, op.doc_id, gone.version, "undo", {
+              trashed: true,
+            }),
+          () => syncSavedPages(op.doc_id),
         );
         break;
       }
@@ -481,6 +491,9 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
                                  WHERE r.file_id = f.id)`,
             [op.id, u.id],
           );
+        break;
+      case "exam.restore":
+        await restoreExam(db, u.id, op.key, op.was);
         break;
       case "view.restore": {
         const view = await findView(db, everySpace(u.id), op.id, true);

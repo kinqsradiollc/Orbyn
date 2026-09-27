@@ -30,6 +30,7 @@ import { EmptyState } from "../components/EmptyState";
 import * as Haptics from "expo-haptics";
 import { client } from "../lib/api";
 import { useImports } from "./docs/Uploads";
+import { ImageBlock } from "./docs/RichBlocks";
 import { confirmAction } from "../lib/confirm";
 import { deviceTimeZone } from "../lib/planning";
 import { animateLayout, Pressable } from "../motion";
@@ -655,16 +656,16 @@ function Home({
 
       {data.weak.length > 0 && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>FORGOTTEN MOST</Text>
+          <Text style={[shared.eyebrow, s.eyebrow]}>KEEPS GETTING WRONG</Text>
           <View style={shared.card}>
             {data.weak.map((w, n) => (
               <View key={w.id} style={[s.weak, n > 0 && s.divider]}>
                 <Text style={shared.body}>{w.question}</Text>
-                <Text style={shared.small}>forgotten {w.lapses}×</Text>
+                <Text style={shared.small}>wrong {w.misses || w.lapses}×</Text>
                 <SmallAction
-                  label={`Re-read ${w.doc_title}`}
+                  label={`Re-read ${w.source?.doc_title ?? w.doc_title}`}
                   disabled={false}
-                  onPress={() => onOpenPage(w.doc_id)}
+                  onPress={() => onOpenPage(w.source?.doc_id ?? w.doc_id)}
                 />
               </View>
             ))}
@@ -916,6 +917,13 @@ function Review({
         </View>
         <View style={s.face}>
           <Text style={s.faceLabel}>QUESTION</Text>
+          {card.picture && (
+            <View style={s.picture}>
+              <ImageBlock
+                block={{ type: "image", file: card.picture, text: "" }}
+              />
+            </View>
+          )}
           <Text style={[s.question, shown && s.questionSmall]}>
             {mathToText(card.question)}
           </Text>
@@ -924,6 +932,19 @@ function Review({
           <View style={[s.face, s.faceAnswer]}>
             <Text style={s.faceLabel}>ANSWER</Text>
             <Text style={s.answerText}>{mathToText(card.answer)}</Text>
+            {card.source && (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="Open the notes this card came from"
+                onPress={() => onOpenPage(card.source!.doc_id)}
+                style={[s.source, s.fromLine]}
+              >
+                <Text style={s.sourceText} numberOfLines={1}>
+                  from: {card.source.doc_title}
+                  {card.source.text ? ` › ${card.source.text}` : ""}
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
       </View>
@@ -1393,6 +1414,8 @@ const s = themed(() =>
       borderColor: colors.border,
     },
     sourceText: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
+    fromLine: { alignSelf: "center", marginTop: 8 },
+    picture: { alignSelf: "stretch" },
     face: { alignItems: "center", gap: 8, paddingVertical: 18 },
     faceAnswer: {
       paddingTop: 18,

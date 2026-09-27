@@ -5,6 +5,7 @@ import {
   withoutSources,
   type DocBlock,
 } from "./docs.js";
+import { parseObjectHref } from "./links.js";
 
 /**
  * Study: flashcards written in your own pages, reviewed with spaced
@@ -26,7 +27,45 @@ export type PageCard = {
   block_id: string | null;
   question: string;
   answer: string;
+  /**
+   * The notes line it was made from (H4): a `[src: …](orbyn://doc/<id>#<line>)`
+   * link on the card's line. Null when it has none.
+   */
+  source: CardSource | null;
+  /** The picture it asks about: a card line right under a picture line. */
+  picture: string | null;
 };
+
+/** The notes line a card was made from. */
+export type CardSource = { doc_id: string; block_id: string | null };
+
+/**
+ * A card line's source links: `[src: Lecture 5 › The mitochondria…](orbyn://doc/<id>#<line>)`.
+ * Any `[src: …](…)` link says where the card came from and isn't asked;
+ * the first one to an Orbyn page is the card's source.
+ */
+const SOURCE_LINK = /\[src:[^\]\n]*\]\(([^)\s]+)\)/g;
+
+/** A card line without its source links, and the first page line they name. */
+export function cardSource(text: string): {
+  text: string;
+  source: CardSource | null;
+} {
+  if (!text.includes("[src:")) return { text, source: null };
+  let source: CardSource | null = null;
+  const rest = text.replace(SOURCE_LINK, (_m, href: string) => {
+    const ref = parseObjectHref(href);
+    if (!source && ref?.kind === "doc")
+      source = { doc_id: ref.id, block_id: ref.block ?? null };
+    return "";
+  });
+  return {
+    text: withoutSources(rest)
+      .replace(/[ \t]{2,}/g, " ")
+      .trim(),
+    source,
+  };
+}
 
 const CARD_LINE = /^(.+?)\s+::\s+(.+)$/s;
 const BOTH_WAYS = /^(.+?)\s+:::\s+(.+)$/s;
@@ -64,16 +103,27 @@ const questionKey = (q: string) =>
 export function cardsInBlocks(blocks: DocBlock[]): PageCard[] {
   const out: PageCard[] = [];
   const seen = new Set<string>();
-  for (const b of blocks) {
+  blocks.forEach((b, i) => {
     if (b.type !== "paragraph" && b.type !== "bullet" && b.type !== "numbered")
-      continue;
+      return;
+    // A card line right under a picture asks about that picture.
+    const above = blocks[i - 1];
+    const picture = above?.type === "image" ? above.file : null;
+    // A card's source (`[src: …]`, or a `[src: …](orbyn://doc/…)` link to
+    // the notes line it was made from) says where it came from; it isn't asked.
+    const { text, source } = cardSource(b.text);
     const add = (key: string, question: string, answer: string) => {
       if (!question || !answer || seen.has(key)) return;
       seen.add(key);
-      out.push({ key, block_id: b.id ?? null, question, answer });
+      out.push({
+        key,
+        block_id: b.id ?? null,
+        question,
+        answer,
+        source,
+        picture,
+      });
     };
-    // A card's source (`[src: …]`) says where it came from; it isn't asked.
-    const text = withoutSources(b.text);
     const both = text.match(BOTH_WAYS);
     if (both) {
       const front = both[1].trim();
@@ -81,20 +131,20 @@ export function cardsInBlocks(blocks: DocBlock[]): PageCard[] {
       const key = b.id ?? questionKey(front);
       add(key, front, back);
       add(`${key}#r`, back, front);
-      continue;
+      return;
     }
     const m = text.match(CARD_LINE);
     if (m) {
       const question = m[1].trim();
       add(b.id ?? questionKey(question), question, m[2].trim());
-      continue;
+      return;
     }
     const cloze = clozeCards(text);
     if (cloze.length) {
       const base = b.id ?? questionKey(text.replace(CLOZE, "$1"));
       cloze.forEach((c, n) => add(`${base}#c${n + 1}`, c.question, c.answer));
     }
-  }
+  });
   return out;
 }
 
@@ -407,6 +457,14 @@ export type StudyCard = CardState & {
   answer: string;
   /** When each rating would bring it back, for the review buttons. */
   next: Record<Rating, string>;
+  /** The notes line it was made from, when its line names one (H4). */
+  source?: (CardSource & { doc_title: string; text: string }) | null;
+  /** The picture it asks about (a page file id). */
+  picture?: string | null;
+  /** How many times it was answered "again". */
+  misses?: number;
+  /** Marked "needs work" (explain-it-back), until it's next recalled well. */
+  needs_work?: boolean;
 };
 
 export type StudyDeck = {
@@ -434,6 +492,8 @@ export type StudyExam = {
   doc_ids: string[];
   /** Share of the attached decks' cards known well (0–1); null with none. */
   readiness: number | null;
+  /** The person's goal for it, in their words ("80%", "a 7"). */
+  target?: string | null;
   /**
    * The share known well by the exam if every review is done when it's
    * due and new cards are learnt at the daily pace (0–1); null with none.
@@ -452,13 +512,21 @@ export type StudyOverview = {
   exams: StudyExam[];
   /** Reviews due on each of the next 7 days (today includes overdue). */
   forecast?: { date: string; due: number }[];
-  /** The cards forgotten most, with the page to re-read. */
+  /**
+   * The cards the person keeps getting wrong (most "again" answers first),
+   * with the page to re-read: the notes line the card came from when it
+   * has one.
+   */
   weak: {
     id: string;
     question: string;
     doc_id: string;
     doc_title: string;
     lapses: number;
+    /** Times answered "again". */
+    misses: number;
+    /** The notes line to re-read, when the card names one. */
+    source?: (CardSource & { doc_title: string }) | null;
   }[];
 };
 

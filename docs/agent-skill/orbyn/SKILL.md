@@ -106,15 +106,17 @@ Answer this from my Orbyn project "<project>": <question>
 
 ### Study session (`study_session`)
 
-Quizzes you on due flashcards one at a time and records how each went.
+Quizzes you on your cards one at a time, practice first (what you keep getting wrong comes first), and records how each went.
 
 Quiz me with my Orbyn flashcards.
 For: <exam>
 
-1. Get the cards due with get_study (queue). Keep each answer hidden until I've tried.
-2. Ask one card at a time, show the answer, and ask how it went (again, hard, good or easy).
-3. Record each with update_study.
-4. If the exam is close, preview revision sessions with plan_revision and ask before scheduling them.
+1. Get the next card with get_study (queue, limit 1, exam). Answers stay hidden; ask me the question (show a picture card's picture) and let me answer in my own words before you look.
+2. Then get its answer with get_study (card), compare my answer yourself, tell me what I got right and what I missed, and ask "why?" or "how does that connect to …?" when I got it right too.
+3. Record how it went with update_study (reviews: again, hard, good or easy) and go on to the next card; stop when nothing is left for today or I say so. Cards I keep getting wrong come first; point me to the notes line a card came from (from) when I miss it.
+4. Now and then, ask me to explain a topic in my own words: get my notes and cards on it with get_study (explain), judge my explanation against them yourself, and mark what fell short with update_study (needs work).
+5. If an exam is close and not planned, offer to book revision with update_study (exam with plan: true).
+6. When a topic has no cards yet, write retrieval questions from my notes (not summaries): question/answer, cloze and "why" cards, each with from set to the line it came from, via update_study (cards).
 
 ### Prepare for a meeting (`meeting_prep`)
 
@@ -215,7 +217,7 @@ Only pictures and files already in Orbyn can be shown: ones on a page this conne
 
 ### Sources
 
-A line that came from somewhere says so with a source marker: `The mitochondria makes ATP. [src: Lecture 5 slides, slide 12]`. The words inside are yours (a slide, a page, a timestamp, a book and page); the marker is part of the line, so it moves, copies and is edited with it, and it reads back exactly as written. `[src: …](https://…)` is an ordinary link instead. Study cards leave markers out of their question and answer.
+A line that came from somewhere says so with a source marker: `The mitochondria makes ATP. [src: Lecture 5 slides, slide 12]`. The words inside are yours (a slide, a page, a timestamp, a book and page); the marker is part of the line, so it moves, copies and is edited with it, and it reads back exactly as written. `[src: …](https://…)` is an ordinary link instead (on a card line, a link to a page's line names the notes it came from; see Study cards). Study cards leave markers out of their question and answer.
 
 A web page you read can also be saved with save_source (its address, title, a quote, the day you read it and its author): it is kept once per address in the page's space, linked to the page and the lines that use it, and listed in the page's Info under Sources; fetch names a page's sources and opens `source:<id>`. Mark those lines with `[src: its title]` as well. Orbyn never opens the address.
 
@@ -225,7 +227,11 @@ A checklist line can be tied to a task (tasks_from_doc, or "Make tasks" in the a
 
 ### Study cards
 
-A line written as `Question :: Answer` (a paragraph, bullet or numbered line) is a flashcard. `Front ::: Back` makes one each way, and `{{words}}` in a line hides them as a cloze card. Cards follow their page: editing the line changes the card, and its review history stays with the anchor.
+A line written as `Question :: Answer` (a paragraph, bullet or numbered line) is a flashcard. `Front ::: Back` makes one each way, and `{{words}}` in a line hides them as a cloze card. A card line right under a picture line asks about that picture. Cards follow their page: editing the line changes the card, and its review history stays with the anchor.
+
+A card says which notes line it came from with a source link at its end: `What makes ATP? :: The mitochondria [src: Lecture 5 › Cells make energy](orbyn://doc/<id>#<anchor>)`. Study shows it as "from: Lecture 5 › …" so a missed card leads back to its notes; it is never part of the question or answer. update_study (cards) writes these lines for you, under the page's `## Cards` heading.
+
+Write cards for practice, not as a summary: one idea a card, asked the way a test would ask it. Mix plain recall (`What does the Krebs cycle produce? :: …`), cloze for terms and numbers, and "why" and "how" questions that make the person explain (`Why does the Krebs cycle stop without oxygen? :: …`). Keep answers short enough to say aloud, and link each card to the line it came from.
 
 ### Limits
 
@@ -288,7 +294,7 @@ Personal views are the person's own. A team view is shared with the team: member
 2. Show the person the plan. When they agree, schedule_sessions applies the plan_token. It checks again for clashes, closed tasks and changes since the preview, and skips anything that no longer fits.
 3. Personal plans of 20 sessions or fewer apply directly. Larger or team plans go to the person's Review inbox.
 
-Revision before an exam works the same way: plan_revision previews, schedule_sessions applies.
+Revision before an exam works the same way: plan_revision previews, schedule_sessions applies; update_study with exam.plan does both in one call (it still asks first when the connection must ask).
 
 ### What goes to review
 
