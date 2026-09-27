@@ -19,8 +19,15 @@ import type { LiveSettings } from "../../lib/settings.js";
  * app's name is shown as unverified; registrations nobody uses are swept
  * after a week.
  *
- * Only public clients are served (token_endpoint_auth_method "none", with
- * PKCE): there are no client secrets to leak or rotate.
+ * Every client uses PKCE. Most are public (token_endpoint_auth_method
+ * "none"). A CIMD app may also prove itself at the token endpoint with a
+ * key (private_key_jwt, RFC 7523): its document publishes the public keys
+ * (`jwks`, or `jwks_uri`, fetched as safely as the document) and
+ * client-auth.ts checks every assertion. Nothing ever holds a client
+ * secret: a CIMD document that declares client_secret_basic or
+ * client_secret_post is served as a public app (no secret can exist for
+ * it, and PKCE still binds the code), with the declared method kept on its
+ * row; any other method is refused, by name.
  */
 
 /** An OAuth error, answered as RFC 6749 / RFC 7591 describe. */
@@ -46,13 +53,54 @@ export type OAuthClient = {
   redirect_uris: string[];
 };
 
-type ClientRow = {
+/** How an app proves itself at the token endpoint. */
+export type ClientAuthMethod = "none" | "private_key_jwt";
+
+/** The only signing algorithms Orbyn accepts for a client's assertion. */
+export const ASSERTION_ALGS = ["RS256", "PS256", "ES256"] as const;
+
+/** A public key an app published for its assertions (RSA, or EC P-256). */
+export type PublicJwk = {
+  kty: "RSA" | "EC";
+  kid?: string;
+  alg?: string;
+  use?: "sig";
+  n?: string;
+  e?: string;
+  crv?: string;
+  x?: string;
+  y?: string;
+};
+
+/** What a stored client row keeps about its authentication. */
+export type ClientMetadata = {
+  cache_seconds?: number;
+  /** How it proves itself at the token endpoint (missing: "none"). */
+  auth_method?: ClientAuthMethod;
+  /** The method its document declared, when that differs (client_secret_*). */
+  declared_auth_method?: string | null;
+  /** The one algorithm its document says it signs with, if it said. */
+  auth_alg?: string | null;
+  /** Its public keys, when the document holds them. */
+  jwks?: PublicJwk[] | null;
+  /** Where its public keys are published, otherwise. */
+  jwks_uri?: string | null;
+  /** The keys last read from jwks_uri. */
+  jwks_cache?: {
+    keys: PublicJwk[];
+    etag: string | null;
+    fetched_at: number;
+    cache_seconds: number;
+  } | null;
+} & Record<string, unknown>;
+
+export type ClientRow = {
   id: string;
   kind: "cimd" | "dcr";
   name: string;
   host: string;
   redirect_uris: string[];
-  metadata: { cache_seconds?: number } & Record<string, unknown>;
+  metadata: ClientMetadata;
   etag: string | null;
   fetched_at: Date | null;
   blocked: boolean;
@@ -256,6 +304,187 @@ function usable(row: ClientRow, s: LiveSettings) {
     );
 }
 
+/** Methods Orbyn knows but doesn't support, in plain words. */
+const METHOD_WORDS: Record<string, string> = {
+  client_secret_jwt: "a token signed with a shared secret (client_secret_jwt)",
+  tls_client_auth: "a client certificate (tls_client_auth)",
+  self_signed_tls_client_auth:
+    "a self-signed client certificate (self_signed_tls_client_auth)",
+  private_key_jwt: "a signed key (private_key_jwt)",
+};
+
+/** A declared method, fit to show and log: printable, short. */
+const methodName = (raw: unknown) =>
+  cleanName(typeof raw === "string" ? raw : (JSON.stringify(raw) ?? ""), "?")
+    .replace(/["\\]/g, "")
+    .slice(0, 40);
+
+/** A method in words people can read. */
+export const methodWords = (raw: unknown) => {
+  const name = methodName(raw);
+  return METHOD_WORDS[name] ?? `a method called "${name}"`;
+};
+
+/**
+ * Notes a refused or downgraded client in the server log: the client id and
+ * the method it declared, never anything secret.
+ */
+export function logClientAuth(
+  event: string,
+  clientId: string,
+  method: unknown,
+  reason?: string,
+) {
+  console.warn(
+    JSON.stringify({
+      level: "warn",
+      msg: `oauth: ${event}`,
+      client_id: clientId.slice(0, 300),
+      method: methodName(method),
+      ...(reason ? { reason } : {}),
+    }),
+  );
+}
+
+/** JWK members that only a private or secret key has. */
+const PRIVATE_MEMBERS = ["d", "p", "q", "dp", "dq", "qi", "oth", "k"];
+
+/**
+ * The usable public signing keys of a JWK set (RSA, or EC P-256), or why
+ * there are none. A set holding any private key is refused outright: anyone
+ * who read it could sign as the app.
+ */
+export function publicJwks(raw: unknown): PublicJwk[] | string {
+  const keys =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as { keys?: unknown }).keys
+      : undefined;
+  if (!Array.isArray(keys) || !keys.length || keys.length > 20)
+    return "its key set isn't valid (a JSON object with 1 to 20 keys)";
+  const out: PublicJwk[] = [];
+  for (const k of keys) {
+    if (!k || typeof k !== "object" || Array.isArray(k)) continue;
+    const j = k as Record<string, unknown>;
+    if (PRIVATE_MEMBERS.some((m) => m in j))
+      return "it publishes a private or secret key, which anyone could sign with";
+    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+    if (j.use !== undefined && j.use !== "sig") continue;
+    if (
+      j.key_ops !== undefined &&
+      !(Array.isArray(j.key_ops) && j.key_ops.includes("verify"))
+    )
+      continue;
+    if (
+      j.alg !== undefined &&
+      !(ASSERTION_ALGS as readonly unknown[]).includes(j.alg)
+    )
+      continue;
+    const kid = str(j.kid)?.slice(0, 200);
+    const alg = str(j.alg);
+    const base = {
+      ...(kid ? { kid } : {}),
+      ...(alg ? { alg } : {}),
+      ...(j.use === "sig" ? { use: "sig" as const } : {}),
+    };
+    if (j.kty === "RSA" && str(j.n) && str(j.e) && alg !== "ES256")
+      out.push({ kty: "RSA", n: str(j.n), e: str(j.e), ...base });
+    else if (
+      j.kty === "EC" &&
+      j.crv === "P-256" &&
+      str(j.x) &&
+      str(j.y) &&
+      (alg === undefined || alg === "ES256")
+    )
+      out.push({ kty: "EC", crv: "P-256", x: str(j.x), y: str(j.y), ...base });
+  }
+  return out.length
+    ? out
+    : "it has no RSA or P-256 signing key Orbyn can use (RS256, PS256 or ES256)";
+}
+
+/** An address Orbyn would fetch keys from: https, no credentials or fragment. */
+function keysUrl(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 2000) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:" || u.hash || u.username || u.password)
+      return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How a CIMD app proves itself at the token endpoint, from its document.
+ * "none" (or nothing) is a public app. client_secret_basic/_post can't mean
+ * anything here (Orbyn never gave it a secret), so it is served as a public
+ * app with PKCE, and the declared method is kept. private_key_jwt needs its
+ * public keys. Anything else is refused, naming the method.
+ */
+function documentAuth(url: string, doc: Record<string, unknown>, app: string) {
+  const declared = doc.token_endpoint_auth_method ?? "none";
+  const refuse = (message: string, reason: string): never => {
+    logClientAuth("client refused", url, declared, reason);
+    throw new OAuthError("invalid_client", message);
+  };
+  if (declared === "none")
+    return { auth_method: "none" as const, declared_auth_method: null };
+  if (declared === "client_secret_basic" || declared === "client_secret_post") {
+    logClientAuth("served as a public app", url, declared);
+    return {
+      auth_method: "none" as const,
+      declared_auth_method: declared,
+    };
+  }
+  if (declared !== "private_key_jwt")
+    return refuse(
+      `${app} asks to sign in with ${methodWords(declared)}, which Orbyn doesn't support yet. It can sign in as a public app with PKCE ("none") or with a signed key ("private_key_jwt").`,
+      "unsupported method",
+    );
+  const alg = doc.token_endpoint_auth_signing_alg;
+  if (
+    alg !== undefined &&
+    !(ASSERTION_ALGS as readonly unknown[]).includes(alg)
+  )
+    return refuse(
+      `${app} asks to sign its key assertions with ${methodName(alg)}, which Orbyn doesn't support yet (only RS256, PS256 or ES256).`,
+      "unsupported signing algorithm",
+    );
+  if (doc.jwks !== undefined && doc.jwks_uri !== undefined)
+    return refuse(
+      `${app}'s description gives both jwks and jwks_uri; it must give one.`,
+      "jwks and jwks_uri",
+    );
+  const base = {
+    auth_method: "private_key_jwt" as const,
+    declared_auth_method: null,
+    auth_alg: (alg as string | undefined) ?? null,
+  };
+  if (doc.jwks !== undefined) {
+    const keys = publicJwks(doc.jwks);
+    if (typeof keys === "string")
+      return refuse(
+        `${app} signs in with a signed key, but ${keys}.`,
+        "unusable jwks",
+      );
+    return { ...base, jwks: keys, jwks_uri: null };
+  }
+  if (doc.jwks_uri !== undefined) {
+    const where = keysUrl(doc.jwks_uri);
+    if (!where)
+      return refuse(
+        `${app} signs in with a signed key, but its jwks_uri isn't an https address.`,
+        "bad jwks_uri",
+      );
+    return { ...base, jwks: null, jwks_uri: where };
+  }
+  return refuse(
+    `${app} signs in with a signed key (private_key_jwt), but its description doesn't publish its keys (jwks or jwks_uri).`,
+    "no keys",
+  );
+}
+
 /** Reads and checks a client ID metadata document. */
 function parseDocument(url: string, text: string) {
   let doc: Record<string, unknown>;
@@ -288,12 +517,9 @@ function parseDocument(url: string, text: string) {
       "invalid_client",
       "This app's description doesn't say where to send you back.",
     );
-  const method = doc.token_endpoint_auth_method;
-  if (method !== undefined && method !== "none")
-    throw new OAuthError(
-      "invalid_client",
-      "This app signs in with a method Orbyn doesn't support (only public apps with PKCE).",
-    );
+  const host = new URL(url).hostname;
+  const name = cleanName(doc.client_name, host);
+  const auth = documentAuth(url, doc, name);
   const grants = doc.grant_types;
   if (
     grants !== undefined &&
@@ -303,9 +529,8 @@ function parseDocument(url: string, text: string) {
       "invalid_client",
       "This app doesn't use sign-in codes.",
     );
-  const host = new URL(url).hostname;
   return {
-    name: cleanName(doc.client_name, host),
+    name,
     host,
     redirect_uris: uris as string[],
     // Only what's worth keeping; never a logo (shown pages stay first-party).
@@ -322,6 +547,7 @@ function parseDocument(url: string, text: string) {
         typeof doc.software_version === "string"
           ? doc.software_version.slice(0, 60)
           : null,
+      ...auth,
     },
   };
 }
@@ -343,7 +569,7 @@ function cimdUrl(id: string): URL | null {
 }
 
 /** Fetches (or refreshes) a CIMD client, keeping its ETag. */
-async function fetchDocument(
+export async function fetchDocument(
   url: string,
   cached: ClientRow | undefined,
 ): Promise<ClientRow> {
@@ -410,6 +636,44 @@ async function fetchDocument(
   return row;
 }
 
+const CLIENT_COLUMNS =
+  "id, kind, name, host, redirect_uris, metadata, etag, fetched_at, blocked";
+
+/** Whether a cached CIMD row is still within its cache time. */
+const freshRow = (row: ClientRow) =>
+  !!row.fetched_at &&
+  Date.now() - row.fetched_at.getTime() <
+    (row.metadata?.cache_seconds ?? 3600) * 1000;
+
+/**
+ * A client as the token endpoint needs it: the stored row, with a CIMD
+ * document refreshed when it has gone stale (so a new key or a new method
+ * applies). The token endpoint never fails because a document can't be
+ * read again: the copy it has still decides.
+ */
+export async function storedClient(
+  clientId: string,
+): Promise<ClientRow | undefined> {
+  const cached = (
+    await pool.query<ClientRow>(
+      `SELECT ${CLIENT_COLUMNS} FROM oauth_clients WHERE id = $1`,
+      [clientId],
+    )
+  ).rows[0];
+  if (!cached || cached.kind !== "cimd" || freshRow(cached)) return cached;
+  try {
+    return await fetchDocument(clientId, cached);
+  } catch (e) {
+    logClientAuth(
+      "kept a stale client description",
+      clientId,
+      cached.metadata?.auth_method ?? "none",
+      e instanceof Error ? e.message.slice(0, 200) : undefined,
+    );
+    return cached;
+  }
+}
+
 /**
  * The app behind a client_id, checked: known, not blocked, from an allowed
  * host. CIMD documents are fetched when not cached or gone stale.
@@ -440,11 +704,7 @@ export async function resolveClient(
         "unauthorized_client",
         `Apps from ${cimd.hostname} can't connect to this Orbyn.`,
       );
-    const fresh =
-      cached?.kind === "cimd" &&
-      cached.fetched_at &&
-      Date.now() - cached.fetched_at.getTime() <
-        (cached.metadata?.cache_seconds ?? 3600) * 1000;
+    const fresh = cached?.kind === "cimd" && freshRow(cached);
     const row = fresh ? cached : await fetchDocument(clientId, cached);
     usable(row, s);
     return toClient(row);

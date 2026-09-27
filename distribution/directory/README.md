@@ -15,7 +15,7 @@ For Anthropic's Connectors Directory and OpenAI's apps directory. The owner subm
 
 ## Signing in
 
-- OAuth 2.1 with PKCE (S256). Public clients: a client ID metadata document (preferred) or dynamic client registration. Protected-resource metadata at `https://mcp.orbyn.dev/.well-known/oauth-protected-resource/mcp`; the authorization server is `https://orbyn.dev` (`/.well-known/oauth-authorization-server`).
+- OAuth 2.1 with PKCE (S256) for every app. A client ID metadata document (preferred) or dynamic client registration; public clients (`none`), or, with a metadata document that publishes its keys, `private_key_jwt` (RS256, PS256 or ES256). No client secrets. Protected-resource metadata at `https://mcp.orbyn.dev/.well-known/oauth-protected-resource/mcp`; the authorization server is `https://orbyn.dev` (`/.well-known/oauth-authorization-server`).
 - Callbacks: `https://claude.ai/api/mcp/auth_callback` and `https://chatgpt.com/connector_platform_oauth_redirect` work as declared by the clients. `offline_access` is advertised, so access doesn't lapse.
 - Scopes: `orbyn:read`, `orbyn:propose`, `orbyn:write`, `orbyn:bookings` and `offline_access`. The person chooses on Orbyn's consent page; write access asks for their password or passkey again.
 - A call with no credential gets `401` with `WWW-Authenticate` (never an error result). A tool that needs more access gets `403 insufficient_scope` (ChatGPT: `_meta["mcp/www_authenticate"]` on the result, and every tool lists its `securitySchemes`).

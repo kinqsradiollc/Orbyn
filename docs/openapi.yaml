@@ -299,8 +299,10 @@ paths:
       tags: [Sign in with Orbyn]
       summary: Authorization server metadata (RFC 8414)
       description: |
-        Served at the issuer (the web address). Public clients only (PKCE S256,
-        `token_endpoint_auth_method: none`); client ID metadata documents are
+        Served at the issuer (the web address). PKCE S256 for every app;
+        `token_endpoint_auth_method` `none`, or `private_key_jwt` for an app
+        whose client ID metadata document publishes its keys (RS256, PS256
+        or ES256); never a client secret. Client ID metadata documents are
         supported; `registration_endpoint` is left out when an admin switches
         dynamic registration off.
       security: []
@@ -433,8 +435,13 @@ paths:
         (`oat_…`) last an hour and work only at the MCP address. Refresh
         tokens (`ort_…`) rotate on every use; presenting a spent one again
         after a short grace (60 seconds, twice at most, for retries) revokes
-        the whole family and pauses the connection. Errors are
-        `{ error, error_description }` as RFC 6749 describes.
+        the whole family and pauses the connection. An app that signs in with
+        a key (`private_key_jwt`) sends `client_assertion_type` and
+        `client_assertion` with both grants (RFC 7523; `aud` the token
+        endpoint, at most 5 minutes, each `jti` once); a missing or wrong one
+        is `401 invalid_client`. `client_id` may then come from the
+        assertion's `sub`. Errors are `{ error, error_description }` as
+        RFC 6749 describes.
       security: []
       requestBody:
         required: true
@@ -442,11 +449,18 @@ paths:
           application/x-www-form-urlencoded:
             schema:
               type: object
-              required: [grant_type, client_id]
+              required: [grant_type]
               properties:
                 grant_type:
                   { type: string, enum: [authorization_code, refresh_token] }
                 client_id: { type: string }
+                client_assertion_type:
+                  {
+                    type: string,
+                    enum:
+                      [urn:ietf:params:oauth:client-assertion-type:jwt-bearer],
+                  }
+                client_assertion: { type: string }
                 code: { type: string }
                 redirect_uri: { type: string }
                 code_verifier: { type: string }
@@ -461,6 +475,11 @@ paths:
               schema: { type: object }
         "400":
           description: "{ error, error_description }"
+          content:
+            application/json:
+              schema: { type: object }
+        "401":
+          description: "{ error: invalid_client, error_description }: the app's key assertion is missing or wrong"
           content:
             application/json:
               schema: { type: object }
