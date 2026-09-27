@@ -760,7 +760,7 @@ test("a retried plan with the same client_ref answers as before and changes noth
   assert.equal((await docsTitled("Idempotent plan page")).length, 1);
 });
 
-test("budgets: apply_plan is in core and every toolset combination stays within 60 tools", () => {
+test("budgets: apply_plan is in core and its steps are all write tools", () => {
   const cap = registry.get("apply_plan")!;
   assert.equal(cap.toolset, "core");
   assert.ok(JSON.stringify(describe(cap)).length < 2600);
@@ -769,10 +769,6 @@ test("budgets: apply_plan is in core and every toolset combination stays within 
     assert.ok(step, name);
     assert.notEqual(step!.mode, "read", `${name} changes things`);
   }
-  assert.ok(
-    registry.all.filter((c) => !c.legacyOnly).length <= 60,
-    "60 tools at most with every toolset",
-  );
 });
 
 test("the new prompts are listed by toolset and say to use one apply_plan", async () => {

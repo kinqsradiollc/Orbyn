@@ -127,13 +127,14 @@ export type ActivityOrigin =
  */
 export function activityOriginLabel(
   a: Pick<ProjectActivity, "origin" | "via_agent">,
+  agentName = "Orbyn",
 ): string | null {
   if (a.via_agent) return `via ${a.via_agent}`;
   switch (a.origin) {
     case "planner":
       return "by the planner";
     case "assistant":
-      return "via the assistant";
+      return `via ${agentName}`;
     case "agent":
       return "via an agent";
     case "reminder":

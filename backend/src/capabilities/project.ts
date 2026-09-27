@@ -326,7 +326,8 @@ export async function projectHub(
   // checked against the task, while there is one.
   const activityQ = q(
     (s, p) => `SELECT a.created_at, a.summary, u.name AS actor,
-        CASE WHEN g.id IS NOT NULL THEN coalesce(nullif(g.client_name, ''), nullif(g.name, ''), 'an agent') END AS via_agent,
+        CASE WHEN g.id IS NOT NULL THEN coalesce(nullif(g.client_name, ''), nullif(g.name, ''), 'an agent')
+             WHEN a.origin = 'assistant' THEN coalesce(nullif(agent.name, ''), 'Orbyn') END AS via_agent,
         coalesce(a.source, CASE WHEN a.entity_type = 'task' THEN (
           SELECT ${itemSourceSql("x")} FROM (SELECT a.entity_id AS id) x
         ) END) AS source,
@@ -334,6 +335,7 @@ export async function projectHub(
       FROM project_activity a
       LEFT JOIN users u ON u.id = a.actor_id
       LEFT JOIN agent_grants g ON g.id = a.via_grant_id
+      LEFT JOIN agent_settings agent ON agent.user_id = a.actor_id
       LEFT JOIN items i ON a.entity_type = 'task' AND i.id = a.entity_id
      WHERE a.project_id = ${p.add(id)}
        AND (a.entity_type <> 'session' OR a.session_user_id = ${s.user})

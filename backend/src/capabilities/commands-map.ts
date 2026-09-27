@@ -55,6 +55,8 @@ export const COMMAND_TOOLS: Record<string, CommandPlace> = {
   "go.calendar": { tool: "get_calendar", args: {} },
   "go.projects": { tool: "query", args: { over: "projects" } },
   "go.docs": { tool: "query", args: { over: "docs" } },
+  "go.memory": { tool: "manage_memory", args: { action: "list" } },
+  "go.agent": { tool: "query", args: { over: "docs" } },
   "go.views": { tool: "search", args: { query: "views" } },
   "go.study": { tool: "get_study", args: {} },
   "go.lists": { tool: "search", args: { query: "lists" } },

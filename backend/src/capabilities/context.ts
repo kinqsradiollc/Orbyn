@@ -26,6 +26,8 @@ export const CONVENTIONS = {
 };
 
 const output = z.object({
+  /** The person's named Orbyn agent (M1). */
+  agent: z.object({ name: z.string(), persona: z.string() }),
   user: z.object({
     name: z.string(),
     timezone: z.string(),
@@ -84,7 +86,7 @@ export const getContext = defineCapability({
   name: "get_context",
   title: "Who and where",
   description:
-    "Call first. Who this connection acts for (name), time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
+    "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
   input: z.object({}).strict(),
   output,
   annotations: {
@@ -100,6 +102,12 @@ export const getContext = defineCapability({
   async run(ctx) {
     const p = ctx.principal;
     const prefs = await loadPrefs(ctx.db, p.user.id);
+    const agent = (
+      await ctx.db.query<{ name: string; persona: string }>(
+        `SELECT name, persona FROM agent_settings WHERE user_id = $1`,
+        [p.user.id],
+      )
+    ).rows[0] ?? { name: "Orbyn", persona: "" };
     const grant = p.grant_id
       ? (
           await ctx.db.query<{ expires_at: Date | null; calls: number }>(
@@ -114,6 +122,7 @@ export const getContext = defineCapability({
     const expires = grant?.expires_at ?? null;
     const limits = cachedSettings().agents.agent_limits;
     const structured: z.output<typeof output> = {
+      agent,
       user: {
         name: cleanTitle(p.user.name) || "You",
         timezone: prefs.timezone,
@@ -172,6 +181,7 @@ export const getContext = defineCapability({
     const u = structured.user;
     const markdown = [
       `Acting for ${u.name}. It is ${u.now_local} (${u.timezone}); working hours ${u.working_hours.start}–${u.working_hours.end}.`,
+      `Their Orbyn assistant is named ${agent.name}${agent.persona ? `: ${agent.persona}` : ""}.`,
       `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust as AgentTrust].name.toLowerCase()})` : ""}, ${
         [
           ...(p.personal ? ["Personal"] : []),

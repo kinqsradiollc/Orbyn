@@ -101,7 +101,7 @@ async function byName(
              FROM docs d
              LEFT JOIN projects p ON p.id = d.project_id
              ${recentJoin("doc", "d.id")}
-            WHERE ${docVisibleTo("$1")} ${live(archived)}
+            WHERE ${docVisibleTo("$1")} AND d.kind NOT IN ('memory', 'agent') ${live(archived)}
               AND (${nameMatch("d.title")}
                 OR orbyn_aliases(d.aliases) ILIKE '%' || $3::text || '%')
             ORDER BY score DESC, d.updated_at DESC
@@ -182,6 +182,7 @@ async function recentlyOpened(
                   JOIN docs d ON d.id = ro.target_id
                   LEFT JOIN projects p ON p.id = d.project_id
                  WHERE ro.user_id = $1 AND ro.kind = 'doc' AND ${docVisibleTo("$1")}
+                   AND d.kind NOT IN ('memory', 'agent')
                    ${live(archived)}`);
   if (!type || type === "task")
     parts.push(`SELECT i.id, CASE WHEN i.kind = 'event' THEN 'event' ELSE 'task' END AS type,
@@ -219,7 +220,8 @@ async function recentlyChanged(
                         COALESCE(p.name, ${DOC_HINT}) AS hint, d.team_id,
                         d.updated_at, NULL::timestamptz AS opened_at
                    FROM docs d LEFT JOIN projects p ON p.id = d.project_id
-                  WHERE ${docVisibleTo("$1")} AND d.kind <> 'agenda'
+                  WHERE ${docVisibleTo("$1")}
+                    AND d.kind NOT IN ('agenda', 'memory', 'agent')
                     ${live(archived)}
                   ORDER BY d.updated_at DESC LIMIT $2)`);
   if (!type || type === "task")

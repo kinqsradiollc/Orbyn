@@ -139,13 +139,22 @@ after(async () => {
   await pool.end();
 });
 
-test("60 tools: 28 core (apply_plan and get_profile too), the rest in toolsets; each toolset's tools are its own", async () => {
+test("62 tools: 30 core (apply_plan, get_profile, update_agent and manage_memory too), the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
+  // The 60-tool cap was lifted for Muse (M1 update_agent, M2 manage_memory).
   // H6a folded mark_notifications_read into ack_inbox: not listed.
-  assert.equal(listed.length, 60);
+  assert.equal(listed.length, 62);
   assert.ok(!listed.some((t: any) => t.name === "mark_notifications_read"));
   const core = (await h.legacy(keys.core, "tools/list")).body.result.tools;
-  assert.equal(core.length, 28);
+  assert.equal(core.length, 30);
+  assert.ok(core.some((t: any) => t.name === "manage_memory"));
+  assert.ok(core.some((t: any) => t.name === "update_agent"));
+  assert.ok(
+    core.some(
+      (t: any) =>
+        t.name === "get_profile" && t._meta?.["openai/profile"] === true,
+    ),
+  );
   assert.ok(!core.some((t: any) => t.name === "get_team"));
   // A core-only key can't call a toolset's tool.
   assert.equal(
@@ -167,7 +176,7 @@ test("X-MCP-Toolsets and X-MCP-Readonly narrow a connection for one call, and ne
       await h.legacy(key, "tools/list", undefined, headers)
     ).body.result.tools.map((t: any) => t.name) as string[];
   const planner = await narrow(keys.all, { "x-mcp-toolsets": "core,planner" });
-  assert.equal(planner.length, 34);
+  assert.equal(planner.length, 36);
   assert.ok(planner.includes("what_if") && !planner.includes("get_team"));
   const ro = await narrow(keys.all, {
     "x-mcp-toolsets": "planner",
@@ -240,9 +249,6 @@ test("budgets: every combination of toolsets stays small", () => {
     registry.all
       .filter((c) => !c.legacyOnly && sets.includes(c.toolset))
       .reduce((n, c) => n + JSON.stringify(describe(c)).length, 0);
-  const count = (sets: string[]) =>
-    registry.all.filter((c) => !c.legacyOnly && sets.includes(c.toolset))
-      .length;
   // Each toolset on its own.
   const each: Record<string, number> = {
     // H6b (page structure, fields, milestones, keep-out, team admin, view
@@ -258,14 +264,13 @@ test("budgets: every combination of toolsets stays small", () => {
   };
   for (const t of optional)
     assert.ok(size([t]) < each[t], `${t} is ${size([t])} characters`);
-  // Every combination with core: under about 39k tokens and 60 tools, well
-  // inside the 100 and 128 tool limits clients have with other servers on.
+  // Every combination with core: under about 43k tokens. There is no total
+  // tool-count cap; connections may have more than 60 tools.
   // H2 (append_doc, save_source, add_file) raised this from 150k, and H4
   // (study practice) from 156k.
   for (let mask = 0; mask < 1 << optional.length; mask++) {
     const sets = ["core", ...optional.filter((_, i) => mask & (1 << i))];
-    assert.ok(size(sets) < 158_600, `${sets.join("+")}: ${size(sets)}`);
-    assert.ok(count(sets) <= 60, `${sets.join("+")}: ${count(sets)} tools`);
+    assert.ok(size(sets) < 170_000, `${sets.join("+")}: ${size(sets)}`);
   }
 });
 
@@ -1344,7 +1349,7 @@ test("the developer page's catalog and security.txt are public", async () => {
   const r = await h.call(null, "GET", "/developers/mcp");
   assert.equal(r.statusCode, 200);
   const c = r.json();
-  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 60);
+  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 62);
   assert.equal(c.toolsets.length, 8);
   assert.ok(c.versioning.length >= 3);
   assert.ok(c.changelog[0].date);

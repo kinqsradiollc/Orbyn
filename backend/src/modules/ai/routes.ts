@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { loadPrefs } from "../planner/calendar.js";
 import { parseProjectDraft, PROJECT_DRAFT_PROMPT } from "./project-draft.js";
 import { proposeProject } from "./project-proposal.js";
@@ -50,6 +51,7 @@ import {
 } from "../../lib/assistant-off.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
+import { enqueueMemory, recallMemory } from "../memory/service.js";
 
 /**
  * The request that decides whether changes are allowed. A short reply to the
@@ -184,6 +186,7 @@ async function answer(
   d: ChatRequest,
   log: FastifyBaseLogger,
   preloadedScope?: Awaited<ReturnType<typeof scopeOverview>>,
+  chatId: string = randomUUID(),
 ): Promise<Proposal> {
   try {
     new Intl.DateTimeFormat("en", { timeZone: d.timezone });
@@ -198,6 +201,12 @@ async function answer(
     );
   const ctx: AgentContext = {
     user: { id: u.id, role: u.role },
+    identity: (
+      await pool.query<{ name: string; persona: string }>(
+        `SELECT name, persona FROM agent_settings WHERE user_id = $1`,
+        [u.id],
+      )
+    ).rows[0] ?? { name: "Orbyn", persona: "" },
     timezone: d.timezone,
     intentText: intentOf(d.message, d.history),
     actions: [],
@@ -215,6 +224,9 @@ async function answer(
     preloadedScope === undefined
       ? await scopeOverview(u, d.timezone, d.scope)
       : preloadedScope;
+  const memory = await recallMemory(pool, u.id, d.message, 4_000, [
+    ...ctx.keptOut!.projects,
+  ]);
   if (scoped?.kind === "project") {
     for (const task of scoped.tasks.slice(0, 6))
       recordSource(ctx, `task:${task.id}`, {
@@ -294,6 +306,7 @@ async function answer(
                 ),
               }
             : {}),
+          ...(memory ? { private_memory: memory } : {}),
         },
         ctx.keptOut!,
       ),
@@ -324,6 +337,7 @@ async function answer(
       ctx.projectDraft,
       d.timezone,
     );
+    await queueMemoryTurn(u, d, chatId, proposal.summary, log);
     return { ...proposal, sources: result.sources };
   }
   let actions = result.actions;
@@ -389,7 +403,7 @@ async function answer(
       ],
     )
   ).rows[0];
-  return {
+  const proposal: Proposal = {
     id: p.id,
     summary: result.summary,
     actions,
@@ -400,6 +414,46 @@ async function answer(
     session_change: ctx.sessionChange ?? null,
     decision_links: ctx.decisionLinks ?? [],
   };
+  await queueMemoryTurn(u, d, chatId, proposal.summary, log);
+  return proposal;
+}
+
+async function queueMemoryTurn(
+  user: UserRow,
+  request: ChatRequest,
+  chatId: string,
+  summary: string,
+  log: FastifyBaseLogger,
+) {
+  try {
+    let sourceProjectId =
+      request.scope?.kind === "project" ? request.scope.id : null;
+    if (!sourceProjectId && request.scope?.kind === "task") {
+      sourceProjectId =
+        (
+          await pool.query<{ project_id: string | null }>(
+            `SELECT i.project_id FROM items i
+              WHERE i.id = $2 AND ${visibleItems("i")}`,
+            [user.id, request.scope.id],
+          )
+        ).rows[0]?.project_id ?? null;
+    }
+    await enqueueMemory(pool, {
+      userId: user.id,
+      chatId,
+      sourceProjectId,
+      turns: [
+        ...request.history,
+        { role: "user", content: request.message },
+        { role: "assistant", content: summary.slice(0, 12_000) },
+      ],
+    });
+  } catch {
+    log.warn(
+      { event: "memory_queue_insert_failed" },
+      "Memory learning was not queued",
+    );
+  }
 }
 
 /** A running turn's `heartbeat_at` this old means its ai copy is gone. */
@@ -423,7 +477,7 @@ function runJob(
       .query("UPDATE ai_jobs SET heartbeat_at=now() WHERE id=$1", [id])
       .catch(() => {});
   }, HEARTBEAT_MS);
-  answer(u, d, log, scoped)
+  answer(u, d, log, scoped, id)
     .then((proposal) =>
       pool.query(
         "UPDATE ai_jobs SET state='done', result=$2, heartbeat_at=now() WHERE id=$1",
@@ -548,7 +602,7 @@ export async function aiRoutes(app: FastifyInstance) {
   // early (Cloudflare after 100 seconds) cuts it off: apps use start + poll.
   app.post("/ai/chat", strictRateLimit, async (r) => {
     const u = await authenticate(r);
-    return answer(u, chatRequest.parse(r.body), r.log);
+    return answer(u, chatRequest.parse(r.body), r.log, undefined, randomUUID());
   });
 
   // Start a turn and hand back its job id; the answer comes from GET below.

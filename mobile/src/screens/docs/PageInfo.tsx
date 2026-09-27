@@ -37,6 +37,8 @@ const KIND_NAMES: Record<Doc["kind"], string> = {
   note: "Note",
   agenda: "Agenda",
   meeting: "Meeting note",
+  memory: "Memory note",
+  agent: "Agent note",
 };
 
 /**

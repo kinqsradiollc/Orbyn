@@ -76,6 +76,7 @@ export { toInstant, whenLabel };
  */
 export type AgentContext = {
   user: { id: string; role: SystemRole };
+  identity?: { name: string; persona: string };
   timezone: string;
   /** The latest request, which decides whether changes and deletions are allowed. */
   intentText: string;

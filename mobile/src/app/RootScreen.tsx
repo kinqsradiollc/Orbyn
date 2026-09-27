@@ -142,6 +142,8 @@ type SheetName =
   | "tags"
   | "habits"
   | "docs"
+  | "memory"
+  | "agent"
   | "study"
   | "agenda"
   | "note"
@@ -844,6 +846,8 @@ export function RootScreen() {
     "go.agenda": () => present({ sheet: "agenda" }),
     "go.projects": () => present({ sheet: "projects" }),
     "go.docs": () => present({ sheet: "docs" }),
+    "go.memory": () => present({ sheet: "memory" }),
+    "go.agent": () => present({ sheet: "agent" }),
     "go.views": () => present({ sheet: "views" }),
     "go.study": () => present({ sheet: "study" }),
     "go.lists": () => present({ sheet: "lists" }),
@@ -1853,7 +1857,14 @@ export function RootScreen() {
             setSearchStart("");
             present({ sheet: "search" });
           }}
-          visible={sheet === "docs"}
+          visible={sheet === "docs" || sheet === "memory" || sheet === "agent"}
+          fixedKind={
+            sheet === "memory"
+              ? "memory"
+              : sheet === "agent"
+                ? "agent"
+                : undefined
+          }
           onOpenProject={(id) => {
             setProjectToOpen(id);
             present({ sheet: "projects" });

@@ -187,12 +187,12 @@ test("Settings: the profile page, one per person (401, 403 for API keys, 422, 42
   settings = (await h.call(olga.token, "GET", "/me/agent-context")).json();
   assert.equal(settings.profile.doc_id, made.json().doc_id);
   assert.equal(settings.profile.title, "About me for agents");
-  // An ordinary Personal page, with Orbyn's outline.
+  // A private Memory note in Personal, with Orbyn's outline.
   const doc = (
     await pool.query("SELECT * FROM docs WHERE id = $1", [made.json().doc_id])
   ).rows[0];
   assert.equal(doc.team_id, null);
-  assert.equal(doc.kind, "doc");
+  assert.equal(doc.kind, "memory");
   assert.ok(
     doc.content.some(
       (b: any) => b.type === "heading" && b.text === "How I like cards",
@@ -249,6 +249,87 @@ test("Settings: the profile page, one per person (401, 403 for API keys, 422, 42
   );
   assert.deepEqual(COVERED["POST /me/agent-profile"], ["create_doc"]);
   assert.deepEqual(COVERED["PUT /teams/:id/agent-instructions"], ["organize"]);
+});
+
+test("M1: a person names their Orbyn assistant and keeps its optional persona", async () => {
+  const anon = await h.call(null, "GET", "/me/agent");
+  assert.equal(anon.statusCode, 401);
+  const initial = await h.call(olga.token, "GET", "/me/agent");
+  assert.equal(initial.statusCode, 200, initial.body);
+  assert.deepEqual(initial.json(), {
+    name: "Orbyn",
+    persona: "",
+    named_at: null,
+    updated_at: initial.json().updated_at,
+  });
+  const saved = await h.call(olga.token, "PUT", "/me/agent", {
+    name: "Mira",
+    persona: "Warm, direct, and curious.",
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.equal(saved.json().name, "Mira");
+  assert.equal(saved.json().persona, "Warm, direct, and curious.");
+  assert.ok(saved.json().named_at);
+  assert.deepEqual((await context(keys.full)).agent, {
+    name: "Mira",
+    persona: "Warm, direct, and curious.",
+  });
+  const tooLong = await h.call(olga.token, "PUT", "/me/agent", {
+    name: "x".repeat(41),
+    persona: "",
+  });
+  assert.equal(tooLong.statusCode, 422);
+  const apiKey = (
+    await h.call(olga.token, "POST", "/me/api-keys", { name: "m1" })
+  ).json().key;
+  assert.equal(
+    (await h.call(apiKey, "PUT", "/me/agent", { name: "No", persona: "" }))
+      .statusCode,
+    403,
+  );
+  const roundTrip = await h.call(olga.token, "GET", "/me/agent");
+  assert.equal(roundTrip.json().name, "Mira");
+
+  const review = ok(
+    await tool(keys.full, "update_agent", {
+      name: "Nova",
+      persona: "Brief and practical.",
+    }),
+  );
+  assert.equal(review.status, "pending_review");
+  await approve(olga, review.pending.proposal_id);
+  assert.deepEqual((await context(keys.full)).agent, {
+    name: "Nova",
+    persona: "Brief and practical.",
+  });
+
+  await pool.query(
+    "UPDATE agent_grants SET acts_alone = '{profile,team_admin}' WHERE id = $1",
+    [grants.alone],
+  );
+  const direct = ok(
+    await tool(keys.alone, "update_agent", {
+      name: "Mira",
+      persona: "Warm, direct, and curious.",
+    }),
+  );
+  assert.equal(direct.status, "done");
+  const activity = (
+    await pool.query(
+      "SELECT id FROM agent_activity WHERE grant_id = $1 AND tool = 'update_agent' AND undo IS NOT NULL ORDER BY id DESC LIMIT 1",
+      [grants.alone],
+    )
+  ).rows[0];
+  const undone = await h.call(
+    olga.token,
+    "POST",
+    `/me/agents/activity/${activity.id}/undo`,
+  );
+  assert.equal(undone.statusCode, 200, undone.body);
+  assert.deepEqual((await context(keys.full)).agent, {
+    name: "Nova",
+    persona: "Brief and practical.",
+  });
 });
 
 test("an agent makes the profile once (create_doc kind profile) and edits it by section", async () => {
@@ -445,25 +526,34 @@ test("get_context: profile, instructions and rules only where the connection rea
       crew,
     ]);
   }
-  // A page in a project kept out of agents isn't shown (nor its profile).
+  // A regular page in a project kept out of agents is hidden. The private
+  // Personal Memory profile remains available because it isn't in that project.
   const project = (
     await h.call(olga.token, "POST", "/projects", { name: "Private" })
   ).json().id as string;
+  const privatePage = (
+    await h.call(olga.token, "POST", "/docs", {
+      title: "Private project notes",
+      content: [{ type: "paragraph", text: "PROJECTSECRET" }],
+    })
+  ).json();
   await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
     project,
   ]);
   await pool.query("UPDATE docs SET project_id = $2 WHERE id = $1", [
-    profile,
+    privatePage.id,
     project,
   ]);
   try {
+    assert.equal(
+      code(await tool(keys.full, "fetch", { id: `doc:${privatePage.id}` })),
+      "NOT_FOUND",
+    );
     const kept = await context(keys.full);
-    assert.equal(kept.profile, null);
+    assert.equal(kept.profile.id, `doc:${profile}`);
     assert.equal(kept.learning.card_style, null);
   } finally {
-    await pool.query("UPDATE docs SET project_id = NULL WHERE id = $1", [
-      profile,
-    ]);
+    await pool.query("DELETE FROM projects WHERE id = $1", [project]);
   }
 });
 
@@ -517,11 +607,25 @@ test("instructions through organize: Personal's directly (undo), a team's asked 
   await approve(olga, asked.pending.proposal_id);
   assert.equal(await teamText(), "Cards are Q&A in Biology.");
   // Let alone for team admin, it changes them directly (and undo).
-  ok(
+  assert.ok(
+    (
+      await pool.query<{ acts_alone: string[] }>(
+        "SELECT acts_alone FROM agent_grants WHERE id = $1",
+        [grants.alone],
+      )
+    ).rows[0].acts_alone.includes("team_admin"),
+  );
+  const aloneContext = await context(keys.alone);
+  assert.ok(
+    !aloneContext.connection.asks_first.includes("team_admin"),
+    JSON.stringify(aloneContext.connection),
+  );
+  const cleared = ok(
     await tool(keys.alone, "organize", {
       changes: [{ do: "instructions", id: crew, value: "" }],
     }),
   );
+  assert.equal(cleared.status, "done", JSON.stringify(cleared));
   assert.equal(await teamText(), "");
   const last = (
     await pool.query(

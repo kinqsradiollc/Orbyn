@@ -25,6 +25,7 @@ import { scanAgentStudy } from "../modules/agent-inbox/scan.js";
 import { expireQuestions } from "../modules/agent-inbox/questions.js";
 import { deliverWakes } from "../modules/agent-inbox/wake.js";
 import { scanAgentJobs } from "./agent-jobs.js";
+import { drainMemoryQueue } from "./memory.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -118,6 +119,12 @@ export async function runWorker() {
         // saves at once, and this takes whatever is left.
         try {
           await drainStudyQueue();
+        } catch {
+          // Left in the queue for the next cycle.
+        }
+        // Finished assistant turns are learned from off the request path.
+        try {
+          await drainMemoryQueue();
         } catch {
           // Left in the queue for the next cycle.
         }

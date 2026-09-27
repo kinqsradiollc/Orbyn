@@ -44,6 +44,7 @@ import { applyProject } from "../ai/project-proposal.js";
 import { applySessionChange } from "../ai/session-change.js";
 import { linkDecision } from "../work-records/service.js";
 import { actionStaleness, applyAction } from "./actions.js";
+import { forgetMemory, rememberMemory } from "../memory/service.js";
 
 /**
  * Proposals: changes waiting for a person's approval (the Review inbox).
@@ -370,6 +371,42 @@ export async function staleness(
         return "The page changed since this was suggested.";
       return null;
     }
+    case "agent.update": {
+      const found = (
+        await db.query<{ updated_at: Date }>(
+          "SELECT updated_at FROM agent_settings WHERE user_id = $1",
+          [userId],
+        )
+      ).rows[0];
+      const current = found?.updated_at.toISOString() ?? null;
+      return current === c.before_updated_at
+        ? null
+        : "Your agent's name or persona changed since this was suggested.";
+    }
+    case "memory.remember":
+      return null;
+    case "memory.forget": {
+      const current = (
+        await db.query<{ id: string; version: number }>(
+          `SELECT id::text, version FROM docs
+            WHERE user_id = $1 AND team_id IS NULL AND kind = 'memory'
+              AND deleted_at IS NULL AND lower(title) = lower($2)
+            ORDER BY id`,
+          [userId, c.topic],
+        )
+      ).rows;
+      const expected = [...c.docs].sort((a, b) => a.id.localeCompare(b.id));
+      if (
+        current.length !== expected.length ||
+        current.some(
+          (row, index) =>
+            row.id !== expected[index].id ||
+            row.version !== expected[index].version,
+        )
+      )
+        return "That memory changed since this was suggested.";
+      return null;
+    }
     case "project.delete": {
       const found = (
         await db.query("SELECT 1 FROM projects WHERE id = $1", [c.project_id])
@@ -475,6 +512,37 @@ function diffOf(c: ReviewChange, index: number, n: Names): ReviewDiff {
             before: null,
             after: "text" in b ? b.text : "———",
           })),
+      };
+    case "agent.update":
+      return {
+        ...base,
+        headline: `Change your agent to ${quote(c.name)}`,
+        rows: [
+          { label: "Name", before: c.before_name, after: c.name },
+          { label: "Persona", before: c.before_persona, after: c.persona },
+        ].filter((row) => row.before !== row.after),
+      };
+    case "memory.remember":
+      return {
+        ...base,
+        headline: `Add to Memory: ${quote(c.topic)}`,
+        rows: c.facts.map((fact) => ({
+          label: "Fact",
+          before: "Not saved",
+          after: fact,
+        })),
+      };
+    case "memory.forget":
+      return {
+        ...base,
+        headline: `Forget Memory topic: ${quote(c.topic)}`,
+        rows: [
+          {
+            label: "Saved notes",
+            before: `${c.docs.length} note${c.docs.length === 1 ? "" : "s"}`,
+            after: "Permanently removed",
+          },
+        ],
       };
     case "doc.edit":
       return {
@@ -910,6 +978,23 @@ export async function applyChange(
         project_id: c.project_id,
         tags: [],
       });
+      return {};
+    case "agent.update":
+      await db.query(
+        `INSERT INTO agent_settings (user_id, name, persona, named_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name,
+           persona = EXCLUDED.persona,
+           named_at = coalesce(agent_settings.named_at, now()),
+           updated_at = now()`,
+        [u.id, c.name, c.persona],
+      );
+      return {};
+    case "memory.remember":
+      await rememberMemory(db, u.id, c.topic, c.facts, c.sources);
+      return {};
+    case "memory.forget":
+      await forgetMemory(db, u.id, c.topic, { includeKeptOut: true });
       return {};
     case "doc.edit":
       await saveDoc(

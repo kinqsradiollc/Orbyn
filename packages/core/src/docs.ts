@@ -12,7 +12,14 @@
  * a task or a team; everything else about it is the same, which is why it
  * is a kind rather than a table of its own.
  */
-export const DOC_KINDS = ["doc", "note", "agenda", "meeting"] as const;
+export const DOC_KINDS = [
+  "doc",
+  "note",
+  "agenda",
+  "meeting",
+  "memory",
+  "agent",
+] as const;
 
 /**
  * How a page is being worked on.

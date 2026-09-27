@@ -210,6 +210,7 @@ async function runSearch(
     const q = params.add(a.query);
     const where = [
       visibleDocs("d", scope),
+      "d.kind NOT IN ('memory', 'agent')",
       textMatch("d.search", "d.title", q),
       ...common("d", params),
     ];
@@ -468,6 +469,7 @@ export const findPassages = defineCapability({
     const q = params.add(a.query);
     const where = [
       visibleDocs("d", scope),
+      "d.kind NOT IN ('memory', 'agent')",
       `(d.search @@ q.tsq OR similarity(d.title, ${q}) > 0.3)`,
     ];
     if (project) where.push(`d.project_id = ${params.add(project)}`);

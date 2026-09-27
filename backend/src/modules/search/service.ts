@@ -96,6 +96,7 @@ export async function searchPages(
          LEFT JOIN projects p ON p.id = d.project_id
          CROSS JOIN q
         WHERE ${docVisibleTo("$1")}
+          AND d.kind NOT IN ('memory', 'agent')
           AND ($2::text = '' OR d.search @@ q.tsq OR similarity(d.title, $2) > 0.25)
           AND ($3::text IS NULL OR d.kind = $3)
           AND ($4::uuid IS NULL OR d.project_id = $4)
@@ -301,6 +302,7 @@ export async function searchEverything(
                     d.project_id, p.name AS project_name, d.updated_at
               FROM docs d LEFT JOIN projects p ON p.id = d.project_id
               WHERE d.id = $1
+                AND d.kind NOT IN ('memory', 'agent')
                 AND ($2::text IS NULL OR d.kind = $2)
                 AND ($3::uuid IS NULL OR d.project_id = $3)
                 AND ${docVisibleTo("$4")}

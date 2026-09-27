@@ -635,8 +635,14 @@ test("words: a job in plain words", () => {
 test("digest: no agent activity, no section", async () => {
   const quiet = await h.register("h7-quiet", "Quinn");
   assert.deepEqual(await buildAgentSection(quiet.id, new Date()), []);
+  await pool.query(
+    `INSERT INTO agent_settings (user_id, name, persona, named_at)
+     VALUES ($1, 'Mira', '', now())`,
+    [quiet.id],
+  );
   const m = await buildMorning(quiet.id, "Quinn", new Date(), "UTC");
   assert.ok(!m.lines.some((l) => /What your agents did/.test(l)));
+  assert.match(m.lines[0], /Mira here with your day ahead/);
 });
 
 test("digest: what each agent did, the top items with links, what waits, and where to undo", async () => {

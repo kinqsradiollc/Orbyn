@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-09-26";
+export const DEFAULT_LEGAL_VERSION = "2026-09-27";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -275,7 +275,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 
 ## The assistant
 
-When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. When you ask for a summary of a recording you made in a page, the recording is sent to the AI service to be written out, and the written-out words to be summarised; recordings are never sent anywhere unless you ask. Team owners and admins can keep a team's pages out of the assistant altogether. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
+When you use the assistant, the content it needs to answer — your question and the relevant tasks, pages or calendar — is sent to the AI service we use to produce the answer. When an AI provider is configured, Orbyn sends the visible turns of each finished conversation to that same provider to identify durable facts for private Memory notes. Those notes appear in your Memory library with their source, and you can edit or forget them. Projects kept out of the assistant are not used to make memories. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. When you ask for a summary of a recording you made in a page, the recording is sent to the AI service to be written out, and the written-out words to be summarised; recordings are never sent anywhere unless you ask. Team owners and admins can keep a team's pages out of the assistant altogether. It isn't used to show you ads. The assistant only proposes changes; nothing is changed until you approve it.
 
 ## Connected agents
 

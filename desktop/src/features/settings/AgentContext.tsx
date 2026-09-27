@@ -3,6 +3,7 @@ import { FileText, Pencil } from "lucide-react";
 import {
   MAX_AGENT_INSTRUCTIONS,
   type AgentContextSettings,
+  type PersonalAgentSettings,
   type AgentInstructions,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -19,6 +20,9 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
  */
 export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
   const [data, setData] = useState<AgentContextSettings | null>(null);
+  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identityName, setIdentityName] = useState("Orbyn");
+  const [identityPersona, setIdentityPersona] = useState("");
   const [editing, setEditing] = useState<{
     team_id: string | null;
     text: string;
@@ -32,6 +36,11 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
     });
   useEffect(() => {
     void load();
+    void client.agentSettings().then((value) => {
+      setIdentity(value);
+      setIdentityName(value.name);
+      setIdentityPersona(value.persona);
+    }, report);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -49,6 +58,17 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
     void action.run(async () => {
       setData(await client.setAgentInstructions(d.team_id, d.text.trim()));
       setEditing(null);
+    });
+  };
+
+  const saveIdentity = (e: FormEvent) => {
+    e.preventDefault();
+    void action.run(async () => {
+      const value = await client.updateAgentSettings({
+        name: identityName,
+        persona: identityPersona,
+      });
+      setIdentity(value);
     });
   };
 
@@ -115,6 +135,38 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
 
   return (
     <div className="agents-rules">
+      <h3>Your assistant</h3>
+      <p className="muted">
+        Give your Orbyn assistant a name and describe how it should come across.
+      </p>
+      <form className="agents-instructions-form" onSubmit={saveIdentity}>
+        <label>
+          Name
+          <input
+            required
+            maxLength={40}
+            value={identityName}
+            onChange={(e) => setIdentityName(e.target.value)}
+          />
+        </label>
+        <label>
+          Persona
+          <textarea
+            maxLength={1000}
+            rows={3}
+            value={identityPersona}
+            onChange={(e) => setIdentityPersona(e.target.value)}
+            placeholder="Warm, direct, and concise"
+          />
+        </label>
+        <button
+          className="primary"
+          disabled={action.pending || identity === null}
+        >
+          Save
+        </button>
+      </form>
+
       <h3>About me for agents</h3>
       <p className="muted">
         One page your agents read before they help: your courses and exams, how
