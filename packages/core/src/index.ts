@@ -75,6 +75,7 @@ export * from "./offline-pages.js";
 export * from "./team-changes.js";
 export * from "./first-run.js";
 export * from "./changelog/index.js";
+export * from "./status-page.js";
 export * from "./publish.js";
 export * from "./app-imports.js";
 export * from "./capture-assist.js";

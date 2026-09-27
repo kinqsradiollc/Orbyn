@@ -8,11 +8,21 @@ import {
 } from "react-native";
 import {
   formatUptime,
+  groupStatusComponents,
+  groupSummary,
+  incidentSeverity,
+  incidentSeverityLabels,
+  incidentUpdates,
+  isProblemState,
   serviceStateLabels,
+  splitIncidents,
   statusHeadlines,
+  statusSummary,
+  type IncidentSeverity,
   type Maintenance,
   type ServiceState,
   type StatusComponent,
+  type StatusGroup,
   type StatusIncident,
   type StatusReport,
 } from "@orbyn/core";
@@ -22,13 +32,18 @@ import { formatUntil, maintenanceTone } from "../components/MaintenanceBanner";
 import { Pill } from "../components/Pill";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
-import { FadeIn } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { FadeIn, Pressable } from "../motion";
+import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
 
 const REFRESH_MS = 30_000;
 const HISTORY_DAYS = 30;
+/** Past incidents shown at first, and added by each "Show more". */
+const INCIDENT_PAGE = 5;
+
+const SEVERITY_PILL: Record<IncidentSeverity, "danger" | "warning" | "muted"> =
+  { major: "danger", minor: "warning", brief: "muted" };
 
 const STATE_TONE = themed<
   Record<
@@ -85,10 +100,25 @@ const formatTime = (iso: string) =>
     minute: "2-digit",
   });
 
+const formatClock = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+/** "Sep 24, 10:02 – 10:40", or both dates when it ran past midnight. */
+const incidentSpan = (i: StatusIncident) => {
+  if (!i.resolved_at) return `Since ${formatTime(i.started_at)}`;
+  const sameDay =
+    new Date(i.started_at).toDateString() ===
+    new Date(i.resolved_at).toDateString();
+  return `${formatTime(i.started_at)} – ${
+    sameDay ? formatClock(i.resolved_at) : formatTime(i.resolved_at)
+  }`;
+};
+
 /**
- * Public service status: overall headline, one card per component with
- * uptime and a 30-day history strip, and recent incidents. Refreshes every
- * 30 seconds while open, and on pull.
+ * Public service status, compact: the overall headline and a one-line
+ * summary, incidents still going, components in groups (a healthy group is
+ * one row, a troubled one opens), and past incidents a few at a time, each
+ * opening to its updates. Refreshes every 30 seconds while open, and on pull.
  */
 export function StatusSheet({
   visible,
@@ -167,17 +197,18 @@ export function StatusSheet({
                 <MaintenanceNotice maintenance={report.maintenance} />
               )}
               <Headline report={report} now={now} />
+              <ActiveIncidents
+                incidents={splitIncidents(report.incidents).active}
+              />
               <Text style={[shared.eyebrow, s.section]}>COMPONENTS</Text>
-              {report.components.map((c, n) => (
-                <FadeIn key={c.id} index={n + 1}>
-                  <ComponentCard component={c} />
+              {groupStatusComponents(report.components).map((g, n) => (
+                <FadeIn key={g.id} index={n + 1}>
+                  <GroupCard group={g} />
                 </FadeIn>
               ))}
-              <Text style={[shared.eyebrow, s.section]}>RECENT INCIDENTS</Text>
-              <Incidents
-                incidents={report.incidents}
-                components={report.components}
-                offset={report.components.length + 1}
+              <Text style={[shared.eyebrow, s.section]}>PAST INCIDENTS</Text>
+              <PastIncidents
+                incidents={splitIncidents(report.incidents).past}
               />
             </>
           )}
@@ -231,45 +262,75 @@ function Headline({ report, now }: { report: StatusReport; now: number }) {
         >
           {statusHeadlines[report.state]}
         </Text>
+        <Text style={[shared.small, s.summary]}>
+          {statusSummary(report.components, report.incidents)}
+        </Text>
         <Text style={shared.small}>{updatedAgo(report.updated_at, now)}</Text>
       </View>
     </FadeIn>
   );
 }
 
-function ComponentCard({ component: c }: { component: StatusComponent }) {
-  const days = c.history.slice(-HISTORY_DAYS);
-  const tracked = days.filter((d) => d.uptime !== null).length;
-  const uptime = [
-    { label: "24 hours", value: c.uptime.day },
-    { label: "7 days", value: c.uptime.week },
-    { label: "90 days", value: c.uptime.quarter },
-  ];
+/** A group of components: one row when all is well, open when not. */
+function GroupCard({ group: g }: { group: StatusGroup }) {
+  const problem = isProblemState(g.state);
+  const [open, setOpen] = useState(problem);
+  useEffect(() => {
+    if (problem) setOpen(true);
+  }, [problem]);
   return (
-    <View style={shared.card}>
-      <View style={s.cardTop}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.name}>{c.name}</Text>
-          {!!c.description && <Text style={shared.small}>{c.description}</Text>}
-        </View>
-        <View style={s.stateCol}>
-          <Pill
-            label={serviceStateLabels[c.state]}
-            tone={STATE_TONE[c.state].pill}
-          />
-          <Text style={[shared.small, s.latency]}>
-            {c.latency_ms === null ? "—" : `${Math.round(c.latency_ms)} ms`}
+    <View style={[shared.card, s.group]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [s.groupHead, pressed && { opacity: 0.65 }]}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={s.name}>{g.name}</Text>
+          <Text style={shared.small}>
+            {groupSummary(g.components)}
+            {g.uptime !== null && ` · ${formatUptime(g.uptime)} over 90 days`}
           </Text>
         </View>
+        <Pill
+          label={serviceStateLabels[g.state]}
+          tone={STATE_TONE[g.state].pill}
+        />
+        <Icon
+          name={open ? "chevronUp" : "chevronDown"}
+          size={18}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open &&
+        g.components.map((c) => <ComponentRow key={c.id} component={c} />)}
+    </View>
+  );
+}
+
+function ComponentRow({ component: c }: { component: StatusComponent }) {
+  const days = c.history.slice(-HISTORY_DAYS);
+  const tracked = days.filter((d) => d.uptime !== null).length;
+  const figures = [
+    `24 h ${formatUptime(c.uptime.day)}`,
+    `7 d ${formatUptime(c.uptime.week)}`,
+    `90 d ${formatUptime(c.uptime.quarter)}`,
+    ...(c.latency_ms === null ? [] : [`${Math.round(c.latency_ms)} ms`]),
+  ];
+  return (
+    <View style={[s.component, s.divider]}>
+      <View style={s.cardTop}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={s.componentName}>{c.name}</Text>
+          {!!c.description && <Text style={shared.small}>{c.description}</Text>}
+        </View>
+        <Pill
+          label={serviceStateLabels[c.state]}
+          tone={STATE_TONE[c.state].pill}
+        />
       </View>
-      <View style={s.uptimeRow}>
-        {uptime.map((u) => (
-          <View key={u.label} style={s.uptimeCell}>
-            <Text style={s.uptimeValue}>{formatUptime(u.value)}</Text>
-            <Text style={shared.small}>{u.label}</Text>
-          </View>
-        ))}
-      </View>
+      <Text style={[shared.small, s.figures]}>{figures.join(" · ")}</Text>
       <View
         style={s.strip}
         accessible
@@ -290,50 +351,125 @@ function ComponentCard({ component: c }: { component: StatusComponent }) {
   );
 }
 
-function Incidents({
-  incidents,
-  components,
-  offset,
-}: {
-  incidents: StatusIncident[];
-  components: StatusComponent[];
-  offset: number;
-}) {
+/** Incidents still going, open, just under the headline. */
+function ActiveIncidents({ incidents }: { incidents: StatusIncident[] }) {
+  if (!incidents.length) return null;
+  return (
+    <View style={[s.list, s.activeList]}>
+      {incidents.map((incident, n) => (
+        <IncidentRow
+          key={`${incident.component}-${incident.started_at}`}
+          incident={incident}
+          first={n === 0}
+          startOpen
+        />
+      ))}
+    </View>
+  );
+}
+
+/** Past incidents, a few at a time, each opening to its updates. */
+function PastIncidents({ incidents }: { incidents: StatusIncident[] }) {
+  const [shown, setShown] = useState(INCIDENT_PAGE);
   if (!incidents.length)
     return (
-      <FadeIn index={offset} style={shared.card}>
-        <Text style={shared.body}>No recent incidents.</Text>
-      </FadeIn>
+      <View style={shared.card}>
+        <Text style={shared.body}>No incidents in the last 30 days.</Text>
+      </View>
     );
-  const componentName = (id: string, fallback: string) =>
-    components.find((c) => c.id === id)?.name ?? fallback ?? id;
+  const rest = incidents.length - shown;
   return (
     <View style={s.list}>
-      {incidents.map((incident, n) => {
-        const ongoing = incident.resolved_at === null;
-        return (
-          <FadeIn
-            key={`${incident.component}-${incident.started_at}`}
-            index={offset + n}
-            style={[s.incident, n > 0 && s.divider]}
-          >
-            <View style={s.incidentTop}>
-              <Text style={[s.name, { flex: 1 }]} numberOfLines={1}>
-                {componentName(incident.component, incident.name)}
+      {incidents.slice(0, shown).map((incident, n) => (
+        <IncidentRow
+          key={`${incident.component}-${incident.started_at}`}
+          incident={incident}
+          first={n === 0}
+        />
+      ))}
+      {incidents.length > INCIDENT_PAGE && (
+        <View style={[s.more, s.divider]}>
+          <Text style={shared.small}>
+            Showing {Math.min(shown, incidents.length)} of {incidents.length}
+          </Text>
+          {rest > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setShown((v) => v + INCIDENT_PAGE)}
+              style={({ pressed }) => [
+                s.moreButton,
+                pressed && { opacity: 0.65 },
+              ]}
+            >
+              <Text style={s.moreText}>
+                Show {Math.min(rest, INCIDENT_PAGE)} more
               </Text>
-              <Pill
-                label={ongoing ? "Ongoing" : "Resolved"}
-                tone={ongoing ? "danger" : "accent"}
-              />
+            </Pressable>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function IncidentRow({
+  incident,
+  first,
+  startOpen = false,
+}: {
+  incident: StatusIncident;
+  first: boolean;
+  startOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  const ongoing = incident.resolved_at === null;
+  const severity = incidentSeverity(incident);
+  return (
+    <View style={[s.incident, !first && s.divider]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [s.incidentTop, pressed && { opacity: 0.65 }]}
+      >
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={s.componentName} numberOfLines={1}>
+            {incident.name}
+          </Text>
+          <Text style={shared.small}>
+            {incidentSpan(incident)} · {ongoing ? "for " : ""}
+            {formatDuration(incident.duration_s)}
+          </Text>
+        </View>
+        <Pill
+          label={ongoing ? "Ongoing" : incidentSeverityLabels[severity]}
+          tone={ongoing ? "danger" : SEVERITY_PILL[severity]}
+        />
+        <Icon
+          name={open ? "chevronUp" : "chevronDown"}
+          size={18}
+          color={colors.muted}
+        />
+      </Pressable>
+      {open && (
+        <View style={s.updates}>
+          {incidentUpdates(incident).map((u) => (
+            <View key={u.kind} style={s.update}>
+              <Text style={shared.small}>
+                {u.at ? formatTime(u.at) : "Now"}
+              </Text>
+              <Text
+                style={[
+                  shared.body,
+                  u.kind === "ongoing" && { color: colors.danger },
+                ]}
+              >
+                {u.text}
+              </Text>
             </View>
-            <Text style={shared.small}>
-              Started {formatTime(incident.started_at)} ·{" "}
-              {ongoing ? "for " : "lasted "}
-              {formatDuration(incident.duration_s)}
-            </Text>
-          </FadeIn>
-        );
-      })}
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -374,6 +510,51 @@ const s = themed(() =>
       letterSpacing: -0.3,
       marginBottom: 2,
     },
+    summary: { fontFamily: fonts.semibold, color: colors.text },
+    group: { padding: 0, overflow: "hidden" },
+    groupHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: controls.tap,
+      padding: 16,
+    },
+    component: { paddingHorizontal: 16, paddingVertical: 12 },
+    componentName: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.text,
+    },
+    figures: { marginTop: 6, fontSize: 11, fontVariant: ["tabular-nums"] },
+    activeList: { borderColor: colors.danger },
+    updates: {
+      marginTop: 4,
+      marginLeft: 4,
+      paddingLeft: 12,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.border,
+      gap: 8,
+      paddingBottom: 4,
+    },
+    update: { gap: 2 },
+    more: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      paddingLeft: 16,
+      paddingRight: 8,
+    },
+    moreButton: {
+      minHeight: controls.tap,
+      paddingHorizontal: 8,
+      justifyContent: "center",
+    },
+    moreText: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+    },
     cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
     name: {
       fontFamily: fonts.semibold,
@@ -381,23 +562,7 @@ const s = themed(() =>
       color: colors.text,
       marginBottom: 2,
     },
-    stateCol: { alignItems: "flex-end", gap: 4 },
-    latency: { textAlign: "right" },
-    uptimeRow: {
-      flexDirection: "row",
-      marginTop: 14,
-      paddingTop: 12,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
-    },
-    uptimeCell: { flex: 1 },
-    uptimeValue: {
-      fontFamily: fonts.semibold,
-      fontSize: 15,
-      color: colors.text,
-      fontVariant: ["tabular-nums"],
-    },
-    strip: { flexDirection: "row", gap: 2, height: 26, marginTop: 14 },
+    strip: { flexDirection: "row", gap: 2, height: 18, marginTop: 8 },
     bar: { flex: 1, borderRadius: 2 },
     stripLegend: {
       flexDirection: "row",
@@ -416,7 +581,12 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    incident: { paddingVertical: 13, paddingHorizontal: 16, gap: 4 },
-    incidentTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+    incident: { paddingVertical: 6, paddingHorizontal: 16, gap: 4 },
+    incidentTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      minHeight: controls.tap,
+    },
   }),
 );
