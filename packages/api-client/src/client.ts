@@ -2,6 +2,8 @@ import {
   HttpError,
   type AgentGrant,
   type AgentToolset,
+  type AgentTrustInput,
+  type ProposalStatus,
   type McpCatalog,
   type AgendaDay,
   type CaptureRequest,
@@ -2657,6 +2659,16 @@ export class OrbynClient {
       body: { toolsets },
     });
   }
+  /**
+   * A connection's trust: full power, ask first or suggest only, per space,
+   * and which ask-first items it may do alone (Settings → Connected agents).
+   */
+  setAgentTrust(id: string, input: AgentTrustInput) {
+    return this.request<AgentGrant>(`/me/agents/${id}/trust`, {
+      method: "PUT",
+      body: input,
+    });
+  }
   /** A new agent key; the returned `key` is shown once. */
   createAgentKey(input: AgentKeyInput) {
     return this.request<NewAgentKey>("/me/agent-keys", {
@@ -2706,6 +2718,16 @@ export class OrbynClient {
   /** Decline a proposal: nothing changes. */
   declineReview(id: string) {
     return this.request<void>(`/proposals/${id}/decline`, { method: "POST" });
+  }
+  /**
+   * Approve or Decline from a notification's button: says how it ended,
+   * even when it was already decided.
+   */
+  respondToReview(id: string, decision: "approve" | "decline") {
+    return this.request<{ status: ProposalStatus }>(
+      `/proposals/${id}/respond`,
+      { method: "POST", body: { decision } },
+    );
   }
   /** Team settings → Outside agents: the policy, and (managers) who connects. */
   teamAgents(teamId: string) {

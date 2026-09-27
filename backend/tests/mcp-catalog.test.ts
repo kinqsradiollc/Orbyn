@@ -129,8 +129,10 @@ test("budgets: the tool list stays small, and the instructions short", () => {
   // compact answer shape and pattern-free id and time fields to fit, A4's
   // get_links keeps its answer flat, and A5 adds only a few fields (starting
   // from a template, skipping an occurrence, starred, pinned links). The
-  // optional toolsets have their own budgets (mcp-toolsets.test.ts).
-  assert.ok(size < 68_000, `tools/list for core is ${size} characters`);
+  // optional toolsets have their own budgets (mcp-toolsets.test.ts). H1
+  // adds list_agent_changes and undo (full power needs a way back), kept
+  // to compact answers, and the connection's trust in get_context.
+  assert.ok(size < 70_000, `tools/list for core is ${size} characters`);
   assert.ok(
     INSTRUCTIONS.length <= 2048,
     `instructions are ${INSTRUCTIONS.length} characters`,

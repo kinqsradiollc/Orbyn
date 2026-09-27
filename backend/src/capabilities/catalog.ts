@@ -38,7 +38,7 @@ const kindOf = (c: Capability) =>
  * The catalog's version: the date of the last change to any tool's
  * contract. Bump it (and add a CHANGELOG entry) with every change.
  */
-export const CATALOG_VERSION = "2026-09-26";
+export const CATALOG_VERSION = "2026-09-27";
 
 /**
  * How tools change (the versioning and deprecation policy), in the words
@@ -54,6 +54,14 @@ export const VERSIONING_POLICY = [
 
 /** What changed in the MCP server, newest first. */
 export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-09-27",
+    changes: [
+      "Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.",
+      "Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.",
+      "list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.",
+    ],
+  },
   {
     date: "2026-09-26",
     changes: [
@@ -480,7 +488,7 @@ const TIER_REVIEW: Record<Capability["tier"], string> = {
   R: "Runs directly; changes nothing.",
   W1: "Runs directly; adds only private things (undoable).",
   W2: "Runs directly where the connection may change things (undoable); team pages get suggestions; a suggest-only connection files a proposal.",
-  W3: "Always waits in the Review inbox for the signed-in person.",
+  W3: "Deletes, moves and restores: made directly at full power (undoable for 30 days) unless on the ask-first list, which asks the person first; a connection that asks or suggests sends it to the person.",
 };
 
 export type AnnotationAudit = {
@@ -523,7 +531,7 @@ export function auditAnnotations(): AnnotationAudit[] {
           ) &&
           c.tier !== "W3"
         )
-          issues.push("outward effects always go to review (W3)");
+          issues.push("outward effects are W3 (the ask-first list decides)");
       }
       return {
         name: c.name,

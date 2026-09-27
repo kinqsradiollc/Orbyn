@@ -258,6 +258,8 @@ export async function allowRequest(
     d.bookings,
     req.scopes.includes("offline_access"),
   );
+  // Full power unless the person chose less; suggesting stays suggesting.
+  const trust = d.access === "suggest" ? "suggest" : d.trust;
   let added = false;
   let raised = false;
   const grantId = await transaction(async (db) => {
@@ -278,6 +280,10 @@ export async function allowRequest(
       await db.query(
         `UPDATE agent_grants SET client_name = $2, name = $2, access = $3, team_ids = $4,
            personal = $5, toolsets = $6, flags = $7,
+           -- Signing in again keeps the trust the person set, unless it
+           -- only suggested before (or suggests now).
+           trust = CASE WHEN $3 = 'suggest' THEN 'suggest'
+                        WHEN access <> 'write' THEN $9 ELSE trust END,
            expires_at = now() + make_interval(days => $8::int), suspended_at = NULL,
            -- Not finished yet: the day before the sweep clears it starts again.
            created_at = CASE WHEN authorized_at IS NULL THEN now() ELSE created_at END
@@ -291,6 +297,7 @@ export async function allowRequest(
           toolsets,
           flags,
           days,
+          trust,
         ],
       );
     } else {
@@ -304,9 +311,9 @@ export async function allowRequest(
       id = (
         await db.query<{ id: string }>(
           `INSERT INTO agent_grants (user_id, kind, client_id, client_name, name, access,
-             team_ids, personal, toolsets, flags, expires_at)
+             team_ids, personal, toolsets, flags, expires_at, trust)
            VALUES ($1, 'oauth', $2, $3, $3, $4, $5, $6, $7, $8,
-                   now() + make_interval(days => $9::int))
+                   now() + make_interval(days => $9::int), $10)
            RETURNING id`,
           [
             user.id,
@@ -318,6 +325,7 @@ export async function allowRequest(
             toolsets,
             flags,
             days,
+            trust,
           ],
         )
       ).rows[0].id;
@@ -334,6 +342,7 @@ export async function allowRequest(
           client_id: req.client.id,
           host: req.client.host,
           access: d.access,
+          trust,
           personal: d.personal,
           team_ids: teamIds,
           toolsets,

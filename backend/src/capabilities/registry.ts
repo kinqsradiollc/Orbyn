@@ -23,7 +23,8 @@ import type { WriteMeta } from "./write.js";
 export type Mode = "read" | "propose" | "write";
 /**
  * Risk tier: R reads; W1 only adds, privately; W2 edits or is visible to
- * teammates; W3 always goes to review.
+ * teammates; W3 deletes, moves between spaces, or restores (made directly
+ * at full power, with undo; otherwise asked about or reviewed).
  */
 export type Tier = "R" | "W1" | "W2" | "W3";
 /** What a call can reach beyond Orbyn. */
@@ -48,6 +49,8 @@ export type ErrorCode =
   | "STALE"
   | "MAINTENANCE"
   | "UNAVAILABLE"
+  | "DECLINED"
+  | "CANCELLED"
   | "INTERNAL";
 
 /** A failure the agent can read and correct (an isError tool result). */
@@ -83,6 +86,22 @@ export type CapabilityContext = {
    * long job's status), when the caller asked to hear it. Never required.
    */
   progress?: Progress;
+  /**
+   * Asking the person in the chat (form elicitation), when the app can.
+   * "collect": a change that needs asking is noted here and carried on
+   * with, and the call is then rolled back and asked about as a whole;
+   * "approved": the person said yes in the chat, so it's made directly.
+   * Without it, a change that needs asking waits in the Review inbox.
+   */
+  asking?: Asking;
+};
+
+/** Why a change needs the person first, in words for them. */
+export type AskReason = { kind: string; text: string };
+
+export type Asking = {
+  mode: "collect" | "approved";
+  reasons: AskReason[];
 };
 
 /** How far a call has got: steps done, of how many, and what it's doing. */

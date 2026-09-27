@@ -318,7 +318,7 @@ function fieldRows(
 const quote = (t: string) => `“${t.trim() || "Untitled"}”`;
 
 /** Why a change can't be applied as proposed any more, or null. */
-async function staleness(
+export async function staleness(
   db: Queryable,
   userId: string,
   c: ReviewChange,

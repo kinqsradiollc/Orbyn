@@ -29,6 +29,59 @@ export async function enablePush() {
   const push = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
   await client.registerDevice(push);
   await savePushToken(push);
+  await registerReviewActions();
+}
+
+/**
+ * The category the server puts on a proposal waiting for review (see
+ * backend worker/channels/push.ts): its notification has Approve and
+ * Decline, answered here with the signed-in session.
+ */
+export const REVIEW_CATEGORY = "orbyn-review";
+const REVIEW_ACTIONS = ["approve", "decline"] as const;
+
+/** Registers Approve and Decline for review notifications (once per launch). */
+export async function registerReviewActions() {
+  if (Platform.OS === "web") return;
+  await Notifications.setNotificationCategoryAsync(REVIEW_CATEGORY, [
+    {
+      identifier: "approve",
+      buttonTitle: "Approve",
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: "decline",
+      buttonTitle: "Decline",
+      options: { isDestructive: true, opensAppToForeground: true },
+    },
+  ]).catch(() => {});
+}
+
+/** The proposal and answer a tapped Approve or Decline stands for, if any. */
+export function reviewAction(
+  response: Notifications.NotificationResponse,
+): { proposal: string; decision: "approve" | "decline" } | null {
+  const decision = response.actionIdentifier as (typeof REVIEW_ACTIONS)[number];
+  if (!REVIEW_ACTIONS.includes(decision)) return null;
+  const ref = String(response.notification.request.content.data?.ref ?? "");
+  const proposal = /^proposal:([0-9a-f-]{36})$/.exec(ref)?.[1];
+  return proposal ? { proposal, decision } : null;
+}
+
+/**
+ * Answers a proposal from its notification's button, signed in as the
+ * person. Says how it ended ("applied", "declined", or how it had already
+ * been decided).
+ */
+export async function answerReview(action: {
+  proposal: string;
+  decision: "approve" | "decline";
+}) {
+  const { status } = await client.respondToReview(
+    action.proposal,
+    action.decision,
+  );
+  return status;
 }
 
 /** Unregister this device (when one is registered) and forget the push token. */

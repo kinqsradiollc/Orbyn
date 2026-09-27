@@ -14,6 +14,8 @@ import {
 import {
   CapabilityError,
   argsDigest,
+  type AskReason,
+  type Asking,
   cursorCodec,
   cursorKey,
   type Capability,
@@ -64,7 +66,49 @@ export type Execution = {
   recorded?: boolean;
   /** The same client_ref was sent before: this is that call's answer. */
   replayed?: boolean;
+  /**
+   * The call needs the person's yes first and the app can ask in the chat:
+   * nothing was changed (the call was rolled back); this says what it
+   * would do and why it asks.
+   */
+  ask?: { what: string[]; why: string[] };
 };
+
+/** Rolls a collecting call back once it knows what it would do. */
+class AskFirst extends Error {
+  constructor(
+    readonly answer: CapabilityResult<unknown>,
+    readonly reasons: AskReason[],
+  ) {
+    super("ask first");
+  }
+}
+
+/** What a call would do, in lines for the person (at most 12). */
+export function wouldDo(answer: CapabilityResult<unknown>): string[] {
+  const s = answer.structured as {
+    done?: { change?: string; title?: string }[];
+    pending?: { changes?: number } | null;
+  } | null;
+  const lines = (s?.done ?? []).map((d) =>
+    `${d.change ?? "Change"}: “${d.title ?? ""}”`.slice(0, 200),
+  );
+  if (s?.pending?.changes)
+    lines.push(
+      `${s.pending.changes} more change${s.pending.changes === 1 ? "" : "s"} for your Review inbox`,
+    );
+  if (!lines.length)
+    lines.push(
+      ...answer.markdown
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 6),
+    );
+  return lines.length > 12
+    ? [...lines.slice(0, 11), `…and ${lines.length - 11} more`]
+    : lines;
+}
 
 /** What's wrong with the arguments, in words that name the field. */
 function issuesText(error: ZodError): string {
@@ -210,6 +254,12 @@ export type ExecuteOptions = {
   requestId?: string;
   /** Hears how far a long call has got (see CapabilityContext.progress). */
   progress?: Progress;
+  /**
+   * Asking in the chat: "collect" when the app can ask (a change that
+   * needs asking rolls the call back and answers with `ask`), "approved"
+   * once the person said yes there.
+   */
+  asking?: Asking["mode"];
 };
 
 /** Calls `name` for `p` with `args`, as an MCP tool result. */
@@ -253,6 +303,10 @@ export async function execute(
   const clientRef =
     grantId && typeof input.client_ref === "string" ? input.client_ref : null;
   let replayed: Recorded | null = null;
+  const asking: Asking | undefined =
+    options.asking && cap.mode !== "read"
+      ? { mode: options.asking, reasons: [] }
+      : undefined;
   const run = async (db: Queryable) => {
     if (grantId && clientRef) {
       replayed = await priorAnswer(db, grantId, name, clientRef);
@@ -273,8 +327,12 @@ export async function execute(
       spaces: policy.spaces(p),
       cursor: cursorCodec(p, name, input),
       ...(options.progress ? { progress: options.progress } : {}),
+      ...(asking ? { asking } : {}),
     };
     const answer = await cap.run(ctx, input as z.output<typeof cap.input>);
+    // Something in it needs the person first: undo it all and ask.
+    if (asking?.mode === "collect" && asking.reasons.length)
+      throw new AskFirst(answer, asking.reasons);
     if (grantId) {
       const outcome = answer.write?.outcome ?? "ok";
       const targets = answer.targets ?? [];
@@ -342,6 +400,16 @@ export async function execute(
       replayed: !!again,
     };
   } catch (e) {
+    if (e instanceof AskFirst)
+      return {
+        result: { content: [{ type: "text", text: "Asking the person." }] },
+        outcome: "proposed",
+        targets: [],
+        ask: {
+          what: wouldDo(e.answer),
+          why: e.reasons.map((r) => r.text),
+        },
+      };
     return fail(asCapabilityError(e, options.log));
   }
 }

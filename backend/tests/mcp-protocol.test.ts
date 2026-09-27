@@ -82,6 +82,8 @@ test("2026-07-28: tools/list is stable, cacheable and private; tools/call answer
     "plan_schedule",
     // Backlinks (A4).
     "get_links",
+    // Its own changes (H1).
+    "list_agent_changes",
   ]);
   assert.deepEqual(
     two.body.result.tools.map((t: { name: string }) => t.name),
@@ -192,7 +194,7 @@ test("2025 era: initialize for each supported revision, with no session id", asy
   const list = await h.legacy(key, "tools/list", undefined, {
     "mcp-protocol-version": "2025-06-18",
   });
-  assert.equal(list.body.result.tools.length, 10);
+  assert.equal(list.body.result.tools.length, 11);
   assert.equal(list.body.result.ttlMs, undefined);
   const note = await h.post(
     { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -205,7 +207,7 @@ test("2025 era: initialize for each supported revision, with no session id", asy
     bearer(key),
   );
   assert.equal(plain.status, 200);
-  assert.equal(plain.body.result.tools.length, 10);
+  assert.equal(plain.body.result.tools.length, 11);
 });
 
 test("invalid tool arguments are an isError result the model can correct (SEP-1303)", async () => {

@@ -32,6 +32,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   refuseSecrets,
@@ -332,7 +333,7 @@ const change = z
       .max(100)
       .optional()
       .describe(
-        'Move it to "personal" or another team: always goes to review.',
+        'Move it to "personal" or another team (at full power made at once, with undo).',
       ),
     skip: iso
       .optional()
@@ -386,7 +387,10 @@ export const updateTasks = defineCapability({
         );
       const { id: _id, version: _v, team, project, skip, ...fields } = c;
       if (skip) {
-        destination(ctx, row.team_id, "W2");
+        if (
+          destination(ctx, row.team_id, "W2", [], { owner: row }) === "review"
+        )
+          throw cantWait(ctx, row.team_id);
         await skipOccurrence(db, actor, row.id, skip);
         const after = await lockItem(db, row.id);
         done.push(itemEntry(after, "Skipped one occurrence"));
@@ -431,13 +435,18 @@ export const updateTasks = defineCapability({
           : null,
         noticeable ? emails : [],
       );
-      const where = destination(
+      const home = destination(
         ctx,
         row.team_id,
         moving ? "W3" : row.team_id ? "W2" : "W1",
         effects,
+        { owner: row },
       );
-      if (moving && moveTo) destination(ctx, moveTo, "W3");
+      // Moving: both spaces must allow it; the stricter one decides.
+      const where =
+        moving && moveTo && destination(ctx, moveTo, "W3") === "review"
+          ? "review"
+          : home;
       lastTeam = row.team_id;
       if (where === "review") {
         review.push({
@@ -559,6 +568,7 @@ export const completeTasks = defineCapability({
         row.team_id,
         row.team_id ? "W2" : "W1",
         effects,
+        { owner: row },
       );
       lastTeam = row.team_id;
       if (where === "review") {
@@ -687,7 +697,9 @@ export const editChecklist = defineCapability({
   async run(ctx, a) {
     refuseSecrets(...(a.add ?? []), ...(a.rename ?? []).map((r) => r.title));
     const row = await visibleItem(ctx, a.task);
-    const where = destination(ctx, row.team_id, row.team_id ? "W2" : "W1");
+    const where = destination(ctx, row.team_id, row.team_id ? "W2" : "W1", [], {
+      owner: row,
+    });
     if (where === "review")
       return finishWrite(ctx, "Editing the checklist", {
         done: [],

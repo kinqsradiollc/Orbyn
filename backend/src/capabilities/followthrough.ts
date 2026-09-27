@@ -51,6 +51,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   idField,
@@ -416,10 +417,7 @@ export const addProgress = defineCapability({
     const actor = actorOf(ctx.principal);
     const item = await seeItem(ctx, a.task);
     if (destination(ctx, item.team_id, "W2") === "review")
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes there.",
-      );
+      throw cantWait(ctx, item.team_id);
     const done: DoneEntry[] = [];
     let version = item.version;
     if (a.note || a.status || a.percent !== undefined) {
@@ -627,10 +625,7 @@ export const saveRecord = defineCapability({
         });
       }
       if (destination(ctx, teamId, "W2") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there.",
-        );
+        throw cantWait(ctx, teamId);
       if (!a.version)
         throw new CapabilityError(
           "INVALID",
@@ -758,11 +753,7 @@ export const markNotificationsReadCapability = defineCapability({
         "FORBIDDEN",
         "Notices are the person's own: the connection needs Personal.",
       );
-    if (destination(ctx, null, "W1") === "review")
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes.",
-      );
+    if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
     const db = dbOf(ctx);
     const me = ctx.principal.user.id;
     const ids = a.all

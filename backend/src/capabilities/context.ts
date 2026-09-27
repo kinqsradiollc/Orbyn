@@ -2,6 +2,9 @@ import { z } from "zod";
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
+  AGENT_ASK_FIRST,
+  AGENT_TRUST,
+  AGENT_TRUST_LABELS,
   AGENT_TOOLSETS,
   TEAM_AGENT_ACCESS,
   TEAM_ROLES,
@@ -9,7 +12,7 @@ import {
 import { cachedSettings } from "../lib/settings.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 import { cleanTitle, localDay, localTime } from "./format.js";
-import { levelIn } from "./policy.js";
+import { levelIn, trustIn } from "./policy.js";
 import { appUrl, todayUrl } from "./refs.js";
 import { defineCapability } from "./registry.js";
 
@@ -41,6 +44,9 @@ const output = z.object({
     kind: z.enum(["key", "oauth", "legacy", "session"]),
     client: z.string(),
     access: z.enum(AGENT_ACCESS),
+    trust: z.enum(AGENT_TRUST),
+    personal_trust: z.enum(AGENT_TRUST).nullable(),
+    asks_first: z.array(z.enum(AGENT_ASK_FIRST)),
     personal: z.boolean(),
     toolsets: z.array(z.enum(AGENT_TOOLSETS)),
     flags: z.object({
@@ -57,6 +63,7 @@ const output = z.object({
       role: z.enum(TEAM_ROLES),
       agent_policy: z.enum(TEAM_AGENT_ACCESS),
       level: z.enum(AGENT_ACCESS).nullable(),
+      trust: z.enum(AGENT_TRUST),
     }),
   ),
   limits: z.object({
@@ -80,7 +87,7 @@ export const getContext = defineCapability({
   name: "get_context",
   title: "Who and where",
   description:
-    "Who this connection acts for (name only), their time zone, current local time and working hours, their teams with each team's role and agent policy, what this connection may do (access level, spaces, toolsets, expiry), its limits, and the conventions for ids, links and times. A good first call.",
+    "Who this connection acts for (name only), their time zone, current local time and working hours, their teams with each team's role and agent policy, what this connection may do (access, trust per space: full, ask or suggest, and what asks first even at full; spaces, toolsets, expiry), its limits, and the conventions for ids, links and times. A good first call.",
   input: z.object({}).strict(),
   output,
   annotations: {
@@ -133,6 +140,11 @@ export const getContext = defineCapability({
                 : "session",
         client: cleanTitle(p.client.name),
         access: p.access,
+        trust: p.access === "suggest" ? "suggest" : p.trust.level,
+        personal_trust: p.personal ? trustIn(p, null) : null,
+        asks_first: AGENT_ASK_FIRST.filter(
+          (k) => !p.trust.acts_alone.includes(k),
+        ),
         personal: p.personal,
         toolsets: p.toolsets,
         flags: p.flags,
@@ -144,6 +156,7 @@ export const getContext = defineCapability({
         role: t.role,
         agent_policy: t.agent_access,
         level: levelIn(p, t.id),
+        trust: levelIn(p, t.id) === "suggest" ? "suggest" : trustIn(p, t.id),
       })),
       limits: {
         calls_per_minute: limits.calls_per_minute,
@@ -161,7 +174,7 @@ export const getContext = defineCapability({
     const u = structured.user;
     const markdown = [
       `Acting for ${u.name}. It is ${u.now_local} (${u.timezone}); working hours ${u.working_hours.start}–${u.working_hours.end}.`,
-      `This connection: ${AGENT_ACCESS_LABELS[p.access].name}, ${
+      `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust].name.toLowerCase()})` : ""}, ${
         [
           ...(p.personal ? ["Personal"] : []),
           ...structured.teams.map((t) => t.name),

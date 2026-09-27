@@ -292,6 +292,7 @@ const principal = (
     hide_outside_content: false,
     readonly: false,
   },
+  trust: { level: "full", spaces: {}, acts_alone: [] },
   teams: [
     { id: teamId, name: "Visible team", role: "member", agent_access: "role" },
   ],

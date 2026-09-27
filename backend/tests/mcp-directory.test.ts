@@ -217,26 +217,34 @@ const RUN: Record<string, () => Promise<void>> = {
     assert.ok(["NOT_FOUND", "INVALID"].includes(code(r)), code(r));
   },
   N2: async () => {
-    const old = (
+    const lecture = (
       await pool.query(
-        "SELECT id, version FROM items WHERE user_id = $1 AND title = 'Old draft outline'",
+        "SELECT id, version FROM items WHERE user_id = $1 AND title = 'Biology lecture'",
         [reviewer.userId],
       )
     ).rows[0];
     const r = await tool("propose_changes", {
-      summary: "Delete the old draft outline",
+      summary: "Invite Sam to the lecture",
       changes: [
-        { type: "delete_task", target: `task:${old.id}`, version: old.version },
+        {
+          type: "invite",
+          target: `event:${lecture.id}`,
+          version: lecture.version,
+          emails: ["sam@example.com"],
+        },
       ],
     });
     assert.ok(!r.isError, r.content[0]?.text);
     assert.equal(r.structuredContent.status, "pending_review");
     assert.match(r.structuredContent.pending.review_url, /^https?:\/\//);
     assert.equal(
-      (await pool.query("SELECT 1 FROM items WHERE id = $1", [old.id]))
-        .rowCount,
-      1,
-      "nothing was deleted",
+      (
+        await pool.query("SELECT 1 FROM item_attendees WHERE item_id = $1", [
+          lecture.id,
+        ])
+      ).rowCount,
+      0,
+      "nobody was invited",
     );
   },
   N3: async () => {

@@ -1192,6 +1192,24 @@ export async function trashDoc(db: Db, u: UserRow, id: string): Promise<Owned> {
 }
 
 /**
+ * Bring a page back from Trash, just as it was (POST /docs/:id/restore,
+ * or undoing an agent's delete). The caller tells open editors and Study
+ * once it commits.
+ */
+export async function untrashDoc(db: Db, u: UserRow, id: string) {
+  await actAs(db, u.id);
+  await requireDoc(db, id, u, "items:write", true);
+  await db.query(
+    `UPDATE docs SET deleted_at = NULL, deleted_by = NULL,
+       merged_into = NULL WHERE id = $1`,
+    [id],
+  );
+  await noteTrash(db, id, u.id, false);
+  await searchTrash(db, id, false);
+  await dropStandInCopy(db, id);
+}
+
+/**
  * Put a past state back as a new version on top (history is only ever
  * added to). The caller announces it and syncs Study once it commits.
  */

@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { z } from "zod";
 import {
   fail,
   reviewApproveInput,
+  type ProposalStatus,
   type ReviewApplied,
   type ReviewInbox,
   type ReviewItem,
@@ -13,6 +15,7 @@ import { undoActivity } from "../../capabilities/undo.js";
 import {
   applyProposal,
   declineProposal,
+  proposalOutcome,
   pendingCount,
   reviewInbox,
   reviewItem,
@@ -72,6 +75,29 @@ export async function proposalRoutes(app: FastifyInstance) {
     await transaction((db) => declineProposal(db, u, idParam(r)));
     return reply.code(204).send();
   });
+
+  // Approve or Decline straight from the phone's notification (its
+  // buttons), signed in as the person. Answering one already decided says
+  // how it ended instead of failing, so a second tap is harmless.
+  app.post(
+    "/proposals/:id/respond",
+    async (r): Promise<{ status: ProposalStatus }> => {
+      const u = await firstParty(r);
+      const { decision } = z
+        .object({ decision: z.enum(["approve", "decline"]) })
+        .strict()
+        .parse(r.body ?? {});
+      const id = idParam(r);
+      return transaction(async (db) => {
+        const now = await proposalOutcome(db, u.id, null, id);
+        if (!now) fail(404, "That suggestion isn't here any more.");
+        if (now.status !== "pending") return { status: now.status };
+        if (decision === "approve") await applyProposal(db, u, id);
+        else await declineProposal(db, u, id);
+        return { status: decision === "approve" ? "applied" : "declined" };
+      });
+    },
+  );
 
   // Undo one change an outside agent made directly (Settings → Connected
   // agents → Activity): once, within 30 days, and only while it is as the

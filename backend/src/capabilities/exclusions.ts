@@ -349,6 +349,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /proposals/:id": "people_only",
   "POST /proposals/:id/apply": "people_only",
   "POST /proposals/:id/decline": "people_only",
+  "POST /proposals/:id/respond": "people_only",
   "POST /me/agents/activity/:id/undo": "people_only",
   "GET /ai/providers": "admin",
   "POST /ai/providers": "admin",
@@ -498,6 +499,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /docs/:id/forever": "trash",
   // Classified with the toolsets (A5).
   "PUT /me/agents/:id/toolsets": "credentials",
+  "PUT /me/agents/:id/trust": "credentials",
   "GET /me/calendar-subscriptions": "credentials",
   "PUT /items/:id/position": "arrangement",
   // D4b: richer links and pages.

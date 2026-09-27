@@ -93,6 +93,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   idField,
@@ -101,6 +102,7 @@ import {
   writeOutput,
   type DoneEntry,
 } from "./write.js";
+import { applyDirect } from "./direct.js";
 import type { ReviewChangeInput } from "@orbyn/core";
 
 /**
@@ -112,13 +114,6 @@ import type { ReviewChangeInput } from "@orbyn/core";
  * teammates), taking or leaving suggestions (team pages go to review) and
  * turning a page's checklist into tasks.
  */
-
-const suggestOnly = () =>
-  new CapabilityError(
-    "FORBIDDEN",
-    "This connection can only suggest changes there.",
-    "Use propose_changes, or ask the person to make the change in Orbyn.",
-  );
 
 // --- update_project -----------------------------------------------------
 
@@ -180,7 +175,7 @@ export const updateProjectCapability = defineCapability({
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
     const seen = await seeProject(ctx, a.project);
-    const where = destination(ctx, seen.team_id, "W2");
+    const where = destination(ctx, seen.team_id, "W2", [], { owner: seen });
     const project = await requireProject(db, seen.id, actor, "items:write");
     const current = (
       await db.query<{
@@ -242,7 +237,8 @@ export const updateProjectCapability = defineCapability({
     const undo: UndoOp[] = [];
     const title = current.name;
     if (where === "review") {
-      if (Object.keys(patch).length || a.pin?.length) throw suggestOnly();
+      if (Object.keys(patch).length || a.pin?.length)
+        throw cantWait(ctx, seen.team_id);
     } else {
       if (Object.keys(patch).length) {
         const saved = await updateProject(
@@ -330,10 +326,25 @@ export const updateProjectCapability = defineCapability({
         }),
       );
     }
+    // Removing stages and unpinning: made at once at full power (with
+    // undo), otherwise they wait for the person.
+    const after: (() => Promise<void>)[] = [];
+    if (
+      review.length &&
+      destination(ctx, seen.team_id, "W3", [], { owner: seen }) === "direct"
+    ) {
+      for (const change of review.splice(0)) {
+        const made = await applyDirect(ctx, change);
+        done.push(made.done);
+        undo.push(...made.undo);
+        after.push(...made.after);
+      }
+    }
     if (!done.length && !review.length)
       throw new CapabilityError("INVALID", "Nothing to change.");
     return finishWrite(ctx, "Changing a project", {
       done,
+      after,
       review,
       reviewSummary: `Changes to the project ${quoted(title)}`,
       undo,
@@ -728,7 +739,8 @@ export const saveTemplate = defineCapability({
     if (a.kind === "project") {
       if (a.from_project) {
         const p = await seeProject(ctx, a.from_project);
-        if (destination(ctx, p.team_id, "W2") === "review") throw suggestOnly();
+        if (destination(ctx, p.team_id, "W2") === "review")
+          throw cantWait(ctx, p.team_id);
         const t = await templateFromProject(db, actor, p.id);
         done.push(
           entryOf("template", t.id, t.name, null, "Saved from the project"),
@@ -742,7 +754,7 @@ export const saveTemplate = defineCapability({
           );
         const row = await seeTemplate(ctx, id.id);
         if (destination(ctx, row.team_id, "W2") === "review")
-          throw suggestOnly();
+          throw cantWait(ctx, row.team_id);
         const t = await updateTemplate(db, actor, row.id, {
           ...(a.name ? { name: a.name } : {}),
           ...(a.description !== undefined
@@ -759,7 +771,7 @@ export const saveTemplate = defineCapability({
             "A new project template needs a name and tasks (or from_project).",
           );
         if (destination(ctx, teamId, teamId ? "W2" : "W1") === "review")
-          throw suggestOnly();
+          throw cantWait(ctx, teamId);
         const t = await createTemplate(db, actor, {
           name: a.name,
           description: a.description ?? "",
@@ -774,7 +786,7 @@ export const saveTemplate = defineCapability({
         const id = a.template.replace(/^(template|page_template):/, "");
         const row = await seePageTemplate(ctx, id);
         if (destination(ctx, row.team_id, "W2") === "review")
-          throw suggestOnly();
+          throw cantWait(ctx, row.team_id);
         const t = await updatePageTemplate(db, actor, row.id, {
           ...(a.name ? { name: a.name } : {}),
           ...(a.description !== undefined
@@ -792,7 +804,7 @@ export const saveTemplate = defineCapability({
         const d = await seeDoc(ctx, a.from_page);
         const personal = !!space && "personal" in space && d.team_id !== null;
         if (destination(ctx, personal ? null : d.team_id, "W2") === "review")
-          throw suggestOnly();
+          throw cantWait(ctx, personal ? null : d.team_id);
         const t = await pageTemplateFromPage(db, actor, d.id, {
           ...(a.name ? { name: a.name } : {}),
           ...(a.description !== undefined
@@ -811,7 +823,7 @@ export const saveTemplate = defineCapability({
             "A new page template needs a name and markdown (or from_page).",
           );
         if (destination(ctx, teamId, teamId ? "W2" : "W1") === "review")
-          throw suggestOnly();
+          throw cantWait(ctx, teamId);
         const t = await createPageTemplate(db, actor, {
           name: a.name,
           description: a.description ?? "",
@@ -967,7 +979,7 @@ export const organize = defineCapability({
           const space = teamFilter(c.space ?? "personal");
           const teamId = space && "team" in space ? space.team : null;
           if (destination(ctx, teamId, teamId ? "W2" : "W1") === "review")
-            throw suggestOnly();
+            throw cantWait(ctx, teamId);
           const name = need(c.name, "a name");
           const made =
             c.do === "create_list"
@@ -985,7 +997,7 @@ export const organize = defineCapability({
             need(c.id, "an id"),
           );
           if (destination(ctx, row.team_id, "W2") === "review")
-            throw suggestOnly();
+            throw cantWait(ctx, row.team_id);
           const name = need(c.name, "a name");
           if (type === "list") await updateList(db, actor, row.id, { name });
           else if (type === "tag") await updateTag(db, actor, row.id, { name });
@@ -1018,7 +1030,8 @@ export const organize = defineCapability({
               : kind === "project"
                 ? (await seeProject(ctx, typed)).name
                 : await seeViewTitle(ctx, ref.id);
-          if (destination(ctx, null, "W1") === "review") throw suggestOnly();
+          if (destination(ctx, null, "W1") === "review")
+            throw cantWait(ctx, null);
           await setFavourite(
             db,
             ctx.principal.user.id,
@@ -1039,7 +1052,7 @@ export const organize = defineCapability({
         } else {
           const doc = await seeDoc(ctx, need(c.id, "a page id"));
           if (destination(ctx, doc.team_id, "W2") === "review")
-            throw suggestOnly();
+            throw cantWait(ctx, doc.team_id);
           if (!c.add?.length && !c.remove?.length)
             throw new CapabilityError(
               "INVALID",
@@ -1139,7 +1152,8 @@ export const commentOnDoc = defineCapability({
     const db = dbOf(ctx);
     const actor = actorOf(ctx.principal);
     const doc = await seeDoc(ctx, a.doc);
-    if (destination(ctx, doc.team_id, "W2") === "review") throw suggestOnly();
+    if (destination(ctx, doc.team_id, "W2") === "review")
+      throw cantWait(ctx, doc.team_id);
     await requireDoc(db, doc.id, actor, "items:read");
     let left = 0;
     let change: string;
@@ -1344,7 +1358,7 @@ export const tasksFromDoc = defineCapability({
     const actor = actorOf(ctx.principal);
     const seen = await seeDoc(ctx, a.doc);
     if (destination(ctx, seen.team_id, seen.team_id ? "W2" : "W1") === "review")
-      throw suggestOnly();
+      throw cantWait(ctx, seen.team_id);
     const project = a.project ? await seeProject(ctx, a.project) : null;
     if (project && project.team_id !== seen.team_id)
       throw new CapabilityError(

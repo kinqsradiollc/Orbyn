@@ -56,6 +56,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   idField,
@@ -74,12 +75,7 @@ import {
  */
 
 const personalOnly = (ctx: Parameters<typeof destination>[0]) => {
-  if (destination(ctx, null, "W1") === "review")
-    throw new CapabilityError(
-      "FORBIDDEN",
-      "This connection can only suggest changes, and planner settings and routines don't go through review.",
-      "Ask the person to change them in Orbyn.",
-    );
+  if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
 };
 
 // --- get_work_patterns -------------------------------------------------
@@ -472,10 +468,7 @@ export const logFocus = defineCapability({
       destination(ctx, item?.team_id ?? null, item?.team_id ? "W2" : "W1") ===
       "review"
     )
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes there.",
-      );
+      throw cantWait(ctx, item?.team_id ?? null);
     if (!a.started_at && !a.ended_at) {
       if (!item)
         throw new CapabilityError(

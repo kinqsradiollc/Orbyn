@@ -14,7 +14,11 @@ import {
   restoreDocVersion,
   saveDoc,
   trashDoc,
+  untrashDoc,
 } from "../modules/docs/service.js";
+import { syncSavedPages } from "../modules/study/service.js";
+import { requireTeam } from "../lib/teams.js";
+import { restoreSnapshot, type Snapshot } from "./snapshot.js";
 import {
   deleteProject,
   requireProject,
@@ -89,6 +93,10 @@ export type UndoOp =
     }
   /** A page it made: move it to Trash. */
   | { op: "doc.trash"; doc_id: string; version: number }
+  /** A page it moved to Trash: bring it back. */
+  | { op: "doc.untrash"; doc_id: string }
+  /** Something it deleted (a task, project, list …): put it back whole. */
+  | ({ op: "rows.recreate"; label: string } & Snapshot)
   /** Suggestions it left on a page: take them away while still open. */
   | { op: "suggestions.delete"; doc_id: string; ids: string[] }
   /** A project it made: delete it (its tasks go with their own ops). */
@@ -272,6 +280,39 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
             trashed: true,
           }),
         );
+        break;
+      }
+      case "doc.untrash": {
+        const doc = (
+          await db.query<{ deleted_at: Date | null }>(
+            "SELECT deleted_at FROM docs WHERE id = $1",
+            [op.doc_id],
+          )
+        ).rows[0];
+        if (!doc) fail(404, "That page was deleted for good.");
+        if (!doc.deleted_at) changedSince();
+        await untrashDoc(db, u, op.doc_id);
+        const back = (
+          await db.query<{ version: number }>(
+            "SELECT version FROM docs WHERE id = $1",
+            [op.doc_id],
+          )
+        ).rows[0];
+        after.push(async () => {
+          await announceDocChange(pool, op.doc_id, back.version, "undo");
+          await syncSavedPages(op.doc_id);
+        });
+        break;
+      }
+      case "rows.recreate": {
+        // Only where the person can still make things.
+        const teams = new Set(
+          (op.rows[0]?.data ?? [])
+            .map((r) => r.team_id)
+            .filter((t): t is string => typeof t === "string"),
+        );
+        for (const t of teams) await requireTeam(t, u, "items:write", db);
+        if (!(await restoreSnapshot(db, op))) changedSince();
         break;
       }
       case "suggestions.delete":

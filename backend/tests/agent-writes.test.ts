@@ -124,6 +124,12 @@ before(async () => {
   await make("suggest", olga, { access: "suggest", team_ids: [crew] });
   await make("read", olga, { access: "read", team_ids: [crew] });
   await make("personal", olga, { access: "write", team_ids: [] });
+  // Asks before every change (H1): no form in these calls, so the Review inbox.
+  await make("ask", olga, {
+    access: "write",
+    trust: "ask",
+    team_ids: [crew, quiet],
+  });
   await make("mo", mo, { access: "write", team_ids: [crew] });
   await make("vi", vi, { access: "write", team_ids: [crew] });
 });
@@ -244,7 +250,7 @@ test("the permission matrix: access levels, roles, team policy and spaces", asyn
   assert.equal(code(complete), "FORBIDDEN");
 });
 
-test("risky changes go to review: invites, assigning, team moves, deletes", async () => {
+test("full power: invites, assigning and a teammate's work ask first; moves are direct with undo", async () => {
   const invite = ok(
     await tool(keys.write, "create_tasks", {
       tasks: [
@@ -283,7 +289,8 @@ test("risky changes go to review: invites, assigning, team moves, deletes", asyn
     `UPDATE agent_grants SET flags = flags - 'notify_teammates' WHERE id = $1`,
     [grants.write],
   );
-  // Moving a task between Personal and a team always waits for review.
+  // At full power a task moves between Personal and a team at once, and
+  // Undo moves it back.
   const task = ok(
     await tool(keys.write, "create_tasks", { tasks: [{ title: "Mover" }] }),
   ).done[0];
@@ -292,19 +299,46 @@ test("risky changes go to review: invites, assigning, team moves, deletes", asyn
       changes: [{ id: task.id, version: task.version, team: crew }],
     }),
   );
-  assert.equal(move.status, "pending_review");
+  assert.equal(move.status, "done");
+  assert.equal((await itemRow(idOf(task.id))).team_id, crew);
+  const moved = await lastActivity(grants.write);
+  const back = await h.call(
+    olga.token,
+    "POST",
+    `/me/agents/activity/${moved.id}/undo`,
+  );
+  assert.equal(back.statusCode, 200, back.body);
   assert.equal((await itemRow(idOf(task.id))).team_id, null);
-  // Deleting is only ever proposed.
+  // A connection that asks first sends the same move to review.
+  const now = await itemRow(idOf(task.id));
+  const asked = ok(
+    await tool(keys.ask, "update_tasks", {
+      changes: [{ id: task.id, version: now.version, team: crew }],
+    }),
+  );
+  assert.equal(asked.status, "pending_review");
+  assert.equal((await itemRow(idOf(task.id))).team_id, null);
+  // Deleting a teammate's task asks first.
+  const mosTask = (
+    await h.call(mo.token, "POST", "/items", {
+      title: "Mo's crew task",
+      team_id: crew,
+    })
+  ).json();
   const del = ok(
     await tool(keys.write, "propose_changes", {
       summary: "Tidy up",
       changes: [
-        { type: "delete_task", target: task.id, version: task.version },
+        {
+          type: "delete_task",
+          target: `task:${mosTask.id}`,
+          version: mosTask.version,
+        },
       ],
     }),
   );
   assert.equal(del.status, "pending_review");
-  assert.ok(await itemRow(idOf(task.id)), "still there until approved");
+  assert.ok(await itemRow(mosTask.id), "still there until approved");
   // Its outcome is readable with fetch.
   const fetched = ok(
     await tool(keys.write, "fetch", { id: del.pending.proposal_id }),
@@ -812,15 +846,19 @@ test("link, create_project, and the project timeline names the agent", async () 
   );
   assert.equal(mine.rowCount, 1);
   assert.equal(mine.rows[0].via_grant_id, null);
-  // A big team project goes to review.
+  // More than 50 changes at once asks first (the Review inbox here).
   const huge = ok(
     await tool(keys.write, "create_project", {
       name: "Huge",
       team: crew,
       stages: [
         {
-          name: "All",
+          name: "One",
           tasks: Array.from({ length: 30 }, (_, i) => `Task ${i}`),
+        },
+        {
+          name: "Two",
+          tasks: Array.from({ length: 30 }, (_, i) => `Task ${i + 30}`),
         },
       ],
     }),
@@ -833,7 +871,7 @@ test("approving needs a first-party session: keys and agents are refused, and st
     await tool(keys.write, "create_tasks", { tasks: [{ title: "Doomed" }] }),
   ).done[0];
   const proposed = ok(
-    await tool(keys.write, "propose_changes", {
+    await tool(keys.ask, "propose_changes", {
       summary: "Delete Doomed",
       changes: [{ type: "delete_task", target: t.id, version: t.version }],
     }),
@@ -903,7 +941,7 @@ test("approving needs a first-party session: keys and agents are refused, and st
   assert.ok(await itemRow(idOf(t.id)), "nothing deleted");
   // A fresh proposal applies for the person, once.
   const fresh = ok(
-    await tool(keys.write, "propose_changes", {
+    await tool(keys.ask, "propose_changes", {
       summary: "Delete it now",
       changes: [
         {
@@ -925,7 +963,7 @@ test("approving needs a first-party session: keys and agents are refused, and st
   assert.equal(await itemRow(idOf(t.id)), undefined);
   const again = await h.call(olga.token, "POST", `/proposals/${fid}/apply`, {});
   assert.equal(again.statusCode, 200);
-  const status = ok(await tool(keys.write, "fetch", { id: `proposal:${fid}` }));
+  const status = ok(await tool(keys.ask, "fetch", { id: `proposal:${fid}` }));
   assert.equal(status.metadata.status, "applied");
   // Declining changes nothing.
   const other = ok(

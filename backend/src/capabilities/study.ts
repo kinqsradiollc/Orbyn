@@ -23,6 +23,7 @@ import {
   MAX_BATCH,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   idField,
@@ -265,11 +266,7 @@ export const updateStudy = defineCapability({
   tier: "W1",
   async run(ctx, a) {
     personal(ctx);
-    if (destination(ctx, null, "W1") === "review")
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "This connection can only suggest changes, and study reviews don't go through review.",
-      );
+    if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
     const db = dbOf(ctx);
     const me = ctx.principal.user.id;
     const done: DoneEntry[] = [];

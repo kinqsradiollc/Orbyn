@@ -308,3 +308,39 @@
   border-color: var(--color-borderHover);
   background: var(--color-hover);
 }
+
+/* How it acts: trust, per space, and the ask-first list. */
+.agents-trust fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.agents-trust legend {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 550;
+}
+.agents-trust-space {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.agents-trust-list .switch-line span {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+.agents-trust-list .switch-line small {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+@media (max-width: 560px) {
+  .agents-trust-space {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}

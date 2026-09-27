@@ -24,21 +24,24 @@ import {
   CapabilityError,
   defineCapability,
   type CapabilityContext,
+  type Effect,
 } from "./registry.js";
 import type { UndoOp } from "./undo.js";
+import { applyDirect } from "./direct.js";
 import { MAX_DOC_BYTES, withIds } from "./write-docs.js";
 import { itemEntry, visibleItem } from "./write-tasks.js";
 import {
   ADDS,
-  MAX_BATCH,
+  EDITS,
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   refuseSecrets,
-  toReview,
-  pendingText,
+  type Destination,
+  type DestinationOptions,
   isoTime,
   idField,
   emailField,
@@ -73,8 +76,10 @@ export async function visibleDoc(ctx: CapabilityContext, input: string) {
       folder_id: string | null;
       project_id: string | null;
       content: DocBlock[];
+      user_id: string;
     }>(
-      `SELECT d.id, d.title, d.team_id, d.version, d.folder_id, d.project_id, d.content
+      `SELECT d.id, d.title, d.team_id, d.version, d.folder_id, d.project_id, d.content,
+              d.user_id
          FROM docs d WHERE d.id = ${params.add(docId(input))}
           AND ${visibleDocs("d", scope)} FOR UPDATE`,
       params.values,
@@ -89,8 +94,13 @@ export async function visibleProject(ctx: CapabilityContext, input: string) {
   const params = new Params();
   const scope = scopeFor(ctx.spaces, params);
   const row = (
-    await ctx.db.query<{ id: string; name: string; team_id: string | null }>(
-      `SELECT p.id, p.name, p.team_id FROM projects p
+    await ctx.db.query<{
+      id: string;
+      name: string;
+      team_id: string | null;
+      user_id: string;
+    }>(
+      `SELECT p.id, p.name, p.team_id, p.user_id FROM projects p
         WHERE p.id = ${params.add(projectId(input))} AND ${visibleProjects("p", scope)}`,
       params.values,
     )
@@ -162,7 +172,8 @@ export const link = defineCapability({
     if (a.kind === "related") return relatedLink(ctx, a.from, a.to, on);
     if (a.kind === "doc_project" || a.kind === "doc_folder") {
       const doc = await visibleDoc(ctx, a.from);
-      destination(ctx, doc.team_id, tier) === "review" && refuseSuggest();
+      destination(ctx, doc.team_id, tier) === "review" &&
+        refuseSuggest(ctx, doc.team_id);
       let target: string | null = null;
       if (on && a.kind === "doc_project")
         target = (await visibleProject(ctx, a.to)).id;
@@ -191,7 +202,8 @@ export const link = defineCapability({
       });
     }
     const row = await visibleItem(ctx, a.from);
-    destination(ctx, row.team_id, tier) === "review" && refuseSuggest();
+    destination(ctx, row.team_id, tier) === "review" &&
+      refuseSuggest(ctx, row.team_id);
     if (a.kind === "task_doc") {
       const doc = await visibleDoc(ctx, a.to);
       if (on) {
@@ -345,7 +357,8 @@ async function relatedLink(
     );
   if (from.kind === to.kind && from.id === to.id)
     throw new CapabilityError("INVALID", "A thing can't be related to itself.");
-  if (destination(ctx, from.team_id, "W2") === "review") refuseSuggest();
+  if (destination(ctx, from.team_id, "W2") === "review")
+    refuseSuggest(ctx, from.team_id);
   const db = dbOf(ctx);
   const key = [from.kind, from.id, to.kind, to.id];
   // One related link per pair, whichever way round it was made.
@@ -369,7 +382,8 @@ async function relatedLink(
     for (const e of existing) {
       const start =
         e.source_kind === from.kind && e.source_id === from.id ? from : to;
-      if (destination(ctx, start.team_id, "W2") === "review") refuseSuggest();
+      if (destination(ctx, start.team_id, "W2") === "review")
+        refuseSuggest(ctx, start.team_id);
     }
   const undo: UndoOp[] = [];
   if (on && !existing.length) {
@@ -414,12 +428,8 @@ async function relatedLink(
   });
 }
 
-function refuseSuggest(): never {
-  throw new CapabilityError(
-    "FORBIDDEN",
-    "This connection can only suggest changes there.",
-    "Use propose_changes, or ask the person to make the change in Orbyn.",
-  );
+function refuseSuggest(ctx: CapabilityContext, teamId: string | null): never {
+  throw cantWait(ctx, teamId);
 }
 
 // --- create_project ----------------------------------------------------
@@ -468,9 +478,7 @@ export const createProjectCapability = defineCapability({
         .trim()
         .max(300)
         .optional()
-        .describe(
-          "Start from a saved template (template:<id>): always reviewed.",
-        ),
+        .describe("Start from a saved template (template:<id>)."),
       client_ref: clientRefInput,
     })
     .strict(),
@@ -505,7 +513,30 @@ export const createProjectCapability = defineCapability({
         )
       ).rows[0];
       if (!t) throw notFound();
-      destination(ctx, teamId, "W3");
+      const start = actionChange({
+        action: "template.use",
+        target_id: t.id,
+        title: a.name,
+        team_id: teamId,
+        headline: `Start the project ${quoted(a.name)} from the template ${quoted(t.name)}`,
+        rows: (t.tasks as { title?: string }[]).slice(0, 15).map((x) => ({
+          label: "Task",
+          before: null,
+          after: String(x.title ?? ""),
+        })),
+        input: { id: t.id, title: a.name, team_id: teamId },
+      });
+      if (
+        destination(ctx, teamId, "W3", [], { count: t.tasks.length }) ===
+        "direct"
+      ) {
+        const made = await applyDirect(ctx, start);
+        return finishWrite(ctx, "Starting a project", {
+          done: [made.done],
+          after: made.after,
+          teamId,
+        });
+      }
       return finishWrite(ctx, "Starting a project", {
         done: [],
         review: [
@@ -530,8 +561,10 @@ export const createProjectCapability = defineCapability({
       (n, s) => n + (s.tasks?.length ?? 0),
       0,
     );
-    const where = destination(ctx, teamId, teamId ? "W2" : "W1");
-    if (where === "review" || (teamId && count > MAX_BATCH))
+    const where = destination(ctx, teamId, teamId ? "W2" : "W1", [], {
+      count: count + 1,
+    });
+    if (where === "review")
       return finishWrite(ctx, "Starting a project", {
         done: [],
         review: [
@@ -697,7 +730,9 @@ async function deletion(
   what: (typeof REVIEW_DELETABLE)[number],
   target: string,
   on: string | undefined,
-): Promise<ReviewChangeInput & { team_id: string | null }> {
+): Promise<
+  ReviewChangeInput & { team_id: string | null; owner: string | null }
+> {
   const ref = parseRef(target);
   if (ref.type === "title")
     throw new CapabilityError("INVALID", "Name what to delete by its id.");
@@ -705,6 +740,7 @@ async function deletion(
   let team: string | null = null;
   let parent: string | null = null;
   let title = "";
+  let owner: string | null = null;
   if (what === "comment" || what === "proof" || what === "project_link") {
     if (!on)
       throw new CapabilityError(
@@ -726,13 +762,16 @@ async function deletion(
           ? "item_id"
           : "project_id";
     const row = (
-      await ctx.db.query<{ title: string }>(
-        `SELECT coalesce(${t.name}, '') AS title FROM ${t.table} WHERE id = $1 AND ${col} = $2`,
+      await ctx.db.query<{ title: string; owner: string | null }>(
+        `SELECT coalesce(${t.name}, '') AS title,
+                ${what === "project_link" ? "NULL::uuid" : "user_id"} AS owner
+           FROM ${t.table} WHERE id = $1 AND ${col} = $2`,
         [ref.id, parent],
       )
     ).rows[0];
     if (!row) throw notFound();
     title = row.title;
+    owner = row.owner;
   } else {
     const row = (
       await ctx.db.query<{
@@ -752,6 +791,7 @@ async function deletion(
       : ctx.principal.personal && row.user_id === ctx.principal.user.id;
     if (!reach) throw notFound();
     title = row.title;
+    owner = row.user_id;
   }
   return {
     ...actionChange({
@@ -763,6 +803,7 @@ async function deletion(
       input: { kind: what, id: ref.id, parent_id: parent },
     }),
     team_id: team,
+    owner,
   };
 }
 
@@ -831,9 +872,9 @@ function needs<K extends keyof Proposed>(
 
 export const proposeChanges = defineCapability({
   name: "propose_changes",
-  title: "Propose changes for review",
+  title: "Delete, move and other bigger changes",
   description:
-    'Files one proposal the person approves or declines in Orbyn\'s Review inbox, and changes nothing else. For what agents never do directly: deleting anything (delete_task, delete_doc, delete_project, or delete with what), removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, a page review verdict (review_doc), changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with fetch("proposal:<id>"). A proposal waits 72 hours.',
+    "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page review verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and more than 50 changes ask first, in the chat or in the Review inbox (answers with a review_url; fetch(\"proposal:<id>\") for the outcome; waits 72 hours).",
   input: z
     .object({
       summary: z
@@ -847,12 +888,7 @@ export const proposeChanges = defineCapability({
     })
     .strict(),
   output: writeOutput,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: false,
-    idempotentHint: false,
-    openWorldHint: false,
-  },
+  annotations: EDITS,
   access: "suggest",
   toolset: "core",
   mode: "propose",
@@ -860,18 +896,33 @@ export const proposeChanges = defineCapability({
   async run(ctx, a) {
     refuseSecrets(a.summary);
     const db = dbOf(ctx);
-    const changes: ReviewChangeInput[] = [];
+    // Each change goes where its space and the connection's trust say:
+    // at full power the person's own things change at once (with undo),
+    // and a teammate's work, invites or more than 50 at once ask first.
+    const changes: {
+      change: ReviewChangeInput;
+      where: Destination;
+    }[] = [];
     let lastTeam: string | null = null;
-    const may = (teamId: string | null) => {
-      destination(ctx, teamId, "W3");
+    let where = "review" as Destination;
+    const may = (
+      teamId: string | null,
+      owner: DestinationOptions["owner"] = null,
+      effects: Effect[] = [],
+    ) => {
+      where = destination(ctx, teamId, "W3", effects, {
+        owner,
+        count: a.changes.length,
+      });
       lastTeam = teamId;
     };
+    const push = (change: ReviewChangeInput) => changes.push({ change, where });
     for (const c of a.changes) {
       switch (c.type) {
         case "delete_task": {
           const row = await visibleItem(ctx, c.target);
-          may(row.team_id);
-          changes.push({
+          may(row.team_id, row);
+          push({
             type: "task.delete",
             item_id: row.id,
             version: needs(c, "version"),
@@ -884,13 +935,19 @@ export const proposeChanges = defineCapability({
         case "move_task":
         case "invite": {
           const row = await visibleItem(ctx, c.target);
-          may(row.team_id);
+          may(row.team_id, row);
           const patch: Record<string, unknown> = {};
           let emails: string[] = [];
           if (c.type === "move_task") {
             const t = teamFilter(needs(c, "team"));
             patch.team_id = t && "team" in t ? t.team : null;
-            if (patch.team_id) may(patch.team_id as string);
+            if (patch.team_id) {
+              const home = where;
+              may(patch.team_id as string);
+              // Both ends must allow it; the stricter one decides.
+              if (home === "review") where = "review";
+              lastTeam = row.team_id;
+            }
           } else if (c.type === "invite") {
             if (row.kind !== "event")
               throw new CapabilityError("INVALID", "Only events have invites.");
@@ -902,6 +959,7 @@ export const proposeChanges = defineCapability({
             ).rows.map((r) => r.email);
             emails = needs(c, "emails").filter((e) => !now.includes(e));
             patch.attendees = [...now, ...emails].map((email) => ({ email }));
+            if (emails.length) may(row.team_id, row, ["email_outside"]);
           } else {
             refuseSecrets(c.title, c.notes);
             for (const k of [
@@ -923,7 +981,7 @@ export const proposeChanges = defineCapability({
             const v = (row as unknown as Record<string, unknown>)[k];
             before[k] = v instanceof Date ? v.toISOString() : (v ?? null);
           }
-          changes.push({
+          push({
             type: "task.update",
             item_id: row.id,
             version: needs(c, "version"),
@@ -937,7 +995,7 @@ export const proposeChanges = defineCapability({
         }
         case "remove_step": {
           const row = await visibleItem(ctx, c.target);
-          may(row.team_id);
+          may(row.team_id, row);
           const step = (
             await db.query<{ title: string }>(
               "SELECT title FROM item_steps WHERE id = $1 AND item_id = $2",
@@ -945,7 +1003,7 @@ export const proposeChanges = defineCapability({
             )
           ).rows[0];
           if (!step) throw notFound();
-          changes.push({
+          push({
             type: "checklist.remove",
             item_id: row.id,
             step_id: needs(c, "step_id"),
@@ -958,8 +1016,8 @@ export const proposeChanges = defineCapability({
         case "delete_doc":
         case "restore_doc_version": {
           const doc = await visibleDoc(ctx, c.target);
-          may(doc.team_id);
-          changes.push(
+          may(doc.team_id, doc);
+          push(
             c.type === "delete_doc"
               ? {
                   type: "doc.delete",
@@ -981,8 +1039,8 @@ export const proposeChanges = defineCapability({
         }
         case "delete_project": {
           const project = await visibleProject(ctx, c.target);
-          may(project.team_id);
-          changes.push({
+          may(project.team_id, project);
+          push({
             type: "project.delete",
             project_id: project.id,
             title: project.name,
@@ -1007,7 +1065,7 @@ export const proposeChanges = defineCapability({
             )
           ).rows[0];
           if (!b) throw notFound();
-          changes.push({
+          push({
             type: "session.remove",
             block_id: b.id,
             item_id: b.item_id,
@@ -1018,16 +1076,21 @@ export const proposeChanges = defineCapability({
           break;
         }
         case "delete": {
-          const change = await deletion(ctx, needs(c, "what"), c.target, c.on);
-          may(change.team_id);
-          changes.push(change);
+          const { owner, ...change } = await deletion(
+            ctx,
+            needs(c, "what"),
+            c.target,
+            c.on,
+          );
+          may(change.team_id, { user_id: owner });
+          push(change);
           break;
         }
         case "review_doc": {
           const doc = await visibleDoc(ctx, c.target);
-          may(doc.team_id);
+          may(doc.team_id, doc);
           const verdict = needs(c, "verdict");
-          changes.push(
+          push(
             actionChange({
               action: "doc.review",
               target_id: doc.id,
@@ -1053,14 +1116,14 @@ export const proposeChanges = defineCapability({
         }
         case "unlink": {
           const row = await visibleItem(ctx, c.target);
-          may(row.team_id);
+          may(row.team_id, row);
           const to =
             needs(c, "unlink") === "doc_task"
               ? (await visibleDoc(ctx, needs(c, "to"))).id
               : c.unlink === "project"
                 ? (await visibleProject(ctx, needs(c, "to"))).id
                 : (await visibleItem(ctx, needs(c, "to"))).id;
-          changes.push({
+          push({
             type: "link.remove",
             kind: needs(c, "unlink"),
             from_id: row.id,
@@ -1072,22 +1135,22 @@ export const proposeChanges = defineCapability({
         }
       }
     }
-    const pending = await toReview(ctx, a.summary, changes);
-    const { targets, ...out } = pending;
-    return {
-      structured: {
-        status: "pending_review" as const,
-        done: [],
-        pending: out,
-        skipped: [],
-      },
-      markdown: pendingText("This proposal", out),
-      targets,
-      write: {
-        outcome: "proposed" as const,
-        proposal_id: pending.proposal_id,
-        team_id: lastTeam,
-      },
-    };
+    const done: DoneEntry[] = [];
+    const undo: UndoOp[] = [];
+    const after: (() => Promise<void>)[] = [];
+    for (const c of changes.filter((x) => x.where === "direct")) {
+      const made = await applyDirect(ctx, c.change);
+      done.push(made.done);
+      undo.push(...made.undo);
+      after.push(...made.after);
+    }
+    return finishWrite(ctx, a.summary, {
+      done,
+      review: changes.filter((x) => x.where === "review").map((x) => x.change),
+      reviewSummary: a.summary,
+      undo,
+      after,
+      teamId: lastTeam,
+    });
   },
 });

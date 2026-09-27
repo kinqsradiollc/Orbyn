@@ -36,9 +36,135 @@ export const AGENT_ACCESS_LABELS: Record<
   write: {
     name: "See and change",
     blurb:
-      "Creates and edits tasks, sessions and pages directly. Deletes, emails to people and big changes still wait for your review.",
+      "Works for you directly: creates, edits and deletes your own things (with 30 days to undo). It asks you first for the things on its ask-first list.",
   },
 };
+
+/**
+ * How much a connection that may change things does on its own, per
+ * connection and per space: everything but the ask-first list (full), ask
+ * before every change (ask), or only suggest (every change waits in the
+ * Review inbox). New connections start at full power.
+ */
+export const AGENT_TRUST = ["full", "ask", "suggest"] as const;
+export type AgentTrust = (typeof AGENT_TRUST)[number];
+
+export const AGENT_TRUST_LABELS: Record<
+  AgentTrust,
+  { name: string; blurb: string }
+> = {
+  full: {
+    name: "Full power",
+    blurb:
+      "Acts for you directly and asks first only for what's on the ask-first list. Deletes of your own things can be undone for 30 days.",
+  },
+  ask: {
+    name: "Ask me for everything",
+    blurb:
+      "Asks before every change: in the chat when the app can, or with a notification on your phone.",
+  },
+  suggest: {
+    name: "Suggest only",
+    blurb: "Every change waits in your Review inbox until you approve it.",
+  },
+};
+
+/**
+ * What a connection at full power still asks about first. The person can
+ * move each one to "acts alone" for a connection.
+ */
+export const AGENT_ASK_FIRST = [
+  "teammates",
+  "people",
+  "publishing",
+  "bookings",
+  "team_admin",
+  "profile",
+  "bulk",
+] as const;
+export type AgentAskFirst = (typeof AGENT_ASK_FIRST)[number];
+
+export const AGENT_ASK_FIRST_LABELS: Record<
+  AgentAskFirst,
+  { name: string; blurb: string }
+> = {
+  teammates: {
+    name: "A teammate's work",
+    blurb:
+      "Deleting or changing what a teammate made or was given, or notifying them.",
+  },
+  people: {
+    name: "Inviting or removing people",
+    blurb: "Event invites and anything else that emails or adds people.",
+  },
+  publishing: {
+    name: "Sharing outside the team",
+    blurb: "Sharing or publishing a page or booking page beyond the team.",
+  },
+  bookings: {
+    name: "Bookings with new people",
+    blurb:
+      "Confirming, moving or cancelling a booking with someone you haven't met.",
+  },
+  team_admin: {
+    name: "Running a team",
+    blurb: "Making a team, invites, roles and the meeting budget.",
+  },
+  profile: {
+    name: "Your profile",
+    blurb: "Your name, email and public profile.",
+  },
+  bulk: {
+    name: "More than 50 changes at once",
+    blurb: "One call that changes more than 50 things.",
+  },
+};
+
+/** One call changing more than this many things asks first. */
+export const AGENT_BULK_LIMIT = 50;
+
+/**
+ * Never through an agent, whatever its trust: these stay in Orbyn, for the
+ * person signed in (shown in Connected agents so nobody wonders).
+ */
+export const AGENT_NEVER =
+  "Passwords, passkeys and signing in; deleting the account or exporting everything; API keys, webhooks and connected agents; a team's agent policy; deleting a team; admin; payments; emptying the Trash for good.";
+
+/**
+ * Where "per space" trust lives: "personal", or a team's id. A space not
+ * named uses the connection's own trust.
+ */
+export type AgentSpaceTrust = Record<string, AgentTrust>;
+
+/** A connection's trust in one space (null: Personal). */
+export function trustIn(
+  g: { trust: AgentTrust; space_trust: AgentSpaceTrust },
+  teamId: string | null,
+): AgentTrust {
+  return g.space_trust[teamId ?? "personal"] ?? g.trust;
+}
+
+/** Changing a connection's trust in Settings → Connected agents. */
+export const agentTrustInput = z
+  .object({
+    trust: z.enum(AGENT_TRUST).optional(),
+    /** Per space ("personal" or a team id); null goes back to the default. */
+    spaces: z
+      .record(
+        z
+          .string()
+          .regex(
+            /^(personal|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+            "Use personal or a team id.",
+          ),
+        z.enum(AGENT_TRUST).nullable(),
+      )
+      .optional(),
+    /** Ask-first items this connection may now do alone. */
+    acts_alone: z.array(z.enum(AGENT_ASK_FIRST)).max(20).optional(),
+  })
+  .strict();
+export type AgentTrustInput = z.input<typeof agentTrustInput>;
 
 /**
  * Groups of tools a connection can turn on. Core is on for every
@@ -87,6 +213,8 @@ export const agentKeyInput = z
   .object({
     name: z.string().trim().min(1).max(80),
     access: z.enum(AGENT_ACCESS).default("read"),
+    /** How much it does alone when it may change things (full power). */
+    trust: z.enum(AGENT_TRUST).default("full"),
     /** Whether the agent sees the Personal space. */
     personal: z.boolean().default(true),
     /** Teams it sees, each one the person belongs to. */
@@ -135,6 +263,12 @@ export type AgentGrant = {
    */
   client_host: string | null;
   access: AgentAccess;
+  /** How much it does alone (see AGENT_TRUST). */
+  trust: AgentTrust;
+  /** Trust per space where it differs ("personal" or a team id). */
+  space_trust: AgentSpaceTrust;
+  /** Ask-first items it may do alone. */
+  acts_alone: AgentAskFirst[];
   personal: boolean;
   /** Teams it sees; null means every team the person is in (old API keys). */
   team_ids: string[] | null;
@@ -199,6 +333,8 @@ export type AgentActivity = {
   undone_at: string | null;
   /** The proposal it made, waiting in the Review inbox. */
   proposal_id: string | null;
+  /** Until when it can be undone, for changes that can be. */
+  undo_until: string | null;
 };
 
 /** Limits per connection (and per person across connections). */
@@ -583,7 +719,7 @@ export const AGENT_TOOLSET_LABELS: Record<
   booking: {
     name: "Bookings",
     blurb:
-      "Booking pages, and your guests’ names and contact details. Booking changes email your guests, so they always wait for your review.",
+      "Booking pages, and your guests’ names and contact details. Booking changes with someone you haven’t met, and booking pages, ask you first.",
   },
   files: { name: "Files", blurb: "Imports into pages, and bulk task imports." },
 };
@@ -647,6 +783,8 @@ export const oauthConsentInput = z
   .object({
     request: oauthRequest,
     access: z.enum(AGENT_ACCESS),
+    /** How much it does alone when it may change things (full power). */
+    trust: z.enum(AGENT_TRUST).default("full"),
     personal: z.boolean().default(true),
     team_ids: z.array(z.uuid()).max(50).default([]),
     /** Optional toolsets besides core (and booking, which needs `bookings`). */

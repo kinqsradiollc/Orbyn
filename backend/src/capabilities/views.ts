@@ -19,6 +19,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   writeOutput,
@@ -138,11 +139,7 @@ export const saveView = defineCapability({
           "No saved view with that id is reachable from this connection.",
         );
       if (destination(ctx, view.team_id, "W2") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there, and saved views don't go through review.",
-          "Ask the person to change the view in Orbyn.",
-        );
+        throw cantWait(ctx, view.team_id);
       if (a.source && a.source !== view.source)
         throw new CapabilityError(
           "INVALID",
@@ -174,11 +171,7 @@ export const saveView = defineCapability({
       const team = teamFilter(a.space ?? "personal");
       const teamId = team && "team" in team ? team.team : null;
       if (destination(ctx, teamId, teamId ? "W2" : "W1") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there, and saved views don't go through review.",
-          "Ask the person to save the view in Orbyn.",
-        );
+        throw cantWait(ctx, teamId);
       saved = await createView(db, actor, {
         name: a.name,
         team_id: teamId,

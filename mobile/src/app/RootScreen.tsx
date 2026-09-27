@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import { answerReview, registerReviewActions, reviewAction } from "../lib/push";
 import {
   createLabel,
   freshItem,
@@ -460,10 +461,21 @@ export function RootScreen() {
   const handledPush = useRef("");
   useEffect(() => {
     if (!token) return;
+    void registerReviewActions();
     const handle = (response: Notifications.NotificationResponse) => {
       const request = response.notification.request;
-      if (handledPush.current === request.identifier) return;
-      handledPush.current = request.identifier;
+      const key = `${request.identifier}:${response.actionIdentifier}`;
+      if (handledPush.current === key) return;
+      handledPush.current = key;
+      // Approve or Decline on a proposal's notification: answered at once.
+      const answer = reviewAction(response);
+      if (answer) {
+        void answerReview(answer).then(
+          () => void Notifications.dismissNotificationAsync(request.identifier),
+          (e: Error) => setError(errorText(e)),
+        );
+        return;
+      }
       routePush.current?.(request.content.data ?? {});
     };
     const sub = Notifications.addNotificationResponseReceivedListener(handle);

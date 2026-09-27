@@ -13,7 +13,7 @@ Older setups that use the web app's `/api/mcp` reach the same server.
 ## Signing in
 
 - **Agent keys.** Make a key in Settings → Connected agents. Choose what it may do and which spaces it sees (Personal and any of your teams). Keys last 30 days unless you choose otherwise, and never more than 365. Send it as `Authorization: Bearer oak_…`. The key is shown once and stored only as a hash. You can revoke it at any time, and each key has its own activity list.
-- **Access levels.** See: Read your tasks, calendar, projects and pages. Only what you can open. See and suggest: Every change waits in your Review inbox until you approve it. See and change: Creates and edits tasks, sessions and pages directly. Deletes, emails to people and big changes still wait for your review.
+- **Access levels.** See: Read your tasks, calendar, projects and pages. Only what you can open. See and suggest: Every change waits in your Review inbox until you approve it. See and change: Works for you directly: creates, edits and deletes your own things (with 30 days to undo). It asks you first for the things on its ask-first list.
 - **Teams.** In each team, an agent can do no more than its person's role allows. Viewers only read. Team owners and admins can cap agents in their team at suggest or read, or turn them off (only when signed in; a personal API key can't change it). Leaving a team takes it off your agent keys, and joining again doesn't give it back to them.
 - **Hide outside content.** A connection can leave out text from outside Orbyn: events from subscribed calendars (shown as busy time), what imported files say, tasks and events sent by email (their titles show as "Task from email" or "Event from email", everywhere they are listed) and what booking guests typed (their events show as "Booking"). The agent sees that something is there, not what it says. Imported pages keep their titles. Without it, that text comes back fenced as untrusted content and labelled with where it came from; a booking guest's email address never shows.
 - **Personal API keys (`ok_`).** They keep working here as a legacy connection for 90 days from this release. Answers carry `Deprecation` and `Sunset` headers. After that they work only with the REST API and CalDAV.
@@ -136,16 +136,16 @@ A tool that can't do what was asked answers with `isError: true` and one of thes
 
 Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.
 
-| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                       |
-| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links` |
-| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`                                                                                                                                                                                        |
-| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                |
-| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`                                                                                                                                                                                                                                                                                |
-| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                |
-| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                     |
-| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                            |
-| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`                                                                                                                                                                                                                                                             |
+| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                     |
+| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo` |
+| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`                                                                                                                                                                                                                      |
+| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                              |
+| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`                                                                                                                                                                                                                                                                                                              |
+| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                                              |
+| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                   |
+| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                          |
+| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`                                                                                                                                                                                                                                                                                           |
 
 ## Tools
 
@@ -170,8 +170,10 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `edit_doc`                | Edit a page                            | destructive | suggest, core        |
 | `link`                    | Link or unlink                         | write       | write, core          |
 | `create_project`          | Start a project                        | write       | suggest, core        |
-| `propose_changes`         | Propose changes for review             | write       | suggest, core        |
+| `propose_changes`         | Delete, move and other bigger changes  | destructive | suggest, core        |
 | `get_links`               | Backlinks and links                    | read        | read, core           |
+| `list_agent_changes`      | What this connection changed           | read        | read, core           |
+| `undo`                    | Undo a change                          | destructive | write, core          |
 | `save_view`               | Save a view                            | write       | write, workspace     |
 | `update_project`          | Change a project                       | destructive | write, workspace     |
 | `get_history`             | Show history                           | read        | read, workspace      |
@@ -205,7 +207,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 
 ### `get_context`
 
-Who this connection acts for (name only), their time zone, current local time and working hours, their teams with each team's role and agent policy, what this connection may do (access level, spaces, toolsets, expiry), its limits, and the conventions for ids, links and times. A good first call.
+Who this connection acts for (name only), their time zone, current local time and working hours, their teams with each team's role and agent policy, what this connection may do (access, trust per space: full, ask or suggest, and what asks first even at full; spaces, toolsets, expiry), its limits, and the conventions for ids, links and times. A good first call.
 
 No arguments.
 
@@ -426,12 +428,12 @@ Starts a personal or team project with stages, first tasks and an optional main 
 | `deadline`        | ISO 8601 instant | The latest date for its tasks (ISO 8601).                                                                                                  |
 | `stages`          | list of object   |                                                                                                                                            |
 | `page`            | object           |                                                                                                                                            |
-| `template`        | string           | Start from a saved template `(template:<id>)`: always reviewed.                                                                            |
+| `template`        | string           | Start from a saved template `(template:<id>)`.                                                                                             |
 | `client_ref`      | string           | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `propose_changes`
 
-Files one proposal the person approves or declines in Orbyn's Review inbox, and changes nothing else. For what agents never do directly: deleting anything (delete_task, delete_doc, delete_project, or delete with what), removing checklist steps or sessions, putting back an older version of a page, moving a task between Personal and a team, inviting people to an event, a page review verdict (review_doc), changes that notify teammates, and anything you are unsure about. Returns a review_url for the person; read the outcome later with `fetch("proposal:<id>")`. A proposal waits 72 hours.
+Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page review verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and more than 50 changes ask first, in the chat or in the Review inbox (answers with a review_url; `fetch("proposal:<id>")` for the outcome; waits 72 hours).
 
 | Argument             | Type           | Notes                                                                                                                                      |
 | -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -451,6 +453,26 @@ Backlinks (in) and outgoing links (out) for a page, task, event, project, person
 | `include`       | list of `unresolved`, `orphans`                                                       |                                                                   |
 | `limit`         | integer                                                                               | Default 50.                                                       |
 | `cursor`        | string                                                                                | next_cursor from the previous page of the same call.              |
+
+### `list_agent_changes`
+
+This connection's own changes, newest first: tool, summary, when, what it touched, its proposal if it waits for review, its call (job), and undo_until (null once undone, expired or not undoable). Pass id or job to undo. Pages with next_cursor.
+
+| Argument         | Type    | Notes                                                |
+| ---------------- | ------- | ---------------------------------------------------- |
+| `limit`          | integer | Default 20.                                          |
+| `include_undone` | boolean | Default true.                                        |
+| `cursor`         | string  | next_cursor from the previous page of the same call. |
+
+### `undo`
+
+Takes back this connection's own change (change id) or every change of one call (job), from list_agent_changes. For 30 days, and only while things are as it left them; otherwise STALE and nothing is undone.
+
+| Argument     | Type   | Notes                                                                                                                                      |
+| ------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `change`     | string |                                                                                                                                            |
+| `job`        | string |                                                                                                                                            |
+| `client_ref` | string | Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice. |
 
 ### `save_view`
 
@@ -764,7 +786,7 @@ Booking pages and bookings (view upcoming, needs_approval, past, cancelled or al
 
 ### `booking_action`
 
-Marks a no-show or keeps a private note on a booking (done at once). Approve, decline, cancel and reschedule email the guest, and saving or deleting a booking page or creating or withdrawing an open invite changes what outsiders can book, so these always go to the person's Review inbox.
+Marks a no-show or keeps a private note on a booking (done at once). Approve, decline, cancel and reschedule email the guest: done at once at full power with a guest the person has met, asked first with someone new. Saving or deleting a booking page and creating an open invite change what outsiders can book, so they ask the person first.
 
 | Argument            | Type                                                                                                                            | Notes                                                                                                                                      |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -810,7 +832,7 @@ Cancels an import still going, or clears a finished one that kept no file from t
 
 ### `import_tasks`
 
-Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, list, tags, …) into Personal. A dry run (the default) counts and checks without writing; a real run is a bulk change, so it waits in the person's Review inbox.
+Imports tasks from an Orbyn export (JSON) or CSV (title, notes, due, priority, list, tags, …) into Personal. A dry run (the default) counts and checks without writing. A real run is made at once at full power (each task can be undone for 30 days); more than 50 tasks, or a connection that asks first or only suggests, asks the person first.
 
 | Argument            | Type           | Notes                                                                                                                                      |
 | ------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -876,9 +898,15 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 - Error codes and their meaning never change; new codes may be added.
 - Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.
 
-Catalog version: `2026-09-26`.
+Catalog version: `2026-09-27`.
 
 ## Changelog
+
+### 2026-09-27
+
+- Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.
+- Asking in the chat: when a change needs the person's yes and the client declares form elicitation (2026-07-28), tools/call answers input_required with one elicitation/create (a yes/no and a message saying what and why). Yes makes the call directly; no or dismissing answers DECLINED or CANCELLED and changes nothing. Otherwise URL mode or the Review inbox, whose push now has Approve and Decline.
+- list_agent_changes (this connection's changes, with undo until) and undo (one change, or every change of one call) in core. get_context says the connection's trust per space and what asks first.
 
 ### 2026-09-26
 
@@ -901,4 +929,4 @@ Catalog version: `2026-09-26`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 205 of the app's signed-in routes are covered by tools, 234 are never for agents, and 0 are still to come.
+Routes: 205 of the app's signed-in routes are covered by tools, 236 are never for agents, and 0 are still to come.

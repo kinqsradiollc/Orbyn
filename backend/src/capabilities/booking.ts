@@ -25,13 +25,17 @@ import {
   type CapabilityContext,
 } from "./registry.js";
 import { actionChange, quoted } from "./shared.js";
+import { applyDirect } from "./direct.js";
+import type { Queryable } from "../db/pool.js";
 import {
   EDITS,
   actorOf,
+  cantWait,
   clientRefInput,
   dbOf,
   destination,
   finishWrite,
+  type Destination,
   idField,
   isoTime,
   refuseSecrets,
@@ -44,9 +48,10 @@ import {
  * unless the connection was given bookings. What guests typed comes back
  * fenced as outside content (only "Booking" when the connection hides
  * outside content); guests' email addresses are always masked. Approving,
- * declining, cancelling and moving a booking email the guest, and changing
- * a booking page or an open invite changes what outsiders can book, so
- * those always wait in the person's Review inbox; a no-show mark and a
+ * declining, cancelling and moving a booking email the guest: at full power
+ * they are made at once with a guest the person has met, and ask first
+ * with someone new. Changing a booking page or an open invite changes what
+ * outsiders can book, so it asks first (publishing); a no-show mark and a
  * private note are made at once.
  */
 
@@ -320,7 +325,7 @@ export const bookingActionCapability = defineCapability({
   name: "booking_action",
   title: "Act on a booking",
   description:
-    "Marks a no-show or keeps a private note on a booking (done at once). Approve, decline, cancel and reschedule email the guest, and saving or deleting a booking page or creating or withdrawing an open invite changes what outsiders can book, so these always go to the person's Review inbox.",
+    "Marks a no-show or keeps a private note on a booking (done at once). Approve, decline, cancel and reschedule email the guest: done at once at full power with a guest the person has met, asked first with someone new. Saving or deleting a booking page and creating an open invite change what outsiders can book, so they ask the person first.",
   input: z
     .object({
       action: z.enum(ACTIONS),
@@ -386,10 +391,7 @@ export const bookingActionCapability = defineCapability({
     if (a.action === "no_show" || a.action === "note") {
       const b = await booking();
       if (destination(ctx, teamOf(b.page_id), "W2") === "review")
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "This connection can only suggest changes there.",
-        );
+        throw cantWait(ctx, teamOf(b.page_id));
       if (a.action === "no_show")
         await setNoShow(db, actor, b.id, need(a.no_show, "no_show"));
       else await setHostNote(db, actor, b.id, need(a.note, "a note"));
@@ -410,7 +412,9 @@ export const bookingActionCapability = defineCapability({
         ],
       });
     }
-    // Everything else waits for the person.
+    // The rest: made directly at full power, except bookings with people
+    // the person hasn't met and anything public, which ask first.
+    let where = "review" as Destination;
     const change = await (async () => {
       switch (a.action) {
         case "approve":
@@ -418,7 +422,10 @@ export const bookingActionCapability = defineCapability({
         case "cancel":
         case "reschedule": {
           const b = await booking();
-          destination(ctx, teamOf(b.page_id), "W3");
+          const met = await metBefore(db, b.id, ctx.principal.user.id);
+          where = destination(ctx, teamOf(b.page_id), "W3", [], {
+            ...(met ? {} : { asks: "bookings" as const }),
+          });
           const label = `the booking ${when(ctx, b.start_at).local}`;
           const verb = {
             approve: "Approve",
@@ -466,12 +473,14 @@ export const bookingActionCapability = defineCapability({
             );
           const current = id ? pages.get(id)! : null;
           const fields = need(a.fields, "fields");
-          destination(
+          where = destination(
             ctx,
             current?.team_id ??
               (fields.team_id as string | null | undefined) ??
               null,
             "W3",
+            ["publish"],
+            { why: "a booking page is public: anyone with its link sees it" },
           );
           const title = String(
             fields.title ?? current?.title ?? "Booking page",
@@ -502,7 +511,10 @@ export const bookingActionCapability = defineCapability({
               "NOT_FOUND",
               "No booking page with that id is reachable from this connection.",
             );
-          destination(ctx, current.team_id ?? null, "W3");
+          where = destination(ctx, current.team_id ?? null, "W3", [], {
+            asks: "publishing",
+            why: "it takes down a public booking page people book through",
+          });
           return actionChange({
             action: "booking_page.delete",
             target_id: id,
@@ -513,7 +525,10 @@ export const bookingActionCapability = defineCapability({
           });
         }
         case "create_invite": {
-          destination(ctx, null, "W3");
+          where = destination(ctx, null, "W3", [], {
+            asks: "publishing",
+            why: "an open invite is a link anyone who has it can book",
+          });
           const fields = need(a.fields, "fields");
           const title = String(fields.title ?? "Open invite");
           return actionChange({
@@ -533,7 +548,6 @@ export const bookingActionCapability = defineCapability({
           });
         }
         case "withdraw_invite": {
-          destination(ctx, null, "W3");
           const invite = await openInviteOf(
             db,
             ctx.principal.user.id,
@@ -543,6 +557,14 @@ export const bookingActionCapability = defineCapability({
               "NOT_FOUND",
               "No open invite with that id is yours.",
             );
+          });
+          where = destination(ctx, null, "W3", [], {
+            ...(invite.booking
+              ? {
+                  asks: "bookings" as const,
+                  why: "withdrawing it cancels a booking and emails the guest",
+                }
+              : {}),
           });
           return actionChange({
             action: "invite.withdraw",
@@ -557,6 +579,36 @@ export const bookingActionCapability = defineCapability({
           throw new CapabilityError("INVALID", "Unknown action.");
       }
     })();
+    if (where === "direct") {
+      const made = await applyDirect(ctx, change);
+      return finishWrite(ctx, "Bookings", {
+        done: [made.done],
+        after: made.after,
+      });
+    }
     return finishWrite(ctx, "Bookings", { done: [], review: [change] });
   },
 });
+
+/**
+ * Whether the person has met a booking's guest: an earlier booking with the
+ * same email, with them, that was confirmed and has already happened.
+ */
+async function metBefore(
+  db: Queryable,
+  bookingId: string,
+  userId: string,
+): Promise<boolean> {
+  return !!(
+    await db.query(
+      `SELECT 1 FROM bookings b
+         JOIN bookings o ON lower(o.email) = lower(b.email) AND o.id <> b.id
+         LEFT JOIN booking_pages p ON p.id = o.page_id
+        WHERE b.id = $1 AND o.status = 'confirmed' AND o.end_at < now()
+          AND (p.owner_id = $2 OR o.assigned_user_id = $2
+               OR (o.page_id IS NULL AND b.page_id IS NULL))
+        LIMIT 1`,
+      [bookingId, userId],
+    )
+  ).rowCount;
+}

@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { AgentOutcome, ReviewChangeInput } from "@orbyn/core";
+import {
+  AGENT_BULK_LIMIT,
+  type AgentAskFirst,
+  type AgentOutcome,
+  type ReviewChangeInput,
+} from "@orbyn/core";
 import { pool, type Db, type Queryable } from "../db/pool.js";
 import type { UserRow } from "../lib/auth.js";
 import { createAgentProposal } from "../modules/proposals/service.js";
@@ -9,6 +14,7 @@ import { policy, type Principal } from "./policy.js";
 import {
   CapabilityError,
   type Annotations,
+  type AskReason,
   type CapabilityContext,
   type Effect,
   type Tier,
@@ -18,20 +24,23 @@ import { UNDO_DAYS, type UndoOp } from "./undo.js";
 
 /**
  * What every change an agent makes shares: where it goes (made directly,
- * as suggestions, or to the Review inbox), idempotency by client_ref, the
+ * asked about, or to the Review inbox), idempotency by client_ref, the
  * activity row with its undo, and refusing credentials in what is written.
  *
- * Where a change goes follows the risk tiers:
- * - W1 (adds, privately) and W2 (edits, or visible to teammates) are made
- *   directly when the connection may write in that space;
- * - W3 (deletes, team moves, stage removal, restoring a version, over 25
- *   at once) always goes to review;
- * - anything that reaches beyond Orbyn goes to review unless it may:
- *   notifying a teammate (assigning) needs the connection's "notify
- *   teammates" switch; emailing people outside Orbyn (event invites) and
- *   publishing always go to review;
- * - a connection that may only suggest in a space sends everything to
- *   review (and team pages get suggestions, see edit_doc).
+ * Where a change goes follows the connection's trust in the space
+ * (policy.trustIn):
+ * - full power: made directly, deletes and moves included (each with its
+ *   undo for 30 days), except the ask-first list (AGENT_ASK_FIRST): a
+ *   teammate's work, emailing or inviting people, publishing, bookings
+ *   with people not met yet, team admin, the person's profile, and more
+ *   than 50 changes at once. The person can let a connection do any of
+ *   those alone;
+ * - ask: every change asks first;
+ * - suggest (or a space the connection or team caps at suggesting):
+ *   everything goes to the Review inbox (team pages get suggestions).
+ * Asking happens in the chat when the app can (form elicitation, see
+ * ctx.asking); otherwise the change waits in the Review inbox, with a
+ * push that can approve or decline it.
  */
 
 /** Annotations for a change that only adds. */
@@ -66,6 +75,47 @@ export const MAX_BATCH = 25;
 
 export type Destination = "direct" | "review";
 
+/** What destination() needs to know beyond the space and tier. */
+export type DestinationOptions = {
+  /**
+   * Who an existing thing belongs to: a team thing someone else made (or
+   * was given) is a teammate's work.
+   */
+  owner?: { user_id: string | null; assignee_id?: string | null } | null;
+  /** An ask-first item the change is, with why in words. */
+  asks?: AgentAskFirst;
+  why?: string;
+  /** How many things the call changes (over 50 asks first). */
+  count?: number;
+};
+
+/** Why each ask-first item asks, when nothing more specific is known. */
+const ASK_WHY: Record<AgentAskFirst, string> = {
+  teammates: "it changes a teammate's work",
+  people: "it invites or emails people",
+  publishing: "it shares or publishes outside the team",
+  bookings: "it's a booking with someone you haven't met",
+  team_admin: "it changes how a team is run",
+  profile: "it changes your profile",
+  bulk: `it changes more than ${AGENT_BULK_LIMIT} things at once`,
+};
+
+/**
+ * Whether a thing in a team is a teammate's: it was given to someone else,
+ * or (given to nobody) someone else made it. Something given to the
+ * person is theirs, whoever made it.
+ */
+export function teammatesWork(
+  p: Principal,
+  teamId: string | null,
+  owner: DestinationOptions["owner"],
+): boolean {
+  if (!teamId || !owner) return false;
+  const me = p.user.id;
+  if (owner.assignee_id) return owner.assignee_id !== me;
+  return !!owner.user_id && owner.user_id !== me;
+}
+
 /**
  * Where a change in `teamId`'s space goes. NOT_FOUND when the connection
  * can't reach the space; READ_ONLY when it can only read there.
@@ -75,6 +125,7 @@ export function destination(
   teamId: string | null,
   tier: Tier,
   effects: Effect[] = [],
+  options: DestinationOptions = {},
 ): Destination {
   const p = ctx.principal;
   const level = policy.levelIn(p, teamId);
@@ -92,12 +143,74 @@ export function destination(
         : "This connection can only read your Personal space.",
       "Ask the person to allow changes, or make the change in Orbyn.",
     );
-  if (level === "suggest" || tier === "W3") return "review";
-  if (effects.includes("email_outside") || effects.includes("publish"))
-    return "review";
-  if (effects.includes("notify_member") && !p.flags.notify_teammates)
-    return "review";
-  return "direct";
+  const trust = policy.trustIn(p, teamId);
+  if (level === "suggest" || trust === "suggest") return "review";
+  const reasons: AskReason[] = [];
+  const need = (kind: AgentAskFirst, text = ASK_WHY[kind]) => {
+    if (!p.trust.acts_alone.includes(kind)) reasons.push({ kind, text });
+  };
+  if (trust === "ask")
+    reasons.push({
+      kind: "every_change",
+      text: "this connection asks you before every change",
+    });
+  else {
+    if (effects.includes("email_outside"))
+      need("people", "it emails people outside Orbyn");
+    if (effects.includes("publish")) need("publishing");
+    if (effects.includes("notify_member") && !p.flags.notify_teammates)
+      need("teammates", "it notifies a teammate");
+    if (tier !== "W1" && teammatesWork(p, teamId, options.owner))
+      need("teammates");
+    if (options.asks) need(options.asks, options.why);
+    if ((options.count ?? 0) > AGENT_BULK_LIMIT)
+      need("bulk", `it changes ${options.count} things at once`);
+  }
+  if (!reasons.length) return "direct";
+  return askFirst(ctx, reasons);
+}
+
+/**
+ * A change that needs the person first: made directly once they said yes
+ * in the chat; noted (and carried on with, to be asked about as a whole)
+ * while collecting; otherwise to the Review inbox.
+ */
+function askFirst(ctx: CapabilityContext, reasons: AskReason[]): Destination {
+  const asking = ctx.asking;
+  if (asking?.mode === "approved") return "direct";
+  if (asking?.mode === "collect") {
+    for (const r of reasons)
+      if (!asking.reasons.some((x) => x.text === r.text))
+        asking.reasons.push(r);
+    return "direct";
+  }
+  return "review";
+}
+
+/**
+ * The refusal for a change that can't wait in the Review inbox when it
+ * would have to: the connection only suggests there, or asks first and the
+ * app can't ask in the chat.
+ */
+export function cantWait(
+  ctx: CapabilityContext,
+  teamId: string | null,
+): CapabilityError {
+  const p = ctx.principal;
+  const suggests =
+    policy.levelIn(p, teamId) === "suggest" ||
+    policy.trustIn(p, teamId) === "suggest";
+  return suggests
+    ? new CapabilityError(
+        "FORBIDDEN",
+        "This connection can only suggest changes there.",
+        "Use propose_changes, or ask the person to make the change in Orbyn.",
+      )
+    : new CapabilityError(
+        "FORBIDDEN",
+        "This change needs the person's yes first, and this app can't ask them in the chat.",
+        "Use propose_changes, ask the person to let this connection do it alone in Settings → Connected agents, or ask them to make it in Orbyn.",
+      );
 }
 
 /** What a change sent to review answers with. */

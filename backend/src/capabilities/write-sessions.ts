@@ -34,6 +34,7 @@ import {
   actorOf,
   clientRefInput,
   dbOf,
+  cantWait,
   destination,
   finishWrite,
   isoTime,
@@ -616,12 +617,7 @@ async function scheduleSealed(ctx: CapabilityContext, sealed: Sealed) {
   const p = ctx.principal;
   const db = dbOf(ctx);
   const at = new Date(sealed.n);
-  if (destination(ctx, null, "W1") === "review")
-    throw new CapabilityError(
-      "FORBIDDEN",
-      "This connection can only suggest changes, and habit and revision plans don't go through review.",
-      "Ask the person to apply the plan in Orbyn.",
-    );
+  if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
   const stale = () =>
     new CapabilityError(
       "STALE",

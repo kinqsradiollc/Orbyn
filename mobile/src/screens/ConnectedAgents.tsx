@@ -3,6 +3,11 @@ import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import {
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
+  AGENT_ASK_FIRST,
+  AGENT_ASK_FIRST_LABELS,
+  AGENT_NEVER,
+  AGENT_TRUST,
+  AGENT_TRUST_LABELS,
   AGENT_HIDE_OUTSIDE_TEXT,
   AGENT_SETUP_CLIENTS,
   AGENT_TOOLSETS,
@@ -15,7 +20,9 @@ import {
   isSignInClient,
   type AgentAccess,
   type AgentActivity,
+  type AgentAskFirst,
   type AgentGrant,
+  type AgentTrust,
   type AgentSetupClient,
   type AgentToolset,
   type AgentsOverview,
@@ -97,6 +104,155 @@ function ToolsetChips({
   );
 }
 
+/** Short names for the trust levels, as tags. */
+const TRUST_TAG: Record<AgentTrust, string> = {
+  full: "Full power",
+  ask: "Asks first",
+  suggest: "Suggests",
+};
+
+/** What "How it acts" is changing. */
+type TrustDraft = {
+  id: string;
+  trust: AgentTrust;
+  /** "personal" or a team id → its own level ("" = same as the default). */
+  spaces: Record<string, AgentTrust | "">;
+  actsAlone: AgentAskFirst[];
+};
+
+/**
+ * How a connection acts: its trust, per space where it differs, and which
+ * ask-first items it may do alone (a switch each: on = asks first).
+ */
+function TrustPanel({
+  grant,
+  draft,
+  onChange,
+  onSave,
+  onCancel,
+  busy,
+}: {
+  grant: AgentGrant;
+  draft: TrustDraft;
+  onChange: (next: TrustDraft) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const changes = grant.access === "write";
+  const spaces = [
+    ...(grant.personal ? [{ id: "personal", name: "Personal" }] : []),
+    ...grant.teams,
+  ];
+  return (
+    <FadeIn style={s.activity}>
+      {!changes ? (
+        <Text style={shared.small}>
+          {grant.access === "read"
+            ? "It can only read. To let it change things, connect it again and allow changes."
+            : "It can only suggest: every change waits in your Review inbox. To give it more, connect it again and allow changes."}
+        </Text>
+      ) : (
+        <>
+          <Field
+            label="How much it does alone"
+            hint={AGENT_TRUST_LABELS[draft.trust].blurb}
+          >
+            <ChipRow label="How much it does alone">
+              {AGENT_TRUST.map((t) => (
+                <Chip
+                  key={t}
+                  label={AGENT_TRUST_LABELS[t].name}
+                  selected={draft.trust === t}
+                  onPress={() => onChange({ ...draft, trust: t })}
+                />
+              ))}
+            </ChipRow>
+          </Field>
+          {spaces.length > 1 &&
+            spaces.map((sp) => (
+              <Field key={sp.id} label={sp.name}>
+                <ChipRow label={`In ${sp.name}`}>
+                  {(
+                    ["", ...AGENT_TRUST.filter((t) => t !== draft.trust)] as (
+                      AgentTrust | ""
+                    )[]
+                  ).map((t) => (
+                    <Chip
+                      key={t || "same"}
+                      compact
+                      label={t ? TRUST_TAG[t] : "Same"}
+                      selected={(draft.spaces[sp.id] ?? "") === t}
+                      onPress={() =>
+                        onChange({
+                          ...draft,
+                          spaces: { ...draft.spaces, [sp.id]: t },
+                        })
+                      }
+                    />
+                  ))}
+                </ChipRow>
+              </Field>
+            ))}
+          {draft.trust === "full" && (
+            <>
+              <Text style={shared.label}>
+                At full power it still asks first about
+              </Text>
+              {AGENT_ASK_FIRST.map((k) => {
+                const asks = !draft.actsAlone.includes(k);
+                return (
+                  <View key={k} style={s.switchRow}>
+                    <View style={s.flex}>
+                      <Text style={s.askName}>
+                        {AGENT_ASK_FIRST_LABELS[k].name}
+                      </Text>
+                      <Text style={shared.small}>
+                        {asks ? "Asks first" : "Acts alone"} ·{" "}
+                        {AGENT_ASK_FIRST_LABELS[k].blurb}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={asks}
+                      onValueChange={(on) =>
+                        onChange({
+                          ...draft,
+                          actsAlone: on
+                            ? draft.actsAlone.filter((x) => x !== k)
+                            : [...draft.actsAlone, k],
+                        })
+                      }
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel={`${AGENT_ASK_FIRST_LABELS[k].name}: asks first`}
+                    />
+                  </View>
+                );
+              })}
+            </>
+          )}
+        </>
+      )}
+      <Text style={shared.small}>Never through an agent: {AGENT_NEVER}</Text>
+      <View style={s.actions}>
+        {changes && (
+          <Button
+            title="Save"
+            style={s.flexButton}
+            disabled={busy}
+            onPress={onSave}
+          />
+        )}
+        <Button
+          secondary
+          title={changes ? "Cancel" : "Close"}
+          style={s.flexButton}
+          onPress={onCancel}
+        />
+      </View>
+    </FadeIn>
+  );
+}
+
 /** "Personal, Design team"; old API keys reach every team, now and later. */
 const spacesText = (g: AgentGrant) =>
   g.team_ids === null
@@ -138,7 +294,8 @@ export function ConnectedAgentsCard({
   const [tab, setTab] = useState<AgentSetupClient>("claude");
   const [making, setMaking] = useState(false);
   const [name, setName] = useState("");
-  const [access, setAccess] = useState<AgentAccess>("read");
+  // New connections start at full power (see AGENT_TRUST).
+  const [access, setAccess] = useState<AgentAccess>("write");
   const [personal, setPersonal] = useState(true);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [days, setDays] = useState(30);
@@ -151,7 +308,44 @@ export function ConnectedAgentsCard({
     toolsets: AgentToolset[];
   } | null>(null);
 
+  /** The connection whose trust is being changed, and the choice so far. */
+  const [trusting, setTrusting] = useState<TrustDraft | null>(null);
+
   const reload = async () => setOverview(await client.agents());
+
+  const openTrust = (g: AgentGrant) => {
+    animateLayout();
+    setTrusting(
+      trusting?.id === g.id
+        ? null
+        : {
+            id: g.id,
+            trust: g.trust,
+            spaces: { ...g.space_trust },
+            actsAlone: [...g.acts_alone],
+          },
+    );
+  };
+
+  const saveTrust = (g: AgentGrant) =>
+    void run(async () => {
+      if (!trusting) return;
+      const d = trusting;
+      const reach = [
+        ...(g.personal ? ["personal"] : []),
+        ...g.teams.map((t) => t.id),
+      ];
+      await client.setAgentTrust(d.id, {
+        trust: d.trust,
+        spaces: Object.fromEntries(
+          reach.map((id) => [id, d.spaces[id] ? d.spaces[id] : null]),
+        ),
+        acts_alone: d.actsAlone,
+      });
+      animateLayout();
+      setTrusting(null);
+      await reload();
+    });
   useEffect(() => {
     void run(async () => {
       const [o, t] = await Promise.all([client.agents(), client.listTeams()]);
@@ -280,8 +474,19 @@ export function ConnectedAgentsCard({
                 <View style={s.tags}>
                   <Pill label="See" tone="accent" />
                   {g.access !== "read" && (
-                    <Pill label={ACCESS_TAG[g.access]} tone="accent" />
+                    <Pill
+                      label={
+                        g.access === "write"
+                          ? TRUST_TAG[g.trust]
+                          : ACCESS_TAG[g.access]
+                      }
+                      tone="accent"
+                    />
                   )}
+                  {g.access === "write" &&
+                    Object.keys(g.space_trust).length > 0 && (
+                      <Pill label="Differs by space" />
+                    )}
                   <Pill label={spacesText(g)} />
                   {g.kind !== "legacy" && <Pill label={toolsetsText(g)} />}
                   {g.hide_outside_content && (
@@ -324,6 +529,11 @@ export function ConnectedAgentsCard({
                     disabled={busy}
                     onPress={() => toggleActivity(g)}
                   />
+                  <SmallAction
+                    label="How it acts"
+                    disabled={busy}
+                    onPress={() => openTrust(g)}
+                  />
                   {g.kind !== "legacy" && (
                     <SmallAction
                       label={editing?.id === g.id ? "Close tools" : "Tools"}
@@ -357,6 +567,19 @@ export function ConnectedAgentsCard({
                     onPress={() => revoke(g)}
                   />
                 </View>
+                {trusting?.id === g.id && (
+                  <TrustPanel
+                    grant={g}
+                    draft={trusting}
+                    onChange={setTrusting}
+                    onSave={() => saveTrust(g)}
+                    onCancel={() => {
+                      animateLayout();
+                      setTrusting(null);
+                    }}
+                    busy={busy}
+                  />
+                )}
                 {editing?.id === g.id && (
                   <FadeIn style={s.activity}>
                     <ToolsetChips
@@ -517,9 +740,9 @@ export function ConnectedAgentsCard({
                   label="What it may do"
                   hint={
                     AGENT_ACCESS_LABELS[access].blurb +
-                    (access === "read"
-                      ? ""
-                      : " Risky changes wait for you in Review; you can undo the rest from its activity.")
+                    (access === "write"
+                      ? " Change how much it does alone later with “How it acts”."
+                      : "")
                   }
                 >
                   <ChipRow label="What it may do">
@@ -667,6 +890,11 @@ const s = themed(() =>
     activityRow: { flexDirection: "row", gap: 10, alignItems: "center" },
     activityTime: { width: 64, color: colors.muted },
     flex: { flex: 1 },
+    askName: {
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.text,
+    },
     switchRow: {
       flexDirection: "row",
       alignItems: "center",

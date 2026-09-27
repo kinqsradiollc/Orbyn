@@ -3,7 +3,7 @@
   "name": "dev.orbyn/orbyn",
   "title": "Orbyn",
   "description": "Your Orbyn planner in AI agents: today, deadlines, planned sessions, projects and pages.",
-  "version": "2026.9.26",
+  "version": "2026.9.27",
   "websiteUrl": "https://orbyn.dev",
   "remotes": [
     {
