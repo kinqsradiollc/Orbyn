@@ -4,11 +4,11 @@ import {
   atRiskReason,
   deadlineOf,
   dueAfterProject,
-  dueDate,
   fitTone,
   itemBody,
   moveTimes,
   planDaysBefore,
+  sessionsDeadlineWords,
   type Item,
   type ItemSessions,
   type Plan,
@@ -57,14 +57,16 @@ const rowDay = (iso: string) =>
     month: "short",
   });
 
-/** "Planned 1h 30m before Fri 2 Oct, 5 pm · 3h 30m still needed (4h estimated, 30m logged)". */
+/**
+ * "Planned 1h 30m before Fri 2 Oct, 5 pm · 3h 30m still needed (4h
+ * estimated, 30m logged)". Counted up to the deadline its status is
+ * measured against, named in the account's zone.
+ */
 function summary(s: ItemSessions, item: Item) {
-  const by = s.deadline_at
-    ? s.due_all_day
-      ? ` by the end of ${dueDate(s.deadline_at, true)}`
-      : ` before ${dueDate(s.deadline_at)}`
-    : "";
-  const parts = [`Planned ${minutesLabel(s.planned_minutes) || "0m"}${by}`];
+  const { by } = sessionsDeadlineWords(s);
+  const parts = [
+    `Planned ${minutesLabel(s.planned_minutes) || "0m"}${by ? ` ${by}` : ""}`,
+  ];
   if (item.estimate_minutes != null && item.remaining_minutes != null) {
     const spent = item.spent_minutes ?? 0;
     parts.push(
@@ -76,12 +78,18 @@ function summary(s: ItemSessions, item: Item) {
   return parts.join(" · ");
 }
 
-/** "No sessions yet. Due Fri 2 Oct, 5 pm · about 4h of work." */
+/**
+ * "No sessions yet. Due Fri 2 Oct, 5 pm · about 4h of work.", with the
+ * earlier date its time is measured against when there is one ("project
+ * ends Fri 2 Oct, 5 pm").
+ */
 function emptyText(s: ItemSessions | null, item: Item) {
   const facts: string[] = [];
-  if (s?.deadline_at)
-    facts.push(`Due ${dueDate(s.deadline_at, s.due_all_day)}`);
-  else if (s?.project_deadline)
+  const words = s ? sessionsDeadlineWords(s) : null;
+  if (words?.due) facts.push(words.due);
+  if (words?.sooner)
+    facts.push(words.due ? words.sooner : `No deadline · ${words.sooner}`);
+  else if (!words?.due && s?.project_deadline)
     facts.push(`No deadline · project ends ${rowDay(s.project_deadline)}`);
   const work = item.remaining_minutes ?? item.estimate_minutes;
   if (item.estimate_minutes && work && work > 0)

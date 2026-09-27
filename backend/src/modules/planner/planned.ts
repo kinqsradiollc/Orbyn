@@ -1,6 +1,7 @@
 import {
   deadlineFit,
   deadlineOf,
+  fitDeadline,
   planningDeadline,
   endsAfterDeadline,
   isClosed,
@@ -145,7 +146,8 @@ export async function fitsFor(
       });
       continue;
     }
-    const deadline = planningDeadline(deadlineOf(r), latest);
+    // Measured as the Sessions card measures it (see `fitDeadline`).
+    const deadline = fitDeadline(deadlineOf(r), latest, now);
     const input = {
       deadline_at: deadline,
       needed_minutes: remainingOf(r),
@@ -255,9 +257,10 @@ export async function plannedFeed(
               end_at: s.end_at,
               after_deadline: endsAfterDeadline(
                 s.end_at,
-                planningDeadline(
+                fitDeadline(
                   dueFor(s.end_at)?.deadline_at,
                   planningDeadline(r.project_deadline, r.dependent_deadline),
+                  now,
                 ),
               ),
             }))

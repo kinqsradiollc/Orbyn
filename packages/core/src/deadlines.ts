@@ -61,6 +61,25 @@ export function planningDeadline(
   );
 }
 
+/**
+ * The deadline a task's time is measured against right now: the earlier of
+ * its own deadline and its latest date (`planningDeadline`), as long as that
+ * earlier date is still ahead. A latest date already gone (its project's
+ * deadline, or a task waiting on it that is late) no longer sets the pace:
+ * the task's own deadline does, so "Deadline passed" is only ever said once
+ * the moment it's due by has passed. Without its own deadline, its latest
+ * date, passed or not.
+ */
+export function fitDeadline(
+  taskDeadline: string | Date | null | undefined,
+  latest: string | Date | null | undefined,
+  now = new Date(),
+): string | null {
+  const planning = planningDeadline(taskDeadline, latest);
+  if (!planning || !taskDeadline) return planning;
+  return Date.parse(planning) <= now.getTime() ? iso(taskDeadline) : planning;
+}
+
 /** A task as `latestDates` reads it. */
 export type LatestDateTask = DeadlineSource & {
   id: string;

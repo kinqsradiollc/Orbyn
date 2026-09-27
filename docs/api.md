@@ -2282,14 +2282,17 @@ routes below and the `block.*` webhooks carry, besides the session and its task'
 | `POST /blocks/:id/start`      | `{ "from"?: "app" \| "reminder" }` → marks the session started (from 15 minutes before it until it ends; `409` otherwise). Focus mode started on its task while it runs does the same                                                                                                                                                                                              |
 
 `GET /items/:id/sessions` → `{ item_id, due_at, due_all_day, deadline_at, project_deadline,
-dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit }`: your sessions for the task, oldest first, past ones
+dependent_deadline, planning_deadline_at, sessions, planned_minutes, late_minutes, fit, time_zone }`: your sessions for the task, oldest first, past ones
 too (for a repeating task, those for its current occurrence and later ones);
 `planned_minutes` is the time still to come in sessions that end by the deadline (all of it
 without one), and `late_minutes` the time still to come in sessions that end after it.
 `project_deadline` is the deadline of the task's project. `dependent_deadline` is the earliest
 deadline of an open task downstream of this prerequisite. `planning_deadline_at` is the earliest
-of those dates and the task's own deadline; it caps the time that counts as planned and never
-changes `due_at` or `deadline_at`.
+of those dates and the task's own deadline while that date is still ahead; once an earlier
+project or dependent date has passed, it is the task's own deadline again (`fitDeadline` in
+`@orbyn/core`), so "Deadline passed" is only said once the moment the task is due by has passed.
+It caps the time that counts as planned and never changes `due_at` or `deadline_at`. `time_zone`
+is the account's planning zone (null when unset), the zone the apps name the deadline in.
 
 **Does it fit?** `fit` is the task's one status against its planning deadline (`deadlineFit` in
 `@orbyn/core`), or null for a finished task or one that isn't yours to plan (a teammate's, when

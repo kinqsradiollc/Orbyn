@@ -1,6 +1,7 @@
 import {
   deadlineFit,
   deadlineOf,
+  fitDeadline,
   planningDeadline,
   endsAfterDeadline,
   fail,
@@ -16,6 +17,7 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import type { Queryable as Db } from "../../db/pool.js";
+import { loadPrefs } from "./calendar.js";
 import { FREE_LOOKAHEAD_DAYS, freeMinutesBefore } from "./free.js";
 import { dependentTargets } from "./targets.js";
 import { visibleItems } from "../../lib/visibility.js";
@@ -110,6 +112,7 @@ async function sessionsOf(db: Db, userId: string, itemIds: string[]) {
 function factsFor<T extends Span>(
   series: Map<string, SeriesRow>,
   spans: T[],
+  now = new Date(),
 ): Map<T, Facts> {
   const dueFor = new Map<string, (end: string) => SessionDue | null>();
   for (const s of series.values())
@@ -134,12 +137,15 @@ function factsFor<T extends Span>(
   const out = new Map<T, Facts>();
   for (const s of known) {
     const d = due.get(s) ?? null;
-    const deadline = planningDeadline(
+    // Measured as the task's status is: a latest date already gone gives
+    // way to the task's own deadline (see `fitDeadline`).
+    const deadline = fitDeadline(
       d?.deadline_at,
       planningDeadline(
         series.get(s.item_id)!.project_deadline,
         series.get(s.item_id)!.dependent_deadline,
       ),
+      now,
     );
     const n = numbers.get(s)!;
     out.set(s, {
@@ -273,7 +279,8 @@ export async function itemSessions(
     item.project_deadline,
     item.dependent_deadline,
   );
-  const effectiveDeadline = planningDeadline(deadline, latest);
+  // What its time is measured against now: the same moment as its status.
+  const effectiveDeadline = fitDeadline(deadline, latest, now);
   const rows = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
@@ -297,6 +304,10 @@ export async function itemSessions(
       ? all.filter((s) => !s.deadline_at || s.deadline_at >= effectiveDeadline)
       : all;
   const split = splitSessions(item, sessions, now, latest);
+  const [fit, prefs] = await Promise.all([
+    fitOf(db, userId, item, all, now),
+    loadPrefs(db, userId),
+  ]);
   return {
     item_id: item.id,
     assigned_to_me: item.mine,
@@ -309,7 +320,9 @@ export async function itemSessions(
     sessions,
     planned_minutes: split.planned_minutes,
     late_minutes: split.late_minutes,
-    fit: await fitOf(db, userId, item, all, now),
+    fit,
+    // Unset ("UTC", the default) leaves the apps on the device's zone.
+    time_zone: prefs.timezone === "UTC" ? null : prefs.timezone,
   };
 }
 
@@ -357,7 +370,7 @@ async function fitOf(
     item.project_deadline,
     item.dependent_deadline,
   );
-  const deadline = planningDeadline(deadlineOf(item), latest);
+  const deadline = fitDeadline(deadlineOf(item), latest, now);
   const split = splitSessions(item, sessions, now, latest);
   const needed = remainingOf(item);
   const input = {
