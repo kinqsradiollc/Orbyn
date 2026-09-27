@@ -6,6 +6,7 @@ import {
   Bot,
   CalendarCheck,
   CalendarClock,
+  Clock,
   CalendarDays,
   FastForward,
   FileText,
@@ -78,6 +79,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   review: Inbox,
   question: MessageCircleQuestion,
   agent: Bot,
+  system: Clock,
 };
 
 /**

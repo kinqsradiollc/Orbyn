@@ -2380,7 +2380,8 @@ only read. A malformed query string is `400`; an account that hasn't confirmed i
 ### `GET /today?timezone=` (auth)
 
 The day's events, your sessions, your tasks due today and late ones, in one list (`todayList` in
-`@orbyn/core`). The day is `timezone`'s (send the device's), or your planner's when left out.
+`@orbyn/core`). The day is your account's (the planner zone, the same day the agenda and agents
+use); `timezone` (send the device's) counts only while the account has no zone of its own yet.
 
 ```json
 {

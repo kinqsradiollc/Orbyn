@@ -182,3 +182,17 @@ export function statusSummary(
   );
   return parts.join(" · ");
 }
+
+/**
+ * "Server clock is 10 h fast — reminders and sign-ins may misbehave.", for
+ * a clock out by `skewMs` (positive: fast). Shown on the status page, in
+ * Admin → System and in the admins' notice.
+ */
+export function clockSkewText(skewMs: number) {
+  const minutes = Math.round(Math.abs(skewMs) / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const amount =
+    h && m ? `${h} h ${m} min` : h ? `${h} h` : `${Math.max(1, m)} min`;
+  return `Server clock is ${amount} ${skewMs > 0 ? "fast" : "slow"} — reminders and sign-ins may misbehave.`;
+}

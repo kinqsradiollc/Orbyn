@@ -18,6 +18,7 @@ import {
   settings,
   settingsView,
 } from "../../lib/settings.js";
+import { serverClock } from "../../lib/clock.js";
 import { versionInfo } from "../../lib/version.js";
 import { sendTestEmail } from "../../worker/channels/email.js";
 
@@ -139,7 +140,7 @@ export async function systemRoutes(app: FastifyInstance) {
   app.get("/admin/settings", async (r) => {
     await authorize(r, "system:manage");
     invalidateSettings();
-    return settingsView(await settings());
+    return { ...settingsView(await settings()), clock: await serverClock() };
   });
 
   app.put("/admin/settings", async (r) => {
@@ -201,7 +202,7 @@ export async function systemRoutes(app: FastifyInstance) {
       );
     });
     invalidateSettings();
-    return settingsView(await settings());
+    return { ...settingsView(await settings()), clock: await serverClock() };
   });
 
   app.post("/admin/settings/test-email", strictRateLimit, async (r) => {

@@ -23,7 +23,7 @@ live on different machines; see [scalability.md](scalability.md).
 | `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                          |
 | `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                           |
 | `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                            |
-| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page                                                                                       |
+| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page; checks the server clock against outside time every 10 min (`lib/clock.ts`)           |
 | `files`     | `services/files.ts`     | File store: imports (signed one-time uploads, encrypted, deleted within 24 h) and pictures and files in pages (encrypted, kept with the page)         |
 | `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                           |
 | `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                        |

@@ -49,6 +49,16 @@ export type AgendaDay = {
   doc: Doc | null;
 };
 
+/**
+ * Today for an agenda left open: `was` (the day it showed as today), moved
+ * on to `now`'s day in `timeZone` (the account's) once that has begun, and
+ * never back — a clock check can't undo the day the server named.
+ */
+export function agendaTodayAt(was: string, now: Date, timeZone: string) {
+  const key = localDateKey(now, timeZone);
+  return key > was ? key : was;
+}
+
 /** "2026-09-24", for a string that should be one. */
 export const isDateKey = (s: string) =>
   /^\d{4}-\d{2}-\d{2}$/.test(s) &&

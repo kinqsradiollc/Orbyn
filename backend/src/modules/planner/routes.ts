@@ -72,7 +72,7 @@ import {
   PLACE_COLUMNS,
   timeBlocks,
 } from "./calendar.js";
-import { adoptDeviceZone } from "./timezone.js";
+import { adoptDeviceZone, dayZoneFor } from "./timezone.js";
 import { itemSessions, withSessionFacts } from "./sessions.js";
 import { checkIn, pendingCheckIns, startSession } from "./check-in.js";
 import {
@@ -267,11 +267,15 @@ export async function plannerRoutes(app: FastifyInstance) {
   // Today, planned and due in one list: the day's events, your sessions,
   // your tasks due today and late ones (one row, two chips, when a task is
   // both planned and due), and unfinished sessions from earlier days. The
-  // day is `timezone`'s (the device's), or the planner's.
+  // day is your account's (the planner zone, as the agenda and the agents
+  // read it); `timezone`, the device's, counts only while the account has
+  // no zone of its own yet.
   app.get("/today", async (r): Promise<TodayList> => {
     const u = await authenticate(r);
     const q = queryOf(todayQuery, r);
-    return todayFor(reader(r.headers), u.id, new Date(), q.timezone);
+    const db = reader(r.headers);
+    const zone = await dayZoneFor(db, u.id, q.timezone);
+    return todayFor(db, u.id, new Date(), zone);
   });
 
   // Your planned time, task by task, with each task's "does it fit?"

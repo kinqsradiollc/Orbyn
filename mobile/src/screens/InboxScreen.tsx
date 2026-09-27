@@ -27,6 +27,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   session: "timer",
   review: "inbox",
   question: "comment",
+  system: "clock",
 };
 
 /**
