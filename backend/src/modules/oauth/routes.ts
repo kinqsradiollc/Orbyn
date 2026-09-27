@@ -14,7 +14,8 @@ import {
   isApiKeyRequest,
 } from "../../lib/auth.js";
 import { settings } from "../../lib/settings.js";
-import { OAuthError, registerClient } from "./clients.js";
+import { authenticateClient } from "./client-auth.js";
+import { ASSERTION_ALGS, OAuthError, registerClient } from "./clients.js";
 import { allowRequest, checkRequest, denyRequest } from "./consent.js";
 import { exchangeCode, refreshTokens, revokeToken } from "./tokens.js";
 
@@ -42,8 +43,11 @@ export function authorizationServerMetadata(dcr: boolean) {
     response_modes_supported: ["query"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
-    // Public apps with PKCE only: no secrets and no signed client assertions.
-    token_endpoint_auth_methods_supported: ["none"],
+    // PKCE for every app. Public apps ("none"), or apps whose client ID
+    // metadata document publishes keys and signs an assertion (RFC 7523).
+    // Never a client secret.
+    token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+    token_endpoint_auth_signing_alg_values_supported: [...ASSERTION_ALGS],
     revocation_endpoint_auth_methods_supported: ["none"],
     scopes_supported: [...OAUTH_SCOPES],
     client_id_metadata_document_supported: true,
@@ -187,8 +191,17 @@ export async function oauthRoutes(app: FastifyInstance) {
       const p = fields(r.body);
       const s = await settings();
       reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
-      if (p.grant_type === "authorization_code") return exchangeCode(p, s);
-      if (p.grant_type === "refresh_token") return refreshTokens(p, s);
+      if (
+        p.grant_type === "authorization_code" ||
+        p.grant_type === "refresh_token"
+      ) {
+        // The app proves itself first (a signed assertion, for an app that
+        // signs in with a key); PKCE and the code or token are checked after.
+        p.client_id = await authenticateClient(p, r.headers.authorization);
+        return p.grant_type === "authorization_code"
+          ? exchangeCode(p, s)
+          : refreshTokens(p, s);
+      }
       throw new OAuthError(
         p.grant_type ? "unsupported_grant_type" : "invalid_request",
         p.grant_type
