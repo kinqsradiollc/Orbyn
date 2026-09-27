@@ -133,7 +133,9 @@ test("budgets: the tool list stays small, and the instructions short", () => {
   // adds list_agent_changes and undo (full power needs a way back), kept
   // to compact answers, and the connection's trust in get_context. H0
   // adds get_inbox, ack_inbox and ask_person (everything routes to the
-  // agent), with pattern-free ids and plain-string enums in answers.
+  // agent), with pattern-free ids and plain-string enums in answers. H5
+  // adds apply_plan (one call, whole job) with a lean answer, paid for by
+  // a shorter client_ref description and tighter tool descriptions.
   assert.ok(size < 76_000, `tools/list for core is ${size} characters`);
   assert.ok(
     INSTRUCTIONS.length <= 2048,

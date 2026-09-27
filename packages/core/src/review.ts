@@ -60,6 +60,8 @@ export const REVIEW_ACTIONS = [
   "template.use",
   "tasks.import",
   "delete",
+  /** A whole plan an agent sent in one call (apply_plan), made all at once. */
+  "plan.apply",
 ] as const;
 export type ReviewAction = (typeof REVIEW_ACTIONS)[number];
 

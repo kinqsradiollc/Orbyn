@@ -938,7 +938,13 @@ test("prompts: listed by toolset, filled with arguments, never hiding instructio
     assert.doesNotMatch(text, /<!--|​|ignore (all|previous)/i, p.name);
     for (const word of text.match(/\b[a-z]+_[a-z_]+\b/g) ?? [])
       if (
-        !["plan_token", "start_date", "due_before", "client_ref"].includes(word)
+        ![
+          "plan_token",
+          "start_date",
+          "due_before",
+          "client_ref",
+          "task_doc",
+        ].includes(word)
       )
         assert.ok(registry.get(word), `${p.name} names ${word}`);
   }

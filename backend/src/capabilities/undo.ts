@@ -190,16 +190,31 @@ const changedSince = () =>
     "It changed after the agent's edit, so it wasn't undone. Change it in Orbyn instead.",
   );
 
-/** Run undo steps as `u`, last first, in the caller's transaction. */
-export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
+/**
+ * Run undo steps as `u`, last first, in the caller's transaction.
+ *
+ * `carry` spans the changes of one job (apply_plan's steps, undone
+ * together): a task or page an earlier undo step here already put back is
+ * at the version that undo made, not the one the earlier change left, so
+ * that version counts as unchanged. The first undo step to reach each thing
+ * still checks it against what the agent left.
+ */
+export async function runUndo(
+  db: Db,
+  u: UserRow,
+  ops: UndoOp[],
+  carry: Map<string, number> = new Map(),
+) {
   await actAs(db, u.id, null);
   const after: (() => Promise<void>)[] = [];
+  const same = (key: string, now: number, want: number) =>
+    now === want || carry.get(key) === now;
   for (const op of [...ops].reverse()) {
     switch (op.op) {
       case "item.delete": {
         const row = await lockItem(db, op.id).catch(() => null);
         if (!row) break;
-        if (row.version !== op.version) changedSince();
+        if (!same(`item:${op.id}`, row.version, op.version)) changedSince();
         await mutate(db, u, {
           operation: "delete",
           item_id: op.id,
@@ -209,13 +224,14 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
       }
       case "item.restore": {
         const row = await lockItem(db, op.id);
-        if (row.version !== op.version) changedSince();
-        await mutate(db, u, {
+        if (!same(`item:${op.id}`, row.version, op.version)) changedSince();
+        const put = await mutate(db, u, {
           operation: "update",
           item_id: op.id,
           version: row.version,
           data: mergedItem(row, op.fields),
         });
+        if (put) carry.set(`item:${op.id}`, put.version);
         if (op.spent_minutes !== undefined)
           await db.query("UPDATE items SET spent_minutes = $2 WHERE id = $1", [
             op.id,
@@ -270,13 +286,14 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
       }
       case "doc.restore": {
         const doc = await requireDoc(db, op.doc_id, u, "items:write");
-        if (doc.version !== op.version) changedSince();
+        if (!same(`doc:${op.doc_id}`, doc.version, op.version)) changedSince();
         const restored = await restoreDocVersion(
           db,
           u,
           op.doc_id,
           op.to_version,
         );
+        carry.set(`doc:${op.doc_id}`, restored.version);
         after.push(
           () => announceDocChange(pool, op.doc_id, restored.version, "undo"),
           // Cards it added go from Study at once.
@@ -286,12 +303,13 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
       }
       case "doc.file": {
         const doc = await requireDoc(db, op.doc_id, u, "items:write");
-        if (doc.version !== op.version) changedSince();
+        if (!same(`doc:${op.doc_id}`, doc.version, op.version)) changedSince();
         const saved = await saveDoc(db, u, op.doc_id, {
           version: doc.version,
           ...(op.folder_id !== undefined ? { folder_id: op.folder_id } : {}),
           ...(op.project_id !== undefined ? { project_id: op.project_id } : {}),
         });
+        carry.set(`doc:${op.doc_id}`, saved.version);
         after.push(() =>
           announceDocChange(pool, op.doc_id, saved.version, "undo"),
         );
@@ -302,7 +320,7 @@ export async function runUndo(db: Db, u: UserRow, ops: UndoOp[]) {
           () => null,
         );
         if (!doc) break;
-        if (doc.version !== op.version) changedSince();
+        if (!same(`doc:${op.doc_id}`, doc.version, op.version)) changedSince();
         const gone = await trashDoc(db, u, op.doc_id);
         after.push(
           () =>

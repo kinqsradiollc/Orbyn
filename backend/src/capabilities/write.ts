@@ -67,7 +67,7 @@ export const clientRefInput = z
   .regex(/^[\w.:@-]+$/, "Use letters, digits and . : @ _ -")
   .optional()
   .describe(
-    "Your own id for this change. Sending the same client_ref again (for 24 hours) returns the first answer instead of changing anything twice.",
+    "Idempotency key: sent again within 24 h, the first answer comes back.",
   );
 
 /** The most items one call changes (proposals hold up to 50). */
@@ -144,7 +144,8 @@ export function destination(
       "Ask the person to allow changes, or make the change in Orbyn.",
     );
   const trust = policy.trustIn(p, teamId);
-  if (level === "suggest" || trust === "suggest") return "review";
+  if ((level === "suggest" || trust === "suggest") && !ctx.asking?.reviewed)
+    return "review";
   const reasons: AskReason[] = [];
   const need = (kind: AgentAskFirst, text = ASK_WHY[kind]) => {
     if (!p.trust.acts_alone.includes(kind)) reasons.push({ kind, text });
@@ -287,6 +288,11 @@ export type WriteMeta = {
   team_id?: string | null;
   /** Work to do once the change is committed (live news, Study). */
   after?: (() => Promise<void>)[];
+  /**
+   * The job the change belongs to, when not the request's own (apply_plan
+   * gives every step one job id, so undo({job}) takes the plan back).
+   */
+  job?: string;
 };
 
 // --- client_ref idempotency ---------------------------------------------
@@ -382,7 +388,7 @@ export async function recordChange(
         entry.summary.slice(0, 300),
         entry.outcome,
         entry.meta.proposal_id?.replace(/^proposal:/, "") ?? null,
-        entry.requestId?.slice(0, 64) ?? null,
+        (entry.meta.job ?? entry.requestId)?.slice(0, 64) ?? null,
         undo ? JSON.stringify(undo) : null,
         UNDO_DAYS,
       ],

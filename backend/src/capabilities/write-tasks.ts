@@ -131,7 +131,7 @@ const newTask = z
       .max(500)
       .optional()
       .describe(
-        'One quick-add line, such as "Essay fri 3pm !high 90m #uni @Sam". Fields given beside it win over what the line says.',
+        'One quick-add line, such as "Essay fri 3pm !high 90m #uni @Sam". Fields given too win.',
       ),
     title: z.string().trim().min(1).max(200).optional(),
     notes: z.string().max(10_000).optional(),

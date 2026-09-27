@@ -258,6 +258,125 @@ export const PROMPTS: PromptSpec[] = [
 2. When I agree, make them tasks with tasks_from_doc; ticking a line or its task ticks the other.
 3. If there are more than 25, file them with propose_changes instead.`,
   },
+  // Agent 2 (H5): one call, whole job. The agent does the thinking; Orbyn
+  // stores the result with one apply_plan call.
+  {
+    name: "lecture_to_notes",
+    title: "Lecture to notes and cards",
+    description:
+      "Turns a lecture you have (transcript, slides, file) into sourced notes, practice-first cards, tasks and a first review, applied in one step.",
+    arguments: [
+      {
+        name: "lecture",
+        description: "The lecture: its title, and where its text is.",
+        required: true,
+      },
+      {
+        name: "project",
+        description: "The course or project it belongs to (optional).",
+        complete: "project",
+      },
+      {
+        name: "exam",
+        description: "An exam it counts for (optional).",
+        complete: "exam",
+      },
+    ],
+    needs: ["study"],
+    text: (a) =>
+      `Turn this lecture into study material in Orbyn. Do the thinking yourself: Orbyn only keeps what you send.
+Lecture: ${(a.lecture ?? "").trim()}${given(a.project, "Project")}${given(a.exam, "Exam")}
+
+1. Call get_context for my time zone and spaces, and follow any profile or standing rules it has on how I like notes and cards.
+2. Read the lecture yourself: the transcript, slides or file you have (transcribe a recording yourself). Find my earlier notes on the topic with find_passages or search.
+3. Write the notes in Orbyn Markdown (orbyn://spec/markdown): a heading per topic, definitions, worked examples, a callout for what is likely examined, [[links]] to earlier pages, and a source at the end of each line you took from the lecture, like [src: Lecture 5 slides, slide 12]. Name the lines cards will point at (## Glycolysis ^glyco).
+4. Write practice-first cards: retrieval questions, not summaries (question and answer, cloze, "why" and "how does this connect" cards), each from the notes line it tests.
+5. Add tasks with dates for what I have to do (readings, problem sets), a "Review: <lecture>" task, and its first review session a day or two from now.
+6. Apply everything with ONE apply_plan call, steps in order: create_doc (id notes; in the project if given), update_study (cards: page "$notes.id", each card's from "$notes.lines.<anchor>"${a.exam?.trim() ? "; and the exam's pages" : ""}), create_tasks (id tasks), link (related: "$notes.id" to earlier pages), schedule_sessions (task "$tasks.ids[0]" for the review task). Give it a summary and a client_ref.
+7. Orbyn asks me once, only for what is on my ask-first list; if the plan waits in my Review inbox, say so. Show me what was made with links, and the job id (undo with it takes it all back).`,
+  },
+  {
+    name: "research_brief",
+    title: "Research brief",
+    description:
+      "Researches a question with the sources you can reach and writes a sourced brief with next steps, applied in one step.",
+    arguments: [
+      {
+        name: "question",
+        description: "What to find out.",
+        required: true,
+      },
+      {
+        name: "project",
+        description: "A project to file it in (optional).",
+        complete: "project",
+      },
+    ],
+    needs: ["study"],
+    text: (a) =>
+      `Research this and write me a brief in Orbyn. Do the reading and thinking yourself: Orbyn only keeps what you send.
+Question: ${(a.question ?? "").trim()}${given(a.project, "Project")}
+
+1. Call get_context, and follow any profile or standing rules it has.
+2. See what I already have with find_passages and search, so the brief builds on it.
+3. Read the sources you can reach yourself. Keep each one's address, title, author and a short quote.
+4. Write the brief in Orbyn Markdown (orbyn://spec/markdown): the question, a short answer, findings, disagreements, open questions and next steps; end every line that relies on a source with [src: its title], and name those lines (^finding1).
+5. Apply it with ONE apply_plan call: create_doc (id brief; in the project if given), then save_source for each source (doc "$brief.id", lines naming the lines that use it), create_tasks for the next steps with dates, and link (related) to my earlier pages. Give it a summary and a client_ref.
+6. Orbyn asks me once, only for what is on my ask-first list. Show me the brief's link, the sources kept, and the job id.`,
+  },
+  {
+    name: "exam_prep",
+    title: "Prepare for an exam",
+    description:
+      "Checks what an exam covers and how ready you are, fills gaps with practice-first cards, and books revision, applied in one step.",
+    arguments: [
+      {
+        name: "exam",
+        description: "The exam.",
+        required: true,
+        complete: "exam",
+      },
+      { name: "date", description: "Its date, if Orbyn doesn't know it." },
+    ],
+    needs: ["study"],
+    text: (a) =>
+      `Help me prepare for "${(a.exam ?? "").trim()}" in Orbyn. Do the thinking yourself: Orbyn only keeps what you send.${given(a.date, "Date")}
+
+1. Call get_context, and follow any profile or standing rules on how I study.
+2. Read where I stand with get_study: the exam, its pages, readiness, due cards and what I keep getting wrong.
+3. Read the exam's pages with fetch. Find the topics with few or weak cards, and write practice-first cards for them: retrieval questions, cloze and "why" cards, each from the notes line it tests (doc:<id>#<anchor>). Never summaries.
+4. Draft a short exam plan page: topics by weakness, past papers to do, and the days before the exam.
+5. Apply it with ONE apply_plan call: update_study (exam: title, date, pages, target, plan: true to book revision sessions), update_study (cards, one step per page), create_doc (the exam plan), create_tasks (past papers and practice with dates). Give it a summary and a client_ref.
+6. Orbyn asks me once, only for what is on my ask-first list. Then quiz me: the next card with get_study, the first question now.`,
+  },
+  {
+    name: "meeting_to_actions",
+    title: "Meeting to actions",
+    description:
+      "Turns a meeting's notes or transcript into a meeting note, dated tasks with owners and links, applied in one step.",
+    arguments: [
+      {
+        name: "meeting",
+        description: "The meeting (its event, or a title).",
+        required: true,
+        complete: "event",
+      },
+      {
+        name: "project",
+        description: "A project the actions belong to (optional).",
+        complete: "project",
+      },
+    ],
+    needs: [],
+    text: (a) =>
+      `Turn my meeting "${(a.meeting ?? "").trim()}" into notes and actions in Orbyn. Do the thinking yourself: Orbyn only keeps what you send.${given(a.project, "Project")}
+
+1. Call get_context for my time zone and teams, and follow any standing rules.
+2. Open the event with fetch (find it with search or get_calendar), and read the notes or transcript you have.
+3. Write a meeting note in Orbyn Markdown (orbyn://spec/markdown): who came, decisions (a callout each), discussion, and a checklist of actions with an owner and a date, naming each action line (^a1).
+4. Apply it with ONE apply_plan call: create_doc (kind meeting, event set, id note), create_tasks (id tasks; one per action with its date and project; a teammate's only as assignee), link (kind task_doc, from "$tasks.ids[0]" and so on, to "$note.id", block the action's line anchor, like a1). Give it a summary and a client_ref.
+5. Orbyn asks me once, only for what is on my ask-first list (assigning a teammate notifies them, so it asks). Show me the note and tasks with links, and the job id.`,
+  },
 ];
 
 /** The prompts a connection is offered. */

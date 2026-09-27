@@ -211,9 +211,11 @@ export const undoCapability = defineCapability({
     }
     const undone: { id: string; summary: string }[] = [];
     const after: (() => Promise<void>)[] = [];
+    // One job's changes are undone together, last first (see runUndo).
+    const carry = new Map<string, number>();
     for (const r of todo) {
       try {
-        after.push(...(await runUndo(db, actorOf(p), r.undo!)));
+        after.push(...(await runUndo(db, actorOf(p), r.undo!, carry)));
       } catch (e) {
         if (e instanceof HttpError && e.statusCode === 409)
           throw new CapabilityError(

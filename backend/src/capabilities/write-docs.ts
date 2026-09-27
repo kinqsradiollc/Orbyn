@@ -103,7 +103,7 @@ export const createDocCapability = defineCapability({
   name: "create_doc",
   title: "Write a new page",
   description:
-    "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where this connection may only suggest, it waits in the Review inbox. Longer text: append_doc (workspace).",
+    "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc.",
   input: z
     .object({
       title: z.string().trim().min(1).max(200),
@@ -612,7 +612,7 @@ export const editDoc = defineCapability({
   name: "edit_doc",
   title: "Edit a page",
   description:
-    "Version-checked edits to one page, all or none, in Orbyn Markdown (orbyn://spec/markdown): append, prepend, insert_after, replace or delete a line (by anchor), find_replace, a title, and sections by heading: replace_section, append_to_section, delete_section, move_section. Personal pages change directly (history keeps the old state, labelled with this agent; undo works); team pages get Take/Leave suggestions (edits suggestions can't hold go to review).",
+    "Version-checked edits to one page, all or none, in Orbyn Markdown (orbyn://spec/markdown): append, prepend, insert_after, replace or delete a line (by anchor), find_replace, a title, and sections by heading: replace_section, append_to_section, delete_section, move_section. Personal pages change directly (history keeps the old state; undo works); team pages get Take/Leave suggestions (or go to review).",
   input: z
     .object({
       doc: z.string().trim().min(1).max(300),

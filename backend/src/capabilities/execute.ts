@@ -91,9 +91,12 @@ class AskFirst extends Error {
 export function wouldDo(answer: CapabilityResult<unknown>): string[] {
   const s = answer.structured as {
     done?: { change?: string; title?: string }[];
+    steps?: { done?: { change?: string; title?: string }[] }[];
     pending?: { changes?: number } | null;
   } | null;
-  const lines = (s?.done ?? []).map((d) =>
+  // A plan (apply_plan) lists what each of its steps did.
+  const done = s?.done ?? (s?.steps ?? []).flatMap((x) => x.done ?? []);
+  const lines = done.map((d) =>
     `${d.change ?? "Change"}: “${d.title ?? ""}”`.slice(0, 200),
   );
   if (s?.pending?.changes)

@@ -114,9 +114,7 @@ export const todayOutput = z.object({
     .describe("Sessions and events today, in order; repeats expanded."),
   due: z
     .array(task)
-    .describe(
-      "The person's open tasks (their own, or assigned to them) with a deadline today, as the app's Today list shows them.",
-    ),
+    .describe("The person's open tasks (own or assigned to them) due today."),
   late: z
     .array(task)
     .describe(

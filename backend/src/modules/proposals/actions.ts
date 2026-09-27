@@ -383,6 +383,27 @@ export const ACTIONS: Record<ReviewAction, Handler> = {
         fail(422, summary.errors[0]);
     },
   },
+  // A whole plan from apply_plan (H5): run again as the agent acting for
+  // the person, every step in this one transaction. Loaded when used, as
+  // the plan runner reaches every capability.
+  "plan.apply": {
+    input: z.object({
+      grant_id: z.uuid(),
+      job: z.string().min(1).max(64),
+      summary: z.string().max(300),
+      steps: z.array(z.record(z.string(), z.unknown())).min(1).max(50),
+    }),
+    async stale(db, userId, input) {
+      const plan = await import("../../capabilities/plan-run.js");
+      const parsed = plan.planApplyInput.safeParse(input);
+      if (!parsed.success) return "This plan can't be read any more.";
+      return plan.planStaleness(db as Db, userId, parsed.data);
+    },
+    async apply(db, u, input: Record<string, unknown>) {
+      const plan = await import("../../capabilities/plan-run.js");
+      await plan.applyApprovedPlan(db, u, plan.planApplyInput.parse(input));
+    },
+  },
   delete: {
     input: deleteInput,
     async stale(db, _u, input) {

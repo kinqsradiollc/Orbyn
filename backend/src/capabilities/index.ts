@@ -2,6 +2,7 @@ import { getCalendar } from "./calendar-view.js";
 import { getContext } from "./context.js";
 import { listAgentChanges, undoCapability } from "./changes.js";
 import { ackInbox, askPerson, getInbox } from "./inbox.js";
+import { applyPlan } from "./plan.js";
 import { fetchCapability } from "./fetch.js";
 import { addTask, getAgenda, searchItems } from "./legacy.js";
 import { getProject } from "./project.js";
@@ -106,6 +107,8 @@ export const registry = new Registry([
   getInbox,
   ackInbox,
   askPerson,
+  // Agent 2 (H5): one call, whole job.
+  applyPlan,
   // The workspace toolset (A4-A5).
   saveView,
   updateProjectCapability,

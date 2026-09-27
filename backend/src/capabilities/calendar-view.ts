@@ -66,7 +66,7 @@ export const getCalendar = defineCapability({
   name: "get_calendar",
   title: "Calendar",
   description:
-    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page\'s or project\'s "Essay due"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry\'s provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). With free_minutes, also lists free stretches of at least that long inside working hours, around what this connection can see.',
+    'The calendar from a day (default today) for up to 31 days, in the person\'s time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page\'s or project\'s "Essay due"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry\'s provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). free_minutes also lists free stretches that long inside working hours.',
   input: z
     .object({
       from: z

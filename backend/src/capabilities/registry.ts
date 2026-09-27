@@ -105,6 +105,11 @@ export type Asking = {
   mode: "collect" | "approved";
   reasons: AskReason[];
   /**
+   * The person approved this very change in the Review inbox (a whole
+   * plan, apply_plan): made directly, even where the connection suggests.
+   */
+  reviewed?: boolean;
+  /**
    * A question for the person in the chat (ask_person), instead of the
    * usual yes/no about a change: set by the capability while collecting.
    */
