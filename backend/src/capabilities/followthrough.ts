@@ -727,13 +727,45 @@ export const saveRecord = defineCapability({
   },
 });
 
-// --- mark_notifications_read ---------------------------------------------
+// --- mark_notifications_read (folded into ack_inbox) --------------------
 
+/**
+ * Marks the person's in-app notices read: these ids, or every unread one.
+ * Notices are the person's own, so the connection needs Personal. Returns
+ * how many were marked. ack_inbox's `notices` runs this (H6a folded the
+ * old mark_notifications_read tool into it).
+ */
+export async function markNotices(
+  ctx: CapabilityContext,
+  notices: string[] | "all",
+): Promise<number> {
+  if (!ctx.principal.personal)
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "Notices are the person's own: the connection needs Personal.",
+    );
+  if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
+  const db = dbOf(ctx);
+  const me = ctx.principal.user.id;
+  const ids =
+    notices === "all"
+      ? (await listNotifications(db, me, 100))
+          .filter((n) => !n.read)
+          .map((n) => n.id)
+      : notices;
+  return ids.length ? markNotificationsRead(db, me, ids) : 0;
+}
+
+/**
+ * The retired name, for connections that still call it: ack_inbox with
+ * `notices` does the same. Not listed and not counted (legacyOnly), but
+ * callable by any connection with the follow-through toolset.
+ */
 export const markNotificationsReadCapability = defineCapability({
   name: "mark_notifications_read",
-  title: "Mark notices read",
+  title: "Mark notices read (older tool)",
   description:
-    "Marks in-app notices read: up to 100 by id (from get_follow_through or get_today), or all unread with all.",
+    "Deprecated: use ack_inbox with notices. Marks in-app notices read: ids, or all unread with all.",
   input: z
     .object({
       ids: z.array(idField).max(100).optional(),
@@ -747,23 +779,12 @@ export const markNotificationsReadCapability = defineCapability({
   toolset: "followthrough",
   mode: "write",
   tier: "W1",
+  legacyOnly: true,
+  aliasOf: "ack_inbox",
   async run(ctx, a) {
-    if (!ctx.principal.personal)
-      throw new CapabilityError(
-        "FORBIDDEN",
-        "Notices are the person's own: the connection needs Personal.",
-      );
-    if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
-    const db = dbOf(ctx);
-    const me = ctx.principal.user.id;
-    const ids = a.all
-      ? (await listNotifications(db, me, 100))
-          .filter((n) => !n.read)
-          .map((n) => n.id)
-      : (a.ids ?? []);
-    if (!ids.length && !a.all)
+    if (!a.ids?.length && !a.all)
       throw new CapabilityError("INVALID", "Give ids, or all.");
-    const count = ids.length ? await markNotificationsRead(db, me, ids) : 0;
+    const count = await markNotices(ctx, a.all ? "all" : a.ids!);
     return finishWrite(ctx, "Notices", {
       done: [
         {

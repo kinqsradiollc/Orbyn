@@ -33,6 +33,7 @@ import { announceDocChange } from "../modules/docs/live.js";
 import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
 import { savePrefs } from "../modules/planner/routines.js";
+import { restoreSubscription } from "../modules/planner/subscriptions.js";
 import {
   deleteView,
   everySpace,
@@ -179,7 +180,39 @@ export type UndoOp =
    */
   | { op: "file.delete"; id: string; kept?: boolean }
   /** An exam it named or changed in Study (H4): put it back, or remove it. */
-  | { op: "exam.restore"; key: string; was: ExamRow | null };
+  | { op: "exam.restore"; key: string; was: ExamRow | null }
+  /** One occurrence of a repeating item it changed (H6a): its own change as it was. */
+  | {
+      op: "occurrence.restore";
+      id: string;
+      version: number;
+      occurrence: string;
+      data: unknown;
+    }
+  /**
+   * A session it pinned, started or checked in (H6a): the session's state,
+   * and its task's time spent and estimate, as they were.
+   */
+  | {
+      op: "session.restore";
+      id: string;
+      item_id: string;
+      block: {
+        source: string;
+        started_at: string | null;
+        outcome: string | null;
+        outcome_at: string | null;
+        spent_added: number;
+        counted: boolean;
+      };
+      item: { spent_minutes: number; estimate_minutes: number | null } | null;
+    }
+  /** A calendar it subscribed to (H6a): unsubscribe. */
+  | { op: "subscription.delete"; id: string }
+  /** A calendar subscription it removed: add it back as it was. */
+  | { op: "subscription.restore"; row: Record<string, unknown> }
+  /** The keep-originals setting it changed: put it back. */
+  | { op: "originals.set"; keep: boolean };
 
 /** Undo is kept this long after the change. */
 export const UNDO_DAYS = 30;
@@ -462,6 +495,72 @@ export async function runUndo(
         break;
       case "prefs.restore":
         await savePrefs(db, u.id, op.fields as never);
+        break;
+      case "occurrence.restore": {
+        const row = await lockItem(db, op.id);
+        if (!same(`item:${op.id}`, row.version, op.version)) changedSince();
+        if (op.data)
+          await db.query(
+            `INSERT INTO item_overrides (item_id, occurrence, data) VALUES ($1, $2, $3)
+             ON CONFLICT (item_id, occurrence) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+            [op.id, op.occurrence, JSON.stringify(op.data)],
+          );
+        else
+          await db.query(
+            "DELETE FROM item_overrides WHERE item_id = $1 AND occurrence = $2",
+            [op.id, op.occurrence],
+          );
+        const put = (
+          await db.query<{ version: number }>(
+            `UPDATE items SET version = version + 1, updated_at = now(),
+               reminder_version = CASE WHEN due_at = $2 THEN reminder_version + 1 ELSE reminder_version END
+             WHERE id = $1 RETURNING version`,
+            [op.id, op.occurrence],
+          )
+        ).rows[0];
+        if (put) carry.set(`item:${op.id}`, put.version);
+        break;
+      }
+      case "session.restore": {
+        const b = op.block;
+        await db.query(
+          `UPDATE time_blocks SET source = $3, started_at = $4, outcome = $5,
+                  outcome_at = $6, spent_added = $7, counted = $8
+            WHERE id = $1 AND user_id = $2`,
+          [
+            op.id,
+            u.id,
+            b.source,
+            b.started_at,
+            b.outcome,
+            b.outcome_at,
+            b.spent_added,
+            b.counted,
+          ],
+        );
+        if (op.item)
+          await db.query(
+            `UPDATE items SET spent_minutes = $2, estimate_minutes = $3,
+                    version = version + 1, updated_at = now()
+              WHERE id = $1`,
+            [op.item_id, op.item.spent_minutes, op.item.estimate_minutes],
+          );
+        break;
+      }
+      case "subscription.delete":
+        await db.query(
+          "DELETE FROM calendar_subscriptions WHERE id = $1 AND user_id = $2",
+          [op.id, u.id],
+        );
+        break;
+      case "subscription.restore":
+        await restoreSubscription(db, u.id, op.row);
+        break;
+      case "originals.set":
+        await db.query("UPDATE users SET keep_originals = $2 WHERE id = $1", [
+          u.id,
+          op.keep,
+        ]);
         break;
       case "view.delete": {
         const view = await findView(db, everySpace(u.id), op.id, true);

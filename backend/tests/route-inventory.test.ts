@@ -158,7 +158,7 @@ test("agents are refused on the routes the safety list names", () => {
     "DELETE /me",
     "POST /ai/proposals/:id/apply",
     "POST /me/agent-keys",
-    "POST /me/calendar-subscriptions",
+    "DELETE /me/passkeys/:id",
     "GET /admin/users",
   ])
     assert.ok(key in EXCLUDED, key);

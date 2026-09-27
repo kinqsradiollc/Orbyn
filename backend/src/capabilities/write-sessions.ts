@@ -2,11 +2,18 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
   planPreviewInput,
+  HttpError,
+  SESSION_OUTCOMES,
   type PlanMove,
   type ReviewChangeInput,
+  type SessionOutcome,
 } from "@orbyn/core";
+import { queueWebhooks } from "../lib/webhooks.js";
+import { checkIn, startSession } from "../modules/planner/check-in.js";
 import { derivedKey } from "../lib/secrets.js";
 import {
+  blockById,
+  duplicateSession,
   moveSession,
   placeSessions,
   removeSession,
@@ -707,11 +714,149 @@ async function scheduleSealed(ctx: CapabilityContext, sealed: Sealed) {
 
 // --- reschedule_sessions -----------------------------------------------
 
+type SessionRow = {
+  id: string;
+  item_id: string;
+  start_at: Date;
+  end_at: Date;
+  source: string;
+  started_at: Date | null;
+  outcome: string | null;
+  outcome_at: Date | null;
+  spent_added: number;
+  counted: boolean;
+  title: string;
+  spent_minutes: number;
+  estimate_minutes: number | null;
+};
+
+/**
+ * Pin, unpin, duplicate, roll forward, start or check in one session: the
+ * app's own session code, made as the person (activity says via the agent).
+ * The agent acts for the person, so it may say how a session went.
+ */
+async function sessionState(
+  ctx: CapabilityContext,
+  b: SessionRow,
+  c: {
+    action: (typeof SESSION_ACTIONS)[number];
+    start_at?: string;
+    outcome?: SessionOutcome;
+    more_minutes?: number;
+  },
+  undo: UndoOp[],
+): Promise<DoneEntry> {
+  const db = dbOf(ctx);
+  const me = ctx.principal.user.id;
+  const was: Extract<UndoOp, { op: "session.restore" }> = {
+    op: "session.restore",
+    id: b.id,
+    item_id: b.item_id,
+    block: {
+      source: b.source,
+      started_at: b.started_at?.toISOString() ?? null,
+      outcome: b.outcome,
+      outcome_at: b.outcome_at?.toISOString() ?? null,
+      spent_added: b.spent_added,
+      counted: b.counted,
+    },
+    item: null,
+  };
+  const entry = (change: string, block = b) =>
+    sessionEntry(
+      {
+        id: block.id,
+        item_id: b.item_id,
+        title: b.title,
+        start_at: new Date(block.start_at).toISOString(),
+      },
+      ctx.timezone,
+      change,
+    );
+  switch (c.action) {
+    case "pin":
+    case "unpin":
+      await db.query("UPDATE time_blocks SET source = $2 WHERE id = $1", [
+        b.id,
+        c.action === "pin" ? "manual" : "planner",
+      ]);
+      undo.push(was);
+      return entry(c.action === "pin" ? "Pinned" : "Unpinned");
+    case "duplicate":
+    case "roll_forward": {
+      if (c.action === "roll_forward" && b.end_at > ctx.now)
+        throw new CapabilityError(
+          "INVALID",
+          "Only a session that has ended rolls forward.",
+          "Use next_free to move one still to come.",
+        );
+      const made = await duplicateSession(
+        db,
+        me,
+        b.id,
+        c.action === "duplicate" ? c.start_at : undefined,
+        ctx.now,
+      );
+      undo.push({
+        op: "block.delete",
+        id: made.id,
+        start_at: new Date(made.start_at).toISOString(),
+        end_at: new Date(made.end_at).toISOString(),
+      });
+      return entry(c.action === "duplicate" ? "Duplicated" : "Rolled forward", {
+        ...b,
+        id: made.id,
+        start_at: new Date(made.start_at),
+      });
+    }
+    case "start":
+      await startSession(db, me, b.id, ctx.now);
+      undo.push(was);
+      return entry("Started");
+    default: {
+      was.item = {
+        spent_minutes: b.spent_minutes,
+        estimate_minutes: b.estimate_minutes,
+      };
+      const r = await checkIn(
+        db,
+        me,
+        b.id,
+        c.outcome!,
+        c.more_minutes,
+        ctx.now,
+      );
+      await queueWebhooks(
+        db,
+        "block.updated",
+        { user_id: me, team_id: null },
+        await blockById(db, b.id, me),
+      );
+      undo.push(was);
+      return entry(
+        `Checked in: ${c.outcome}, ${r.counted_minutes} min counted`,
+      );
+    }
+  }
+}
+
+const SESSION_ACTIONS = [
+  "move",
+  "next_free",
+  "remove",
+  "pin",
+  "unpin",
+  "duplicate",
+  "roll_forward",
+  "start",
+  "check_in",
+] as const;
+
 export const rescheduleSessions = defineCapability({
   name: "reschedule_sessions",
-  title: "Move or remove sessions",
+  title: "Change sessions",
   description:
-    "Moves sessions, pushes them to the next free working slot, or removes them (ids from get_calendar or fetch). Undo puts them back.",
+    "Changes sessions (ids from get_calendar, get_today or get_work_patterns): move, next_free, remove, pin (replanning leaves it), unpin, duplicate (at start_at or the next free slot), roll_forward (a past one to the next free slot), start, check_in (outcome; more_minutes with more). Undo puts them back.",
   input: z
     .object({
       changes: z
@@ -719,13 +864,18 @@ export const rescheduleSessions = defineCapability({
           z
             .object({
               session: idField,
-              action: z.enum(["move", "next_free", "remove"]),
+              action: z.enum(SESSION_ACTIONS),
               start_at: isoTime.optional(),
               end_at: isoTime.optional(),
+              outcome: z.enum(SESSION_OUTCOMES).optional(),
+              more_minutes: z.number().int().min(5).max(1440).optional(),
             })
             .strict()
             .refine((c) => c.action !== "move" || (c.start_at && c.end_at), {
               message: "A move needs start_at and end_at.",
+            })
+            .refine((c) => c.action !== "check_in" || c.outcome, {
+              message: "A check-in needs an outcome.",
             }),
         )
         .min(1)
@@ -755,11 +905,19 @@ export const rescheduleSessions = defineCapability({
           end_at: Date;
           source: string;
           plan_id: string | null;
+          started_at: Date | null;
+          outcome: string | null;
+          outcome_at: Date | null;
+          spent_added: number;
+          counted: boolean;
           title: string;
           team_id: string | null;
+          spent_minutes: number;
+          estimate_minutes: number | null;
         }>(
           `SELECT b.id, b.item_id, b.start_at, b.end_at, b.source, b.plan_id,
-                  i.title, i.team_id
+                  b.started_at, b.outcome, b.outcome_at, b.spent_added, b.counted,
+                  i.title, i.team_id, i.spent_minutes, i.estimate_minutes
              FROM time_blocks b JOIN items i ON i.id = b.item_id
             WHERE b.id = $1 AND b.user_id = $2 FOR UPDATE OF b`,
           [c.session, p.user.id],
@@ -775,6 +933,20 @@ export const rescheduleSessions = defineCapability({
         start: b.start_at.toISOString(),
         end: b.end_at.toISOString(),
       };
+      if (!["move", "next_free", "remove"].includes(c.action)) {
+        // The session's own state (H6a): made directly, or not at all.
+        if (where === "review") throw cantWait(ctx, null);
+        try {
+          done.push(await sessionState(ctx, b, c, undo));
+        } catch (e) {
+          // The app's "not now" answers (not on yet, no free time, a closed
+          // task) are about the session, not a version.
+          if (e instanceof HttpError && e.statusCode === 409)
+            throw new CapabilityError("INVALID", e.message);
+          throw e;
+        }
+        continue;
+      }
       let to: { start_at: string; end_at: string } | null = null;
       if (c.action === "move") {
         if (Date.parse(c.end_at!) <= Date.parse(c.start_at!))

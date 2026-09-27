@@ -142,6 +142,11 @@ export const reviewChange = z.discriminatedUnion("type", [
       .array(z.object({ id, title: z.string().max(500) }))
       .max(100)
       .default([]),
+    /** Steps moved to a place in the list (0 is the top), in order. */
+    move: z
+      .array(z.object({ id, position: z.number().int().min(0).max(1000) }))
+      .max(100)
+      .default([]),
   }),
   z.object({
     type: z.literal("doc.create"),

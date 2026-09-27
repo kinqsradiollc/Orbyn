@@ -372,7 +372,7 @@ export const search = defineCapability({
   name: "search",
   title: "Search Orbyn",
   description:
-    'Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, title, url, a snippet with matches in **bold**, the matching page line (block_id) and provenance. Pages with next_cursor.',
+    'Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by match and recency. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result: a typed id for fetch, title, url, a snippet with matches in **bold**, the page line (block_id) and provenance. Pages with next_cursor.',
   input: searchInput,
   output: z.object({
     results: z.array(hit),

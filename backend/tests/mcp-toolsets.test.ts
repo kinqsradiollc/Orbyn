@@ -139,9 +139,11 @@ after(async () => {
   await pool.end();
 });
 
-test("61 tools: 28 core (apply_plan and get_profile too), the rest in toolsets; each toolset's tools are its own", async () => {
+test("60 tools: 28 core (apply_plan and get_profile too), the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
-  assert.equal(listed.length, 61);
+  // H6a folded mark_notifications_read into ack_inbox: not listed.
+  assert.equal(listed.length, 60);
+  assert.ok(!listed.some((t: any) => t.name === "mark_notifications_read"));
   const core = (await h.legacy(keys.core, "tools/list")).body.result.tools;
   assert.equal(core.length, 28);
   assert.ok(!core.some((t: any) => t.name === "get_team"));
@@ -1340,7 +1342,7 @@ test("the developer page's catalog and security.txt are public", async () => {
   const r = await h.call(null, "GET", "/developers/mcp");
   assert.equal(r.statusCode, 200);
   const c = r.json();
-  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 61);
+  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 60);
   assert.equal(c.toolsets.length, 8);
   assert.ok(c.versioning.length >= 3);
   assert.ok(c.changelog[0].date);

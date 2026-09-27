@@ -127,6 +127,7 @@ import { inMyTeams, visibleItems } from "../../lib/visibility.js";
 import {
   addSession,
   blockById,
+  duplicateSession,
   plainBlockById,
   placeSessions,
   moveSession,
@@ -656,47 +657,9 @@ export async function plannerRoutes(app: FastifyInstance) {
   app.post("/blocks/:id/duplicate", async (r, reply) => {
     const u = await authenticate(r);
     const d = blockDuplicateInput.parse(r.body ?? {});
-    const block = await transaction(async (db) => {
-      const b = await ownBlock(db, idParam(r), u.id);
-      const open = await db.query(
-        `SELECT 1 FROM items i WHERE i.id = $2 AND i.status NOT IN ('done', 'cancelled') AND ${visibleItems()}`,
-        [u.id, b.item_id],
-      );
-      if (!open.rowCount) fail(409, "This task is done or no longer yours.");
-      const length = b.end_at.getTime() - b.start_at.getTime();
-      let slot: { start_at: string; end_at: string } | null;
-      if (d.start_at)
-        slot = {
-          start_at: new Date(d.start_at).toISOString(),
-          end_at: new Date(Date.parse(d.start_at) + length).toISOString(),
-        };
-      else {
-        slot = await workingFree(
-          db,
-          u.id,
-          length / 60000,
-          [],
-          new Date(),
-          b.end_at,
-        );
-        if (!slot)
-          fail(409, "There's no free working time in the 7 days after it.");
-      }
-      const { id } = (
-        await db.query<{ id: string }>(
-          `INSERT INTO time_blocks (item_id, user_id, start_at, end_at) VALUES ($1, $2, $3, $4) RETURNING id`,
-          [b.item_id, u.id, slot!.start_at, slot!.end_at],
-        )
-      ).rows[0];
-      const created = await blockById(db, id, u.id);
-      await queueWebhooks(
-        db,
-        "block.scheduled",
-        { user_id: u.id, team_id: null },
-        created,
-      );
-      return created;
-    });
+    const block = await transaction((db) =>
+      duplicateSession(db, u.id, idParam(r), d.start_at),
+    );
     reply.code(201);
     return block;
   });

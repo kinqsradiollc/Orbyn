@@ -11,9 +11,18 @@ import {
   learningSummary,
   placeInput,
   placeUpdate,
-  plannerPrefsInput,
+  BREAK_LEVELS,
   whatIfInput,
+  CALENDAR_KINDS,
+  calendarSubscriptionInput,
 } from "@orbyn/core";
+import { assertPublicUrl } from "../lib/netguard.js";
+import {
+  addSubscription,
+  listSubscriptions,
+  refreshSubscription,
+  removeSubscription,
+} from "../modules/planner/subscriptions.js";
 import { Params, scopeFor, visibleItems } from "../lib/visibility.js";
 import {
   whatIf as runWhatIf,
@@ -43,11 +52,11 @@ import {
   updatePlace,
 } from "../modules/planner/routines.js";
 import { READ } from "./common.js";
-import { both, cleanTitle } from "./format.js";
+import { both, clean, cleanTitle } from "./format.js";
 import { minutesText } from "./common.js";
 import { appUrl, refs } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
-import { entryOf, seeItem } from "./shared.js";
+import { entryOf, notReachable, seeItem } from "./shared.js";
 import type { UndoOp } from "./undo.js";
 import {
   ADDS,
@@ -84,7 +93,7 @@ export const getWorkPatterns = defineCapability({
   name: "get_work_patterns",
   title: "How you work",
   description:
-    "What the planner has learned: how long tasks really take against their estimates, the hours that usually go well, how much a day usually holds, planned against done over four weeks by weekday, focus totals (and the timer, if running), where planned time went, unfinished sessions from the last two weeks, and the person's routines (frames, habits, places, with ids).",
+    "What the planner learned (real durations, good hours, a day's load), planned against done by weekday, focus and the running timer, where time went, the last two weeks' unfinished sessions (check in or roll forward: reschedule_sessions), subscribed calendars and routines (frames, habits, places).",
   input: z
     .object({ days: z.number().int().min(7).max(90).default(28) })
     .strict(),
@@ -126,6 +135,8 @@ export const getWorkPatterns = defineCapability({
     }),
     unfinished: z.array(
       z.object({
+        session: z.string(),
+        checked_in: z.boolean(),
         task: z.string(),
         title: z.string(),
         start: z.object({ at: z.string(), local: z.string() }),
@@ -160,6 +171,15 @@ export const getWorkPatterns = defineCapability({
         }),
       ),
     }),
+    calendars: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        busy: z.boolean(),
+        events: z.number(),
+        error: z.string().nullable(),
+      }),
+    ),
     focus_running: z
       .object({
         task: z.string().nullable(),
@@ -204,12 +224,14 @@ export const getWorkPatterns = defineCapability({
     const scope = scopeFor(ctx.spaces, p);
     const unfinished = (
       await ctx.db.query<{
+        id: string;
         item_id: string;
         title: string;
         start_at: Date;
         end_at: Date;
+        outcome: string | null;
       }>(
-        `SELECT b.item_id, i.title, b.start_at, b.end_at
+        `SELECT b.id, b.item_id, i.title, b.start_at, b.end_at, b.outcome
            FROM time_blocks b JOIN items i ON i.id = b.item_id
           WHERE b.user_id = ${scope.user} AND b.end_at < ${p.add(ctx.now)}
             AND b.start_at > ${p.add(new Date(ctx.now.getTime() - 14 * 86_400_000))}
@@ -218,11 +240,13 @@ export const getWorkPatterns = defineCapability({
         p.values,
       )
     ).rows;
-    const [frames, habits, places, running] = await Promise.all([
+    const [frames, habits, places, running, calendars] = await Promise.all([
       loadFrames(ctx.db as never, me),
       loadHabits(ctx.db as never, me),
       loadPlaces(ctx.db as never, me),
       currentFocus(me, ctx.db),
+      // Subscribed calendars, never their links (a private link is a key).
+      ctx.principal.personal ? listSubscriptions(ctx.db, me) : [],
     ]);
     const peak = learning.rhythm.peak;
     const structured = {
@@ -263,6 +287,8 @@ export const getWorkPatterns = defineCapability({
         })),
       },
       unfinished: unfinished.map((b) => ({
+        session: b.id,
+        checked_in: b.outcome !== null,
         task: refs({ type: "task", id: b.item_id }).id,
         title: cleanTitle(b.title) || "Untitled",
         start: both(b.start_at, ctx.timezone)!,
@@ -292,6 +318,13 @@ export const getWorkPatterns = defineCapability({
           travel_minutes: p.travel_minutes,
         })),
       },
+      calendars: calendars.map((c) => ({
+        id: c.id,
+        name: cleanTitle(c.name),
+        busy: c.busy,
+        events: c.event_count,
+        error: c.last_error ? clean(c.last_error, 200) : null,
+      })),
       focus_running: running
         ? {
             task: running.state.item_id
@@ -331,7 +364,7 @@ export const whatIfCapability = defineCapability({
   name: "what_if",
   title: "What if…",
   description:
-    "Compares the plan as things are with a scenario (add tasks, days off, a moved deadline, dropped tasks) over up to 14 days, and keeps neither: planned minutes, capacity, and tasks at risk or that don't fit, before and after. At most 10 a minute.",
+    "Compares the plan as things are with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting, before and after. 10 a minute.",
   input: z
     .object({
       days: z.number().int().min(1).max(14).default(7),
@@ -442,7 +475,7 @@ export const logFocus = defineCapability({
   name: "log_focus",
   title: "Log focus time",
   description:
-    "Records a finished focus session (started_at and ended_at, optionally on a task), or adds minutes spent to a task. session_id (a uuid you make) or client_ref makes a retry the same record.",
+    "Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref makes a retry the same record.",
   input: z
     .object({
       task: z.string().trim().max(300).optional(),
@@ -532,7 +565,7 @@ export const setFocusTimer = defineCapability({
   name: "set_focus_timer",
   title: "Start or stop the focus timer",
   description:
-    'Starts the focus timer shown on all the person\'s devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.',
+    'Starts the focus timer on all the person\'s devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.',
   input: z
     .object({
       action: z.enum(["start", "stop"]),
@@ -617,7 +650,7 @@ const ROUTINE_FIELDS =
 export const manageRoutines = defineCapability({
   name: "manage_routines",
   title: "Frames, habits and places",
-  description: `Up to 25 changes to the person's routines: add or change a frame (a part of the week kept for something), a habit or a place, or skip or unskip one date of a frame. Fields: ${ROUTINE_FIELDS} Deleting goes through propose_changes; habit sessions are previewed with plan_schedule.`,
+  description: `Up to 25 changes to routines: add or change a frame (part of the week kept for something), habit or place, or skip or unskip a frame's date. Fields: ${ROUTINE_FIELDS} Deleting: propose_changes; habit sessions: plan_schedule.`,
   input: z
     .object({
       changes: z
@@ -713,33 +746,109 @@ export const manageRoutines = defineCapability({
 
 // --- update_planner_settings -------------------------------------------
 
-/** The settings an agent may change (not the time zone or digest emails). */
-export const AGENT_PREFS = plannerPrefsInput.pick({
-  work_days: true,
-  work_start: true,
-  work_end: true,
-  horizon_days: true,
-  pad_percent: true,
-  split_after_minutes: true,
-  min_block_minutes: true,
-  break_level: true,
-  buffer_before_minutes: true,
-  buffer_after_minutes: true,
-  adaptive_buffers: true,
-  default_travel_minutes: true,
-  deadline_notice_days: true,
-  learn_estimates: true,
-  learn_rhythm: true,
-  balance_load: true,
-});
+/** An id in a settings list: checked again when the settings are saved. */
+const anId = z.string().max(36);
+const int = z.number().optional();
+const flag = z.boolean().optional();
+const clockText = z.string().max(5).optional();
+const alertList = z.array(z.number()).max(5).optional();
+
+/**
+ * Every planner setting (H6a), each optional: the fields of the app's own
+ * settings input, written without its ranges and patterns (savePrefs checks
+ * the whole of it again, as the app's settings page is checked).
+ */
+export const AGENT_PREFS = z
+  .object({
+    timezone: z.string().max(80).optional(),
+    work_days: z.array(z.number()).max(7).optional(),
+    work_start: clockText.describe('"HH:MM"'),
+    work_end: clockText,
+    pad_percent: int,
+    split_after_minutes: int,
+    min_block_minutes: int,
+    break_level: z.enum(BREAK_LEVELS).optional(),
+    horizon_days: int,
+    buffer_before_minutes: int,
+    buffer_after_minutes: int,
+    adaptive_buffers: flag,
+    buffer_scope: z
+      .object({
+        personal: flag,
+        team_ids: z.array(anId).max(50).nullable().optional(),
+        list_ids: z.array(anId).max(100).optional(),
+        min_minutes: int,
+        only_with_others: flag,
+      })
+      .strict()
+      .optional(),
+    default_travel_minutes: int,
+    travel_padding_minutes: int,
+    extra_timezones: z.array(z.string().max(80)).max(3).optional(),
+    calendar_sets: z
+      .array(
+        z
+          .object({
+            id: z.string().max(40),
+            name: z.string().max(40),
+            personal: flag,
+            team_ids: z.array(anId).max(50).optional(),
+            list_ids: z.array(anId).max(100).optional(),
+            subscription_ids: z.array(anId).max(20).optional(),
+          })
+          .strict(),
+      )
+      .max(12)
+      .optional(),
+    pinned_user_ids: z.array(anId).max(20).optional(),
+    deadline_notice_days: int,
+    planner_notices: z.object({ push: flag, email: flag }).strict().optional(),
+    default_alerts: z
+      .object({ event: alertList, task: alertList, all_day: alertList })
+      .strict()
+      .optional(),
+    count_blocks_as_spent: flag,
+    session_reminder_minutes: z
+      .number()
+      .int()
+      .nullable()
+      .optional()
+      .describe("0, 5, 10 or 15; null: off."),
+    digest: z
+      .object({
+        morning: flag,
+        evening: flag,
+        morning_time: clockText,
+        evening_time: clockText,
+      })
+      .strict()
+      .optional(),
+    learn_estimates: flag,
+    learn_rhythm: flag,
+    balance_load: flag,
+  })
+  .strict();
 
 export const updatePlannerSettings = defineCapability({
   name: "update_planner_settings",
   title: "Change planner settings",
   description:
-    'Changes working days and hours ("HH:MM"), the planning horizon, padding, splitting, minimum session length, breaks, buffers, default travel time, deadline notices and the learning switches. The time zone and digest emails stay in the app. Undo puts the old values back.',
+    "Changes any planner setting (hours, time zones, calendar sets, pinned teammates, buffers, travel, alerts, session reminders, notices, digest emails, learning), keep_originals, and calendars: subscribe by link (Orbyn fetches it) or unsubscribe. Undo puts it back.",
   input: z
-    .object({ settings: AGENT_PREFS, client_ref: clientRefInput })
+    .object({
+      settings: AGENT_PREFS.optional(),
+      keep_originals: z.boolean().optional(),
+      subscribe: z
+        .object({
+          url: z.string().trim().max(1000),
+          name: z.string().trim().min(1).max(80),
+          kind: z.enum(CALENDAR_KINDS).optional(),
+        })
+        .strict()
+        .optional(),
+      unsubscribe: z.array(idField).max(20).optional(),
+      client_ref: clientRefInput,
+    })
     .strict(),
   output: writeOutput,
   annotations: EDITS,
@@ -751,25 +860,83 @@ export const updatePlannerSettings = defineCapability({
     personalOnly(ctx);
     const db = dbOf(ctx);
     const me = ctx.principal.user.id;
-    const keys = Object.keys(a.settings) as (keyof typeof a.settings)[];
-    if (!keys.length)
+    const keys = Object.keys(a.settings ?? {}) as (keyof PrefsIn)[];
+    if (
+      !keys.length &&
+      a.keep_originals === undefined &&
+      !a.subscribe &&
+      !a.unsubscribe?.length
+    )
       throw new CapabilityError("INVALID", "Name a setting to change.");
-    const before = await loadPrefs(db, me);
-    const old: Record<string, unknown> = {};
-    for (const k of keys) old[k] = (before as Record<string, unknown>)[k];
-    await savePrefs(db, me, a.settings);
-    const undo: UndoOp[] = [{ op: "prefs.restore", fields: old }];
-    return finishWrite(ctx, "Planner settings", {
-      done: [
-        {
-          id: "settings:planner",
-          title: "Planner settings",
-          url: `${appUrl()}/app`,
-          version: null,
-          change: `Changed ${keys.join(", ")}`,
-        },
-      ],
-      undo,
-    });
+    const done: DoneEntry[] = [];
+    const undo: UndoOp[] = [];
+    const after: (() => Promise<void>)[] = [];
+    const settingsUrl = `${appUrl()}/app/settings`;
+    if (keys.length) {
+      const before = await loadPrefs(db, me);
+      const old: Record<string, unknown> = {};
+      for (const k of keys) old[k] = (before as Record<string, unknown>)[k];
+      await savePrefs(db, me, a.settings as never);
+      undo.push({ op: "prefs.restore", fields: old });
+      done.push({
+        id: "settings:planner",
+        title: "Planner settings",
+        url: `${appUrl()}/app`,
+        version: null,
+        change: `Changed ${keys.join(", ")}`,
+      });
+    }
+    if (a.keep_originals !== undefined) {
+      const was = (
+        await db.query<{ keep_originals: boolean }>(
+          "SELECT keep_originals FROM users WHERE id = $1",
+          [me],
+        )
+      ).rows[0];
+      await db.query("UPDATE users SET keep_originals = $2 WHERE id = $1", [
+        me,
+        a.keep_originals,
+      ]);
+      undo.push({ op: "originals.set", keep: !!was?.keep_originals });
+      done.push({
+        id: "settings:originals",
+        title: "Keep originals",
+        url: settingsUrl,
+        version: null,
+        change: a.keep_originals ? "Turned on" : "Turned off",
+      });
+    }
+    for (const id of a.unsubscribe ?? []) {
+      const row = await removeSubscription(db, me, id);
+      if (!row) throw notReachable();
+      undo.push({ op: "subscription.restore", row });
+      done.push({
+        id: `calendar:${id}`,
+        title: cleanTitle(String(row.name)),
+        url: settingsUrl,
+        version: null,
+        change: "Unsubscribed",
+      });
+    }
+    if (a.subscribe) {
+      refuseSecrets(a.subscribe.name);
+      const d = calendarSubscriptionInput.parse(a.subscribe);
+      // The app's own check: the link must reach a public address. Orbyn
+      // fetches it (as for a calendar the person adds), never the agent path.
+      await assertPublicUrl(d.url, "calendar");
+      const sub = await addSubscription(db, me, d);
+      undo.push({ op: "subscription.delete", id: sub.id });
+      after.push(() => refreshSubscription(sub.id).then(() => undefined));
+      done.push({
+        id: `calendar:${sub.id}`,
+        title: cleanTitle(sub.name),
+        url: settingsUrl,
+        version: null,
+        change: "Subscribed; its events arrive in a moment",
+      });
+    }
+    return finishWrite(ctx, "Settings", { done, undo, after });
   },
 });
+
+type PrefsIn = z.output<typeof AGENT_PREFS>;

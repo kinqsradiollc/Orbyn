@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type { z } from "zod";
 import { createHash } from "node:crypto";
 import {
   CALENDAR_KIND_DEFAULTS,
@@ -417,60 +418,126 @@ async function ownSubscription(db: Db, id: string, userId: string) {
   return row;
 }
 
+/**
+ * Subscribe `userId` to a calendar (at most MAX_SUBSCRIPTIONS). The caller
+ * checks the link reaches a public address first (assertPublicUrl) and
+ * fetches it once this is saved (refreshSubscription). The routes and the
+ * agents' update_planner_settings share this.
+ */
+export async function addSubscription(
+  db: Db,
+  userId: string,
+  d: z.output<typeof calendarSubscriptionInput>,
+): Promise<CalendarSubscription> {
+  await db.query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE", [userId]);
+  const count = (
+    await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM calendar_subscriptions WHERE user_id = $1",
+      [userId],
+    )
+  ).rows[0].n;
+  if (count >= MAX_SUBSCRIPTIONS)
+    fail(409, `You can subscribe to ${MAX_SUBSCRIPTIONS} calendars at most.`);
+  // The kind picks the defaults; anything given explicitly wins.
+  const kind = d.kind ?? "other";
+  const preset = CALENDAR_KIND_DEFAULTS[kind];
+  return (
+    await db.query<CalendarSubscription>(
+      `INSERT INTO calendar_subscriptions (user_id, url, name, color, kind, busy,
+         all_day_busy, visible, sharing, reminder_minutes)
+       VALUES ($1, $2, $3, coalesce($4, '#6b8fb5'), $5, $6, $7, $8, $9, $10)
+       RETURNING ${COLUMNS}`,
+      [
+        userId,
+        d.url,
+        d.name,
+        d.color ?? null,
+        kind,
+        d.busy ?? preset.busy,
+        d.all_day_busy ?? preset.all_day_busy,
+        d.visible ?? true,
+        d.sharing ?? preset.sharing,
+        d.reminder_minutes === undefined
+          ? preset.reminder_minutes
+          : d.reminder_minutes,
+      ],
+    )
+  ).rows[0];
+}
+
+/** Someone's subscribed calendars, oldest first. */
+export async function listSubscriptions(db: Db, userId: string) {
+  return (
+    await db.query<CalendarSubscription>(
+      `SELECT ${COLUMNS} FROM calendar_subscriptions WHERE user_id = $1 ORDER BY created_at, id`,
+      [userId],
+    )
+  ).rows;
+}
+
+/**
+ * Unsubscribe: the calendar and its events go. Returns the settings it had
+ * (its link included, for putting it back), or null when it isn't theirs.
+ */
+export async function removeSubscription(
+  db: Db,
+  userId: string,
+  id: string,
+): Promise<Record<string, unknown> | null> {
+  return (
+    (
+      await db.query<Record<string, unknown>>(
+        `DELETE FROM calendar_subscriptions WHERE id = $1 AND user_id = $2
+         RETURNING id, url, name, color, kind, busy, all_day_busy, visible,
+                   sharing, reminder_minutes, created_at`,
+        [id, userId],
+      )
+    ).rows[0] ?? null
+  );
+}
+
+/**
+ * Put back a subscription `removeSubscription` took away. Its events come
+ * back with the next hourly refresh (it's due at once).
+ */
+export async function restoreSubscription(
+  db: Db,
+  userId: string,
+  row: Record<string, unknown>,
+) {
+  await db.query(
+    `INSERT INTO calendar_subscriptions (id, user_id, url, name, color, kind, busy,
+       all_day_busy, visible, sharing, reminder_minutes, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      row.id,
+      userId,
+      row.url,
+      row.name,
+      row.color,
+      row.kind,
+      row.busy,
+      row.all_day_busy,
+      row.visible,
+      row.sharing,
+      row.reminder_minutes,
+      row.created_at,
+    ],
+  );
+}
+
 export async function subscriptionRoutes(app: FastifyInstance) {
   app.get("/me/calendar-subscriptions", async (r) => {
     const u = await authenticate(r);
-    return (
-      await reader(r.headers).query<CalendarSubscription>(
-        `SELECT ${COLUMNS} FROM calendar_subscriptions WHERE user_id = $1 ORDER BY created_at, id`,
-        [u.id],
-      )
-    ).rows;
+    return listSubscriptions(reader(r.headers), u.id);
   });
 
   app.post("/me/calendar-subscriptions", async (r, reply) => {
     const u = await authenticate(r);
     const d = calendarSubscriptionInput.parse(r.body);
     await assertPublicUrl(d.url, "calendar");
-    const sub = await transaction(async (db) => {
-      await db.query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE", [u.id]);
-      const count = (
-        await db.query<{ n: number }>(
-          "SELECT count(*)::int AS n FROM calendar_subscriptions WHERE user_id = $1",
-          [u.id],
-        )
-      ).rows[0].n;
-      if (count >= MAX_SUBSCRIPTIONS)
-        fail(
-          409,
-          `You can subscribe to ${MAX_SUBSCRIPTIONS} calendars at most.`,
-        );
-      // The kind picks the defaults; anything given explicitly wins.
-      const kind = d.kind ?? "other";
-      const preset = CALENDAR_KIND_DEFAULTS[kind];
-      return (
-        await db.query<CalendarSubscription>(
-          `INSERT INTO calendar_subscriptions (user_id, url, name, color, kind, busy,
-             all_day_busy, visible, sharing, reminder_minutes)
-           VALUES ($1, $2, $3, coalesce($4, '#6b8fb5'), $5, $6, $7, $8, $9, $10)
-           RETURNING ${COLUMNS}`,
-          [
-            u.id,
-            d.url,
-            d.name,
-            d.color ?? null,
-            kind,
-            d.busy ?? preset.busy,
-            d.all_day_busy ?? preset.all_day_busy,
-            d.visible ?? true,
-            d.sharing ?? preset.sharing,
-            d.reminder_minutes === undefined
-              ? preset.reminder_minutes
-              : d.reminder_minutes,
-          ],
-        )
-      ).rows[0];
-    });
+    const sub = await transaction((db) => addSubscription(db, u.id, d));
     // Read it straight away, so its events (or what's wrong with the link)
     // show as soon as it's added rather than at the next hourly refresh.
     await refreshSubscription(sub.id);
@@ -524,11 +591,8 @@ export async function subscriptionRoutes(app: FastifyInstance) {
 
   app.delete("/me/calendar-subscriptions/:id", async (r, reply) => {
     const u = await authenticate(r);
-    const deleted = await pool.query(
-      "DELETE FROM calendar_subscriptions WHERE id = $1 AND user_id = $2",
-      [idParam(r), u.id],
-    );
-    if (!deleted.rowCount) fail(404, "Calendar not found");
+    if (!(await removeSubscription(pool, u.id, idParam(r))))
+      fail(404, "Calendar not found");
     return reply.code(204).send();
   });
 

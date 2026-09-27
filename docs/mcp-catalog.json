@@ -52,8 +52,7 @@
                   "start": { "type": "string" },
                   "end": { "type": "string" }
                 },
-                "required": ["days", "start", "end"],
-                "additionalProperties": false
+                "required": ["days", "start", "end"]
               }
             },
             "required": [
@@ -63,8 +62,7 @@
               "now_local",
               "today",
               "working_hours"
-            ],
-            "additionalProperties": false
+            ]
           },
           "connection": {
             "type": "object",
@@ -128,8 +126,7 @@
                   "notify_teammates",
                   "hide_outside_content",
                   "readonly"
-                ],
-                "additionalProperties": false
+                ]
               },
               "expires_at": { "type": ["string", "null"] }
             },
@@ -144,8 +141,7 @@
               "toolsets",
               "flags",
               "expires_at"
-            ],
-            "additionalProperties": false
+            ]
           },
           "teams": {
             "type": "array",
@@ -180,8 +176,7 @@
                 "agent_policy",
                 "level",
                 "trust"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "limits": {
@@ -200,8 +195,7 @@
               "search_per_minute",
               "calls_per_day",
               "calls_left_today"
-            ],
-            "additionalProperties": false
+            ]
           },
           "links": {
             "type": "object",
@@ -209,8 +203,7 @@
               "app": { "type": "string" },
               "today": { "type": "string" }
             },
-            "required": ["app", "today"],
-            "additionalProperties": false
+            "required": ["app", "today"]
           },
           "conventions": {
             "type": "object",
@@ -220,8 +213,7 @@
               "times": { "type": "string" },
               "content": { "type": "string" }
             },
-            "required": ["ids", "links", "times", "content"],
-            "additionalProperties": false
+            "required": ["ids", "links", "times", "content"]
           }
         },
         "required": [
@@ -231,14 +223,13 @@
           "limits",
           "links",
           "conventions"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
       "name": "search",
       "title": "Search Orbyn",
-      "description": "Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: \"title\", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team (\"personal\" or a team id), status and updated_after. Each result has a typed id for fetch, title, url, a snippet with matches in **bold**, the matching page line (block_id) and provenance. Pages with next_cursor.",
+      "description": "Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: \"title\", like the quick switcher), or both, ranked by match and recency. Only query is needed; filter by types, project, team (\"personal\" or a team id), status and updated_after. Each result: a typed id for fetch, title, url, a snippet with matches in **bold**, the page line (block_id) and provenance. Pages with next_cursor.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -369,14 +360,12 @@
                 "provenance",
                 "team_id",
                 "updated_at"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "next_cursor": { "type": ["string", "null"] }
         },
-        "required": ["results", "next_cursor"],
-        "additionalProperties": false
+        "required": ["results", "next_cursor"]
       }
     },
     {
@@ -462,12 +451,10 @@
               "provenance",
               "truncated",
               "next_block"
-            ],
-            "additionalProperties": false
+            ]
           }
         },
-        "required": ["id", "title", "text", "url", "metadata"],
-        "additionalProperties": false
+        "required": ["id", "title", "text", "url", "metadata"]
       }
     },
     {
@@ -509,7 +496,6 @@
               }
             },
             "required": ["at", "local"],
-            "additionalProperties": false,
             "description": "An instant, exact and local."
           },
           "url": { "type": "string", "description": "Today in the web app." },
@@ -532,13 +518,11 @@
                       }
                     },
                     "required": ["at", "local"],
-                    "additionalProperties": false,
                     "description": "An instant, exact and local."
                   },
                   "before": { "type": ["string", "null"] }
                 },
-                "required": ["minutes", "until", "before"],
-                "additionalProperties": false
+                "required": ["minutes", "until", "before"]
               },
               { "type": "null" }
             ],
@@ -573,7 +557,6 @@
                     }
                   },
                   "required": ["at", "local"],
-                  "additionalProperties": false,
                   "description": "An instant, exact and local."
                 },
                 "end": {
@@ -591,7 +574,6 @@
                         }
                       },
                       "required": ["at", "local"],
-                      "additionalProperties": false,
                       "description": "An instant, exact and local."
                     },
                     { "type": "null" }
@@ -617,8 +599,7 @@
                 "all_day",
                 "after_deadline",
                 "provenance"
-              ],
-              "additionalProperties": false
+              ]
             },
             "description": "Sessions and events today, in order; repeats expanded."
           },
@@ -643,7 +624,6 @@
                     }
                   },
                   "required": ["at", "local"],
-                  "additionalProperties": false,
                   "description": "The deadline."
                 },
                 "priority": { "type": "string" },
@@ -668,8 +648,7 @@
                 "planned_minutes",
                 "estimate_minutes",
                 "provenance"
-              ],
-              "additionalProperties": false
+              ]
             },
             "description": "The person's open tasks (own or assigned to them) due today."
           },
@@ -694,7 +673,6 @@
                     }
                   },
                   "required": ["at", "local"],
-                  "additionalProperties": false,
                   "description": "The deadline."
                 },
                 "priority": { "type": "string" },
@@ -719,8 +697,7 @@
                 "planned_minutes",
                 "estimate_minutes",
                 "provenance"
-              ],
-              "additionalProperties": false
+              ]
             },
             "description": "The person's open tasks past their deadline, latest first (at most 20)."
           },
@@ -743,15 +720,7 @@
                   "description": "\"you\", or where the title came from."
                 }
               },
-              "required": [
-                "id",
-                "title",
-                "url",
-                "minutes",
-                "why",
-                "provenance"
-              ],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "minutes", "why", "provenance"]
             },
             "description": "What to do next, with the reasons."
           },
@@ -759,7 +728,6 @@
             "type": "object",
             "properties": { "asks": { "type": "number" } },
             "required": ["asks"],
-            "additionalProperties": false,
             "description": "Teammates' requests waiting for an answer."
           }
         },
@@ -775,14 +743,13 @@
           "late_total",
           "up_next",
           "needs_you"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
       "name": "get_calendar",
       "title": "Calendar",
-      "description": "The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page's or project's \"Essay due\"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked \"calendar\", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: \"you\", \"booking_guest\" (an event a booking guest made) or \"inbound_email\" (sent in by email). free_minutes also lists free stretches that long inside working hours.",
+      "description": "The calendar from a day (default today) for up to 31 days, in the person's time zone: events (repeats expanded), task deadlines, date fields shown as deadlines (\"Essay due\"), sessions, habit sessions, travel and buffers, and subscribed calendars' events (marked \"calendar\", outside content). query filters by title words. provenance says where a title came from: \"you\", \"booking_guest\" or \"inbound_email\". free_minutes lists free stretches that long in working hours.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -856,8 +823,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "end": {
                   "anyOf": [
@@ -867,8 +833,7 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     { "type": "null" }
                   ]
@@ -889,8 +854,7 @@
                 "busy",
                 "team",
                 "provenance"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "free": {
@@ -906,8 +870,7 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     "end": {
                       "type": "object",
@@ -915,21 +878,18 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     "minutes": { "type": "number" }
                   },
-                  "required": ["start", "end", "minutes"],
-                  "additionalProperties": false
+                  "required": ["start", "end", "minutes"]
                 }
               },
               { "type": "null" }
             ]
           }
         },
-        "required": ["from", "days", "timezone", "entries", "free"],
-        "additionalProperties": false
+        "required": ["from", "days", "timezone", "entries", "free"]
       }
     },
     {
@@ -1093,8 +1053,7 @@
                   "group_by",
                   "columns",
                   "not_applied"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -1120,8 +1079,7 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     { "type": "null" }
                   ]
@@ -1151,8 +1109,7 @@
                 "updated_at",
                 "provenance",
                 "group"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "groups": {
@@ -1164,14 +1121,12 @@
                 "label": { "type": "string" },
                 "count": { "type": "number" }
               },
-              "required": ["key", "label", "count"],
-              "additionalProperties": false
+              "required": ["key", "label", "count"]
             }
           },
           "next_cursor": { "type": ["string", "null"] }
         },
-        "required": ["over", "view", "rows", "groups", "next_cursor"],
-        "additionalProperties": false
+        "required": ["over", "view", "rows", "groups", "next_cursor"]
       }
     },
     {
@@ -1223,8 +1178,7 @@
                       "at": { "type": "string" },
                       "local": { "type": "string" }
                     },
-                    "required": ["at", "local"],
-                    "additionalProperties": false
+                    "required": ["at", "local"]
                   },
                   { "type": "null" }
                 ]
@@ -1246,8 +1200,7 @@
               "team_id",
               "provenance",
               "updated_at"
-            ],
-            "additionalProperties": false
+            ]
           },
           "progress": {
             "type": "object",
@@ -1256,8 +1209,7 @@
               "tasks_done": { "type": "number" },
               "percent": { "type": "number" }
             },
-            "required": ["tasks_total", "tasks_done", "percent"],
-            "additionalProperties": false
+            "required": ["tasks_total", "tasks_done", "percent"]
           },
           "stages": {
             "type": "array",
@@ -1288,8 +1240,7 @@
                               "at": { "type": "string" },
                               "local": { "type": "string" }
                             },
-                            "required": ["at", "local"],
-                            "additionalProperties": false
+                            "required": ["at", "local"]
                           },
                           { "type": "null" }
                         ]
@@ -1312,13 +1263,11 @@
                       "assignee",
                       "estimate_minutes",
                       "provenance"
-                    ],
-                    "additionalProperties": false
+                    ]
                   }
                 }
               },
-              "required": ["id", "name", "open_tasks"],
-              "additionalProperties": false
+              "required": ["id", "name", "open_tasks"]
             }
           },
           "sessions": {
@@ -1334,8 +1283,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "end": {
                   "type": "object",
@@ -1343,8 +1291,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "minutes": { "type": "number" },
                 "provenance": {
@@ -1359,8 +1306,7 @@
                 "end",
                 "minutes",
                 "provenance"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "docs": {
@@ -1374,8 +1320,7 @@
                 "updated_at": { "type": "string" },
                 "provenance": { "type": "string" }
               },
-              "required": ["id", "title", "url", "updated_at", "provenance"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "updated_at", "provenance"]
             }
           },
           "records": {
@@ -1395,16 +1340,14 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     { "type": "null" }
                   ]
                 },
                 "gap": { "type": ["string", "null"] }
               },
-              "required": ["id", "kind", "title", "status", "due", "gap"],
-              "additionalProperties": false
+              "required": ["id", "kind", "title", "status", "due", "gap"]
             }
           },
           "activity": {
@@ -1432,8 +1375,7 @@
                 "via_agent",
                 "provenance",
                 "item_kind"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "health": {
@@ -1451,8 +1393,7 @@
               "due_this_week",
               "unscheduled_minutes",
               "at_risk"
-            ],
-            "additionalProperties": false
+            ]
           },
           "planning": {
             "type": "object",
@@ -1469,8 +1410,7 @@
                       "at": { "type": "string" },
                       "local": { "type": "string" }
                     },
-                    "required": ["at", "local"],
-                    "additionalProperties": false
+                    "required": ["at", "local"]
                   },
                   { "type": "null" }
                 ]
@@ -1487,7 +1427,6 @@
               "unestimated_tasks",
               "team_planned_minutes"
             ],
-            "additionalProperties": false,
             "description": "Your open work against the deadline; team total for admins."
           },
           "linked_here": {
@@ -1500,8 +1439,7 @@
                 "url": { "type": "string" },
                 "kind": { "type": "string" }
               },
-              "required": ["id", "title", "url", "kind"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "kind"]
             }
           },
           "pins": {
@@ -1513,8 +1451,7 @@
                 "title": { "type": "string" },
                 "url": { "type": "string" }
               },
-              "required": ["id", "title", "url"],
-              "additionalProperties": false
+              "required": ["id", "title", "url"]
             }
           }
         },
@@ -1530,8 +1467,7 @@
           "planning",
           "linked_here",
           "pins"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -1619,8 +1555,7 @@
                     "title": { "type": "string" },
                     "url": { "type": "string" }
                   },
-                  "required": ["id", "type", "title", "url"],
-                  "additionalProperties": false
+                  "required": ["id", "type", "title", "url"]
                 }
               },
               "required": [
@@ -1630,13 +1565,11 @@
                 "citation_url",
                 "provenance",
                 "source"
-              ],
-              "additionalProperties": false
+              ]
             }
           }
         },
-        "required": ["passages"],
-        "additionalProperties": false
+        "required": ["passages"]
       }
     },
     {
@@ -1674,8 +1607,7 @@
             "type": "string"
           }
         },
-        "required": ["id"],
-        "additionalProperties": false
+        "required": ["id"]
       }
     },
     {
@@ -1716,8 +1648,7 @@
       "output_schema": {
         "type": "object",
         "properties": { "text": { "type": "string" } },
-        "required": ["text"],
-        "additionalProperties": false
+        "required": ["text"]
       }
     },
     {
@@ -1758,8 +1689,7 @@
           "id": { "type": "string" },
           "url": { "type": "string" }
         },
-        "required": ["text", "id", "url"],
-        "additionalProperties": false
+        "required": ["text", "id", "url"]
       }
     },
     {
@@ -1789,14 +1719,13 @@
       "output_schema": {
         "type": "object",
         "properties": { "text": { "type": "string" } },
-        "required": ["text"],
-        "additionalProperties": false
+        "required": ["text"]
       }
     },
     {
       "name": "create_tasks",
       "title": "Add tasks or events",
-      "description": "Adds up to 25 tasks or events, from fields or a quick-add line (\"Essay fri 3pm !high 90m #uni @Sam\", parsed without AI). Sets space, project and stage, parent, list, tags, estimate, repeat, steps and invites. Events that invite people, assigning someone else (without notify-teammates) and spaces it may only suggest in go to the Review inbox. Habit lines are left out.",
+      "description": "Adds up to 25 tasks or events, from fields or a quick-add line (\"Essay fri 3pm !high 90m #uni @Sam\", parsed without AI): space, project and stage, parent, list, tags, estimate, repeat, alerts, steps and invites. Invites, assigning someone else and spaces it may only suggest in may ask first. Habit lines are left out.",
       "kind": "write",
       "access": "suggest",
       "toolset": "core",
@@ -1851,6 +1780,37 @@
                   ]
                 },
                 "all_day": { "type": "boolean" },
+                "alerts": {
+                  "description": "Minutes before (0: at the time); [] clears.",
+                  "maxItems": 5,
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 0, "maximum": 40320 }
+                },
+                "color": {
+                  "anyOf": [
+                    { "type": "string", "maxLength": 7 },
+                    { "type": "null" }
+                  ]
+                },
+                "links": {
+                  "description": "Replaces the list.",
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": { "type": "string", "maxLength": 2000 },
+                      "title": { "type": "string", "maxLength": 200 }
+                    },
+                    "required": ["url"],
+                    "additionalProperties": false
+                  }
+                },
+                "busy": {
+                  "description": "false: shown as free.",
+                  "type": "boolean"
+                },
+                "meeting_url": { "type": "string", "maxLength": 500 },
                 "priority": {
                   "type": "string",
                   "enum": ["low", "medium", "high"]
@@ -1950,8 +1910,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -1971,8 +1930,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -1985,19 +1943,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "update_tasks",
       "title": "Change tasks or events",
-      "description": "Changes up to 25 tasks or events. Only named fields change; the version you give is checked (VERSION_CONFLICT otherwise), so nothing left out is wiped. A repeating item changes as a series. Moving between Personal and a team, emailing invitees or notifying a teammate (without notify-teammates) goes to review. Undo keeps the old values.",
+      "description": "Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first. Undo keeps the old values.",
       "kind": "destructive",
       "access": "suggest",
       "toolset": "core",
@@ -2101,12 +2057,81 @@
                 },
                 "location": { "type": "string", "maxLength": 300 },
                 "team": {
-                  "description": "Move it to \"personal\" or another team (at full power made at once, with undo).",
+                  "description": "Move it to \"personal\" or another team.",
                   "type": "string",
                   "maxLength": 100
                 },
                 "skip": {
                   "description": "A repeating item: skip this one occurrence (its start).",
+                  "type": "string",
+                  "maxLength": 40,
+                  "format": "date-time"
+                },
+                "all_day": { "type": "boolean" },
+                "alerts": {
+                  "description": "Minutes before (0: at the time); [] clears.",
+                  "maxItems": 5,
+                  "type": "array",
+                  "items": { "type": "integer", "minimum": 0, "maximum": 40320 }
+                },
+                "color": {
+                  "anyOf": [
+                    { "type": "string", "maxLength": 7 },
+                    { "type": "null" }
+                  ]
+                },
+                "links": {
+                  "description": "Replaces the list.",
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": { "type": "string", "maxLength": 2000 },
+                      "title": { "type": "string", "maxLength": 200 }
+                    },
+                    "required": ["url"],
+                    "additionalProperties": false
+                  }
+                },
+                "busy": {
+                  "description": "false: shown as free.",
+                  "type": "boolean"
+                },
+                "meeting_url": { "type": "string", "maxLength": 500 },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "in_progress",
+                    "blocked",
+                    "done",
+                    "cancelled"
+                  ]
+                },
+                "rrule": {
+                  "description": "null stops the repeat.",
+                  "anyOf": [
+                    { "type": "string", "maxLength": 200 },
+                    { "type": "null" }
+                  ]
+                },
+                "parent": {
+                  "description": "A task to nest under; null: top level.",
+                  "anyOf": [
+                    { "type": "string", "maxLength": 300 },
+                    { "type": "null" }
+                  ]
+                },
+                "target_value": { "type": ["number", "null"] },
+                "current_value": { "type": ["number", "null"] },
+                "value_unit": { "type": "string", "maxLength": 16 },
+                "scope": {
+                  "description": "Change just `occurrence`, or it and later ones.",
+                  "type": "string",
+                  "enum": ["this", "following"]
+                },
+                "occurrence": {
                   "type": "string",
                   "maxLength": 40,
                   "format": "date-time"
@@ -2145,8 +2170,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -2166,8 +2190,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -2180,13 +2203,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -2262,8 +2283,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -2283,8 +2303,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -2297,19 +2316,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "edit_checklist",
       "title": "Edit a task's checklist",
-      "description": "Adds, ticks, unticks or renames checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.",
+      "description": "Adds, ticks, unticks, renames or moves (position 0 is the top) checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.",
       "kind": "destructive",
       "access": "write",
       "toolset": "core",
@@ -2354,6 +2371,19 @@
               "additionalProperties": false
             }
           },
+          "move": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "format": "uuid", "type": "string", "maxLength": 36 },
+                "position": { "type": "integer", "minimum": 0, "maximum": 1000 }
+              },
+              "required": ["id", "position"],
+              "additionalProperties": false
+            }
+          },
           "client_ref": {
             "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
             "type": "string",
@@ -2383,8 +2413,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -2404,8 +2433,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -2418,13 +2446,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -2490,8 +2516,7 @@
                 "end_at",
                 "local",
                 "part"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "moves": {
@@ -2513,8 +2538,7 @@
                 "from_start_at",
                 "start_at",
                 "end_at"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "unplaced": {
@@ -2526,8 +2550,7 @@
                 "title": { "type": "string" },
                 "reason": { "type": "string" }
               },
-              "required": ["task", "title", "reason"],
-              "additionalProperties": false
+              "required": ["task", "title", "reason"]
             }
           },
           "at_risk": {
@@ -2539,8 +2562,7 @@
                 "title": { "type": "string" },
                 "reason": { "type": "string" }
               },
-              "required": ["task", "title", "reason"],
-              "additionalProperties": false
+              "required": ["task", "title", "reason"]
             }
           },
           "planned_minutes": { "type": "number" },
@@ -2558,8 +2580,7 @@
           "free_minutes",
           "plan_token",
           "expires_at"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -2632,8 +2653,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -2653,8 +2673,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -2667,26 +2686,24 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "reschedule_sessions",
-      "title": "Move or remove sessions",
-      "description": "Moves sessions, pushes them to the next free working slot, or removes them (ids from get_calendar or fetch). Undo puts them back.",
+      "title": "Change sessions",
+      "description": "Changes sessions (ids from get_calendar, get_today or get_work_patterns): move, next_free, remove, pin (replanning leaves it), unpin, duplicate (at start_at or the next free slot), roll_forward (a past one to the next free slot), start, check_in (outcome; more_minutes with more). Undo puts them back.",
       "kind": "destructive",
       "access": "write",
       "toolset": "core",
       "mode": "write",
       "tier": "W2",
       "annotations": {
-        "title": "Move or remove sessions",
+        "title": "Change sessions",
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false,
@@ -2709,7 +2726,17 @@
                 },
                 "action": {
                   "type": "string",
-                  "enum": ["move", "next_free", "remove"]
+                  "enum": [
+                    "move",
+                    "next_free",
+                    "remove",
+                    "pin",
+                    "unpin",
+                    "duplicate",
+                    "roll_forward",
+                    "start",
+                    "check_in"
+                  ]
                 },
                 "start_at": {
                   "type": "string",
@@ -2720,6 +2747,15 @@
                   "type": "string",
                   "maxLength": 40,
                   "format": "date-time"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": ["done", "more", "skipped"]
+                },
+                "more_minutes": {
+                  "type": "integer",
+                  "minimum": 5,
+                  "maximum": 1440
                 }
               },
               "required": ["session", "action"],
@@ -2755,8 +2791,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -2776,8 +2811,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -2790,19 +2824,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "create_doc",
       "title": "Write a new page",
-      "description": "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc.",
+      "description": "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind \"agenda\" with title \"today\" or a date writes that day's agenda page from the calendar (today's again, keeping Notes).",
       "kind": "write",
       "access": "suggest",
       "toolset": "core",
@@ -2832,7 +2864,7 @@
           "kind": {
             "default": "doc",
             "type": "string",
-            "enum": ["doc", "note", "meeting"]
+            "enum": ["doc", "note", "meeting", "agenda"]
           },
           "team": {
             "description": "\"personal\" (the default), or a team id.",
@@ -2875,8 +2907,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -2896,8 +2927,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -2910,13 +2940,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -3013,8 +3041,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -3034,8 +3061,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -3048,13 +3074,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -3130,8 +3154,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -3151,8 +3174,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -3165,13 +3187,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -3270,8 +3290,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -3291,8 +3310,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -3305,19 +3323,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "propose_changes",
       "title": "Delete, move and other bigger changes",
-      "description": "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page review verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and more than 50 changes ask first, in the chat or in the Review inbox (answers with a review_url; fetch(\"proposal:<id>\") for the outcome; waits 72 hours).",
+      "description": "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; fetch(\"proposal:<id>\") for the outcome; 72 hours).",
       "kind": "destructive",
       "access": "suggest",
       "toolset": "core",
@@ -3479,8 +3495,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -3500,8 +3515,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -3514,13 +3528,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -3603,8 +3615,7 @@
               "title": { "type": "string" },
               "url": { "type": ["string", "null"] }
             },
-            "required": ["id", "type", "title", "url"],
-            "additionalProperties": false
+            "required": ["id", "type", "title", "url"]
           },
           "links": {
             "type": "array",
@@ -3646,8 +3657,7 @@
                     "title": { "type": "string" },
                     "url": { "type": ["string", "null"] }
                   },
-                  "required": ["id", "type", "title", "url"],
-                  "additionalProperties": false
+                  "required": ["id", "type", "title", "url"]
                 },
                 "line": {
                   "description": "The line the link sits on.",
@@ -3658,8 +3668,7 @@
                   "type": ["string", "null"]
                 }
               },
-              "required": ["direction", "kind", "other", "line", "block"],
-              "additionalProperties": false
+              "required": ["direction", "kind", "other", "line", "block"]
             }
           },
           "unresolved": {
@@ -3671,8 +3680,7 @@
                 "block": { "type": ["string", "null"] },
                 "target": { "type": "string" }
               },
-              "required": ["from", "block", "target"],
-              "additionalProperties": false
+              "required": ["from", "block", "target"]
             },
             "description": "Links from the project's pages to things that are gone."
           },
@@ -3684,15 +3692,13 @@
                 "id": { "type": "string" },
                 "title": { "type": "string" }
               },
-              "required": ["id", "title"],
-              "additionalProperties": false
+              "required": ["id", "title"]
             },
             "description": "The project's pages with no links."
           },
           "next_cursor": { "type": ["string", "null"] }
         },
-        "required": ["of", "links", "unresolved", "orphans", "next_cursor"],
-        "additionalProperties": false
+        "required": ["of", "links", "unresolved", "orphans", "next_cursor"]
       }
     },
     {
@@ -3757,14 +3763,12 @@
                 "job",
                 "undone_at",
                 "undo_until"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "next_cursor": { "type": ["string", "null"] }
         },
-        "required": ["changes", "next_cursor"],
-        "additionalProperties": false
+        "required": ["changes", "next_cursor"]
       }
     },
     {
@@ -3809,13 +3813,11 @@
                 "id": { "type": "string" },
                 "summary": { "type": "string" }
               },
-              "required": ["id", "summary"],
-              "additionalProperties": false
+              "required": ["id", "summary"]
             }
           }
         },
-        "required": ["undone"],
-        "additionalProperties": false
+        "required": ["undone"]
       }
     },
     {
@@ -3883,8 +3885,7 @@
                       "uri": { "type": ["string", "null"] },
                       "url": { "type": "string" }
                     },
-                    "required": ["id", "uri", "url"],
-                    "additionalProperties": false
+                    "required": ["id", "uri", "url"]
                   }
                 },
                 "next": { "type": "array", "items": { "type": "string" } },
@@ -3904,8 +3905,7 @@
                 "next",
                 "rules",
                 "note"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "unread": { "type": "number" },
@@ -3930,22 +3930,20 @@
                   "answer",
                   "answered_via",
                   "expires_at"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
           },
           "next_cursor": { "type": ["string", "null"] }
         },
-        "required": ["items", "unread", "question", "next_cursor"],
-        "additionalProperties": false
+        "required": ["items", "unread", "question", "next_cursor"]
       }
     },
     {
       "name": "ack_inbox",
       "title": "Mark inbox items",
-      "description": "Marks up to 50 of this connection's inbox items (inbox:<n>): done, snooze (back at until) or dismiss, with an optional note.",
+      "description": "Marks up to 50 of this connection's inbox items (inbox:<n>): done, snooze (back at until) or dismiss, with an optional note. notices marks the person's in-app notices read (ids from get_follow_through or get_today, or \"all\").",
       "kind": "write",
       "access": "suggest",
       "toolset": "core",
@@ -3962,7 +3960,6 @@
         "type": "object",
         "properties": {
           "ids": {
-            "minItems": 1,
             "maxItems": 50,
             "type": "array",
             "items": { "type": "string", "maxLength": 30 }
@@ -3970,6 +3967,17 @@
           "action": { "type": "string", "enum": ["done", "snooze", "dismiss"] },
           "until": { "type": "string", "maxLength": 40, "format": "date-time" },
           "note": { "type": "string", "maxLength": 500 },
+          "notices": {
+            "anyOf": [
+              { "type": "string", "const": "all" },
+              {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": { "format": "uuid", "type": "string", "maxLength": 36 }
+              }
+            ]
+          },
           "client_ref": {
             "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
             "type": "string",
@@ -3978,7 +3986,6 @@
             "pattern": "^[\\w.:@-]+$"
           }
         },
-        "required": ["ids", "action"],
         "additionalProperties": false
       },
       "output_schema": {
@@ -3993,14 +4000,13 @@
                 "state": { "type": "string" },
                 "snooze_until": { "type": ["string", "null"] }
               },
-              "required": ["id", "state", "snooze_until"],
-              "additionalProperties": false
+              "required": ["id", "state", "snooze_until"]
             }
           },
-          "missing": { "type": "array", "items": { "type": "string" } }
+          "missing": { "type": "array", "items": { "type": "string" } },
+          "notices_read": { "type": "number" }
         },
-        "required": ["acked", "missing"],
-        "additionalProperties": false
+        "required": ["acked", "missing", "notices_read"]
       }
     },
     {
@@ -4065,8 +4071,7 @@
           "answered_via",
           "choices",
           "expires_at"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -4167,13 +4172,11 @@
                       "url": { "type": "string" },
                       "change": { "type": "string" }
                     },
-                    "required": ["id", "title", "url", "change"],
-                    "additionalProperties": false
+                    "required": ["id", "title", "url", "change"]
                   }
                 }
               },
-              "required": ["id", "tool", "done"],
-              "additionalProperties": false
+              "required": ["id", "tool", "done"]
             }
           },
           "pending": {
@@ -4193,15 +4196,13 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
           }
         },
-        "required": ["status", "job", "steps", "pending"],
-        "additionalProperties": false
+        "required": ["status", "job", "steps", "pending"]
       }
     },
     {
@@ -4408,8 +4409,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -4429,8 +4429,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -4443,13 +4442,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -4557,8 +4554,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -4578,8 +4574,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -4592,13 +4587,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -4657,8 +4650,7 @@
               "title": { "type": "string" },
               "url": { "type": "string" }
             },
-            "required": ["id", "title", "url"],
-            "additionalProperties": false
+            "required": ["id", "title", "url"]
           },
           "entries": {
             "type": "array",
@@ -4674,8 +4666,7 @@
                   "type": ["string", "null"]
                 }
               },
-              "required": ["at", "what", "by", "via_agent", "ref"],
-              "additionalProperties": false
+              "required": ["at", "what", "by", "via_agent", "ref"]
             }
           },
           "comments": {
@@ -4690,8 +4681,7 @@
                 "resolved": { "type": "boolean" },
                 "at": { "type": "string" }
               },
-              "required": ["id", "body", "by", "line", "resolved", "at"],
-              "additionalProperties": false
+              "required": ["id", "body", "by", "line", "resolved", "at"]
             }
           },
           "suggestions": {
@@ -4704,8 +4694,7 @@
                 "line": { "type": "string" },
                 "status": { "type": "string" }
               },
-              "required": ["id", "by", "line", "status"],
-              "additionalProperties": false
+              "required": ["id", "by", "line", "status"]
             }
           },
           "content": {
@@ -4713,8 +4702,7 @@
             "type": ["string", "null"]
           }
         },
-        "required": ["of", "entries", "comments", "suggestions", "content"],
-        "additionalProperties": false
+        "required": ["of", "entries", "comments", "suggestions", "content"]
       }
     },
     {
@@ -4815,8 +4803,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -4836,8 +4823,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -4850,13 +4836,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -4954,8 +4938,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -4975,8 +4958,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -4989,13 +4971,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -5067,8 +5047,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -5088,8 +5067,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -5102,8 +5080,7 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           },
           "mentions_left_out": {
@@ -5117,8 +5094,7 @@
           "pending",
           "skipped",
           "mentions_left_out"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -5180,8 +5156,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -5201,8 +5176,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -5215,13 +5189,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -5283,8 +5255,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -5304,8 +5275,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -5318,13 +5288,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -5400,8 +5368,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -5421,8 +5388,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -5435,19 +5401,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "get_work_patterns",
       "title": "How you work",
-      "description": "What the planner has learned: how long tasks really take against their estimates, the hours that usually go well, how much a day usually holds, planned against done over four weeks by weekday, focus totals (and the timer, if running), where planned time went, unfinished sessions from the last two weeks, and the person's routines (frames, habits, places, with ids).",
+      "description": "What the planner learned (real durations, good hours, a day's load), planned against done by weekday, focus and the running timer, where time went, the last two weeks' unfinished sessions (check in or roll forward: reschedule_sessions), subscribed calendars and routines (frames, habits, places).",
       "kind": "read",
       "access": "read",
       "toolset": "planner",
@@ -5482,8 +5446,7 @@
               "rhythm": { "type": "string" },
               "load": { "type": "string" }
             },
-            "required": ["estimates", "rhythm", "load"],
-            "additionalProperties": false
+            "required": ["estimates", "rhythm", "load"]
           },
           "estimates": {
             "type": "object",
@@ -5493,8 +5456,7 @@
               "typical_minutes": { "type": ["number", "null"] },
               "applied": { "type": "boolean" }
             },
-            "required": ["ratio", "samples", "typical_minutes", "applied"],
-            "additionalProperties": false
+            "required": ["ratio", "samples", "typical_minutes", "applied"]
           },
           "best_hours": {
             "anyOf": [
@@ -5504,8 +5466,7 @@
                   "start_hour": { "type": "number" },
                   "end_hour": { "type": "number" }
                 },
-                "required": ["start_hour", "end_hour"],
-                "additionalProperties": false
+                "required": ["start_hour", "end_hour"]
               },
               { "type": "null" }
             ]
@@ -5523,13 +5484,11 @@
                     "planned_minutes": { "type": "number" },
                     "kept_minutes": { "type": "number" }
                   },
-                  "required": ["weekday", "planned_minutes", "kept_minutes"],
-                  "additionalProperties": false
+                  "required": ["weekday", "planned_minutes", "kept_minutes"]
                 }
               }
             },
-            "required": ["rate", "by_weekday"],
-            "additionalProperties": false
+            "required": ["rate", "by_weekday"]
           },
           "focus": {
             "type": "object",
@@ -5538,8 +5497,7 @@
               "completed": { "type": "number" },
               "cut_short": { "type": "number" }
             },
-            "required": ["work_minutes", "completed", "cut_short"],
-            "additionalProperties": false
+            "required": ["work_minutes", "completed", "cut_short"]
           },
           "time": {
             "type": "object",
@@ -5554,8 +5512,7 @@
                     "name": { "type": "string" },
                     "minutes": { "type": "number" }
                   },
-                  "required": ["name", "minutes"],
-                  "additionalProperties": false
+                  "required": ["name", "minutes"]
                 }
               },
               "by_tag": {
@@ -5566,8 +5523,7 @@
                     "name": { "type": "string" },
                     "minutes": { "type": "number" }
                   },
-                  "required": ["name", "minutes"],
-                  "additionalProperties": false
+                  "required": ["name", "minutes"]
                 }
               }
             },
@@ -5576,14 +5532,15 @@
               "completed_tasks",
               "by_list",
               "by_tag"
-            ],
-            "additionalProperties": false
+            ]
           },
           "unfinished": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
+                "session": { "type": "string" },
+                "checked_in": { "type": "boolean" },
                 "task": { "type": "string" },
                 "title": { "type": "string" },
                 "start": {
@@ -5592,13 +5549,18 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "minutes": { "type": "number" }
               },
-              "required": ["task", "title", "start", "minutes"],
-              "additionalProperties": false
+              "required": [
+                "session",
+                "checked_in",
+                "task",
+                "title",
+                "start",
+                "minutes"
+              ]
             }
           },
           "routines": {
@@ -5615,8 +5577,7 @@
                     "start": { "type": "string" },
                     "end": { "type": "string" }
                   },
-                  "required": ["id", "name", "days", "start", "end"],
-                  "additionalProperties": false
+                  "required": ["id", "name", "days", "start", "end"]
                 }
               },
               "habits": {
@@ -5638,8 +5599,7 @@
                     "period",
                     "minutes",
                     "active"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               },
               "places": {
@@ -5651,13 +5611,25 @@
                     "label": { "type": "string" },
                     "travel_minutes": { "type": "number" }
                   },
-                  "required": ["id", "label", "travel_minutes"],
-                  "additionalProperties": false
+                  "required": ["id", "label", "travel_minutes"]
                 }
               }
             },
-            "required": ["frames", "habits", "places"],
-            "additionalProperties": false
+            "required": ["frames", "habits", "places"]
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" },
+                "busy": { "type": "boolean" },
+                "events": { "type": "number" },
+                "error": { "type": ["string", "null"] }
+              },
+              "required": ["id", "name", "busy", "events", "error"]
+            }
           },
           "focus_running": {
             "anyOf": [
@@ -5668,8 +5640,7 @@
                   "phase": { "type": "string" },
                   "ends": { "type": ["string", "null"] }
                 },
-                "required": ["task", "phase", "ends"],
-                "additionalProperties": false
+                "required": ["task", "phase", "ends"]
               },
               { "type": "null" }
             ]
@@ -5684,15 +5655,15 @@
           "time",
           "unfinished",
           "routines",
+          "calendars",
           "focus_running"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
       "name": "what_if",
       "title": "What if…",
-      "description": "Compares the plan as things are with a scenario (add tasks, days off, a moved deadline, dropped tasks) over up to 14 days, and keeps neither: planned minutes, capacity, and tasks at risk or that don't fit, before and after. At most 10 a minute.",
+      "description": "Compares the plan as things are with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting, before and after. 10 a minute.",
       "kind": "read",
       "access": "read",
       "toolset": "planner",
@@ -5798,8 +5769,7 @@
               "capacity_minutes",
               "at_risk",
               "unplaced"
-            ],
-            "additionalProperties": false
+            ]
           },
           "after": {
             "type": "object",
@@ -5814,19 +5784,17 @@
               "capacity_minutes",
               "at_risk",
               "unplaced"
-            ],
-            "additionalProperties": false
+            ]
           },
           "verdict": { "type": "string" }
         },
-        "required": ["before", "after", "verdict"],
-        "additionalProperties": false
+        "required": ["before", "after", "verdict"]
       }
     },
     {
       "name": "log_focus",
       "title": "Log focus time",
-      "description": "Records a finished focus session (started_at and ended_at, optionally on a task), or adds minutes spent to a task. session_id (a uuid you make) or client_ref makes a retry the same record.",
+      "description": "Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref makes a retry the same record.",
       "kind": "write",
       "access": "write",
       "toolset": "planner",
@@ -5885,8 +5853,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -5906,8 +5873,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -5920,19 +5886,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "set_focus_timer",
       "title": "Start or stop the focus timer",
-      "description": "Starts the focus timer shown on all the person's devices (rhythm \"25-5\", \"50-10\", \"45-15\" or \"open\"; optionally on a task), or stops it.",
+      "description": "Starts the focus timer on all the person's devices (rhythm \"25-5\", \"50-10\", \"45-15\" or \"open\"; optionally on a task), or stops it.",
       "kind": "destructive",
       "access": "write",
       "toolset": "planner",
@@ -5980,8 +5944,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -6001,8 +5964,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -6015,19 +5977,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "manage_routines",
       "title": "Frames, habits and places",
-      "description": "Up to 25 changes to the person's routines: add or change a frame (a part of the week kept for something), a habit or a place, or skip or unskip one date of a frame. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time (\"HH:MM\"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event's location), travel_minutes, mode, peak_minutes. Deleting goes through propose_changes; habit sessions are previewed with plan_schedule.",
+      "description": "Up to 25 changes to routines: add or change a frame (part of the week kept for something), habit or place, or skip or unskip a frame's date. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time (\"HH:MM\"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event's location), travel_minutes, mode, peak_minutes. Deleting: propose_changes; habit sessions: plan_schedule.",
       "kind": "destructive",
       "access": "write",
       "toolset": "planner",
@@ -6102,8 +6062,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -6123,8 +6082,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -6137,19 +6095,17 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "update_planner_settings",
       "title": "Change planner settings",
-      "description": "Changes working days and hours (\"HH:MM\"), the planning horizon, padding, splitting, minimum session length, breaks, buffers, default travel time, deadline notices and the learning switches. The time zone and digest emails stay in the app. Undo puts the old values back.",
+      "description": "Changes any planner setting (hours, time zones, calendar sets, pinned teammates, buffers, travel, alerts, session reminders, notices, digest emails, learning), keep_originals, and calendars: subscribe by link (Orbyn fetches it) or unsubscribe. Undo puts it back.",
       "kind": "destructive",
       "access": "write",
       "toolset": "planner",
@@ -6168,66 +6124,177 @@
           "settings": {
             "type": "object",
             "properties": {
+              "timezone": { "type": "string", "maxLength": 80 },
               "work_days": {
-                "minItems": 1,
                 "maxItems": 7,
                 "type": "array",
-                "items": { "type": "integer", "minimum": 0, "maximum": 6 }
+                "items": { "type": "number" }
               },
               "work_start": {
+                "description": "\"HH:MM\"",
                 "type": "string",
-                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                "maxLength": 5
               },
-              "work_end": {
-                "type": "string",
-                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-              },
-              "horizon_days": { "type": "integer", "minimum": 1, "maximum": 7 },
-              "pad_percent": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 100
-              },
-              "split_after_minutes": {
-                "type": "integer",
-                "minimum": 15,
-                "maximum": 480
-              },
-              "min_block_minutes": {
-                "type": "integer",
-                "minimum": 5,
-                "maximum": 240
-              },
+              "work_end": { "type": "string", "maxLength": 5 },
+              "pad_percent": { "type": "number" },
+              "split_after_minutes": { "type": "number" },
+              "min_block_minutes": { "type": "number" },
               "break_level": {
                 "type": "string",
                 "enum": ["none", "light", "normal", "intense"]
               },
-              "buffer_before_minutes": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 120
-              },
-              "buffer_after_minutes": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 120
-              },
+              "horizon_days": { "type": "number" },
+              "buffer_before_minutes": { "type": "number" },
+              "buffer_after_minutes": { "type": "number" },
               "adaptive_buffers": { "type": "boolean" },
-              "default_travel_minutes": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 240
+              "buffer_scope": {
+                "type": "object",
+                "properties": {
+                  "personal": { "type": "boolean" },
+                  "team_ids": {
+                    "anyOf": [
+                      {
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": { "type": "string", "maxLength": 36 }
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "list_ids": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": { "type": "string", "maxLength": 36 }
+                  },
+                  "min_minutes": { "type": "number" },
+                  "only_with_others": { "type": "boolean" }
+                },
+                "additionalProperties": false
               },
-              "deadline_notice_days": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 14
+              "default_travel_minutes": { "type": "number" },
+              "travel_padding_minutes": { "type": "number" },
+              "extra_timezones": {
+                "maxItems": 3,
+                "type": "array",
+                "items": { "type": "string", "maxLength": 80 }
+              },
+              "calendar_sets": {
+                "maxItems": 12,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "maxLength": 40 },
+                    "name": { "type": "string", "maxLength": 40 },
+                    "personal": { "type": "boolean" },
+                    "team_ids": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": { "type": "string", "maxLength": 36 }
+                    },
+                    "list_ids": {
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": { "type": "string", "maxLength": 36 }
+                    },
+                    "subscription_ids": {
+                      "maxItems": 20,
+                      "type": "array",
+                      "items": { "type": "string", "maxLength": 36 }
+                    }
+                  },
+                  "required": ["id", "name"],
+                  "additionalProperties": false
+                }
+              },
+              "pinned_user_ids": {
+                "maxItems": 20,
+                "type": "array",
+                "items": { "type": "string", "maxLength": 36 }
+              },
+              "deadline_notice_days": { "type": "number" },
+              "planner_notices": {
+                "type": "object",
+                "properties": {
+                  "push": { "type": "boolean" },
+                  "email": { "type": "boolean" }
+                },
+                "additionalProperties": false
+              },
+              "default_alerts": {
+                "type": "object",
+                "properties": {
+                  "event": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": { "type": "number" }
+                  },
+                  "task": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": { "type": "number" }
+                  },
+                  "all_day": {
+                    "maxItems": 5,
+                    "type": "array",
+                    "items": { "type": "number" }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "count_blocks_as_spent": { "type": "boolean" },
+              "session_reminder_minutes": {
+                "description": "0, 5, 10 or 15; null: off.",
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "digest": {
+                "type": "object",
+                "properties": {
+                  "morning": { "type": "boolean" },
+                  "evening": { "type": "boolean" },
+                  "morning_time": { "type": "string", "maxLength": 5 },
+                  "evening_time": { "type": "string", "maxLength": 5 }
+                },
+                "additionalProperties": false
               },
               "learn_estimates": { "type": "boolean" },
               "learn_rhythm": { "type": "boolean" },
               "balance_load": { "type": "boolean" }
             },
             "additionalProperties": false
+          },
+          "keep_originals": { "type": "boolean" },
+          "subscribe": {
+            "type": "object",
+            "properties": {
+              "url": { "type": "string", "maxLength": 1000 },
+              "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "classes",
+                  "exams",
+                  "work",
+                  "meetings",
+                  "holidays",
+                  "other"
+                ]
+              }
+            },
+            "required": ["url", "name"],
+            "additionalProperties": false
+          },
+          "unsubscribe": {
+            "maxItems": 20,
+            "type": "array",
+            "items": { "format": "uuid", "type": "string", "maxLength": 36 }
           },
           "client_ref": {
             "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
@@ -6237,7 +6304,6 @@
             "pattern": "^[\\w.:@-]+$"
           }
         },
-        "required": ["settings"],
         "additionalProperties": false
       },
       "output_schema": {
@@ -6258,8 +6324,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -6279,8 +6344,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -6293,13 +6357,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -6379,8 +6441,7 @@
                 "due": { "type": "number" },
                 "known": { "type": "number" }
               },
-              "required": ["doc", "title", "url", "cards", "due", "known"],
-              "additionalProperties": false
+              "required": ["doc", "title", "url", "cards", "due", "known"]
             }
           },
           "exams": {
@@ -6396,8 +6457,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "days_left": { "type": "number" },
                 "pages": { "type": "array", "items": { "type": "string" } },
@@ -6412,8 +6472,7 @@
                 "pages",
                 "readiness",
                 "target"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "wrong": {
@@ -6426,8 +6485,7 @@
                 "misses": { "type": "number" },
                 "from": { "type": ["string", "null"] }
               },
-              "required": ["card", "question", "misses", "from"],
-              "additionalProperties": false
+              "required": ["card", "question", "misses", "from"]
             }
           },
           "queue": {
@@ -6453,8 +6511,7 @@
                 "from",
                 "picture",
                 "misses"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "left_today": { "type": ["number", "null"] },
@@ -6467,8 +6524,7 @@
                 "page": { "type": "string" },
                 "text": { "type": "string" }
               },
-              "required": ["line", "page", "text"],
-              "additionalProperties": false
+              "required": ["line", "page", "text"]
             }
           }
         },
@@ -6483,8 +6539,7 @@
           "queue",
           "left_today",
           "notes"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -6652,8 +6707,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -6673,8 +6727,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -6687,13 +6740,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -6744,8 +6795,7 @@
                 "end_at": { "type": "string" },
                 "local": { "type": "string" }
               },
-              "required": ["start_at", "end_at", "local"],
-              "additionalProperties": false
+              "required": ["start_at", "end_at", "local"]
             }
           },
           "total_minutes": { "type": "number" },
@@ -6760,8 +6810,7 @@
           "skipped_days",
           "plan_token",
           "expires_at"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -6826,8 +6875,7 @@
           },
           "marker": { "type": "string" }
         },
-        "required": ["source", "saved", "marker"],
-        "additionalProperties": false
+        "required": ["source", "saved", "marker"]
       }
     },
     {
@@ -6882,8 +6930,7 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     { "type": "null" }
                   ]
@@ -6902,8 +6949,7 @@
                 "status",
                 "due",
                 "waiting_on"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "records": {
@@ -6925,8 +6971,7 @@
                         "at": { "type": "string" },
                         "local": { "type": "string" }
                       },
-                      "required": ["at", "local"],
-                      "additionalProperties": false
+                      "required": ["at", "local"]
                     },
                     { "type": "null" }
                   ]
@@ -6940,8 +6985,7 @@
                 "owner",
                 "team",
                 "due"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "at_risk": {
@@ -6953,8 +6997,7 @@
                 "title": { "type": "string" },
                 "reason": { "type": "string" }
               },
-              "required": ["task", "title", "reason"],
-              "additionalProperties": false
+              "required": ["task", "title", "reason"]
             }
           },
           "away": {
@@ -6966,8 +7009,7 @@
                 "title": { "type": "string" },
                 "detail": { "type": "string" }
               },
-              "required": ["what", "title", "detail"],
-              "additionalProperties": false
+              "required": ["what", "title", "detail"]
             }
           },
           "finished": {
@@ -6979,8 +7021,7 @@
                 "title": { "type": "string" },
                 "proof": { "type": "array", "items": { "type": "string" } }
               },
-              "required": ["task", "title", "proof"],
-              "additionalProperties": false
+              "required": ["task", "title", "proof"]
             }
           },
           "stale_pages": {
@@ -6992,8 +7033,7 @@
                 "title": { "type": "string" },
                 "since": { "type": "string" }
               },
-              "required": ["doc", "title", "since"],
-              "additionalProperties": false
+              "required": ["doc", "title", "since"]
             }
           },
           "notices": {
@@ -7005,8 +7045,7 @@
                 "title": { "type": "string" },
                 "at": { "type": "string" }
               },
-              "required": ["id", "title", "at"],
-              "additionalProperties": false
+              "required": ["id", "title", "at"]
             }
           },
           "evidence": {
@@ -7025,8 +7064,7 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": ["before", "during"],
-                "additionalProperties": false
+                "required": ["before", "during"]
               },
               { "type": "null" }
             ]
@@ -7041,8 +7079,7 @@
           "stale_pages",
           "notices",
           "evidence"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -7102,8 +7139,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -7123,8 +7159,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -7137,13 +7172,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -7219,8 +7252,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -7240,8 +7272,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -7254,13 +7285,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -7354,8 +7383,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -7375,8 +7403,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -7389,26 +7416,25 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
       "name": "mark_notifications_read",
-      "title": "Mark notices read",
-      "description": "Marks in-app notices read: up to 100 by id (from get_follow_through or get_today), or all unread with all.",
+      "title": "Mark notices read (older tool)",
+      "description": "Deprecated: use ack_inbox with notices. Marks in-app notices read: ids, or all unread with all.",
       "kind": "destructive",
       "access": "write",
       "toolset": "followthrough",
       "mode": "write",
       "tier": "W1",
+      "legacy_only": true,
       "annotations": {
-        "title": "Mark notices read",
+        "title": "Mark notices read (older tool)",
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false,
@@ -7451,8 +7477,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -7472,8 +7497,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -7486,13 +7510,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -7536,8 +7558,7 @@
               "your_role": { "type": "string" },
               "agent_policy": { "type": "string" }
             },
-            "required": ["id", "name", "your_role", "agent_policy"],
-            "additionalProperties": false
+            "required": ["id", "name", "your_role", "agent_policy"]
           },
           "members": {
             "type": "array",
@@ -7563,8 +7584,7 @@
                         "description": "Who wrote it: \"you\", \"teammate:<name>\", or where it came from."
                       }
                     },
-                    "required": ["task", "title", "provenance"],
-                    "additionalProperties": false
+                    "required": ["task", "title", "provenance"]
                   }
                 },
                 "free_by_day": {
@@ -7576,8 +7596,7 @@
                       "level": { "type": "number" },
                       "free_minutes": { "type": ["number", "null"] }
                     },
-                    "required": ["day", "level", "free_minutes"],
-                    "additionalProperties": false
+                    "required": ["day", "level", "free_minutes"]
                   }
                 },
                 "meeting_minutes": { "type": "number" },
@@ -7598,14 +7617,12 @@
                 "free_by_day",
                 "meeting_minutes",
                 "planned_minutes_30d"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "meeting_budget_minutes": { "type": ["number", "null"] }
         },
-        "required": ["team", "members", "meeting_budget_minutes"],
-        "additionalProperties": false
+        "required": ["team", "members", "meeting_budget_minutes"]
       }
     },
     {
@@ -7659,8 +7676,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "end": {
                   "type": "object",
@@ -7668,21 +7684,18 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "disruption": {
                   "description": "How many people it cuts a focus stretch for.",
                   "type": ["number", "null"]
                 }
               },
-              "required": ["start", "end", "disruption"],
-              "additionalProperties": false
+              "required": ["start", "end", "disruption"]
             }
           }
         },
-        "required": ["slots"],
-        "additionalProperties": false
+        "required": ["slots"]
       }
     },
     {
@@ -7740,8 +7753,7 @@
                 "active": { "type": "boolean" },
                 "requires_approval": { "type": "boolean" }
               },
-              "required": ["id", "title", "active", "requires_approval"],
-              "additionalProperties": false
+              "required": ["id", "title", "active", "requires_approval"]
             }
           },
           "bookings": {
@@ -7759,8 +7771,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "end": {
                   "type": "object",
@@ -7768,8 +7779,7 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 },
                 "no_show": { "type": "boolean" },
                 "note": { "type": ["string", "null"] }
@@ -7783,8 +7793,7 @@
                 "end",
                 "no_show",
                 "note"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "total": { "type": "number" },
@@ -7801,8 +7810,7 @@
                         "question": { "type": "string" },
                         "answer": { "type": "string" }
                       },
-                      "required": ["question", "answer"],
-                      "additionalProperties": false
+                      "required": ["question", "answer"]
                     }
                   },
                   "history": {
@@ -7821,14 +7829,12 @@
                           "type": ["string", "null"]
                         }
                       },
-                      "required": ["at", "what", "by", "detail"],
-                      "additionalProperties": false
+                      "required": ["at", "what", "by", "detail"]
                     }
                   },
                   "host_note": { "type": "string" }
                 },
-                "required": ["answers", "history", "host_note"],
-                "additionalProperties": false
+                "required": ["answers", "history", "host_note"]
               },
               { "type": "null" }
             ]
@@ -7844,12 +7850,10 @@
                     "at": { "type": "string" },
                     "local": { "type": "string" }
                   },
-                  "required": ["at", "local"],
-                  "additionalProperties": false
+                  "required": ["at", "local"]
                 }
               },
-              "required": ["start"],
-              "additionalProperties": false
+              "required": ["start"]
             }
           },
           "stats": {
@@ -7867,8 +7871,7 @@
               "cancelled",
               "no_show",
               "last_30_days"
-            ],
-            "additionalProperties": false
+            ]
           },
           "invites": {
             "type": "array",
@@ -7880,8 +7883,7 @@
                 "status": { "type": "string" },
                 "expires": { "type": "string" }
               },
-              "required": ["id", "title", "status", "expires"],
-              "additionalProperties": false
+              "required": ["id", "title", "status", "expires"]
             }
           }
         },
@@ -7893,8 +7895,7 @@
           "slots",
           "stats",
           "invites"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -7983,8 +7984,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -8004,8 +8004,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -8018,13 +8017,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -8075,8 +8072,7 @@
                 "page",
                 "error",
                 "estimate_seconds"
-              ],
-              "additionalProperties": false
+              ]
             }
           },
           "can_read": {
@@ -8096,12 +8092,10 @@
               "formulas",
               "max_bytes",
               "max_pages"
-            ],
-            "additionalProperties": false
+            ]
           }
         },
-        "required": ["imports", "can_read"],
-        "additionalProperties": false
+        "required": ["imports", "can_read"]
       }
     },
     {
@@ -8156,8 +8150,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -8177,8 +8170,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -8191,8 +8183,7 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           },
           "upload_url": { "type": ["string", "null"] },
@@ -8205,8 +8196,7 @@
           "skipped",
           "upload_url",
           "upload_expires_at"
-        ],
-        "additionalProperties": false
+        ]
       }
     },
     {
@@ -8258,8 +8248,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -8279,8 +8268,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -8293,13 +8281,11 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           }
         },
-        "required": ["status", "done", "pending", "skipped"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped"]
       }
     },
     {
@@ -8353,8 +8339,7 @@
                 "version": { "type": ["number", "null"] },
                 "change": { "type": "string" }
               },
-              "required": ["id", "title", "url", "version", "change"],
-              "additionalProperties": false
+              "required": ["id", "title", "url", "version", "change"]
             }
           },
           "pending": {
@@ -8374,8 +8359,7 @@
                   "review_url",
                   "expires_at",
                   "changes"
-                ],
-                "additionalProperties": false
+                ]
               },
               { "type": "null" }
             ]
@@ -8388,8 +8372,7 @@
                 "index": { "type": "number" },
                 "reason": { "type": "string" }
               },
-              "required": ["index", "reason"],
-              "additionalProperties": false
+              "required": ["index", "reason"]
             }
           },
           "preview": {
@@ -8409,12 +8392,10 @@
               "tags_added",
               "sample",
               "errors"
-            ],
-            "additionalProperties": false
+            ]
           }
         },
-        "required": ["status", "done", "pending", "skipped", "preview"],
-        "additionalProperties": false
+        "required": ["status", "done", "pending", "skipped", "preview"]
       }
     },
     {
@@ -8470,8 +8451,7 @@
           "doc": { "type": "string" },
           "version": { "type": ["number", "null"] }
         },
-        "required": ["file", "type", "bytes", "doc", "version"],
-        "additionalProperties": false
+        "required": ["file", "type", "bytes", "doc", "version"]
       }
     }
   ],
@@ -8734,8 +8714,7 @@
         "get_follow_through",
         "add_progress",
         "answer_ask",
-        "save_record",
-        "mark_notifications_read"
+        "save_record"
       ]
     },
     { "name": "teams", "title": "Teams", "tools": ["get_team", "find_time"] },
@@ -8796,6 +8775,7 @@
     {
       "date": "2026-09-27",
       "changes": [
+        "Every feature, no gaps (H6a), by extending tools (no new ones): create_tasks and update_tasks take alerts, colour, web links, busy or free and a meeting link; update_tasks also status, all-day, targets (target_value, current_value, value_unit), a repeat change or stop (rrule, null), a new parent or top level (parent, null; cycles refused), and scope this or following with occurrence for one occurrence of a repeating item or it and later ones (one occurrence's change can be undone). edit_checklist moves steps (move: id, position). reschedule_sessions pins, unpins, duplicates, rolls forward, starts and checks in sessions (outcome done, more with more_minutes, or skipped), attributed to the agent, with undo. update_planner_settings changes every planner setting (time zone, extra time zones, calendar sets, pinned teammates, default alerts, planner notices, buffer scope, travel padding, counting sessions as spent, session reminders, digest emails), keep_originals, and subscribes to a calendar by link (Orbyn fetches it after its public-address check) or unsubscribes; get_work_patterns lists subscribed calendars (never their links) and gives each unfinished session's id and whether it was checked in. create_doc kind agenda writes a day's agenda page from the calendar (today's again, keeping Notes). ack_inbox takes notices (ids or \"all\") and marks the person's in-app notices read: mark_notifications_read is folded into it and no longer listed, but still answers when called. Answer schemas no longer repeat additionalProperties: false on every object.",
         "One call, whole job (H5): apply_plan (core) takes up to 50 steps of write tools ({id, tool, args}: create_doc, append_doc with finish, edit_doc, create_tasks, update_tasks, complete_tasks, edit_checklist, create_project, update_project, link, organize, tasks_from_doc, comment_on_doc, update_study, schedule_sessions, save_source, save_record, add_progress). Every step is checked first (tool, access, schema, spaces, $refs only to earlier steps) and a wrong plan is refused whole with a report per step. Arguments may use earlier results (\"$notes.id\", \".uri\", \".ids\", \".lines.<anchor>\", \"$proj.stages[0].id\", or \"{$notes.uri}\" inside words). The steps run in one transaction, all or nothing; anything on the ask-first list (or a connection that asks or suggests) asks once for the whole plan: in the chat, by URL, or as one Review inbox proposal that makes the whole plan when approved. Every step is recorded with one job id: undo({job}) takes the plan back. client_ref applies to the whole plan. New prompts: lecture_to_notes, research_brief, exam_prep and meeting_to_actions (the agent does the thinking and applies it with one apply_plan call). client_ref's description is shorter.",
         "Study from anything, practice first (no AI of Orbyn's: the agent writes and judges, Orbyn stores and schedules). update_study cards adds question/answer, cloze and picture cards to a page's Cards section or a new deck, each linked to the notes line it came from (from: doc:<id>#<anchor>, kept as a [src: …](orbyn://doc/…#…) link on the card's line); undo removes them. get_study queue now quizzes in practice order (cards marked needs work, then the ones most often answered again, then due, then new; decks interleaved), answers hidden, with left_today; get_study card gives one card's answer once the person has tried; get_study explain returns the person's own notes lines and cards with answers on a topic or cards so the agent can judge an explanation, and update_study needs_work records one that fell short. get_study lists what the person keeps getting wrong (wrong) and each card's source (from) and picture. update_study exam names or changes an exam (title, date, pages, target), and exam.plan books its revision sessions in the same call.",
         "Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.",
@@ -8830,5 +8810,5 @@
       ]
     }
   ],
-  "routes": { "covered": 205, "excluded": 247, "pending": 0 }
+  "routes": { "covered": 217, "excluded": 235, "pending": 0 }
 }

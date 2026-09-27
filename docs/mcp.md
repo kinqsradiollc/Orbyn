@@ -145,7 +145,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`, `append_doc`                                                                                                                                                                                                                                                                             |
 | `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                                                   |
 | `study`         | Study                               | `get_study`, `update_study`, `plan_revision`, `save_source`                                                                                                                                                                                                                                                                                                                                                                    |
-| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`, `mark_notifications_read`                                                                                                                                                                                                                                                                                                                                   |
+| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`                                                                                                                                                                                                                                                                                                                                                              |
 | `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                                               |
 | `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`, `add_file`                                                                                                                                                                                                                                                                                                                                                    |
@@ -169,7 +169,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `edit_checklist`          | Edit a task's checklist                | destructive | write, core          |
 | `plan_schedule`           | Preview a plan                         | read        | read, core           |
 | `schedule_sessions`       | Put sessions on the calendar           | write       | write, core          |
-| `reschedule_sessions`     | Move or remove sessions                | destructive | write, core          |
+| `reschedule_sessions`     | Change sessions                        | destructive | write, core          |
 | `create_doc`              | Write a new page                       | write       | suggest, core        |
 | `edit_doc`                | Edit a page                            | destructive | suggest, core        |
 | `link`                    | Link or unlink                         | write       | write, core          |
@@ -205,7 +205,6 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `add_progress`            | Add a progress note                    | write       | write, followthrough |
 | `answer_ask`              | Answer an ask                          | destructive | write, followthrough |
 | `save_record`             | Save a promise, decision or experiment | destructive | write, followthrough |
-| `mark_notifications_read` | Mark notices read                      | destructive | write, followthrough |
 | `get_team`                | Open a team                            | read        | read, teams          |
 | `find_time`               | Find a time                            | read        | read, teams          |
 | `get_bookings`            | Bookings                               | read        | read, booking        |
@@ -224,7 +223,7 @@ No arguments.
 
 ### `search`
 
-Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by how well the words match and how recently each changed. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result has a typed id for fetch, title, url, a snippet with matches in **bold**, the matching page line (block_id) and provenance. Pages with next_cursor.
+Find tasks, events, pages, projects, work records, saved views, templates, folders, lists and tags by words, by name (match: "title", like the quick switcher), or both, ranked by match and recency. Only query is needed; filter by types, project, team ("personal" or a team id), status and updated_after. Each result: a typed id for fetch, title, url, a snippet with matches in **bold**, the page line (block_id) and provenance. Pages with next_cursor.
 
 | Argument           | Type                                                                                             | Notes                                                                                                          |
 | ------------------ | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
@@ -255,7 +254,7 @@ No arguments.
 
 ### `get_calendar`
 
-The calendar from a day (default today) for up to 31 days, in the person's time zone: events with repeats expanded, task deadlines, date fields shown on the calendar as deadlines (a page's or project's "Essay due"), planned sessions, habit sessions, travel and buffer time, and events from subscribed calendars (marked "calendar", outside content). Filter by words in the title with query. Each entry's provenance says where its title came from: "you", "booking_guest" (an event a booking guest made) or "inbound_email" (sent in by email). free_minutes also lists free stretches that long inside working hours.
+The calendar from a day (default today) for up to 31 days, in the person's time zone: events (repeats expanded), task deadlines, date fields shown as deadlines ("Essay due"), sessions, habit sessions, travel and buffers, and subscribed calendars' events (marked "calendar", outside content). query filters by title words. provenance says where a title came from: "you", "booking_guest" or "inbound_email". free_minutes lists free stretches that long in working hours.
 
 | Argument       | Type    | Notes                                                            |
 | -------------- | ------- | ---------------------------------------------------------------- |
@@ -322,7 +321,7 @@ No arguments.
 
 ### `create_tasks`
 
-Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !high 90m #uni @Sam", parsed without AI). Sets space, project and stage, parent, list, tags, estimate, repeat, steps and invites. Events that invite people, assigning someone else (without notify-teammates) and spaces it may only suggest in go to the Review inbox. Habit lines are left out.
+Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !high 90m #uni @Sam", parsed without AI): space, project and stage, parent, list, tags, estimate, repeat, alerts, steps and invites. Invites, assigning someone else and spaces it may only suggest in may ask first. Habit lines are left out.
 
 | Argument           | Type           | Notes                                                                 |
 | ------------------ | -------------- | --------------------------------------------------------------------- |
@@ -331,7 +330,7 @@ Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !
 
 ### `update_tasks`
 
-Changes up to 25 tasks or events. Only named fields change; the version you give is checked (VERSION_CONFLICT otherwise), so nothing left out is wiped. A repeating item changes as a series. Moving between Personal and a team, emailing invitees or notifying a teammate (without notify-teammates) goes to review. Undo keeps the old values.
+Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first. Undo keeps the old values.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -349,7 +348,7 @@ Completes (or with done false reopens) up to 25 tasks. Each needs its version, a
 
 ### `edit_checklist`
 
-Adds, ticks, unticks or renames checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.
+Adds, ticks, unticks, renames or moves (position 0 is the top) checklist steps on one task (step ids from fetch); progress is worked out again. Removing steps goes through propose_changes.
 
 | Argument          | Type           | Notes                                                                 |
 | ----------------- | -------------- | --------------------------------------------------------------------- |
@@ -358,6 +357,7 @@ Adds, ticks, unticks or renames checklist steps on one task (step ids from fetch
 | `tick`            | list of id     |                                                                       |
 | `untick`          | list of id     |                                                                       |
 | `rename`          | list of object |                                                                       |
+| `move`            | list of object |                                                                       |
 | `client_ref`      | string         | Idempotency key: sent again within 24 h, the first answer comes back. |
 
 ### `plan_schedule`
@@ -384,7 +384,7 @@ Adds sessions to the person's calendar: a plan_token's plan (from plan_schedule 
 
 ### `reschedule_sessions`
 
-Moves sessions, pushes them to the next free working slot, or removes them (ids from get_calendar or fetch). Undo puts them back.
+Changes sessions (ids from get_calendar, get_today or get_work_patterns): move, next_free, remove, pin (replanning leaves it), unpin, duplicate (at start_at or the next free slot), roll_forward (a past one to the next free slot), start, check_in (outcome; more_minutes with more). Undo puts them back.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -393,19 +393,19 @@ Moves sessions, pushes them to the next free working slot, or removes them (ids 
 
 ### `create_doc`
 
-Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc.
+Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day's agenda page from the calendar (today's again, keeping Notes).
 
-| Argument           | Type                     | Notes                                                                 |
-| ------------------ | ------------------------ | --------------------------------------------------------------------- |
-| `title` (required) | string                   |                                                                       |
-| `markdown`         | string                   | The page's lines (or template instead).                               |
-| `template`         | string                   | A page template's id, or a starter's (search types: template).        |
-| `kind`             | `doc`, `note`, `meeting` | Default "doc".                                                        |
-| `team`             | string                   | "personal" (the default), or a team id.                               |
-| `folder_id`        | id                       |                                                                       |
-| `project`          | string                   |                                                                       |
-| `event`            | string                   | An event this page is the notes of `(event:<id>)`.                    |
-| `client_ref`       | string                   | Idempotency key: sent again within 24 h, the first answer comes back. |
+| Argument           | Type                               | Notes                                                                 |
+| ------------------ | ---------------------------------- | --------------------------------------------------------------------- |
+| `title` (required) | string                             |                                                                       |
+| `markdown`         | string                             | The page's lines (or template instead).                               |
+| `template`         | string                             | A page template's id, or a starter's (search types: template).        |
+| `kind`             | `doc`, `note`, `meeting`, `agenda` | Default "doc".                                                        |
+| `team`             | string                             | "personal" (the default), or a team id.                               |
+| `folder_id`        | id                                 |                                                                       |
+| `project`          | string                             |                                                                       |
+| `event`            | string                             | An event this page is the notes of `(event:<id>)`.                    |
+| `client_ref`       | string                             | Idempotency key: sent again within 24 h, the first answer comes back. |
 
 ### `edit_doc`
 
@@ -450,7 +450,7 @@ Starts a personal or team project with stages, first tasks and an optional main 
 
 ### `propose_changes`
 
-Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page review verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and more than 50 changes ask first, in the chat or in the Review inbox (answers with a review_url; `fetch("proposal:<id>")` for the outcome; waits 72 hours).
+Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; `fetch("proposal:<id>")` for the outcome; 72 hours).
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -505,15 +505,16 @@ This connection's inbox of what happened in Orbyn (bookings, mentions, invites, 
 
 ### `ack_inbox`
 
-Marks up to 50 of this connection's inbox items `(inbox:<n>)`: done, snooze (back at until) or dismiss, with an optional note.
+Marks up to 50 of this connection's inbox items `(inbox:<n>)`: done, snooze (back at until) or dismiss, with an optional note. notices marks the person's in-app notices read (ids from get_follow_through or get_today, or "all").
 
-| Argument            | Type                        | Notes                                                                 |
-| ------------------- | --------------------------- | --------------------------------------------------------------------- |
-| `ids` (required)    | list of string              |                                                                       |
-| `action` (required) | `done`, `snooze`, `dismiss` |                                                                       |
-| `until`             | ISO 8601 instant            |                                                                       |
-| `note`              | string                      |                                                                       |
-| `client_ref`        | string                      | Idempotency key: sent again within 24 h, the first answer comes back. |
+| Argument     | Type                        | Notes                                                                 |
+| ------------ | --------------------------- | --------------------------------------------------------------------- |
+| `ids`        | list of string              |                                                                       |
+| `action`     | `done`, `snooze`, `dismiss` |                                                                       |
+| `until`      | ISO 8601 instant            |                                                                       |
+| `note`       | string                      |                                                                       |
+| `notices`    | `all` or list of id         |                                                                       |
+| `client_ref` | string                      | Idempotency key: sent again within 24 h, the first answer comes back. |
 
 ### `ask_person`
 
@@ -671,7 +672,7 @@ For pages longer than create_doc takes (a lecture transcript, a long brief): sen
 
 ### `get_work_patterns`
 
-What the planner has learned: how long tasks really take against their estimates, the hours that usually go well, how much a day usually holds, planned against done over four weeks by weekday, focus totals (and the timer, if running), where planned time went, unfinished sessions from the last two weeks, and the person's routines (frames, habits, places, with ids).
+What the planner learned (real durations, good hours, a day's load), planned against done by weekday, focus and the running timer, where time went, the last two weeks' unfinished sessions (check in or roll forward: reschedule_sessions), subscribed calendars and routines (frames, habits, places).
 
 | Argument | Type    | Notes       |
 | -------- | ------- | ----------- |
@@ -679,7 +680,7 @@ What the planner has learned: how long tasks really take against their estimates
 
 ### `what_if`
 
-Compares the plan as things are with a scenario (add tasks, days off, a moved deadline, dropped tasks) over up to 14 days, and keeps neither: planned minutes, capacity, and tasks at risk or that don't fit, before and after. At most 10 a minute.
+Compares the plan as things are with a scenario (added tasks, days off, a moved deadline, dropped tasks) over up to 14 days, keeping neither: minutes, capacity and tasks at risk or not fitting, before and after. 10 a minute.
 
 | Argument    | Type           | Notes      |
 | ----------- | -------------- | ---------- |
@@ -691,7 +692,7 @@ Compares the plan as things are with a scenario (add tasks, days off, a moved de
 
 ### `log_focus`
 
-Records a finished focus session (started_at and ended_at, optionally on a task), or adds minutes spent to a task. session_id (a uuid you make) or client_ref makes a retry the same record.
+Records a finished focus session (started_at, ended_at, optionally a task), or adds minutes spent to a task. session_id (your uuid) or client_ref makes a retry the same record.
 
 | Argument             | Type             | Notes                                                                 |
 | -------------------- | ---------------- | --------------------------------------------------------------------- |
@@ -705,7 +706,7 @@ Records a finished focus session (started_at and ended_at, optionally on a task)
 
 ### `set_focus_timer`
 
-Starts the focus timer shown on all the person's devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.
+Starts the focus timer on all the person's devices (rhythm "25-5", "50-10", "45-15" or "open"; optionally on a task), or stops it.
 
 | Argument            | Type            | Notes                                                                 |
 | ------------------- | --------------- | --------------------------------------------------------------------- |
@@ -716,7 +717,7 @@ Starts the focus timer shown on all the person's devices (rhythm "25-5", "50-10"
 
 ### `manage_routines`
 
-Up to 25 changes to the person's routines: add or change a frame (a part of the week kept for something), a habit or a place, or skip or unskip one date of a frame. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event's location), travel_minutes, mode, peak_minutes. Deleting goes through propose_changes; habit sessions are previewed with plan_schedule.
+Up to 25 changes to routines: add or change a frame (part of the week kept for something), habit or place, or skip or unskip a frame's date. Fields: frame: name, days (0-6, Sunday 0) or rrule, start_time, end_time ("HH:MM"), busy, filters; habit: name, cadence, period (day or week), duration_minutes, days, window_start, window_end, priority, active; place: label, match (text in an event's location), travel_minutes, mode, peak_minutes. Deleting: propose_changes; habit sessions: plan_schedule.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -725,12 +726,15 @@ Up to 25 changes to the person's routines: add or change a frame (a part of the 
 
 ### `update_planner_settings`
 
-Changes working days and hours ("HH:MM"), the planning horizon, padding, splitting, minimum session length, breaks, buffers, default travel time, deadline notices and the learning switches. The time zone and digest emails stay in the app. Undo puts the old values back.
+Changes any planner setting (hours, time zones, calendar sets, pinned teammates, buffers, travel, alerts, session reminders, notices, digest emails, learning), keep_originals, and calendars: subscribe by link (Orbyn fetches it) or unsubscribe. Undo puts it back.
 
-| Argument              | Type   | Notes                                                                 |
-| --------------------- | ------ | --------------------------------------------------------------------- |
-| `settings` (required) | object |                                                                       |
-| `client_ref`          | string | Idempotency key: sent again within 24 h, the first answer comes back. |
+| Argument         | Type       | Notes                                                                 |
+| ---------------- | ---------- | --------------------------------------------------------------------- |
+| `settings`       | object     |                                                                       |
+| `keep_originals` | boolean    |                                                                       |
+| `subscribe`      | object     |                                                                       |
+| `unsubscribe`    | list of id |                                                                       |
+| `client_ref`     | string     | Idempotency key: sent again within 24 h, the first answer comes back. |
 
 ### `get_study`
 
@@ -843,16 +847,6 @@ Creates a promise, decision or experiment (in Personal or a team, optionally in 
 | `source_page` | string                                                 | `doc:<id>#<line>`.                                                    |
 | `about_task`  | string                                                 |                                                                       |
 | `client_ref`  | string                                                 | Idempotency key: sent again within 24 h, the first answer comes back. |
-
-### `mark_notifications_read`
-
-Marks in-app notices read: up to 100 by id (from get_follow_through or get_today), or all unread with all.
-
-| Argument     | Type       | Notes                                                                 |
-| ------------ | ---------- | --------------------------------------------------------------------- |
-| `ids`        | list of id |                                                                       |
-| `all`        | boolean    |                                                                       |
-| `client_ref` | string     | Idempotency key: sent again within 24 h, the first answer comes back. |
 
 ### `get_team`
 
@@ -1011,6 +1005,7 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 - `search_items`: Kept for older connections; search is the newer tool. Open tasks and events whose title or notes contain every word, with each id and a link that opens it in Orbyn.
 - `add_task`: Kept for older connections; adds a task to the person's own planner. The answer has the new task's id and a link that opens it in Orbyn.
 - `get_agenda`: Kept for older connections; get_today and get_calendar are the newer tools. Open tasks due and events from the start of today through the next few days (default 7, at most 31), in the person's time zone, repeating events once per occurrence, subscribed calendars included.
+- `mark_notifications_read`: Deprecated: use ack_inbox with notices. Marks in-app notices read: ids, or all unread with all.
 
 ## Versioning and deprecation
 
@@ -1026,6 +1021,7 @@ Catalog version: `2026-09-27`.
 
 ### 2026-09-27
 
+- Every feature, no gaps (H6a), by extending tools (no new ones): create_tasks and update_tasks take alerts, colour, web links, busy or free and a meeting link; update_tasks also status, all-day, targets (target_value, current_value, value_unit), a repeat change or stop (rrule, null), a new parent or top level (parent, null; cycles refused), and scope this or following with occurrence for one occurrence of a repeating item or it and later ones (one occurrence's change can be undone). edit_checklist moves steps (move: id, position). reschedule_sessions pins, unpins, duplicates, rolls forward, starts and checks in sessions (outcome done, more with more_minutes, or skipped), attributed to the agent, with undo. update_planner_settings changes every planner setting (time zone, extra time zones, calendar sets, pinned teammates, default alerts, planner notices, buffer scope, travel padding, counting sessions as spent, session reminders, digest emails), keep_originals, and subscribes to a calendar by link (Orbyn fetches it after its public-address check) or unsubscribes; get_work_patterns lists subscribed calendars (never their links) and gives each unfinished session's id and whether it was checked in. create_doc kind agenda writes a day's agenda page from the calendar (today's again, keeping Notes). ack_inbox takes notices (ids or "all") and marks the person's in-app notices read: mark_notifications_read is folded into it and no longer listed, but still answers when called. Answer schemas no longer repeat additionalProperties: false on every object.
 - One call, whole job (H5): apply_plan (core) takes up to 50 steps of write tools ({id, tool, args}: create_doc, append_doc with finish, edit_doc, create_tasks, update_tasks, complete_tasks, edit_checklist, create_project, update_project, link, organize, tasks_from_doc, comment_on_doc, update_study, schedule_sessions, save_source, save_record, add_progress). Every step is checked first (tool, access, schema, spaces, $refs only to earlier steps) and a wrong plan is refused whole with a report per step. Arguments may use earlier results ("$notes.id", ".uri", ".ids", `".lines.<anchor>"`, "$proj.stages[0].id", or "{$notes.uri}" inside words). The steps run in one transaction, all or nothing; anything on the ask-first list (or a connection that asks or suggests) asks once for the whole plan: in the chat, by URL, or as one Review inbox proposal that makes the whole plan when approved. Every step is recorded with one job id: undo({job}) takes the plan back. client_ref applies to the whole plan. New prompts: lecture_to_notes, research_brief, exam_prep and meeting_to_actions (the agent does the thinking and applies it with one apply_plan call). client_ref's description is shorter.
 - Study from anything, practice first (no AI of Orbyn's: the agent writes and judges, Orbyn stores and schedules). update_study cards adds question/answer, cloze and picture cards to a page's Cards section or a new deck, each linked to the notes line it came from (from: `doc:<id>#<anchor>`, kept as a [src: …](orbyn://doc/…#…) link on the card's line); undo removes them. get_study queue now quizzes in practice order (cards marked needs work, then the ones most often answered again, then due, then new; decks interleaved), answers hidden, with left_today; get_study card gives one card's answer once the person has tried; get_study explain returns the person's own notes lines and cards with answers on a topic or cards so the agent can judge an explanation, and update_study needs_work records one that fell short. get_study lists what the person keeps getting wrong (wrong) and each card's source (from) and picture. update_study exam names or changes an exam (title, date, pages, target), and exam.plan books its revision sessions in the same call.
 - Full power: a connection that may change things now does so directly, deletes, moves and restoring versions included, each with 30 days to undo. Only the ask-first list asks the person first: a teammate's work, inviting or emailing people, publishing, bookings with people they haven't met, team admin, their profile, and more than 50 changes at once. People set each connection (and each space) to full power, ask first or suggest only, and can let it do ask-first items alone.
@@ -1060,4 +1056,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 205 of the app's signed-in routes are covered by tools, 247 are never for agents, and 0 are still to come.
+Routes: 217 of the app's signed-in routes are covered by tools, 235 are never for agents, and 0 are still to come.

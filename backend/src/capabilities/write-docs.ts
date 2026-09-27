@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   blockText,
+  isDateKey,
+  localDateKey,
   carryBlockIds,
   moveSection,
   newBlockId,
@@ -21,6 +23,11 @@ import {
 import { announceDocChange } from "../modules/docs/live.js";
 import { usePageTemplateById } from "../modules/templates/pages.js";
 import { syncSavedPages } from "../modules/study/service.js";
+import {
+  rewriteAgenda,
+  todaysAgendaIfWritten,
+  writeAgendaOn,
+} from "../modules/docs/agenda.js";
 import { cleanTitle } from "./format.js";
 import { readMarkdown } from "./doc-markdown.js";
 import { docId, projectId, teamFilter } from "./common.js";
@@ -35,6 +42,7 @@ import {
   ADDS,
   EDITS,
   actorOf,
+  cantWait,
   clientRefInput,
   dbOf,
   destination,
@@ -99,11 +107,64 @@ export const afterSave = (
 
 // --- create_doc --------------------------------------------------------
 
+/**
+ * A day's agenda page, written from the calendar alone (never the hosted
+ * assistant's brief): today's is written again when it's there (Notes and
+ * what follows are kept); another day's is written once. H6a.
+ */
+async function agendaPage(ctx: CapabilityContext, title: string) {
+  if (!ctx.principal.personal)
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "The agenda is the person's own: the connection needs Personal.",
+    );
+  if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
+  const me = ctx.principal.user.id;
+  const today = localDateKey(ctx.now, ctx.timezone);
+  const date = title.toLowerCase() === "today" ? today : title;
+  if (!isDateKey(date))
+    throw new CapabilityError(
+      "INVALID",
+      'An agenda\'s title is "today" or a date like 2026-09-24.',
+    );
+  let made: {
+    doc: { id: string; title: string; version: number };
+    created: boolean;
+  } | null;
+  if (date === today && (await todaysAgendaIfWritten(me, ctx.now)))
+    made = {
+      doc: await rewriteAgenda(me, { withBrief: false, now: ctx.now }),
+      created: false,
+    };
+  else made = await writeAgendaOn(me, date, ctx.now);
+  if (!made)
+    throw new CapabilityError(
+      "INVALID",
+      "The agenda goes back a year and ahead two months.",
+    );
+  const doc = made.doc;
+  return finishWrite(ctx, "Agenda", {
+    done: [
+      {
+        id: `doc:${doc.id}`,
+        title: cleanTitle(doc.title) || "Agenda",
+        url: refUrl({ type: "doc", id: doc.id }),
+        version: doc.version,
+        change: made.created ? "Written" : "Written again from the calendar",
+      },
+    ],
+    undo: made.created
+      ? [{ op: "doc.trash", doc_id: doc.id, version: doc.version }]
+      : [],
+    after: made.created ? [() => syncSavedPages(doc.id)] : [],
+  });
+}
+
 export const createDocCapability = defineCapability({
   name: "create_doc",
   title: "Write a new page",
   description:
-    "Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc.",
+    'Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event\'s notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day\'s agenda page from the calendar (today\'s again, keeping Notes).',
   input: z
     .object({
       title: z.string().trim().min(1).max(200),
@@ -120,7 +181,7 @@ export const createDocCapability = defineCapability({
         .describe(
           "A page template's id, or a starter's (search types: template).",
         ),
-      kind: z.enum(["doc", "note", "meeting"]).default("doc"),
+      kind: z.enum(["doc", "note", "meeting", "agenda"]).default("doc"),
       team: z
         .string()
         .trim()
@@ -148,6 +209,7 @@ export const createDocCapability = defineCapability({
     refuseSecrets(a.title, a.markdown);
     const team = teamFilter(a.team);
     const teamId = team && "team" in team ? team.team : null;
+    if (a.kind === "agenda") return agendaPage(ctx, a.title);
     if (a.template) return fromTemplate(ctx, a, teamId);
     if (a.markdown === undefined)
       throw new CapabilityError(

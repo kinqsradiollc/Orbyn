@@ -875,7 +875,7 @@ export const proposeChanges = defineCapability({
   name: "propose_changes",
   title: "Delete, move and other bigger changes",
   description:
-    "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page review verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and more than 50 changes ask first, in the chat or in the Review inbox (answers with a review_url; fetch(\"proposal:<id>\") for the outcome; waits 72 hours).",
+    "Deletes (delete_task, delete_doc, delete_project, delete with what), removes checklist steps or sessions, restores a page version, moves a task between Personal and a team, invites people to an event, gives a page verdict (review_doc) or unlinks. At full power the person's own things change at once (undo for 30 days); a teammate's work, invites and over 50 changes ask first, in the chat or the Review inbox (a review_url; fetch(\"proposal:<id>\") for the outcome; 72 hours).",
   input: z
     .object({
       summary: z

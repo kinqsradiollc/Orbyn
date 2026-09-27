@@ -170,9 +170,10 @@ function allows(
     access: AgentAccess;
     toolset: AgentToolset;
     legacyOnly?: boolean;
+    aliasOf?: string;
   },
 ): boolean {
-  if (cap.legacyOnly && p.via !== "legacy_key") return false;
+  if (cap.legacyOnly && !cap.aliasOf && p.via !== "legacy_key") return false;
   if (!p.toolsets.includes(cap.toolset)) return false;
   const ceiling: AgentAccess = p.flags.readonly ? "read" : p.access;
   return AGENT_ACCESS_RANK[cap.access] <= AGENT_ACCESS_RANK[ceiling];

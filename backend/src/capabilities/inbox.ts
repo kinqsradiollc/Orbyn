@@ -41,7 +41,15 @@ import {
   defineCapability,
   type CapabilityContext,
 } from "./registry.js";
-import { ADDS, clientRefInput, dbOf, isoTime, refuseSecrets } from "./write.js";
+import { markNotices } from "./followthrough.js";
+import {
+  ADDS,
+  clientRefInput,
+  dbOf,
+  idField,
+  isoTime,
+  refuseSecrets,
+} from "./write.js";
 
 /**
  * Everything routes to your agent (Agent 2, H0). Each connection has an
@@ -416,13 +424,16 @@ export const ackInbox = defineCapability({
   name: "ack_inbox",
   title: "Mark inbox items",
   description:
-    "Marks up to 50 of this connection's inbox items (inbox:<n>): done, snooze (back at until) or dismiss, with an optional note.",
+    "Marks up to 50 of this connection's inbox items (inbox:<n>): done, snooze (back at until) or dismiss, with an optional note. notices marks the person's in-app notices read (ids from get_follow_through or get_today, or \"all\").",
   input: z
     .object({
-      ids: z.array(inboxId).min(1).max(50),
-      action: z.enum(AGENT_INBOX_ACKS),
+      ids: z.array(inboxId).max(50).optional(),
+      action: z.enum(AGENT_INBOX_ACKS).optional(),
       until: isoTime.optional(),
       note: z.string().trim().max(500).optional(),
+      notices: z
+        .union([z.literal("all"), z.array(idField).min(1).max(100)])
+        .optional(),
       client_ref: clientRefInput,
     })
     .strict(),
@@ -435,6 +446,7 @@ export const ackInbox = defineCapability({
       }),
     ),
     missing: z.array(z.string()),
+    notices_read: z.number(),
   }),
   annotations: ADDS,
   access: "suggest",
@@ -443,6 +455,21 @@ export const ackInbox = defineCapability({
   tier: "W1",
   async run(ctx, a) {
     const p = ctx.principal;
+    const ids = [...new Set(a.ids ?? [])];
+    if (!ids.length && !a.notices)
+      throw new CapabilityError("INVALID", "Give inbox ids, or notices.");
+    if (ids.length && !a.action)
+      throw new CapabilityError(
+        "INVALID",
+        "Say what to do with them: done, snooze or dismiss.",
+      );
+    const notices = a.notices ? await markNotices(ctx, a.notices) : 0;
+    if (!ids.length)
+      return {
+        structured: { acked: [], missing: [], notices_read: notices },
+        markdown: `${notices} notice${notices === 1 ? "" : "s"} marked read.`,
+        targets: [],
+      };
     if (!p.grant_id)
       throw new CapabilityError(
         "INVALID",
@@ -467,7 +494,6 @@ export const ackInbox = defineCapability({
         : a.action === "snooze"
           ? "snoozed"
           : "dismissed";
-    const ids = [...new Set(a.ids)];
     const rows = (
       await dbOf(ctx).query<{
         id: string;
@@ -489,8 +515,8 @@ export const ackInbox = defineCapability({
     }));
     const missing = ids.filter((i) => !found.has(i)).map((i) => `inbox:${i}`);
     return {
-      structured: { acked, missing },
-      markdown: `${acked.length} marked ${state}${until ? ` until ${localTime(until, ctx.timezone)}` : ""}.${missing.length ? ` Not in this inbox: ${missing.join(", ")}.` : ""}`,
+      structured: { acked, missing, notices_read: notices },
+      markdown: `${acked.length} marked ${state}${until ? ` until ${localTime(until, ctx.timezone)}` : ""}.${missing.length ? ` Not in this inbox: ${missing.join(", ")}.` : ""}${a.notices ? ` ${notices} notice${notices === 1 ? "" : "s"} marked read.` : ""}`,
       targets: acked.map((x) => x.id),
     };
   },

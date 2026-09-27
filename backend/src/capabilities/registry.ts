@@ -178,6 +178,13 @@ export type Capability<
   jsonText?: boolean;
   /** Only for old personal API keys on the legacy address (aliases). */
   legacyOnly?: boolean;
+  /**
+   * A retired tool name kept for connections that still call it, run by the
+   * tool it was folded into (named here). With legacyOnly it stays out of
+   * tools/list and the budgets, but any connection allowed its toolset may
+   * still call it.
+   */
+  aliasOf?: string;
   /** Extra `_meta` on the tool as tools/list gives it (e.g. openai/profile). */
   meta?: Record<string, unknown>;
   /** Counted against the lower search limit, or the CPU-heavy one. */
@@ -217,7 +224,25 @@ function jsonSchema(schema: z.ZodType, io: "input" | "output"): ObjectSchema {
   delete out.$schema;
   if (out.type !== "object")
     throw new Error("Tool schemas must describe an object.");
+  if (io === "output") looseAnswers(out);
   return out as ObjectSchema;
+}
+
+/**
+ * Drops `additionalProperties: false` from an answer's schema. Inputs stay
+ * strict (an unknown field is refused); an answer only ever carries what
+ * its schema names, so saying so again on every object is tokens a client
+ * reads for nothing (H6a's budget).
+ */
+function looseAnswers(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const x of node) looseAnswers(x);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const o = node as Record<string, unknown>;
+  if (o.additionalProperties === false) delete o.additionalProperties;
+  for (const v of Object.values(o)) looseAnswers(v);
 }
 
 /** tools/list's entry for a capability (computed once). */
@@ -251,7 +276,7 @@ export class Registry {
   }
   /** What `p` may call, in the registry's order (stable for caches). */
   for(p: Principal): Capability[] {
-    return this.all.filter((c) => policy.allows(p, c));
+    return this.all.filter((c) => !c.aliasOf && policy.allows(p, c));
   }
   /**
    * Adds capabilities for a while (tests of tools a later phase brings):

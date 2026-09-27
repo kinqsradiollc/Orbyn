@@ -21,8 +21,6 @@ import {
 } from "../planner/calendar.js";
 import { habitBlocksIn } from "../planner/habits.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
-import { complete } from "../ai/providers/adapters.js";
-import { resolveAi } from "../ai/providers/resolve.js";
 import { keptOutFor } from "../../lib/assistant-off.js";
 import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
@@ -250,6 +248,12 @@ function factsOf(full: Day, now: Date) {
  * the agenda is written either way.
  */
 export async function briefFor(day: Day, now: Date): Promise<string | null> {
+  // Loaded only when a brief is asked for: the calendar-only pages (and
+  // agents' create_doc agenda) never load the AI provider at all.
+  const [{ resolveAi }, { complete }] = await Promise.all([
+    import("../ai/providers/resolve.js"),
+    import("../ai/providers/adapters.js"),
+  ]);
   const ai = await resolveAi().catch(() => null);
   if (!ai) return null;
   try {
