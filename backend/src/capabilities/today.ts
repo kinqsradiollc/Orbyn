@@ -185,7 +185,8 @@ export async function todayForPrincipal(
   })();
   const taskRows = list.rows.filter((r) => r.kind === "task" && r.item_id);
   // What the list doesn't carry for a task: its priority and estimate, and
-  // the minutes of the person's sessions that end before its deadline.
+  // the minutes of the person's sessions that end by its deadline (the
+  // moment the list names, `deadlineOf`: the end of an all-day task's day).
   const extrasQuery = (() => {
     const p = new Params();
     const scope = scopeFor(spaces, p);
@@ -195,10 +196,12 @@ export async function todayForPrincipal(
                    coalesce((SELECT sum(extract(epoch FROM b.end_at - b.start_at) / 60)
                                FROM time_blocks b
                               WHERE b.item_id = i.id AND b.user_id = ${scope.user}
-                                AND b.end_at <= i.due_at), 0)::int AS planned_minutes
+                                AND b.end_at <= d.deadline), 0)::int AS planned_minutes
               FROM items i
-             WHERE i.id = ANY (${p.add(taskRows.map((r) => r.item_id))}::uuid[])
-               AND ${visibleItems("i", scope)}`,
+              JOIN unnest(${p.add(taskRows.map((r) => r.item_id))}::uuid[],
+                          ${p.add(taskRows.map((r) => r.deadline_at))}::timestamptz[])
+                AS d(id, deadline) ON d.id = i.id
+             WHERE ${visibleItems("i", scope)}`,
       values: p.values,
     };
   })();

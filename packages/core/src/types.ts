@@ -718,7 +718,11 @@ export type ItemSessions = {
   project_deadline: string | null;
   /** Earliest deadline of an open task that depends on this one, directly or through a chain. */
   dependent_deadline?: string | null;
-  /** The earlier target used by planning, without changing the task's due date. */
+  /**
+   * The deadline its time and status are measured against now (see
+   * `fitDeadline`): the earlier of its own and its latest date while that
+   * is still ahead, else its own. Never changes the task's due date.
+   */
   planning_deadline_at?: string | null;
   /**
    * Your sessions for it, oldest first. For a repeating task, those for the
@@ -736,6 +740,11 @@ export type ItemSessions = {
    * teammate's).
    */
   fit: DeadlineFit | null;
+  /**
+   * The zone the account plans in, to name the deadline in; null when it
+   * isn't set (the apps then use the device's).
+   */
+  time_zone?: string | null;
 };
 
 /** One occurrence of an item on the calendar. */
