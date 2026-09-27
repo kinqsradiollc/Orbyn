@@ -153,7 +153,7 @@ export function listedTool(cap: Capability) {
   return {
     ...describe(cap),
     securitySchemes: schemes,
-    _meta: { securitySchemes: schemes },
+    _meta: { ...cap.meta, securitySchemes: schemes },
   };
 }
 

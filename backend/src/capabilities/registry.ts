@@ -130,6 +130,8 @@ export type Capability<
   jsonText?: boolean;
   /** Only for old personal API keys on the legacy address (aliases). */
   legacyOnly?: boolean;
+  /** Extra `_meta` on the tool as tools/list gives it (e.g. openai/profile). */
+  meta?: Record<string, unknown>;
   /** Counted against the lower search limit, or the CPU-heavy one. */
   limitGroup?: "search" | "heavy";
   run(
