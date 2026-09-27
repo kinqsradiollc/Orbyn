@@ -51,7 +51,7 @@
   padding: 22px 24px;
   border: 1px solid;
   border-radius: var(--radius-md);
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 .status-banner > svg,
 .status-banner .icon-button {
@@ -73,6 +73,11 @@
   line-height: 1.5;
   color: inherit;
   opacity: 0.8;
+}
+.status-banner .status-summary {
+  font-weight: 600;
+  opacity: 1;
+  margin-bottom: 2px;
 }
 .status-banner .icon-button {
   color: inherit;
@@ -161,10 +166,73 @@
   color: #7a857e;
 }
 
-/* Component cards. */
+/* Components, in groups: a healthy group is one line, a troubled one opens. */
+.status-section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-textSoft);
+}
+.card.status-group {
+  margin-bottom: 10px;
+  padding: 0;
+}
+.status-group-heading {
+  margin: 0;
+  font-size: inherit;
+}
+.status-group-toggle,
+.status-incident-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.status-group-toggle {
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+}
+.status-group-toggle:focus-visible,
+.status-incident-toggle:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.status-group-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.status-group-name small {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.status-chevron {
+  flex: none;
+  color: var(--color-muted);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.is-open > .status-group-heading .status-chevron,
+.is-open > .status-incident-toggle .status-chevron {
+  transform: rotate(180deg);
+}
+.status-group-body {
+  padding: 0 18px 4px;
+}
 .status-component {
-  padding: 20px 22px 18px;
-  margin-bottom: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
 }
 .status-component-head {
   display: flex;
@@ -175,32 +243,24 @@
 .status-component-head > div {
   min-width: 0;
 }
-.status-component-head h3 {
-  font-size: 15px;
-  margin: 0 0 3px;
+.status-component-head h4 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 2px;
 }
 .status-component-head p {
   font-size: 13px;
   line-height: 1.5;
   margin: 0;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
-.status-uptime {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 30px;
-  margin: 16px 0 14px;
-}
-.status-uptime dt {
+.status-figures {
+  margin: 8px 0 8px;
   font-size: 11px;
+  line-height: 1.5;
   color: var(--muted);
-  margin-bottom: 3px;
-}
-.status-uptime dd {
-  margin: 0;
-  font-family: "Manrope", sans-serif;
-  font-size: 15px;
-  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 90-day history strip. */
@@ -208,7 +268,7 @@
   display: flex;
   align-items: stretch;
   gap: 2px;
-  height: 34px;
+  height: 20px;
 }
 .status-bars .bar {
   flex: 1 1 0;
@@ -243,7 +303,7 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 16px;
-  margin-top: 7px;
+  margin-top: 5px;
   font-size: 11px;
   color: var(--muted);
 }
@@ -255,56 +315,96 @@
   font-weight: 500;
 }
 
-/* Incidents. */
+/* Incidents: what's happening now at the top, past ones as a short list. */
 .status-incidents {
-  margin-top: 8px;
+  margin: 0 0 16px;
+}
+.status-incidents.is-past {
+  margin-top: 14px;
+}
+.status-incidents.is-active {
+  border-color: var(--color-dangerBorder);
+}
+.status-incidents .section-heading {
+  align-items: baseline;
+}
+.status-count {
+  font-size: 11px;
+  color: var(--muted);
 }
 .status-incidents ul {
   list-style: none;
   margin: 0;
   padding: 0 23px 8px;
 }
-.status-incidents li {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 0;
+.status-incidents > ul > li {
   border-top: 1px solid var(--color-divider);
 }
-.status-incidents li > div {
+.status-incident-toggle {
+  padding: 12px 0;
+}
+.status-incident-main {
   flex: 1;
   min-width: 0;
 }
-.status-incidents li strong {
+.status-incident-main strong {
   display: block;
   font-size: 13px;
 }
-.status-incidents li small {
+.status-incident-main small {
+  display: block;
   font-size: 11px;
   color: var(--muted);
+}
+.status-updates {
+  list-style: none;
+  margin: 0 0 12px 20px;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--color-divider);
+  display: grid;
+  gap: 8px;
+}
+.status-updates[hidden] {
+  display: none;
+}
+.status-updates li {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.status-update-time {
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--muted);
+}
+.status-updates li.is-ongoing {
+  color: var(--color-danger);
+}
+.status-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 23px 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.status-more .text-button {
+  min-height: 44px;
 }
 .status-dot {
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-top: 6px;
 }
 .status-dot.is-resolved {
   background: #9ab68c;
 }
 .status-dot.is-ongoing {
   background: #c8664a;
-}
-.incident-state {
-  font-size: 11px;
-  text-align: right;
-  color: #5d7854;
-  padding-top: 1px;
-}
-.incident-state.is-ongoing {
-  color: #a24d33;
-  font-weight: 600;
 }
 .status-empty {
   display: flex;
@@ -413,15 +513,11 @@
   .status-banner h1 {
     font-size: 18px;
   }
-  .status-component {
-    padding: 18px 16px 16px;
+  .status-group-toggle {
+    padding: 12px 16px;
   }
-  .status-component-head {
-    flex-direction: column;
-    gap: 8px;
-  }
-  .status-uptime {
-    gap: 10px 22px;
+  .status-group-body {
+    padding: 0 16px 4px;
   }
   .status-incidents .section-heading {
     padding: 18px 16px;
@@ -429,14 +525,15 @@
   .status-incidents ul {
     padding: 0 16px 6px;
   }
-  .status-incidents li {
-    flex-wrap: wrap;
-    row-gap: 4px;
+  .status-updates {
+    margin-left: 4px;
   }
-  .incident-state {
-    width: 100%;
-    text-align: left;
-    padding-left: 20px;
+  .status-updates li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .status-more {
+    padding: 4px 16px 10px;
   }
   .status-empty {
     padding: 0 16px 20px;
@@ -445,5 +542,8 @@
 @media (prefers-reduced-motion: reduce) {
   .status-skeleton i {
     animation: none;
+  }
+  .status-chevron {
+    transition: none;
   }
 }
