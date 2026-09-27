@@ -145,7 +145,8 @@ export async function docRoutes(app: FastifyInstance) {
       await reader(r.headers).query<DocSummary & { content: DocBlock[] }>(
         `SELECT ${COLUMNS}, d.content FROM docs d ${JOINS}
           WHERE ${VISIBLE}
-            AND ($2::text IS NULL OR d.kind = $2)
+            AND (($2::text IS NOT NULL AND d.kind = $2)
+              OR ($2::text IS NULL AND d.kind NOT IN ('memory', 'agent')))
             AND ($3::uuid IS NULL OR d.project_id = $3)
             AND ($4::uuid IS NULL OR EXISTS (
                   SELECT 1 FROM doc_tags dt

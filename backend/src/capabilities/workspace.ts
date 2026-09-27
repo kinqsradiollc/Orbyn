@@ -677,10 +677,12 @@ export const getHistory = defineCapability({
         }>(
           `SELECT a.created_at, a.summary, u.name AS actor, a.event_order::text,
                   a.entity_type,
-                  CASE WHEN g.id IS NOT NULL THEN coalesce(nullif(g.client_name, ''), nullif(g.name, ''), 'an agent') END AS via
+                  CASE WHEN g.id IS NOT NULL THEN coalesce(nullif(g.client_name, ''), nullif(g.name, ''), 'an agent')
+                       WHEN a.origin = 'assistant' THEN coalesce(nullif(agent.name, ''), 'Orbyn') END AS via
              FROM project_activity a
              LEFT JOIN users u ON u.id = a.actor_id
              LEFT JOIN agent_grants g ON g.id = a.via_grant_id
+             LEFT JOIN agent_settings agent ON agent.user_id = a.actor_id
             WHERE a.project_id = $1
             ORDER BY a.event_order DESC LIMIT $2`,
           [p.id, a.limit],

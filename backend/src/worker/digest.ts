@@ -189,13 +189,20 @@ export async function buildMorning(
 ): Promise<{ subject: string; lines: string[] }> {
   const today = localDateKey(now, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
-  const [entries, agenda, blocks, habits, review] = await Promise.all([
-    calendarEntries(pool, userId, now, dayEnd),
-    agendaEntries(pool, userId, dayTime(today, 0, tz), dayEnd),
-    timeBlocks(pool, userId, now, dayEnd),
-    habitBlocksIn(pool, userId, now, dayEnd),
-    reviewFor(pool, userId, now),
-  ]);
+  const [entries, agenda, blocks, habits, review, identity] = await Promise.all(
+    [
+      calendarEntries(pool, userId, now, dayEnd),
+      agendaEntries(pool, userId, dayTime(today, 0, tz), dayEnd),
+      timeBlocks(pool, userId, now, dayEnd),
+      habitBlocksIn(pool, userId, now, dayEnd),
+      reviewFor(pool, userId, now),
+      pool.query<{ name: string }>(
+        "SELECT name FROM agent_settings WHERE user_id = $1",
+        [userId],
+      ),
+    ],
+  );
+  const agentName = identity.rows[0]?.name ?? "Orbyn";
   // Your events and your subscribed calendars' (classes, shifts, exams),
   // all-day ones first. Timed ones already over are left out.
   const nowIso = now.toISOString();
@@ -209,7 +216,9 @@ export async function buildMorning(
     )
     .sort((a, b) => a.start_at.localeCompare(b.start_at));
 
-  const lines = [`Good morning, ${name}.`];
+  const lines = [
+    `Good morning, ${name}. ${agentName} here with your day ahead.`,
+  ];
   if (!events.length && !dueTasks.length && !blocks.length && !habits.length)
     lines.push("Nothing scheduled today — a clear page.");
   if (events.length) {
@@ -284,17 +293,23 @@ export async function buildEvening(
   const tomorrow = addDays(today, 1);
   const tomStart = dayTime(tomorrow, 0, tz);
   const tomEnd = dayTime(addDays(tomorrow, 1), 0, tz);
-  const [review, done, tomorrowEntries, tomorrowAgenda] = await Promise.all([
-    reviewFor(pool, userId, now),
-    pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM items
+  const [review, done, tomorrowEntries, tomorrowAgenda, identity] =
+    await Promise.all([
+      reviewFor(pool, userId, now),
+      pool.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM items
          WHERE user_id = $1 AND status = 'done'
            AND updated_at >= $2 AND updated_at < $3`,
-      [userId, dayTime(today, 0, tz).toISOString(), tomStart.toISOString()],
-    ),
-    calendarEntries(pool, userId, tomStart, tomEnd),
-    agendaEntries(pool, userId, tomStart, tomEnd),
-  ]);
+        [userId, dayTime(today, 0, tz).toISOString(), tomStart.toISOString()],
+      ),
+      calendarEntries(pool, userId, tomStart, tomEnd),
+      agendaEntries(pool, userId, tomStart, tomEnd),
+      pool.query<{ name: string }>(
+        "SELECT name FROM agent_settings WHERE user_id = $1",
+        [userId],
+      ),
+    ]);
+  const agentName = identity.rows[0]?.name ?? "Orbyn";
   const finished = done.rows[0].n;
   const tomorrowEvents = tomorrowAgenda.sort(
     (a, b) => Number(b.all_day) - Number(a.all_day),
@@ -303,7 +318,9 @@ export async function buildEvening(
     (e) => e.kind === "task" && e.status !== "done" && e.status !== "cancelled",
   );
 
-  const lines = [`Winding down, ${name}.`];
+  const lines = [
+    `Winding down, ${name}. ${agentName} here with today's wrap-up.`,
+  ];
   lines.push(
     finished
       ? `You finished ${finished} thing${finished === 1 ? "" : "s"} today. Nice work.`

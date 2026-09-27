@@ -21,6 +21,8 @@ export type Destination =
   | "agenda"
   | "projects"
   | "docs"
+  | "memory"
+  | "agent"
   | "views"
   | "study"
   | "lists"
@@ -64,6 +66,18 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
         icon: CONCEPT_ICON.page,
         title: "Docs",
         detail: "Notes, briefs and meeting notes",
+      },
+      {
+        to: "memory",
+        icon: "sparkles",
+        title: "Memory",
+        detail: "What your agent has learned, with its sources",
+      },
+      {
+        to: "agent",
+        icon: "fileText",
+        title: "Agent notes",
+        detail: "Briefs and other notes your agent makes",
       },
       {
         to: "views",

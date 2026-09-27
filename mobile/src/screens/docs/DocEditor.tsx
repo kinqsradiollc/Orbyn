@@ -111,6 +111,7 @@ import { HeaderButton } from "../../components/Sheet";
 import { SlotFill, type SlotHandle } from "../../components/Slot";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
+import { confirmAction } from "../../lib/confirm";
 import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
@@ -794,18 +795,20 @@ export function DocEditor({
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
-    { trashed, tags: retagged, fields: refielded, by }: DocNews,
+    { trashed, forgotten, tags: retagged, fields: refielded, by }: DocNews,
   ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
-    if (trashed) {
+    if (trashed || forgotten) {
       if (timer.current) clearTimeout(timer.current);
       dirty.current = false;
       flushOnClose.current = () => {};
       gone.current = true;
       onDeleted?.();
       showToast({
-        text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
+        text: forgotten
+          ? `“${live.current.title || "Untitled"}” was permanently forgotten.`
+          : `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
       return;
     }
@@ -1949,6 +1952,30 @@ export function DocEditor({
    * so nothing asks first.
    */
   const removePage = () => {
+    if (doc.kind === "memory") {
+      confirmAction(
+        `Forget “${title || "Untitled"}”?`,
+        "This permanently removes the Memory note and its source links. This cannot be undone.",
+        "Forget",
+        () => {
+          if (timer.current) clearTimeout(timer.current);
+          void (async () => {
+            try {
+              await client.forgetMemory(doc.id);
+              void forgetPage(doc.id);
+            } catch (e) {
+              report(e);
+              return;
+            }
+            flushOnClose.current = () => {};
+            gone.current = true;
+            onDeleted?.();
+            showToast({ text: "Memory topic forgotten" });
+          })();
+        },
+      );
+      return;
+    }
     if (timer.current) clearTimeout(timer.current);
     // What was just typed goes with it — the open line's words too, even
     // those not yet put into the page — so Undo brings all of it back.
@@ -2291,8 +2318,10 @@ export function DocEditor({
     { label: "Share…", onPress: () => setMenu("share") },
     { label: "Export…", onPress: () => setMenu("export") },
     { label: "History", onPress: () => onShowHistory?.() },
-    { label: "Save as template", onPress: () => setSavingTemplate(true) },
-    ...(doc.kind !== "agenda"
+    ...(doc.kind !== "memory"
+      ? [{ label: "Save as template", onPress: () => setSavingTemplate(true) }]
+      : []),
+    ...(doc.kind !== "agenda" && doc.kind !== "memory"
       ? [{ label: "Publish to web…", onPress: () => setPublishing(true) }]
       : []),
     ...(foldableHeadings(blocks).length
@@ -2322,7 +2351,7 @@ export function DocEditor({
           { label: "Merge into…", onPress: () => setMerging(true) },
         ]
       : []),
-    ...(canWrite && doc.kind !== "agenda"
+    ...(canWrite && doc.kind !== "agenda" && doc.kind !== "memory"
       ? [
           {
             label: archived ? "Bring back from archive" : "Archive",
@@ -2331,7 +2360,14 @@ export function DocEditor({
         ]
       : []),
     ...(canWrite
-      ? [{ label: "Move to Trash", destructive: true, onPress: removePage }]
+      ? [
+          {
+            label:
+              doc.kind === "memory" ? "Forget Memory topic" : "Move to Trash",
+            destructive: true,
+            onPress: removePage,
+          },
+        ]
       : []),
   ];
   const shareActions: MoreAction[] = [

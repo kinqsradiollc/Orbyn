@@ -116,6 +116,7 @@ import {
 } from "@orbyn/core";
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
+import { useConfirm } from "../../components/Confirm";
 import { SharePageButton } from "../../components/ShareButton";
 import { usePageCommands } from "../../app/page-commands";
 import { copyLink } from "../../lib/links";
@@ -348,6 +349,7 @@ export function DocEditor({
   report: (e: unknown) => void;
 }) {
   const toast = useToast();
+  const { ask } = useConfirm();
   /** Recordings on the page offer a summary (CAP-10). */
   const recordingActions = useMemo(
     () => ({
@@ -860,18 +862,20 @@ export function DocEditor({
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
-    { trashed, tags: retagged, fields: refielded, by }: DocNews,
+    { trashed, forgotten, tags: retagged, fields: refielded, by }: DocNews,
   ) => {
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
-    if (trashed) {
+    if (trashed || forgotten) {
       if (timer.current) clearTimeout(timer.current);
       dirty.current = false;
       flushOnClose.current = () => {};
       gone.current = true;
       onDeleted(doc.id);
       toast({
-        text: `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
+        text: forgotten
+          ? `“${live.current.title || "Untitled"}” was permanently forgotten.`
+          : `“${live.current.title || "Untitled"}” was moved to Trash. It can be restored from there.`,
       });
       return;
     }
@@ -2742,6 +2746,26 @@ export function DocEditor({
    * comments wait in Trash for 30 days.
    */
   const remove = async () => {
+    if (doc.kind === "memory") {
+      const confirmed = await ask({
+        title: `Forget “${title || "Untitled"}”?`,
+        body: "This permanently removes the Memory note and its source links. This cannot be undone.",
+        confirmLabel: "Forget",
+        destructive: true,
+      });
+      if (!confirmed) return;
+      try {
+        await client.forgetMemory(doc.id);
+      } catch (e) {
+        report(e);
+        return;
+      }
+      flushOnClose.current = () => {};
+      gone.current = true;
+      onDeleted(doc.id);
+      toast({ text: "Memory topic forgotten" });
+      return;
+    }
     if (timer.current) clearTimeout(timer.current);
     try {
       // What was just typed goes with it, so Undo brings back all of it.
@@ -2872,7 +2896,7 @@ export function DocEditor({
                 </ul>
               )}
             </span>
-            {!reading && (
+            {!reading && doc.kind !== "memory" && (
               <button
                 className="icon-button"
                 onClick={() => void remove()}
@@ -2947,19 +2971,21 @@ export function DocEditor({
                       </button>
                     </li>
                   )}
-                  {canWrite && doc.kind !== "agenda" && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          void toggleArchive();
-                        }}
-                      >
-                        {archived ? "Bring back from archive" : "Archive"}
-                      </button>
-                    </li>
-                  )}
+                  {canWrite &&
+                    doc.kind !== "agenda" &&
+                    doc.kind !== "memory" && (
+                      <li>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMoreMenu(false);
+                            void toggleArchive();
+                          }}
+                        >
+                          {archived ? "Bring back from archive" : "Archive"}
+                        </button>
+                      </li>
+                    )}
                   {foldableHeadings(blocks).length > 0 && (
                     <li>
                       <button
@@ -2977,7 +3003,7 @@ export function DocEditor({
                       </button>
                     </li>
                   )}
-                  {doc.kind !== "agenda" && (
+                  {doc.kind !== "agenda" && doc.kind !== "memory" && (
                     <li>
                       <button
                         role="menuitem"
@@ -2991,18 +3017,33 @@ export function DocEditor({
                       </button>
                     </li>
                   )}
-                  <li>
-                    <button
-                      role="menuitem"
-                      aria-haspopup="dialog"
-                      onClick={() => {
-                        setMoreMenu(false);
-                        setSavingTemplate(true);
-                      }}
-                    >
-                      Save as template
-                    </button>
-                  </li>
+                  {doc.kind !== "memory" && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        aria-haspopup="dialog"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          setSavingTemplate(true);
+                        }}
+                      >
+                        Save as template
+                      </button>
+                    </li>
+                  )}
+                  {canWrite && doc.kind === "memory" && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          void remove();
+                        }}
+                      >
+                        Forget Memory topic
+                      </button>
+                    </li>
+                  )}
                   <li>
                     <button
                       role="menuitem"

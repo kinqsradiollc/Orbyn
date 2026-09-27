@@ -1073,6 +1073,22 @@ export async function createDoc(
   u: UserRow,
   data: DocCreate,
 ): Promise<Doc> {
+  if (data.kind === "memory" && (data.team_id || data.project_id))
+    fail(403, "Memory notes are private to your Personal library.");
+  if (data.kind === "memory") {
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `memory:${u.id}`,
+    ]);
+    if (data.title.trim()) {
+      const duplicate = await db.query(
+        `SELECT 1 FROM docs WHERE user_id = $1 AND kind = 'memory'
+          AND deleted_at IS NULL AND lower(title) = lower($2)`,
+        [u.id, data.title.trim()],
+      );
+      if (duplicate.rowCount)
+        fail(409, "Memory already has a note for that topic.");
+    }
+  }
   await actAs(db, u.id);
   if (data.team_id) await requireTeam(data.team_id, u, "items:write", db);
   await checkLinks(db, u, data.team_id ?? null, data);
@@ -1120,7 +1136,29 @@ export async function saveDoc(
   options: { ticksFrom?: number | null; always?: boolean } = {},
 ): Promise<Doc> {
   await actAs(db, u.id);
+  const privateMemory = (
+    await db.query(
+      `SELECT 1 FROM docs
+        WHERE id = $1 AND user_id = $2 AND team_id IS NULL AND kind = 'memory'`,
+      [id, u.id],
+    )
+  ).rowCount;
+  if (privateMemory)
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `memory:${u.id}`,
+    ]);
   const current = await requireDoc(db, id, u, "items:write");
+  if (current.kind === "memory" && body.project_id)
+    fail(403, "Memory notes cannot be filed in a project.");
+  if (current.kind === "memory" && body.title?.trim()) {
+    const duplicate = await db.query(
+      `SELECT 1 FROM docs WHERE user_id = $1 AND kind = 'memory'
+        AND deleted_at IS NULL AND id <> $2 AND lower(title) = lower($3)`,
+      [u.id, id, body.title.trim()],
+    );
+    if (duplicate.rowCount)
+      fail(409, "Memory already has a note for that topic.");
+  }
   await checkLinks(db, u, current.team_id, {
     project_id: body.project_id,
     folder_id: body.folder_id,
@@ -1183,6 +1221,8 @@ export async function saveDoc(
 export async function trashDoc(db: Db, u: UserRow, id: string): Promise<Owned> {
   await actAs(db, u.id);
   const doc = await requireDoc(db, id, u, "items:write");
+  if (doc.kind === "memory")
+    fail(422, "Use Forget in Memory to permanently remove this note.");
   await db.query(
     "UPDATE docs SET deleted_at = now(), deleted_by = $2 WHERE id = $1",
     [id, u.id],

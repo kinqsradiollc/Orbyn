@@ -6,7 +6,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgb(15 20 30 / 45%);
+  background: var(--color-backdrop);
 }
 .ai-name-sheet {
   display: grid;

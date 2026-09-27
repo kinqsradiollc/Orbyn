@@ -26,6 +26,8 @@ export const CONVENTIONS = {
 };
 
 const output = z.object({
+  /** The person's named Orbyn agent (M1). */
+  agent: z.object({ name: z.string(), persona: z.string() }),
   user: z.object({
     name: z.string(),
     timezone: z.string(),
@@ -84,7 +86,7 @@ export const getContext = defineCapability({
   name: "get_context",
   title: "Who and where",
   description:
-    "Call first. Who this connection acts for (name), time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
+    "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
   input: z.object({}).strict(),
   output,
   annotations: {
@@ -120,6 +122,7 @@ export const getContext = defineCapability({
     const expires = grant?.expires_at ?? null;
     const limits = cachedSettings().agents.agent_limits;
     const structured: z.output<typeof output> = {
+      agent,
       user: {
         name: cleanTitle(p.user.name) || "You",
         timezone: prefs.timezone,

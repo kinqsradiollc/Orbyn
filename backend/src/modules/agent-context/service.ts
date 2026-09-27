@@ -22,8 +22,8 @@ import { createDoc } from "../docs/service.js";
 /**
  * Agents start warm (H8): the person's "About me for agents" page and each
  * space's instructions, for Settings → Connected agents, get_context and
- * the study tools. The page is an ordinary Personal page; agent_profiles
- * only remembers which one it is. Standing rules stay in agent_rules (H0),
+ * the study tools. The page is a private Memory note; agent_profiles only
+ * remembers which one it is. Standing rules stay in agent_rules (H0),
  * linked from the page.
  */
 
@@ -36,9 +36,8 @@ export type ProfileDoc = {
 };
 
 /**
- * The person's profile page, when there is one in Personal and out of the
- * Trash. `forAgents` also leaves it out when it is in a project kept out of
- * the assistant.
+ * The person's profile note, when there is one in Personal. `forAgents`
+ * also leaves it out when it is in a project kept out of the assistant.
  */
 export async function profileDoc(
   db: Queryable,
@@ -80,7 +79,7 @@ export async function ensureProfile(
   if (had) return { doc: had, created: false };
   const made = await createDoc(db, u, {
     title: AGENT_PROFILE_TITLE,
-    kind: "doc",
+    kind: "memory",
     team_id: null,
     item_id: null,
     content: content ?? blocksOf(AGENT_PROFILE_TEMPLATE),

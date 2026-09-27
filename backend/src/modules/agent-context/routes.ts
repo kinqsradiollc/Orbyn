@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
+  agentSettingsInput,
   fail,
   type AgentContextSettings,
   type PersonalAgentSettings,
@@ -9,7 +10,6 @@ import { authenticate, isApiKeyRequest } from "../../lib/auth.js";
 import { audit } from "../../lib/audit.js";
 import { idParam } from "../../lib/params.js";
 import { contextSettings, ensureProfile, setInstructions } from "./service.js";
-import { agentSettingsInput } from "@orbyn/core";
 
 /**
  * Settings → Connected agents, "About me for agents" and "Instructions"

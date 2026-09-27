@@ -336,6 +336,8 @@ export type LiveNews = {
  */
 export type DocNews = {
   trashed: boolean;
+  /** Permanently forgotten from private Memory. */
+  forgotten?: boolean;
   /** Only the page's tags changed; its words and version are as they were. */
   tags: boolean;
   /** Only a field value changed (the Info panel reads it afresh). */
@@ -1853,6 +1855,12 @@ export class OrbynClient {
   deleteDoc(id: string) {
     return this.request<void>(`/docs/${id}`, { method: "DELETE" });
   }
+  /** Permanently forget a private Memory topic, including its source links. */
+  forgetMemory(id: string) {
+    return this.request<{ forgotten: true }>(`/me/memory/${id}`, {
+      method: "DELETE",
+    });
+  }
   /** Pages in Trash, most recently deleted first. */
   listTrash() {
     return this.request<TrashedDoc[]>("/docs/trash");
@@ -1954,12 +1962,14 @@ export class OrbynClient {
                 const payload = JSON.parse(line.slice(5)) as {
                   version?: number;
                   trashed?: boolean;
+                  forgotten?: boolean;
                   tags?: boolean;
                   fields?: boolean;
                   by?: string;
                 };
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
+                  forgotten: payload.forgotten === true,
                   tags: payload.tags === true,
                   fields: payload.fields === true,
                   by: typeof payload.by === "string" ? payload.by : "",

@@ -173,7 +173,7 @@ export const createDocCapability = defineCapability({
   name: "create_doc",
   title: "Write a new page",
   description:
-    'Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event\'s notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day\'s agenda page from the calendar (today\'s again, keeping Notes). kind "profile": their About me for agents page (one each; markdown or Orbyn\'s outline).',
+    'Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event\'s notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agent" makes an Agent note; "agenda" with title "today" or a date writes that day\'s agenda page from the calendar (today\'s again, keeping Notes). kind "profile": their About me for agents page (one each; markdown or Orbyn\'s outline).',
   input: z
     .object({
       title: z.string().trim().min(1).max(200),
@@ -191,7 +191,7 @@ export const createDocCapability = defineCapability({
           "A page template's id, or a starter's (search types: template).",
         ),
       kind: z
-        .enum(["doc", "note", "meeting", "agenda", "profile"])
+        .enum(["doc", "note", "meeting", "agenda", "profile", "agent"])
         .default("doc"),
       team: z
         .string()
@@ -300,7 +300,7 @@ async function profilePage(ctx: CapabilityContext, markdown?: string) {
       ),
     ],
     undo: made.created
-      ? [{ op: "doc.trash", doc_id: doc.id, version: doc.version }]
+      ? [{ op: "memory.forget", doc_id: doc.id, version: doc.version }]
       : [],
     after: made.created ? [() => syncSavedPages(doc.id)] : [],
   });

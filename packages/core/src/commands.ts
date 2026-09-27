@@ -21,6 +21,8 @@ export type CommandView =
   | "Lists"
   | "Agenda"
   | "Docs"
+  | "Memory"
+  | "Agent"
   | "Study"
   | "Projects"
   | "Booking"
@@ -102,6 +104,8 @@ export const COMMANDS: CommandDef[] = [
   go("Calendar", "events week month"),
   go("Projects", "stages work"),
   go("Docs", "documents pages notes library", "Go to Documents"),
+  go("Memory", "private memory remembered facts sources"),
+  go("Agent", "agent notes briefs pages", "Go to Agent notes"),
   go("Views", "saved views filters table board gallery exam week"),
   go("Study", "flashcards cards exams revise"),
   go("Lists", "groups"),

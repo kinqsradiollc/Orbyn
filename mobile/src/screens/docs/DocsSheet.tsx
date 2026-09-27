@@ -110,9 +110,12 @@ export function DocsSheet({
   onStarted,
   onOpenProject,
   onSearch,
+  fixedKind,
 }: {
   /** Pull down on the library or a page: "Search & do" (MOB-09). */
   onSearch?: () => void;
+  /** A separate Memory or Agent notes library. */
+  fixedKind?: DocKind;
   /** Open on Uploads (after files were shared to Orbyn). */
   startInUploads?: boolean;
   /** Open on "New page from a template" (the + sheet's From template). */
@@ -158,7 +161,9 @@ export function DocsSheet({
    * null = every kind but agendas; "note" = only notes; "doc" = only plain
    * pages; "agenda" = the daily agendas, which have their own section.
    */
-  const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
+  const [kindFilter, setKindFilter] = useState<DocKind | null>(
+    fixedKind ?? null,
+  );
   /** Within agendas: one month ("2026-09"), or null for all of them. */
   const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
   /** Uploads: files being imported, and imported pages not filed yet. */
@@ -340,7 +345,23 @@ export function DocsSheet({
     client.listFolders().then(setFolders, () => setFolders([]));
     client.listFavourites().then(setStars, () => setStars([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, agenda, initialDoc]);
+  }, [visible, agenda, initialDoc, fixedKind]);
+
+  useEffect(() => {
+    setKindFilter(fixedKind ?? null);
+    setFolderFilter(null);
+    setFavoritesOnly(false);
+    setFadingOnly(false);
+    setUploadsOnly(false);
+    setTrashOnly(false);
+    setArchivedOnly(false);
+    setQuery("");
+    setHits(null);
+    setPicking(false);
+    setPicked(new Set());
+    setFiling(null);
+    setTemplating(false);
+  }, [fixedKind]);
 
   /**
    * Read the list of pages.
@@ -358,7 +379,7 @@ export function DocsSheet({
   /** No signal: the list is the pages kept on this phone (SHR-03). */
   const [offlineList, setOfflineList] = useState(false);
   const loadList = () =>
-    client.listDocs().then(
+    client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
       (list) => {
         setDocs(list);
         setFailed(false);
@@ -367,9 +388,14 @@ export function DocsSheet({
       async (e: Error) => {
         if (isOfflineError(e)) {
           const kept = await keptPages();
-          if (kept.length) {
+          const categoryPages = kept.filter((doc) =>
+            fixedKind
+              ? doc.kind === fixedKind
+              : doc.kind !== "memory" && doc.kind !== "agent",
+          );
+          if (categoryPages.length) {
             setDocs(
-              kept.map(({ content, ...rest }) => ({
+              categoryPages.map(({ content, ...rest }) => ({
                 ...withPendingSave({ ...rest, content }, waitingSave(rest.id)),
                 preview: docPreview(content),
               })),
@@ -471,7 +497,7 @@ export function DocsSheet({
     });
 
   /** Start a page here rather than having to reach for a desktop. */
-  const create = (kind: DocKind = "doc") =>
+  const create = (kind: DocKind = fixedKind ?? "doc") =>
     void run(async () => {
       const made = await client.createDoc({
         title: "",
@@ -567,6 +593,10 @@ export function DocsSheet({
 
   // Searching is a round trip, so it waits for a pause in the typing.
   useEffect(() => {
+    if (fixedKind) {
+      setHits(null);
+      return;
+    }
     if (query.trim().length < 2) {
       setHits(null);
       return;
@@ -594,7 +624,7 @@ export function DocsSheet({
       active = false;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, fixedKind]);
 
   /**
    * What the list shows: what was searched for, when something was, and
@@ -632,6 +662,19 @@ export function DocsSheet({
         kind: h.kind,
       }))
     : (docs ?? [])
+        .filter((d) =>
+          fixedKind
+            ? d.kind === fixedKind
+            : d.kind !== "memory" && d.kind !== "agent",
+        )
+        .filter(
+          (d) =>
+            !fixedKind ||
+            !query.trim() ||
+            `${d.title} ${d.preview}`
+              .toLocaleLowerCase()
+              .includes(query.trim().toLocaleLowerCase()),
+        )
         .filter((d) => !favoritesOnly || starred.has(favouriteKey("doc", d.id)))
         .filter((d) => !fadingOnly || fading.has(d.id))
         // A page a day would flood everything else, so agendas live in
@@ -683,25 +726,31 @@ export function DocsSheet({
   /** The library beside an open page, on an iPad or wide window. */
   const besideList =
     wideScreen && !!open && !navigationOpen && !agenda && shown.length > 1;
-  const location = archivedOnly
-    ? "Archived"
-    : trashOnly
-      ? "Trash"
-      : uploadsOnly
-        ? "Uploads"
-        : favoritesOnly
-          ? "Favorites"
-          : folderFilter === "none"
-            ? "Unfiled"
-            : folderFilter
-              ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-              : kindFilter === "agenda"
-                ? "Agendas"
-                : kindFilter === "doc"
-                  ? "Pages"
-                  : kindFilter === "note"
-                    ? "Notes"
-                    : "All documents";
+  const location =
+    fixedKind === "memory"
+      ? "Memory"
+      : fixedKind === "agent"
+        ? "Agent notes"
+        : archivedOnly
+          ? "Archived"
+          : trashOnly
+            ? "Trash"
+            : uploadsOnly
+              ? "Uploads"
+              : favoritesOnly
+                ? "Favorites"
+                : folderFilter === "none"
+                  ? "Unfiled"
+                  : folderFilter
+                    ? folders.find((f) => f.id === folderFilter)?.name ||
+                      "Folder"
+                    : kindFilter === "agenda"
+                      ? "Agendas"
+                      : kindFilter === "doc"
+                        ? "Pages"
+                        : kindFilter === "note"
+                          ? "Notes"
+                          : "All documents";
   const selectCollection = (
     folder: string | null,
     kind: DocKind | null = null,
@@ -722,7 +771,7 @@ export function DocsSheet({
     setPicked(new Set());
     setUploadsOnly(uploads);
     setFolderFilter(folder);
-    setKindFilter(kind);
+    setKindFilter(fixedKind ?? kind);
     setAgendaMonth(month);
     setFavoritesOnly(favorites);
     setQuery("");
@@ -761,7 +810,12 @@ export function DocsSheet({
   /** How many pages sit in each folder, for the library to show. */
   const countIn = (id: string | null) =>
     (docs ?? []).filter((d) =>
-      id === null ? !d.folder_id && d.kind !== "agenda" : d.folder_id === id,
+      id === null
+        ? !d.folder_id &&
+          d.kind !== "agenda" &&
+          d.kind !== "memory" &&
+          d.kind !== "agent"
+        : d.folder_id === id,
     ).length;
 
   /**
@@ -778,23 +832,27 @@ export function DocsSheet({
         icon: isStarred ? "starFilled" : "star",
         onPress: () => toggleStar(doc, !isStarred),
       },
-      {
-        label: "Move to folder…",
-        icon: "folder",
-        onPress: () => {
-          setMoveQuery("");
-          setFiling(doc);
-        },
-      },
-      {
-        label: "Select",
-        icon: "squareCheck",
-        onPress: () => {
-          setPicking(true);
-          setPicked(new Set([doc.id]));
-        },
-      },
-      ...(doc.kind !== "agenda"
+      ...(doc.kind !== "memory"
+        ? [
+            {
+              label: "Move to folder…",
+              icon: "folder" as const,
+              onPress: () => {
+                setMoveQuery("");
+                setFiling(doc);
+              },
+            },
+            {
+              label: "Select",
+              icon: "squareCheck" as const,
+              onPress: () => {
+                setPicking(true);
+                setPicked(new Set([doc.id]));
+              },
+            },
+          ]
+        : []),
+      ...(doc.kind !== "agenda" && doc.kind !== "memory"
         ? [
             {
               label: "Archive",
@@ -819,15 +877,15 @@ export function DocsSheet({
         : []),
       {
         label: "Copy link",
-        icon: "link",
+        icon: "link" as const,
         onPress: () => void copyLink({ kind: "doc", id: doc.id }, name),
       },
       {
         label: "Share…",
-        icon: "share",
+        icon: "share" as const,
         onPress: () => void shareLink({ kind: "doc", id: doc.id }, name),
       },
-      ...(doc.kind !== "agenda"
+      ...(doc.kind !== "agenda" && doc.kind !== "memory"
         ? [
             {
               label: "Publish to web…",
@@ -837,24 +895,42 @@ export function DocsSheet({
           ]
         : []),
       {
-        label: "Move to Trash",
-        icon: "trash",
+        label: doc.kind === "memory" ? "Forget Memory topic" : "Move to Trash",
+        icon: "trash" as const,
         destructive: true,
         onPress: () =>
-          void run(async () => {
-            await client.deleteDoc(doc.id);
-            // In Trash: no longer kept to open offline (SHR-03).
-            void forgetPage(doc.id);
-            setDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
-            showToast({
-              text: "Moved to Trash",
-              action: {
-                label: "Undo",
-                run: () =>
-                  void client.restoreDoc(doc.id).then(() => loadList(), report),
-              },
-            });
-          }),
+          doc.kind === "memory"
+            ? confirmAction(
+                `Forget “${name}”?`,
+                "This permanently removes the Memory note and its source links. This cannot be undone.",
+                "Forget",
+                () =>
+                  void run(async () => {
+                    await client.forgetMemory(doc.id);
+                    void forgetPage(doc.id);
+                    setDocs(
+                      (all) =>
+                        all?.filter((entry) => entry.id !== doc.id) ?? all,
+                    );
+                    showToast({ text: "Memory topic forgotten" });
+                  }),
+              )
+            : void run(async () => {
+                await client.deleteDoc(doc.id);
+                // In Trash: no longer kept to open offline (SHR-03).
+                void forgetPage(doc.id);
+                setDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
+                showToast({
+                  text: "Moved to Trash",
+                  action: {
+                    label: "Undo",
+                    run: () =>
+                      void client
+                        .restoreDoc(doc.id)
+                        .then(() => loadList(), report),
+                  },
+                });
+              }),
       },
     ];
   };
@@ -928,7 +1004,11 @@ export function DocsSheet({
       visible={visible}
       title={
         navigationOpen
-          ? "Library"
+          ? fixedKind === "memory"
+            ? "Memory"
+            : fixedKind === "agent"
+              ? "Agent notes"
+              : "Library"
           : open
             ? // A page's own title leads the page; the header takes it up
               // once it has scrolled away.
@@ -939,7 +1019,11 @@ export function DocsSheet({
               ? "Agenda"
               : templating
                 ? "New page"
-                : "Documents"
+                : fixedKind === "memory"
+                  ? "Memory"
+                  : fixedKind === "agent"
+                    ? "Agent notes"
+                    : "Documents"
       }
       onClose={onClose}
       // A page's header is Back, its title, Info and ⋯: with no list
@@ -1031,169 +1115,214 @@ export function DocsSheet({
             )}
 
             {navigationOpen ? (
-              <View style={styles.list}>
-                <Text style={styles.navHeading}>WORKSPACE</Text>
-                {navRow(
-                  "All documents",
-                  () => selectCollection(null),
-                  !favoritesOnly &&
-                    !uploadsOnly &&
-                    !folderFilter &&
-                    !kindFilter,
-                  "fileText",
-                  docs?.filter((d) => d.kind !== "agenda").length,
-                )}
-                {navRow(
-                  "Pages",
-                  () => selectCollection(null, "doc"),
-                  !favoritesOnly && !folderFilter && kindFilter === "doc",
-                )}
-                {navRow(
-                  "Notes",
-                  () => selectCollection(null, "note"),
-                  !favoritesOnly && !folderFilter && kindFilter === "note",
-                )}
-                {navRow(
-                  "Favorites",
-                  () => selectCollection(null, null, true),
-                  favoritesOnly,
-                  "star",
-                )}
-                {navRow(
-                  "Uploads",
-                  () => selectCollection(null, null, false, null, true),
-                  uploadsOnly,
-                  "fileText",
-                  uploadCount || undefined,
-                )}
-                {navRow(
-                  "Archived",
-                  () =>
-                    selectCollection(
-                      null,
-                      null,
-                      false,
-                      null,
-                      false,
-                      false,
-                      true,
-                    ),
-                  archivedOnly,
-                  "folder",
-                )}
-                {navRow(
-                  "Trash",
-                  () => selectCollection(null, null, false, null, false, true),
-                  trashOnly,
-                  "trash",
-                )}
-                {agendas.length > 0 && (
-                  <>
-                    {navRow(
-                      "Agendas",
-                      () => selectCollection(null, "agenda"),
-                      !favoritesOnly && kindFilter === "agenda" && !agendaMonth,
-                    )}
-                    <View style={styles.navChildren}>
-                      {agendas.flatMap((y) =>
-                        y.months.map((m) => (
-                          <View key={m.key}>
-                            {navRow(
-                              `${m.label} ${y.year}`,
-                              () =>
-                                selectCollection(null, "agenda", false, m.key),
-                              kindFilter === "agenda" && agendaMonth === m.key,
-                            )}
-                          </View>
-                        )),
+              fixedKind ? (
+                <View style={styles.list}>
+                  <Text style={styles.navHeading}>
+                    {location.toUpperCase()}
+                  </Text>
+                  {(docs ?? []).map((doc) => (
+                    <View key={doc.id}>
+                      {navRow(
+                        doc.title || "Untitled",
+                        () => openHit(doc.id),
+                        open?.id === doc.id,
                       )}
                     </View>
-                  </>
-                )}
-                <View style={styles.navChildren}>
-                  {(docs ?? [])
-                    .filter((d) => starred.has(favouriteKey("doc", d.id)))
-                    .map((d) => (
-                      <View key={d.id}>
-                        {navRow(d.title || "Untitled", () => openHit(d.id))}
-                      </View>
-                    ))}
+                  ))}
+                  {docs?.length === 0 && (
+                    <Text style={styles.empty}>
+                      {fixedKind === "memory"
+                        ? "Learned facts will appear here with their sources."
+                        : "Notes your agent makes will appear here."}
+                    </Text>
+                  )}
                 </View>
-                <Text style={styles.navHeading}>FOLDERS</Text>
-                {[
-                  ...folders
-                    .map((f) => ({ id: f.id, name: f.name }))
-                    .sort((a, b) => a.name.localeCompare(b.name)),
-                  { id: "none", name: "Unfiled" },
-                ].map((f) => (
-                  <View key={f.id}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded: expandedFolder === f.id }}
-                      style={styles.navRow}
-                      onPress={() =>
-                        setExpandedFolder(expandedFolder === f.id ? null : f.id)
-                      }
-                    >
-                      <Icon name="folder" size={18} color={colors.muted} />
-                      <Text style={styles.navTitle} numberOfLines={2}>
-                        {f.name}
-                      </Text>
-                      <Text style={styles.found}>
-                        {countIn(f.id === "none" ? null : f.id)}{" "}
-                        {expandedFolder === f.id ? "−" : "+"}
-                      </Text>
-                    </Pressable>
-                    {expandedFolder === f.id && (
+              ) : (
+                <View style={styles.list}>
+                  <Text style={styles.navHeading}>WORKSPACE</Text>
+                  {navRow(
+                    "All documents",
+                    () => selectCollection(null),
+                    !favoritesOnly &&
+                      !uploadsOnly &&
+                      !folderFilter &&
+                      !kindFilter,
+                    "fileText",
+                    docs?.filter(
+                      (d) =>
+                        d.kind !== "agenda" &&
+                        d.kind !== "memory" &&
+                        d.kind !== "agent",
+                    ).length,
+                  )}
+                  {navRow(
+                    "Pages",
+                    () => selectCollection(null, "doc"),
+                    !favoritesOnly && !folderFilter && kindFilter === "doc",
+                  )}
+                  {navRow(
+                    "Notes",
+                    () => selectCollection(null, "note"),
+                    !favoritesOnly && !folderFilter && kindFilter === "note",
+                  )}
+                  {navRow(
+                    "Favorites",
+                    () => selectCollection(null, null, true),
+                    favoritesOnly,
+                    "star",
+                  )}
+                  {navRow(
+                    "Uploads",
+                    () => selectCollection(null, null, false, null, true),
+                    uploadsOnly,
+                    "fileText",
+                    uploadCount || undefined,
+                  )}
+                  {navRow(
+                    "Archived",
+                    () =>
+                      selectCollection(
+                        null,
+                        null,
+                        false,
+                        null,
+                        false,
+                        false,
+                        true,
+                      ),
+                    archivedOnly,
+                    "folder",
+                  )}
+                  {navRow(
+                    "Trash",
+                    () =>
+                      selectCollection(null, null, false, null, false, true),
+                    trashOnly,
+                    "trash",
+                  )}
+                  {agendas.length > 0 && (
+                    <>
+                      {navRow(
+                        "Agendas",
+                        () => selectCollection(null, "agenda"),
+                        !favoritesOnly &&
+                          kindFilter === "agenda" &&
+                          !agendaMonth,
+                      )}
                       <View style={styles.navChildren}>
-                        {navRow(
-                          "View folder",
-                          () => selectCollection(f.id),
-                          folderFilter === f.id,
-                        )}
-                        {(docs ?? [])
-                          .filter((d) =>
-                            f.id === "none"
-                              ? !d.folder_id && d.kind !== "agenda"
-                              : d.folder_id === f.id,
-                          )
-                          .sort((a, b) => a.title.localeCompare(b.title))
-                          .map((d) => (
-                            <View key={d.id}>
-                              {navRow(d.title || "Untitled", () =>
-                                openHit(d.id),
+                        {agendas.flatMap((y) =>
+                          y.months.map((m) => (
+                            <View key={m.key}>
+                              {navRow(
+                                `${m.label} ${y.year}`,
+                                () =>
+                                  selectCollection(
+                                    null,
+                                    "agenda",
+                                    false,
+                                    m.key,
+                                  ),
+                                kindFilter === "agenda" &&
+                                  agendaMonth === m.key,
                               )}
                             </View>
-                          ))}
+                          )),
+                        )}
                       </View>
-                    )}
+                    </>
+                  )}
+                  <View style={styles.navChildren}>
+                    {(docs ?? [])
+                      .filter((d) => starred.has(favouriteKey("doc", d.id)))
+                      .map((d) => (
+                        <View key={d.id}>
+                          {navRow(d.title || "Untitled", () => openHit(d.id))}
+                        </View>
+                      ))}
                   </View>
-                ))}
-                <Button
-                  title="New folder"
-                  secondary
-                  onPress={() => setNaming(!naming)}
-                />
-                {naming && (
-                  <View style={styles.newFolder}>
-                    <TextInput
-                      style={[styles.search, { flex: 1, minWidth: 0 }]}
-                      value={folderName}
-                      placeholder="Folder name"
-                      placeholderTextColor={colors.faint}
-                      maxLength={60}
-                      onChangeText={setFolderName}
-                      onSubmitEditing={newFolder}
-                      accessibilityLabel="New folder name"
-                    />
-                    <Button
-                      title="Add"
-                      disabled={busy || !folderName.trim()}
-                      onPress={newFolder}
-                    />
-                  </View>
-                )}
-              </View>
+                  <Text style={styles.navHeading}>FOLDERS</Text>
+                  {[
+                    ...folders
+                      .map((f) => ({ id: f.id, name: f.name }))
+                      .sort((a, b) => a.name.localeCompare(b.name)),
+                    { id: "none", name: "Unfiled" },
+                  ].map((f) => (
+                    <View key={f.id}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          expanded: expandedFolder === f.id,
+                        }}
+                        style={styles.navRow}
+                        onPress={() =>
+                          setExpandedFolder(
+                            expandedFolder === f.id ? null : f.id,
+                          )
+                        }
+                      >
+                        <Icon name="folder" size={18} color={colors.muted} />
+                        <Text style={styles.navTitle} numberOfLines={2}>
+                          {f.name}
+                        </Text>
+                        <Text style={styles.found}>
+                          {countIn(f.id === "none" ? null : f.id)}{" "}
+                          {expandedFolder === f.id ? "−" : "+"}
+                        </Text>
+                      </Pressable>
+                      {expandedFolder === f.id && (
+                        <View style={styles.navChildren}>
+                          {navRow(
+                            "View folder",
+                            () => selectCollection(f.id),
+                            folderFilter === f.id,
+                          )}
+                          {(docs ?? [])
+                            .filter((d) =>
+                              f.id === "none"
+                                ? !d.folder_id &&
+                                  d.kind !== "agenda" &&
+                                  d.kind !== "memory" &&
+                                  d.kind !== "agent"
+                                : d.folder_id === f.id,
+                            )
+                            .sort((a, b) => a.title.localeCompare(b.title))
+                            .map((d) => (
+                              <View key={d.id}>
+                                {navRow(d.title || "Untitled", () =>
+                                  openHit(d.id),
+                                )}
+                              </View>
+                            ))}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                  <Button
+                    title="New folder"
+                    secondary
+                    onPress={() => setNaming(!naming)}
+                  />
+                  {naming && (
+                    <View style={styles.newFolder}>
+                      <TextInput
+                        style={[styles.search, { flex: 1, minWidth: 0 }]}
+                        value={folderName}
+                        placeholder="Folder name"
+                        placeholderTextColor={colors.faint}
+                        maxLength={60}
+                        onChangeText={setFolderName}
+                        onSubmitEditing={newFolder}
+                        accessibilityLabel="New folder name"
+                      />
+                      <Button
+                        title="Add"
+                        disabled={busy || !folderName.trim()}
+                        onPress={newFolder}
+                      />
+                    </View>
+                  )}
+                </View>
+              )
             ) : open || agendaGap ? (
               <>
                 {(agendaGap || open?.kind === "agenda") && (
@@ -1321,7 +1450,13 @@ export function DocsSheet({
               <View style={styles.list}>
                 <View style={styles.libraryToolbar}>
                   <SmallAction
-                    label="All folders"
+                    label={
+                      fixedKind === "memory"
+                        ? "Browse Memory"
+                        : fixedKind === "agent"
+                          ? "Browse Agent notes"
+                          : "All folders"
+                    }
                     disabled={false}
                     onPress={() => setNavigationOpen(true)}
                   />
@@ -1338,96 +1473,110 @@ export function DocsSheet({
                   />
                 </View>
                 <Text style={styles.collectionTitle}>{location}</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.collections}
-                  accessibilityLabel="Document collections"
-                >
-                  {(
-                    [
-                      ["All", null, null, false],
-                      ["Pages", null, "doc", false],
-                      ["Notes", null, "note", false],
-                      ...(agendas.length
-                        ? [["Agendas", null, "agenda", false]]
-                        : []),
-                      ["Favorites", null, null, true],
-                      ["Uploads", null, null, false, true],
-                      ...folders.map((folder) => [
-                        folder.name,
-                        folder.id,
-                        null,
-                        false,
-                      ]),
-                      ["Unfiled", "none", null, false],
-                      ["Trash", null, null, false, false, true],
-                    ] as [
-                      string,
-                      string | null,
-                      DocKind | null,
-                      boolean,
-                      boolean?,
-                      boolean?,
-                    ][]
-                  ).map(
-                    ([
-                      label,
-                      folder,
-                      kind,
-                      favorites,
-                      uploads = false,
-                      trashed = false,
-                    ]) => {
-                      const selected =
-                        trashOnly === trashed &&
-                        uploadsOnly === uploads &&
-                        favoritesOnly === favorites &&
-                        folderFilter === folder &&
-                        kindFilter === kind;
-                      return (
-                        <Pressable
-                          key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}-${trashed}`}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected }}
-                          onPress={() =>
-                            selectCollection(
-                              folder,
-                              kind,
-                              favorites,
-                              null,
-                              uploads,
-                              trashed,
-                            )
-                          }
-                          style={[
-                            styles.collectionChip,
-                            selected && styles.collectionChipActive,
-                          ]}
-                        >
-                          <Text
+                {!fixedKind && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.collections}
+                    accessibilityLabel="Document collections"
+                  >
+                    {(
+                      [
+                        ["All", null, null, false],
+                        ["Pages", null, "doc", false],
+                        ["Notes", null, "note", false],
+                        ...(agendas.length
+                          ? [["Agendas", null, "agenda", false]]
+                          : []),
+                        ["Favorites", null, null, true],
+                        ["Uploads", null, null, false, true],
+                        ...folders.map((folder) => [
+                          folder.name,
+                          folder.id,
+                          null,
+                          false,
+                        ]),
+                        ["Unfiled", "none", null, false],
+                        ["Trash", null, null, false, false, true],
+                      ] as [
+                        string,
+                        string | null,
+                        DocKind | null,
+                        boolean,
+                        boolean?,
+                        boolean?,
+                      ][]
+                    ).map(
+                      ([
+                        label,
+                        folder,
+                        kind,
+                        favorites,
+                        uploads = false,
+                        trashed = false,
+                      ]) => {
+                        const selected =
+                          trashOnly === trashed &&
+                          uploadsOnly === uploads &&
+                          favoritesOnly === favorites &&
+                          folderFilter === folder &&
+                          kindFilter === kind;
+                        return (
+                          <Pressable
+                            key={`${folder ?? "all"}-${kind ?? "all"}-${favorites}-${uploads}-${trashed}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                            onPress={() =>
+                              selectCollection(
+                                folder,
+                                kind,
+                                favorites,
+                                null,
+                                uploads,
+                                trashed,
+                              )
+                            }
                             style={[
-                              styles.collectionChipText,
-                              selected && styles.collectionChipTextActive,
+                              styles.collectionChip,
+                              selected && styles.collectionChipActive,
                             ]}
-                            numberOfLines={1}
                           >
-                            {label}
-                          </Text>
-                        </Pressable>
-                      );
-                    },
-                  )}
-                </ScrollView>
+                            <Text
+                              style={[
+                                styles.collectionChipText,
+                                selected && styles.collectionChipTextActive,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {label}
+                            </Text>
+                          </Pressable>
+                        );
+                      },
+                    )}
+                  </ScrollView>
+                )}
                 <TextInput
                   style={styles.search}
                   value={query}
-                  placeholder="Search all pages and notes…"
+                  placeholder={
+                    fixedKind === "memory"
+                      ? "Search Memory…"
+                      : fixedKind === "agent"
+                        ? "Search Agent notes…"
+                        : "Search all pages and notes…"
+                  }
                   placeholderTextColor={colors.faint}
                   autoCorrect={false}
                   returnKeyType="search"
                   onChangeText={setQuery}
-                  accessibilityLabel="Search pages and notes"
+                  accessibilityLabel={
+                    fixedKind === "memory"
+                      ? "Search Memory"
+                      : fixedKind === "agent"
+                        ? "Search Agent notes"
+                        : "Search pages and notes"
+                  }
                 />
                 {hits !== null && (
                   <Text style={styles.found}>
@@ -1439,6 +1588,7 @@ export function DocsSheet({
                 {!hits &&
                   !trashOnly &&
                   !uploadsOnly &&
+                  !fixedKind &&
                   (tagsHere.length > 0 || !!tagFilter) && (
                     <ScrollView
                       horizontal
@@ -1467,40 +1617,55 @@ export function DocsSheet({
                   )}
                 {/* The main way in full width, the other two side by side, as
               on Projects. */}
-                <View style={styles.newActions}>
-                  <View style={styles.newRow}>
+                {fixedKind ? (
+                  <View style={styles.newActions}>
                     <Button
-                      title="New document"
+                      title={
+                        fixedKind === "memory"
+                          ? "New Memory note"
+                          : "New Agent note"
+                      }
                       icon="plus"
                       disabled={busy}
-                      style={styles.newHalf}
-                      onPress={() => create("doc")}
-                    />
-                    <Button
-                      title="From template"
-                      secondary
-                      disabled={busy}
-                      style={styles.newHalf}
-                      onPress={() => setTemplating(true)}
+                      onPress={() => create(fixedKind)}
                     />
                   </View>
-                  <View style={styles.newRow}>
-                    <Button
-                      title="New note"
-                      secondary
-                      disabled={busy}
-                      style={styles.newHalf}
-                      onPress={() => create("note")}
-                    />
-                    <Button
-                      title={imports.busy ? "Uploading…" : "Import file"}
-                      secondary
-                      disabled={imports.busy}
-                      style={styles.newHalf}
-                      onPress={importFile}
-                    />
+                ) : (
+                  <View style={styles.newActions}>
+                    <View style={styles.newRow}>
+                      <Button
+                        title="New document"
+                        icon="plus"
+                        disabled={busy}
+                        style={styles.newHalf}
+                        onPress={() => create("doc")}
+                      />
+                      <Button
+                        title="From template"
+                        secondary
+                        disabled={busy}
+                        style={styles.newHalf}
+                        onPress={() => setTemplating(true)}
+                      />
+                    </View>
+                    <View style={styles.newRow}>
+                      <Button
+                        title="New note"
+                        secondary
+                        disabled={busy}
+                        style={styles.newHalf}
+                        onPress={() => create("note")}
+                      />
+                      <Button
+                        title={imports.busy ? "Uploading…" : "Import file"}
+                        secondary
+                        disabled={imports.busy}
+                        style={styles.newHalf}
+                        onPress={importFile}
+                      />
+                    </View>
                   </View>
-                </View>
+                )}
                 {/* A folder can go on the web as a whole (SHR-05). */}
                 {!!folderFilter &&
                   folderFilter !== "none" &&
@@ -1767,16 +1932,40 @@ export function DocsSheet({
                     <View style={styles.emptyLibrary}>
                       <EmptyState
                         icon="fileText"
-                        title="Nothing in here yet"
-                        body="Keep notes, briefs and working out next to your tasks."
-                        actions={[
-                          { label: "New page", onPress: () => create() },
-                          {
-                            label: imports.busy ? "Uploading…" : "Import",
-                            disabled: imports.busy,
-                            onPress: importFile,
-                          },
-                        ]}
+                        title={
+                          fixedKind === "memory"
+                            ? "No Memory notes yet"
+                            : fixedKind === "agent"
+                              ? "No Agent notes yet"
+                              : "Nothing in here yet"
+                        }
+                        body={
+                          fixedKind === "memory"
+                            ? "Facts your agent learns appear here with their sources. Add or edit a topic any time."
+                            : fixedKind === "agent"
+                              ? "Briefs and other notes your agent makes are kept here."
+                              : "Keep notes, briefs and working out next to your tasks."
+                        }
+                        actions={
+                          fixedKind
+                            ? [
+                                {
+                                  label:
+                                    fixedKind === "memory"
+                                      ? "New Memory note"
+                                      : "New Agent note",
+                                  onPress: () => create(fixedKind),
+                                },
+                              ]
+                            : [
+                                { label: "New page", onPress: () => create() },
+                                {
+                                  label: imports.busy ? "Uploading…" : "Import",
+                                  disabled: imports.busy,
+                                  onPress: importFile,
+                                },
+                              ]
+                        }
                       />
                     </View>
                   ) : (
@@ -1872,11 +2061,15 @@ export function DocsSheet({
                         </Text>
                         <View style={styles.rowActions}>
                           <Text style={styles.rowKind} numberOfLines={1}>
-                            {doc.kind === "note"
-                              ? "Note"
-                              : doc.kind === "agenda"
-                                ? "Agenda"
-                                : "Document"}
+                            {doc.kind === "memory"
+                              ? "Memory"
+                              : doc.kind === "agent"
+                                ? "Agent note"
+                                : doc.kind === "note"
+                                  ? "Note"
+                                  : doc.kind === "agenda"
+                                    ? "Agenda"
+                                    : "Document"}
                             {doc.tags?.length ? (
                               <Text style={styles.rowTags}>
                                 {"  " +

@@ -775,6 +775,8 @@ const KIND_TITLES: Record<DocKind, string> = {
   note: "Notes",
   agenda: "Agendas",
   meeting: "Meeting notes",
+  memory: "Memory",
+  agent: "Agent notes",
 };
 const PROJECT_STATUS_TITLES: Record<string, string> = {
   active: "Active",

@@ -1342,8 +1342,15 @@ export function App() {
                     onItemsChanged={() => void refresh()}
                   />
                 )}
-                {view === "Docs" && (
+                {(view === "Docs" || view === "Memory" || view === "Agent") && (
                   <DocsView
+                    fixedKind={
+                      view === "Memory"
+                        ? "memory"
+                        : view === "Agent"
+                          ? "agent"
+                          : undefined
+                    }
                     report={report}
                     onOpenProject={(id) => {
                       setProjectToOpen(id);

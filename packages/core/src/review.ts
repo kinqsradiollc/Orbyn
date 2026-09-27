@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DOC_KINDS } from "./docs.js";
+import { memoryFactInput, memorySourceInput } from "./memory.js";
 
 /**
  * The Review inbox: changes waiting for a person's approval, whether the
@@ -166,6 +167,34 @@ export const reviewChange = z.discriminatedUnion("type", [
     markdown: z.string().max(60_000),
     folder_id: id.nullable().default(null),
     project_id: id.nullable().default(null),
+  }),
+  z.object({
+    type: z.literal("agent.update"),
+    title,
+    team_id: space,
+    name: z.string().trim().min(1).max(40),
+    persona: z.string().trim().max(1000),
+    before_name: z.string().nullable(),
+    before_persona: z.string().nullable(),
+    before_updated_at: z.iso.datetime().nullable(),
+  }),
+  z.object({
+    type: z.literal("memory.remember"),
+    title,
+    team_id: space,
+    topic: z.string().trim().min(1).max(120),
+    facts: z.array(memoryFactInput).min(1).max(30),
+    sources: z.array(memorySourceInput).max(10),
+  }),
+  z.object({
+    type: z.literal("memory.forget"),
+    title,
+    team_id: space,
+    topic: z.string().trim().min(1).max(120),
+    docs: z
+      .array(z.object({ id, version: z.number().int().positive() }).strict())
+      .min(1)
+      .max(100),
   }),
   z.object({
     type: z.literal("doc.edit"),

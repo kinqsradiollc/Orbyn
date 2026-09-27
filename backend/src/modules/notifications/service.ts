@@ -1,6 +1,5 @@
 import type { Queryable } from "../../db/pool.js";
 import { visibleItems } from "../../lib/visibility.js";
-import { viaAgentColumn } from "../../lib/via-agent.js";
 
 /**
  * The in-app notification tray, for the routes and the agents (get_today
@@ -26,8 +25,15 @@ export async function listNotifications(
       via_agent: string | null;
     }>(
       `SELECT n.id, n.title, n.body, n.read, n.created_at, n.kind, n.item_id, n.ref,
-              ${viaAgentColumn("n")}
+              COALESCE(
+                (SELECT coalesce(nullif(g.client_name, ''), g.name)
+                   FROM agent_grants g WHERE g.id = n.via_grant_id),
+                CASE WHEN p.source = 'assistant' THEN coalesce(nullif(agent.name, ''), 'Orbyn') END
+              ) AS via_agent
        FROM notifications n LEFT JOIN items i ON i.id = n.item_id
+       LEFT JOIN proposals p ON n.kind = 'review'
+         AND n.ref = 'proposal:' || p.id::text
+       LEFT JOIN agent_settings agent ON agent.user_id = n.user_id
        WHERE n.user_id = $1 AND n.channel = 'inapp'
          AND (n.item_id IS NULL OR ${visibleItems()})
        ORDER BY n.created_at DESC LIMIT $2`,

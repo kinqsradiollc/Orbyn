@@ -77,6 +77,7 @@ const output = z.object({
   url: z.string(),
   metadata: z.object({
     type: z.enum(FETCH_TYPES),
+    kind: z.string().optional(),
     uri: z.string(),
     team: z.string(),
     team_id: z.string().nullable(),
@@ -321,6 +322,9 @@ async function fetchDoc(
     ref.id,
   );
   if (!d) throw notFound();
+  // Memory has its own privacy-aware tool; generic fetch stays for ordinary
+  // pages and Agent notes.
+  if (d.kind === "memory") throw notFound();
   // Links to what this connection can't open keep no title (D3aF).
   const blocks = await readableLinks(
     ctx.db,
@@ -401,6 +405,7 @@ async function fetchDoc(
     url: r.url,
     metadata: {
       type: "doc",
+      kind: d.kind,
       uri: r.uri,
       team: spaceName(d.team_id, ctx.principal.teams),
       team_id: d.team_id,

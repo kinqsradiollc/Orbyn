@@ -20,6 +20,8 @@ type Listener = (payload: {
   by: string;
   /** Set when the page was moved to Trash. */
   trashed?: boolean;
+  /** Set when a private Memory note was permanently forgotten. */
+  forgotten?: boolean;
   /** Set when only the page's tags changed; its words are as they were. */
   tags?: boolean;
   /** Set when only a field value changed; its words are as they were. */
@@ -75,7 +77,12 @@ export async function announceDocChange(
   docId: string,
   version: number,
   by: string,
-  news: { trashed?: boolean; tags?: boolean; fields?: boolean } = {},
+  news: {
+    trashed?: boolean;
+    forgotten?: boolean;
+    tags?: boolean;
+    fields?: boolean;
+  } = {},
 ): Promise<void> {
   await db.query("SELECT pg_notify($1, $2)", [
     CHANNEL,
@@ -84,6 +91,7 @@ export async function announceDocChange(
       version,
       by,
       ...(news.trashed ? { trashed: true } : {}),
+      ...(news.forgotten ? { forgotten: true } : {}),
       ...(news.tags ? { tags: true } : {}),
       ...(news.fields ? { fields: true } : {}),
     }),

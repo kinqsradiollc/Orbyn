@@ -348,6 +348,10 @@ export const COVERED: Record<string, string[]> = {
   // edit_doc) and each space's instructions (read with get_context,
   // changed with organize; a team's are asked first).
   "GET /me/agent-context": ["get_context"],
+  "DELETE /me/memory/:id": ["manage_memory"],
+  // Muse M1: the named agent (read with get_context, changed with update_agent).
+  "GET /me/agent": ["get_context"],
+  "PUT /me/agent": ["update_agent"],
   "POST /me/agent-profile": ["create_doc"],
   "PUT /me/agent-instructions": ["organize"],
   "PUT /teams/:id/agent-instructions": ["organize"],
@@ -355,8 +359,6 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
-  "GET /me/agent": "credentials",
-  "PUT /me/agent": "people_only",
   "POST /recents": "device",
   "GET /admin/agents": "admin",
   "PUT /admin/agents": "admin",

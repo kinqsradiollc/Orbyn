@@ -1,5 +1,6 @@
 import {
   Bell,
+  Brain,
   CalendarCheck,
   ListChecks,
   Inbox,
@@ -18,6 +19,8 @@ export type View =
   | "Lists"
   | "Agenda"
   | "Docs"
+  | "Memory"
+  | "Agent"
   | "Study"
   | "Projects"
   | "Booking"
@@ -49,6 +52,17 @@ export const SCREENS: Record<View, Screen> = {
     title: "Documents",
     subtitle:
       "Notes, briefs and working pages — with formulas that render as you type.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  Memory: {
+    title: "Memory",
+    subtitle:
+      "What your agent remembers, with the sources you can edit or forget.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
+  Agent: {
+    title: "Agent notes",
+    subtitle: "Notes your agent has made for its work.",
     eyebrow: "YOUR PERSONAL ORBIT",
   },
   Study: {
@@ -104,6 +118,8 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
     items: [
       { label: "Projects", icon: CONCEPT_ICON.project },
       { label: "Docs", icon: CONCEPT_ICON.page },
+      { label: "Memory", icon: Brain },
+      { label: "Agent", icon: Sparkles },
       { label: "Views", icon: Table2 },
       { label: "Study", icon: CONCEPT_ICON.study },
       { label: "Lists", icon: ListChecks },
@@ -129,6 +145,8 @@ export const NAV: NavEntry[] = NAV_GROUPS.flatMap((g) => g.items);
 export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "Settings",
   "Docs",
+  "Memory",
+  "Agent",
   "Study",
   "Agenda",
   "Projects",

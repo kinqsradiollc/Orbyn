@@ -79,9 +79,12 @@ export function DocsView({
   onOpenProject,
   openTemplates,
   incomingFiles,
+  fixedKind,
 }: {
   /** Files opened with Orbyn on the desktop (CAP-11), to import. */
   incomingFiles?: { files: File[]; seq: number } | null;
+  /** A separate Memory or Agent notes library. */
+  fixedKind?: DocKind;
   report: (e: unknown) => void;
   userId?: string;
   /** Whether this reader may change a page, by the team it belongs to. */
@@ -107,7 +110,9 @@ export function DocsView({
    * null = every kind but agendas; "note" = only notes; "doc" = only plain
    * pages; "agenda" = the daily agendas, which have their own section.
    */
-  const [kindFilter, setKindFilter] = useState<DocKind | null>(null);
+  const [kindFilter, setKindFilter] = useState<DocKind | null>(
+    fixedKind ?? null,
+  );
   /** Within agendas: one month ("2026-09"), or null for all of them. */
   const [agendaMonth, setAgendaMonth] = useState<string | null>(null);
   /** Uploads: files being imported, and imported pages not filed yet. */
@@ -202,10 +207,12 @@ export function DocsView({
   const [busy, setBusy] = useState(false);
 
   const loadArchived = () =>
-    client.listDocs({ archived: "only" }).then(setArchivedDocs, (e) => {
-      setArchivedDocs([]);
-      report(e);
-    });
+    client
+      .listDocs({ archived: "only", ...(fixedKind ? { kind: fixedKind } : {}) })
+      .then(setArchivedDocs, (e) => {
+        setArchivedDocs([]);
+        report(e);
+      });
   /** Archive a folder (its pages leave lists and search), or bring it back. */
   const archiveFolder = (folder: Folder, archived: boolean) => {
     setBusy(true);
@@ -300,7 +307,7 @@ export function DocsView({
     void client.listFolders().then(setFolders, () => setFolders([]));
     void client.listTrash().then(setTrash, () => {});
     void client.listFavourites().then(setStars, () => setStars([]));
-    return client.listDocs().then(
+    return client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
       (rows) => {
         setDocs(rows);
         setFailed(false);
@@ -370,7 +377,17 @@ export function DocsView({
       clearTimeout(soon);
       stop();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fixedKind]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setKindFilter(fixedKind ?? null);
+    setFolderFilter(null);
+    setFavoritesOnly(false);
+    setUploadsOnly(false);
+    setTrashOnly(false);
+    setArchivedOnly(false);
+    setQuery("");
+  }, [fixedKind]);
 
   useEffect(() => {
     if (openTemplates) setTemplating(true);
@@ -389,7 +406,7 @@ export function DocsView({
     onInitialDocShown?.();
   }, [initialDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const create = (kind: DocKind = "doc") => {
+  const create = (kind: DocKind = fixedKind ?? "doc") => {
     setBusy(true);
     client
       .createDoc({
@@ -573,35 +590,41 @@ export function DocsView({
     folderFilter && folderFilter !== "none"
       ? (folders.find((f) => f.id === folderFilter) ?? null)
       : null;
-  const location = archivedOnly
-    ? "Archived"
-    : trashOnly
-      ? "Trash"
-      : uploadsOnly
-        ? "Uploads"
-        : fadingOnly
-          ? "Might be out of date"
-          : favoritesOnly
-            ? "Favorites"
-            : folderFilter === "none"
-              ? "Unfiled"
-              : folderFilter
-                ? folders.find((f) => f.id === folderFilter)?.name || "Folder"
-                : kindFilter === "agenda"
-                  ? agendaMonth
-                    ? `Agendas · ${
-                        agendas
-                          .flatMap((y) =>
-                            y.months.map((m) => ({ ...m, year: y.year })),
-                          )
-                          .find((m) => m.key === agendaMonth)?.label ?? ""
-                      } ${agendaMonth.slice(0, 4)}`
-                    : "Agendas"
-                  : kindFilter === "doc"
-                    ? "Pages"
-                    : kindFilter === "note"
-                      ? "Notes"
-                      : "All documents";
+  const location =
+    fixedKind === "memory"
+      ? "Memory"
+      : fixedKind === "agent"
+        ? "Agent notes"
+        : archivedOnly
+          ? "Archived"
+          : trashOnly
+            ? "Trash"
+            : uploadsOnly
+              ? "Uploads"
+              : fadingOnly
+                ? "Might be out of date"
+                : favoritesOnly
+                  ? "Favorites"
+                  : folderFilter === "none"
+                    ? "Unfiled"
+                    : folderFilter
+                      ? folders.find((f) => f.id === folderFilter)?.name ||
+                        "Folder"
+                      : kindFilter === "agenda"
+                        ? agendaMonth
+                          ? `Agendas · ${
+                              agendas
+                                .flatMap((y) =>
+                                  y.months.map((m) => ({ ...m, year: y.year })),
+                                )
+                                .find((m) => m.key === agendaMonth)?.label ?? ""
+                            } ${agendaMonth.slice(0, 4)}`
+                          : "Agendas"
+                        : kindFilter === "doc"
+                          ? "Pages"
+                          : kindFilter === "note"
+                            ? "Notes"
+                            : "All documents";
   const select = (
     folder: string | null,
     kind: DocKind | null = null,
@@ -618,7 +641,7 @@ export function DocsView({
     setPicked(new Set());
     setUploadsOnly(uploads);
     setFolderFilter(folder);
-    setKindFilter(kind);
+    setKindFilter(fixedKind ?? kind);
     setAgendaMonth(month);
     setFavoritesOnly(favorites);
     setFadingOnly(false);
@@ -805,7 +828,9 @@ export function DocsView({
         onClick={() => setNavigationOpen(!navigationOpen)}
       >
         <PanelLeft size={18} />{" "}
-        {navigationOpen ? "Close library" : "Browse library"}
+        {navigationOpen
+          ? `Close ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`
+          : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
       </button>
       <nav
         id="docs-navigation"
@@ -813,7 +838,13 @@ export function DocsView({
         className={"docs-navigation" + (navigationOpen ? " is-open" : "")}
       >
         <div className="docs-nav-title">
-          <h2>Library</h2>
+          <h2>
+            {fixedKind === "memory"
+              ? "Memory"
+              : fixedKind === "agent"
+                ? "Agent notes"
+                : "Library"}
+          </h2>
           <button
             className="icon-button docs-library-hide"
             aria-label="Hide library"
@@ -823,227 +854,244 @@ export function DocsView({
             <PanelLeftClose size={16} />
           </button>
         </div>
-        {(
-          [
-            [null, "All documents"],
-            ["doc", "Pages"],
-            ["note", "Notes"],
-          ] as const
-        ).map(([kind, label]) => (
+        {fixedKind ? (
           <button
-            key={label}
-            aria-current={
-              !open &&
-              !favoritesOnly &&
-              !uploadsOnly &&
-              !trashOnly &&
-              folderFilter === null &&
-              kindFilter === kind
-                ? "page"
-                : undefined
-            }
-            onClick={() => select(null, kind)}
+            aria-current={!open ? "page" : undefined}
+            onClick={() => select(null, fixedKind)}
           >
             <FileText size={16} />
-            <span>{label}</span>
+            <span>{fixedKind === "memory" ? "Memory" : "Agent notes"}</span>
           </button>
-        ))}
-        <button
-          aria-current={!open && favoritesOnly ? "page" : undefined}
-          onClick={() => select(null, null, true)}
-        >
-          <Star size={16} />
-          <span>Favorites</span>
-        </button>
-        <button
-          aria-current={!open && uploadsOnly ? "page" : undefined}
-          title="Imported PDFs, Word files and photos not filed yet"
-          onClick={() => select(null, null, false, null, true)}
-        >
-          <Inbox size={16} />
-          <span>Uploads</span>
-          {uploadCount > 0 && (
-            <small className="docs-nav-count">{uploadCount}</small>
-          )}
-        </button>
-        {agendas.length > 0 && (
-          <details className="docs-nav-folder">
-            <summary>
-              <ChevronRight size={14} />
-              <CalendarDays size={16} />
-              <span>Agendas</span>
-            </summary>
-            <div className="docs-nav-children">
+        ) : (
+          <>
+            {(
+              [
+                [null, "All documents"],
+                ["doc", "Pages"],
+                ["note", "Notes"],
+              ] as const
+            ).map(([kind, label]) => (
               <button
+                key={label}
                 aria-current={
-                  !open && kindFilter === "agenda" && !agendaMonth
+                  !open &&
+                  !favoritesOnly &&
+                  !uploadsOnly &&
+                  !trashOnly &&
+                  folderFilter === null &&
+                  kindFilter === kind
                     ? "page"
                     : undefined
                 }
-                onClick={() => select(null, "agenda")}
+                onClick={() => select(null, kind)}
               >
-                All agendas
+                <FileText size={16} />
+                <span>{label}</span>
               </button>
-              {agendas.map((y) => (
-                <details
-                  key={y.year}
-                  className="docs-nav-folder docs-nav-year"
-                  open={y.year === agendas[0].year}
-                >
-                  <summary>
+            ))}
+            <button
+              aria-current={!open && favoritesOnly ? "page" : undefined}
+              onClick={() => select(null, null, true)}
+            >
+              <Star size={16} />
+              <span>Favorites</span>
+            </button>
+            <button
+              aria-current={!open && uploadsOnly ? "page" : undefined}
+              title="Imported PDFs, Word files and photos not filed yet"
+              onClick={() => select(null, null, false, null, true)}
+            >
+              <Inbox size={16} />
+              <span>Uploads</span>
+              {uploadCount > 0 && (
+                <small className="docs-nav-count">{uploadCount}</small>
+              )}
+            </button>
+            {agendas.length > 0 && (
+              <details className="docs-nav-folder">
+                <summary>
+                  <ChevronRight size={14} />
+                  <CalendarDays size={16} />
+                  <span>Agendas</span>
+                </summary>
+                <div className="docs-nav-children">
+                  <button
+                    aria-current={
+                      !open && kindFilter === "agenda" && !agendaMonth
+                        ? "page"
+                        : undefined
+                    }
+                    onClick={() => select(null, "agenda")}
+                  >
+                    All agendas
+                  </button>
+                  {agendas.map((y) => (
+                    <details
+                      key={y.year}
+                      className="docs-nav-folder docs-nav-year"
+                      open={y.year === agendas[0].year}
+                    >
+                      <summary>
+                        <ChevronRight size={14} />
+                        <span>{y.year}</span>
+                      </summary>
+                      <div className="docs-nav-children">
+                        {y.months.map((m) => (
+                          <button
+                            key={m.key}
+                            aria-current={
+                              !open &&
+                              kindFilter === "agenda" &&
+                              agendaMonth === m.key
+                                ? "page"
+                                : undefined
+                            }
+                            onClick={() => select(null, "agenda", false, m.key)}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </details>
+            )}
+            {fading.size > 0 && (
+              <button
+                aria-current={!open && fadingOnly ? "page" : undefined}
+                title="Pages nobody has changed or confirmed in three months or more"
+                onClick={() => {
+                  select(null);
+                  setFadingOnly(true);
+                }}
+              >
+                <Hourglass size={16} />
+                <span>Might be out of date</span>
+                <small className="docs-nav-count">{fading.size}</small>
+              </button>
+            )}
+            <div className="docs-nav-children">
+              {(docs ?? [])
+                .filter((d) => starred.has(favouriteKey("doc", d.id)))
+                .map(pageLink)}
+            </div>
+            <div className="docs-nav-heading">
+              <span>Folders</span>
+              <button
+                aria-label="New folder"
+                aria-expanded={naming}
+                onClick={() => setNaming(!naming)}
+              >
+                <FolderPlus size={16} />
+              </button>
+            </div>
+            {naming && (
+              <form
+                className="docs-folder-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  newFolder();
+                }}
+              >
+                <input
+                  aria-label="Folder name"
+                  placeholder="Folder name"
+                  value={folderName}
+                  maxLength={60}
+                  autoFocus
+                  onChange={(e) => setFolderName(e.target.value)}
+                />
+                <div>
+                  <button type="submit" disabled={busy || !folderName.trim()}>
+                    Create
+                  </button>
+                  <button type="button" onClick={() => setNaming(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+            {folders
+              .filter((f) => !f.archived_at)
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((folder) => (
+                <details key={folder.id} className="docs-nav-folder">
+                  <summary {...folderDrop(folder.id)}>
                     <ChevronRight size={14} />
-                    <span>{y.year}</span>
+                    <FolderIcon size={16} />
+                    <span>{folder.name}</span>
                   </summary>
                   <div className="docs-nav-children">
-                    {y.months.map((m) => (
-                      <button
-                        key={m.key}
-                        aria-current={
-                          !open &&
-                          kindFilter === "agenda" &&
-                          agendaMonth === m.key
-                            ? "page"
-                            : undefined
+                    <button
+                      aria-current={
+                        !open && folderFilter === folder.id ? "page" : undefined
+                      }
+                      onClick={() => select(folder.id)}
+                    >
+                      View folder{" "}
+                      <span className="folder-n">
+                        {
+                          (docs ?? []).filter((d) => d.folder_id === folder.id)
+                            .length
                         }
-                        onClick={() => select(null, "agenda", false, m.key)}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
+                      </span>
+                    </button>
+                    {(docs ?? [])
+                      .filter((d) => d.folder_id === folder.id)
+                      .sort((a, b) => a.title.localeCompare(b.title))
+                      .map(pageLink)}
                   </div>
                 </details>
               ))}
-            </div>
-          </details>
-        )}
-        {fading.size > 0 && (
-          <button
-            aria-current={!open && fadingOnly ? "page" : undefined}
-            title="Pages nobody has changed or confirmed in three months or more"
-            onClick={() => {
-              select(null);
-              setFadingOnly(true);
-            }}
-          >
-            <Hourglass size={16} />
-            <span>Might be out of date</span>
-            <small className="docs-nav-count">{fading.size}</small>
-          </button>
-        )}
-        <div className="docs-nav-children">
-          {(docs ?? [])
-            .filter((d) => starred.has(favouriteKey("doc", d.id)))
-            .map(pageLink)}
-        </div>
-        <div className="docs-nav-heading">
-          <span>Folders</span>
-          <button
-            aria-label="New folder"
-            aria-expanded={naming}
-            onClick={() => setNaming(!naming)}
-          >
-            <FolderPlus size={16} />
-          </button>
-        </div>
-        {naming && (
-          <form
-            className="docs-folder-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              newFolder();
-            }}
-          >
-            <input
-              aria-label="Folder name"
-              placeholder="Folder name"
-              value={folderName}
-              maxLength={60}
-              autoFocus
-              onChange={(e) => setFolderName(e.target.value)}
-            />
-            <div>
-              <button type="submit" disabled={busy || !folderName.trim()}>
-                Create
-              </button>
-              <button type="button" onClick={() => setNaming(false)}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-        {folders
-          .filter((f) => !f.archived_at)
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .map((folder) => (
-            <details key={folder.id} className="docs-nav-folder">
-              <summary {...folderDrop(folder.id)}>
+            <details className="docs-nav-folder">
+              <summary {...folderDrop("")}>
                 <ChevronRight size={14} />
                 <FolderIcon size={16} />
-                <span>{folder.name}</span>
+                <span>Unfiled</span>
               </summary>
               <div className="docs-nav-children">
                 <button
                   aria-current={
-                    !open && folderFilter === folder.id ? "page" : undefined
+                    !open && folderFilter === "none" ? "page" : undefined
                   }
-                  onClick={() => select(folder.id)}
+                  onClick={() => select("none")}
                 >
-                  View folder{" "}
-                  <span className="folder-n">
-                    {
-                      (docs ?? []).filter((d) => d.folder_id === folder.id)
-                        .length
-                    }
-                  </span>
+                  View unfiled
                 </button>
                 {(docs ?? [])
-                  .filter((d) => d.folder_id === folder.id)
-                  .sort((a, b) => a.title.localeCompare(b.title))
+                  .filter((d) => !d.folder_id && d.kind !== "agenda")
                   .map(pageLink)}
               </div>
             </details>
-          ))}
-        <details className="docs-nav-folder">
-          <summary {...folderDrop("")}>
-            <ChevronRight size={14} />
-            <FolderIcon size={16} />
-            <span>Unfiled</span>
-          </summary>
-          <div className="docs-nav-children">
             <button
-              aria-current={
-                !open && folderFilter === "none" ? "page" : undefined
+              className="docs-nav-trash"
+              aria-current={!open && archivedOnly ? "page" : undefined}
+              title="Pages and folders kept out of the library and search"
+              onClick={() =>
+                select(null, null, false, null, false, false, true)
               }
-              onClick={() => select("none")}
             >
-              View unfiled
+              <Archive size={16} />
+              <span>Archived</span>
             </button>
-            {(docs ?? [])
-              .filter((d) => !d.folder_id && d.kind !== "agenda")
-              .map(pageLink)}
-          </div>
-        </details>
-        <button
-          className="docs-nav-trash"
-          aria-current={!open && archivedOnly ? "page" : undefined}
-          title="Pages and folders kept out of the library and search"
-          onClick={() => select(null, null, false, null, false, false, true)}
-        >
-          <Archive size={16} />
-          <span>Archived</span>
-        </button>
-        <button
-          className="docs-nav-trash"
-          aria-current={!open && trashOnly ? "page" : undefined}
-          title={`Deleted pages, kept for ${TRASH_DAYS} days`}
-          onClick={() => select(null, null, false, null, false, true)}
-        >
-          <Trash2 size={16} />
-          <span>Trash</span>
-          {!!trash?.length && (
-            <small className="docs-nav-count">{trash.length}</small>
-          )}
-        </button>
+            <button
+              className="docs-nav-trash"
+              aria-current={!open && trashOnly ? "page" : undefined}
+              title={`Deleted pages, kept for ${TRASH_DAYS} days`}
+              onClick={() => select(null, null, false, null, false, true)}
+            >
+              <Trash2 size={16} />
+              <span>Trash</span>
+              {!!trash?.length && (
+                <small className="docs-nav-count">{trash.length}</small>
+              )}
+            </button>
+          </>
+        )}
+        {fixedKind && (
+          <div className="docs-nav-children">{(docs ?? []).map(pageLink)}</div>
+        )}
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
         {libraryHidden && (
@@ -1079,28 +1127,43 @@ export function DocsView({
                     <Archive size={15} /> Archive folder
                   </button>
                 )}
-                <ImportButton onFiles={importFiles} busy={imports.busy} />
-                <button
-                  className="text-button"
-                  disabled={busy}
-                  onClick={() => create("note")}
-                >
-                  <Plus size={15} /> New note
-                </button>
-                <button
-                  className="text-button"
-                  disabled={busy}
-                  onClick={() => setTemplating(true)}
-                >
-                  <LayoutTemplate size={15} /> From template
-                </button>
-                <button
-                  className="primary"
-                  disabled={busy}
-                  onClick={() => create("doc")}
-                >
-                  <Plus size={15} /> New page
-                </button>
+                {fixedKind ? (
+                  <button
+                    className="primary"
+                    disabled={busy}
+                    onClick={() => create(fixedKind)}
+                  >
+                    <Plus size={15} />
+                    {fixedKind === "memory"
+                      ? "New Memory note"
+                      : "New Agent note"}
+                  </button>
+                ) : (
+                  <>
+                    <ImportButton onFiles={importFiles} busy={imports.busy} />
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => create("note")}
+                    >
+                      <Plus size={15} /> New note
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => setTemplating(true)}
+                    >
+                      <LayoutTemplate size={15} /> From template
+                    </button>
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => create("doc")}
+                    >
+                      <Plus size={15} /> New page
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             {trashOnly && (
@@ -1307,31 +1370,41 @@ export function DocsView({
                 icon={FileText}
                 title={
                   query || tagFilter
-                    ? "No matching pages"
+                    ? `No matching ${fixedKind === "memory" ? "Memory notes" : fixedKind === "agent" ? "Agent notes" : "pages"}`
                     : "Nothing in here yet"
                 }
                 body={
                   query || tagFilter
                     ? "Try another word or tag."
-                    : "Keep notes, briefs and working out next to your tasks."
+                    : fixedKind === "memory"
+                      ? "Facts your agent learns appear here with their sources. Add or edit a topic any time."
+                      : fixedKind === "agent"
+                        ? "Briefs and other notes your agent makes are kept here."
+                        : "Keep notes, briefs and working out next to your tasks."
                 }
               >
                 {!(query || tagFilter) && (
                   <div className="empty-actions">
                     <button
                       className="primary"
-                      onClick={() => create(kindFilter ?? "doc")}
+                      onClick={() => create(fixedKind ?? kindFilter ?? "doc")}
                       disabled={busy}
                     >
-                      <Plus size={15} /> New{" "}
-                      {kindFilter === "note" ? "note" : "page"}
+                      <Plus size={15} />
+                      {fixedKind === "memory"
+                        ? "New Memory note"
+                        : fixedKind === "agent"
+                          ? "New Agent note"
+                          : `New ${kindFilter === "note" ? "note" : "page"}`}
                     </button>
-                    <ImportButton
-                      onFiles={importFiles}
-                      busy={imports.busy}
-                      className="secondary"
-                      label="Import"
-                    />
+                    {!fixedKind && (
+                      <ImportButton
+                        onFiles={importFiles}
+                        busy={imports.busy}
+                        className="secondary"
+                        label="Import"
+                      />
+                    )}
                   </div>
                 )}
               </EmptyState>

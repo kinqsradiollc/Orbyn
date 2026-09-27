@@ -36,6 +36,7 @@ import { savePrefs } from "../modules/planner/routines.js";
 import { restoreSubscription } from "../modules/planner/subscriptions.js";
 import { setFolds } from "../modules/docs/structure.js";
 import { setInstructions } from "../modules/agent-context/service.js";
+import { forgetMemory } from "../modules/memory/service.js";
 import {
   deleteField,
   requireField,
@@ -116,6 +117,8 @@ export type UndoOp =
     }
   /** A page it made: move it to Trash. */
   | { op: "doc.trash"; doc_id: string; version: number }
+  /** A private Memory note it made: forget it permanently. */
+  | { op: "memory.forget"; doc_id: string; version: number }
   /** A page it moved to Trash: bring it back. */
   | { op: "doc.untrash"; doc_id: string }
   /** Something it deleted (a task, project, list …): put it back whole. */
@@ -167,6 +170,17 @@ export type UndoOp =
   | { op: "habit_blocks.delete"; ids: string[] }
   /** Planner settings it changed: put the old values back. */
   | { op: "prefs.restore"; fields: Record<string, unknown> }
+  /** The person's named agent it changed: put the old identity back. */
+  | {
+      op: "agent_settings.restore";
+      user_id: string;
+      expected_updated_at: string;
+      previous: {
+        name: string;
+        persona: string;
+        named_at: string | null;
+      } | null;
+    }
   /** A saved view it made: remove it. */
   | { op: "view.delete"; id: string; version: number }
   /** A saved view it changed: put it back. */
@@ -432,6 +446,21 @@ export async function runUndo(
         );
         break;
       }
+      case "memory.forget": {
+        const forgotten = await forgetMemory(db, u.id, "", {
+          onlyDocId: op.doc_id,
+          includeKeptOut: true,
+        });
+        const doc = forgotten.docs[0];
+        if (!doc) break;
+        if (!same(`doc:${op.doc_id}`, doc.version, op.version)) changedSince();
+        after.push(() =>
+          announceDocChange(pool, doc.id, doc.version + 1, "undo", {
+            forgotten: true,
+          }),
+        );
+        break;
+      }
       case "doc.untrash": {
         const doc = (
           await db.query<{ deleted_at: Date | null }>(
@@ -564,6 +593,32 @@ export async function runUndo(
       case "prefs.restore":
         await savePrefs(db, u.id, op.fields as never);
         break;
+      case "agent_settings.restore": {
+        if (op.user_id !== u.id) changedSince();
+        const current = (
+          await db.query<{ updated_at: Date }>(
+            "SELECT updated_at FROM agent_settings WHERE user_id = $1",
+            [u.id],
+          )
+        ).rows[0];
+        if (
+          !current ||
+          current.updated_at.toISOString() !== op.expected_updated_at
+        )
+          changedSince();
+        if (op.previous) {
+          await db.query(
+            `UPDATE agent_settings SET name = $2, persona = $3,
+               named_at = $4, updated_at = now() WHERE user_id = $1`,
+            [u.id, op.previous.name, op.previous.persona, op.previous.named_at],
+          );
+        } else {
+          await db.query("DELETE FROM agent_settings WHERE user_id = $1", [
+            u.id,
+          ]);
+        }
+        break;
+      }
       case "occurrence.restore": {
         const row = await lockItem(db, op.id);
         if (!same(`item:${op.id}`, row.version, op.version)) changedSince();
