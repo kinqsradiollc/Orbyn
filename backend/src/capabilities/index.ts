@@ -1,5 +1,5 @@
 import { getCalendar } from "./calendar-view.js";
-import { getContext } from "./context.js";
+import { getContext, getProfile } from "./context.js";
 import { fetchCapability } from "./fetch.js";
 import { addTask, getAgenda, searchItems } from "./legacy.js";
 import { getProject } from "./project.js";
@@ -75,6 +75,8 @@ export const registry = new Registry([
   query,
   getProject,
   findPassages,
+  // Who this connection is, for OpenAI's account labels (openai/profile).
+  getProfile,
   // The first endpoint's tools, for old personal API keys only.
   searchItems,
   addTask,

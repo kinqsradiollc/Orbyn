@@ -34,7 +34,7 @@ import {
  *   addresses only, 64 KB, 5 s, redirects checked again, ETag cache);
  * - RS256, PS256 or ES256 only (never "none" or a shared-secret HS*);
  * - `iss` and `sub` are its client_id, `aud` is the token endpoint (the
- *   issuer is accepted too), `exp` is in the future and at most 5 minutes
+ *   issuer is accepted too), `exp` is in the future and at most an hour
  *   away, `iat` and `nbf` are sane within 30 s of clock skew;
  * - `jti` is spent on first use and remembered until the assertion
  *   expires, so a copied assertion can't be replayed.
@@ -45,8 +45,12 @@ import {
 
 export const CLIENT_ASSERTION_TYPE =
   "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
-/** The longest an assertion may be valid for. */
-export const ASSERTION_MAX_SECONDS = 300;
+/**
+ * The longest an assertion may be valid for: an hour, as common OAuth
+ * libraries sign them (Authlib's default; Okta's limit). Each is still spent
+ * on first use.
+ */
+export const ASSERTION_MAX_SECONDS = 3600;
 /** Clock skew allowed between the app and Orbyn. */
 export const ASSERTION_SKEW_SECONDS = 30;
 /** How soon keys may be read again when an unknown key shows up. */
@@ -264,7 +268,14 @@ async function verifyAssertion(row: ClientRow, assertion: string) {
     algorithms: allowed,
     issuer: clientId,
     subject: clientId,
-    audience: [tokenEndpoint(), oauthIssuer()],
+    // The token endpoint or the issuer, each with or without a final slash
+    // (RFC 7523 §3; libraries differ on how they write the issuer).
+    audience: [
+      tokenEndpoint(),
+      `${tokenEndpoint()}/`,
+      oauthIssuer(),
+      `${oauthIssuer()}/`,
+    ],
     clockTolerance: ASSERTION_SKEW_SECONDS,
     requiredClaims: ["exp", "jti"],
   };

@@ -1603,6 +1603,45 @@
       }
     },
     {
+      "name": "get_profile",
+      "title": "Connected account",
+      "description": "The Orbyn account this connection acts for: an opaque id that stays the same across refreshes and reconnections, and the person's name.",
+      "kind": "read",
+      "access": "read",
+      "toolset": "core",
+      "mode": "read",
+      "tier": "R",
+      "json_text": true,
+      "annotations": {
+        "title": "Connected account",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Opaque account id, unique within Orbyn and unchanged across token refresh and reconnection."
+          },
+          "name": {
+            "description": "The person's display name.",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "search_items",
       "title": "Search open tasks (older tool)",
       "description": "Kept for older connections; search is the newer tool. Open tasks and events whose title or notes contain every word, with each id and a link that opens it in Orbyn.",
@@ -7684,6 +7723,7 @@
         "query",
         "get_project",
         "find_passages",
+        "get_profile",
         "create_tasks",
         "update_tasks",
         "complete_tasks",
@@ -7806,7 +7846,7 @@
       "changes": [
         "Changes and the Review inbox: create_tasks, update_tasks, complete_tasks, edit_checklist, plan_schedule, schedule_sessions, reschedule_sessions, create_doc, edit_doc, link, create_project and propose_changes.",
         "Signing in with Orbyn (OAuth 2.1) for Claude, ChatGPT and other clients.",
-        "The read tools: get_context, search, fetch, get_today, get_calendar, query, get_project and find_passages; agent keys."
+        "The read tools: get_context, search, fetch, get_today, get_calendar, query, get_project, find_passages and get_profile; agent keys."
       ]
     }
   ],

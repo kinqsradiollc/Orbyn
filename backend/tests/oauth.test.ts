@@ -1915,13 +1915,13 @@ test("private_key_jwt with jwks in the document: the whole sign-in, and refresh,
     ],
     [
       "too long",
-      withAssertion(await signed(KEYED, { exp: nowSec() + 3600 })),
+      withAssertion(await signed(KEYED, { exp: nowSec() + 7200 })),
       /lasts too long/,
     ],
     [
       "too long from iat",
       withAssertion(
-        await signed(KEYED, { iat: nowSec() - 400, exp: nowSec() + 60 }),
+        await signed(KEYED, { iat: nowSec() - 3700, exp: nowSec() + 60 }),
       ),
       /lasts too long/,
     ],
