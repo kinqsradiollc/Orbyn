@@ -98,7 +98,7 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check
   CHECK (kind IN ('reminder', 'conflict', 'booking', 'rollforward', 'at_risk',
     'deadline', 'rsvp', 'invite', 'booker_reminder', 'mention', 'template',
     'ask', 'promise', 'calendar', 'import', 'project', 'agent', 'session',
-    'review', 'question'));
+    'review', 'question', 'system'));
 
 /*
  * The one way into agents' inboxes. For each live connection of p_user that

@@ -23,6 +23,6 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check
   CHECK (kind IN ('reminder', 'conflict', 'booking', 'rollforward', 'at_risk',
     'deadline', 'rsvp', 'invite', 'booker_reminder', 'mention', 'template',
     'ask', 'promise', 'calendar', 'import', 'project', 'agent', 'session',
-    'review', 'system'));
+    'review', 'question', 'system'));
 CREATE UNIQUE INDEX IF NOT EXISTS notifications_system_once
   ON notifications (user_id, ref) WHERE kind = 'system';
