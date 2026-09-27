@@ -347,7 +347,7 @@ Personal views are the person's own. A team view is shared with the team: member
 
 1. plan_schedule previews sessions and writes nothing. It returns the sessions with a reason for each, the tasks it couldn't place and why, the load per day, and a plan_token (ten minutes, single use).
 2. Show the person the plan. When they agree, schedule_sessions applies the plan_token. It checks again for clashes, closed tasks and changes since the preview, and skips anything that no longer fits.
-3. Personal plans of 20 sessions or fewer apply directly. Larger or team plans go to the person's Review inbox.
+3. At full power, plans of up to 50 sessions apply directly (a team's tasks too, once assigned to the person); undo takes them off. A connection that asks first, or only suggests, asks the person (in the chat, or the Review inbox).
 
 Revision before an exam works the same way: plan_revision previews, schedule_sessions applies; update_study with exam.plan does both in one call (it still asks first when the connection must ask).
 

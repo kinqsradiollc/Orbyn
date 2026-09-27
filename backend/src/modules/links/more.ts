@@ -24,7 +24,7 @@ import {
   visibleProjects,
   writableOwned,
 } from "../../lib/visibility.js";
-import { hasVectors, semanticOn } from "../search/semantic.js";
+import { hasVectors, semanticOn } from "../search/vectors.js";
 import { announceDocChange } from "../docs/live.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { requireDoc, snapshot } from "../docs/service.js";

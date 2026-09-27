@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { SearchHit, searchQuery } from "@orbyn/core";
 import type { Queryable } from "../../db/pool.js";
-import { nearest } from "./semantic.js";
+import type { NearHit } from "./vectors.js";
 import { searchRank } from "./rank.js";
 
 export { searchRank };
@@ -128,15 +128,22 @@ export async function searchPages(
 
 /**
  * Search pages, tasks and records for `userId`, ranked on one scale.
- * `semantic` says whether meaning may be added to the words (only where the
- * admin turned semantic search on); it must be said, because agents' paths
- * never use it.
+ * `nearest` adds meaning to the words (only where the admin turned semantic
+ * search on): the app's route passes modules/search/semantic.ts's; agents'
+ * paths never do, so this module never loads an AI provider.
  */
 export async function searchEverything(
   db: Queryable,
   userId: string,
   q: z.output<typeof searchQuery>,
-  options: { semantic: boolean },
+  options: {
+    nearest?: (
+      userId: string,
+      query: string,
+      limit?: number,
+      projectId?: string,
+    ) => Promise<NearHit[]>;
+  },
 ): Promise<SearchHit[]> {
   // Tasks, records and projects share this list (tasks add their tag as
   // $7): a placeholder a query never mentions has no type for Postgres to
@@ -278,8 +285,8 @@ export async function searchEverything(
    * turning it off changes nothing anyone was relying on.
    */
   // Meaning needs words to go on.
-  if (wantsDocs && options.semantic && q.q) {
-    const near = await nearest(userId, q.q, q.limit, q.project);
+  if (wantsDocs && options.nearest && q.q) {
+    const near = await options.nearest(userId, q.q, q.limit, q.project);
     if (near.length) {
       const byId = new Map(found.map((h) => [h.id, h]));
       for (const hit of near) {

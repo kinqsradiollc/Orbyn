@@ -61,8 +61,22 @@ const KEPT_TYPE: Record<string, string> = {
   "text/csv": "csv",
 };
 
-const limited = (message: string, fix: string) =>
-  new CapabilityError("LIMITED", message, fix);
+const limited = (
+  message: string,
+  fix: string,
+  data?: { retry_after: number },
+) => new CapabilityError("LIMITED", message, fix, data);
+
+/** Seconds until the next day (UTC), when the daily 500 MB starts again. */
+const untilTomorrow = (now: Date) =>
+  Math.max(
+    1,
+    Math.ceil(
+      (Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) -
+        now.getTime()) /
+        1000,
+    ),
+  );
 
 /** The bytes in `content`: base64, or a data: URL's. */
 function decode(content: string): Buffer {
@@ -247,7 +261,7 @@ export const addFile = defineCapability({
     const today = Number(
       (
         await ctx.db.query<{ bytes: string | null }>(
-          "SELECT bytes FROM agent_file_days WHERE user_id = $1 AND day = current_date",
+          "SELECT bytes FROM agent_file_days WHERE user_id = $1 AND day = (now() AT TIME ZONE 'UTC')::date",
           [me],
         )
       ).rows[0]?.bytes ?? 0,
@@ -255,7 +269,8 @@ export const addFile = defineCapability({
     if (today + n > AGENT_FILE_LIMITS.perDayBytes)
       throw limited(
         `Agents have sent ${fileSize(today)} of files today; 500 MB a day is the most, so this ${fileSize(n)} wasn't added.`,
-        "Try again tomorrow (the day turns at midnight UTC), or ask the person to add it in Orbyn.",
+        "Try again tomorrow (the day turns at midnight UTC; retry_after says when), or ask the person to add it in Orbyn.",
+        { retry_after: untilTomorrow(ctx.now) },
       );
     if (original) {
       if (
@@ -299,7 +314,7 @@ export const addFile = defineCapability({
     const fileId = randomUUID();
     await store(original ? "kept" : "page", fileId, mime, bytes);
     await ctx.db.query(
-      `INSERT INTO agent_file_days (user_id, day, bytes) VALUES ($1, current_date, $2)
+      `INSERT INTO agent_file_days (user_id, day, bytes) VALUES ($1, (now() AT TIME ZONE 'UTC')::date, $2)
        ON CONFLICT (user_id, day) DO UPDATE SET bytes = agent_file_days.bytes + EXCLUDED.bytes`,
       [me, n],
     );

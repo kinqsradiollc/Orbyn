@@ -252,6 +252,11 @@ function checkBlocks(blocks: DocBlock[]) {
   if (!valid.success) {
     const issue = valid.error.issues[0];
     const at = typeof issue.path[0] === "number" ? issue.path[0] : null;
+    if (at === null && issue.code === "too_big")
+      invalid(
+        `That's ${blocks.length} lines; at most ${String(issue.maximum)} go in at once.`,
+        "Send the text in parts with append_doc (each part up to that many lines).",
+      );
     invalid(
       `Line ${at === null ? "?" : at + 1} of that Markdown can't be kept: ${issue.message}.`,
       "Shorten it or split it into several lines (a code block's language is at most 20 characters).",

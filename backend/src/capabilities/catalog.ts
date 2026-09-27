@@ -5,7 +5,10 @@ import {
   AGENT_TOOLSET_LABELS,
   DEFAULT_AGENT_LIMITS,
 } from "@orbyn/core";
-import { SUSPEND_AFTER } from "../modules/mcp-server/limits.js";
+import {
+  HEAVY_PER_MINUTE,
+  SUSPEND_AFTER,
+} from "../modules/mcp-server/limits.js";
 import { EXCLUDED, PENDING, COVERED } from "./exclusions.js";
 import { registry } from "./index.js";
 import { describe, type Capability } from "./registry.js";
@@ -57,6 +60,7 @@ export const CHANGELOG: { date: string; changes: string[] }[] = [
   {
     date: "2026-09-27",
     changes: [
+      "Proven end to end (H9), still 60 tools: scenario tests play an MCP client through each flow (a lecture into notes, cards, tasks and a first review; research into a sourced brief; a project kickoff; quiz and exam prep; the inbox loop; each trust level; a big job's push and digest). From them: schedule_sessions takes a project plan's plan_token (it was refused); sessions go on the calendar directly at full power, team tasks' too, up to 50 at once (a connection that asks or suggests still asks); plan_schedule says it plans the person's tasks (a team's once assigned to them), and says so when nothing needs time; create_tasks puts a task in its project's space when team is left out; save_source lines take doc:<id>#<anchor> (as apply_plan's \"$notes.lines.x\" gives them); a mention's next tools include get_history (the comment to reply to); append_doc parts hold up to 2,000 lines, and more is refused in words. Agents' plans (plan_schedule, schedule_sessions) and get_follow_through's notices leave out projects kept out of AI (and notices about teams the connection wasn't given). apply_plan and add_file count as heavy calls (10 a minute) besides changes; add_file's 500 MB a day answers LIMITED with retry_after. The server's instructions say the workflow: you do the thinking, one apply_plan, practice first, what asks first. The docs list the limits for heavy calls, files and long pages, and every error code.",
       "Agents start warm (H8), still 60 tools: get_context also returns the person's \"About me for agents\" page (profile: Orbyn Markdown with line anchors, trimmed to about 6,000 characters with a link to the rest), its learning profile in fields (card_style, cards, session_minutes, study_times), the instructions for each space the connection reaches (Personal, and each team it is given), the standing rules, and since: what changed since the connection last spoke (its last call before a gap of half an hour): new inbox items, tasks the person added and finished, pages they edited, sessions they moved, changes by teammates and other agents where it reaches, questions and suggestions waiting, and the newest few with links. create_doc kind \"profile\" makes the page (one per person; asked again, the one there is), edited with edit_doc like any page. organize \"instructions\" (id: personal or a team; value: the words) changes a space's instructions: Personal's directly (undo), a team's asked first (team admin). get_study's queue is sized to the person's session length and puts their card style first; plan_revision and update_study exam.plan take their session length and study times when minutes aren't given; the study_session, lecture_to_notes and exam_prep prompts carry the learning profile. get_context's and get_today's answer schemas use plain strings for enums and drop repeated descriptions (the same answers, fewer tokens).",
       "You always know what happened (H7), still 60 tools: every change's done entries carry app_url (the phone app's orbyn:// link) beside url (the web app's), apply_plan's steps too, and add_file and save_source answer with url and app_url of the page; each change's summary ends with its links in words. An object-or-null in an answer's schema is written type [\"object\", \"null\"] (the same meaning, fewer tokens). The person sees \"via <agent>\" on a task's updates, comments and suggestions, Recent changes (shown even with their own hidden), notices a change caused and the page an agent last wrote (agenda pages too); gets one notice and push when a job (one apply_plan, or calls from one connection under two minutes apart) makes more than 20 changes; and a \"What your agents did\" section in the morning digest. Both can be turned off in Settings; agents can't turn them off. Connected agents lists changes by job with Undo per change and per job.",
       'Every feature, no gaps (H6b), still 60 tools: organize takes page changes (aliases: other names; fold; link_mention; extract: lines to a new page, linked where they were; merge: into another page, this one to Trash; remove_source), your own fields (create_field, change_field, set_field on pages and projects; deleting one is propose_changes delete what "field") and running a team, always asked first (create_team, rename_team, invite, remove_member, set_role, meeting_budget; the Review inbox action team.admin; deleting a team and its agent policy stay people only). update_project adds, changes, fills and removes milestones (removing is a delete: what "milestone" in propose_changes too) and keeps a project out of AI (assistant "off"; "on" always asks the person, and its proposal doesn\'t name the project to the agent). get_project lists milestones. save_view pins a view in the sidebar (pin) and returns a saved view\'s rows as CSV text (export "csv", in csv). get_history lists "recent" (opened and changed lately), "trash" and a team\'s recent changes ("changes" or team:<id>). propose_changes restore_doc brings a page back from Trash (emptying it stays the person\'s). fetch shows a page\'s Info (other names, tags, links here, versions, folds, fields with ids) and a project\'s fields. add_file takes project (a new page in it holding the file). update_planner_settings subscribe with id changes a subscribed calendar (link, name, colour, kind, busy, shown) or refreshes it (refresh). Every change is undoable except a new team and keeping a project out of AI. Every command in Orbyn\'s command list maps to a tool or a written reason.',
@@ -356,6 +360,11 @@ export function catalogMarkdown(catalog: Catalog): string {
     `| Calls in flight at once per connection | ${limits.concurrent} |`,
     `| Calls a day per connection | ${limits.calls_per_day} |`,
     `| Changes a minute / a day per connection | ${limits.writes_per_minute} / ${limits.writes_per_day} |`,
+    `| Heavy calls a minute per connection (\`what_if\`, \`apply_plan\`, \`add_file\`; a heavy change is a change too) | ${HEAVY_PER_MINUTE} |`,
+    '| Files an agent sends (`add_file`) | 25 MB a file (`INVALID` over it); 500 MB a day per person (`LIMITED`, with `retry_after` in `_meta["orbyn/data"]`) |',
+    "| A long page (`append_doc`) | 512 KB and 2,000 lines a part; 2 MB a page (`INVALID` over it) |",
+    "",
+    "Past a minute's or a day's limit, the error's `data.retry_after` and the `Retry-After` header say how many seconds to wait: until the oldest call in the minute leaves it, or until the next day (UTC).",
     "",
     "## Errors",
     "",
@@ -377,6 +386,10 @@ export function catalogMarkdown(catalog: Catalog): string {
     "- `AMBIGUOUS`: several things have that title. The candidates are listed.",
     "- `FORBIDDEN`: the connection can't do this here (its access level, or a tool it lacks).",
     "- `READ_ONLY`: the administrator has paused changes by agents.",
+    "- `VERSION_CONFLICT`: it changed since it was read. Read it again and retry with its version.",
+    "- `STALE`: a plan, undo or review no longer matches how things are now. Preview or read again.",
+    "- `DECLINED` / `CANCELLED`: the person said no to the question in the chat, or dismissed it. Nothing was changed.",
+    "- `LIMITED`: a person's daily or space limit is reached (files a day, space for pages' files or originals).",
     "- `UNAVAILABLE`: not available to agents yet.",
     "- `INTERNAL`: something went wrong on Orbyn's side. Try again.",
     "",

@@ -186,7 +186,12 @@ const newTask = z
       .max(100)
       .optional()
       .describe('"personal" (the default), or a team id from get_context.'),
-    project: z.string().trim().max(300).optional(),
+    project: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .describe("Without team: the project's space."),
     stage_id: idField.optional(),
     parent: z
       .string()
@@ -265,8 +270,22 @@ export const createTasks = defineCapability({
         continue;
       }
       const team = teamOf(t.team);
-      const teamId =
-        team !== undefined ? team : (parsed?.input.team_id ?? null);
+      let teamId = team !== undefined ? team : (parsed?.input.team_id ?? null);
+      // A task in a project goes in the project's space, so team can be
+      // left out (a team project reached through this connection).
+      if (team === undefined && !parsed?.input.team_id && t.project) {
+        const home = (
+          await db.query<{ team_id: string | null }>(
+            "SELECT team_id FROM projects WHERE id = $1",
+            [projectId(t.project)],
+          )
+        ).rows[0];
+        if (
+          home?.team_id &&
+          (p.team_ids === null || p.team_ids.includes(home.team_id))
+        )
+          teamId = home.team_id;
+      }
       const parent = t.parent ? uuidOf(t.parent, "parent") : undefined;
       const data = itemData.parse({
         ...(parsed?.input ?? {}),

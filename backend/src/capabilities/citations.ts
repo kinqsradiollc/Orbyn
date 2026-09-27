@@ -117,10 +117,10 @@ export const saveSource = defineCapability({
         .optional()
         .describe("The page that uses it (its space is the source's)."),
       lines: z
-        .array(z.string().max(64))
+        .array(z.string().max(400))
         .max(50)
         .optional()
-        .describe("Anchors of the lines on doc that use it."),
+        .describe("Lines on doc that use it: ^anchors or doc:<id>#<anchor>."),
       team: z.string().trim().max(100).optional(),
       client_ref: clientRefInput,
     })
@@ -196,9 +196,26 @@ export const saveSource = defineCapability({
       );
     if (destination(ctx, teamId, "W1") === "review")
       throw cantWait(ctx, teamId);
+    // A line as an anchor (^b…), or as apply_plan's "$notes.lines.x" gives
+    // it: doc:<id>#<anchor> (or orbyn://doc/<id>#<anchor>) on this page.
+    const elsewhere: string[] = [];
     const lines = [
-      ...new Set((a.lines ?? []).map((l) => l.replace(/^\^/, ""))),
+      ...new Set(
+        (a.lines ?? []).map((l) => {
+          const m = /^(?:doc:|orbyn:\/\/doc\/)([0-9a-f-]{36})#\^?(.+)$/i.exec(
+            l.trim(),
+          );
+          if (m && page && m[1].toLowerCase() !== page.id) elsewhere.push(l);
+          return (m ? m[2] : l.trim()).replace(/^\^/, "");
+        }),
+      ),
     ];
+    if (elsewhere.length)
+      throw new CapabilityError(
+        "INVALID",
+        `${elsewhere[0]} is a line on another page.`,
+        "Give the lines of doc, or save the source again for the other page.",
+      );
     if (page) {
       const ids = new Set(
         (Array.isArray(page.content) ? page.content : []).map((b) => b.id),

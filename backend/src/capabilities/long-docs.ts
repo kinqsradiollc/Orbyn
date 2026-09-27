@@ -392,7 +392,7 @@ export const appendDoc = defineCapability({
   name: "append_doc",
   title: "Write a long page in parts",
   description:
-    "For pages longer than create_doc takes (a lecture transcript, a long brief): send Orbyn Markdown in parts of up to 512 KB, 2 MB in all. The first call gives title (and team, folder_id, project) and returns a draft id; later calls send draft with the next part; finish: true makes the page from every part in number order, all or nothing. Over about 60 KB it becomes linked pages. Unfinished drafts go a day after their last part.",
+    "For pages longer than create_doc takes (a lecture transcript, a long brief): send Orbyn Markdown in parts of up to 512 KB and 2,000 lines, 2 MB in all. The first call gives title (and team, folder_id, project) and returns a draft id; later calls send draft with the next part; finish: true makes the page from every part in number order, all or nothing. Over about 60 KB it becomes linked pages. Unfinished drafts go a day after their last part.",
   input,
   output: writeOutput,
   annotations: ADDS,

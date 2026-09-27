@@ -9,6 +9,7 @@ import {
   type SessionOutcome,
 } from "@orbyn/core";
 import { queueWebhooks } from "../lib/webhooks.js";
+import { keptOutFor } from "../lib/assistant-off.js";
 import { checkIn, startSession } from "../modules/planner/check-in.js";
 import { derivedKey } from "../lib/secrets.js";
 import {
@@ -67,8 +68,11 @@ import {
 
 /** A plan_token lasts this long, and works once. */
 export const PLAN_TOKEN_MINUTES = 10;
-/** More sessions than this at once go to review. */
-export const DIRECT_SESSIONS = 20;
+/**
+ * More sessions than this at once ask the person first (the ask-first
+ * list's "more than 50 changes at once").
+ */
+export const DIRECT_SESSIONS = 50;
 
 type Sealed = {
   /** The person and the connection it was made for. */
@@ -167,7 +171,7 @@ export const planSchedule = defineCapability({
   name: "plan_schedule",
   title: "Preview a plan",
   description:
-    "Previews sessions for open tasks (or, mode habits, for the person's habits) over up to 14 days (working hours, frames, learned durations, the calendar) without changing anything: sessions, tasks that didn't fit and why, sessions that could move before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.",
+    "Previews sessions for the person's open tasks (team tasks once assigned to them; mode habits: their habits) over up to 14 days (working hours, frames, learned durations, the calendar), changing nothing: sessions, tasks that didn't fit and why, moves before a deadline, and a plan_token (10 minutes, once) for schedule_sessions.",
   input: z
     .object({
       days: z.number().int().min(1).max(14).optional(),
@@ -237,7 +241,13 @@ export const planSchedule = defineCapability({
       ...(project ? { project_id: project } : {}),
     };
     ctx.progress?.(1, 3, "Reading the calendar, tasks and working hours");
-    const plan = await computePlan(dbOf(ctx), p.user.id, state, ctx.now);
+    const plan = await computePlan(
+      dbOf(ctx),
+      p.user.id,
+      state,
+      ctx.now,
+      await outOfSight(ctx),
+    );
     ctx.progress?.(2, 3, "Placing sessions");
     // Only what this connection can see: a plan may place team tasks, and
     // a connection without that team never hears of them.
@@ -436,11 +446,21 @@ const sessionEntry = (
   change: `${change} (session ${b.id})`,
 });
 
+/**
+ * Tasks in projects kept out of AI, left out of an agent's plans (their
+ * sessions already on the calendar still count as busy): the agent never
+ * hears of them, and never places their time.
+ */
+async function outOfSight(ctx: CapabilityContext) {
+  const out = await keptOutFor(dbOf(ctx), ctx.principal.user.id);
+  return { drop_item_ids: [...out.items] };
+}
+
 export const scheduleSessions = defineCapability({
   name: "schedule_sessions",
   title: "Put sessions on the calendar",
   description:
-    "Adds sessions to the person's calendar: a plan_token's plan (from plan_schedule or plan_revision), or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 20 of the person's own sessions go directly; more, or team tasks, go to review.",
+    "Adds sessions to the person's calendar: a plan_token's plan (from plan_schedule or plan_revision), or sessions given (task, start, end). Clashing sessions or closed tasks are skipped; a plan whose calendar changed is refused as STALE. Up to 50 at once, made directly at full power (undo takes them off).",
   input: z
     .object({
       plan_token: z.string().trim().max(8000).optional(),
@@ -497,11 +517,20 @@ export const scheduleSessions = defineCapability({
           "Call plan_schedule again for a new plan.",
         );
       if (sealed.k) return scheduleSealed(ctx, sealed);
+      // The project a plan was limited to rides beside the app's own
+      // settings, which don't name one (and refuse keys they don't know).
+      const { project_id, ...settings } = sealed.s;
       const state = {
-        ...planPreviewInput.parse(sealed.s),
-        ...(sealed.s.project_id ? { project_id: sealed.s.project_id } : {}),
+        ...planPreviewInput.parse(settings),
+        ...(project_id ? { project_id } : {}),
       };
-      const again = await computePlan(db, p.user.id, state, new Date(sealed.n));
+      const again = await computePlan(
+        db,
+        p.user.id,
+        state,
+        new Date(sealed.n),
+        await outOfSight(ctx),
+      );
       const againMoves = (again.result.moves ?? []) as PlanMove[];
       if (
         fingerprint(again.inputs) !== sealed.f ||
@@ -544,11 +573,16 @@ export const scheduleSessions = defineCapability({
         [[...blocks, ...moves].map((b) => b.item_id)],
       )
     ).rows;
-    const teamTasks = teams.some((t) => t.team_id);
-    for (const t of teams) destination(ctx, t.team_id, "W1");
-    const where = destination(ctx, null, "W1");
+    // Sessions are the person's own time, team tasks' too: at full power
+    // they go straight on the calendar (undo takes them off); a connection
+    // that asks or suggests, in any space the tasks are in, asks.
+    const where = [null, ...teams.map((t) => t.team_id)].some(
+      (team) => destination(ctx, team, "W1") === "review",
+    )
+      ? "review"
+      : "direct";
     const count = blocks.length + moves.length;
-    if (where === "review" || teamTasks || count > DIRECT_SESSIONS) {
+    if (where === "review" || count > DIRECT_SESSIONS) {
       if (count > 50)
         throw new CapabilityError(
           "INVALID",

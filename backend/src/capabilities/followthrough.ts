@@ -28,6 +28,7 @@ import {
   markNotificationsRead,
 } from "../modules/notifications/service.js";
 import { atRiskFor } from "../modules/planner/plans.js";
+import { keptOutFor } from "../lib/assistant-off.js";
 import { READ, spaceName, teamFilter } from "./common.js";
 import { both, clean, cleanTitle, labelled } from "./format.js";
 import { appUrl, refs } from "./refs.js";
@@ -264,8 +265,9 @@ export const getFollowThrough = defineCapability({
         ? ctx.spaces.personal
         : ctx.spaces.teamIds === null || ctx.spaces.teamIds.includes(d.team_id),
     );
-    const notices = (await listNotifications(ctx.db, me, 30)).filter(
-      (n) => !n.read,
+    const notices = await noticesInSight(
+      ctx,
+      (await listNotifications(ctx.db, me, 30)).filter((n) => !n.read),
     );
     let evidence = null;
     if (a.evidence) {
@@ -726,6 +728,46 @@ export const saveRecord = defineCapability({
     });
   },
 });
+
+/**
+ * The notices an agent may be told of: none about anything in a project
+ * kept out of AI (a task, page, record or the project itself, by the
+ * notice's task or its ref), nor about a team's task this connection
+ * wasn't given.
+ */
+async function noticesInSight<
+  N extends { item_id: string | null; ref: string | null },
+>(ctx: CapabilityContext, notices: N[]): Promise<N[]> {
+  if (!notices.length) return notices;
+  const out = await keptOutFor(ctx.db, ctx.principal.user.id);
+  const items = [
+    ...new Set(notices.map((n) => n.item_id).filter(Boolean)),
+  ] as string[];
+  const teamOf = new Map(
+    items.length
+      ? (
+          await ctx.db.query<{ id: string; team_id: string | null }>(
+            "SELECT id, team_id FROM items WHERE id = ANY ($1::uuid[])",
+            [items],
+          )
+        ).rows.map((r) => [r.id, r.team_id])
+      : [],
+  );
+  const reaches = (team: string | null | undefined) =>
+    team == null
+      ? ctx.spaces.personal
+      : ctx.spaces.teamIds === null || ctx.spaces.teamIds.includes(team);
+  return notices.filter((n) => {
+    const ids = [
+      ...(n.item_id ? [n.item_id] : []),
+      ...(n.ref?.match(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      ) ?? []),
+    ];
+    if (ids.some((id) => out.ids.has(id) || out.projects.has(id))) return false;
+    return !n.item_id || reaches(teamOf.get(n.item_id));
+  });
+}
 
 // --- mark_notifications_read (folded into ack_inbox) --------------------
 

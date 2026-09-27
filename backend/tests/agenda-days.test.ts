@@ -435,7 +435,7 @@ test("Rewrite from my calendar keeps your notes", async () => {
   const saved = (
     await call("PUT", `/docs/${doc.id}`, { version: doc.version, content })
   ).json();
-  const rewritten = await rewriteAgenda(userId, { withBrief: false });
+  const rewritten = await rewriteAgenda(userId);
   assert.equal(rewritten.id, doc.id);
   assert.ok(rewritten.version > saved.version);
   const lines = texts(rewritten.content);

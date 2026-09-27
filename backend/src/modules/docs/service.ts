@@ -30,7 +30,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { isOccurrence, type SeriesRow } from "../planner/calendar.js";
 import { mutate, recomputeProgress, setItemStatus } from "../items/service.js";
 import { announceDocChange } from "./live.js";
-import { hasVectors } from "../search/semantic.js";
+import { hasVectors } from "../search/vectors.js";
 import { syncSavedPages } from "../study/service.js";
 import { inMyTeams, readableDocs, visibleDocs } from "../../lib/visibility.js";
 import { actAs } from "../../lib/actor.js";

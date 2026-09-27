@@ -134,7 +134,7 @@ async function agendaPage(ctx: CapabilityContext, title: string) {
   } | null;
   if (date === today && (await todaysAgendaIfWritten(me, ctx.now)))
     made = {
-      doc: await rewriteAgenda(me, { withBrief: false, now: ctx.now }),
+      doc: await rewriteAgenda(me, { now: ctx.now }),
       created: false,
     };
   else made = await writeAgendaOn(me, date, ctx.now);

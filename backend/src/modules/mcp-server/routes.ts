@@ -492,6 +492,8 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         p.user.id,
         kind,
         s.agents.agent_limits,
+        Date.now(),
+        cap?.limitGroup === "heavy",
       );
       if (!slot.ok) {
         recorder.count(grantId, "limited");

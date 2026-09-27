@@ -89,6 +89,8 @@ const NEXT: Record<AgentInboxKind, [string, AgentToolset][]> = {
   ],
   mention: [
     ["fetch", "core"],
+    // The comment to reply to (its id) is in the page's open comments.
+    ["get_history", "workspace"],
     ["comment_on_doc", "workspace"],
   ],
   invite: [

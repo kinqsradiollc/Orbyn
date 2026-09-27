@@ -1,6 +1,7 @@
 import { dayTime, localDateKey } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import { todaysAgenda } from "../modules/docs/agenda.js";
+import { briefFor } from "../modules/ai/agenda-brief.js";
 
 /** Local hour past midnight in `tz`. */
 const localHour = (now: Date, tz: string) =>
@@ -64,7 +65,7 @@ export async function scanMorningAgendas(
       );
       if (has.rowCount) continue;
       try {
-        await todaysAgenda(p.id, { withBrief: true, now });
+        await todaysAgenda(p.id, { brief: briefFor, now });
         written++;
       } catch {
         // One person's page failing must not stop everyone else's.

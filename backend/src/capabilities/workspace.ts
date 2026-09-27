@@ -1400,7 +1400,7 @@ export const commentOnDoc = defineCapability({
   name: "comment_on_doc",
   title: "Comment on a page",
   description:
-    "Adds a comment on a page or one of its lines (line: its anchor), replies (reply_to), or resolves and reopens a comment. mentions (person ids) notify people, so they are kept only when this connection may notify teammates; otherwise they are left out and the answer says so. Only people who can read the page can be named.",
+    "Adds a comment on a page or one of its lines (line: its anchor), replies (reply_to), or resolves and reopens a comment (comment ids: get_history of the page). mentions (person ids) notify people, so they are kept only when this connection may notify teammates; otherwise they are left out and the answer says so. Only people who can read the page can be named.",
   input: z
     .object({
       doc: z.string().trim().min(1).max(300),

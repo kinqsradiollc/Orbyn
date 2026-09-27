@@ -297,7 +297,7 @@ export function describePlan(result: SchedulerResult, days: number) {
           `No more time fits before the deadlines. ${notes.join(" ")}`
         : moves
           ? `No new sessions needed. ${notes.join(" ")}`
-          : "There's nothing to plan: no open task needs time.";
+          : "There's nothing to plan: no open task needs time. (A team's tasks are planned for the person they're assigned to.)";
   return [
     `${plural(tasks, "task")} in ${plural(result.blocks.length, "session")} over ${plural(days, "day")}, using ${hoursLabel(result.planned_minutes)} of ${hoursLabel(result.capacity_minutes)} free.`,
     ...notes,
