@@ -52,6 +52,7 @@ import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";
 import { SettingsSection } from "./SettingsSection";
 import { AgentRules, InboxEdit } from "./AgentInbox";
+import { AgentWarmStart } from "./AgentContext";
 import "./agents.css";
 
 type Props = {
@@ -951,6 +952,7 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
           </p>
         )}
       <OutcomeNote outcome={action.outcome} />
+      <AgentWarmStart report={report} />
       {grants.length > 0 && <AgentRules report={report} />}
 
       <div ref={connectRef}>

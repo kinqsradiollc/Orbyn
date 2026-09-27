@@ -635,10 +635,11 @@ test("save_view and query: saved, run, changed, starred, and kept as the app kee
     code(await tool(keys.otto, "query", { view: viewId })),
     "NOT_FOUND",
   );
-  // Undo of the change puts the old one back.
+  // Undo of the change puts the old one back. The change's own row, not a
+  // refused call's (those are recorded in batches, so can land after it).
   const act = (
     await pool.query(
-      "SELECT id FROM agent_activity WHERE tool = 'save_view' AND user_id = $1 ORDER BY id DESC LIMIT 1",
+      "SELECT id FROM agent_activity WHERE tool = 'save_view' AND user_id = $1 AND undo IS NOT NULL ORDER BY id DESC LIMIT 1",
       [olga.id],
     )
   ).rows[0];

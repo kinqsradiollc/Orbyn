@@ -22,6 +22,7 @@ import {
 } from "../modules/docs/service.js";
 import { announceDocChange } from "../modules/docs/live.js";
 import { usePageTemplateById } from "../modules/templates/pages.js";
+import { ensureProfile } from "../modules/agent-context/service.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import {
   rewriteAgenda,
@@ -172,7 +173,7 @@ export const createDocCapability = defineCapability({
   name: "create_doc",
   title: "Write a new page",
   description:
-    'Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event\'s notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day\'s agenda page from the calendar (today\'s again, keeping Notes).',
+    'Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event\'s notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day\'s agenda page from the calendar (today\'s again, keeping Notes). kind "profile": their About me for agents page (one each; markdown or Orbyn\'s outline).',
   input: z
     .object({
       title: z.string().trim().min(1).max(200),
@@ -189,7 +190,9 @@ export const createDocCapability = defineCapability({
         .describe(
           "A page template's id, or a starter's (search types: template).",
         ),
-      kind: z.enum(["doc", "note", "meeting", "agenda"]).default("doc"),
+      kind: z
+        .enum(["doc", "note", "meeting", "agenda", "profile"])
+        .default("doc"),
       team: z
         .string()
         .trim()
@@ -218,6 +221,7 @@ export const createDocCapability = defineCapability({
     const team = teamFilter(a.team);
     const teamId = team && "team" in team ? team.team : null;
     if (a.kind === "agenda") return agendaPage(ctx, a.title);
+    if (a.kind === "profile") return profilePage(ctx, a.markdown);
     if (a.template) return fromTemplate(ctx, a, teamId);
     if (a.markdown === undefined)
       throw new CapabilityError(
@@ -267,6 +271,40 @@ export const createDocCapability = defineCapability({
     });
   },
 });
+
+/**
+ * The person's "About me for agents" page (H8): made once, from the
+ * agent's Markdown or Orbyn's outline; asked again, the page that is there.
+ */
+async function profilePage(ctx: CapabilityContext, markdown?: string) {
+  if (!ctx.principal.personal)
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "The About me page is the person's own: the connection needs Personal.",
+    );
+  if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
+  const content =
+    markdown === undefined
+      ? undefined
+      : withIds(await readMarkdown(ctx, markdown, null));
+  if (content) checkSize(content);
+  const made = await ensureProfile(dbOf(ctx), actorOf(ctx.principal), content);
+  const doc = made.doc;
+  return finishWrite(ctx, "About me for agents", {
+    done: [
+      docEntry(
+        doc,
+        made.created
+          ? "Written"
+          : "Already their About me page: change it with edit_doc",
+      ),
+    ],
+    undo: made.created
+      ? [{ op: "doc.trash", doc_id: doc.id, version: doc.version }]
+      : [],
+    after: made.created ? [() => syncSavedPages(doc.id)] : [],
+  });
+}
 
 /** A page made from a page template (the app's "New page from template"). */
 async function fromTemplate(

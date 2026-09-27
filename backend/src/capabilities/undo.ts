@@ -35,6 +35,7 @@ import { announceTo } from "../modules/presence/live.js";
 import { savePrefs } from "../modules/planner/routines.js";
 import { restoreSubscription } from "../modules/planner/subscriptions.js";
 import { setFolds } from "../modules/docs/structure.js";
+import { setInstructions } from "../modules/agent-context/service.js";
 import {
   deleteField,
   requireField,
@@ -267,7 +268,11 @@ export type UndoOp =
       id: string;
       name?: string;
       meeting_budget_minutes?: number | null;
+      /** Its instructions for agents (H8), as they were. */
+      instructions?: string;
     }
+  /** Personal's instructions for agents it changed (H8): as they were. */
+  | { op: "instructions.set"; text: string }
   /** Someone it added, removed or re-roled in a team: role as it was (null: not in it). */
   | { op: "team.member"; id: string; user_id: string; role: string | null }
   /** A subscribed calendar it changed (H6b): its settings as they were. */
@@ -742,6 +747,11 @@ export async function runUndo(
         if (op.name !== undefined) await renameTeam(db, u, op.id, op.name);
         if (op.meeting_budget_minutes !== undefined)
           await setMeetingBudget(db, u, op.id, op.meeting_budget_minutes);
+        if (op.instructions !== undefined)
+          await setInstructions(db, u, op.id, { text: op.instructions });
+        break;
+      case "instructions.set":
+        await setInstructions(db, u, null, { text: op.text });
         break;
       case "team.member": {
         const now = (

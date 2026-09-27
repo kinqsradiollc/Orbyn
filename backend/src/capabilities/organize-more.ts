@@ -25,6 +25,7 @@ import {
   updateField,
 } from "../modules/views/fields.js";
 import { runTeamAdmin, type TeamAdmin } from "../modules/teams/admin.js";
+import { setInstructions } from "../modules/agent-context/service.js";
 import { teamFilter } from "./common.js";
 import { cleanTitle } from "./format.js";
 import { appUrl, parseRef } from "./refs.js";
@@ -67,6 +68,7 @@ export const ORGANIZE_MORE = [
   "remove_member",
   "set_role",
   "meeting_budget",
+  "instructions",
 ] as const;
 export type OrganizeMore = (typeof ORGANIZE_MORE)[number];
 
@@ -438,7 +440,11 @@ export async function organizeMore(
         "review"
       )
         throw cantWait(ctx, target.team_id);
-      if (typeof c.value === "string") refuseSecrets(c.value);
+      if (typeof c.value === "string") {
+        if (c.value.length > 500)
+          throw invalid("A field's value is 500 characters at most.");
+        refuseSecrets(c.value);
+      }
       const r = await setFieldValue(db, actor, f.id, {
         target: target.kind,
         target_id: target.id,
@@ -466,6 +472,36 @@ export async function organizeMore(
           r.value === null ? `Cleared ${f.name}` : `Set ${f.name}`,
         ),
       );
+      return;
+    }
+    case "instructions": {
+      if (typeof c.value !== "string" && c.value !== null)
+        throw invalid(
+          'instructions needs value: the words (up to 2000 characters; "" or null clears them).',
+        );
+      const text = (c.value ?? "").trim();
+      if (text.length > 2000)
+        throw invalid("Instructions are 2000 characters at most.");
+      refuseSecrets(text);
+      const space = (c.id ?? "personal").trim().toLowerCase();
+      // A team's instructions steer every member's agents: asked first.
+      if (space !== "personal")
+        return teamChange(ctx, { ...c, value: text }, st);
+      if (!ctx.principal.personal)
+        throw new CapabilityError(
+          "FORBIDDEN",
+          "Personal's instructions need a connection with Personal.",
+        );
+      if (destination(ctx, null, "W1") === "review") throw cantWait(ctx, null);
+      const r = await setInstructions(db, actor, null, { text });
+      st.undo.push({ op: "instructions.set", text: r.was });
+      st.done.push({
+        id: "instructions:personal",
+        title: "Instructions for Personal",
+        url: `${appUrl()}/app/settings`,
+        version: null,
+        change: text ? "Changed" : "Cleared",
+      });
       return;
     }
     default:
@@ -570,6 +606,17 @@ async function teamChange(
         minutes === null
           ? `Clear ${quoted(t.name)}'s meeting budget`
           : `Set ${quoted(t.name)}'s meeting budget to ${minutes} minutes a week each`;
+      title = t.name;
+      teamId = t.id;
+      break;
+    }
+    case "instructions": {
+      const t = teamOf(ctx, c.id);
+      const text = String(c.value ?? "");
+      input = { op: "instructions", team_id: t.id, text };
+      headline = text
+        ? `Set ${quoted(t.name)}'s instructions for agents: “${text.length > 120 ? `${text.slice(0, 117)}…` : text}”`
+        : `Clear ${quoted(t.name)}'s instructions for agents`;
       title = t.name;
       teamId = t.id;
       break;

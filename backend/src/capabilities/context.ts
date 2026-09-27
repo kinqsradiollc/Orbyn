@@ -1,14 +1,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
-  AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
   AGENT_ASK_FIRST,
-  AGENT_TRUST,
   AGENT_TRUST_LABELS,
-  AGENT_TOOLSETS,
-  TEAM_AGENT_ACCESS,
-  TEAM_ROLES,
+  type AgentTrust,
 } from "@orbyn/core";
 import { cachedSettings } from "../lib/settings.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
@@ -16,6 +12,7 @@ import { cleanTitle, localDay, localTime } from "./format.js";
 import { levelIn, trustIn } from "./policy.js";
 import { appUrl, todayUrl } from "./refs.js";
 import { defineCapability } from "./registry.js";
+import { warmContext, warmMarkdown, warmOutput } from "./warm.js";
 
 /** Who the agent acts for, what this connection may do, and the conventions. */
 export const CONVENTIONS = {
@@ -42,14 +39,14 @@ const output = z.object({
     }),
   }),
   connection: z.object({
-    kind: z.enum(["key", "oauth", "legacy", "session"]),
+    kind: z.string(),
     client: z.string(),
-    access: z.enum(AGENT_ACCESS),
-    trust: z.enum(AGENT_TRUST),
-    personal_trust: z.enum(AGENT_TRUST).nullable(),
-    asks_first: z.array(z.enum(AGENT_ASK_FIRST)),
+    access: z.string(),
+    trust: z.string(),
+    personal_trust: z.string().nullable(),
+    asks_first: z.array(z.string()),
     personal: z.boolean(),
-    toolsets: z.array(z.enum(AGENT_TOOLSETS)),
+    toolsets: z.array(z.string()),
     flags: z.object({
       notify_teammates: z.boolean(),
       hide_outside_content: z.boolean(),
@@ -61,19 +58,17 @@ const output = z.object({
     z.object({
       id: z.string(),
       name: z.string(),
-      role: z.enum(TEAM_ROLES),
-      agent_policy: z.enum(TEAM_AGENT_ACCESS),
-      level: z.enum(AGENT_ACCESS).nullable(),
-      trust: z.enum(AGENT_TRUST),
+      role: z.string(),
+      agent_policy: z.string(),
+      level: z.string().nullable(),
+      trust: z.string(),
     }),
   ),
   limits: z.object({
     calls_per_minute: z.number(),
     search_per_minute: z.number(),
     calls_per_day: z.number(),
-    calls_left_today: z
-      .number()
-      .describe("About how many calls are left today (UTC day)."),
+    calls_left_today: z.number(),
   }),
   links: z.object({ app: z.string(), today: z.string() }),
   conventions: z.object({
@@ -82,13 +77,14 @@ const output = z.object({
     times: z.string(),
     content: z.string(),
   }),
+  ...warmOutput,
 });
 
 export const getContext = defineCapability({
   name: "get_context",
   title: "Who and where",
   description:
-    "Who this connection acts for (name only), their time zone, current local time and working hours, their teams with each team's role and agent policy, what this connection may do (access, trust per space: full, ask or suggest, and what asks first even at full; spaces, toolsets, expiry), its limits, and the conventions for ids, links and times. A good first call.",
+    "Call first. Who this connection acts for (name), time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
   input: z.object({}).strict(),
   output,
   annotations: {
@@ -171,11 +167,12 @@ export const getContext = defineCapability({
       },
       links: { app: `${appUrl()}/app`, today: todayUrl() },
       conventions: CONVENTIONS,
+      ...(await warmContext(ctx)),
     };
     const u = structured.user;
     const markdown = [
       `Acting for ${u.name}. It is ${u.now_local} (${u.timezone}); working hours ${u.working_hours.start}–${u.working_hours.end}.`,
-      `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust].name.toLowerCase()})` : ""}, ${
+      `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust as AgentTrust].name.toLowerCase()})` : ""}, ${
         [
           ...(p.personal ? ["Personal"] : []),
           ...structured.teams.map((t) => t.name),
@@ -188,6 +185,11 @@ export const getContext = defineCapability({
       "",
       CONVENTIONS.ids,
       CONVENTIONS.content,
+      ...warmMarkdown(structured, (id) =>
+        id === null
+          ? "Personal"
+          : (structured.teams.find((t) => t.id === id)?.name ?? "a team"),
+      ),
     ].join("\n");
     return { structured, markdown };
   },

@@ -451,6 +451,36 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.agents-about {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+}
+.agents-about > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.agents-instructions-form {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.agents-instructions-form textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 13px;
+}
+.agents-instructions-actions {
+  display: flex;
+  gap: 8px;
+}
+.agents-instructions-meta {
+  color: var(--color-muted);
+  font-size: 11px;
+}
 .agents-rule-form {
   display: grid;
   grid-template-columns: minmax(0, 180px) minmax(0, 1fr) auto auto;

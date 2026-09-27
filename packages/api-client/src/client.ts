@@ -8,6 +8,7 @@ import {
   type AgentQuestion,
   type AgentRule,
   type AgentRuleInput,
+  type AgentContextSettings,
   type NewAgentWake,
   type ProposalStatus,
   type McpCatalog,
@@ -2730,6 +2731,24 @@ export class OrbynClient {
   }
   deleteAgentRule(id: string) {
     return this.request<void>(`/me/agent-rules/${id}`, { method: "DELETE" });
+  }
+  /** "About me for agents" and each space's instructions (H8). */
+  agentContext() {
+    return this.request<AgentContextSettings>("/me/agent-context");
+  }
+  /** Opens the About me page, making it first when there isn't one. */
+  openAgentProfile() {
+    return this.request<{ doc_id: string; title: string; created: boolean }>(
+      "/me/agent-profile",
+      { method: "POST" },
+    );
+  }
+  /** Changes a space's instructions for agents (null: Personal). */
+  setAgentInstructions(teamId: string | null, text: string) {
+    return this.request<AgentContextSettings>(
+      teamId ? `/teams/${teamId}/agent-instructions` : "/me/agent-instructions",
+      { method: "PUT", body: { text } },
+    );
   }
   /** Questions agents asked, waiting for an answer. */
   agentQuestions() {

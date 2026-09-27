@@ -49,6 +49,7 @@ import { FadeIn, PressableScale, animateLayout } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AgentRulesCard, InboxPanel } from "./AgentInbox";
+import { AgentWarmStartCards } from "./AgentContext";
 
 const ACCESS_TAG: Record<AgentAccess, string> = {
   read: "See",
@@ -836,6 +837,9 @@ export function ConnectedAgentsCard({
           <Text style={shared.small}>No agents yet.</Text>
         )}
       </View>
+
+      <Text style={[shared.eyebrow, s.eyebrow]}>ABOUT YOU</Text>
+      <AgentWarmStartCards busy={busy} run={run} />
 
       {!!overview?.grants.length && (
         <>

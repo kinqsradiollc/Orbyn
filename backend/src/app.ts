@@ -7,6 +7,7 @@ import { inboundRoutes } from "./modules/inbound/routes.js";
 import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
 import { agentRoutes } from "./modules/agents/routes.js";
 import { agentInboxRoutes } from "./modules/agent-inbox/routes.js";
+import { agentContextRoutes } from "./modules/agent-context/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
 import { davRoutes } from "./modules/dav/routes.js";
@@ -94,6 +95,7 @@ export const serviceModules: Record<
     // Agents' inboxes: what each connection hears, its wake-up address,
     // standing rules, and answering agents' questions (H0).
     agentInboxRoutes,
+    agentContextRoutes,
     // The Review inbox: approving what the assistant and outside agents
     // propose, and undoing what agents changed.
     proposalRoutes,

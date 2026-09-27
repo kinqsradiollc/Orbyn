@@ -37,6 +37,7 @@ import {
   type CapabilityContext,
 } from "./registry.js";
 import { seeDoc } from "./shared.js";
+import { learningFor } from "../modules/agent-context/service.js";
 import { sealRevision } from "./write-sessions.js";
 import { editPage, withIds } from "./write-docs.js";
 import { readMarkdown } from "./doc-markdown.js";
@@ -311,7 +312,15 @@ export const getStudy = defineCapability({
         .describe("Only this exam's pages (key)."),
       ahead: z.boolean().default(false).describe("Include cards not due yet."),
       reveal: z.boolean().default(false),
-      limit: z.number().int().min(1).max(100).default(20),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe(
+          "Default: about a card a minute of their session length, else 20.",
+        ),
       card: idField.optional(),
       explain: z
         .object({
@@ -441,6 +450,14 @@ export const getStudy = defineCapability({
     let queue: z.output<typeof queueCard>[] = [];
     let progress: { done_today: number; left_today: number } | null = null;
     if (a.queue) {
+      // Their learning profile (H8): as many cards as their usual session
+      // holds (about one a minute), their card style first.
+      const learning = await learningFor(ctx.db, me);
+      const limit =
+        a.limit ??
+        (learning?.session_minutes
+          ? Math.min(100, Math.max(5, learning.session_minutes))
+          : 20);
       let cards: StudyCard[];
       if (a.ahead) {
         cards = await withCardSources(
@@ -448,7 +465,7 @@ export const getStudy = defineCapability({
           me,
           await reviewQueue(
             me,
-            { docId: deck, limit: a.limit, ahead: true },
+            { docId: deck, limit, ahead: true },
             ctx.now,
             ctx.db,
           ),
@@ -456,7 +473,7 @@ export const getStudy = defineCapability({
       } else {
         const q = await quizQueue(
           me,
-          { docIds: scoped, limit: a.limit },
+          { docIds: scoped, limit, style: learning?.card_style },
           ctx.now,
           ctx.db,
         );
@@ -831,9 +848,32 @@ const examInput = z
       .boolean()
       .default(false)
       .describe("Also book plan_revision's sessions."),
-    minutes: z.number().int().min(15).max(120).default(30),
+    minutes: z
+      .number()
+      .int()
+      .min(15)
+      .max(120)
+      .optional()
+      .describe("Default: their session length, else 30."),
   })
   .strict();
+
+/**
+ * Revision session minutes and study times from the person's learning
+ * profile (H8), when they don't say.
+ */
+async function revisionShape(ctx: CapabilityContext, minutes?: number) {
+  const learning = await learningFor(ctx.db, ctx.principal.user.id);
+  const fromProfile = learning?.session_minutes
+    ? Math.min(120, Math.max(15, learning.session_minutes))
+    : null;
+  return {
+    minutes: minutes ?? fromProfile ?? 30,
+    windows: (learning?.study_times ?? []).flatMap((t) =>
+      t.start && t.end ? [{ start: t.start, end: t.end }] : [],
+    ),
+  };
+}
 
 /** Name or change an exam, attach its pages, and book revision if asked. */
 async function writeExam(
@@ -905,7 +945,15 @@ async function writeExam(
     (x) => x.key === key,
   );
   if (!exam) throw noExam();
-  const plan = await planRevision(me, exam, e.minutes, ctx.now, db);
+  const shape = await revisionShape(ctx, e.minutes);
+  const plan = await planRevision(
+    me,
+    exam,
+    shape.minutes,
+    ctx.now,
+    db,
+    shape.windows,
+  );
   if (!plan.sessions.length) {
     entry.change += "; no free time for revision sessions before it";
     return;
@@ -1043,7 +1091,13 @@ export const planRevisionCapability = defineCapability({
         .min(1)
         .max(300)
         .describe("The exam's key from get_study."),
-      minutes: z.number().int().min(15).max(120).default(30),
+      minutes: z
+        .number()
+        .int()
+        .min(15)
+        .max(120)
+        .optional()
+        .describe("Default: their session length, else 30."),
     })
     .strict(),
   output: z.object({
@@ -1068,8 +1122,21 @@ export const planRevisionCapability = defineCapability({
     const exam = o.exams.find((e) => e.key === a.exam);
     if (!exam) throw noExam();
     ctx.progress?.(1, 2, "Finding free working time before the exam");
-    const plan = await planRevision(me, exam, a.minutes, ctx.now, ctx.db);
-    const sealed = await sealRevision(ctx, exam.key, a.minutes, plan.sessions);
+    const shape = await revisionShape(ctx, a.minutes);
+    const plan = await planRevision(
+      me,
+      exam,
+      shape.minutes,
+      ctx.now,
+      ctx.db,
+      shape.windows,
+    );
+    const sealed = await sealRevision(
+      ctx,
+      exam.key,
+      shape.minutes,
+      plan.sessions,
+    );
     ctx.progress?.(2, 2, "Plan ready");
     const sessions = plan.sessions.map((s) => ({
       ...s,

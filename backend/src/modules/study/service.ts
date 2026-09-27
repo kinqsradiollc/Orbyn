@@ -582,6 +582,11 @@ export async function planRevision(
   minutes: number,
   now = new Date(),
   db: Db = pool,
+  /**
+   * When the person likes to study ("HH:MM" ranges from their profile,
+   * H8): tried first each day, before working hours.
+   */
+  windows: { start: string; end: string }[] = [],
 ): Promise<RevisionPlan> {
   const prefs = await loadPrefs(db, userId);
   const tz = prefs.timezone || "UTC";
@@ -612,9 +617,21 @@ export async function planRevision(
     const length =
       (daysBefore <= 3 ? Math.round((minutes * 1.5) / 5) * 5 : minutes) *
       60_000;
-    const slot = freeSpans(workingSpans(prefs, start, end), busy).find(
-      (s) => s.end - s.start >= length,
-    );
+    const fits = (spans: { start: number; end: number }[]) =>
+      freeSpans(spans, busy).find((s) => s.end - s.start >= length);
+    const study = windows.flatMap((w) => {
+      const [sh, sm] = w.start.split(":").map(Number);
+      const [eh, em] = w.end.split(":").map(Number);
+      const from = dayTime(day, sh * 60 + sm, tz).getTime();
+      let to = dayTime(day, eh * 60 + em, tz).getTime();
+      if (to <= from) to = dayTime(addDays(day, 1), eh * 60 + em, tz).getTime();
+      to = Math.min(to, dayTime(examDay, 0, tz).getTime());
+      const a = Math.max(from, start.getTime());
+      return to > a ? [{ start: a, end: to }] : [];
+    });
+    const slot =
+      (study.length ? fits(study) : undefined) ??
+      fits(workingSpans(prefs, start, end));
     if (!slot) {
       skipped.push(day);
       continue;
@@ -782,6 +799,22 @@ export function interleave<T extends { doc_id: string }>(cards: T[]): T[] {
   return out;
 }
 
+/** Whether a card is a cloze (one per hidden part of its line: `…#c1`). */
+export const isClozeKey = (key: string) => /#c\d+$/.test(key);
+
+/**
+ * Cards of the style the person likes first (their learning profile, H8),
+ * each group keeping its order; "mixed" or no style changes nothing.
+ */
+export function preferStyle<T extends { card_key: string }>(
+  cards: T[],
+  style: "qa" | "cloze" | "mixed" | null | undefined,
+): T[] {
+  if (style !== "qa" && style !== "cloze") return cards;
+  const liked = (c: T) => isClozeKey(c.card_key) === (style === "cloze");
+  return [...cards.filter(liked), ...cards.filter((c) => !liked(c))];
+}
+
 /** How far today's practice has got. */
 export type QuizProgress = { done_today: number; left_today: number };
 
@@ -793,7 +826,12 @@ export type QuizProgress = { done_today: number; left_today: number };
  */
 export async function quizQueue(
   userId: string,
-  options: { docIds?: string[]; limit: number },
+  options: {
+    docIds?: string[];
+    limit: number;
+    /** The card style the person likes, asked first within each group. */
+    style?: "qa" | "cloze" | "mixed" | null;
+  },
   now = new Date(),
   db: Db = pool,
 ): Promise<{ cards: StudyCard[]; progress: QuizProgress }> {
@@ -829,11 +867,12 @@ export async function quizQueue(
   const flagged = due.rows.filter((c) => c.needs_work_at);
   const missed = due.rows.filter((c) => !c.needs_work_at && c.misses > 0);
   const rest = due.rows.filter((c) => !c.needs_work_at && c.misses === 0);
+  const style = options.style;
   const order = [
-    ...interleave(flagged),
-    ...interleave(missed),
-    ...interleave(rest),
-    ...interleave(fresh.rows.slice(0, room)),
+    ...preferStyle(interleave(flagged), style),
+    ...preferStyle(interleave(missed), style),
+    ...preferStyle(interleave(rest), style),
+    ...preferStyle(interleave(fresh.rows.slice(0, room)), style),
   ];
   const picked = order.slice(0, options.limit);
   const cards = (await readableLinks(pool, userId, picked)).map((r) =>

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  MAX_AGENT_INSTRUCTIONS,
   canChangeTeamMember,
   fail,
   TEAM_ROLES,
@@ -11,6 +12,7 @@ import type { UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { announceAuthChange } from "../agents/service.js";
 import { emitInbox } from "../agent-inbox/emit.js";
+import { setInstructions } from "../agent-context/service.js";
 import { LAST_OWNER, member, ownerCount, teamSummary } from "./service.js";
 
 /**
@@ -247,6 +249,12 @@ export const teamAdminInput = z.discriminatedUnion("op", [
     team_id: z.uuid(),
     minutes: z.number().int().min(30).max(2400).nullable(),
   }),
+  // What the team's agents are told (H8): every member's agents follow it.
+  z.object({
+    op: z.literal("instructions"),
+    team_id: z.uuid(),
+    text: z.string().trim().max(MAX_AGENT_INSTRUCTIONS),
+  }),
 ]);
 export type TeamAdmin = z.output<typeof teamAdminInput>;
 
@@ -309,6 +317,14 @@ export async function runTeamAdmin(db: Db, u: UserRow, c: TeamAdmin) {
           user_id: c.user_id,
           role: m.was as string,
         },
+      };
+    }
+    case "instructions": {
+      const r = await setInstructions(db, u, c.team_id, { text: c.text });
+      return {
+        team_id: c.team_id,
+        title: "Instructions for agents",
+        undo: { op: "team.set" as const, id: c.team_id, instructions: r.was },
       };
     }
     case "budget": {

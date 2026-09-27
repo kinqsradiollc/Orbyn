@@ -27,8 +27,19 @@ export type PromptSpec = {
   arguments: PromptArgument[];
   /** Toolsets the steps use (core is always there). */
   needs: AgentToolset[];
-  text(args: Record<string, string>): string;
+  /**
+   * The prompt's words. `learned` is the person's learning profile in a
+   * sentence (H8: card style, cards a lecture, session length, study
+   * times), for the study prompts, when their About me page says it.
+   */
+  text(args: Record<string, string>, learned?: string): string;
+  /** Reads the person's learning profile (study prompts). */
+  learns?: boolean;
 };
+
+/** "How I learn" for a study prompt, when the profile says. */
+const learnedLine = (learned: string | undefined, use: string) =>
+  learned ? `\nHow I learn (from my About me page): ${learned}. ${use}` : "";
 
 const given = (v: string | undefined, label: string) =>
   v?.trim() ? `\n${label}: ${v.trim()}` : "";
@@ -191,8 +202,9 @@ export const PROMPTS: PromptSpec[] = [
       },
     ],
     needs: ["study"],
-    text: (a) =>
-      `Quiz me with my Orbyn flashcards.${given(a.exam, "For")}
+    learns: true,
+    text: (a, learned) =>
+      `Quiz me with my Orbyn flashcards.${given(a.exam, "For")}${learnedLine(learned, "Keep the session about that long (get_study's queue is sized to it), and write new cards in that style.")}
 
 1. Get the next card with get_study (queue, limit 1${a.exam ? ", exam" : ""}). Answers stay hidden; ask me the question (show a picture card's picture) and let me answer in my own words before you look.
 2. Then get its answer with get_study (card), compare my answer yourself, tell me what I got right and what I missed, and ask "why?" or "how does that connect to …?" when I got it right too.
@@ -283,9 +295,10 @@ export const PROMPTS: PromptSpec[] = [
       },
     ],
     needs: ["study"],
-    text: (a) =>
+    learns: true,
+    text: (a, learned) =>
       `Turn this lecture into study material in Orbyn. Do the thinking yourself: Orbyn only keeps what you send.
-Lecture: ${(a.lecture ?? "").trim()}${given(a.project, "Project")}${given(a.exam, "Exam")}
+Lecture: ${(a.lecture ?? "").trim()}${given(a.project, "Project")}${given(a.exam, "Exam")}${learnedLine(learned, "Write the cards in that style and about that many, and make the first review session that long.")}
 
 1. Call get_context for my time zone and spaces, and follow any profile or standing rules it has on how I like notes and cards.
 2. Read the lecture yourself: the transcript, slides or file you have (transcribe a recording yourself). Find my earlier notes on the topic with find_passages or search.
@@ -339,8 +352,9 @@ Question: ${(a.question ?? "").trim()}${given(a.project, "Project")}
       { name: "date", description: "Its date, if Orbyn doesn't know it." },
     ],
     needs: ["study"],
-    text: (a) =>
-      `Help me prepare for "${(a.exam ?? "").trim()}" in Orbyn. Do the thinking yourself: Orbyn only keeps what you send.${given(a.date, "Date")}
+    learns: true,
+    text: (a, learned) =>
+      `Help me prepare for "${(a.exam ?? "").trim()}" in Orbyn. Do the thinking yourself: Orbyn only keeps what you send.${given(a.date, "Date")}${learnedLine(learned, "Write cards in that style; revision sessions follow my session length and study times on their own.")}
 
 1. Call get_context, and follow any profile or standing rules on how I study.
 2. Read where I stand with get_study: the exam, its pages, readiness, due cards and what I keep getting wrong.

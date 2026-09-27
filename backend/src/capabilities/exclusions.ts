@@ -343,6 +343,14 @@ export const COVERED: Record<string, string[]> = {
   "GET /changes": ["get_history"],
   "PUT /me/calendar-subscriptions/:id": ["update_planner_settings"],
   "POST /me/calendar-subscriptions/:id/refresh": ["update_planner_settings"],
+  // H8: agents start warm. The "About me for agents" page (read with
+  // get_context, made with create_doc kind "profile", changed with
+  // edit_doc) and each space's instructions (read with get_context,
+  // changed with organize; a team's are asked first).
+  "GET /me/agent-context": ["get_context"],
+  "POST /me/agent-profile": ["create_doc"],
+  "PUT /me/agent-instructions": ["organize"],
+  "PUT /teams/:id/agent-instructions": ["organize"],
 };
 
 /** Routes agents never reach, with the reason. */

@@ -217,7 +217,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 
 ### `get_context`
 
-Who this connection acts for (name only), their time zone, current local time and working hours, their teams with each team's role and agent policy, what this connection may do (access, trust per space: full, ask or suggest, and what asks first even at full; spaces, toolsets, expiry), its limits, and the conventions for ids, links and times. A good first call.
+Call first. Who this connection acts for (name), time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.
 
 No arguments.
 
@@ -393,19 +393,19 @@ Changes sessions (ids from get_calendar, get_today or get_work_patterns): move, 
 
 ### `create_doc`
 
-Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day's agenda page from the calendar (today's again, keeping Notes).
+Makes a page, note or meeting note from Orbyn Markdown (orbyn://spec/markdown: callouts, tables, footnotes, diagrams, embeds, [[Page#Heading]] links; at most about 60 KB), in Personal or a team, optionally in a folder or project or as an event's notes. Every line gets an anchor. Where it may only suggest, it waits for review. Longer text: append_doc. kind "agenda" with title "today" or a date writes that day's agenda page from the calendar (today's again, keeping Notes). kind "profile": their About me for agents page (one each; markdown or Orbyn's outline).
 
-| Argument           | Type                               | Notes                                                                 |
-| ------------------ | ---------------------------------- | --------------------------------------------------------------------- |
-| `title` (required) | string                             |                                                                       |
-| `markdown`         | string                             | The page's lines (or template instead).                               |
-| `template`         | string                             | A page template's id, or a starter's (search types: template).        |
-| `kind`             | `doc`, `note`, `meeting`, `agenda` | Default "doc".                                                        |
-| `team`             | string                             | "personal" (the default), or a team id.                               |
-| `folder_id`        | id                                 |                                                                       |
-| `project`          | string                             |                                                                       |
-| `event`            | string                             | An event this page is the notes of `(event:<id>)`.                    |
-| `client_ref`       | string                             | Idempotency key: sent again within 24 h, the first answer comes back. |
+| Argument           | Type                                          | Notes                                                                 |
+| ------------------ | --------------------------------------------- | --------------------------------------------------------------------- |
+| `title` (required) | string                                        |                                                                       |
+| `markdown`         | string                                        | The page's lines (or template instead).                               |
+| `template`         | string                                        | A page template's id, or a starter's (search types: template).        |
+| `kind`             | `doc`, `note`, `meeting`, `agenda`, `profile` | Default "doc".                                                        |
+| `team`             | string                                        | "personal" (the default), or a team id.                               |
+| `folder_id`        | id                                            |                                                                       |
+| `project`          | string                                        |                                                                       |
+| `event`            | string                                        | An event this page is the notes of `(event:<id>)`.                    |
+| `client_ref`       | string                                        | Idempotency key: sent again within 24 h, the first answer comes back. |
 
 ### `edit_doc`
 
@@ -612,7 +612,7 @@ Saves a project template (kind "project": from_project, or tasks with estimates 
 
 ### `organize`
 
-Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. Deleting goes through propose_changes.
+Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -744,16 +744,16 @@ Changes any planner setting (hours, time zones, calendar sets, teammates, buffer
 
 Decks, cards due, exams and what the person keeps getting wrong (wrong). queue: cards to quiz, practice order (needs work, most missed, due, new; decks mixed), answers hidden; limit 1 for one at a time. card: that card with its answer, once they've tried. explain: their notes lines and cards with answers on a topic or cards, for you to judge an explanation.
 
-| Argument  | Type    | Notes                                     |
-| --------- | ------- | ----------------------------------------- |
-| `queue`   | boolean | Default false.                            |
-| `deck`    | string  | Only this page's cards.                   |
-| `exam`    | string  | Only this exam's pages (key).             |
-| `ahead`   | boolean | Include cards not due yet. Default false. |
-| `reveal`  | boolean | Default false.                            |
-| `limit`   | integer | Default 20.                               |
-| `card`    | id      |                                           |
-| `explain` | object  |                                           |
+| Argument  | Type    | Notes                                                            |
+| --------- | ------- | ---------------------------------------------------------------- |
+| `queue`   | boolean | Default false.                                                   |
+| `deck`    | string  | Only this page's cards.                                          |
+| `exam`    | string  | Only this exam's pages (key).                                    |
+| `ahead`   | boolean | Include cards not due yet. Default false.                        |
+| `reveal`  | boolean | Default false.                                                   |
+| `limit`   | integer | Default: about a card a minute of their session length, else 20. |
+| `card`    | id      |                                                                  |
+| `explain` | object  |                                                                  |
 
 ### `update_study`
 
@@ -771,10 +771,10 @@ cards: your q/a, cloze or picture cards into a page's Cards section or a new dec
 
 Previews revision sessions in free working time before an exam (one a day from up to three weeks out, longer in the last three days) without changing anything, and returns a plan_token: schedule_sessions puts them on the calendar with a "Revise for …" task. update_study exam.plan books them in one step.
 
-| Argument          | Type    | Notes                          |
-| ----------------- | ------- | ------------------------------ |
-| `exam` (required) | string  | The exam's key from get_study. |
-| `minutes`         | integer | Default 30.                    |
+| Argument          | Type    | Notes                                   |
+| ----------------- | ------- | --------------------------------------- |
+| `exam` (required) | string  | The exam's key from get_study.          |
+| `minutes`         | integer | Default: their session length, else 30. |
 
 ### `save_source`
 
@@ -1026,6 +1026,7 @@ Catalog version: `2026-09-27`.
 
 ### 2026-09-27
 
+- Agents start warm (H8), still 60 tools: get_context also returns the person's "About me for agents" page (profile: Orbyn Markdown with line anchors, trimmed to about 6,000 characters with a link to the rest), its learning profile in fields (card_style, cards, session_minutes, study_times), the instructions for each space the connection reaches (Personal, and each team it is given), the standing rules, and since: what changed since the connection last spoke (its last call before a gap of half an hour): new inbox items, tasks the person added and finished, pages they edited, sessions they moved, changes by teammates and other agents where it reaches, questions and suggestions waiting, and the newest few with links. create_doc kind "profile" makes the page (one per person; asked again, the one there is), edited with edit_doc like any page. organize "instructions" (id: personal or a team; value: the words) changes a space's instructions: Personal's directly (undo), a team's asked first (team admin). get_study's queue is sized to the person's session length and puts their card style first; plan_revision and update_study exam.plan take their session length and study times when minutes aren't given; the study_session, lecture_to_notes and exam_prep prompts carry the learning profile. get_context's and get_today's answer schemas use plain strings for enums and drop repeated descriptions (the same answers, fewer tokens).
 - You always know what happened (H7), still 60 tools: every change's done entries carry app_url (the phone app's orbyn:// link) beside url (the web app's), apply_plan's steps too, and add_file and save_source answer with url and app_url of the page; each change's summary ends with its links in words. An object-or-null in an answer's schema is written type ["object", "null"] (the same meaning, fewer tokens). The person sees "via `<agent>"` on a task's updates, comments and suggestions, Recent changes (shown even with their own hidden), notices a change caused and the page an agent last wrote (agenda pages too); gets one notice and push when a job (one apply_plan, or calls from one connection under two minutes apart) makes more than 20 changes; and a "What your agents did" section in the morning digest. Both can be turned off in Settings; agents can't turn them off. Connected agents lists changes by job with Undo per change and per job.
 - Every feature, no gaps (H6b), still 60 tools: organize takes page changes (aliases: other names; fold; link_mention; extract: lines to a new page, linked where they were; merge: into another page, this one to Trash; remove_source), your own fields (create_field, change_field, set_field on pages and projects; deleting one is propose_changes delete what "field") and running a team, always asked first (create_team, rename_team, invite, remove_member, set_role, meeting_budget; the Review inbox action team.admin; deleting a team and its agent policy stay people only). update_project adds, changes, fills and removes milestones (removing is a delete: what "milestone" in propose_changes too) and keeps a project out of AI (assistant "off"; "on" always asks the person, and its proposal doesn't name the project to the agent). get_project lists milestones. save_view pins a view in the sidebar (pin) and returns a saved view's rows as CSV text (export "csv", in csv). get_history lists "recent" (opened and changed lately), "trash" and a team's recent changes ("changes" or `team:<id>)`. propose_changes restore_doc brings a page back from Trash (emptying it stays the person's). fetch shows a page's Info (other names, tags, links here, versions, folds, fields with ids) and a project's fields. add_file takes project (a new page in it holding the file). update_planner_settings subscribe with id changes a subscribed calendar (link, name, colour, kind, busy, shown) or refreshes it (refresh). Every change is undoable except a new team and keeping a project out of AI. Every command in Orbyn's command list maps to a tool or a written reason.
 - Every feature, no gaps (H6a), by extending tools (no new ones): create_tasks and update_tasks take alerts, colour, web links, busy or free and a meeting link; update_tasks also status, all-day, targets (target_value, current_value, value_unit), a repeat change or stop (rrule, null), a new parent or top level (parent, null; cycles refused), and scope this or following with occurrence for one occurrence of a repeating item or it and later ones (one occurrence's change can be undone). edit_checklist moves steps (move: id, position). reschedule_sessions pins, unpins, duplicates, rolls forward, starts and checks in sessions (outcome done, more with more_minutes, or skipped), attributed to the agent, with undo. update_planner_settings changes every planner setting (time zone, extra time zones, calendar sets, pinned teammates, default alerts, planner notices, buffer scope, travel padding, counting sessions as spent, session reminders, digest emails), keep_originals, and subscribes to a calendar by link (Orbyn fetches it after its public-address check) or unsubscribes; get_work_patterns lists subscribed calendars (never their links) and gives each unfinished session's id and whether it was checked in. create_doc kind agenda writes a day's agenda page from the calendar (today's again, keeping Notes). ack_inbox takes notices (ids or "all") and marks the person's in-app notices read: mark_notifications_read is folded into it and no longer listed, but still answers when called. Answer schemas no longer repeat additionalProperties: false on every object.
@@ -1063,4 +1064,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 249 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.
+Routes: 253 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.
