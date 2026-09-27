@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarDays,
   ChevronLeft,
@@ -6,7 +6,14 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { addDays, agendaTitleOn, localDateKey, type Doc } from "@orbyn/core";
+import {
+  addDays,
+  agendaTitleOn,
+  agendaTodayAt,
+  localDateKey,
+  nextDayStart,
+  type Doc,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { deviceTimeZone } from "../../lib/planning";
 import { useConfirm } from "../../components/Confirm";
@@ -38,22 +45,32 @@ function dayName(date: string, today: string) {
  * stands, a day ahead with what's planned so far. "Rewrite from my
  * calendar" writes today's again, and never touches Notes or anything
  * under it.
+ *
+ * "Today" is today in your account's zone (`timeZone`, the planner zone),
+ * the same day the server writes the page for, and it turns over at that
+ * zone's midnight — not the device's, which may be somewhere else.
  */
 export function AgendaView({
   report,
   onItemsChanged,
   userId,
+  timeZone,
 }: {
   report: (e: unknown) => void;
   onItemsChanged: () => void;
   userId?: string;
+  /** Your account's zone (planner settings); the device's until it loads. */
+  timeZone?: string;
 }) {
   const { ask } = useConfirm();
+  /** The zone "today" is read in, for the clock checks below. */
+  const zone = useRef(timeZone || deviceTimeZone());
+  zone.current = timeZone || deviceTimeZone();
   const [doc, setDoc] = useState<Doc | null>(null);
   /** The day being looked at, and today, both in your own zone. */
   const [date, setDate] = useState<string | null>(null);
   const [today, setToday] = useState(() =>
-    localDateKey(new Date(), deviceTimeZone()),
+    localDateKey(new Date(), zone.current),
   );
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -80,8 +97,9 @@ export function AgendaView({
       .then(
         (next) => {
           setDoc(next);
+          // The server's today (your account's zone) names the page.
           const day =
-            next.agenda_date ?? localDateKey(new Date(), deviceTimeZone());
+            next.agenda_date ?? localDateKey(new Date(), zone.current);
           setDate(day);
           setToday(day);
         },
@@ -96,11 +114,12 @@ export function AgendaView({
 
   // Left open past midnight, the page on screen becomes yesterday's: the
   // labels, the Today button and Rewrite follow the clock, checked when the
-  // window comes back and at each midnight.
+  // window comes back and at each midnight in your account's zone (a day
+  // that daylight saving makes 23 or 25 hours long included).
+  const zoneKey = timeZone || deviceTimeZone();
   useEffect(() => {
     const check = () => {
-      const now = localDateKey(new Date(), deviceTimeZone());
-      setToday((was) => (now > was ? now : was));
+      setToday((was) => agendaTodayAt(was, new Date(), zone.current));
     };
     const onVisible = () => {
       if (document.visibilityState === "visible") check();
@@ -108,13 +127,13 @@ export function AgendaView({
     let timer: ReturnType<typeof setTimeout>;
     const atMidnight = () => {
       const now = new Date();
-      const next = new Date(now);
-      next.setHours(24, 0, 5, 0);
+      const next = nextDayStart(now, zone.current).getTime() + 5_000;
       timer = setTimeout(() => {
         check();
         atMidnight();
-      }, next.getTime() - now.getTime());
+      }, next - now.getTime());
     };
+    check();
     atMidnight();
     window.addEventListener("focus", check);
     document.addEventListener("visibilitychange", onVisible);
@@ -123,7 +142,7 @@ export function AgendaView({
       window.removeEventListener("focus", check);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [zoneKey]);
 
   /** Step to another day's page, or to the gap where it would be. */
   const go = (day: string) => {

@@ -2092,7 +2092,8 @@ export class OrbynClient {
   /**
    * Today, planned and due in one list: events, your sessions, tasks due
    * today and late ones, and unfinished sessions from earlier days. The day
-   * is `timezone`'s (pass the device's), or the planner's.
+   * is your account's (the planner zone, as the agenda has it); `timezone`
+   * (pass the device's) counts only while the account has none of its own.
    */
   today(timezone?: string) {
     const q = timezone ? `?${new URLSearchParams({ timezone })}` : "";

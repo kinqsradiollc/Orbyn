@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orbit, X } from "lucide-react";
 import {
+  dayZone,
   deadlineOf,
   itemBody,
   type ColumnChange,
@@ -67,7 +68,7 @@ import { ShortcutSheet } from "../components/ShortcutSheet";
 import { celebrate } from "../lib/celebrate";
 import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
-import { nextUp } from "../lib/planning";
+import { deviceTimeZone, nextUp } from "../lib/planning";
 import { HomePage } from "../features/home/HomePage";
 import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
@@ -176,6 +177,14 @@ export function App() {
     refreshUser,
   } = planner;
   const planning = usePlanningData(token, revision, report);
+  /**
+   * The zone your days are read in (the account's planner zone, as the
+   * server has it): the header's date and the agenda's Today. Undefined
+   * until the settings load.
+   */
+  const accountZone = planning.prefs
+    ? dayZone(planning.prefs.timezone, false, deviceTimeZone())
+    : undefined;
   const planned = usePlannedData(token, revision);
   /** Choices that follow the account, and what's starred (D5). */
   const accountPrefs = useAccountPrefs(token, report);
@@ -1233,6 +1242,7 @@ export function App() {
               onToggleMenu={() => setMobileNav(!mobileNav)}
               onOpenNotifications={() => navigate("Notifications")}
               onOpenCommand={() => openCommand()}
+              timeZone={accountZone}
             />
             <main className="content">
               {error && (
@@ -1320,6 +1330,7 @@ export function App() {
                   <AgendaView
                     report={report}
                     userId={user?.id}
+                    timeZone={accountZone}
                     onItemsChanged={() => void refresh()}
                   />
                 )}

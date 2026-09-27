@@ -21,6 +21,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, IconName>> = {
   mention: "atSign",
   session: "timer",
   review: "inbox",
+  system: "clock",
 };
 
 /**

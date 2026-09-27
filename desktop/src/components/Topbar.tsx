@@ -15,6 +15,8 @@ type TopbarProps = {
   onOpenNotifications: () => void;
   /** Opens the command bar (also ⌘K / Ctrl+K). */
   onOpenCommand: () => void;
+  /** Your account's zone, for today's date; the device's until it loads. */
+  timeZone?: string;
 };
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -29,6 +31,7 @@ export function Topbar({
   onToggleMenu,
   onOpenNotifications,
   onOpenCommand,
+  timeZone,
 }: TopbarProps) {
   const today = new Date();
   const { prefs } = usePrefs();
@@ -63,6 +66,7 @@ export function Topbar({
         </button>
         <span className="today-label">
           {today.toLocaleDateString([], {
+            timeZone,
             weekday: "short",
             month: "short",
             day: "numeric",

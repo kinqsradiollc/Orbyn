@@ -4,6 +4,7 @@ import {
   priorityScore,
   buildAgenda,
   dayTime,
+  dayZone,
   dueDayAt,
   keepAgendaNotes,
   localDateKey,
@@ -20,6 +21,7 @@ import {
   timeBlocks,
 } from "../planner/calendar.js";
 import { habitBlocksIn } from "../planner/habits.js";
+import { dayZoneFor } from "../planner/timezone.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
 import { complete } from "../ai/providers/adapters.js";
 import { resolveAi } from "../ai/providers/resolve.js";
@@ -101,7 +103,7 @@ async function readDay(
   extras = true,
 ): Promise<Day> {
   const prefs = await loadPrefs(pool, userId);
-  const tz = prefs.timezone || "UTC";
+  const tz = dayZone(prefs.timezone, true);
   const today = localDateKey(now, tz);
   const dayStart = dayTime(today, 0, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
@@ -332,8 +334,8 @@ async function findAgenda(userId: string, date: string, tz: string) {
   ).rows[0];
 }
 
-const zoneOf = async (userId: string) =>
-  (await loadPrefs(pool, userId)).timezone || "UTC";
+/** The zone the agenda's days are in: the account's, as everywhere else. */
+const zoneOf = (userId: string) => dayZoneFor(pool, userId);
 
 const dayStartOf = (date: string, tz: string) => dayTime(date, 0, tz);
 

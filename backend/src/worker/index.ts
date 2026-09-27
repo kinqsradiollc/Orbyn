@@ -2,6 +2,7 @@ import { runDueTemplates } from "../modules/templates/service.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
 import { runSweep } from "../lib/sweep.js";
+import { CLOCK_CHECK_MS, checkServerClock } from "../lib/clock.js";
 import { closeEmail } from "./channels/email.js";
 import { deliverOne } from "./delivery.js";
 import { enqueue } from "./scheduler.js";
@@ -52,25 +53,29 @@ export async function runWorker() {
     process.on(signal, () => {
       stopping = true;
     });
-  let lastSchedule = 0;
-  let lastPlanning = 0;
-  let lastNotices = 0;
-  let lastSwept = 0;
+  // Timed on the monotonic clock: when the wall clock is set right (by
+  // hours, say), the loop's own rhythm doesn't stall or rush with it.
+  const tick = () => performance.now();
+  let lastSchedule = -Infinity;
+  let lastPlanning = -Infinity;
+  let lastNotices = -Infinity;
+  let lastSwept = -Infinity;
+  let lastClock = -Infinity;
   while (!stopping) {
     let backlog = false;
     try {
-      if (Date.now() - lastSchedule >= CYCLE_MS) {
+      if (tick() - lastSchedule >= CYCLE_MS) {
         await heartbeat();
         // Repeating events move on first, so their next reminder queues now.
-        if (Date.now() - lastPlanning >= PLANNING_MS) {
+        if (tick() - lastPlanning >= PLANNING_MS) {
           await advanceRepeating();
           await scanConflicts();
           // Scheduled webhook events: event.starting and block.started.
           await scanEventStarting();
           await scanBlocksStarted();
-          lastPlanning = Date.now();
+          lastPlanning = tick();
         }
-        if (Date.now() - lastNotices >= NOTICES_MS) {
+        if (tick() - lastNotices >= NOTICES_MS) {
           await scanPlanningNotices();
           await scanProjectDeadlineMoves();
           await scanTaskDeadlineMoves();
@@ -80,17 +85,27 @@ export async function runWorker() {
           await scanMorningAgendas();
           // Templates with a rhythm: say when one is ready to start.
           await runDueTemplates();
-          lastNotices = Date.now();
+          lastNotices = tick();
         }
         // Pages for search by meaning are measured by their own service
         // (services/measure.ts), never in this loop.
-        if (Date.now() - lastSwept >= SWEEP_MS) {
+        // The server's own clock against outside time (lib/clock.ts): a
+        // clock hours out makes every "today" and reminder wrong.
+        if (tick() - lastClock >= CLOCK_CHECK_MS) {
+          try {
+            await checkServerClock();
+          } catch {
+            // Nothing learnt: the next check tries again.
+          }
+          lastClock = tick();
+        }
+        if (tick() - lastSwept >= SWEEP_MS) {
           try {
             await runSweep();
           } catch {
             // Housekeeping: a failed sweep waits for the next hour.
           }
-          lastSwept = Date.now();
+          lastSwept = tick();
         }
         // Study cards for pages changed outside the API's own saves (imports,
         // templates, the assistant, team changes): the API syncs what it
@@ -105,7 +120,7 @@ export async function runWorker() {
         await refreshDueSubscriptions(10);
         await remindSubscribed();
         await enqueue();
-        lastSchedule = Date.now();
+        lastSchedule = tick();
       }
       // Each lane delivers reminders and webhooks until both queues are empty.
       const lanes = await Promise.all(

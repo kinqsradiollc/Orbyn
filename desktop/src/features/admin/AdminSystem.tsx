@@ -30,6 +30,7 @@ import type {
   SweepView,
   UpdateInfo,
 } from "@orbyn/core";
+import { clockSkewText } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { formatDateTime, fromLocalInput, toLocalInput } from "../../lib/format";
 import type { TeamActions } from "../teams/TeamDetail";
@@ -396,6 +397,13 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
       <p className="muted system-lead">
         Values saved here override the server&apos;s .env. {APPLY_NOTE}
       </p>
+      {view?.clock && (
+        <p className="error" role="alert">
+          {clockSkewText(view.clock.skew_ms)} Found{" "}
+          {formatDateTime(view.clock.since)}; set the server to keep time by
+          itself (NTP) and on UTC. This goes once a check finds it right.
+        </p>
+      )}
 
       {!draft || !sources || !smtp ? (
         <div className="system-body">

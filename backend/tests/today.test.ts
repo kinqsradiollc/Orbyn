@@ -745,7 +745,7 @@ test("todayFor: events, sessions, due and late tasks, unfinished work, only your
   assert.ok(!after.rows.some((r) => r.title === "Send invoice"));
 });
 
-test("GET /today: the device's day, and its guards (401, 400, 403, 429)", async () => {
+test("GET /today: the account's day, and its guards (401, 400, 403, 429)", async () => {
   const me = await newUser();
   const late = await newItem(me.token, {
     title: "Late one",
@@ -769,8 +769,23 @@ test("GET /today: the device's day, and its guards (401, 400, 403, 429)", async 
     `/today?timezone=${encodeURIComponent(LA)}`,
   );
   assert.equal(la.status, 200);
-  assert.equal(la.body.timezone, LA);
-  assert.equal(la.body.day, localDateKey(new Date(), LA));
+  // The account's zone wins over the device's: the same day as the agenda.
+  assert.equal(la.body.timezone, MEL);
+  assert.equal(la.body.day, localDateKey(new Date(), MEL));
+  // An account with no zone of its own yet reads the device's day.
+  const fresh = await call(null, "POST", "/auth/register", {
+    email: `today-fresh-${randomUUID()}@example.com`,
+    password: "a-long-test-password",
+    name: "Fresh",
+  });
+  const unset = await call(
+    fresh.body.token,
+    "GET",
+    `/today?timezone=${encodeURIComponent(LA)}`,
+  );
+  assert.equal(unset.status, 200, unset.raw.body);
+  assert.equal(unset.body.timezone, LA);
+  assert.equal(unset.body.day, localDateKey(new Date(), LA));
 
   // An account that hasn't confirmed its email can't read it yet.
   await setMail(true);

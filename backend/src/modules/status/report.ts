@@ -4,6 +4,7 @@ import type {
   StatusReport,
 } from "@orbyn/core";
 import { readPool } from "../../db/pool.js";
+import { serverClock } from "../../lib/clock.js";
 import { settings } from "../../lib/settings.js";
 import { components } from "./components.js";
 import { lastDays, overallState, ratio, stateFromRecent } from "./uptime.js";
@@ -125,6 +126,9 @@ export async function statusReport(): Promise<StatusReport> {
     components: componentsOut,
     incidents: incidentsOut,
     maintenance: maintenance.enabled ? maintenance : null,
+    // A server clock found out (lib/clock.ts): reminders and sign-ins
+    // misbehave until it's right.
+    clock: await serverClock(readPool),
   };
   cache = { at: Date.now(), report };
   return report;
