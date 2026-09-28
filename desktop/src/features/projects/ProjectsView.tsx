@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { onLive } from "../../lib/live";
 import { Boxes, LayoutTemplate, Plus } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import { ProjectDetail } from "./ProjectDetail";
 import { PromiseTracker } from "./PromiseTracker";
 import { TemplatesDialog } from "./TemplatesDialog";
 import { NewProjectDialog } from "./NewProjectDialog";
+import { newTabClick, openInNewTab } from "../../app/tabs";
 import "./projects.css";
 
 const dueLabel = (iso: string | null) =>
@@ -41,6 +42,7 @@ export function ProjectsView({
   onAskProject,
   userId,
   startNew,
+  onShown,
 }: {
   items: Item[];
   /** For starting a template's project in a team. */
@@ -66,6 +68,8 @@ export function ProjectsView({
   userId: string;
   /** Changes to start a new project (from ⌘K). */
   startNew?: number;
+  /** The project open now (null: the list), for the app's tabs. */
+  onShown?: (project: Project | null) => void;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [open, setOpen] = useState<Project | null>(null);
@@ -73,6 +77,14 @@ export function ProjectsView({
     "home" | "decisions" | "history"
   >("home");
   const [openSourceId, setOpenSourceId] = useState<string | null>(null);
+  // Say which project is open whenever it (or its name) changes; the list
+  // showing first, before anything opened, is not news.
+  const shown = useRef(false);
+  useEffect(() => {
+    if (!shown.current && !open) return;
+    shown.current = true;
+    onShown?.(open);
+  }, [open?.id, open?.name]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState(!!openTemplate);
@@ -282,9 +294,15 @@ export function ProjectsView({
               <li key={p.id}>
                 <button
                   className="project-card"
-                  onClick={() =>
-                    client.getProject(p.id).then(setOpen).catch(report)
-                  }
+                  {...newTabClick(
+                    () => client.getProject(p.id).then(setOpen).catch(report),
+                    () =>
+                      openInNewTab({
+                        kind: "project",
+                        id: p.id,
+                        title: p.name,
+                      }),
+                  )}
                 >
                   <span className="project-card-top">
                     <strong>{p.name}</strong>

@@ -27,6 +27,7 @@ import { Select } from "../../components/Select";
 import { keysFor } from "../../app/commands";
 import { NAV_GROUPS, navName, type View } from "../../app/views";
 import { setStartScreen, startScreen, usePrefs } from "../../app/prefs";
+import { setTabsEnabled, useTabsEnabled } from "../../app/tabs";
 import { SettingsSection } from "./SettingsSection";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -75,6 +76,7 @@ export function ArrangeSettings({ user }: { user: User | null }) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const arrangement = prefs.sidebar;
   const [dragging, setDragging] = useState<string | null>(null);
+  const tabsOn = useTabsEnabled();
   const groups = NAV_GROUPS.map((g) => ({
     label: g.label,
     items: arrangeEntries(
@@ -179,6 +181,22 @@ export function ArrangeSettings({ user }: { user: User | null }) {
               aria-label="Show Starred"
               checked={!arrangement.hidden.includes("Starred")}
               onChange={() => hide("Starred")}
+            />
+          </li>
+          {/* Tabs (W4): per device, like the start screen. */}
+          <li className="arrange-row">
+            <span className="arrange-name">
+              Tabs
+              <small className="muted"> · on this device</small>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              className="ai-switch"
+              aria-label="Open pages, projects and views in tabs"
+              title="Open pages, projects and views in tabs under the top bar"
+              checked={tabsOn}
+              onChange={() => setTabsEnabled(!tabsOn)}
             />
           </li>
         </ul>

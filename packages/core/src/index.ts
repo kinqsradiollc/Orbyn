@@ -93,3 +93,4 @@ export * from "./slides.js";
 export * from "./clip.js";
 export * from "./recording.js";
 export * from "./native-capture.js";
+export * from "./workspace-tabs.js";

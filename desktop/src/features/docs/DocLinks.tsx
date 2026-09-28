@@ -43,6 +43,7 @@ import { Popover } from "../../components/Popover";
 import { client } from "../../lib/api";
 import { LinkCardPopover } from "./LinkCard";
 import { CONCEPT_ICON } from "../../app/concept-icons";
+import { canOpenTabs, openInNewTab } from "../../app/tabs";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05) on the web: the pill a
@@ -256,6 +257,15 @@ export function LinkPillView({
     ? { kind: "doc", id: pill.moved_to }
     : ref;
   const open = () => openObject(target, ref.block);
+  // With tabs, ⌘-click (or a middle click) opens a page or project in a
+  // new tab; tasks still open beside.
+  const inTab =
+    canOpenTabs() && (target.kind === "doc" || target.kind === "project");
+  const modOpen = () => {
+    if (inTab)
+      openInNewTab({ kind: target.kind as "doc" | "project", id: target.id });
+    else peekObject(target);
+  };
   const hoverable =
     ref.kind === "doc" ||
     ref.kind === "task" ||
@@ -278,19 +288,27 @@ export function LinkPillView({
       tabIndex={openable ? 0 : undefined}
       aria-label={openable ? `Open ${noun} ${title}` : undefined}
       title={
-        openable ? `Open. ${MOD_CLICK} opens it beside this page.` : undefined
+        openable
+          ? `Open. ${MOD_CLICK} opens it ${inTab ? "in a new tab" : "beside this page"}.`
+          : undefined
       }
       onClick={(e) => {
         stop(e);
         if (!openable) return;
-        if (e.metaKey || e.ctrlKey) peekObject(target);
+        if (e.metaKey || e.ctrlKey) modOpen();
         else open();
+      }}
+      onAuxClick={(e) => {
+        if (e.button !== 1 || !inTab) return;
+        e.preventDefault();
+        stop(e);
+        modOpen();
       }}
       onKeyDown={(e) => {
         if (openable && e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          if (e.metaKey || e.ctrlKey) peekObject(target);
+          if (e.metaKey || e.ctrlKey) modOpen();
           else open();
         }
       }}

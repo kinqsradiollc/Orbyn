@@ -53,6 +53,7 @@ import { ConnectionsMap } from "../connections/ConnectionsMap";
 import { StarButton } from "../../components/StarButton";
 import { LinkedHere } from "../docs/DocLinks";
 import { AliasesField } from "../docs/AliasesField";
+import { canOpenTabs, openInNewTab } from "../../app/tabs";
 
 /** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
 function dayLabel(iso: string, withTime = false) {
@@ -769,6 +770,20 @@ export function ProjectDetail({
           </button>
           {menuOpen && (
             <div className="project-manage-menu">
+              {canOpenTabs() && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openInNewTab({
+                      kind: "project",
+                      id: project.id,
+                      title: project.name,
+                    });
+                  }}
+                >
+                  Open in new tab
+                </button>
+              )}
               <button
                 onClick={() => {
                   setMenuOpen(false);

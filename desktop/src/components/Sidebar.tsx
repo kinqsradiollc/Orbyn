@@ -19,6 +19,15 @@ import { NAV_GROUPS, navName, type View } from "../app/views";
 import { commandById, keysFor } from "../app/commands";
 import { usePrefs } from "../app/prefs";
 import { CONCEPT_ICON } from "../app/concept-icons";
+import { newTabClick, openInNewTab, type TabRequest } from "../app/tabs";
+
+/** A starred thing as a tab of its own; tasks open in their panel. */
+const starTab = (s: StarredItem): TabRequest | null =>
+  s.kind === "doc" || s.kind === "heading"
+    ? { kind: "doc", id: s.id, title: s.title }
+    : s.kind === "project" || s.kind === "view"
+      ? { kind: s.kind, id: s.id, title: s.title }
+      : null;
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -117,7 +126,10 @@ export function Sidebar({
                   aria-current={view === label ? "page" : undefined}
                   aria-label={railed ? navName(label, agentName) : undefined}
                   title={railed ? navName(label, agentName) : undefined}
-                  onClick={() => onNavigate(label)}
+                  {...newTabClick(
+                    () => onNavigate(label),
+                    () => openInNewTab({ kind: "screen", view: label }),
+                  )}
                 >
                   <Icon size={17} />
                   <span>{navName(label, agentName)}</span>
@@ -143,7 +155,14 @@ export function Sidebar({
                     className={"nav-view" + (s.closed ? " is-closed" : "")}
                     aria-label={railed ? s.title : undefined}
                     title={s.hint ? `${s.title} · ${s.hint}` : s.title}
-                    onClick={() => onOpenStarred(s)}
+                    {...newTabClick(
+                      () => onOpenStarred(s),
+                      () => {
+                        const tab = starTab(s);
+                        if (tab) openInNewTab(tab);
+                        else onOpenStarred(s);
+                      },
+                    )}
                   >
                     <Icon size={17} />
                     <span>{s.title}</span>
@@ -164,7 +183,11 @@ export function Sidebar({
                   aria-current={on ? "page" : undefined}
                   aria-label={railed ? v.name : undefined}
                   title={railed ? v.name : undefined}
-                  onClick={() => onOpenView(v.id)}
+                  {...newTabClick(
+                    () => onOpenView(v.id),
+                    () =>
+                      openInNewTab({ kind: "view", id: v.id, title: v.name }),
+                  )}
                 >
                   <Table2 size={17} />
                   <span>{v.name}</span>
@@ -192,7 +215,10 @@ export function Sidebar({
           className="settings-link"
           aria-label={railed ? "Settings" : undefined}
           title={railed ? "Settings" : undefined}
-          onClick={() => onNavigate("Settings")}
+          {...newTabClick(
+            () => onNavigate("Settings"),
+            () => openInNewTab({ kind: "screen", view: "Settings" }),
+          )}
         >
           <Settings size={17} /> <span>Settings</span>
         </button>

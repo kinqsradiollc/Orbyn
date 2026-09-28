@@ -163,6 +163,7 @@ import {
 import { Presenter } from "../present/Presenter";
 import { Recorder, RecordingSummaryDialog } from "../record/Recorder";
 import { openInWindow } from "../../lib/windows";
+import { canOpenTabs, openInNewTab } from "../../app/tabs";
 import { announceStars, rememberLastPage } from "../../app/prefs";
 import { MergeDialog, TemplateInsert } from "./PageActions";
 import { PublishDialog } from "../publish/PublishDialog";
@@ -2946,6 +2947,23 @@ export function DocEditor({
                       Open in new window
                     </button>
                   </li>
+                  {canOpenTabs() && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          openInNewTab({
+                            kind: "doc",
+                            id: doc.id,
+                            title: title || "Untitled",
+                          });
+                        }}
+                      >
+                        Open in new tab
+                      </button>
+                    </li>
+                  )}
                   <li>
                     <button
                       role="menuitem"
