@@ -14,6 +14,7 @@ import {
   type PersonalAgentSettings,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { onLive } from "../lib/live";
 import { loadAssistantChat, saveAssistantChat } from "../lib/session";
 import type { AssistantRunProgress, ChatResult } from "@orbyn/api-client";
 
@@ -119,6 +120,56 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       },
     );
   };
+
+  useEffect(() => {
+    if (!token) return;
+    return onLive((news) => {
+      if (news.kind !== "changed" || (news.area && news.area !== "assistant"))
+        return;
+      void loadChats();
+      const id = chatId.current;
+      const request = generation.current;
+      if (!id) return;
+      void client
+        .aiChat(id)
+        .then((chat) => {
+          if (chatId.current !== id || generation.current !== request) return;
+          setTurns((current) => {
+            const seen = new Set(
+              current
+                .filter((t) => t.role === "assistant")
+                .map((t) => t.turnId),
+            );
+            const added = chat.turns.flatMap((t, n): Turn[] =>
+              t.role === "assistant" &&
+              t.nudge &&
+              t.turn_id &&
+              !seen.has(t.turn_id)
+                ? [
+                    {
+                      id: t.turn_id + "-assistant",
+                      role: "assistant",
+                      proposal: savedReply(t, n) as Proposal,
+                      nudge: t.nudge,
+                      state:
+                        t.outcome === "pending"
+                          ? "info"
+                          : (t.outcome ?? "info"),
+                      before: [],
+                      planApplied: false,
+                      turnId: t.turn_id,
+                      trace: [],
+                      changesJob: null,
+                    },
+                  ]
+                : [],
+            );
+            return added.length ? [...current, ...added] : current;
+          });
+        })
+        .catch(() => {});
+    });
+  }, [token]);
 
   useEffect(() => {
     const timer = setTimeout(

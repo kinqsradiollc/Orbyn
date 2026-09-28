@@ -13,6 +13,7 @@ import {
 import { pool, transaction, type Db } from "../db/pool.js";
 import { visibleDocs } from "../lib/visibility.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
+import { announceTo } from "../modules/presence/live.js";
 
 export type NudgeCandidate = {
   key: string;
@@ -161,6 +162,7 @@ export async function postReminderNudge(
         email,
       ],
     );
+    await announceTo(db, { user_id: userId }, "changed", { area: "assistant" });
     return true;
   });
 }

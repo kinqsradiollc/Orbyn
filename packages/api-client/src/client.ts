@@ -338,6 +338,7 @@ export type LiveNews = {
    * Absent on older news, which means anything may have changed.
    */
   area?:
+    | "assistant"
     | "items"
     | "docs"
     | "projects"

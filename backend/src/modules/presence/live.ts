@@ -34,6 +34,7 @@ export type LiveAudience = { user_id?: string | null; team_id?: string | null };
  * projects re-reads just then; the planner re-reads on any "changed".
  */
 export type LiveArea =
+  | "assistant"
   | "items"
   | "docs"
   | "projects"
