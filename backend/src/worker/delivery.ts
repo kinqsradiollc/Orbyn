@@ -1,4 +1,9 @@
-import { isClosed } from "@orbyn/core";
+import {
+  isClosed,
+  DEFAULT_REMINDER_NUDGES,
+  reminderNudgeSettingsInput,
+  reminderNudgesQuiet,
+} from "@orbyn/core";
 import { transaction, type Db } from "../db/pool.js";
 import { bookerReminder } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
@@ -115,6 +120,12 @@ export async function deliverOne(): Promise<boolean> {
       ]);
       return true;
     }
+    if (
+      n.kind === "reminder_nudge" &&
+      n.state === "pending" &&
+      (await deferQuietReminderNudge(db, n))
+    )
+      return true;
 
     try {
       let state = "sent";
@@ -150,6 +161,30 @@ export async function deliverOne(): Promise<boolean> {
     }
     return true;
   });
+}
+
+/** A delayed reminder waits through quiet hours without consuming retry attempts. */
+export async function deferQuietReminderNudge(
+  db: Db,
+  notice: { id: string; user_id: string },
+  now = new Date(),
+): Promise<boolean> {
+  const row = (
+    await db.query(
+      "SELECT reminder_nudges FROM agent_settings WHERE user_id = $1",
+      [notice.user_id],
+    )
+  ).rows[0];
+  const parsed = reminderNudgeSettingsInput.safeParse(row?.reminder_nudges);
+  const settings = parsed.success ? parsed.data : DEFAULT_REMINDER_NUDGES;
+  const prefs = await loadPrefs(db, notice.user_id);
+  if (!reminderNudgesQuiet(now, prefs.timezone, settings)) return false;
+  await db.query(
+    `UPDATE notifications SET available_at = $3::timestamptz + interval '15 minutes'
+     WHERE id = $1 AND user_id = $2 AND state = 'pending'`,
+    [notice.id, notice.user_id, now],
+  );
+  return true;
 }
 
 /** Assistant notices remain private to the owner of their saved chat or night. */

@@ -9,7 +9,8 @@ const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { postReminderNudge, reminderNudgeCandidates } =
   await import("../src/worker/reminder-nudges.js");
-const { reminderNudgeStale } = await import("../src/worker/delivery.js");
+const { reminderNudgeStale, deferQuietReminderNudge } =
+  await import("../src/worker/delivery.js");
 const people: string[] = [];
 const now = new Date("2050-01-02T15:00:00Z");
 before(async () => {
@@ -141,6 +142,43 @@ test("chat-off delivery resolves the ledger and cancels completed or stopped sou
   assert.equal(
     await transaction((db) => reminderNudgeStale(db, notice, now)),
     true,
+  );
+});
+test("delayed delivery waits through local quiet hours without losing the notice or spending attempts", async () => {
+  const me = await person(false);
+  const candidate = (await reminderNudgeCandidates(me.id, "UTC", now))[0];
+  assert.equal(await postReminderNudge(me.id, "UTC", candidate, now), true);
+  const notice = (
+    await pool.query(
+      "SELECT * FROM notifications WHERE user_id = $1 AND channel = 'email'",
+      [me.id],
+    )
+  ).rows[0];
+  const quiet = new Date("2050-01-02T22:01:00Z");
+  assert.equal(
+    await transaction((db) => deferQuietReminderNudge(db, notice, quiet)),
+    true,
+  );
+  const deferred = (
+    await pool.query("SELECT * FROM notifications WHERE id = $1", [notice.id])
+  ).rows[0];
+  assert.equal(deferred.state, "pending");
+  assert.equal(deferred.attempts, notice.attempts);
+  assert.equal(deferred.available_at.toISOString(), "2050-01-02T22:16:00.000Z");
+  assert.equal(
+    await transaction((db) =>
+      deferQuietReminderNudge(db, notice, new Date("2050-01-03T08:00:00Z")),
+    ),
+    false,
+  );
+  await pool.query(
+    "INSERT INTO planner_prefs(user_id, timezone) VALUES($1, 'Australia/Melbourne') ON CONFLICT(user_id) DO UPDATE SET timezone = EXCLUDED.timezone",
+    [me.id],
+  );
+  // The same UTC clock is daytime in Melbourne, so the local window wins.
+  assert.equal(
+    await transaction((db) => deferQuietReminderNudge(db, notice, quiet)),
+    false,
   );
 });
 test("posting rechecks ownership, completion and kept-out projects after selection", async () => {
