@@ -651,6 +651,42 @@ test("the idea scanner claims and finishes up to three daily slots", async () =>
   assert.equal(finished, 3, "all three daily idea slots are completed");
 });
 
+test("an idea run that stages a change files it in Review and records it for Today", async () => {
+  requests.length = 0;
+  respond = stageTask("Idea review task", () => ({
+    name: "finish",
+    arguments: { answer: "One idea: add the review task.", steps: [] },
+  }));
+  const user = await register();
+  const jobId = await startAssistantAutomation({
+    userId: user.id,
+    message: "Suggest one useful next step as a task named Idea review task.",
+    timezone: "UTC",
+    automation: { kind: "idea", local_day: "2026-09-28", slot: 1 },
+  });
+  assert.ok(jobId);
+  await poll(user.token, jobId, ["done", "failed"]);
+  assert.equal(await itemCount(user.id, "Idea review task"), 0);
+  const idea = (
+    await pool.query<{
+      proposal_id: string | null;
+      title: string;
+      summary: string;
+    }>(
+      "SELECT proposal_id, title, summary FROM assistant_ideas WHERE user_id = $1",
+      [user.id],
+    )
+  ).rows[0];
+  assert.ok(idea?.proposal_id, "the idea points at its Review proposal");
+  assert.equal(idea.title, "One idea: add the review task.");
+  assert.doesNotMatch(idea.summary, /placed the changes in Review/);
+  assert.equal(
+    idea.summary,
+    idea.title,
+    "a one-sentence idea repeats its title",
+  );
+});
+
 test("the weekly goal scanner claims one local week and excludes kept-out work", async () => {
   requests.length = 0;
   respond = () => ({ content: "The weekly goal review is complete." });

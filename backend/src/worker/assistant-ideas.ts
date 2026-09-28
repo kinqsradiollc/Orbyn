@@ -9,6 +9,13 @@ import {
   recentlyActive,
 } from "./assistant-scan.js";
 
+/** Each daily slot looks first at a different part of the person's work. */
+const SLOT_FOCUS = [
+  "tasks and deadlines that are slipping or not planned",
+  "the calendar: free time, clashes and sessions to book",
+  "study: due cards, exams and revision",
+];
+
 const IDEA_BATCH = 50;
 const SLOTS = 3;
 
@@ -81,6 +88,15 @@ export async function scanAssistantIdeas(
         [user.user_id, day, slot, now],
       );
       if (!claimed.rowCount) continue;
+      // Ideas from the last week, so a slot doesn't suggest one again.
+      const recent = (
+        await pool.query<{ title: string }>(
+          `SELECT title FROM assistant_ideas
+            WHERE user_id = $1 AND created_at > $2::timestamptz - interval '7 days'
+            ORDER BY created_at DESC LIMIT 10`,
+          [user.user_id, now],
+        )
+      ).rows.map((r) => r.title.slice(0, 120));
       try {
         const jobId = await (
           options.startAutomation ?? startAssistantAutomation
@@ -89,7 +105,12 @@ export async function scanAssistantIdeas(
           timezone: user.timezone,
           automation: { kind: "idea", local_day: day, slot },
           message: [
-            `Look across my current tasks, calendar, study load, deadlines and private Memory for one useful idea (slot ${slot} of up to 3 today).`,
+            `Look across my current tasks, calendar, study load, deadlines and private Memory for one useful idea (slot ${slot} of up to 3 today). For this one, look first at ${SLOT_FOCUS[(slot - 1) % SLOT_FOCUS.length]}.`,
+            ...(recent.length
+              ? [
+                  `Don't repeat an idea I already have: ${recent.map((t) => `"${t}"`).join("; ")}.`,
+                ]
+              : []),
             "Delegate to the relevant Planner, Study or Projects specialist when needed. Suggest one small, concrete change that is ready to apply, and include the reason in plain words. Do not invent facts, use kept-out projects, or apply anything directly. If nothing clearly helps, finish without changes.",
           ].join("\n\n"),
           onQueued: async (db, id) => {

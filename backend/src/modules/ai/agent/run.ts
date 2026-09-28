@@ -565,8 +565,7 @@ async function finishJob(
           user.id,
           request.automation.local_day,
           request.automation.slot ?? 1,
-          summary.split(/\n/)[0].slice(0, 160) || "A useful next step",
-          summary.slice(0, 2000),
+          ...ideaText(summary),
           proposalId,
         ],
       );
@@ -1075,6 +1074,7 @@ export async function runAssistantJob(
         status?: string;
         job?: string | null;
         proposal_id?: string;
+        pending?: { proposal_id?: string } | null;
       } | null;
       const status = structured?.status;
       appliedStatus =
@@ -1114,8 +1114,15 @@ export async function runAssistantJob(
             : "info",
         {
           plan_job: structured?.job ?? null,
-          ...(typeof structured?.proposal_id === "string"
-            ? { proposal_id: structured.proposal_id }
+          // apply_plan names a Review proposal under pending (a single
+          // write names it at the top level).
+          ...(typeof (
+            structured?.pending?.proposal_id ?? structured?.proposal_id
+          ) === "string"
+            ? {
+                proposal_id: (structured?.pending?.proposal_id ??
+                  structured?.proposal_id)!,
+              }
             : {}),
         },
       );
@@ -1419,6 +1426,7 @@ export async function answerAssistantApproval(
         status?: string;
         job?: string | null;
         proposal_id?: string;
+        pending?: { proposal_id?: string } | null;
       } | null;
       const status = structured?.status;
       const summary =
@@ -1440,8 +1448,15 @@ export async function answerAssistantApproval(
             : "info",
         {
           plan_job: structured?.job ?? null,
-          ...(typeof structured?.proposal_id === "string"
-            ? { proposal_id: structured.proposal_id }
+          // apply_plan names a Review proposal under pending (a single
+          // write names it at the top level).
+          ...(typeof (
+            structured?.pending?.proposal_id ?? structured?.proposal_id
+          ) === "string"
+            ? {
+                proposal_id: (structured?.pending?.proposal_id ??
+                  structured?.proposal_id)!,
+              }
             : {}),
         },
       );
@@ -1527,6 +1542,22 @@ export async function stopAssistantJob(
  * unanswered for a week. Their automations are freed so they can run again.
  * Returns the ids of the jobs it ended. Safe to call from several copies.
  */
+/**
+ * An idea's short title (its first sentence) and the rest as its detail,
+ * without the run's own status line.
+ */
+export function ideaText(summary: string): [string, string] {
+  const text = summary
+    .replace(/\n+I placed the changes in Review for you\.?\s*$/, "")
+    .trim();
+  const first = /^(.+?[.!?])(\s|$)/s.exec(text)?.[1] ?? text.split("\n")[0];
+  const title = first.replace(/\s+/g, " ").trim().slice(0, 120);
+  const rest = text.slice(first.length).trim();
+  const heading = title || "A useful next step";
+  // The detail is required: a one-sentence idea repeats its title there.
+  return [heading, (rest || heading).slice(0, 2000)];
+}
+
 export async function failStaleAssistantJobs(
   now: Date = new Date(),
 ): Promise<string[]> {
