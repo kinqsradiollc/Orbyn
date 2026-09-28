@@ -552,6 +552,7 @@ export async function grantActivity(
   db: Queryable,
   userId: string,
   grantId: string,
+  job?: string,
 ): Promise<AgentActivity[]> {
   const owns = (
     await db.query(
@@ -583,9 +584,9 @@ export async function grantActivity(
               undone_at, proposal_id,
               CASE WHEN undo IS NOT NULL THEN undo_until END AS undo_until,
               request_id, changes, kinds
-         FROM agent_activity WHERE grant_id = $1 AND user_id = $2
+         FROM agent_activity WHERE grant_id = $1 AND user_id = $2 AND ($3::text IS NULL OR request_id = $3)
         ORDER BY at DESC, id DESC LIMIT 100`,
-      [grantId, userId],
+      [grantId, userId, job ?? null],
     )
   ).rows;
   const names = await activityNames(db, userId, rows);

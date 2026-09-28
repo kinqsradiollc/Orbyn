@@ -1369,7 +1369,11 @@ export async function applyProposal(
   db: Db,
   u: UserRow,
   id: string,
-  input: { only?: number[]; give_tasks_deadlines?: boolean } = {},
+  input: {
+    only?: number[];
+    steps?: string[];
+    give_tasks_deadlines?: boolean;
+  } = {},
 ): Promise<ReviewApplied> {
   const row = await lockPending(db, u.id, id);
   if (row.status === "applied" || row.applied)
@@ -1394,6 +1398,22 @@ export async function applyProposal(
   let made: number[] = [];
   if (row.source === "agent") {
     const changes = row.changes.map((c) => reviewChange.parse(c));
+    if (input.steps) {
+      const change = changes[0];
+      if (
+        changes.length !== 1 ||
+        change.type !== "action" ||
+        change.action !== "plan.apply"
+      )
+        fail(422, "Step selection is only available for a single plan.");
+      const raw = change.input.steps;
+      if (!Array.isArray(raw)) fail(422, "This plan's steps cannot be read.");
+      const wanted = new Set(input.steps);
+      const selected = raw.filter((step) => wanted.has(String(step.id)));
+      if (selected.length !== wanted.size)
+        fail(422, "Choose steps that belong to this plan.");
+      changes[0] = { ...change, input: { ...change.input, steps: selected } };
+    }
     const chosen = input.only
       ? [...new Set(input.only)].filter((i) => i < changes.length)
       : changes.map((_, i) => i);
@@ -1408,7 +1428,7 @@ export async function applyProposal(
     }
     made = chosen;
   } else {
-    if (input.only)
+    if (input.only || input.steps)
       fail(422, "The assistant's suggestions are approved all together.");
     if (row.project)
       ({ project_id: projectId } = await applyProject(

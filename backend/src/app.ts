@@ -11,6 +11,7 @@ import { agentContextRoutes } from "./modules/agent-context/routes.js";
 import { assistantIdeasRoutes } from "./modules/assistant-ideas/routes.js";
 import { assistantGoalRoutes } from "./modules/assistant-workspace/goals.js";
 import { assistantRoutineRoutes } from "./modules/assistant-workspace/routines.js";
+import { overnightRoutes } from "./modules/assistant-workspace/overnight.js";
 import { memoryRoutes } from "./modules/memory/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
@@ -106,6 +107,7 @@ export const serviceModules: Record<
     assistantGoalRoutes,
     // Scheduled routines and approval scopes for the built-in assistant (Muse M9).
     assistantRoutineRoutes,
+    overnightRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents
     // propose, and undoing what agents changed.

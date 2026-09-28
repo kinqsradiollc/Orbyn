@@ -406,6 +406,8 @@ export type ReviewInbox = {
 export const reviewApproveInput = z
   .object({
     only: z.array(z.number().int().min(0).max(99)).max(100).optional(),
+    /** Selected steps of a single apply_plan proposal; dependencies must be included. */
+    steps: z.array(z.string().min(1).max(80)).min(1).max(50).optional(),
     /** Drafted projects: give the tasks the suggested deadlines. */
     give_tasks_deadlines: z.boolean().default(true),
   })

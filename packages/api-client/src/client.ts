@@ -11,6 +11,8 @@ import {
   type AgentContextSettings,
   type PersonalAgentSettings,
   type NightShiftSettings,
+  type OvernightNight,
+  type OvernightRun,
   type Goal,
   type GoalCheckin,
   type GoalInput,
@@ -3063,6 +3065,34 @@ export class OrbynClient {
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {
     return this.request<ReviewInbox>("/proposals");
+  }
+  /** Latest night with its current Review and Undo states. */
+  latestAssistantNight() {
+    return this.request<OvernightNight | null>("/me/assistant/nights/latest");
+  }
+  /** Keep a finished run, applying all or selected held changes. */
+  keepAssistantNightRun(
+    id: string,
+    input: { only?: number[]; steps?: string[] } = {},
+  ) {
+    return this.request<OvernightRun>(`/me/assistant/nights/runs/${id}/keep`, {
+      method: "POST",
+      body: input,
+    });
+  }
+  /** Undo a run or selected changes from it; held work is declined. */
+  undoAssistantNightRun(id: string, changes?: string[]) {
+    return this.request<OvernightRun>(`/me/assistant/nights/runs/${id}/undo`, {
+      method: "POST",
+      body: changes ? { changes } : {},
+    });
+  }
+  /** Review a whole night in one transaction after the person's confirmation. */
+  reviewAssistantNight(id: string, action: "keep" | "undo") {
+    return this.request<OvernightNight | null>(
+      `/me/assistant/nights/${id}/${action}-all`,
+      { method: "POST", body: {} },
+    );
   }
   /** How many proposals wait, for the badge. */
   reviewCount() {
