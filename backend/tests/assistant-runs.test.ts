@@ -826,6 +826,56 @@ test("routines validate ownership and approval scopes, then run once when due", 
   }
 
   const now = new Date();
+  const retryAt = new Date(now.getTime() - 60_000);
+  const retryRoutine = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO agent_routines (user_id, instruction, rrule, timezone, next_run_at)
+       VALUES ($1, 'Retry after a queue failure', 'FREQ=DAILY', 'Australia/Melbourne', $2)
+       RETURNING id`,
+      [user.id, retryAt],
+    )
+  ).rows[0].id;
+  assert.equal(
+    await scanAssistantRoutines(now, {
+      only: [user.id],
+      startAutomation: async () => {
+        throw new Error("simulated queue failure");
+      },
+    }),
+    0,
+  );
+  const failedQueue = (
+    await pool.query<{
+      current_job_id: string | null;
+      claimed_at: Date | null;
+      next_run_at: Date;
+    }>(
+      "SELECT current_job_id, claimed_at, next_run_at FROM agent_routines WHERE id = $1",
+      [retryRoutine],
+    )
+  ).rows[0];
+  assert.equal(failedQueue.current_job_id, null);
+  assert.equal(failedQueue.claimed_at, null);
+  assert.equal(
+    failedQueue.next_run_at.getTime(),
+    retryAt.getTime(),
+    "a failed queue attempt leaves the due occurrence available for retry",
+  );
+  assert.equal(await scanAssistantRoutines(now, { only: [user.id] }), 1);
+  const retried = (
+    await pool.query<{ current_job_id: string; next_run_at: Date }>(
+      "SELECT current_job_id, next_run_at FROM agent_routines WHERE id = $1",
+      [retryRoutine],
+    )
+  ).rows[0];
+  assert.ok(retried.current_job_id);
+  assert.ok(retried.next_run_at > now);
+  const retriedResult = await poll(user.token, retried.current_job_id, [
+    "done",
+    "failed",
+  ]);
+  assert.equal(retriedResult.state, "done", JSON.stringify(retriedResult));
+
   const due = (
     await pool.query<{ id: string }>(
       `INSERT INTO agent_routines (user_id, instruction, rrule, timezone, next_run_at)
@@ -843,7 +893,10 @@ test("routines validate ownership and approval scopes, then run once when due", 
     )
   ).rows[0];
   assert.ok(job.current_job_id);
-  assert.ok(job.next_run_at > now, "the recurrence advances before the run starts");
+  assert.ok(
+    job.next_run_at > now,
+    "the recurrence advances when the job queues",
+  );
   const result = await poll(user.token, job.current_job_id, ["done", "failed"]);
   assert.equal(result.state, "done", JSON.stringify(result));
   const completed = (
@@ -853,7 +906,10 @@ test("routines validate ownership and approval scopes, then run once when due", 
     )
   ).rows[0];
   assert.equal(completed.current_job_id, null);
-  assert.match(JSON.stringify(completed.last_result), /scheduled routine is complete/i);
+  assert.match(
+    JSON.stringify(completed.last_result),
+    /scheduled routine is complete/i,
+  );
   assert.ok(principal.grant_id);
 });
 

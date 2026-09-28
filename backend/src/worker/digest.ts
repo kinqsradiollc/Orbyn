@@ -143,8 +143,7 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
       !mentionsKeptOut(event.title),
   );
   const visibleTasks = input.tasks.filter(
-    (task) =>
-      !keptOut.items.has(task.id) && !mentionsKeptOut(task.title),
+    (task) => !keptOut.items.has(task.id) && !mentionsKeptOut(task.title),
   );
   const visibleBlocks = input.blocks.filter(
     (block) =>
@@ -157,8 +156,7 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
       !mentionsKeptOut([block.title, entry.title]),
   );
   const visibleAtRisk = input.atRisk.filter(
-    (task) =>
-      !keptOut.items.has(task.item_id) && !mentionsKeptOut(task.title),
+    (task) => !keptOut.items.has(task.item_id) && !mentionsKeptOut(task.title),
   );
   const visibleUnfinished = input.unfinished.filter(
     (block) =>
@@ -284,18 +282,18 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
         !mentionsKeptOut(goal.checkin),
     )
     .map((goal) => {
-    const progress = objectValue(goal.progress);
-    const summary =
-      goal.checkin ??
-      (typeof progress.summary === "string"
-        ? progress.summary
-        : "No weekly check-in yet.");
-    const path = goal.plan_doc_id
-      ? `/app/doc/${goal.plan_doc_id}`
-      : goal.project_id
-        ? `/app/project/${goal.project_id}`
-        : "/app/assistant";
-    return `- ${linked(goal.title, path)}${goal.target_date ? ` · target ${goal.target_date}` : ""}: ${plainText(summary) || "No weekly check-in yet."}`;
+      const progress = objectValue(goal.progress);
+      const summary =
+        goal.checkin ??
+        (typeof progress.summary === "string"
+          ? progress.summary
+          : "No weekly check-in yet.");
+      const path = goal.plan_doc_id
+        ? `/app/doc/${goal.plan_doc_id}`
+        : goal.project_id
+          ? `/app/project/${goal.project_id}`
+          : "/app/assistant";
+      return `- ${linked(goal.title, path)}${goal.target_date ? ` · target ${goal.target_date}` : ""}: ${plainText(summary) || "No weekly check-in yet."}`;
     });
   sections.push(...(goalLines.length ? goalLines : ["- No active goals."]));
 
@@ -317,7 +315,9 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
 
   sections.push("## Questions and approvals");
   const questionLines = questions.rows
-    .filter((question) => !mentionsKeptOut([question.question, question.detail]))
+    .filter(
+      (question) => !mentionsKeptOut([question.question, question.detail]),
+    )
     .map(
       (question) =>
         `- ${linked(question.question, "/app/review")}${question.detail ? ` — ${plainText(question.detail)}` : ""}`,

@@ -18,7 +18,11 @@ type RoutineDue = {
 /** Claim and run due Orbyn Assistant routines without holding a DB lock in the model call. */
 export async function scanAssistantRoutines(
   now = new Date(),
-  options: { limit?: number; only?: string[] } = {},
+  options: {
+    limit?: number;
+    only?: string[];
+    startAutomation?: typeof startAssistantAutomation;
+  } = {},
 ) {
   const limit = Math.max(1, Math.min(options.limit ?? ROUTINE_BATCH, 50));
   const routines = await transaction(async (db) => {
@@ -36,6 +40,9 @@ export async function scanAssistantRoutines(
         [now, CLAIM_RETRY_MINUTES, options.only ?? null, limit],
       )
     ).rows;
+    const claimed = [] as (RoutineDue & {
+      next_run_at_after_claim: Date | null;
+    })[];
     for (const row of rows) {
       const next = nextOccurrence(
         row.next_run_at,
@@ -44,14 +51,13 @@ export async function scanAssistantRoutines(
         now,
       );
       await db.query(
-        `UPDATE agent_routines SET next_run_at = coalesce($2, next_run_at),
-           paused = CASE WHEN $2::timestamptz IS NULL THEN true ELSE paused END,
-           claimed_at = $3, updated_at = now()
+        `UPDATE agent_routines SET claimed_at = $2, updated_at = now()
          WHERE id = $1`,
-        [row.id, next, now],
+        [row.id, now],
       );
+      claimed.push({ ...row, next_run_at_after_claim: next });
     }
-    return rows;
+    return claimed;
   });
 
   let started = 0;
@@ -61,40 +67,51 @@ export async function scanAssistantRoutines(
       `This routine repeats using ${routine.rrule} in ${routine.timezone}. Use the current workspace, follow the built-in assistant's saved approval scopes, and report what you completed or what needs my attention.`,
     ].join("\n\n");
     try {
-      const jobId = await startAssistantAutomation({
-        userId: routine.user_id,
-        message,
-        timezone: routine.timezone,
-        automation: { kind: "routine", id: routine.id },
-        onQueued: async (db, id) => {
-          await db.query(
-            `UPDATE agent_routines SET current_job_id = $2, claimed_at = now(), updated_at = now()
-              WHERE id = $1 AND current_job_id IS NULL`,
-            [routine.id, id],
-          );
+      const jobId = await (options.startAutomation ?? startAssistantAutomation)(
+        {
+          userId: routine.user_id,
+          message,
+          timezone: routine.timezone,
+          automation: { kind: "routine", id: routine.id },
+          onQueued: async (db, id) => {
+            const queued = await db.query(
+              `UPDATE agent_routines SET current_job_id = $2,
+               next_run_at = coalesce($3, next_run_at),
+               paused = CASE WHEN $3::timestamptz IS NULL THEN true ELSE paused END,
+               claimed_at = now(), updated_at = now()
+              WHERE id = $1 AND current_job_id IS NULL AND claimed_at = $4`,
+              [routine.id, id, routine.next_run_at_after_claim, now],
+            );
+            if (!queued.rowCount)
+              throw new Error("The routine claim expired before queueing.");
+          },
         },
-      });
+      );
       if (jobId) started++;
       else
         await pool.query(
           `UPDATE agent_routines SET claimed_at = NULL,
              last_result = $3::jsonb, updated_at = now()
-            WHERE id = $1 AND user_id = $2 AND current_job_id IS NULL`,
+            WHERE id = $1 AND user_id = $2 AND current_job_id IS NULL
+              AND claimed_at = $4`,
           [
             routine.id,
             routine.user_id,
             JSON.stringify({ error: "The scheduled run could not start." }),
+            now,
           ],
         );
     } catch {
       await pool.query(
         `UPDATE agent_routines SET claimed_at = NULL,
            last_result = $3::jsonb, updated_at = now()
-          WHERE id = $1 AND user_id = $2 AND current_job_id IS NULL`,
+          WHERE id = $1 AND user_id = $2 AND current_job_id IS NULL
+            AND claimed_at = $4`,
         [
           routine.id,
           routine.user_id,
           JSON.stringify({ error: "The scheduled run could not start." }),
+          now,
         ],
       );
     }

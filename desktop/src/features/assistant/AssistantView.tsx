@@ -114,6 +114,7 @@ export function AssistantView({
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [chatMenu, setChatMenu] = useState<{
     chat: AiChatSummary;
     anchor: DOMRect;
@@ -246,7 +247,10 @@ export function AssistantView({
 
   return (
     <section className={"ai-chat" + (empty ? " is-empty" : "")}>
-      <aside className="ai-history" aria-label="Chat history">
+      <aside
+        className={"ai-history" + (historyOpen ? " is-open" : "")}
+        aria-label="Chat history"
+      >
         <div className="ai-history-head">
           <div className="ai-history-title">
             <History size={16} aria-hidden="true" />
@@ -257,7 +261,10 @@ export function AssistantView({
               aria-label="New chat"
               title="New chat"
               disabled={locked}
-              onClick={reset}
+              onClick={() => {
+                setHistoryOpen(false);
+                reset();
+              }}
             >
               <SquarePen size={16} aria-hidden="true" />
             </button>
@@ -285,6 +292,7 @@ export function AssistantView({
                 disabled={locked}
                 onClick={() => {
                   setChatMenu(null);
+                  setHistoryOpen(false);
                   void openChat(chat.id).catch(() => undefined);
                 }}
                 title={chat.title}
@@ -385,8 +393,21 @@ export function AssistantView({
         <div className="ai-chat-head">
           <button
             type="button"
+            className="ai-ghost ai-icon ai-history-toggle"
+            aria-label={historyOpen ? "Close chat history" : "Chat history"}
+            aria-expanded={historyOpen}
+            title={historyOpen ? "Close chat history" : "Chat history"}
+            onClick={() => setHistoryOpen((open) => !open)}
+          >
+            <History size={16} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             className="ai-ghost ai-icon"
-            onClick={reset}
+            onClick={() => {
+              setHistoryOpen(false);
+              reset();
+            }}
             disabled={thinking}
             aria-label="New chat"
             title="New chat"

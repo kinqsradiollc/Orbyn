@@ -233,6 +233,9 @@
   padding: 6px var(--ai-inset);
   flex-shrink: 0;
 }
+.ai-history-toggle {
+  display: none;
+}
 .ai-ghost {
   display: inline-flex;
   align-items: center;
@@ -1361,6 +1364,29 @@
   }
 
   .ai-upcoming-head {
+    display: grid;
+  }
+}
+
+@media (max-width: 600px) {
+  .ai-chat {
+    position: relative;
+  }
+
+  .ai-history {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 5;
+    display: none;
+    width: min(280px, calc(100vw - 56px));
+    flex: none;
+  }
+
+  .ai-history.is-open {
+    display: flex;
+  }
+
+  .ai-history-toggle {
     display: grid;
   }
 }
