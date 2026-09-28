@@ -177,6 +177,9 @@ export async function beginChatTurn(
     message: string;
     scope: ChatScope | null;
     legacyHistory: ChatTurn[];
+    /** A background run's chat: its origin and list title. */
+    origin?: "idea" | "goal" | "routine";
+    title?: string;
   },
 ): Promise<ChatTurn[]> {
   return transaction(async (db) => {
@@ -233,15 +236,17 @@ export async function beginChatTurn(
       turn_id: input.turnId,
     };
     const turns = [...previous, userTurn].slice(-200);
-    const title = row?.title ?? chatTitle([userTurn]);
+    const title =
+      row?.title ??
+      (input.title?.trim().slice(0, 120) || chatTitle([userTurn]));
     const scopeKind = storedScope?.kind ?? null;
     const scopeId = storedScope?.id ?? null;
     if (!row) {
       // Another person's chat id is simply not found (never a clash).
       const made = await db.query(
         `INSERT INTO ai_chats
-          (id, user_id, project_id, title, turns, last_used_at, scope_kind, scope_id)
-         VALUES ($1, $2, $3, $4, $5::jsonb, now(), $6, $7)
+          (id, user_id, project_id, title, turns, last_used_at, scope_kind, scope_id, origin)
+         VALUES ($1, $2, $3, $4, $5::jsonb, now(), $6, $7, $8)
          ON CONFLICT (id) DO NOTHING RETURNING id`,
         [
           input.chatId,
@@ -251,6 +256,7 @@ export async function beginChatTurn(
           JSON.stringify(turns),
           scopeKind,
           scopeId,
+          input.origin ?? "person",
         ],
       );
       if (!made.rowCount) fail(404, "Chat not found");
@@ -392,7 +398,7 @@ export async function listAiChats(
     await db.query<SummaryRow>(
       `SELECT ${SUMMARY} FROM ai_chats c
         LEFT JOIN projects p ON p.id = c.project_id
-       WHERE c.user_id = $1 AND ${PROJECT_VISIBLE}
+       WHERE c.user_id = $1 AND ${PROJECT_VISIBLE} AND c.origin <> 'idea'
          AND ($2::uuid IS NULL OR c.project_id = $2)
          AND ($3 = '' OR c.title ILIKE '%' || $3 || '%'
            OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t

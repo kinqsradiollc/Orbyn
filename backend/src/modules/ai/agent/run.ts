@@ -591,6 +591,8 @@ export async function startAssistantAutomation(input: {
   automation: AssistantAutomation;
   logger?: FastifyBaseLogger;
   onQueued?: (db: Queryable, jobId: string) => Promise<void>;
+  /** The chat's title in the person's list (goal and routine runs). */
+  title?: string;
 }): Promise<string | null> {
   const row = (
     await pool.query<{ id: string; name: string; role: SystemRole }>(
@@ -608,6 +610,8 @@ export async function startAssistantAutomation(input: {
     message: input.message,
     scope: null,
     legacyHistory: [],
+    origin: input.automation.kind,
+    title: input.title,
   });
   const request: PersistedChatRequest = {
     message: input.message,
@@ -1085,9 +1089,9 @@ export async function runAssistantJob(
             : "not_applied";
       const summary =
         status === "pending_review"
-          ? `${leadSummary(result.state, fallback)}\n\nI placed the changes in Review for you.`
+          ? `${leadSummary(result.state, fallback)}\n\nI’ve put these changes in Review for you.`
           : applied.applied
-            ? `${leadSummary(result.state, fallback)}\n\nI applied the checked plan as one undoable change.`
+            ? `${leadSummary(result.state, fallback)}\n\nDone — you can undo this change.`
             : leadSummary(result.state, fallback);
       await trace.flush();
       trace.record({
@@ -1431,9 +1435,9 @@ export async function answerAssistantApproval(
       const status = structured?.status;
       const summary =
         status === "pending_review"
-          ? `${leadSummary(state, "")}\n\nI placed the changes in Review.`
+          ? `${leadSummary(state, "")}\n\nI’ve put these changes in Review for you.`
           : applied.applied
-            ? `${leadSummary(state, "")}\n\nI applied the checked plan as one undoable change.`
+            ? `${leadSummary(state, "")}\n\nDone — you can undo this change.`
             : `${leadSummary(state, "")}\n\nI held the changes. Nothing was applied.`;
       await finishJob(
         jobId,
@@ -1548,7 +1552,7 @@ export async function stopAssistantJob(
  */
 export function ideaText(summary: string): [string, string] {
   const text = summary
-    .replace(/\n+I placed the changes in Review for you\.?\s*$/, "")
+    .replace(/\n+I’ve put these changes in Review for you\.?\s*$/, "")
     .trim();
   const first = /^(.+?[.!?])(\s|$)/s.exec(text)?.[1] ?? text.split("\n")[0];
   const title = first.replace(/\s+/g, " ").trim().slice(0, 120);

@@ -97,6 +97,15 @@ type BriefInputs = {
   unfinished: { item_id: string; title: string }[];
 };
 
+/** "Mon 28 Sept" for a local day key. */
+const briefDay = (day: string) =>
+  new Date(`${day}T12:00:00Z`).toLocaleDateString("en-AU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+
 /** Create one private Agent brief per local day, safely across worker replicas. */
 async function writeMorningBrief(input: BriefInputs): Promise<{
   docId: string;
@@ -221,7 +230,8 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
     ),
   ]);
 
-  const sections: string[] = [`# ${input.day} — Morning brief`, "## Today"];
+  // The page title names the day, so the body starts with its sections.
+  const sections: string[] = ["## Today"];
   const today: string[] = [];
   for (const event of visibleEvents.slice(0, 20)) {
     const when = event.all_day
@@ -377,11 +387,18 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
       )
     ).rows[0];
     if (!user) throw new Error("The brief owner is no longer active.");
+    const agentName =
+      (
+        await db.query<{ name: string }>(
+          "SELECT name FROM agent_settings WHERE user_id = $1",
+          [input.userId],
+        )
+      ).rows[0]?.name ?? "Orbyn";
     const doc = await createDoc(
       db,
       user,
       docInput.parse({
-        title: `Assistant brief — ${input.day}`,
+        title: `${agentName}’s morning brief · ${briefDay(input.day)}`,
         kind: "agent",
         content: parseDoc(markdown),
       }),
@@ -687,11 +704,9 @@ export async function buildMorning(
         atRisk: review.at_risk,
         unfinished: review.unfinished,
       });
+      lines.push(`Your morning brief: ${appLink(`/app/doc/${brief.docId}`)}`);
       lines.push(
-        `Your private Assistant brief: ${appLink(`/app/doc/${brief.docId}`)}`,
-      );
-      lines.push(
-        `Brief summary: ${brief.events} ${brief.events === 1 ? "event" : "events"}, ${brief.tasks} ${brief.tasks === 1 ? "task" : "tasks"} due, ${brief.sessions} ${brief.sessions === 1 ? "session" : "sessions"}, ${brief.clashes} ${brief.clashes === 1 ? "clash" : "clashes"}, ${brief.slipping} ${brief.slipping === 1 ? "item" : "items"} at risk, ${brief.goals} active goals, ${brief.ideas} ideas to review, and ${brief.questions} questions or approvals waiting.`,
+        `Brief summary: ${brief.events} ${brief.events === 1 ? "event" : "events"}, ${brief.tasks} ${brief.tasks === 1 ? "task" : "tasks"} due, ${brief.sessions} ${brief.sessions === 1 ? "session" : "sessions"}, ${brief.clashes} ${brief.clashes === 1 ? "clash" : "clashes"}, ${brief.slipping} ${brief.slipping === 1 ? "item" : "items"} at risk, ${brief.goals} active ${brief.goals === 1 ? "goal" : "goals"}, ${brief.ideas} ideas to review, and ${brief.questions} questions or approvals waiting.`,
       );
     } catch (error) {
       console.error(

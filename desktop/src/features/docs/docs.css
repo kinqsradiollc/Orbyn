@@ -4058,3 +4058,12 @@ input.doc-image-caption:focus {
 .docs-workspace .docs-list li > .doc-pick {
   margin: 0 0 0 12px;
 }
+
+/* Links written in a page (a brief's items, pasted links) read as the app's
+   links (the text-button colour) rather than the browser's default blue. */
+.doc-body a[href] {
+  color: var(--color-accent, #56704e);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}

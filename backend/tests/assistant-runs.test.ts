@@ -679,11 +679,23 @@ test("an idea run that stages a change files it in Review and records it for Tod
   ).rows[0];
   assert.ok(idea?.proposal_id, "the idea points at its Review proposal");
   assert.equal(idea.title, "One idea: add the review task.");
-  assert.doesNotMatch(idea.summary, /placed the changes in Review/);
+  assert.doesNotMatch(idea.summary, /put these changes in Review/);
   assert.equal(
     idea.summary,
     idea.title,
     "a one-sentence idea repeats its title",
+  );
+  const listed = await app.inject({
+    method: "GET",
+    url: "/ai/chats",
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+  });
+  assert.equal(listed.statusCode, 200, listed.body);
+  assert.equal(
+    (listed.json() as unknown[]).length,
+    0,
+    "an idea run's chat stays out of the chat list",
   );
 });
 
@@ -2125,7 +2137,7 @@ test("a simultaneous Approve and Decline: exactly one wins and the chat says wha
   assert.equal(last?.text, result.answer);
   assert.match(
     result.answer,
-    approvedWon ? /applied the checked plan/ : /Nothing was applied/,
+    approvedWon ? /Done — you can undo this change/ : /Nothing was applied/,
   );
 });
 

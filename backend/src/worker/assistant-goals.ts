@@ -118,6 +118,7 @@ export async function scanAssistantGoals(
           message,
           timezone: goal.timezone,
           automation: { kind: "goal", id: goal.id, week_of: week },
+          title: `Weekly check-in: ${goal.title}`,
           onQueued: async (db, id) => {
             await db.query(
               `UPDATE goals_checkins SET job_id = $3, claimed_at = now(), status = 'running'

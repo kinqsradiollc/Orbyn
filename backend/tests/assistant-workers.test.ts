@@ -423,7 +423,7 @@ test("the morning email keeps going without an assistant or when the brief fails
     new Date(),
     "UTC",
   );
-  assert.ok(!plain.lines.some((line) => /Assistant brief/.test(line)));
+  assert.ok(!plain.lines.some((line) => /morning brief/.test(line)));
   assert.equal(
     (
       await pool.query("SELECT 1 FROM assistant_briefs WHERE user_id = $1", [
@@ -447,7 +447,7 @@ test("the morning email keeps going without an assistant or when the brief fails
     },
   );
   assert.equal(failed.subject, "Your day ahead");
-  assert.ok(!failed.lines.some((line) => /Assistant brief/.test(line)));
+  assert.ok(!failed.lines.some((line) => /morning brief/.test(line)));
   assert.ok(failed.lines.some((line) => /Open your day/.test(line)));
 });
 

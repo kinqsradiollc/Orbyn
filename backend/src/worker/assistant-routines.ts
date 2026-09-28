@@ -96,6 +96,7 @@ export async function scanAssistantRoutines(
           message,
           timezone: routine.timezone,
           automation: { kind: "routine", id: routine.id },
+          title: `Routine: ${routine.instruction}`,
           onQueued: async (db, id) => {
             const queued = await db.query(
               `UPDATE agent_routines SET current_job_id = $2,

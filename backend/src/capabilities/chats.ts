@@ -135,7 +135,7 @@ export const getChats = defineCapability({
                 c.summary_doc_id, c.swept_at, c.scope_kind, c.scope_id
            FROM ai_chats c LEFT JOIN projects p ON p.id = c.project_id
           WHERE c.user_id = ${user} AND ${visible}
-            AND (${chatId ? `c.id = ${chatId}` : "true"})
+            AND (${chatId ? `c.id = ${chatId}` : "c.origin <> 'idea'"})
             AND (${projectId ? `c.project_id = ${projectId}` : "true"})
             AND (${search} = '' OR c.title ILIKE '%' || ${search} || '%'
               OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
