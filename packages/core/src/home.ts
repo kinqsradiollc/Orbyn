@@ -37,7 +37,7 @@ export type HomeSummary = {
   goals: HomeGoal[];
   routines: HomeRoutine[];
   /** Today's morning brief (an Agent note), when one was written. */
-  brief: { doc_id: string; title: string } | null;
+  brief: { doc_id: string; title: string; overnight?: string | null } | null;
   /** Today's agenda page, when it has been written. */
   agenda_doc_id: string | null;
   /** Lines already under Reflection on today's agenda. */

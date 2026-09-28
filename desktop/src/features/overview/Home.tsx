@@ -816,6 +816,7 @@ function ReflectionPanel({
         >
           <strong>Today's brief</strong>
           <small className="home-clamp">{data.brief.title}</small>
+          {data.brief.overnight && <small>{data.brief.overnight}</small>}
           <ArrowUpRight size={14} aria-hidden="true" />
         </button>
       )}

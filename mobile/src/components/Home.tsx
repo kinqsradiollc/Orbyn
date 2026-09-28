@@ -307,6 +307,9 @@ export function HomeSection({
               <Text style={shared.small} numberOfLines={1}>
                 {data.brief.title}
               </Text>
+              {data.brief.overnight && (
+                <Text style={shared.small}>{data.brief.overnight}</Text>
+              )}
             </View>
             <Icon name="arrowRight" size={16} color={colors.accent} />
           </Pressable>

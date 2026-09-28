@@ -106,19 +106,8 @@ const briefDay = (day: string) =>
     timeZone: "UTC",
   });
 
-/** Create one private Agent brief per local day, safely across worker replicas. */
-async function writeMorningBrief(input: BriefInputs): Promise<{
-  docId: string;
-  events: number;
-  tasks: number;
-  sessions: number;
-  clashes: number;
-  slipping: number;
-  goals: number;
-  ideas: number;
-  questions: number;
-}> {
-  const keptOut = await keptOutFor(pool, input.userId);
+async function briefVisibility(userId: string) {
+  const keptOut = await keptOutFor(pool, userId);
   const hiddenIds = new Set([...keptOut.ids, ...keptOut.projects]);
   const hiddenTerms = keptOut.projects.size
     ? (
@@ -146,6 +135,165 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
       return Object.values(value).some(mentionsKeptOut);
     return false;
   };
+  return { keptOut, mentionsKeptOut };
+}
+
+/** Read the latest night's saved results without making a model call. */
+export async function buildOvernightSection(userId: string, day: string) {
+  const { mentionsKeptOut } = await briefVisibility(userId);
+  const night = (
+    await pool.query<{ id: string; summary: unknown }>(
+      `SELECT id, summary FROM assistant_nights WHERE user_id = $1
+     AND local_day BETWEEN $2::date - 1 AND $2::date ORDER BY local_day DESC LIMIT 1`,
+      [userId, day],
+    )
+  ).rows[0];
+  if (!night) return null;
+  const runs = (
+    await pool.query<{
+      summary: string;
+      status: string;
+      state: string;
+      result: unknown;
+      run_state: unknown;
+      apply_result: unknown;
+    }>(
+      `SELECT nr.summary, nr.status, j.state, j.result, j.run_state, j.apply_result
+     FROM assistant_night_runs nr JOIN ai_jobs j ON j.id = nr.job_id AND j.user_id = $2
+     WHERE nr.night_id = $1 ORDER BY nr.created_at, nr.id`,
+      [night.id, userId],
+    )
+  ).rows.filter(
+    (run) =>
+      !mentionsKeptOut([
+        run.summary,
+        run.result,
+        run.run_state,
+        run.apply_result,
+      ]),
+  );
+  const proposalOf = (result: unknown) => {
+    const value = objectValue(objectValue(result).assistant_run).proposal_id;
+    const id = typeof value === "string" ? value.replace(/^proposal:/, "") : "";
+    return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)
+      ? id
+      : null;
+  };
+  const proposalIds = runs.flatMap((run) => {
+    const id = proposalOf(run.result);
+    return id ? [id] : [];
+  });
+  const pending = new Set(
+    (
+      await pool.query<{ id: string }>(
+        "SELECT id FROM proposals WHERE user_id = $1 AND id = ANY($2::uuid[]) AND status = 'pending' AND expires_at > now()",
+        [userId, proposalIds],
+      )
+    ).rows.map((row) => row.id),
+  );
+  const markdown: string[] = [];
+  let review = 0;
+  let questions = 0;
+  let completed = 0;
+  for (const run of runs) {
+    const result = objectValue(run.result);
+    const details = objectValue(result.assistant_run);
+    const envelope = objectValue(run.run_state);
+    const waiting = objectValue(objectValue(envelope.state).waiting);
+    const proposal = proposalOf(run.result);
+    const summary =
+      plainText(run.summary) ||
+      (run.state === "queued"
+        ? "Queued for tonight"
+        : run.state === "running"
+          ? "Still working"
+          : run.state === "failed"
+            ? "This run could not finish"
+            : "Night work");
+    const links: string[] = [];
+    const receipt = objectValue(objectValue(run.apply_result).structured);
+    const steps = Array.isArray(receipt.steps) ? receipt.steps : [];
+    for (const step of steps) {
+      const done = objectValue(step).done;
+      if (!Array.isArray(done)) continue;
+      for (const entry of done) {
+        const item = objectValue(entry);
+        if (
+          typeof item.url !== "string" ||
+          typeof item.title !== "string" ||
+          links.length >= 5
+        )
+          continue;
+        try {
+          const url = new URL(item.url, appLink("/"));
+          if (
+            url.origin === new URL(appLink("/")).origin &&
+            url.pathname.startsWith("/app/")
+          )
+            links.push(
+              linked(item.title, url.pathname + url.search + url.hash),
+            );
+        } catch {
+          // An unusable result link cannot prevent the morning digest.
+        }
+      }
+    }
+    if (proposal && pending.has(proposal)) {
+      review++;
+      links.push(linked("Review changes", `/app/review/${proposal}`));
+    } else if (
+      typeof details.plan_job === "string" &&
+      details.outcome === "applied"
+    ) {
+      links.push(linked("Changes and Undo", "/app/agents"));
+    }
+    if (run.state === "waiting") {
+      questions++;
+      links.push(
+        linked(
+          typeof waiting.question === "string"
+            ? waiting.question
+            : "Your answer is needed",
+          "/app/assistant",
+        ),
+      );
+    }
+    if (run.state === "done") completed++;
+    markdown.push(
+      `- ${summary}${links.length ? ` — ${links.join(" · ")}` : ""}`,
+    );
+  }
+  const notDone = objectValue(night.summary).not_done;
+  const leftovers = Array.isArray(notDone)
+    ? notDone.filter((entry) => !mentionsKeptOut(entry))
+    : [];
+  for (const entry of leftovers) {
+    const row = objectValue(entry);
+    if (typeof row.title === "string")
+      markdown.push(
+        `- Not done tonight: ${plainText(row.title)}${typeof row.reason === "string" ? ` — ${plainText(row.reason).replace(/^Not done tonight:\s*/i, "")}` : ""}`,
+      );
+  }
+  if (!markdown.length) return null;
+  return {
+    firstLine: `Overnight: ${completed} ${completed === 1 ? "run" : "runs"} finished, ${review} to review, ${questions} ${questions === 1 ? "question" : "questions"}, ${leftovers.length} not done tonight.`,
+    markdown,
+  };
+}
+
+/** Create one private Agent brief per local day, safely across worker replicas. */
+async function writeMorningBrief(input: BriefInputs): Promise<{
+  docId: string;
+  events: number;
+  tasks: number;
+  sessions: number;
+  clashes: number;
+  slipping: number;
+  goals: number;
+  ideas: number;
+  questions: number;
+}> {
+  const { keptOut, mentionsKeptOut } = await briefVisibility(input.userId);
   const visibleEvents = input.events.filter(
     (event) =>
       (!event.item_id || !keptOut.items.has(event.item_id)) &&
@@ -231,7 +379,10 @@ async function writeMorningBrief(input: BriefInputs): Promise<{
   ]);
 
   // The page title names the day, so the body starts with its sections.
-  const sections: string[] = ["## Today"];
+  const overnight = await buildOvernightSection(input.userId, input.day);
+  const sections: string[] = overnight
+    ? ["## Overnight", overnight.firstLine, ...overnight.markdown, "## Today"]
+    : ["## Today"];
   const today: string[] = [];
   for (const event of visibleEvents.slice(0, 20)) {
     const when = event.all_day
@@ -684,6 +835,16 @@ export async function buildMorning(
   ).rowCount;
   if (hasAssistant) {
     try {
+      const overnight = await buildOvernightSection(userId, today);
+      if (overnight)
+        lines.unshift(
+          overnight.firstLine,
+          ...overnight.markdown.map((line) =>
+            line
+              .replace(/^- /, "• ")
+              .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1: $2"),
+          ),
+        );
       const brief = await (options.writeBrief ?? writeMorningBrief)({
         userId,
         day: today,

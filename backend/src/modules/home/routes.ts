@@ -139,8 +139,8 @@ export async function homeRoutes(app: FastifyInstance) {
     const [goals, routines, brief, agenda] = await Promise.all([
       goalsFor(db, u.id, today),
       routinesFor(db, u.id),
-      db.query<{ doc_id: string; title: string }>(
-        `SELECT d.id AS doc_id, d.title FROM assistant_briefs b
+      db.query<{ doc_id: string; title: string; content: DocBlock[] }>(
+        `SELECT d.id AS doc_id, d.title, d.content FROM assistant_briefs b
            JOIN docs d ON d.id = b.doc_id
           WHERE b.user_id = $1 AND b.local_day = $2::date
             AND ${docVisibleTo("$1")}`,
@@ -153,7 +153,18 @@ export async function homeRoutes(app: FastifyInstance) {
       timezone,
       goals,
       routines,
-      brief: brief.rows[0] ?? null,
+      brief: brief.rows[0]
+        ? {
+            doc_id: brief.rows[0].doc_id,
+            title: brief.rows[0].title,
+            overnight:
+              brief.rows[0].content?.flatMap((block) =>
+                "text" in block && block.text.startsWith("Overnight:")
+                  ? [block.text]
+                  : [],
+              )[0] ?? null,
+          }
+        : null,
       agenda_doc_id: agenda?.id ?? null,
       reflection: agenda ? reflectionLines(agenda.content ?? []) : [],
     };

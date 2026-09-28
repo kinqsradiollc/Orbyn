@@ -195,6 +195,36 @@ test("Home's layout follows the account: defaults, a round trip, and its checks"
 
 // ------------------------------------------------------ W1 panels ---
 
+test("Home's brief card exposes only its owner's Overnight summary", async () => {
+  const who = await h.register("home-night", "Night Home");
+  const other = await h.register("home-night-other", "Other Night Home");
+  const page = await newPage(who, "Morning brief");
+  const first = (await h.call(who.token, "GET", "/me/home")).json();
+  const summary =
+    "Overnight: 2 runs finished, 1 to review, 0 questions, 1 not done tonight.";
+  await pool.query("UPDATE docs SET content = $2::jsonb WHERE id = $1", [
+    page.id,
+    JSON.stringify([
+      { type: "heading", text: "Overnight", level: 2 },
+      { type: "paragraph", text: summary },
+    ]),
+  ]);
+  await pool.query(
+    "INSERT INTO assistant_briefs(user_id, local_day, doc_id) VALUES($1, $2::date, $3)",
+    [who.id, first.today, page.id],
+  );
+  const home = (await h.call(who.token, "GET", "/me/home")).json();
+  assert.deepEqual(home.brief, {
+    doc_id: page.id,
+    title: "Morning brief",
+    overnight: summary,
+  });
+  assert.equal(
+    (await h.call(other.token, "GET", "/me/home")).json().brief,
+    null,
+  );
+});
+
 test("Home's panels: active goals with progress and check-in, routines, and reflection on the agenda", async () => {
   const who = await h.register("home-cy", "Cy Home");
   const project = await newProject(who, "Marathon");

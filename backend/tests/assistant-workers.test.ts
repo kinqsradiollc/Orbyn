@@ -16,7 +16,8 @@ const { scanAssistantIdeas } = await import("../src/worker/assistant-ideas.js");
 const { scanAssistantRoutines } =
   await import("../src/worker/assistant-routines.js");
 const { sweepOldChats } = await import("../src/worker/chat-sweep.js");
-const { buildMorning } = await import("../src/worker/digest.js");
+const { buildMorning, buildOvernightSection } =
+  await import("../src/worker/digest.js");
 const { retention, runSweep } = await import("../src/lib/sweep.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
@@ -449,6 +450,145 @@ test("the morning email keeps going without an assistant or when the brief fails
   assert.equal(failed.subject, "Your day ahead");
   assert.ok(!failed.lines.some((line) => /morning brief/.test(line)));
   assert.ok(failed.lines.some((line) => /Open your day/.test(line)));
+});
+
+test("saved night results lead the morning email and private brief with review, Undo, questions and leftovers", async () => {
+  const userId = await register();
+  const stranger = await register();
+  const now = new Date("2050-02-02T08:00:00Z");
+  const nightId = (
+    await pool.query(
+      `INSERT INTO assistant_nights(user_id, local_day, status, runs, summary)
+     VALUES($1, '2050-02-01', 'done', 3, $2::jsonb) RETURNING id`,
+      [
+        userId,
+        JSON.stringify({
+          not_done: [
+            {
+              title: "Revision plan",
+              reason: "Not done tonight: the token budget was reached",
+            },
+          ],
+        }),
+      ],
+    )
+  ).rows[0].id;
+  const proposal = randomUUID();
+  await pool.query(
+    "INSERT INTO proposals(id, user_id, actions) VALUES($1, $2, '[]'::jsonb)",
+    [proposal, userId],
+  );
+  const task = randomUUID();
+  const { appLink } = await import("../src/modules/booking/service.js");
+  for (const run of [
+    {
+      state: "done",
+      summary: "Prepared tomorrow's sessions",
+      result: { assistant_run: { outcome: "applied", plan_job: "plan_test" } },
+      apply: {
+        structured: {
+          steps: [
+            {
+              done: [
+                {
+                  title: "Revision session",
+                  url: appLink(`/app/task/${task}`),
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      state: "done",
+      summary: "Prepared flashcards",
+      result: {
+        assistant_run: {
+          outcome: "pending",
+          proposal_id: `proposal:${proposal}`,
+        },
+      },
+    },
+    {
+      state: "waiting",
+      summary: "Which meeting?",
+      checkpoint: {
+        state: {
+          waiting: {
+            kind: "person",
+            question: "Which meeting should I prepare?",
+          },
+        },
+      },
+    },
+  ]) {
+    const job = (
+      await pool.query(
+        "INSERT INTO ai_jobs(user_id, state, result, run_state, apply_result) VALUES($1, $2, $3::jsonb, $4::jsonb, $5::jsonb) RETURNING id",
+        [
+          userId,
+          run.state,
+          JSON.stringify(run.result ?? null),
+          JSON.stringify(run.checkpoint ?? null),
+          JSON.stringify(run.apply ?? null),
+        ],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO assistant_night_runs(night_id, job_id, kind, summary) VALUES($1, $2, 'plan', $3)",
+      [nightId, job, run.summary],
+    );
+  }
+  const section = await buildOvernightSection(userId, "2050-02-02");
+  assert.ok(section);
+  assert.match(
+    section.firstLine,
+    /2 runs finished, 1 to review, 1 question, 1 not done/,
+  );
+  const text = section.markdown.join("\n");
+  assert.match(text, new RegExp(`/app/review/${proposal}`));
+  assert.match(text, new RegExp(`/app/task/${task}`));
+  assert.match(text, /Changes and Undo/);
+  assert.match(text, /Which meeting should I prepare/);
+  assert.match(text, /Revision plan.*token budget/);
+  assert.equal(await buildOvernightSection(stranger, "2050-02-02"), null);
+  assert.equal(await buildOvernightSection(userId, "2050-02-04"), null);
+  const digest = await buildMorning(userId, "Worker tester", now, "UTC");
+  assert.equal(digest.lines[0], section.firstLine);
+  const brief = (
+    await pool.query(
+      "SELECT d.content FROM assistant_briefs b JOIN docs d ON d.id = b.doc_id WHERE b.user_id = $1 AND b.local_day = '2050-02-02'",
+      [userId],
+    )
+  ).rows[0];
+  assert.ok(brief);
+  const blocks = brief.content as { text?: string }[];
+  assert.equal(blocks[0].text, "Overnight");
+  assert.match(JSON.stringify(blocks), /Prepared flashcards/);
+  const hiddenProject = (
+    await pool.query(
+      "INSERT INTO projects(user_id, name, assistant_off) VALUES($1, 'Prepared flashcards', true) RETURNING id",
+      [userId],
+    )
+  ).rows[0].id;
+  assert.ok(hiddenProject);
+  const filtered = await buildOvernightSection(userId, "2050-02-02");
+  assert.ok(filtered);
+  assert.doesNotMatch(filtered.markdown.join("\n"), /Prepared flashcards/);
+  await pool.query("UPDATE projects SET assistant_off = false WHERE id = $1", [
+    hiddenProject,
+  ]);
+  await pool.query("UPDATE proposals SET status = 'applied' WHERE id = $1", [
+    proposal,
+  ]);
+  const decided = await buildOvernightSection(userId, "2050-02-02");
+  assert.ok(decided);
+  assert.match(decided.firstLine, /0 to review/);
+  assert.doesNotMatch(
+    decided.markdown.join("\n"),
+    new RegExp(`/app/review/${proposal}`),
+  );
 });
 
 test("the chat sweep drains in batches, respects visibility and kept-out sources", async () => {
