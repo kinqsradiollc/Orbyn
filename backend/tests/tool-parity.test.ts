@@ -19,12 +19,12 @@ const {
 test("built-in lead and specialists use the same listable MCP capabilities", () => {
   assertSpecialistTools();
   const listed = registry.all.filter((capability) => !capability.legacyOnly);
-  assert.equal(listed.length, 63);
+  assert.equal(listed.length, 65);
   assert.equal(
     listed.filter((capability) => capability.toolset === "core").length,
-    31,
+    33,
   );
-  assert.equal(new Set(listed.map((capability) => capability.name)).size, 63);
+  assert.equal(new Set(listed.map((capability) => capability.name)).size, 65);
 
   const assistantSpecs = [
     ...leadTools,
