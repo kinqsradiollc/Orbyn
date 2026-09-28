@@ -21,9 +21,11 @@ import {
   type AgentMessage,
   type Mode,
   type StepResult,
+  type ToolCall,
+  type ToolSpec,
 } from "./protocol.js";
 import { runTool, TOOL_SPECS, type AgentContext } from "./tools.js";
-import { runGraph } from "./graph.js";
+import { runGraph, runGraphToolStep } from "./graph.js";
 import { finalizeSources } from "./sources.js";
 
 /**
@@ -53,6 +55,44 @@ export type AgentResult = {
   steps: number;
   partial: boolean;
 };
+
+/** A content-free event that can be shown in a conversation's trace. */
+export type AgentTraceEvent = {
+  step: number;
+  kind: "thinking" | "tool" | "result" | "reply" | "error";
+  label: string;
+  tool?: string;
+};
+export type AgentTrace = (event: AgentTraceEvent) => void;
+
+export type LoopToolResult = {
+  content: string;
+  isError: boolean;
+  /** Stop after this tool result (used by a specialist's report tool). */
+  stop?: boolean;
+};
+
+/** Optional controls for the shared internal and specialist loop. */
+export type AgentLoopOptions = {
+  /** A focused instruction set instead of the built-in planner prompt. */
+  systemPrompt?: string;
+  /** Narrowed MCP tool descriptions for a specialist or the lead. */
+  tools?: ToolSpec[];
+  /** Route a tool through MCP or stage it, rather than the legacy registry. */
+  executeTool?: (call: ToolCall, ctx: AgentContext) => Promise<LoopToolResult>;
+  /** Maximum model/tool iterations for this run. */
+  maxSteps?: number;
+  /** Keep one tool call per reasoning step for the lead and specialists. */
+  maxToolCallsPerStep?: number;
+  /** Use the sequential JSON graph step for providers with structured output. */
+  forceToolLoop?: boolean;
+  /** Abort a running provider call when the person stops a job. */
+  signal?: AbortSignal;
+  /** Shared, approximate input-token budget for one bounded assistant run. */
+  tokenBudget?: { used: number; limit: number };
+};
+
+class AgentTokenBudgetExhausted extends Error {}
 
 const PROMISE =
   /^(sure|ok(ay)?|absolutely|great)?[,!.\s-]*(i('| wi)ll|i am going to|let me|one moment|give me a (sec|moment)|checking|looking|i'm going to)\b/i;
@@ -103,10 +143,12 @@ export async function runAgent(
   history: ChatTurn[],
   overview: unknown,
   log?: FastifyBaseLogger,
+  trace?: AgentTrace,
+  options: AgentLoopOptions = {},
 ): Promise<AgentResult> {
   // Providers that are weak at multi-step tool use get the fixed graph.
-  if (ai.structuredOutput)
-    return runGraph(ai, ctx, message, history, overview, log);
+  if (ai.structuredOutput && !options.forceToolLoop)
+    return runGraph(ai, ctx, message, history, overview, log, trace);
   // A provider with a per-message limit gets the overview cut to fit beside
   // the rules, rather than the prompt clipped at the end.
   const fitted = ai.limits
@@ -120,7 +162,9 @@ export async function runAgent(
   const messages: AgentMessage[] = [
     {
       role: "system",
-      content: agentPrompt(ctx.timezone, fitted, new Date(), ctx.identity),
+      content:
+        options.systemPrompt ??
+        agentPrompt(ctx.timezone, fitted, new Date(), ctx.identity),
     },
     ...history.slice(-12).map((t) => ({
       role: t.role,
@@ -134,8 +178,11 @@ export async function runAgent(
   let mode: Mode = startingMode(ai);
   const deadline = AbortSignal.timeout(DEADLINE_MS);
   const attemptMs = attemptMsFor(ai);
+  const maxSteps = options.maxSteps ?? MAX_STEPS;
+  const maxCallsPerStep = options.maxToolCallsPerStep ?? MAX_CALLS_PER_STEP;
   let guards = GUARD_BUDGET;
   let toolsRan = 0;
+  let lastText = "";
   const seen = new Map<string, number>();
 
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
@@ -143,18 +190,39 @@ export async function runAgent(
       try {
         // The JSON protocol offers fewer tools: the overview is already in the
         // prompt, and Matilda wandered through get_overview and list_teams.
+        const available = options.tools ?? TOOL_SPECS;
         const tools =
           mode === "json"
-            ? TOOL_SPECS.filter(
+            ? available.filter(
                 (t) => t.name !== "get_overview" && t.name !== "list_teams",
               )
-            : TOOL_SPECS;
-        return await step(ai, fit(messages, ai), tools, {
+            : available;
+        const signal = AbortSignal.any([
+          deadline,
+          AbortSignal.timeout(attemptMs),
+          ...(options.signal ? [options.signal] : []),
+        ]);
+        const fittedMessages = fit(messages, ai);
+        if (options.tokenBudget) {
+          const estimated =
+            Math.ceil(Buffer.byteLength(JSON.stringify(fittedMessages)) / 4) +
+            512;
+          if (options.tokenBudget.used + estimated > options.tokenBudget.limit)
+            throw new AgentTokenBudgetExhausted();
+          options.tokenBudget.used += estimated;
+        }
+        if (options.forceToolLoop && ai.structuredOutput)
+          return await runGraphToolStep(ai, fittedMessages, tools, {
+            toolsAllowed,
+            signal,
+          });
+        return await step(ai, fittedMessages, tools, {
           mode,
           toolsAllowed,
-          signal: AbortSignal.any([deadline, AbortSignal.timeout(attemptMs)]),
+          signal,
         });
       } catch (error) {
+        if (options.signal?.aborted) throw error;
         if (mode === "native" && rejectsTools(error)) {
           log?.warn(
             { event: "ai_agent_json_protocol", provider: ai.kind },
@@ -207,6 +275,7 @@ export async function runAgent(
       mode === "json" &&
       toolsRan > 0 &&
       summary.length < 300 &&
+      !options.executeTool &&
       !actions.length &&
       !ctx.clarification &&
       !deadline.aborted
@@ -240,6 +309,7 @@ export async function runAgent(
         "\n\n_I ran out of steps before finishing, so this may be incomplete._";
     const checked = finalizeSources(summary, [...(ctx.cited?.values() ?? [])]);
     summary = checked.summary;
+    trace?.({ step: Math.max(1, steps), kind: "reply", label: "Answer ready" });
     return {
       summary,
       actions,
@@ -252,45 +322,74 @@ export async function runAgent(
     };
   };
 
-  for (let n = 1; n <= MAX_STEPS; n++) {
-    const last = n === MAX_STEPS;
+  for (let n = 1; n <= maxSteps; n++) {
+    const last = n === maxSteps;
     if (last) messages.push({ role: "user", content: FINAL_STEP_NOTE });
-    const result = await call(!last);
+    trace?.({ step: n, kind: "thinking", label: "Considering the request" });
+    let result: StepResult;
+    try {
+      result = await call(!last);
+    } catch (error) {
+      if (!(error instanceof AgentTokenBudgetExhausted)) throw error;
+      return finish(lastText, n - 1, true);
+    }
 
     if (result.toolCalls.length) {
-      const calls = result.toolCalls.slice(0, MAX_CALLS_PER_STEP);
+      const calls = result.toolCalls.slice(0, maxCallsPerStep);
       messages.push({
         role: "assistant",
         content: result.text,
         tool_calls: calls,
       });
       for (const c of calls) {
+        trace?.({
+          step: n,
+          kind: "tool",
+          label: `Using ${c.name}`,
+          tool: c.name,
+        });
         const key = `${c.name}|${c.arguments}`;
         const count = (seen.get(key) ?? 0) + 1;
         seen.set(key, count);
-        const out =
-          count >= 3
-            ? {
-                content: JSON.stringify({
-                  error:
-                    "You already ran this exact call twice. Use those results and move on.",
-                }),
-                isError: true,
-              }
-            : await runTool(c, ctx);
+        const limited = count >= 3;
+        const output: LoopToolResult = limited
+          ? {
+              content: JSON.stringify({
+                error:
+                  "You already ran this exact call twice. Use those results and move on.",
+              }),
+              isError: true,
+            }
+          : options.executeTool
+            ? await options.executeTool(c, ctx)
+            : await (async () => {
+                const legacy = await runTool(c, ctx);
+                return {
+                  content: legacy.content,
+                  isError: legacy.isError,
+                };
+              })();
         messages.push({
           role: "tool",
           tool_call_id: c.id,
           name: c.name,
-          content: out.content,
+          content: output.content,
+        });
+        trace?.({
+          step: n,
+          kind: "result",
+          label: `Finished ${c.name}`,
+          tool: c.name,
         });
         toolsRan++;
+        if (output.stop) return finish(output.content, n, false);
         if (ctx.clarification) return finish("", n, false);
       }
       continue;
     }
 
     const text = result.text.trim();
+    if (text) lastText = text;
     // An empty reply (Matilda sometimes sends `{"tool_calls": [], "answer": null}`)
     // gets one nudge, whether or not tools ran first.
     if (!text && guards-- > 0 && !last) {
@@ -311,5 +410,5 @@ export async function runAgent(
     }
     return finish(text, n, false);
   }
-  return finish("", MAX_STEPS, true);
+  return finish("", maxSteps, true);
 }

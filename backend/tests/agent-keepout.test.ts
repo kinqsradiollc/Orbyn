@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 import { trapNetwork, type Person } from "./mcp-helpers.js";
@@ -117,6 +118,23 @@ before(async () => {
     project_id: teamProject,
     content: [{ id: "bq1", type: "paragraph", text: "Quokka roadmap." }],
   });
+  await pool.query(
+    `INSERT INTO ai_chats (id, user_id, project_id, title, turns, scope_kind, scope_id)
+     VALUES ($1, $2, $3, 'Zephyr saved chat', $4::jsonb, 'project', $3)`,
+    [
+      randomUUID(),
+      kim.id,
+      secretProject,
+      JSON.stringify([
+        { role: "user", text: "Zephyr private question" },
+        {
+          role: "assistant",
+          text: "Zephyr private answer",
+          history_text: "Zephyr private provider context",
+        },
+      ]),
+    ],
+  );
   // A visible page that links into the kept-out page.
   const visible = await h.call(kim.token, "POST", "/docs", {
     title: "Visible notes",
@@ -168,6 +186,12 @@ after(async () => {
 const SWEEP: Record<string, () => Record<string, unknown>[]> = {
   get_context: () => [{}],
   get_profile: () => [{}],
+  get_chats: () => [
+    {},
+    { search: "Zephyr" },
+    { search: "Quokka" },
+    { project_id: secretProject },
+  ],
   search: () => [
     { query: "Zephyr" },
     { query: "Quokka" },

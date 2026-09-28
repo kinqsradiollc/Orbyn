@@ -1,8 +1,3 @@
-import {
-  assistantRegistry,
-  assistantSpecs,
-  runAssistantTool,
-} from "../../../capabilities/assistant.js";
 import { parseProjectDraft } from "../project-draft.js";
 import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
@@ -1916,13 +1911,12 @@ export const TOOLS: Tool[] = [
   ),
 ];
 
-/**
- * The assistant's tools on the capability registry (capabilities/
- * assistant.ts): what it sends its provider, and how a call is found and
- * checked, come from there.
- */
-export const ASSISTANT_REGISTRY = assistantRegistry<AgentContext>(TOOLS);
-export const TOOL_SPECS = assistantSpecs(ASSISTANT_REGISTRY);
+/** Legacy protocol fixtures retained for direct loop tests. Live assistant
+ * runs build their tool list from the shared MCP capability registry. */
+const toolByName = new Map(
+  TOOLS.map((candidate) => [candidate.spec.name, candidate]),
+);
+export const TOOL_SPECS = TOOLS.map((candidate) => candidate.spec);
 
 const errorResult = (message: string) => ({
   content: JSON.stringify({ error: message }),
@@ -2283,7 +2277,8 @@ export async function runTool(
     return errorResult(
       "A project is already drafted for review. Do not add separate changes or schedules to this turn.",
     );
-  if (!ASSISTANT_REGISTRY.get(name))
+  const selected = toolByName.get(name);
+  if (!selected)
     return errorResult(
       `Unknown tool "${call.name.slice(0, 60)}". Available: ${TOOL_SPECS.map((t) => t.name).join(", ")}.`,
     );
@@ -2301,13 +2296,18 @@ export async function runTool(
     // (Drafting a project or asking a question reads nothing of the workspace.)
     if (!NO_READS.has(name))
       ctx.keptOut ??= await keptOutFor(pool, ctx.user.id);
-    const ran = (await runAssistantTool(ASSISTANT_REGISTRY, name, ctx, raw))!;
-    if (!ran.ok)
+    const parsed = selected.args.safeParse(raw);
+    if (!parsed.success)
       return errorResult(
-        `Invalid arguments for ${name}: ${problem(ran.error)}. Fix them and call it again.`,
+        `Invalid arguments for ${name}: ${problem(parsed.error)}. Fix them and call it again.`,
       );
     return {
-      content: cap(scrubKeptOut(ran.value, ctx.keptOut ?? NOTHING_KEPT_OUT)),
+      content: cap(
+        scrubKeptOut(
+          await selected.run(ctx, parsed.data as never),
+          ctx.keptOut ?? NOTHING_KEPT_OUT,
+        ),
+      ),
       isError: false,
     };
   } catch (error) {

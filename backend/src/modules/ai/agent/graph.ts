@@ -13,10 +13,33 @@ import { mayChange, wantsPlan } from "../guards.js";
 import { planMarkdown } from "./planText.js";
 import { localDay, localTimeContext } from "../prompt.js";
 import { comingDays, dateReminder, namedDays } from "./prompt.js";
-import { dropNullFields } from "./protocol.js";
+import {
+  dropNullFields,
+  step as protocolStep,
+  type AgentMessage,
+  type StepResult,
+  type ToolSpec,
+} from "./protocol.js";
 import { MAX_ACTIONS, runTool, type AgentContext } from "./tools.js";
-import type { AgentResult } from "./loop.js";
+import type { AgentResult, AgentTrace } from "./loop.js";
 import { finalizeSources } from "./sources.js";
+
+/**
+ * One sequential JSON-protocol step for the lead and specialist loops.
+ * Structured-output providers get one decision at a time; orchestration
+ * disables parallel delegates for these providers.
+ */
+export function runGraphToolStep(
+  ai: ResolvedAi,
+  messages: AgentMessage[],
+  tools: ToolSpec[],
+  options: { toolsAllowed: boolean; signal: AbortSignal },
+): Promise<StepResult> {
+  return protocolStep(ai, messages, tools, {
+    ...options,
+    mode: "json",
+  });
+}
 
 /**
  * The assistant for providers that are weak at multi-step tool use (Maincode's
@@ -389,11 +412,18 @@ export async function runGraph(
   history: ChatTurn[],
   data: unknown,
   log?: FastifyBaseLogger,
+  trace?: AgentTrace,
 ): Promise<AgentResult> {
   // "Plan my day": the planner lays out the time and the reply is written
   // from its result, so every time shown is exactly what applying adds.
   if (wantsPlan(ctx.intentText)) {
     const tomorrow = /\btomorrow\b/i.test(ctx.intentText);
+    trace?.({
+      step: 1,
+      kind: "tool",
+      label: "Using plan_schedule",
+      tool: "plan_schedule",
+    });
     const planned = await runTool(
       {
         id: "graph_plan",
@@ -407,6 +437,13 @@ export async function runGraph(
       },
       ctx,
     );
+    trace?.({
+      step: 1,
+      kind: "result",
+      label: "Finished plan_schedule",
+      tool: "plan_schedule",
+    });
+    trace?.({ step: 1, kind: "reply", label: "Answer ready" });
     return {
       summary: ctx.plan
         ? planMarkdown(ctx.plan, ctx.timezone)
@@ -479,14 +516,27 @@ export async function runGraph(
     for (let attempt = 1; ; attempt++) {
       calls++;
       try {
+        trace?.({
+          step: calls,
+          kind: "thinking",
+          label: plan
+            ? "Preparing a reviewable change"
+            : "Answering your question",
+        });
         const content = await complete(ai, fit(request, ai, turns.length), {
           signal: AbortSignal.any([deadline, AbortSignal.timeout(attemptMs)]),
           ...(plan ? { responseFormat: REPLY_FORMAT } : {}),
         });
         if (!content.trim())
           throw new ProviderError("empty_reply", "The provider sent nothing.");
+        trace?.({ step: calls, kind: "result", label: "Response prepared" });
         return { content, plan: plan ? readPlan(content) : null };
       } catch (error) {
+        trace?.({
+          step: calls,
+          kind: "error",
+          label: "A response step failed",
+        });
         const reason =
           error instanceof ProviderError
             ? error.reason
@@ -512,6 +562,7 @@ export async function runGraph(
   // pages before the run) is cited here too, so the no-tools provider shows sources.
   const result = (summary: string): AgentResult => {
     const checked = finalizeSources(summary, [...(ctx.cited?.values() ?? [])]);
+    trace?.({ step: Math.max(1, calls), kind: "reply", label: "Answer ready" });
     return {
       summary: checked.summary,
       actions: ctx.actions,

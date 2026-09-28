@@ -75,7 +75,8 @@ export const wantsAdvice = (message: string) =>
 export function mayChange(message: string) {
   if (wantsAdvice(message)) return false;
   if (POLITE_REQUEST.test(message)) return wantsChanges(message);
-  if (QUESTION.test(message)) return false;
+  if (QUESTION.test(message))
+    return EXPLICIT_CHANGE.test(message) && wantsChanges(message);
   if (READ_REQUEST.test(message)) return wantsChanges(message);
   return wantsChanges(message) || DATE_OR_TIME.test(message);
 }

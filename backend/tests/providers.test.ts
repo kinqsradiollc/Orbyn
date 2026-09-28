@@ -16,7 +16,26 @@ type Seen = {
   body: any;
 };
 const seen: Seen[] = [];
-const reply = (summary: string) => JSON.stringify({ summary, actions: [] });
+const finishCall = (answer: string) => ({
+  choices: [
+    {
+      finish_reason: "tool_calls",
+      message: {
+        content: null,
+        tool_calls: [
+          {
+            id: "provider_test_finish",
+            type: "function",
+            function: {
+              name: "finish",
+              arguments: JSON.stringify({ answer, steps: [] }),
+            },
+          },
+        ],
+      },
+    },
+  ],
+});
 
 // One stand-in server playing an OpenAI-compatible provider, Anthropic, and Azure.
 const provider = createServer((req, res) => {
@@ -35,21 +54,27 @@ const provider = createServer((req, res) => {
         ? send(200, { data: [{ id: "model-b" }, { id: "model-a" }] })
         : send(401, { error: "bad key" });
     if (path === "/v1/chat/completions")
-      return send(200, {
-        choices: [{ message: { content: reply(`openai:${body.model}`) } }],
-      });
+      return send(200, finishCall(`openai:${body.model}`));
     if (path === "/anthropic/v1/models")
       return req.headers["x-api-key"] === "sk-ant-secret-abcdef"
         ? send(200, { data: [{ id: "claude-test" }] })
         : send(401, {});
     if (path === "/anthropic/v1/messages")
       return send(200, {
-        content: [{ type: "text", text: reply(`anthropic:${body.model}`) }],
+        content: [
+          {
+            type: "tool_use",
+            id: "provider_test_finish",
+            name: "finish",
+            input: { answer: `anthropic:${body.model}`, steps: [] },
+          },
+        ],
+        stop_reason: "tool_use",
       });
     if (path.startsWith("/openai/deployments/my-deploy/chat/completions"))
       return req.headers["api-key"] === "azure-secret-key-999"
         ? send(200, {
-            choices: [{ message: { content: reply("azure:my-deploy") } }],
+            ...finishCall("azure:my-deploy"),
           })
         : send(401, {});
     send(404, {});
@@ -94,8 +119,22 @@ const call = (
     ...(payload === undefined ? {} : { payload }),
   });
 
-const chat = async (a: Account) =>
-  call(a, "POST", "/ai/chat", { message: "Summarize", timezone: "UTC" });
+const chat = async (a: Account) => {
+  const started = await call(a, "POST", "/ai/chat/start", {
+    message: "Summarize",
+    timezone: "UTC",
+  });
+  if (started.statusCode !== 202) return started;
+  const id = started.json().id as string;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const result = await call(a, "GET", `/ai/chat/${id}`);
+    const body = result.json();
+    if (body.state === "done") return result;
+    if (body.state === "failed") return result;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail("The assistant provider test stayed in progress.");
+};
 
 before(async () => {
   await migrate();
@@ -193,7 +232,7 @@ test("the assistant uses the provider and model the admin picks", async () => {
   assert.equal(set.json().source, "database");
   const r = await chat(member);
   assert.equal(r.statusCode, 200, r.body);
-  assert.equal(r.json().summary, "openai:model-b");
+  assert.equal(r.json().answer, "openai:model-b");
   const request = seen.findLast((s) => s.path === "/v1/chat/completions")!;
   assert.equal(request.headers.authorization, "Bearer sk-openai-secret-123456");
 
@@ -215,7 +254,7 @@ test("the assistant uses the provider and model the admin picks", async () => {
     provider_id: ant.id,
     model: "claude-test",
   });
-  assert.equal((await chat(member)).json().summary, "anthropic:claude-test");
+  assert.equal((await chat(member)).json().answer, "anthropic:claude-test");
   const antRequest = seen.findLast((s) => s.path === "/anthropic/v1/messages")!;
   assert.equal(antRequest.headers["x-api-key"], "sk-ant-secret-abcdef");
   assert.equal(antRequest.headers["anthropic-version"], "2023-06-01");
@@ -266,7 +305,7 @@ test("the assistant uses the provider and model the admin picks", async () => {
     provider_id: azure.id,
     model: "my-deploy",
   });
-  assert.equal((await chat(member)).json().summary, "azure:my-deploy");
+  assert.equal((await chat(member)).json().answer, "azure:my-deploy");
   const azureRequest = seen.findLast((s) =>
     s.path.startsWith("/openai/deployments/"),
   )!;
