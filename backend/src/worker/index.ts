@@ -26,6 +26,7 @@ import { expireQuestions } from "../modules/agent-inbox/questions.js";
 import { deliverWakes } from "../modules/agent-inbox/wake.js";
 import { scanAgentJobs } from "./agent-jobs.js";
 import { drainMemoryQueue } from "./memory.js";
+import { sweepOldChats } from "./chat-sweep.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -35,6 +36,8 @@ const NOTICES_MS = 15 * 60_000;
 const CYCLE_MS = 10000;
 /** Deliveries per lane before the loop checks for new work again. */
 const LANE_BATCH = 100;
+/** Retry a failed chat compaction pass without waiting a full day. */
+const CHAT_SWEEP_RETRY_MS = 15 * 60_000;
 
 /** Liveness for the status page: the reminder service has no HTTP port. */
 async function heartbeat() {
@@ -51,6 +54,8 @@ async function heartbeat() {
  */
 /** How often the sweeper clears expired and outdated records (lib/sweep.ts). */
 const SWEEP_MS = 3_600_000;
+/** Compact stale chats once a day; the ordinary record sweeper remains hourly. */
+const CHAT_SWEEP_MS = 86_400_000;
 
 export async function runWorker() {
   let stopping = false;
@@ -65,6 +70,7 @@ export async function runWorker() {
   let lastPlanning = -Infinity;
   let lastNotices = -Infinity;
   let lastSwept = -Infinity;
+  let lastChatSwept = -Infinity;
   let lastClock = -Infinity;
   while (!stopping) {
     let backlog = false;
@@ -113,6 +119,17 @@ export async function runWorker() {
             // Housekeeping: a failed sweep waits for the next hour.
           }
           lastSwept = tick();
+        }
+        if (tick() - lastChatSwept >= CHAT_SWEEP_MS) {
+          let failed = false;
+          try {
+            await sweepOldChats();
+          } catch {
+            // Retry the pass soon; individual chats also have claim timeouts.
+            failed = true;
+          }
+          lastChatSwept =
+            tick() - (failed ? CHAT_SWEEP_MS - CHAT_SWEEP_RETRY_MS : 0);
         }
         // Study cards for pages changed outside the API's own saves (imports,
         // templates, the assistant, team changes): the API syncs what it

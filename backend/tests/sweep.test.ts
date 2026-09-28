@@ -136,6 +136,62 @@ test("admins set how long things are kept, within limits", async () => {
   );
 });
 
+test("assistant records have bounded retention and keep their saved notes", async () => {
+  const ideaId = randomUUID();
+  const chatId = randomUUID();
+  const goalId = randomUUID();
+  const oldDay = new Date(Date.now() - 60 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const veryOldDay = new Date(Date.now() - 500 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  await pool.query(
+    `INSERT INTO assistant_ideas (id, user_id, local_day, title, summary, created_at)
+     VALUES ($1, $2, $3::date, 'Old idea', 'A test idea', now() - interval '60 days')`,
+    [ideaId, adminId, oldDay],
+  );
+  await pool.query(
+    `INSERT INTO assistant_idea_days (user_id, local_day, claimed_at, finished_at)
+     VALUES ($1, $2::date, now() - interval '60 days', now() - interval '60 days')`,
+    [adminId, oldDay],
+  );
+  await pool.query(
+    `INSERT INTO goals (id, user_id, title) VALUES ($1, $2, 'Old goal')`,
+    [goalId, adminId],
+  );
+  await pool.query(
+    `INSERT INTO goals_checkins (goal_id, user_id, week_of, summary, created_at)
+     VALUES ($1, $2, $3::date, 'Old progress', now() - interval '500 days')`,
+    [goalId, adminId, veryOldDay],
+  );
+  await pool.query(
+    `INSERT INTO assistant_briefs (user_id, local_day, created_at)
+     VALUES ($1, $2::date, now() - interval '500 days')`,
+    [adminId, veryOldDay],
+  );
+  await pool.query(
+    `INSERT INTO ai_chats (id, user_id, title, turns, swept_at, last_used_at)
+     VALUES ($1, $2, 'Old compacted chat', '[]'::jsonb,
+             now() - interval '400 days', now() - interval '400 days')`,
+    [chatId, adminId],
+  );
+
+  const response = await call(admin, "POST", "/admin/sweep/run");
+  assert.equal(response.statusCode, 200, response.body);
+  const removed = response.json().last.removed;
+  assert.ok(removed.assistant_ideas >= 1);
+  assert.ok(removed.assistant_idea_days >= 1);
+  assert.ok(removed.goal_checkins >= 1);
+  assert.ok(removed.assistant_briefs >= 1);
+  assert.ok(removed.assistant_chat_shells >= 1);
+  assert.equal(
+    (await pool.query("SELECT 1 FROM goals WHERE id = $1", [goalId])).rowCount,
+    1,
+    "the goal and its latest progress summary remain available",
+  );
+});
+
 test("members can't see or run the sweeper", async () => {
   assert.equal((await call(member, "GET", "/admin/sweep")).statusCode, 403);
   assert.equal(
