@@ -97,7 +97,7 @@ function HubStrip({
             <CoverImage fileId={hub.cover_file_id} height={56} />
             <View style={s.hubBody}>
               <View style={s.hubHead}>
-                <LookIconView icon={hub.icon} size={16} />
+                <LookIconView icon={hub.icon} size={15} />
                 <Text style={s.hubTitle} numberOfLines={1}>
                   {hub.title}
                 </Text>

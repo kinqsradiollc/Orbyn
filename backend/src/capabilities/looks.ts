@@ -19,7 +19,7 @@ export const coverArg = z
   .nullable()
   .optional()
   .describe(
-    "A picture on a page you reach: orbyn://file/<id> (add_file adds one); null takes the cover off.",
+    "orbyn://file/<id>: a picture on a page you reach; null: no cover.",
   );
 
 export const iconArg = z
@@ -28,9 +28,7 @@ export const iconArg = z
   .max(40)
   .nullable()
   .optional()
-  .describe(
-    "One emoji, or one of the app's icons as icon:<name> (icon:target, icon:graduationCap, icon:boxes…); null takes it off.",
-  );
+  .describe("An emoji or icon:<name> (e.g. icon:target); null: no icon.");
 
 /** The id of a picture this connection may use as a cover. */
 export async function seeCoverPicture(

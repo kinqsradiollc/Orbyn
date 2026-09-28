@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Image, Text } from "react-native";
+import { Image, StyleSheet, Text, type TextStyle } from "react-native";
 import { parseLookIcon } from "@orbyn/core";
 import { fileLink } from "../screens/docs/RichBlocks";
 import { colors } from "../theme";
@@ -9,6 +9,15 @@ import { Icon, type IconName } from "./Icon";
  * Covers and icons (W6) on the phone, read-only: what a project, a page or
  * a Home hub wears. Setting them is the web's.
  */
+
+/** Emoji take a size from the type scale, as all type does. */
+const EMOJI: Record<number, TextStyle> = StyleSheet.create({
+  13: { fontSize: 13, lineHeight: 17 },
+  15: { fontSize: 15, lineHeight: 19 },
+  18: { fontSize: 18, lineHeight: 22 },
+  24: { fontSize: 24, lineHeight: 28 },
+  36: { fontSize: 36, lineHeight: 40 },
+});
 
 /** An icon value drawn: an emoji, or the app's icon of that name. */
 export function LookIconView({
@@ -24,7 +33,7 @@ export function LookIconView({
   if (!read) return null;
   if (read.kind === "emoji")
     return (
-      <Text style={{ fontSize: size, lineHeight: size + 4 }} accessible={false}>
+      <Text style={EMOJI[size] ?? EMOJI[18]} accessible={false}>
         {read.text}
       </Text>
     );

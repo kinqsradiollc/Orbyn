@@ -4936,14 +4936,14 @@
           },
           "assistant": { "type": "string", "enum": ["off", "on"] },
           "cover": {
-            "description": "A picture on a page you reach: orbyn://file/<id> (add_file adds one); null takes the cover off.",
+            "description": "orbyn://file/<id>: a picture on a page you reach; null: no cover.",
             "anyOf": [
               { "type": "string", "maxLength": 300 },
               { "type": "null" }
             ]
           },
           "icon": {
-            "description": "One emoji, or one of the app's icons as icon:<name> (icon:target, icon:graduationCap, icon:boxes…); null takes it off.",
+            "description": "An emoji or icon:<name> (e.g. icon:target); null: no icon.",
             "anyOf": [{ "type": "string", "maxLength": 40 }, { "type": "null" }]
           },
           "client_ref": {
@@ -5259,7 +5259,7 @@
     {
       "name": "organize",
       "title": "Organise pages, fields and teams",
-      "description": "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover: orbyn://file/<id> or null, icon: an emoji or icon:<name> or null), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.",
+      "description": "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover, icon), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.",
       "kind": "destructive",
       "access": "write",
       "toolset": "workspace",
@@ -5388,14 +5388,14 @@
                   ]
                 },
                 "cover": {
-                  "description": "A picture on a page you reach: orbyn://file/<id> (add_file adds one); null takes the cover off.",
+                  "description": "orbyn://file/<id>: a picture on a page you reach; null: no cover.",
                   "anyOf": [
                     { "type": "string", "maxLength": 300 },
                     { "type": "null" }
                   ]
                 },
                 "icon": {
-                  "description": "One emoji, or one of the app's icons as icon:<name> (icon:target, icon:graduationCap, icon:boxes…); null takes it off.",
+                  "description": "An emoji or icon:<name> (e.g. icon:target); null: no icon.",
                   "anyOf": [
                     { "type": "string", "maxLength": 40 },
                     { "type": "null" }

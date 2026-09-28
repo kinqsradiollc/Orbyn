@@ -613,23 +613,23 @@ Creates a saved view, or changes one (view + version): a name, what it lists (so
 
 Changes a project's name, summary, status (active, done, archived), deadline, main page, cover picture or icon; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).
 
-| Argument             | Type                         | Notes                                                                                                                    |
-| -------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `project` (required) | string                       |                                                                                                                          |
-| `name`               | string                       |                                                                                                                          |
-| `summary`            | string                       |                                                                                                                          |
-| `status`             | `active`, `done`, `archived` |                                                                                                                          |
-| `deadline`           | ISO 8601 instant or null     |                                                                                                                          |
-| `main_page`          | string or null               | `doc:<id>`, or null for none.                                                                                            |
-| `stages`             | list of object               | Rename (with id), add (without) or reorder (all ids).                                                                    |
-| `remove_stages`      | list of id                   |                                                                                                                          |
-| `pin`                | list of object               |                                                                                                                          |
-| `unpin`              | list of id                   |                                                                                                                          |
-| `milestones`         | list of object               | No id: add (name, due_on YYYY-MM-DD). id: change or remove. tasks: the project's tasks to put in it.                     |
-| `assistant`          | `off`, `on`                  |                                                                                                                          |
-| `cover`              | string or null               | A picture on a page you reach: `orbyn://file/<id>` (add_file adds one); null takes the cover off.                        |
-| `icon`               | string or null               | One emoji, or one of the app's icons as `icon:<name>` (icon:target, icon:graduationCap, icon:boxes…); null takes it off. |
-| `client_ref`         | string                       | Idempotency key: sent again within 24 h, the first answer comes back.                                                    |
+| Argument             | Type                         | Notes                                                                                                |
+| -------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `project` (required) | string                       |                                                                                                      |
+| `name`               | string                       |                                                                                                      |
+| `summary`            | string                       |                                                                                                      |
+| `status`             | `active`, `done`, `archived` |                                                                                                      |
+| `deadline`           | ISO 8601 instant or null     |                                                                                                      |
+| `main_page`          | string or null               | `doc:<id>`, or null for none.                                                                        |
+| `stages`             | list of object               | Rename (with id), add (without) or reorder (all ids).                                                |
+| `remove_stages`      | list of id                   |                                                                                                      |
+| `pin`                | list of object               |                                                                                                      |
+| `unpin`              | list of id                   |                                                                                                      |
+| `milestones`         | list of object               | No id: add (name, due_on YYYY-MM-DD). id: change or remove. tasks: the project's tasks to put in it. |
+| `assistant`          | `off`, `on`                  |                                                                                                      |
+| `cover`              | string or null               | `orbyn://file/<id>`: a picture on a page you reach; null: no cover.                                  |
+| `icon`               | string or null               | An emoji or `icon:<name>` (e.g. icon:target); null: no icon.                                         |
+| `client_ref`         | string                       | Idempotency key: sent again within 24 h, the first answer comes back.                                |
 
 ### `get_history`
 
@@ -662,7 +662,7 @@ Saves a project template (kind "project": from_project, or tasks with estimates 
 
 ### `organize`
 
-Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover: `orbyn://file/<id>` or null, icon: an emoji or `icon:<name>` or null), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.
+Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover, icon), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
