@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-09-27";
+export const DEFAULT_LEGAL_VERSION = "2026-09-28";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -216,7 +216,7 @@ Don't use Orbyn to break the law or anyone's rights; send spam or malware; haras
 
 ## The assistant
 
-Orbyn's built-in assistant can read the parts of your workspace needed for a request. It may apply changes that fit the approval scopes you have saved; it asks before changes outside those scopes. You can review its activity, stop a run, and undo supported changes. Its answers and suggestions can be wrong, so check them before relying on them.
+Orbyn's built-in assistant can read the parts of your workspace needed for a request. It works at the trust level you set for it in Settings → Connected agents: at Full, it makes changes directly, except the things on the ask-first list, which it asks you about first; at Ask, it asks before every change; at Suggest, it only proposes changes for you to approve. It also runs in the background for your routines, weekly goal check-ins and daily ideas, at the same trust level; ideas are always only suggestions. You can stop a run, see what it did in its activity, and undo its changes. Its answers and suggestions can be wrong, so check them before relying on them.
 
 ## Connected agents
 
@@ -276,7 +276,7 @@ This policy explains what personal data {{company}} ("we") collects when you use
 
 ## The assistant
 
-When you use the assistant, the content it needs to answer — your question and relevant tasks, pages, goals or calendar — is sent to the AI service configured for your workspace. The assistant keeps a private conversation history and a trace of the steps and tools it used, without copying workspace records into that trace. After seven days without use, an unpinned conversation is compacted into a private Agent note and its original turns and trace are cleared. A pinned conversation stays in chat history until you delete it or unpin it and it is compacted. The note remains until you delete it. When an AI provider is configured, Orbyn also sends the visible turns of each finished conversation to that provider to identify durable facts for private Memory notes. Those notes appear in your Memory library with their source, and you can edit or forget them. Daily idea reviews, weekly goal check-ins and scheduled routines can run in the background, using relevant workspace information with the same AI provider and the approval scopes you have saved. A morning brief is saved as a private Agent note; its summary and link are included in your morning digest email when that email is enabled. Projects kept out of the assistant are not used to make memories. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. When you ask for a summary of a recording you made in a page, the recording is sent to the AI service to be written out, and the written-out words to be summarised; recordings are never sent anywhere unless you ask. Team owners and admins can keep a team's pages out of the assistant altogether. It isn't used to show you ads. The assistant applies changes only within your saved approval scopes; it asks before changes outside them.
+When you use the assistant, the content it needs to answer — your question and relevant tasks, pages, goals or calendar — is sent to the AI service Orbyn uses. The assistant keeps a private conversation history and a trace of the steps and tools it used, without copying workspace records into that trace. After seven days without use, an unpinned conversation is compacted into a private Agent note: its original turns and trace are cleared, and the conversation stays in your chat history, pointing to the note. A pinned conversation is kept as it is until you delete it, or unpin it and it goes unused for seven days. The note remains until you delete it. Orbyn also sends the visible turns of each finished conversation to the same AI service to identify durable facts for private Memory notes. Those notes appear in your Memory library with their source, and you can edit or forget them. Daily idea reviews, weekly goal check-ins and scheduled routines can run in the background, sending relevant workspace information to the same AI service and following the assistant's trust level and the approvals you have saved; ideas are only ever suggestions. A morning brief is saved as a private Agent note; its summary and link are included in your morning digest email when that email is enabled. Projects kept out of the assistant are not used to make memories. The same goes for Study when you ask it to suggest flashcards, check an answer or explain a card: the page the cards come from is sent. Reviewing cards never uses the AI service. When you ask for a summary of a recording you made in a page, the recording is sent to the AI service to be written out, and the written-out words to be summarised; recordings are never sent anywhere unless you ask. Team owners and admins can keep a team's pages out of the assistant altogether. It isn't used to show you ads. The assistant changes things only as its trust level and your saved approvals allow; otherwise it asks you or only suggests.
 
 ## Connected agents
 
@@ -315,9 +315,9 @@ Orbyn stores only what it needs in your browser: your sign-in, and settings such
 ## How long we keep it
 
 - Your account and content: until you delete them or your account.
-- Unpinned assistant conversations: original turns and activity traces for seven days after last use, then a private Agent note remains until you delete it. Pinned conversations stay in chat history until deleted or unpinned, then are compacted.
-- Assistant questions: 14 days after they are answered or expire. Completed assistant job data: one day. Connected-agent activity: 90 days after its undo period ends.
-- Assistant ideas: 30 days. Goal check-ins and the daily-brief index: 400 days. Goals, routines, morning-brief notes and other Agent notes: until you delete them or your account.
+- Assistant conversations: an unpinned conversation's original turns and activity trace are kept for seven days after it was last used, then compacted into a private Agent note; the conversation stays in your chat history, pointing to that note, until you delete it. Pinned conversations are kept as they are until you delete them.
+- Assistant questions: 14 days after they are answered or expire. Assistant job data: one day after the job completes; unfinished jobs at most 14 days. Assistant and connected-agent activity: 90 days after its undo period ends.
+- Assistant ideas: 30 days. Goal check-ins and the daily-brief index: 400 days. Goals, routines, morning briefs and other Agent notes: until you delete them or your account.
 - Deleted items: 90 days, so you can restore them.
 - Request logs: 7 days. Daily usage counts and study review history: about 13 months.
 - Files you import: deleted once they're read, and always within 24 hours, unless you keep the original. The record of each import (its file name and outcome): 30 days.

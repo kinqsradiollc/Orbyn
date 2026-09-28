@@ -110,6 +110,7 @@ export async function agentRoutes(app: FastifyInstance) {
       idParam(r),
       r.body as never,
       r.id,
+      { bySession: true },
     ),
   );
 

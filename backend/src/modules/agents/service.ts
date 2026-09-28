@@ -715,12 +715,17 @@ export async function setGrantToolsets(
  * which ask-first items it may do alone. Full power and asking first need
  * a connection that may change things; one that may only suggest stays
  * there until it is connected again with more. Every copy hears at once.
+ *
+ * The built-in assistant's trust can be raised again (back to full power)
+ * only by the person signed in to Orbyn (`bySession`, the /me routes);
+ * anything else may only lower it.
  */
 export async function setGrantTrust(
   userId: string,
   grantId: string,
   input: AgentTrustInput,
   requestId?: string,
+  options: { bySession?: boolean } = {},
 ): Promise<AgentGrant> {
   const d = agentTrustInput.parse(input);
   return transaction(async (db) => {
@@ -750,7 +755,8 @@ export async function setGrantTrust(
         suggest: 2,
       };
       const next = d.trust ?? row.trust;
-      if (rank[next] < rank[row.trust])
+      const onlyLower = !options.bySession;
+      if (onlyLower && rank[next] < rank[row.trust])
         fail(422, "The built-in assistant's trust can only be lowered.");
       if (
         (d.acts_alone ?? []).some(
@@ -765,7 +771,10 @@ export async function setGrantTrust(
         const space = key.toLowerCase();
         const before = row.space_trust?.[space] ?? row.trust;
         const after = wanted ?? next;
-        if (rank[after] < rank[before] || rank[after] < rank[next])
+        if (
+          onlyLower &&
+          (rank[after] < rank[before] || rank[after] < rank[next])
+        )
           fail(422, "The built-in assistant's trust can only be lowered.");
       }
     }

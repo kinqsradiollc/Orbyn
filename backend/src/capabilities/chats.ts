@@ -1,6 +1,20 @@
 import { z } from "zod";
-import { Params, scopeFor, visibleProjects } from "../lib/visibility.js";
+import { docPlainText, type DocBlock } from "@orbyn/core";
+import {
+  Params,
+  scopeFor,
+  visibleDocs,
+  visibleProjects,
+} from "../lib/visibility.js";
+import { refUrl } from "./refs.js";
 import { CapabilityError, defineCapability } from "./registry.js";
+
+/**
+ * How much of a compacted chat's summary note an answer carries: opening
+ * one chat gives the note's words, a list only its start.
+ */
+const SUMMARY_CHARS = 4_000;
+const SUMMARY_PREVIEW = 300;
 
 const input = z
   .object({
@@ -39,6 +53,17 @@ const chat = z.object({
   pinned: z.boolean(),
   turn_count: z.number().int(),
   summary_doc_id: z.string().nullable(),
+  summary: z
+    .object({
+      title: z.string(),
+      text: z.string(),
+      truncated: z.boolean(),
+      url: z.string(),
+    })
+    .nullable()
+    .describe(
+      "A compacted chat's private summary note (null when none or kept out).",
+    ),
   swept_at: z.string().nullable(),
   scope: z
     .object({ kind: z.enum(["project", "task"]), id: z.string() })
@@ -128,6 +153,45 @@ export const getChats = defineCapability({
         "List recent chats and use an id from the results.",
       );
 
+    // A compacted chat's turns live on in its private Agent note: carry the
+    // note's words, unless it is gone or in a project kept out of AI.
+    const noteIds = [
+      ...new Set(
+        rows
+          .filter((row) => row.swept_at && row.summary_doc_id)
+          .map((row) => row.summary_doc_id!),
+      ),
+    ];
+    const notes = new Map<
+      string,
+      { title: string; text: string; truncated: boolean; url: string }
+    >();
+    if (noteIds.length) {
+      const q = new Params();
+      const docScope = scopeFor(ctx.spaces, q);
+      const ids = q.add(noteIds);
+      const found = (
+        await ctx.db.query<{ id: string; title: string; content: unknown }>(
+          `SELECT d.id, d.title, d.content FROM docs d
+            WHERE d.id = ANY(${ids}::uuid[]) AND d.team_id IS NULL
+              AND d.kind = 'agent' AND ${visibleDocs("d", docScope)}`,
+          q.values,
+        )
+      ).rows;
+      const most = args.chat_id ? SUMMARY_CHARS : SUMMARY_PREVIEW;
+      for (const doc of found) {
+        const text = Array.isArray(doc.content)
+          ? docPlainText(doc.content as DocBlock[])
+          : "";
+        notes.set(doc.id, {
+          title: doc.title,
+          text: text.slice(0, most),
+          truncated: text.length > most,
+          url: refUrl({ type: "doc", id: doc.id }),
+        });
+      }
+    }
+
     const chats = rows.map((row) => {
       const turns = Array.isArray(row.turns)
         ? row.turns.flatMap((value) => {
@@ -148,6 +212,10 @@ export const getChats = defineCapability({
         pinned: row.pinned,
         turn_count: turns.length,
         summary_doc_id: row.summary_doc_id,
+        summary:
+          swept && row.summary_doc_id
+            ? (notes.get(row.summary_doc_id) ?? null)
+            : null,
         swept_at: row.swept_at?.toISOString() ?? null,
         scope:
           row.scope_kind && row.scope_id
@@ -165,7 +233,9 @@ export const getChats = defineCapability({
               .map((turn) => `**${turn.role}:** ${turn.text}`)
               .join("\n\n");
             const status = item.swept_at
-              ? `Summary note: ${item.summary_doc_id ?? "not available"}`
+              ? item.summary
+                ? `Summary note: ${item.summary.title} (${item.summary.url})${args.chat_id ? `\n\n${item.summary.text}${item.summary.truncated ? " …" : ""}` : ""}`
+                : "Summary note: not available"
               : `${item.turn_count} turns`;
             return `## ${item.title}\nChat id: ${item.id}\n${status}${details ? `\n\n${details}` : ""}`;
           })

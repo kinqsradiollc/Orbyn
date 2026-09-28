@@ -208,16 +208,25 @@ export async function beginChatTurn(
     if (row && row.project_id !== projectId)
       fail(409, "This chat belongs to a different project.");
 
-    const previous: SavedChatTurn[] = row
+    const saved: SavedChatTurn[] = row
       ? turnsOf(row.turns)
       : input.legacyHistory.slice(-12).map((turn) => ({
           role: turn.role,
           text: turn.content,
         }));
+    // A retried send (same turn id) reuses the turn already saved rather
+    // than adding the message twice.
+    const retried = row
+      ? saved.findIndex(
+          (turn) => turn.role === "user" && turn.turn_id === input.turnId,
+        )
+      : -1;
+    const previous = retried >= 0 ? saved.slice(0, retried) : saved;
     const history = previous.slice(-12).map((turn) => ({
       role: turn.role,
       content: turn.history_text ?? turn.text,
     })) as ChatTurn[];
+    if (retried >= 0) return history;
     const userTurn = {
       role: "user" as const,
       text: input.message.slice(0, 12_000),
@@ -228,10 +237,12 @@ export async function beginChatTurn(
     const scopeKind = storedScope?.kind ?? null;
     const scopeId = storedScope?.id ?? null;
     if (!row) {
-      await db.query(
+      // Another person's chat id is simply not found (never a clash).
+      const made = await db.query(
         `INSERT INTO ai_chats
           (id, user_id, project_id, title, turns, last_used_at, scope_kind, scope_id)
-         VALUES ($1, $2, $3, $4, $5::jsonb, now(), $6, $7)`,
+         VALUES ($1, $2, $3, $4, $5::jsonb, now(), $6, $7)
+         ON CONFLICT (id) DO NOTHING RETURNING id`,
         [
           input.chatId,
           user.id,
@@ -242,6 +253,7 @@ export async function beginChatTurn(
           scopeId,
         ],
       );
+      if (!made.rowCount) fail(404, "Chat not found");
     } else {
       await db.query(
         `UPDATE ai_chats SET turns = $3::jsonb,
@@ -431,12 +443,21 @@ async function updateChat(
 ) {
   await transaction(async (db) => {
     const row = (
-      await db.query<{ turns: unknown }>(
-        `SELECT turns FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      await db.query<{ turns: unknown; project_id: string | null }>(
+        `SELECT turns, project_id FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE`,
         [id, userId],
       )
     ).rows[0];
     if (!row) fail(404, "Chat not found");
+    // A chat in a project the person can no longer see (or that is kept
+    // out of the assistant) is not theirs to change here.
+    if (row.project_id) {
+      const project = await db.query(
+        `SELECT 1 FROM projects p WHERE p.id = $2 AND ${projectSeen} AND NOT p.assistant_off`,
+        [userId, row.project_id],
+      );
+      if (!project.rowCount) fail(404, "Chat not found");
+    }
     let turns = turnsOf(row.turns);
     if (patch.turn_id && patch.outcome) {
       let changed = false;
@@ -458,7 +479,9 @@ async function updateChat(
       });
       if (!changed) fail(404, "Chat turn not found");
     }
-    const assignments = ["last_used_at = now()"];
+    // Renaming, pinning or recording an outcome is not using the chat, so
+    // it leaves last_used_at (the seven-day compaction clock) alone.
+    const assignments: string[] = [];
     const values: unknown[] = [id, userId];
     if (patch.title !== undefined) {
       values.push(patch.title);
@@ -472,6 +495,7 @@ async function updateChat(
       values.push(JSON.stringify(turns));
       assignments.push(`turns = $${values.length}::jsonb`);
     }
+    if (!assignments.length) return;
     await db.query(
       `UPDATE ai_chats SET ${assignments.join(", ")} WHERE id = $1 AND user_id = $2`,
       values,
@@ -568,35 +592,53 @@ export async function projectChatRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const input: ProjectChatInput = projectChatInput.parse(r.body);
-    const project = await visibleProject(pool, u.id, input.project_id);
-    if (project.assistant_off)
-      fail(422, "This project is kept out of the assistant.");
-    const title = input.title ?? chatTitle(input.turns);
-    const inserted = await pool.query<{ id: string }>(
-      `INSERT INTO ai_chats (id, user_id, project_id, title, turns,
-          last_used_at, scope_kind, scope_id)
-         VALUES ($1, $2, $3, $4, $5::jsonb, now(), 'project', $3)
-         ON CONFLICT (id) DO UPDATE SET turns = EXCLUDED.turns,
-           title = coalesce($6, ai_chats.title), last_used_at = now()
-           WHERE ai_chats.user_id = EXCLUDED.user_id
-             AND ai_chats.project_id = EXCLUDED.project_id
-         RETURNING id`,
-      [
-        id,
-        u.id,
-        input.project_id,
-        title,
-        JSON.stringify(input.turns),
-        input.title ?? null,
-      ],
-    );
-    if (!inserted.rows[0]) fail(404, "Chat not found");
-    await pool.query(
-      `DELETE FROM ai_chats WHERE user_id = $1 AND project_id = $2
-         AND id NOT IN (SELECT id FROM ai_chats WHERE user_id = $1 AND project_id = $2
-           ORDER BY pinned DESC, last_used_at DESC LIMIT ${PER_PROJECT})`,
-      [u.id, input.project_id],
-    );
+    await transaction(async (db) => {
+      const project = await visibleProject(db, u.id, input.project_id);
+      if (project.assistant_off)
+        fail(422, "This project is kept out of the assistant.");
+      const existing = (
+        await db.query<{
+          user_id: string;
+          project_id: string | null;
+          swept_at: Date | null;
+        }>(
+          "SELECT user_id, project_id, swept_at FROM ai_chats WHERE id = $1 FOR UPDATE",
+          [id],
+        )
+      ).rows[0];
+      if (existing) {
+        if (
+          existing.user_id !== u.id ||
+          existing.project_id !== input.project_id
+        )
+          fail(404, "Chat not found");
+        if (existing.swept_at)
+          fail(409, "This chat has been saved as a summary note.");
+        await db.query(
+          `UPDATE ai_chats SET turns = $3::jsonb,
+             title = coalesce($4, title), last_used_at = now()
+           WHERE id = $1 AND user_id = $2`,
+          [id, u.id, JSON.stringify(input.turns), input.title ?? null],
+        );
+        return;
+      }
+      // Older clients kept at most PER_PROJECT chats themselves; nothing is
+      // pruned here, so newer chats and compacted ones are never removed.
+      const made = await db.query(
+        `INSERT INTO ai_chats (id, user_id, project_id, title, turns,
+            last_used_at, scope_kind, scope_id)
+           VALUES ($1, $2, $3, $4, $5::jsonb, now(), 'project', $3)
+           ON CONFLICT (id) DO NOTHING RETURNING id`,
+        [
+          id,
+          u.id,
+          input.project_id,
+          input.title ?? chatTitle(input.turns),
+          JSON.stringify(input.turns),
+        ],
+      );
+      if (!made.rowCount) fail(404, "Chat not found");
+    });
     return readAiChat(reader({ "x-orbyn-consistency": "primary" }), u.id, id);
   });
 

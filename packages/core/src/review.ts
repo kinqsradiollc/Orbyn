@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { DOC_KINDS } from "./docs.js";
 import { memoryFactInput, memorySourceInput } from "./memory.js";
+import { agentRoutineInput } from "./assistant-workspace.js";
+import { goalInput } from "./goals.js";
 
 /**
  * The Review inbox: changes waiting for a person's approval, whether the
@@ -195,6 +197,29 @@ export const reviewChange = z.discriminatedUnion("type", [
       .array(z.object({ id, version: z.number().int().positive() }).strict())
       .min(1)
       .max(100),
+  }),
+  /**
+   * A routine for the built-in assistant, made or changed by an outside
+   * agent: it runs as the assistant on its own, so the person always
+   * approves it. `routine` is the whole routine after the change.
+   */
+  z.object({
+    type: z.literal("routine.save"),
+    title,
+    team_id: space,
+    routine_id: id.nullable(),
+    routine: agentRoutineInput,
+    /** The routine as the agent saw it, to tell a later change apart. */
+    before: agentRoutineInput.nullable(),
+  }),
+  /** A private goal made or changed; `goal` is the whole goal after it. */
+  z.object({
+    type: z.literal("goal.save"),
+    title,
+    team_id: space,
+    goal_id: id.nullable(),
+    goal: goalInput,
+    before: goalInput.nullable(),
   }),
   z.object({
     type: z.literal("doc.edit"),
