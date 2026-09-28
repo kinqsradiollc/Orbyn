@@ -4,6 +4,8 @@ import { bookerReminder } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { sendPush } from "./channels/push.js";
 import { visibleItems } from "../lib/visibility.js";
+import { reminderNudgeCandidates } from "./reminder-nudges.js";
+import { loadPrefs } from "../modules/planner/calendar.js";
 
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
@@ -86,32 +88,34 @@ export async function deliverOne(): Promise<boolean> {
                 ).rowCount
               : n.kind === "invite"
                 ? await inviteStale(db, n)
-                : n.kind === "assistant" || n.kind === "reminder_nudge"
-                  ? !(
-                      await db.query(
-                        `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id
+                : n.kind === "reminder_nudge"
+                  ? await reminderNudgeStale(db, n)
+                  : n.kind === "assistant"
+                    ? !(
+                        await db.query(
+                          `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id
                        WHERE c.id::text = split_part($2, ':', 2)
                          AND c.user_id = $1 AND NOT u.disabled`,
-                        [n.user_id, n.ref],
-                      )
-                    ).rowCount
-                  : n.kind === "agent"
-                    ? // About the person's own security or team: goes out
-                      // while their account is active.
-                      !(
-                        await db.query(
-                          "SELECT 1 FROM users WHERE id = $1 AND NOT disabled",
-                          [n.user_id],
+                          [n.user_id, n.ref],
                         )
                       ).rowCount
-                    : PLANNER_KINDS.includes(n.kind)
-                      ? await plannerNoticeStale(db, n, item)
-                      : !item ||
-                        !item.can_see ||
-                        item.disabled ||
-                        isClosed(item.status) ||
-                        item.reminder_version !== n.item_version ||
-                        (n.channel === "email" && !item.email_reminders);
+                    : n.kind === "agent"
+                      ? // About the person's own security or team: goes out
+                        // while their account is active.
+                        !(
+                          await db.query(
+                            "SELECT 1 FROM users WHERE id = $1 AND NOT disabled",
+                            [n.user_id],
+                          )
+                        ).rowCount
+                      : PLANNER_KINDS.includes(n.kind)
+                        ? await plannerNoticeStale(db, n, item)
+                        : !item ||
+                          !item.can_see ||
+                          item.disabled ||
+                          isClosed(item.status) ||
+                          item.reminder_version !== n.item_version ||
+                          (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,
@@ -153,6 +157,45 @@ export async function deliverOne(): Promise<boolean> {
     }
     return true;
   });
+}
+
+/** Recheck the personal source and channel preferences even when chat is off. */
+export async function reminderNudgeStale(
+  db: Db,
+  notice: { user_id: string; ref: string; channel: string },
+  now = new Date(),
+): Promise<boolean> {
+  const id = notice.ref.split(":").at(-1);
+  const row = (
+    await db.query(
+      `SELECT n.entity_kind, n.entity_id, a.reminder_nudges
+       FROM assistant_nudges n JOIN users u ON u.id = n.user_id
+       JOIN agent_grants g ON g.user_id = u.id AND g.kind = 'assistant'
+       LEFT JOIN agent_settings a ON a.user_id = u.id
+       WHERE n.id::text = $2 AND n.user_id = $1 AND NOT n.stopped AND NOT u.disabled
+         AND g.suspended_at IS NULL AND g.revoked_at IS NULL`,
+      [notice.user_id, id],
+    )
+  ).rows[0];
+  if (
+    !row ||
+    row.reminder_nudges?.enabled === false ||
+    row.reminder_nudges?.[notice.channel] === false
+  )
+    return true;
+  const prefs = await loadPrefs(db, notice.user_id);
+  const current = (
+    await reminderNudgeCandidates(notice.user_id, prefs.timezone, now, db)
+  ).find(
+    (candidate) =>
+      candidate.entity_kind === row.entity_kind &&
+      candidate.entity_id === row.entity_id,
+  );
+  return (
+    !current ||
+    (notice.channel === "email" &&
+      !["overdue", "deadline"].includes(current.category))
+  );
 }
 
 /**

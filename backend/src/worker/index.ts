@@ -33,6 +33,7 @@ import { scanAssistantGoals } from "./assistant-goals.js";
 import { scanAssistantRoutines } from "./assistant-routines.js";
 import { scanAssistantTasks } from "./assistant-tasks.js";
 import { scanNightShift } from "./night-shift.js";
+import { scanReminderNudges } from "./reminder-nudges.js";
 import { env } from "../config/env.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
 import type { FastifyBaseLogger } from "fastify";
@@ -128,6 +129,7 @@ export async function runWorker() {
   let lastAssistantRoutines = -Infinity;
   let lastAssistantTasks = -Infinity;
   let lastNightShift = -Infinity;
+  let lastReminderNudges = -Infinity;
   let lastClock = -Infinity;
   while (!stopping) {
     let backlog = false;
@@ -206,6 +208,14 @@ export async function runWorker() {
             // The night claim and queue roll back together; a later scan retries.
           }
           lastNightShift = tick();
+        }
+        if (tick() - lastReminderNudges >= 15 * 60_000) {
+          try {
+            await scanReminderNudges();
+          } catch {
+            /* Each send commits its message and frequency reservation together. */
+          }
+          lastReminderNudges = tick();
         }
         if (tick() - lastAssistantGoals >= ASSISTANT_GOALS_MS) {
           try {
