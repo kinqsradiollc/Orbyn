@@ -29,7 +29,10 @@ import type { ToolSpec, ToolCall } from "./protocol.js";
 export const LEAD_MAX_STEPS = 8;
 export const SPECIALIST_MAX_RUNS = 12;
 export const MAX_STAGNANT_DELEGATE_ROUNDS = 2;
-export const LEAD_TOKEN_BUDGET = 60_000;
+/** New input plus output tokens across the lead and all its specialists. */
+export const LEAD_TOKEN_BUDGET = 200_000;
+const LIMIT_NOTE =
+  "I reached this run's step or token limit before finishing, so the result may be incomplete.";
 
 const taskInput = z.object({
   specialist: z.enum(
@@ -198,11 +201,6 @@ export async function runLead(input: {
   signal?: AbortSignal;
 }): Promise<{ state: LeadState; partial: boolean }> {
   const { state } = input;
-  if (
-    state.lead_steps >= LEAD_MAX_STEPS ||
-    state.token_estimate >= state.token_budget
-  )
-    return { state, partial: true };
 
   const systemPrompt = [
     `You are ${input.identity.name}, the lead assistant in Orbyn. ${input.identity.persona}`,
@@ -224,6 +222,33 @@ export async function runLead(input: {
   ]
     .filter(Boolean)
     .join("\n\n");
+
+  if (
+    state.lead_steps >= LEAD_MAX_STEPS ||
+    state.token_estimate >= state.token_budget
+  ) {
+    // Out of steps or tokens before this turn began: one last answer
+    // without tools, as the loop gives when it runs out mid-way.
+    const last = await runAgent(
+      input.ai,
+      input.context,
+      input.message,
+      input.history,
+      {},
+      input.log,
+      undefined,
+      {
+        systemPrompt,
+        tools: [],
+        maxSteps: 1,
+        maxToolCallsPerStep: 1,
+        forceToolLoop: true,
+        signal: input.signal,
+      },
+    );
+    state.answer = `${state.answer || last.summary || "I couldn't finish the request."}\n\n${LIMIT_NOTE}`;
+    return { state, partial: true };
+  }
 
   const executeTool = async (call: ToolCall): Promise<LoopToolResult> => {
     const args = jsonArgs(call.arguments);
@@ -299,9 +324,12 @@ export async function runLead(input: {
         .filter((report) => report.status === "done")
         .flatMap((report) => report.steps);
       const combined = [...state.plan, ...proposed];
+      // Only steps that passed the merged check count as progress.
+      let added: PlanStep[] = [];
       try {
         await checkMergedPlan(pool, input.principal, combined);
         state.plan = combined;
+        added = proposed;
       } catch (error) {
         const reason =
           error instanceof Error
@@ -316,11 +344,7 @@ export async function runLead(input: {
           }
         }
       }
-      const madeProgress = changed(
-        state,
-        reports,
-        state.plan.slice(state.plan.length - proposed.length),
-      );
+      const madeProgress = changed(state, reports, added);
       state.stagnant_rounds = madeProgress ? 0 : state.stagnant_rounds + 1;
       state.reports.push(...reports);
       const answer = reports.map((report) => ({
@@ -469,6 +493,6 @@ export async function runLead(input: {
   );
   if (!state.answer && !state.waiting) state.answer = result.summary;
   if (result.partial)
-    state.answer = `${state.answer || "I couldn't finish the request."}\n\nI reached this run's step or token limit before finishing, so the result may be incomplete.`;
+    state.answer = `${state.answer || "I couldn't finish the request."}\n\n${LIMIT_NOTE}`;
   return { state, partial: result.partial || !state.answer };
 }

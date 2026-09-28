@@ -80,6 +80,8 @@ export const PLAN_TOOLS = [
   "update_study",
   "manage_memory",
   "schedule_sessions",
+  "reschedule_sessions",
+  "update_planner_settings",
   "save_source",
   "save_record",
   "add_progress",

@@ -1,4 +1,5 @@
 import { registry } from "../../../capabilities/index.js";
+import { PLAN_TOOLS } from "../../../capabilities/plan-run.js";
 
 export const SHARED_ASSISTANT_READS = [
   "search",
@@ -61,16 +62,8 @@ export const SPECIALISTS = {
   inbox: {
     name: "Inbox",
     prompt:
-      "Review only items and questions reachable by the person. Report what needs attention and why. Never send messages or take an external action. Stage supported workspace changes for approval; pass choices to the lead as open questions.",
-    tools: [
-      "get_inbox",
-      "ack_inbox",
-      "ask_person",
-      "get_follow_through",
-      "answer_ask",
-      "get_bookings",
-      "booking_action",
-    ],
+      "Review only items and questions reachable by the person. Report what needs attention and why. Never send messages or take an external action; this specialist reads only. Pass choices to the lead as open questions.",
+    tools: ["get_inbox", "get_follow_through", "get_bookings"],
   },
   memory: {
     name: "Memory",
@@ -88,14 +81,26 @@ export function specialistToolNames(name: SpecialistName): string[] {
   return [...new Set([...SHARED_ASSISTANT_READS, ...SPECIALISTS[name].tools])];
 }
 
-/** Fail at startup and in tests if the artifact's allowlist drifts from MCP. */
+/**
+ * Fail at startup and in tests if the artifact's allowlist drifts from MCP,
+ * or lists a write tool the lead's one apply_plan cannot stage.
+ */
 export function assertSpecialistTools(): void {
   for (const name of Object.keys(SPECIALISTS) as SpecialistName[]) {
-    for (const tool of specialistToolNames(name))
-      if (!registry.get(tool))
+    for (const tool of specialistToolNames(name)) {
+      const cap = registry.get(tool);
+      if (!cap)
         throw new Error(
           `${SPECIALISTS[name].name} allowlists missing MCP tool ${tool}`,
         );
+      if (
+        cap.mode !== "read" &&
+        !(PLAN_TOOLS as readonly string[]).includes(tool)
+      )
+        throw new Error(
+          `${SPECIALISTS[name].name} allowlists ${tool}, which apply_plan cannot stage`,
+        );
+    }
   }
 }
 

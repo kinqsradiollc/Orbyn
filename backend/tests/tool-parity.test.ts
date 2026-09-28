@@ -117,3 +117,21 @@ test("built-in lead and specialists use the same listable MCP capabilities", () 
       `shared get_context output includes ${field}`,
     );
 });
+
+test("every specialist write tool can be staged in the lead's one apply_plan", async () => {
+  const { PLAN_TOOLS } = await import("../src/capabilities/plan-run.js");
+  const staged = new Set<string>(PLAN_TOOLS);
+  for (const name of Object.keys(SPECIALISTS) as (keyof typeof SPECIALISTS)[]) {
+    for (const tool of specialistToolNames(name)) {
+      const capability = registry.get(tool)!;
+      assert.notEqual(tool, "ask_person", `${name}: ask_person is the lead's`);
+      if (capability.mode === "read") continue;
+      assert.ok(
+        staged.has(tool),
+        `${name} lists ${tool}, which apply_plan cannot stage`,
+      );
+    }
+  }
+  for (const tool of ["reschedule_sessions", "update_planner_settings"])
+    assert.ok(staged.has(tool), `${tool} can be staged`);
+});

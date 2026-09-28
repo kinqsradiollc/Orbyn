@@ -36,6 +36,7 @@ import { KeptOutError, keptOutFor } from "../../lib/assistant-off.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
 import {
+  ASSISTANT_STALE_MS,
   answerAssistantApproval,
   answerAssistantQuestion,
   assistantRunStateFor,
@@ -177,7 +178,9 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest) {
   };
 }
 
-const STALE_MS = 60_000;
+// A live run refreshes its heartbeat every few seconds, even inside a long
+// provider call, so a minute without one means its copy went away.
+const STALE_MS = ASSISTANT_STALE_MS;
 
 export async function aiRoutes(app: FastifyInstance) {
   app.get("/ai/capabilities", async (r) => {

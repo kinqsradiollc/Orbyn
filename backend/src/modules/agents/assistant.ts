@@ -28,14 +28,36 @@ type AssistantGrantRow = {
   trust: "full" | "ask" | "suggest";
   space_trust: Record<string, "full" | "ask" | "suggest">;
   acts_alone: string[];
+  toolsets: string[] | null;
+  suspended_at: Date | null;
 };
 
-/** One stable, non-revocable grant for the built-in assistant. */
-export async function assistantPrincipal(user: {
-  id: string;
-  name: string;
-  role: SystemRole;
-}): Promise<Principal> {
+/** The person paused their built-in assistant in Connected agents. */
+export class AssistantPausedError extends Error {
+  constructor() {
+    super("Your assistant is paused in Connected agents.");
+    this.name = "AssistantPausedError";
+  }
+}
+
+/** Toolsets a new assistant grant starts with: booking is opt-in. */
+const DEFAULT_ASSISTANT_TOOLSETS = AGENT_TOOLSETS.filter(
+  (toolset) => toolset !== "booking",
+);
+
+/**
+ * One stable, non-revocable grant for the built-in assistant. With
+ * `refusePaused`, a grant paused in Connected agents throws
+ * AssistantPausedError instead of acting.
+ */
+export async function assistantPrincipal(
+  user: {
+    id: string;
+    name: string;
+    role: SystemRole;
+  },
+  options: { refusePaused?: boolean } = {},
+): Promise<Principal> {
   const identity = (
     await pool.query<{ name: string }>(
       "SELECT name FROM agent_settings WHERE user_id = $1",
@@ -54,11 +76,13 @@ export async function assistantPrincipal(user: {
        ON CONFLICT (user_id) WHERE kind = 'assistant'
        DO UPDATE SET name = EXCLUDED.name, client_name = EXCLUDED.client_name,
                      last_used_at = now()
-       RETURNING id, trust, space_trust, acts_alone`,
-      [user.id, [...AGENT_TOOLSETS], name],
+       RETURNING id, trust, space_trust, acts_alone, toolsets, suspended_at`,
+      [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
     )
   ).rows[0];
   if (!grant) throw new Error("The Orbyn assistant grant is unavailable.");
+  if (options.refusePaused && grant.suspended_at)
+    throw new AssistantPausedError();
   return {
     user: { id: user.id, name: user.name, role: user.role },
     via: "assistant",
@@ -67,7 +91,11 @@ export async function assistantPrincipal(user: {
     access: "write",
     team_ids: null,
     personal: true,
-    toolsets: [...AGENT_TOOLSETS],
+    toolsets: AGENT_TOOLSETS.filter((toolset) =>
+      (
+        (grant.toolsets ?? DEFAULT_ASSISTANT_TOOLSETS) as readonly string[]
+      ).includes(toolset),
+    ),
     flags: {
       notify_teammates: false,
       hide_outside_content: false,

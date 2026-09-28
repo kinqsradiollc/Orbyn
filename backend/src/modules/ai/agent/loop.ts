@@ -88,7 +88,11 @@ export type AgentLoopOptions = {
   forceToolLoop?: boolean;
   /** Abort a running provider call when the person stops a job. */
   signal?: AbortSignal;
-  /** Shared, approximate input-token budget for one bounded assistant run. */
+  /**
+   * Shared, approximate token budget for one bounded assistant run: each
+   * call adds its new input (the prompt once, then new tool results) and
+   * its output.
+   */
   tokenBudget?: { used: number; limit: number };
 };
 
@@ -188,6 +192,10 @@ export async function runAgent(
   let toolsRan = 0;
   let lastText = "";
   const seen = new Map<string, number>();
+  // Messages already counted against the shared token budget.
+  let charged = 0;
+  // Set once the budget ran out, for the one last answer without tools.
+  let overBudget = false;
 
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
     for (let attempt = 1; ; attempt++) {
@@ -207,24 +215,45 @@ export async function runAgent(
           ...(options.signal ? [options.signal] : []),
         ]);
         const fittedMessages = fit(messages, ai);
-        if (options.tokenBudget) {
+        if (options.tokenBudget && charged < messages.length) {
+          // Only what is new since the last call counts: the prompt once,
+          // then each tool result and note. The model's own replies are
+          // counted as output below, not again as input.
+          const fresh = messages.slice(charged);
+          const input = charged
+            ? fresh.filter((m) => m.role !== "assistant")
+            : fresh;
           const estimated =
-            Math.ceil(Buffer.byteLength(JSON.stringify(fittedMessages)) / 4) +
-            512;
-          if (options.tokenBudget.used + estimated > options.tokenBudget.limit)
+            Math.ceil(Buffer.byteLength(JSON.stringify(input)) / 4) +
+            (charged
+              ? 0
+              : Math.ceil(Buffer.byteLength(JSON.stringify(tools)) / 4)) +
+            64;
+          if (
+            !overBudget &&
+            options.tokenBudget.used + estimated > options.tokenBudget.limit
+          )
             throw new AgentTokenBudgetExhausted();
           options.tokenBudget.used += estimated;
+          charged = messages.length;
         }
-        if (forceToolLoop && ai.structuredOutput)
-          return await runGraphToolStep(ai, fittedMessages, tools, {
-            toolsAllowed,
-            signal,
-          });
-        return await step(ai, fittedMessages, tools, {
-          mode,
-          toolsAllowed,
-          signal,
-        });
+        const result =
+          forceToolLoop && ai.structuredOutput
+            ? await runGraphToolStep(ai, fittedMessages, tools, {
+                toolsAllowed,
+                signal,
+              })
+            : await step(ai, fittedMessages, tools, {
+                mode,
+                toolsAllowed,
+                signal,
+              });
+        if (options.tokenBudget)
+          options.tokenBudget.used += Math.ceil(
+            Buffer.byteLength(result.text + JSON.stringify(result.toolCalls)) /
+              4,
+          );
+        return result;
       } catch (error) {
         if (options.signal?.aborted) throw error;
         if (mode === "native" && rejectsTools(error)) {
@@ -315,7 +344,17 @@ export async function runAgent(
       result = await call(!last);
     } catch (error) {
       if (!(error instanceof AgentTokenBudgetExhausted)) throw error;
-      return finish(lastText, n - 1, true);
+      // Out of budget: one last call without tools for the answer, as the
+      // step limit does, instead of ending on nothing.
+      overBudget = true;
+      if (!last) messages.push({ role: "user", content: FINAL_STEP_NOTE });
+      try {
+        const text = (await call(false)).text.trim();
+        return finish(text || lastText, n, true);
+      } catch (finalError) {
+        if (options.signal?.aborted) throw finalError;
+        return finish(lastText, n - 1, true);
+      }
     }
 
     if (result.toolCalls.length) {

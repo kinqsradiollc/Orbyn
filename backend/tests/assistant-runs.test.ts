@@ -9,6 +9,7 @@ import "./setup.js";
 type Reply = { name: string; arguments: Record<string, unknown> };
 type Request = {
   tools?: { function?: { name?: string }; name?: string }[];
+  tool_choice?: unknown;
   messages: { role: string; name?: string; content: string | null }[];
 };
 type MockReply = Reply | { content: string };
@@ -73,6 +74,8 @@ const { scanAssistantIdeas } = await import("../src/worker/assistant-ideas.js");
 const { scanAssistantGoals } = await import("../src/worker/assistant-goals.js");
 const { scanAssistantRoutines } =
   await import("../src/worker/assistant-routines.js");
+const { assistantRunLimits, failStaleAssistantJobs, startAssistantAutomation } =
+  await import("../src/modules/ai/agent/run.js");
 const app = await buildApp();
 const users: string[] = [];
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -106,9 +109,14 @@ async function start(token: string, message: string) {
   return response.json() as { id: string; chat_id: string; turn_id: string };
 }
 
-async function poll(token: string, jobId: string, wanted: string[]) {
+async function poll(
+  token: string,
+  jobId: string,
+  wanted: string[],
+  attempts = 100,
+) {
   let result: Record<string, any> = {};
-  for (let attempt = 0; attempt < 100; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const response = await app.inject({
       url: `/ai/chat/${jobId}`,
       remoteAddress: nextAddress(),
@@ -1616,7 +1624,7 @@ test("stopping while the assistant waits for approval leaves staged changes unap
   const result = await poll(user.token, job.id, ["done", "failed"]);
   assert.equal(result.state, "done", JSON.stringify(result));
   assert.equal(result.assistant_run?.outcome, "discarded");
-  assert.match(result.answer, /stopped|approval/i);
+  assert.equal(result.answer, "Stopped. Nothing was changed.");
   assert.equal(
     (
       await pool.query(
@@ -1666,7 +1674,7 @@ test("stopping a running provider call finishes the job without staged changes",
   assert.match(result.answer, /stopped/i);
 });
 
-test("stopping at a person question preserves completed work for approval", async () => {
+test("stopping at a person question discards the staged work", async () => {
   requests.length = 0;
   respond = (request) => {
     const names = toolNames(request);
@@ -1761,13 +1769,10 @@ test("stopping at a person question preserves completed work for approval", asyn
     headers: auth(user.token),
   });
   assert.equal(stopped.statusCode, 200, stopped.body);
-  const approval = await poll(user.token, job.id, [
-    "waiting",
-    "done",
-    "failed",
-  ]);
-  assert.equal(approval.state, "waiting", JSON.stringify(approval));
-  assert.equal(approval.waiting?.kind, "approval");
+  const result = await poll(user.token, job.id, ["done", "failed"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  assert.equal(result.assistant_run?.outcome, "discarded");
+  assert.equal(result.answer, "Stopped. Nothing was changed.");
   assert.equal(
     (
       await pool.query(
@@ -1776,27 +1781,16 @@ test("stopping at a person question preserves completed work for approval", asyn
       )
     ).rowCount,
     0,
+    "a Stop never applies the staged work",
   );
-  const approved = await app.inject({
+  const again = await app.inject({
     method: "POST",
     url: `/ai/chat/${job.id}/approve`,
     remoteAddress: nextAddress(),
     headers: auth(user.token),
     payload: { approved: true, scope: "once" },
   });
-  assert.equal(approved.statusCode, 202, approved.body);
-  const result = await poll(user.token, job.id, ["done", "failed"]);
-  assert.equal(result.state, "done", JSON.stringify(result));
-  assert.equal(result.assistant_run?.outcome, "applied");
-  assert.equal(
-    (
-      await pool.query(
-        "SELECT 1 FROM items WHERE user_id = $1 AND title = 'Check chapter references'",
-        [user.id],
-      )
-    ).rowCount,
-    1,
-  );
+  assert.equal(again.statusCode, 409, again.body);
 });
 
 test("a specialist stops at its configured tool-loop limit without reporting changes", async () => {
@@ -1843,4 +1837,710 @@ test("a specialist stops at its configured tool-loop limit without reporting cha
   assert.match(report.summary, /step limit/i);
   assert.equal(report.steps.length, 0);
   assert.equal(requests.length, 2);
+});
+
+// --- Stop, deadline, approval races, stale jobs and lead limits ------------
+
+/** Provider calls held open until the test releases them. */
+const held: ((reply: MockReply) => void)[] = [];
+function hold(entered?: () => void) {
+  entered?.();
+  return new Promise<MockReply>((resolve) => held.push(resolve));
+}
+function releaseHeld() {
+  for (const resolve of held.splice(0))
+    resolve({ content: "A late provider response." });
+}
+
+const lastToolMessage = (request: Request) =>
+  [...request.messages].reverse().find((message) => message.role === "tool");
+
+/**
+ * The lead delegates one Projects task that stages a task called `title`;
+ * `afterReport` answers the lead's next call.
+ */
+function stageTask(
+  title: string,
+  afterReport: (
+    request: Request,
+    steps: string[],
+  ) => MockReply | Promise<MockReply>,
+) {
+  return (request: Request): MockReply | Promise<MockReply> => {
+    const names = toolNames(request);
+    const previousTool = lastToolMessage(request);
+    if (names.includes("delegate"))
+      return previousTool
+        ? afterReport(request, stepIds(previousTool.content))
+        : {
+            name: "delegate",
+            arguments: {
+              tasks: [
+                {
+                  specialist: "projects",
+                  brief: `Stage a task named ${title}.`,
+                  want_options: false,
+                },
+              ],
+            },
+          };
+    if (names.includes("report"))
+      return previousTool
+        ? {
+            name: "report",
+            arguments: {
+              status: "done",
+              summary: `Staged ${title}.`,
+              findings: [],
+              steps: [
+                (
+                  JSON.parse(previousTool.content ?? "{}") as {
+                    step_id: string;
+                  }
+                ).step_id,
+              ],
+              open_questions: [],
+            },
+          }
+        : {
+            name: "create_tasks",
+            arguments: { tasks: [{ title, kind: "task" }] },
+          };
+    return { content: "Done." };
+  };
+}
+
+async function itemCount(userId: string, title: string) {
+  return (
+    await pool.query("SELECT 1 FROM items WHERE user_id = $1 AND title = $2", [
+      userId,
+      title,
+    ])
+  ).rowCount;
+}
+
+async function askFirst(userId: string) {
+  await pool.query(
+    `INSERT INTO agent_grants
+       (user_id, kind, name, client_name, access, team_ids, personal,
+        toolsets, flags, trust)
+     VALUES ($1, 'assistant', 'Orbyn Assistant', 'Orbyn Assistant', 'write',
+       NULL, true, $2::text[], '{}'::jsonb, 'ask')`,
+    [userId, [...AGENT_TOOLSETS]],
+  );
+}
+
+async function answerCard(token: string, jobId: string, approved: boolean) {
+  return app.inject({
+    method: "POST",
+    url: `/ai/chat/${jobId}/approve`,
+    remoteAddress: nextAddress(),
+    headers: auth(token),
+    payload: { approved, scope: "once" },
+  });
+}
+
+test("a full-trust Stop with staged work applies nothing, and the heartbeat keeps beating", async () => {
+  requests.length = 0;
+  let entered!: () => void;
+  const inLead = new Promise<void>((resolve) => (entered = resolve));
+  respond = stageTask("Stop-safe task", () => hold(entered));
+  assistantRunLimits.heartbeatMs = 40;
+  try {
+    const user = await register();
+    const job = await start(user.token, "Add a task named Stop-safe task.");
+    await inLead;
+    const beat = async () =>
+      (
+        await pool.query<{ heartbeat_at: Date }>(
+          "SELECT heartbeat_at FROM ai_jobs WHERE id = $1",
+          [job.id],
+        )
+      ).rows[0].heartbeat_at.getTime();
+    const before = await beat();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.ok(
+      (await beat()) > before,
+      "the heartbeat moves during a long provider call",
+    );
+    const saved = await pool.query<{
+      run_state: { state?: { plan?: unknown[] } };
+    }>("SELECT run_state FROM ai_jobs WHERE id = $1", [job.id]);
+    assert.equal(saved.rows[0].run_state.state?.plan?.length, 1);
+
+    const stopped = await app.inject({
+      method: "POST",
+      url: `/ai/chat/${job.id}/stop`,
+      remoteAddress: nextAddress(),
+      headers: auth(user.token),
+    });
+    assert.equal(stopped.statusCode, 200, stopped.body);
+    const result = await poll(user.token, job.id, ["done", "failed"]);
+    assert.equal(result.state, "done", JSON.stringify(result));
+    assert.equal(result.assistant_run?.outcome, "discarded");
+    assert.equal(result.answer, "Stopped. Nothing was changed.");
+    assert.equal(await itemCount(user.id, "Stop-safe task"), 0);
+  } finally {
+    assistantRunLimits.heartbeatMs = 10_000;
+    releaseHeld();
+  }
+});
+
+test("the time limit parks staged work on an approval card instead of applying it", async () => {
+  requests.length = 0;
+  respond = stageTask("Deadline task", () => hold());
+  assistantRunLimits.maxRunMs = 2000;
+  try {
+    const user = await register();
+    const job = await start(user.token, "Add a task named Deadline task.");
+    const waiting = await poll(
+      user.token,
+      job.id,
+      ["waiting", "done", "failed"],
+      400,
+    );
+    assert.equal(waiting.state, "waiting", JSON.stringify(waiting));
+    assert.equal(waiting.waiting?.kind, "approval");
+    assert.match(waiting.waiting?.question, /ran out of time/i);
+    assert.equal(waiting.waiting?.steps.length, 1);
+    assert.equal(await itemCount(user.id, "Deadline task"), 0);
+
+    const declined = await answerCard(user.token, job.id, false);
+    assert.equal(declined.statusCode, 202, declined.body);
+    const result = await poll(user.token, job.id, ["done", "failed"]);
+    assert.equal(result.assistant_run?.outcome, "discarded");
+    assert.equal(await itemCount(user.id, "Deadline task"), 0);
+  } finally {
+    assistantRunLimits.maxRunMs = 600_000;
+    releaseHeld();
+  }
+});
+
+test("an idea run that hits the time limit keeps its suggest-only trust", async () => {
+  requests.length = 0;
+  respond = stageTask("Idea deadline task", () => hold());
+  assistantRunLimits.maxRunMs = 2000;
+  try {
+    const user = await register();
+    const jobId = await startAssistantAutomation({
+      userId: user.id,
+      message:
+        "Suggest one useful next step as a task named Idea deadline task.",
+      timezone: "UTC",
+      automation: { kind: "idea", local_day: "2026-09-28", slot: 1 },
+    });
+    assert.ok(jobId);
+    const waiting = await poll(
+      user.token,
+      jobId,
+      ["waiting", "done", "failed"],
+      400,
+    );
+    assert.equal(waiting.state, "waiting", JSON.stringify(waiting));
+    assert.equal(waiting.waiting?.kind, "approval");
+    assert.match(
+      waiting.waiting?.detail,
+      /set to suggest changes/,
+      "the card is checked with the idea's lowered trust",
+    );
+    assert.equal(await itemCount(user.id, "Idea deadline task"), 0);
+    const declined = await answerCard(user.token, jobId, false);
+    assert.equal(declined.statusCode, 202, declined.body);
+    await poll(user.token, jobId, ["done", "failed"]);
+    assert.equal(await itemCount(user.id, "Idea deadline task"), 0);
+  } finally {
+    assistantRunLimits.maxRunMs = 600_000;
+    releaseHeld();
+  }
+});
+
+test("a simultaneous Approve and Decline: exactly one wins and the chat says what happened", async () => {
+  requests.length = 0;
+  respond = stageTask("Race task", (_request, steps) => ({
+    name: "finish",
+    arguments: { answer: "The race task is ready for approval.", steps },
+  }));
+  const user = await register();
+  await askFirst(user.id);
+  const job = await start(user.token, "Add a task named Race task.");
+  const waiting = await poll(user.token, job.id, ["waiting", "done", "failed"]);
+  assert.equal(waiting.waiting?.kind, "approval", JSON.stringify(waiting));
+
+  const [approve, decline] = await Promise.all([
+    answerCard(user.token, job.id, true),
+    answerCard(user.token, job.id, false),
+  ]);
+  assert.deepEqual(
+    [approve.statusCode, decline.statusCode].sort(),
+    [202, 409],
+    `${approve.body} ${decline.body}`,
+  );
+  const loser = approve.statusCode === 409 ? approve : decline;
+  assert.match(loser.body, /Already answered/);
+  const result = await poll(user.token, job.id, ["done", "failed"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  const approvedWon = approve.statusCode === 202;
+  assert.equal(
+    result.assistant_run?.outcome,
+    approvedWon ? "applied" : "discarded",
+  );
+  assert.equal(await itemCount(user.id, "Race task"), approvedWon ? 1 : 0);
+  const turns = (
+    await pool.query<{ turns: { role: string; text: string }[] }>(
+      "SELECT turns FROM ai_chats WHERE id = $1",
+      [job.chat_id],
+    )
+  ).rows[0].turns;
+  const last = turns.filter((turn) => turn.role === "assistant").at(-1);
+  assert.equal(last?.text, result.answer);
+  assert.match(
+    result.answer,
+    approvedWon ? /applied the checked plan/ : /Nothing was applied/,
+  );
+});
+
+test("a plan the checker refuses blocks its reports, so the retry cannot reselect them", async () => {
+  requests.length = 0;
+  let taskId = "";
+  let retries = 0;
+  respond = (request) => {
+    const names = toolNames(request);
+    const previousTool = lastToolMessage(request);
+    if (names.includes("delegate")) {
+      const message = request.messages.at(-1)?.content ?? "";
+      if (/Review the blocked report/.test(message) && !previousTool) {
+        retries++;
+        return {
+          name: "finish",
+          arguments: {
+            answer: "The rename was refused, so I changed nothing.",
+            steps: [],
+          },
+        };
+      }
+      return previousTool
+        ? {
+            name: "finish",
+            arguments: {
+              answer: "I renamed the task.",
+              steps: stepIds(previousTool.content),
+            },
+          }
+        : {
+            name: "delegate",
+            arguments: {
+              tasks: [
+                {
+                  specialist: "projects",
+                  brief: "Rename the existing task to Stale rename.",
+                  want_options: false,
+                },
+              ],
+            },
+          };
+    }
+    if (names.includes("report"))
+      return previousTool
+        ? {
+            name: "report",
+            arguments: {
+              status: "done",
+              summary: "Staged the rename.",
+              findings: [],
+              steps: [
+                (
+                  JSON.parse(previousTool.content ?? "{}") as {
+                    step_id: string;
+                  }
+                ).step_id,
+              ],
+              open_questions: [],
+            },
+          }
+        : {
+            name: "update_tasks",
+            arguments: {
+              changes: [
+                { id: `task:${taskId}`, version: 99, title: "Stale rename" },
+              ],
+            },
+          };
+    return { content: "Done." };
+  };
+
+  const user = await register();
+  const created = await app.inject({
+    method: "POST",
+    url: "/items",
+    headers: auth(user.token),
+    payload: { title: "Original checker title", kind: "task" },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  taskId = created.json().id as string;
+  const job = await start(user.token, "Rename my task to Stale rename.");
+  const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  assert.equal(retries, 1, "the retry finishes without the refused steps");
+  assert.equal(result.assistant_run?.outcome, "info");
+  const projects = result.assistant_run.reports.find(
+    (report: { specialist: string }) => report.specialist === "projects",
+  );
+  assert.equal(projects.status, "blocked");
+  assert.deepEqual(projects.step_ids, []);
+  assert.equal(
+    (await pool.query("SELECT title FROM items WHERE id = $1", [taskId]))
+      .rows[0].title,
+    "Original checker title",
+  );
+});
+
+test("the lead stops at eight steps with one last answer", async () => {
+  requests.length = 0;
+  let leadCalls = 0;
+  respond = (request) => {
+    if (!toolNames(request).includes("delegate")) return { content: "Done." };
+    leadCalls++;
+    if (/tools are now off/.test(request.messages.at(-1)?.content ?? ""))
+      return { content: "Here is what I found so far." };
+    return {
+      name: "search",
+      arguments: { query: `lead-limit-${leadCalls}` },
+    };
+  };
+  const user = await register();
+  const job = await start(user.token, "What have I written about lead limits?");
+  const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  assert.equal(leadCalls, 8);
+  assert.match(result.answer, /Here is what I found so far/);
+});
+
+test("the token budget counts new input and output, and ends with one answer without tools", async () => {
+  requests.length = 0;
+  const { runAgent } = await import("../src/modules/ai/agent/loop.js");
+  const { resolveAi } = await import("../src/modules/ai/providers/resolve.js");
+  const ai = await resolveAi();
+  assert.ok(ai);
+  let calls = 0;
+  let finalChoice: unknown = null;
+  respond = (request) => {
+    calls++;
+    if (/tools are now off/.test(request.messages.at(-1)?.content ?? "")) {
+      finalChoice = request.tool_choice;
+      return { content: "Final answer within the budget." };
+    }
+    return { name: "search", arguments: { query: `budget-${calls}` } };
+  };
+  const budget = { used: 0, limit: 6000 };
+  const result = await runAgent(
+    ai,
+    {
+      user: { id: randomUUID(), role: "member" },
+      identity: { name: "Orbyn", persona: "" },
+      timezone: "UTC",
+      intentText: "Look this up.",
+      actions: [],
+      clarification: null,
+    },
+    "Look this up.",
+    [],
+    {},
+    undefined,
+    undefined,
+    {
+      systemPrompt: "Answer with the search tool.",
+      tools: [
+        {
+          name: "search",
+          description: "Search.",
+          parameters: {
+            type: "object",
+            properties: { query: { type: "string" } },
+          },
+        },
+      ],
+      executeTool: async () => ({ content: "x".repeat(8000), isError: false }),
+      maxSteps: 8,
+      maxToolCallsPerStep: 1,
+      forceToolLoop: true,
+      tokenBudget: budget,
+    },
+  );
+  // Each 8,000-character result is ~2,000 tokens: three calls fit in 6,000
+  // when only new input counts (re-counting whole prompts fit two).
+  assert.equal(calls, 4);
+  assert.equal(finalChoice, "none");
+  assert.equal(result.partial, true);
+  assert.match(result.summary, /Final answer within the budget/);
+});
+
+test("a partial report leads to a second delegation round that stages the work", async () => {
+  requests.length = 0;
+  let sawPartial = false;
+  respond = (request) => {
+    const names = toolNames(request);
+    const previousTool = lastToolMessage(request);
+    const brief = request.messages.find((m) => m.role === "user")?.content;
+    if (names.includes("delegate")) {
+      if (!previousTool)
+        return {
+          name: "delegate",
+          arguments: {
+            tasks: [
+              {
+                specialist: "projects",
+                brief: "Look over the launch work first.",
+                want_options: false,
+              },
+            ],
+          },
+        };
+      const reports = JSON.parse(previousTool.content ?? "[]") as {
+        status: string;
+      }[];
+      if (reports[0]?.status === "partial") {
+        sawPartial = true;
+        return {
+          name: "delegate",
+          arguments: {
+            tasks: [
+              {
+                specialist: "projects",
+                brief: "Now stage a task named Second round task.",
+                want_options: false,
+              },
+            ],
+          },
+        };
+      }
+      return {
+        name: "finish",
+        arguments: {
+          answer: "I added the second round task.",
+          steps: stepIds(previousTool.content),
+        },
+      };
+    }
+    if (names.includes("report")) {
+      if (/Look over the launch work first/.test(brief ?? ""))
+        return {
+          name: "report",
+          arguments: {
+            status: "partial",
+            summary: "The launch work needs a follow-up task.",
+            findings: ["No follow-up task exists yet."],
+            steps: [],
+            open_questions: [],
+          },
+        };
+      if (!previousTool)
+        return {
+          name: "create_tasks",
+          arguments: { tasks: [{ title: "Second round task", kind: "task" }] },
+        };
+      return {
+        name: "report",
+        arguments: {
+          status: "done",
+          summary: "Staged the follow-up task.",
+          findings: [],
+          steps: [
+            (JSON.parse(previousTool.content ?? "{}") as { step_id: string })
+              .step_id,
+          ],
+          open_questions: [],
+        },
+      };
+    }
+    return { content: "Done." };
+  };
+  const user = await register();
+  const job = await start(user.token, "Add a follow-up task for the launch.");
+  const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  assert.equal(sawPartial, true);
+  assert.deepEqual(
+    result.assistant_run.reports.map((r: { status: string }) => r.status),
+    ["partial", "done"],
+  );
+  assert.equal(result.assistant_run?.outcome, "applied");
+  assert.equal(await itemCount(user.id, "Second round task"), 1);
+});
+
+test("a specialist's options become the person's choice, and the answer resumes the lead", async () => {
+  requests.length = 0;
+  let resumedWith = "";
+  respond = (request) => {
+    const names = toolNames(request);
+    const previousTool = lastToolMessage(request);
+    const system = request.messages[0]?.content ?? "";
+    if (names.includes("delegate")) {
+      const answered = /The person answered your last question: (.*)/.exec(
+        system,
+      );
+      if (answered) {
+        resumedWith = answered[1];
+        return {
+          name: "finish",
+          arguments: { answer: `I will plan ${answered[1]} sessions.` },
+        };
+      }
+      if (!previousTool)
+        return {
+          name: "delegate",
+          arguments: {
+            tasks: [
+              {
+                specialist: "planner",
+                brief: "Suggest focus session lengths.",
+                want_options: true,
+              },
+            ],
+          },
+        };
+      const reports = JSON.parse(previousTool.content ?? "[]") as {
+        options?: string[];
+      }[];
+      return {
+        name: "ask_person",
+        arguments: {
+          question: "How long should each focus session be?",
+          choices: reports[0]?.options ?? [],
+        },
+      };
+    }
+    if (names.includes("report"))
+      return {
+        name: "report",
+        arguments: {
+          status: "needs_choice",
+          summary: "Two session lengths fit the calendar.",
+          findings: [],
+          steps: [],
+          options: ["30 minutes", "60 minutes"],
+          open_questions: ["Which session length do you prefer?"],
+        },
+      };
+    return { content: "Done." };
+  };
+  const user = await register();
+  const job = await start(user.token, "How long should my focus sessions be?");
+  const question = await poll(user.token, job.id, [
+    "waiting",
+    "done",
+    "failed",
+  ]);
+  assert.equal(question.waiting?.kind, "person", JSON.stringify(question));
+  assert.deepEqual(question.waiting?.choices, ["30 minutes", "60 minutes"]);
+  const answered = await app.inject({
+    method: "POST",
+    url: `/ai/chat/${job.id}/answer`,
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+    payload: { answer: "60 minutes" },
+  });
+  assert.equal(answered.statusCode, 202, answered.body);
+  const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  assert.equal(resumedWith, "60 minutes");
+  assert.match(result.answer, /60 minutes sessions/);
+});
+
+test("a paused assistant refuses to run, and new grants leave booking out", async () => {
+  const user = await register();
+  const principal = await assistantPrincipal({
+    id: user.id,
+    name: "Run tester",
+    role: "member",
+  });
+  assert.ok(!principal.toolsets.includes("booking"));
+  assert.ok(principal.toolsets.includes("core"));
+  await pool.query(
+    "UPDATE agent_grants SET suspended_at = now() WHERE id = $1",
+    [principal.grant_id],
+  );
+  respond = () => ({ content: "This should not run." });
+  const job = await start(user.token, "Summarize my day.");
+  const result = await poll(user.token, job.id, ["done", "failed"]);
+  assert.equal(result.state, "failed", JSON.stringify(result));
+  assert.equal(result.message, "Your assistant is paused in Connected agents.");
+});
+
+test("stale running jobs and week-old cards fail and free their automations", async () => {
+  const user = await register();
+  const insertJob = async (state: string, age: string) =>
+    (
+      await pool.query<{ id: string }>(
+        `INSERT INTO ai_jobs (user_id, state, heartbeat_at)
+         VALUES ($1, $2, now() - $3::interval) RETURNING id`,
+        [user.id, state, age],
+      )
+    ).rows[0].id;
+  const crashed = await insertJob("running", "10 minutes");
+  const alive = await insertJob("running", "5 seconds");
+  const expired = await insertJob("waiting", "8 days");
+  const recent = await insertJob("waiting", "1 day");
+  const routine = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO agent_routines (user_id, instruction, rrule, next_run_at, current_job_id, claimed_at)
+       VALUES ($1, 'Check my week', 'FREQ=DAILY', now(), $2, now()) RETURNING id`,
+      [user.id, crashed],
+    )
+  ).rows[0].id;
+  const goal = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO goals (user_id, title) VALUES ($1, 'Stale goal') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO goals_checkins (goal_id, user_id, week_of, summary, status, job_id)
+     VALUES ($1, $2, '2026-09-21', 'Weekly review in progress', 'running', $3)`,
+    [goal, user.id, expired],
+  );
+
+  const ended = await failStaleAssistantJobs();
+  assert.ok(ended.includes(crashed));
+  assert.ok(ended.includes(expired));
+  assert.ok(!ended.includes(alive));
+  assert.ok(!ended.includes(recent));
+  const states = (
+    await pool.query<{ id: string; state: string; error_message: string }>(
+      "SELECT id, state, error_message FROM ai_jobs WHERE id = ANY($1::uuid[])",
+      [[crashed, alive, expired, recent]],
+    )
+  ).rows;
+  const stateOf = (id: string) => states.find((row) => row.id === id)!;
+  assert.equal(stateOf(crashed).state, "failed");
+  assert.equal(
+    stateOf(crashed).error_message,
+    "The assistant was interrupted by a server restart. Please ask again.",
+  );
+  assert.equal(stateOf(expired).state, "failed");
+  assert.equal(stateOf(alive).state, "running");
+  assert.equal(stateOf(recent).state, "waiting");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT current_job_id FROM agent_routines WHERE id = $1",
+        [routine],
+      )
+    ).rows[0].current_job_id,
+    null,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT status FROM goals_checkins WHERE goal_id = $1", [
+        goal,
+      ])
+    ).rows[0].status,
+    "failed",
+  );
+  const polled = await app.inject({
+    url: `/ai/chat/${crashed}`,
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+  });
+  assert.equal(polled.json().state, "failed");
+  assert.ok(!(await failStaleAssistantJobs()).includes(crashed));
 });

@@ -12,21 +12,32 @@ import { keptOutFor } from "../../../lib/assistant-off.js";
 import { recallMemory } from "../../memory/service.js";
 import type { UserRow } from "../../../lib/auth.js";
 import type { Proposal } from "@orbyn/core";
-import type { ResolvedAi } from "../providers/adapters.js";
 import { resolveAi } from "../providers/resolve.js";
 import { mayChange } from "../guards.js";
 import { overview, type AgentContext } from "./tools.js";
-import { runAgent, type AgentTrace, type AgentTraceEvent } from "./loop.js";
-import { runLead, LEAD_TOKEN_BUDGET, type LeadState } from "./lead.js";
+import type { AgentTrace, AgentTraceEvent } from "./loop.js";
+import {
+  runLead,
+  LEAD_TOKEN_BUDGET,
+  type LeadState,
+  type LeadWaiting,
+} from "./lead.js";
 import { checkMergedPlan } from "./checker.js";
 import { appendChatTrace, beginChatTurn, finishChatTurn } from "../chats.js";
 import {
+  AssistantPausedError,
   assistantApprovalScopes,
   assistantPrincipal,
 } from "../../agents/assistant.js";
 import type { AssistantChangeKind } from "./change-kind.js";
 
-const MAX_RUN_MS = 600_000;
+/** Limits of one run: the longest it may take and how often it beats. */
+export const assistantRunLimits = { maxRunMs: 600_000, heartbeatMs: 10_000 };
+/** A running job whose heartbeat is older than this is reported as failed. */
+export const ASSISTANT_STALE_MS = 60_000;
+/** A question or approval card nobody answered expires after a week. */
+const WAITING_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
+const STOPPED_TEXT = "Stopped. Nothing was changed.";
 const pendingInput = z
   .object({ answer: z.string().trim().min(1).max(4000) })
   .strict();
@@ -61,7 +72,8 @@ type RunEnvelope = {
   state: LeadState;
 };
 
-const activeRuns = new Map<string, AbortController>();
+/** Stop handles of the runs on this copy, by job. */
+const activeRuns = new Map<string, () => void>();
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,14 +99,22 @@ async function teamsForStep(step: PlanStep): Promise<(string | null)[] | null> {
   const ids = uuidValues(step.args);
   if (!ids.length) return [null];
   const rows = (
-    await pool.query<{ team_id: string | null }>(
-      `SELECT team_id FROM items WHERE id = ANY($1::uuid[])
-       UNION SELECT team_id FROM docs WHERE id = ANY($1::uuid[])
-       UNION SELECT team_id FROM projects WHERE id = ANY($1::uuid[])`,
+    await pool.query<{ id: string; team_id: string | null }>(
+      `SELECT id::text, team_id FROM items WHERE id = ANY($1::uuid[])
+       UNION SELECT id::text, team_id FROM docs WHERE id = ANY($1::uuid[])
+       UNION SELECT id::text, team_id FROM projects WHERE id = ANY($1::uuid[])
+       UNION SELECT b.id::text, i.team_id FROM time_blocks b
+               JOIN items i ON i.id = b.item_id WHERE b.id = ANY($1::uuid[])
+       UNION SELECT s.id::text, p.team_id FROM project_stages s
+               JOIN projects p ON p.id = s.project_id WHERE s.id = ANY($1::uuid[])`,
       [ids],
     )
   ).rows;
-  return rows.length ? [...new Set(rows.map((row) => row.team_id))] : [null];
+  // Something the step names that isn't found has no known space: never
+  // assume Personal for it.
+  const found = new Set(rows.map((row) => row.id.toLowerCase()));
+  if (ids.some((id) => !found.has(id))) return null;
+  return [...new Set(rows.map((row) => row.team_id))];
 }
 
 async function stepsBelongToGoal(
@@ -209,6 +229,18 @@ async function approvalScopeCovers(
   return true;
 }
 
+/**
+ * The assistant's principal for this request. An idea run only ever
+ * suggests; the override holds for every path of the job (the run, a stop,
+ * the deadline and a later approval), never a fresh full-trust grant.
+ */
+async function principalFor(user: UserRow, request: PersistedChatRequest) {
+  const principal = await assistantPrincipal(user, { refusePaused: true });
+  if (request.automation?.kind === "idea")
+    principal.trust = { level: "suggest", spaces: {}, acts_alone: [] };
+  return principal;
+}
+
 function newState(request: string): LeadState {
   return {
     original_request: request,
@@ -271,6 +303,10 @@ function envelopeOf(value: unknown): RunEnvelope | null {
         ...(state as unknown as Partial<LeadState>),
         plan: parsedPlan,
         selected_steps: parsedSelected,
+        token_budget: Math.max(
+          typeof state.token_budget === "number" ? state.token_budget : 0,
+          LEAD_TOKEN_BUDGET,
+        ),
         reports: Array.isArray(state.reports)
           ? (state.reports as LeadState["reports"])
           : [],
@@ -317,16 +353,57 @@ async function contextFor(user: UserRow, request: PersistedChatRequest) {
   return { identity, context, memory, snapshot };
 }
 
-async function saveProgress(
+const saveChains = new Map<string, Promise<void>>();
+
+/**
+ * Save a run's state and progress. Saves of one job run one after another
+ * in the order they were asked for, each with the state as it was then.
+ */
+function saveProgress(
   jobId: string,
   envelope: RunEnvelope,
   progress: unknown,
-) {
-  await pool.query(
-    `UPDATE ai_jobs SET run_state = $2::jsonb, progress = $3::jsonb,
-       heartbeat_at = now() WHERE id = $1 AND state = 'running'`,
-    [jobId, JSON.stringify(envelope), JSON.stringify(progress)],
-  );
+): Promise<void> {
+  const values = [jobId, JSON.stringify(envelope), JSON.stringify(progress)];
+  const previous = saveChains.get(jobId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      await pool.query(
+        `UPDATE ai_jobs SET run_state = $2::jsonb, progress = $3::jsonb,
+           heartbeat_at = now() WHERE id = $1 AND state = 'running'`,
+        values,
+      );
+    });
+  saveChains.set(jobId, next);
+  void next
+    .catch(() => undefined)
+    .finally(() => {
+      if (saveChains.get(jobId) === next) saveChains.delete(jobId);
+    });
+  return next;
+}
+
+/** Wait for this job's queued saves, so none lands after its next state. */
+async function settleSaves(jobId: string) {
+  await saveChains.get(jobId)?.catch(() => undefined);
+}
+
+/**
+ * Keep a running job's heartbeat fresh while it works (a provider call can
+ * take minutes), so pollers don't take it for a crashed run. Returns stop.
+ */
+function keepAlive(jobId: string): () => void {
+  const beat = () =>
+    void pool
+      .query(
+        "UPDATE ai_jobs SET heartbeat_at = now() WHERE id = $1 AND state = 'running'",
+        [jobId],
+      )
+      .catch(() => undefined);
+  const timer = setInterval(beat, assistantRunLimits.heartbeatMs);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 function traceWriter(
@@ -366,6 +443,7 @@ async function finishJob(
   outcome: "info" | "applied" | "pending" | "discarded" = "info",
   extra: Record<string, unknown> = {},
 ) {
+  await settleSaves(jobId);
   await finishChatTurn(user.id, request.chat_id, request.turn_id, {
     summary,
     outcome,
@@ -572,13 +650,17 @@ export async function startAssistantAutomation(input: {
   return jobId;
 }
 
+/**
+ * Park the job on its question or approval card. False when a stop already
+ * arrived: the job then stays running for the stop to finish it.
+ */
 async function waitFor(
   jobId: string,
   envelope: RunEnvelope,
   request: PersistedChatRequest,
   user: UserRow,
   logger: FastifyBaseLogger,
-) {
+): Promise<boolean> {
   const progress = {
     label:
       envelope.state.waiting?.kind === "person"
@@ -586,11 +668,14 @@ async function waitFor(
         : "Review these changes",
     waiting: envelope.state.waiting,
   };
-  await pool.query(
+  await settleSaves(jobId);
+  const parked = await pool.query(
     `UPDATE ai_jobs SET state = 'waiting', run_state = $2::jsonb,
-       progress = $3::jsonb, heartbeat_at = now() WHERE id = $1`,
+       progress = $3::jsonb, heartbeat_at = now()
+     WHERE id = $1 AND state = 'running' AND NOT cancel_requested`,
     [jobId, JSON.stringify(envelope), JSON.stringify(progress)],
   );
+  if (!parked.rowCount) return false;
   await transaction(async (db) => {
     const row = (
       await db.query<{ turns: unknown }>(
@@ -634,6 +719,7 @@ async function waitFor(
   const writer = traceWriter(user.id, request, logger);
   writer.record(event);
   await writer.flush();
+  return true;
 }
 
 async function approvePlan(
@@ -688,36 +774,123 @@ async function approvePlan(
   };
 }
 
-async function forcedStopAnswer(
-  ai: ResolvedAi,
-  context: AgentContext,
+/** The approval card for the selected steps of a run. */
+function approvalWaiting(
   state: LeadState,
-  workStatus: string,
-  log: FastifyBaseLogger,
-): Promise<string> {
-  const systemPrompt = [
-    `You are ${context.identity?.name ?? "Orbyn"}, the lead assistant. The person stopped the run.`,
-    "In one short message, say what was already done, what happened to completed staged work, and what remains. No tools are available. Do not claim a change happened unless the recorded result says so.",
-    `Completed work status: ${workStatus}`,
-    `Specialist reports: ${JSON.stringify(state.reports.map(({ steps, ...r }) => ({ ...r, staged_step_ids: steps.map((step) => step.id) }))).slice(0, 12_000)}`,
-  ].join("\n\n");
-  const result = await runAgent(
-    ai,
-    context,
-    "Explain the work so far and what remains after the stop.",
-    [],
-    {},
-    log,
-    undefined,
-    {
-      systemPrompt,
-      tools: [],
-      maxSteps: 1,
-      maxToolCallsPerStep: 1,
-      forceToolLoop: true,
-    },
-  );
-  return result.summary || "I stopped. No staged changes were applied.";
+  request: PersistedChatRequest,
+  question: string,
+  detail: string,
+): LeadWaiting {
+  return {
+    kind: "approval",
+    id: randomUUID(),
+    question,
+    detail,
+    steps: state.selected_steps,
+    summary: state.answer ?? "",
+    change_kinds: [...new Set(state.selected_steps.map(changeKind))],
+    ...(request.automation?.kind === "goal" ||
+    request.automation?.kind === "routine"
+      ? {
+          automation_kind: request.automation.kind,
+          automation_id: request.automation.id,
+        }
+      : {}),
+  };
+}
+
+/**
+ * After the checker refused the selected plan: the reports its steps came
+ * from are blocked and lose those steps, so a retry cannot pick them again.
+ */
+function blockRejectedPlan(state: LeadState, reason: string, lead: string) {
+  const rejected = new Set(state.selected_steps.map((step) => step.id));
+  const finding = reason.slice(0, 2000);
+  for (const report of state.reports) {
+    if (!report.steps.some((step) => rejected.has(step.id))) continue;
+    report.status = "blocked";
+    report.summary =
+      `Staged changes were held because the checked plan failed: ${reason}`.slice(
+        0,
+        2000,
+      );
+    report.findings.push(finding);
+    report.steps = [];
+  }
+  state.reports.push({
+    specialist: "planner",
+    task_id: `checker-${randomUUID().slice(0, 8)}`,
+    status: "blocked",
+    summary: "The code checker blocked this combined plan.",
+    findings: [finding],
+    steps: [],
+    open_questions: [],
+  });
+  state.plan = state.plan.filter((step) => !rejected.has(step.id));
+  state.selected_steps = [];
+  state.answer = null;
+  state.answer_to_person = `${lead}: ${reason}`;
+}
+
+/** Record a run that could not complete, and free its automation. */
+async function failJob(
+  jobId: string,
+  user: UserRow,
+  request: PersistedChatRequest,
+  message: string,
+) {
+  await settleSaves(jobId);
+  await finishChatTurn(user.id, request.chat_id, request.turn_id, {
+    summary: message,
+    trace: [],
+    failed: true,
+  }).catch(() => undefined);
+  await pool
+    .query(
+      `UPDATE ai_jobs SET state = 'failed', error_status = 502,
+       error_message = $2, run_state = NULL, progress = $3::jsonb,
+       heartbeat_at = now() WHERE id = $1`,
+      [
+        jobId,
+        message,
+        JSON.stringify({ label: "This run could not be completed" }),
+      ],
+    )
+    .catch(() => undefined);
+  if (
+    request.automation?.kind === "goal" &&
+    request.automation.id &&
+    request.automation.week_of
+  )
+    await pool
+      .query(
+        `UPDATE goals_checkins SET status = 'failed', summary = $4, claimed_at = now()
+        WHERE goal_id = $1 AND user_id = $2 AND week_of = $3::date AND job_id = $5`,
+        [
+          request.automation.id,
+          user.id,
+          request.automation.week_of,
+          "The weekly check-in could not be completed.",
+          jobId,
+        ],
+      )
+      .catch(() => undefined);
+  if (request.automation?.kind === "routine" && request.automation.id)
+    await pool
+      .query(
+        `UPDATE agent_routines SET last_result = $3::jsonb, current_job_id = NULL,
+         claimed_at = NULL, updated_at = now()
+        WHERE id = $1 AND user_id = $2 AND current_job_id = $4`,
+        [
+          request.automation.id,
+          user.id,
+          JSON.stringify({
+            error: "The scheduled run could not be completed.",
+          }),
+          jobId,
+        ],
+      )
+      .catch(() => undefined);
 }
 
 /** Start or resume one bounded multi-specialist assistant run. */
@@ -731,44 +904,50 @@ export async function runAssistantJob(
 ) {
   const log = logger ?? (console as unknown as FastifyBaseLogger);
   const controller = new AbortController();
-  activeRuns.set(jobId, controller);
-  const deadline = setTimeout(() => controller.abort(), MAX_RUN_MS);
-  const pollCancel = setInterval(() => {
+  // Why the run was interrupted: the person's Stop, or the time limit.
+  let stopReason = null as "stop" | "deadline" | null;
+  const interrupt = (reason: "stop" | "deadline") => {
+    stopReason ??= reason;
+    controller.abort();
+  };
+  const stopHandle = () => interrupt("stop");
+  activeRuns.set(jobId, stopHandle);
+  const deadline = setTimeout(
+    () => interrupt("deadline"),
+    assistantRunLimits.maxRunMs,
+  );
+  const checkCancel = () =>
     pool
       .query<{ cancel_requested: boolean }>(
         "SELECT cancel_requested FROM ai_jobs WHERE id = $1",
         [jobId],
       )
       .then((result) => {
-        if (result.rows[0]?.cancel_requested) controller.abort();
+        if (result.rows[0]?.cancel_requested) interrupt("stop");
       })
       .catch(() => undefined);
-  }, 1000);
+  const pollCancel = setInterval(() => void checkCancel(), 1000);
   pollCancel.unref?.();
-  void pool
-    .query<{ cancel_requested: boolean }>(
-      "SELECT cancel_requested FROM ai_jobs WHERE id = $1",
-      [jobId],
-    )
-    .then((result) => {
-      if (result.rows[0]?.cancel_requested) controller.abort();
-    })
-    .catch(() => undefined);
+  void checkCancel();
+  const stopHeartbeat = keepAlive(jobId);
   const trace = traceWriter(user.id, request, log);
   let applyPlanAttempted = false;
   let appliedStatus: "applied" | "pending" | "not_applied" = "not_applied";
-  let envelope: RunEnvelope = loaded ?? {
+  let principal: Principal | null = null;
+  const envelope: RunEnvelope = loaded ?? {
     version: 1,
     request,
     state: newState(request.message),
   };
+  // A stop that reached this copy while it parked the job ends it instead.
+  const parked = async () =>
+    (await waitFor(jobId, envelope, request, user, log)) &&
+    stopReason !== "stop";
 
   try {
     const ai = await resolveAi();
     if (!ai) throw new Error("The AI assistant is not set up yet.");
-    const principal = await assistantPrincipal(user);
-    if (request.automation?.kind === "idea")
-      principal.trust = { level: "suggest", spaces: {}, acts_alone: [] };
+    principal = await principalFor(user, request);
     const prepared = await contextFor(user, request);
     envelope.state.memory = prepared.memory;
     envelope.state.context = scoped ?? prepared.snapshot;
@@ -777,11 +956,7 @@ export async function runAssistantJob(
       label: "Starting the lead assistant",
       step: envelope.state.lead_steps,
     });
-    const cancelled = await pool.query<{ cancel_requested: boolean }>(
-      "SELECT cancel_requested FROM ai_jobs WHERE id = $1",
-      [jobId],
-    );
-    if (cancelled.rows[0]?.cancel_requested) controller.abort();
+    await checkCancel();
 
     let fallback = "";
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -831,8 +1006,7 @@ export async function runAssistantJob(
           return;
         }
         await trace.flush();
-        await waitFor(jobId, envelope, request, user, log);
-        if (controller.signal.aborted) throw new Error("stopped");
+        if (!(await parked())) throw new Error("stopped");
         return;
       }
       if (!result.state.answer)
@@ -848,10 +1022,11 @@ export async function runAssistantJob(
         );
         return;
       }
+      if (controller.signal.aborted) throw new Error("stopped");
+      let applied: Awaited<ReturnType<typeof approvePlan>>;
       try {
-        if (controller.signal.aborted) throw new Error("stopped");
         applyPlanAttempted = true;
-        const applied = await approvePlan(
+        applied = await approvePlan(
           user,
           jobId,
           principal,
@@ -859,114 +1034,92 @@ export async function runAssistantJob(
           false,
           request,
         );
-        if (
-          !applied.applied &&
-          applied.structured === null &&
-          (applied.why.length || "what" in applied)
-        ) {
-          result.state.waiting = {
-            kind: "approval",
-            id: randomUUID(),
-            question: "Do you want me to apply this plan?",
-            detail: [
-              ...(applied.why ?? []),
-              ...("what" in applied ? (applied.what ?? []) : []),
-            ].join("\n"),
-            steps: result.state.selected_steps,
-            summary: result.state.answer,
-            change_kinds: [
-              ...new Set(result.state.selected_steps.map(changeKind)),
-            ],
-            ...(request.automation?.kind === "goal" ||
-            request.automation?.kind === "routine"
-              ? {
-                  automation_kind: request.automation.kind,
-                  automation_id: request.automation.id,
-                }
-              : {}),
-          };
-          await trace.flush();
-          await waitFor(jobId, envelope, request, user, log);
-          if (controller.signal.aborted) throw new Error("stopped");
-          return;
-        }
-        const structured = applied.structured as {
-          status?: string;
-          job?: string | null;
-          proposal_id?: string;
-        } | null;
-        const status = structured?.status;
-        appliedStatus =
-          status === "pending_review"
-            ? "pending"
-            : applied.applied
-              ? "applied"
-              : "not_applied";
-        const summary =
-          status === "pending_review"
-            ? `${leadSummary(result.state, fallback)}\n\nI placed the changes in Review for you.`
-            : applied.applied
-              ? `${leadSummary(result.state, fallback)}\n\nI applied the checked plan as one undoable change.`
-              : leadSummary(result.state, fallback);
-        await trace.flush();
-        trace.record({
-          step: result.state.lead_steps,
-          kind: "result",
-          label:
-            status === "pending_review"
-              ? "Plan sent to Review"
-              : applied.applied
-                ? "Plan applied"
-                : "No changes needed",
-        });
-        await trace.flush();
-        await finishJob(
-          jobId,
-          user,
-          request,
-          result.state,
-          summary,
-          status === "pending_review"
-            ? "pending"
-            : applied.applied
-              ? "applied"
-              : "info",
-          {
-            plan_job: structured?.job ?? null,
-            ...(typeof structured?.proposal_id === "string"
-              ? { proposal_id: structured.proposal_id }
-              : {}),
-          },
-        );
-        return;
       } catch (error) {
-        const reason =
+        // The apply ran in one transaction that rolled back: nothing changed.
+        applyPlanAttempted = false;
+        if (controller.signal.aborted) throw error;
+        blockRejectedPlan(
+          result.state,
           error instanceof Error
             ? error.message
-            : "The checked plan could not be applied.";
-        result.state.reports.push({
-          specialist: "planner",
-          task_id: `checker-${randomUUID().slice(0, 8)}`,
-          status: "blocked",
-          summary: "The code checker blocked this combined plan.",
-          findings: [reason],
-          steps: [],
-          open_questions: [],
-        });
-        result.state.plan = result.state.plan.filter(
-          (step) =>
-            !result.state.selected_steps.some(
-              (selected) => selected.id === step.id,
-            ),
+            : "The checked plan could not be applied.",
+          "The code checker blocked the plan",
         );
-        result.state.selected_steps = [];
-        result.state.answer = null;
-        result.state.answer_to_person = `The code checker blocked the plan: ${reason}`;
         await saveProgress(jobId, envelope, {
           label: "Revising a blocked plan",
           step: result.state.lead_steps,
         });
+        continue;
       }
+      if (
+        !applied.applied &&
+        applied.structured === null &&
+        (applied.why.length || "what" in applied)
+      ) {
+        // Asked instead of applied: the plan was rolled back.
+        applyPlanAttempted = false;
+        result.state.waiting = approvalWaiting(
+          result.state,
+          request,
+          "Do you want me to apply this plan?",
+          [
+            ...(applied.why ?? []),
+            ...("what" in applied ? (applied.what ?? []) : []),
+          ].join("\n"),
+        );
+        await trace.flush();
+        if (!(await parked())) throw new Error("stopped");
+        return;
+      }
+      const structured = applied.structured as {
+        status?: string;
+        job?: string | null;
+        proposal_id?: string;
+      } | null;
+      const status = structured?.status;
+      appliedStatus =
+        status === "pending_review"
+          ? "pending"
+          : applied.applied
+            ? "applied"
+            : "not_applied";
+      const summary =
+        status === "pending_review"
+          ? `${leadSummary(result.state, fallback)}\n\nI placed the changes in Review for you.`
+          : applied.applied
+            ? `${leadSummary(result.state, fallback)}\n\nI applied the checked plan as one undoable change.`
+            : leadSummary(result.state, fallback);
+      await trace.flush();
+      trace.record({
+        step: result.state.lead_steps,
+        kind: "result",
+        label:
+          status === "pending_review"
+            ? "Plan sent to Review"
+            : applied.applied
+              ? "Plan applied"
+              : "No changes needed",
+      });
+      await trace.flush();
+      await finishJob(
+        jobId,
+        user,
+        request,
+        result.state,
+        summary,
+        status === "pending_review"
+          ? "pending"
+          : applied.applied
+            ? "applied"
+            : "info",
+        {
+          plan_job: structured?.job ?? null,
+          ...(typeof structured?.proposal_id === "string"
+            ? { proposal_id: structured.proposal_id }
+            : {}),
+        },
+      );
+      return;
     }
     await trace.flush();
     await finishJob(
@@ -977,183 +1130,118 @@ export async function runAssistantJob(
       leadSummary(envelope.state, fallback),
     );
   } catch (error) {
-    if (controller.signal.aborted) {
-      const stoppedOnApproval = envelope.state.waiting?.kind === "approval";
-      envelope.state.waiting = null;
-      let workStatus = stoppedOnApproval
-        ? "The run stopped while waiting for your approval. Those changes were not applied."
-        : applyPlanAttempted
-          ? "A checked plan was already being applied when the stop arrived. Do not say whether it committed; direct the person to Review and the change history."
-          : "No staged changes were applied yet.";
-      let outcome: "info" | "applied" | "pending" | "discarded" = "discarded";
-      let extra: Record<string, unknown> = { stopped: true };
-      try {
-        const ai = await resolveAi();
-        const principal = await assistantPrincipal(user);
-        if (
-          !stoppedOnApproval &&
-          !applyPlanAttempted &&
-          envelope.state.plan.length
-        ) {
-          envelope.state.selected_steps = envelope.state.plan;
-          envelope.state.answer =
-            "The run was stopped after the completed specialist work was checked.";
-          applyPlanAttempted = true;
-          const applied = await approvePlan(
-            user,
-            jobId,
+    if (!controller.signal.aborted) {
+      log.error({ event: "assistant_run_failed" }, "Assistant run failed");
+      await failJob(
+        jobId,
+        user,
+        request,
+        error instanceof AssistantPausedError
+          ? error.message
+          : "This run could not be completed. Please try again.",
+      );
+      return;
+    }
+    try {
+      await trace.flush();
+      await settleSaves(jobId);
+      if (applyPlanAttempted) {
+        // The apply had already started: say only what is known.
+        await finishJob(
+          jobId,
+          user,
+          request,
+          envelope.state,
+          appliedStatus === "applied"
+            ? "I stopped. The checked plan completed as one undoable change before the stop was handled."
+            : appliedStatus === "pending"
+              ? "I stopped. The checked plan is waiting in Review."
+              : "I stopped while a checked plan was being applied. Check Review and the change history to see whether it went through.",
+          appliedStatus === "applied"
+            ? "applied"
+            : appliedStatus === "pending"
+              ? "pending"
+              : "info",
+          { stopped: true },
+        );
+        return;
+      }
+      if (stopReason === "deadline") {
+        // Out of time: never write. Staged work waits for the person's yes.
+        const state = envelope.state;
+        if (!state.waiting && state.plan.length && principal) {
+          state.selected_steps = state.plan;
+          state.answer ||=
+            "I ran out of time before finishing. These are the changes prepared so far.";
+          const checked = await checkMergedPlan(
+            pool,
             principal,
-            envelope.state,
-            false,
-            request,
-          );
-          if (
-            !applied.applied &&
-            applied.structured === null &&
-            (applied.why.length || "what" in applied)
-          ) {
-            envelope.state.waiting = {
-              kind: "approval",
-              id: randomUUID(),
-              question:
-                "The run stopped with completed work ready. Do you want me to apply it?",
-              detail: [
-                ...(applied.why ?? []),
-                ...("what" in applied ? (applied.what ?? []) : []),
-              ].join("\n"),
-              steps: envelope.state.selected_steps,
-              summary: envelope.state.answer,
-              change_kinds: [
-                ...new Set(envelope.state.selected_steps.map(changeKind)),
-              ],
-            };
-            await trace.flush();
-            await waitFor(jobId, envelope, request, user, log);
-            return;
-          }
-          const structured = applied.structured as {
-            status?: string;
-            job?: string | null;
-          } | null;
-          if (structured?.status === "pending_review") {
-            appliedStatus = "pending";
-            outcome = "pending";
-            workStatus =
-              "Completed work was sent to Review and has not been applied.";
-            extra = { stopped: true, plan_job: structured.job ?? null };
-          } else if (applied.applied) {
-            appliedStatus = "applied";
-            outcome = "applied";
-            workStatus =
-              "The checked completed work was applied as one undoable change.";
-            extra = { stopped: true };
-          } else {
-            workStatus =
-              "The run stopped. Its completed work remained staged and was not applied.";
-          }
-        } else if (appliedStatus === "applied") {
-          outcome = "applied";
-          workStatus =
-            "The checked plan completed as one undoable change before the stop was handled.";
-        } else if (appliedStatus === "pending") {
-          outcome = "pending";
-          workStatus = "The checked plan is waiting in Review.";
+            state.selected_steps,
+          ).catch(() => null);
+          if (checked)
+            state.waiting = approvalWaiting(
+              state,
+              request,
+              "I ran out of time. Do you want me to apply the changes prepared so far?",
+              checked.approvals.join("\n"),
+            );
+          else state.selected_steps = [];
         }
-        if (ai) {
-          const prepared = await contextFor(user, request);
-          const message = await forcedStopAnswer(
-            ai,
-            prepared.context,
-            envelope.state,
-            workStatus,
-            log,
-          );
-          await trace.flush();
+        if (state.waiting) {
+          if (await waitFor(jobId, envelope, request, user, log)) return;
+          state.waiting = null;
+          state.selected_steps = [];
           await finishJob(
             jobId,
             user,
             request,
-            envelope.state,
-            message,
-            outcome,
-            extra,
+            state,
+            STOPPED_TEXT,
+            "discarded",
+            { stopped: true },
           );
           return;
         }
-      } catch {
-        // A stop remains complete even if the provider is unavailable.
+        await finishJob(
+          jobId,
+          user,
+          request,
+          state,
+          "I ran out of time before finishing. Nothing was changed.",
+          "info",
+          { timed_out: true },
+        );
+        return;
       }
-      await trace.flush();
+      // The person's Stop never applies anything: staged work is dropped.
+      envelope.state.waiting = null;
+      envelope.state.selected_steps = [];
       await finishJob(
         jobId,
         user,
         request,
         envelope.state,
-        workStatus === "No staged changes were applied yet."
-          ? "I stopped before any staged changes were applied."
-          : `I stopped. ${workStatus}`,
-        outcome,
-        extra,
+        STOPPED_TEXT,
+        "discarded",
+        { stopped: true },
       );
-    } else {
-      log.error({ event: "assistant_run_failed" }, "Assistant run failed");
-      await finishChatTurn(user.id, request.chat_id, request.turn_id, {
-        summary:
-          "This turn could not be completed. Please ask again when ready.",
-        trace: [],
-        failed: true,
-      }).catch(() => undefined);
-      await pool
-        .query(
-          `UPDATE ai_jobs SET state = 'failed', error_status = 502,
-           error_message = $2, run_state = NULL, progress = $3::jsonb,
-           heartbeat_at = now() WHERE id = $1`,
-          [
-            jobId,
-            "This run could not be completed. Please try again.",
-            JSON.stringify({ label: "This run could not be completed" }),
-          ],
-        )
-        .catch(() => undefined);
-      if (
-        request.automation?.kind === "goal" &&
-        request.automation.id &&
-        request.automation.week_of
-      )
-        await pool
-          .query(
-            `UPDATE goals_checkins SET status = 'failed', summary = $4, claimed_at = now()
-            WHERE goal_id = $1 AND user_id = $2 AND week_of = $3::date AND job_id = $5`,
-            [
-              request.automation.id,
-              user.id,
-              request.automation.week_of,
-              "The weekly check-in could not be completed.",
-              jobId,
-            ],
-          )
-          .catch(() => undefined);
-      if (request.automation?.kind === "routine" && request.automation.id)
-        await pool
-          .query(
-            `UPDATE agent_routines SET last_result = $3::jsonb, current_job_id = NULL,
-             claimed_at = NULL, updated_at = now()
-            WHERE id = $1 AND user_id = $2 AND current_job_id = $4`,
-            [
-              request.automation.id,
-              user.id,
-              JSON.stringify({
-                error: "The scheduled run could not be completed.",
-              }),
-              jobId,
-            ],
-          )
-          .catch(() => undefined);
+    } catch (stopError) {
+      log.error(
+        { err: stopError, event: "assistant_stop_failed" },
+        "Assistant stop could not be recorded",
+      );
+      await failJob(
+        jobId,
+        user,
+        request,
+        "This run could not be completed. Please try again.",
+      );
     }
   } finally {
     clearTimeout(deadline);
     clearInterval(pollCancel);
-    activeRuns.delete(jobId);
+    stopHeartbeat();
+    if (activeRuns.get(jobId) === stopHandle) activeRuns.delete(jobId);
   }
 }
 
@@ -1177,11 +1265,17 @@ export async function answerAssistantQuestion(
     if (!envelope || envelope.state.waiting?.kind !== "person")
       throw new Error("This run is not waiting for an answer.");
     const question = envelope.state.waiting;
-    if (question.choices.length && !question.choices.includes(answer)) {
-      // Free text is allowed so the person can explain a different preference.
-    }
+    // Free text is allowed so the person can explain a different preference;
+    // the lead is told when the answer is none of the offered choices.
+    const offered =
+      !question.choices.length ||
+      question.choices.some(
+        (choice) => choice.toLowerCase() === answer.toLowerCase(),
+      );
     envelope.state.waiting = null;
-    envelope.state.answer_to_person = answer;
+    envelope.state.answer_to_person = offered
+      ? answer
+      : `${answer}\n(This is not one of the offered choices: ${question.choices.join("; ")}.)`;
     envelope.request = {
       ...envelope.request,
       history: [
@@ -1229,14 +1323,53 @@ export async function answerAssistantApproval(
 ) {
   const { approved, scope } = approvalInput.parse(value);
   const row = (
-    await pool.query<{ run_state: unknown }>(
-      `SELECT run_state FROM ai_jobs WHERE id = $1 AND user_id = $2 AND state = 'waiting'`,
+    await pool.query<{ state: string; run_state: unknown }>(
+      "SELECT state, run_state FROM ai_jobs WHERE id = $1 AND user_id = $2",
       [jobId, user.id],
     )
   ).rows[0];
-  const envelope = envelopeOf(row?.run_state);
-  if (!envelope || envelope.state.waiting?.kind !== "approval")
+  if (row && row.state !== "waiting") throw new Error("Already answered.");
+  const seen = envelopeOf(row?.run_state);
+  if (!seen || seen.state.waiting?.kind !== "approval")
     throw new Error("This run is not waiting for plan approval.");
+  const card = seen.state.waiting;
+  // Checked before the claim, so a refusal leaves the card answerable.
+  const principal = approved ? await principalFor(user, seen.request) : null;
+  if (approved && scope !== "once") {
+    if (!seen.state.selected_steps.length)
+      throw new Error("This plan has no changes to remember.");
+    if (
+      (scope === "goal" || scope === "routine") &&
+      (seen.request.automation?.kind !== scope || !seen.request.automation.id)
+    )
+      throw new Error(
+        `This approval can only be saved for the current ${scope}.`,
+      );
+  }
+
+  // The claim: only one answer moves this card off 'waiting'.
+  const claimed = (
+    await pool.query<{ run_state: unknown }>(
+      `UPDATE ai_jobs SET state = 'running', progress = $4::jsonb,
+         heartbeat_at = now()
+       WHERE id = $1 AND user_id = $2 AND state = 'waiting'
+         AND run_state->'state'->'waiting'->>'id' = $3
+       RETURNING run_state`,
+      [
+        jobId,
+        user.id,
+        card.id,
+        JSON.stringify({
+          label: approved
+            ? "Checking and applying the approved plan"
+            : "Holding the changes",
+        }),
+      ],
+    )
+  ).rows[0];
+  const envelope = envelopeOf(claimed?.run_state);
+  if (!envelope || envelope.state.waiting?.kind !== "approval")
+    throw new Error("Already answered.");
   const { request, state } = envelope;
   state.waiting = null;
   if (!approved) {
@@ -1253,14 +1386,6 @@ export async function answerAssistantApproval(
 
   if (scope !== "once") {
     const kinds = [...new Set(state.selected_steps.map(changeKind))];
-    if (!kinds.length) throw new Error("This plan has no changes to remember.");
-    if (scope === "goal" || scope === "routine") {
-      if (request.automation?.kind !== scope || !request.automation.id)
-        throw new Error(
-          `This approval can only be saved for the current ${scope}.`,
-        );
-    }
-    await assistantPrincipal(user);
     const saved = await assistantApprovalScopes(user.id);
     for (const kind of kinds)
       saved[kind] =
@@ -1272,22 +1397,13 @@ export async function answerAssistantApproval(
     );
   }
 
-  await pool.query(
-    `UPDATE ai_jobs SET state = 'running', progress = $3::jsonb,
-       heartbeat_at = now() WHERE id = $1 AND user_id = $2`,
-    [
-      jobId,
-      user.id,
-      JSON.stringify({ label: "Checking and applying the approved plan" }),
-    ],
-  );
   void (async () => {
+    const stopHeartbeat = keepAlive(jobId);
     try {
-      const principal = await assistantPrincipal(user);
       const applied = await approvePlan(
         user,
         jobId,
-        principal,
+        principal!,
         state,
         true,
         request,
@@ -1317,40 +1433,36 @@ export async function answerAssistantApproval(
             : "info",
         {
           plan_job: structured?.job ?? null,
+          ...(typeof structured?.proposal_id === "string"
+            ? { proposal_id: structured.proposal_id }
+            : {}),
         },
       );
     } catch (error) {
-      const reason =
+      blockRejectedPlan(
+        state,
         error instanceof Error
           ? error.message
-          : "The approved plan failed its checks.";
-      state.reports.push({
-        specialist: "planner",
-        task_id: `checker-${randomUUID().slice(0, 8)}`,
-        status: "blocked",
-        summary: "The code checker blocked this combined plan.",
-        findings: [reason],
-        steps: [],
-        open_questions: [],
-      });
-      state.plan = state.plan.filter(
-        (step) =>
-          !state.selected_steps.some((selected) => selected.id === step.id),
+          : "The approved plan failed its checks.",
+        "The code checker blocked the approved plan",
       );
-      state.selected_steps = [];
-      state.answer = null;
-      state.answer_to_person = `The code checker blocked the approved plan: ${reason}`;
       await saveProgress(jobId, envelope, {
         label: "Revising a blocked plan",
         step: state.lead_steps,
-      });
+      }).catch(() => undefined);
       void runAssistantJob(jobId, user, request, undefined, envelope, log);
+    } finally {
+      stopHeartbeat();
     }
   })();
   return { accepted: true, job_id: jobId };
 }
 
-/** Set the persisted cancellation flag and interrupt this API copy if local. */
+/**
+ * Stop a run. A Stop never applies anything: a job waiting on a question or
+ * an approval card is finished here with its staged work dropped; a running
+ * one gets the persisted flag, and this copy interrupts it if it holds it.
+ */
 export async function stopAssistantJob(
   jobId: string,
   user: UserRow,
@@ -1373,21 +1485,108 @@ export async function stopAssistantJob(
     return current;
   });
   if (!row) return false;
-  const active = activeRuns.get(jobId);
-  if (active) active.abort();
-  else if (row.state === "waiting") {
+  if (row.state === "waiting") {
     const envelope = envelopeOf(row.run_state);
-    if (envelope)
-      void runAssistantJob(
-        jobId,
-        user,
-        envelope.request,
-        undefined,
-        envelope,
-        log,
+    if (!envelope) {
+      await pool.query(
+        `UPDATE ai_jobs SET state = 'failed', error_status = 409,
+           error_message = $2, run_state = NULL WHERE id = $1`,
+        [jobId, STOPPED_TEXT],
       );
+      return true;
+    }
+    envelope.state.waiting = null;
+    envelope.state.selected_steps = [];
+    await finishJob(
+      jobId,
+      user,
+      envelope.request,
+      envelope.state,
+      STOPPED_TEXT,
+      "discarded",
+      { stopped: true },
+    ).catch((error) =>
+      log.error({ err: error }, "Assistant stop could not be recorded"),
+    );
+    return true;
   }
+  activeRuns.get(jobId)?.();
   return true;
+}
+
+/**
+ * Fail assistant jobs no copy is working on any more: running ones whose
+ * heartbeat stopped (a crash or a restart) and questions or approvals left
+ * unanswered for a week. Their automations are freed so they can run again.
+ * Returns the ids of the jobs it ended. Safe to call from several copies.
+ */
+export async function failStaleAssistantJobs(
+  now: Date = new Date(),
+): Promise<string[]> {
+  const interrupted =
+    "The assistant was interrupted by a server restart. Please ask again.";
+  const expired = "This request expired before it was answered.";
+  const ended = await transaction(async (db) => {
+    const rows = (
+      await db.query<{
+        id: string;
+        user_id: string;
+        run_state: unknown;
+        was: string;
+      }>(
+        `WITH old AS (
+           SELECT id, user_id, run_state, state AS was FROM ai_jobs
+            WHERE (state = 'running'
+                   AND heartbeat_at < $1::timestamptz - make_interval(secs => $2::double precision / 1000))
+               OR (state = 'waiting'
+                   AND heartbeat_at < $1::timestamptz - make_interval(secs => $3::double precision / 1000))
+            FOR UPDATE SKIP LOCKED
+         ), ended AS (
+           UPDATE ai_jobs j SET state = 'failed',
+                  error_status = CASE WHEN old.was = 'waiting' THEN 410 ELSE 503 END,
+                  error_message = CASE WHEN old.was = 'waiting' THEN $5 ELSE $4 END,
+                  run_state = NULL,
+                  progress = jsonb_build_object('label',
+                    CASE WHEN old.was = 'waiting' THEN 'Expired' ELSE 'Interrupted' END),
+                  heartbeat_at = $1::timestamptz
+             FROM old WHERE j.id = old.id
+           RETURNING j.id
+         )
+         SELECT old.id, old.user_id, old.run_state, old.was
+           FROM old JOIN ended USING (id)`,
+        [now, ASSISTANT_STALE_MS * 3, WAITING_EXPIRES_MS, interrupted, expired],
+      )
+    ).rows;
+    const ids = rows.map((row) => row.id);
+    if (!ids.length) return rows;
+    await db.query(
+      `UPDATE agent_routines SET current_job_id = NULL, claimed_at = NULL,
+         last_result = $2::jsonb, updated_at = now()
+       WHERE current_job_id = ANY($1::uuid[])`,
+      [ids, JSON.stringify({ error: "The scheduled run was interrupted." })],
+    );
+    await db.query(
+      `UPDATE goals_checkins SET status = 'failed', claimed_at = now()
+        WHERE job_id = ANY($1::uuid[]) AND status <> 'done'`,
+      [ids],
+    );
+    return rows;
+  });
+  for (const row of ended) {
+    const envelope = envelopeOf(row.run_state);
+    if (!envelope) continue;
+    await finishChatTurn(
+      row.user_id,
+      envelope.request.chat_id,
+      envelope.request.turn_id,
+      {
+        summary: row.was === "waiting" ? expired : interrupted,
+        trace: [],
+        failed: true,
+      },
+    ).catch(() => undefined);
+  }
+  return ended.map((row) => row.id);
 }
 
 /** Validate the job state before any polling or resume action uses it. */
