@@ -78,6 +78,12 @@ Mobile has its own `mobile/.env.example`:
 
 ### AI providers
 
+Assistant chat and automation requests enqueue a database job. The AI service
+(and single-process local server) consumes up to eight jobs at once. If a
+deployment runs the notifier without an AI service, set
+`AI_RUNNER_IN_WORKER=true` to enable its queue consumer; the default is false.
+Each claim uses a sixty-second lease, renewed while the job runs.
+
 The AI assistant is configured only in the app, never in `.env`. Sign in as an admin and open
 **Admin → AI** (on mobile: **Settings → Admin console → AI**), then:
 

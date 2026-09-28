@@ -32,6 +32,9 @@ import { scanAssistantIdeas } from "./assistant-ideas.js";
 import { scanAssistantGoals } from "./assistant-goals.js";
 import { scanAssistantRoutines } from "./assistant-routines.js";
 import { scanAssistantTasks } from "./assistant-tasks.js";
+import { env } from "../config/env.js";
+import { startAssistantRunner } from "../modules/ai/agent/runner.js";
+import type { FastifyBaseLogger } from "fastify";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -95,6 +98,10 @@ function startChatSweep() {
 }
 
 export async function runWorker() {
+  const stopRunner =
+    env.AI_RUNNER_IN_WORKER === "true"
+      ? startAssistantRunner(console as unknown as FastifyBaseLogger)
+      : undefined;
   let stopping = false;
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => {
@@ -265,6 +272,7 @@ export async function runWorker() {
   }
   // A chat sweep still in flight is abandoned: its claims expire and the
   // next run takes those chats again.
+  await stopRunner?.();
   await closeDatabase();
   closeEmail();
 }

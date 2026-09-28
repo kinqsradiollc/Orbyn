@@ -45,7 +45,7 @@ export const jobDead = (jobColumn: string, now: string) =>
 export const jobReleased = (jobColumn: string, now: string) =>
   `(${jobColumn} IS NULL OR NOT EXISTS (
      SELECT 1 FROM ai_jobs hj WHERE hj.id = ${jobColumn} AND (
-       (hj.state = 'running'
+       hj.state = 'queued' OR (hj.state = 'running'
          AND hj.heartbeat_at >= ${now}::timestamptz - make_interval(mins => ${STALE_RUN_MINUTES}))
        OR (hj.state = 'waiting'
          AND hj.heartbeat_at >= ${now}::timestamptz - make_interval(hours => ${STALE_WAIT_HOURS})))))`;

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { parseProjectDraft, PROJECT_DRAFT_PROMPT } from "./project-draft.js";
 import { proposeProject } from "./project-proposal.js";
 import { applyProposal } from "../proposals/service.js";
-import type { FastifyBaseLogger, FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import {
   chatRequest,
   fail,
@@ -36,13 +36,14 @@ import { KeptOutError, keptOutFor } from "../../lib/assistant-off.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
 import {
-  ASSISTANT_STALE_MS,
   answerAssistantApproval,
   answerAssistantQuestion,
   assistantRunStateFor,
-  runAssistantJob,
+  initialAssistantRun,
   stopAssistantJob,
 } from "./agent/run.js";
+
+import { startAssistantRunner } from "./agent/runner.js";
 
 /** Permission-check the chosen project or task before its facts reach a provider. */
 async function scopeOverview(
@@ -178,11 +179,14 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest) {
   };
 }
 
-// A live run refreshes its heartbeat every few seconds, even inside a long
-// provider call, so a minute without one means its copy went away.
-const STALE_MS = ASSISTANT_STALE_MS;
-
 export async function aiRoutes(app: FastifyInstance) {
+  let stopRunner: (() => Promise<void>) | undefined;
+  app.addHook("onReady", async () => {
+    stopRunner = startAssistantRunner(app.log);
+  });
+  app.addHook("onClose", async () => {
+    await stopRunner?.();
+  });
   app.get("/ai/jobs/active", async (r) => {
     const u = await authenticate(r);
     return (
@@ -290,11 +294,7 @@ export async function aiRoutes(app: FastifyInstance) {
     };
   });
 
-  const startChat = async (
-    u: UserRow,
-    d: ChatRequest,
-    log: FastifyBaseLogger,
-  ) => {
+  const startChat = async (u: UserRow, d: ChatRequest) => {
     try {
       new Intl.DateTimeFormat("en", { timeZone: d.timezone });
     } catch {
@@ -308,23 +308,16 @@ export async function aiRoutes(app: FastifyInstance) {
     const prepared = await prepareChatTurn(u, d);
     const job = (
       await pool.query(
-        `INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id) VALUES($1, $2::jsonb, $3, $4) RETURNING id`,
+        `INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id, state, run_state) VALUES($1, $2::jsonb, $3, $4, 'queued', $5::jsonb) RETURNING id`,
         [
           u.id,
           JSON.stringify({ label: "Starting the lead assistant" }),
           prepared.chatId,
           prepared.turnId,
+          JSON.stringify(initialAssistantRun(prepared.request)),
         ],
       )
     ).rows[0];
-    void runAssistantJob(
-      job.id,
-      u,
-      prepared.request as Parameters<typeof runAssistantJob>[2],
-      prepared.scoped,
-      undefined,
-      log,
-    );
     return { id: job.id, chat_id: prepared.chatId, turn_id: prepared.turnId };
   };
 
@@ -335,7 +328,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = chatRequest.parse(r.body);
     reply.code(202);
-    return startChat(u, d, r.log);
+    return startChat(u, d);
   });
 
   // Start a turn and hand back its job id; the answer comes from GET below.
@@ -343,19 +336,18 @@ export async function aiRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = chatRequest.parse(r.body);
     reply.code(202);
-    return startChat(u, d, r.log);
+    return startChat(u, d);
   });
 
-  // The turn's state: running, its proposal, or why it failed. A turn whose
-  // ai copy stopped mid-way (a server update) is reported as failed.
+  // The same job stays pollable while its worker lease is being recovered.
   app.get("/ai/chat/:id", async (r) => {
     const u = await authenticate(r);
     const job = (
       await pool.query(
-        `SELECT state, result, error_status, error_message, progress, run_state,
-                heartbeat_at < now() - ($3::int * interval '1 millisecond') AS stale
-           FROM ai_jobs WHERE id=$1 AND user_id=$2`,
-        [idParam(r), u.id, STALE_MS],
+        `UPDATE ai_jobs SET last_polled_at = now()
+         WHERE id=$1 AND user_id=$2
+         RETURNING state, result, error_status, error_message, progress, run_state`,
+        [idParam(r), u.id],
       )
     ).rows[0];
     if (!job) fail(404, "Conversation not found");
@@ -389,13 +381,6 @@ export async function aiRoutes(app: FastifyInstance) {
         state: "failed",
         status: job.error_status,
         message: job.error_message,
-      };
-    if (job.stale)
-      return {
-        state: "failed",
-        status: 503,
-        message:
-          "The assistant was interrupted, probably by a server update. Please ask again.",
       };
     return { state: "running", progress: job.progress };
   });

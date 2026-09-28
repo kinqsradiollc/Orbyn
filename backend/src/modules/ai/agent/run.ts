@@ -74,6 +74,13 @@ type RunEnvelope = {
   state: LeadState;
 };
 
+/** The initial checkpoint is committed with the queued job, before any AI call. */
+export function initialAssistantRun(
+  request: PersistedChatRequest,
+): RunEnvelope {
+  return { version: 1, request, state: newState(request.message) };
+}
+
 /** Stop handles of the runs on this copy, by job. */
 const activeRuns = new Map<string, () => void>();
 
@@ -373,7 +380,8 @@ function saveProgress(
     .then(async () => {
       await pool.query(
         `UPDATE ai_jobs SET run_state = $2::jsonb, progress = $3::jsonb,
-           heartbeat_at = now() WHERE id = $1 AND state = 'running'`,
+           heartbeat_at = now(), lease_until = now() + interval '60 seconds'
+           WHERE id = $1 AND state = 'running'`,
         values,
       );
     });
@@ -399,7 +407,7 @@ function keepAlive(jobId: string): () => void {
   const beat = () =>
     void pool
       .query(
-        "UPDATE ai_jobs SET heartbeat_at = now() WHERE id = $1 AND state = 'running'",
+        "UPDATE ai_jobs SET heartbeat_at = now(), lease_until = now() + interval '60 seconds' WHERE id = $1 AND state = 'running'",
         [jobId],
       )
       .catch(() => undefined);
@@ -716,8 +724,8 @@ export async function startAssistantAutomation(input: {
   const jobId = await transaction(async (db) => {
     const row = (
       await db.query<{ id: string }>(
-        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id)
-         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5) RETURNING id`,
+        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id, state)
+         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, 'queued') RETURNING id`,
         [
           user.id,
           JSON.stringify({ label: "Starting a scheduled run" }),
@@ -735,14 +743,6 @@ export async function startAssistantAutomation(input: {
     return row?.id ?? null;
   });
   if (!jobId) return null;
-  void runAssistantJob(
-    jobId,
-    user,
-    request,
-    undefined,
-    undefined,
-    input.logger,
-  );
   return jobId;
 }
 
@@ -1611,7 +1611,7 @@ export async function stopAssistantJob(
     const current = (
       await db.query<{ state: string; run_state: unknown }>(
         `SELECT state, run_state FROM ai_jobs WHERE id = $1 AND user_id = $2
-          AND state IN ('running', 'waiting') FOR UPDATE`,
+          AND state IN ('queued', 'running', 'waiting') FOR UPDATE`,
         [jobId, user.id],
       )
     ).rows[0];
@@ -1624,7 +1624,7 @@ export async function stopAssistantJob(
     return current;
   });
   if (!row) return false;
-  if (row.state === "waiting") {
+  if (row.state === "waiting" || row.state === "queued") {
     const envelope = envelopeOf(row.run_state);
     if (!envelope) {
       await pool.query(
