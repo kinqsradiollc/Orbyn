@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   agentSettingsInput,
+  defaultNightShift,
+  nightShiftInput,
+  type NightShiftSettings,
   fail,
   type AgentContextSettings,
   type PersonalAgentSettings,
@@ -24,6 +27,59 @@ async function firstParty(r: FastifyRequest) {
 }
 
 export async function agentContextRoutes(app: FastifyInstance) {
+  app.get(
+    "/me/assistant/night-shift",
+    async (r): Promise<NightShiftSettings> => {
+      const u = await firstParty(r);
+      const row = (
+        await reader(r.headers).query<{
+          night_shift: unknown;
+          work_start: string | null;
+          work_end: string | null;
+          timezone: string | null;
+        }>(
+          `SELECT a.night_shift, p.work_start::text, p.work_end::text, p.timezone
+        FROM users u LEFT JOIN agent_settings a ON a.user_id = u.id
+        LEFT JOIN planner_prefs p ON p.user_id = u.id WHERE u.id = $1`,
+          [u.id],
+        )
+      ).rows[0];
+      const saved = nightShiftInput.safeParse(row?.night_shift);
+      return saved.success
+        ? saved.data
+        : defaultNightShift({
+            work_start: row?.work_start ?? undefined,
+            work_end: row?.work_end ?? undefined,
+            timezone: row?.timezone ?? undefined,
+          });
+    },
+  );
+  app.put(
+    "/me/assistant/night-shift",
+    async (r): Promise<NightShiftSettings> => {
+      const u = await firstParty(r);
+      const input = nightShiftInput.parse(r.body);
+      await transaction(async (db) => {
+        await db.query(
+          `INSERT INTO agent_settings(user_id, night_shift) VALUES($1, $2::jsonb)
+        ON CONFLICT(user_id) DO UPDATE SET night_shift = EXCLUDED.night_shift, updated_at = now()`,
+          [u.id, JSON.stringify(input)],
+        );
+        await audit(
+          {
+            actorId: u.id,
+            action: "assistant_night_shift.set",
+            targetType: "user",
+            targetId: u.id,
+            details: { enabled: input.enabled },
+            requestId: r.id,
+          },
+          db,
+        );
+      });
+      return input;
+    },
+  );
   app.get("/me/agent", async (r): Promise<PersonalAgentSettings> => {
     const u = await firstParty(r);
     const row = (

@@ -10,6 +10,7 @@ import {
   type AgentRuleInput,
   type AgentContextSettings,
   type PersonalAgentSettings,
+  type NightShiftSettings,
   type Goal,
   type GoalCheckin,
   type GoalInput,
@@ -2969,6 +2970,16 @@ export class OrbynClient {
   }
   agentSettings() {
     return this.request<PersonalAgentSettings>("/me/agent");
+  }
+  /** The person's optional night window and morning review preference. */
+  nightShiftSettings() {
+    return this.request<NightShiftSettings>("/me/assistant/night-shift");
+  }
+  updateNightShiftSettings(input: NightShiftSettings) {
+    return this.request<NightShiftSettings>("/me/assistant/night-shift", {
+      method: "PUT",
+      body: input,
+    });
   }
   updateAgentSettings(input: AgentIdentityInput) {
     return this.request<PersonalAgentSettings>("/me/agent", {
