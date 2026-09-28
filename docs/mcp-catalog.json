@@ -8974,6 +8974,104 @@
         },
         "required": ["status", "goals", "goal", "checkins"]
       }
+    },
+    {
+      "name": "manage_agent_routines",
+      "title": "Manage assistant routines",
+      "description": "List, create, update, pause, resume or delete recurring instructions for Orbyn's built-in assistant. Use a supported time zone, an RRULE such as FREQ=WEEKLY;BYDAY=MO, and the next local run time. Each due run goes through the assistant and follows the saved approval scope.",
+      "kind": "destructive",
+      "access": "write",
+      "toolset": "core",
+      "mode": "write",
+      "tier": "W2",
+      "annotations": {
+        "title": "Manage assistant routines",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list", "create", "update", "pause", "resume", "delete"]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "routine": {
+            "type": "object",
+            "properties": {
+              "instruction": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "rrule": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "timezone": {
+                "default": "UTC",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "next_run_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "paused": { "default": false, "type": "boolean" }
+            },
+            "required": ["instruction", "rrule", "next_run_at"],
+            "additionalProperties": false
+          },
+          "changes": {
+            "type": "object",
+            "properties": {
+              "instruction": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "rrule": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "timezone": {
+                "default": "UTC",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "next_run_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "paused": { "default": false, "type": "boolean" }
+            },
+            "additionalProperties": false
+          },
+          "client_ref": {
+            "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "done"] },
+          "routines": { "type": "array", "items": {} },
+          "routine": { "anyOf": [{}, { "type": "null" }] }
+        },
+        "required": ["status", "routines", "routine"]
+      }
     }
   ],
   "resources": [
@@ -9197,7 +9295,8 @@
         "ack_inbox",
         "ask_person",
         "apply_plan",
-        "manage_goals"
+        "manage_goals",
+        "manage_agent_routines"
       ]
     },
     {
@@ -9302,6 +9401,7 @@
       "changes": [
         "Ideas (Muse M7): the Assistant can suggest up to three small daily changes from planner context. Ideas wait in Review for the person's approval; the planner remains a planner. 63 tools, 31 core.",
         "Goals (Muse M8): manage_goals is a core tool for private dated goals, weekly check-ins and replanning. The registry has no global tool-count cap; this snapshot has 64 tools, 32 core. Planner capabilities stay in the planner toolset.",
+        "Routines and Upcoming (Muse M9): manage_agent_routines is a core tool for scheduled Assistant runs with pause, resume and saved approval scopes. Upcoming shows personal goals, weekly check-ins and routines on web and phone. The registry has 65 listable tools, 33 core, with no global ceiling.",
         "Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.",
         "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core."
       ]
@@ -9349,5 +9449,5 @@
       ]
     }
   ],
-  "routes": { "covered": 264, "excluded": 209, "pending": 0 }
+  "routes": { "covered": 268, "excluded": 211, "pending": 0 }
 }

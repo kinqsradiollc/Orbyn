@@ -29,6 +29,7 @@ import { drainMemoryQueue } from "./memory.js";
 import { sweepOldChats } from "./chat-sweep.js";
 import { scanAssistantIdeas } from "./assistant-ideas.js";
 import { scanAssistantGoals } from "./assistant-goals.js";
+import { scanAssistantRoutines } from "./assistant-routines.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -62,6 +63,8 @@ const CHAT_SWEEP_MS = 86_400_000;
 const ASSISTANT_IDEAS_MS = 60_000;
 /** Weekly goal check-ins are queued off the request path. */
 const ASSISTANT_GOALS_MS = 60_000;
+/** Scheduled Assistant routines are claimed off the request path. */
+const ASSISTANT_ROUTINES_MS = 60_000;
 
 export async function runWorker() {
   let stopping = false;
@@ -79,6 +82,7 @@ export async function runWorker() {
   let lastChatSwept = -Infinity;
   let lastAssistantIdeas = -Infinity;
   let lastAssistantGoals = -Infinity;
+  let lastAssistantRoutines = -Infinity;
   let lastClock = -Infinity;
   while (!stopping) {
     let backlog = false;
@@ -154,6 +158,14 @@ export async function runWorker() {
             // A failed weekly check-in stays eligible after its claim timeout.
           }
           lastAssistantGoals = tick();
+        }
+        if (tick() - lastAssistantRoutines >= ASSISTANT_ROUTINES_MS) {
+          try {
+            await scanAssistantRoutines();
+          } catch {
+            // A due routine remains eligible after its claim timeout.
+          }
+          lastAssistantRoutines = tick();
         }
         // Study cards for pages changed outside the API's own saves (imports,
         // templates, the assistant, team changes): the API syncs what it

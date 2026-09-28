@@ -62,6 +62,7 @@ export const CHANGELOG: { date: string; changes: string[] }[] = [
     changes: [
       "Ideas (Muse M7): the Assistant can suggest up to three small daily changes from planner context. Ideas wait in Review for the person's approval; the planner remains a planner. 63 tools, 31 core.",
       "Goals (Muse M8): manage_goals is a core tool for private dated goals, weekly check-ins and replanning. The registry has no global tool-count cap; this snapshot has 64 tools, 32 core. Planner capabilities stay in the planner toolset.",
+      "Routines and Upcoming (Muse M9): manage_agent_routines is a core tool for scheduled Assistant runs with pause, resume and saved approval scopes. Upcoming shows personal goals, weekly check-ins and routines on web and phone. The registry has 65 listable tools, 33 core, with no global ceiling.",
       "Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.",
       "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.",
     ],

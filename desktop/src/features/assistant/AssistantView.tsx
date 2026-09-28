@@ -26,6 +26,7 @@ import {
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
 import { ProposalReview } from "../../components/ProposalReview";
+import { AssistantUpcoming } from "./AssistantUpcoming";
 import { client } from "../../lib/api";
 import type { Assistant } from "../../hooks/useAssistant";
 import { stagger } from "../../lib/motion";
@@ -125,6 +126,7 @@ export function AssistantView({
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identityError, setIdentityError] = useState("");
   const [personAnswer, setPersonAnswer] = useState("");
+  const [upcomingOpen, setUpcomingOpen] = useState(false);
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
     void client
@@ -391,6 +393,14 @@ export function AssistantView({
           >
             <SquarePen size={16} />
           </button>
+          <button
+            type="button"
+            className="ai-ghost ai-upcoming-trigger"
+            aria-expanded={upcomingOpen}
+            onClick={() => setUpcomingOpen((open) => !open)}
+          >
+            {upcomingOpen ? "Close Upcoming" : "Upcoming"}
+          </button>
           {scope && (
             <button
               type="button"
@@ -416,6 +426,7 @@ export function AssistantView({
           )}
         </div>
 
+        {upcomingOpen && <AssistantUpcoming />}
 
         <div className="ai-thread" aria-live="polite" ref={threadRef}>
           {empty && <h2 className="ai-greeting">What’s on your mind today?</h2>}

@@ -14,6 +14,10 @@ import {
   type GoalCheckin,
   type GoalInput,
   type GoalUpdate,
+  type AgentRoutine,
+  type AgentRoutineInput,
+  type AgentRoutineUpdate,
+  type ApprovalScopes,
   type AssistantIdea,
   type AgentIdentityInput,
   type NewAgentWake,
@@ -1190,6 +1194,35 @@ export class OrbynClient {
   }
   goalCheckins(id: string) {
     return this.request<GoalCheckin[]>(`/me/goals/${id}/checkins`);
+  }
+  listAgentRoutines() {
+    return this.request<AgentRoutine[]>("/me/agent-routines");
+  }
+  createAgentRoutine(input: AgentRoutineInput) {
+    return this.request<AgentRoutine>("/me/agent-routines", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateAgentRoutine(id: string, input: AgentRoutineUpdate) {
+    return this.request<AgentRoutine>(`/me/agent-routines/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteAgentRoutine(id: string) {
+    return this.request<{ deleted: boolean }>(`/me/agent-routines/${id}`, {
+      method: "DELETE",
+    });
+  }
+  assistantApprovalScopes() {
+    return this.request<ApprovalScopes>("/me/assistant/approval-scopes");
+  }
+  setAssistantApprovalScopes(input: ApprovalScopes) {
+    return this.request<ApprovalScopes>("/me/assistant/approval-scopes", {
+      method: "PUT",
+      body: input,
+    });
   }
   assistantIdeas() {
     return this.request<AssistantIdea[]>("/me/assistant/ideas");

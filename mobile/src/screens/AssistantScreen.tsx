@@ -24,6 +24,7 @@ import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
+import { AssistantUpcoming } from "../components/AssistantUpcoming";
 import { MoreMenu, type MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
 import { Field } from "../components/Field";
@@ -90,6 +91,7 @@ export function AssistantScreen({
   const [identityPersona, setIdentityPersona] = useState("");
   const [identitySaving, setIdentitySaving] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [upcomingOpen, setUpcomingOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<AiChatSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
@@ -371,7 +373,16 @@ export function AssistantScreen({
           disabled={locked}
           onPress={() => setHistoryOpen(true)}
         />
+        <SmallAction
+          label="Upcoming"
+          disabled={locked}
+          onPress={() => setUpcomingOpen(true)}
+        />
       </View>
+      <AssistantUpcoming
+        visible={upcomingOpen}
+        onClose={() => setUpcomingOpen(false)}
+      />
       {scope && (
         <View style={s.scopeRow}>
           <SmallAction

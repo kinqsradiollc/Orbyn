@@ -97,6 +97,10 @@ export const COVERED: Record<string, string[]> = {
   "PUT /me/goals/:id": ["manage_goals"],
   "DELETE /me/goals/:id": ["manage_goals"],
   "GET /me/goals/:id/checkins": ["manage_goals"],
+  "GET /me/agent-routines": ["manage_agent_routines"],
+  "POST /me/agent-routines": ["manage_agent_routines"],
+  "PUT /me/agent-routines/:id": ["manage_agent_routines"],
+  "DELETE /me/agent-routines/:id": ["manage_agent_routines"],
   "GET /planner/prefs": ["get_context"],
   "GET /today": ["get_today"],
   // Merged in the M1–M4 integration and classified in A1-late.
@@ -455,6 +459,8 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "PATCH /ai/chats/:id": "hosted_ai",
   "POST /ai/chats/:id/save-note": "hosted_ai",
   "GET /me/assistant/ideas": "assistant_control",
+  "GET /me/assistant/approval-scopes": "assistant_control",
+  "PUT /me/assistant/approval-scopes": "assistant_control",
   // The list of kept originals (files to download); the setting is covered.
   "GET /me/originals": "kept_files",
   "GET /docs/:id/original": "kept_files",

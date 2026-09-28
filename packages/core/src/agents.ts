@@ -274,6 +274,11 @@ export type AgentGrant = {
   space_trust: AgentSpaceTrust;
   /** Ask-first items it may do alone. */
   acts_alone: AgentAskFirst[];
+  /** Built-in assistant approval scope by change kind. */
+  approval_scopes?: Record<
+    string,
+    "always" | { scope: "goal" | "routine"; id: string }
+  >;
   personal: boolean;
   /** Teams it sees; null means every team the person is in (old API keys). */
   team_ids: string[] | null;

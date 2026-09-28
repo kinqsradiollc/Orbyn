@@ -66,10 +66,13 @@ process.env.SMTP_HOST = "";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
+const { cachedSettings } = await import("../src/lib/settings.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { scanAssistantIdeas } = await import("../src/worker/assistant-ideas.js");
 const { scanAssistantGoals } = await import("../src/worker/assistant-goals.js");
+const { scanAssistantRoutines } =
+  await import("../src/worker/assistant-routines.js");
 const app = await buildApp();
 const users: string[] = [];
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -722,6 +725,136 @@ test("the weekly goal scanner claims one local week and excludes kept-out work",
     ),
     "kept-out goal content never reaches the assistant provider",
   );
+});
+
+test("routines validate ownership and approval scopes, then run once when due", async () => {
+  requests.length = 0;
+  respond = () => ({ content: "The scheduled routine is complete." });
+  const user = await register();
+  const person = (
+    await pool.query<{ name: string; role: "member" }>(
+      "SELECT name, role FROM users WHERE id = $1",
+      [user.id],
+    )
+  ).rows[0];
+  const principal = await assistantPrincipal({ ...person, id: user.id });
+  const anonymous = await app.inject({
+    url: "/me/agent-routines",
+    remoteAddress: nextAddress(),
+  });
+  assert.equal(anonymous.statusCode, 401);
+
+  const invalid = await app.inject({
+    method: "POST",
+    url: "/me/agent-routines",
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+    payload: {
+      instruction: "Review my priorities",
+      rrule: "FREQ=NEVER",
+      timezone: "UTC",
+      next_run_at: new Date(Date.now() + 3_600_000).toISOString(),
+    },
+  });
+  assert.equal(invalid.statusCode, 422, invalid.body);
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/me/agent-routines",
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+    payload: {
+      instruction: "Review my priorities",
+      rrule: "FREQ=DAILY",
+      timezone: "Australia/Melbourne",
+      next_run_at: new Date(Date.now() + 3_600_000).toISOString(),
+    },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const other = await register();
+  const hidden = await app.inject({
+    method: "PUT",
+    url: `/me/agent-routines/${created.json().id}`,
+    remoteAddress: nextAddress(),
+    headers: auth(other.token),
+    payload: { paused: true },
+  });
+  assert.equal(hidden.statusCode, 404, hidden.body);
+
+  const scopes = await app.inject({
+    url: "/me/assistant/approval-scopes",
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+  });
+  assert.equal(scopes.statusCode, 200, scopes.body);
+  assert.deepEqual(scopes.json(), {});
+  const savedScopes = await app.inject({
+    method: "PUT",
+    url: "/me/assistant/approval-scopes",
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+    payload: { tasks: { scope: "routine", id: created.json().id } },
+  });
+  assert.equal(savedScopes.statusCode, 200, savedScopes.body);
+  assert.deepEqual(savedScopes.json(), {
+    tasks: { scope: "routine", id: created.json().id },
+  });
+  const invalidScopes = await app.inject({
+    method: "PUT",
+    url: "/me/assistant/approval-scopes",
+    remoteAddress: nextAddress(),
+    headers: auth(user.token),
+    payload: { tasks: { scope: "routine", id: "not-a-uuid" } },
+  });
+  assert.equal(invalidScopes.statusCode, 422, invalidScopes.body);
+
+  const settings = cachedSettings();
+  const previousLimit = settings.rate_limit_per_minute;
+  settings.rate_limit_per_minute = 1;
+  try {
+    const fromOneAddress = () =>
+      app.inject({
+        url: "/me/agent-routines",
+        remoteAddress: "10.254.0.10",
+        headers: auth(user.token),
+      });
+    assert.equal((await fromOneAddress()).statusCode, 200);
+    const limited = await fromOneAddress();
+    assert.equal(limited.statusCode, 429, limited.body);
+  } finally {
+    settings.rate_limit_per_minute = previousLimit;
+  }
+
+  const now = new Date();
+  const due = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO agent_routines (user_id, instruction, rrule, timezone, next_run_at)
+       VALUES ($1, 'Send me a weekly review', 'FREQ=DAILY', 'Australia/Melbourne', $2)
+       RETURNING id`,
+      [user.id, new Date(now.getTime() - 60_000)],
+    )
+  ).rows[0].id;
+  assert.equal(await scanAssistantRoutines(now, { only: [user.id] }), 1);
+  assert.equal(await scanAssistantRoutines(now, { only: [user.id] }), 0);
+  const job = (
+    await pool.query<{ current_job_id: string; next_run_at: Date }>(
+      "SELECT current_job_id, next_run_at FROM agent_routines WHERE id = $1",
+      [due],
+    )
+  ).rows[0];
+  assert.ok(job.current_job_id);
+  assert.ok(job.next_run_at > now, "the recurrence advances before the run starts");
+  const result = await poll(user.token, job.current_job_id, ["done", "failed"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  const completed = (
+    await pool.query<{ current_job_id: string | null; last_result: unknown }>(
+      "SELECT current_job_id, last_result FROM agent_routines WHERE id = $1",
+      [due],
+    )
+  ).rows[0];
+  assert.equal(completed.current_job_id, null);
+  assert.match(JSON.stringify(completed.last_result), /scheduled routine is complete/i);
+  assert.ok(principal.grant_id);
 });
 
 test("the Assistant ideas feed hides proposals that reference kept-out work", async () => {
