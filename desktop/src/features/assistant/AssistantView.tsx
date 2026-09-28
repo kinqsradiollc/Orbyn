@@ -523,7 +523,7 @@ export function AssistantView({
                     items={items}
                     before={turn.before}
                     busy={locked}
-                    state={turn.state}
+                    state={turn.nudge ? "info" : turn.state}
                     onApply={(giveTasksDeadlines) =>
                       void apply(turn.id, giveTasksDeadlines)
                     }
@@ -540,7 +540,13 @@ export function AssistantView({
                     }
                   />
                   {turn.nudge && (
-                    <ReminderNudge card={turn.nudge} busy={locked} />
+                    <ReminderNudge
+                      card={turn.nudge}
+                      busy={locked}
+                      chatId={activeChatId}
+                      turnId={turn.turnId}
+                      skipped={turn.state === "discarded"}
+                    />
                   )}
                   {turn.changesJob && (
                     <TurnChanges

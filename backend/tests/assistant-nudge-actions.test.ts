@@ -1,0 +1,299 @@
+import { before, after, test } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import "./setup.js";
+import { helpers } from "./mcp-helpers.js";
+import { OrbynClient, performReminderAction } from "@orbyn/api-client";
+import type { ReminderNudgeCard } from "@orbyn/core";
+const { pool } = await import("../src/db/pool.js");
+const { migrate } = await import("../src/db/migrate.js");
+const { buildApp } = await import("../src/app.js");
+const app = await buildApp();
+const h = helpers(app);
+const users: string[] = [];
+before(async () => {
+  await migrate();
+});
+after(async () => {
+  await app.close();
+  await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [users]);
+  await pool.end();
+});
+async function fixture() {
+  const me = await h.register("nudge-actions");
+  users.push(me.id);
+  const response = await h.call(me.token, "POST", "/items", {
+    title: "Action task",
+    kind: "task",
+    status: "todo",
+    priority: "medium",
+    due_at: "2050-01-10T17:00:00Z",
+    estimate_minutes: 30,
+  });
+  assert.equal(response.statusCode, 201, response.body);
+  const item = response.json();
+  const client = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    getToken: () => me.token,
+    fetch: async (input, init) => {
+      const url = new URL(String(input));
+      const headers = Object.fromEntries(new Headers(init?.headers));
+      const result = await app.inject({
+        method: init?.method ?? "GET",
+        url: url.pathname + url.search,
+        headers,
+        ...(init?.body ? { payload: String(init.body) } : {}),
+      });
+      return new Response(result.body || null, {
+        status: result.statusCode,
+        headers: result.headers as Record<string, string>,
+      });
+    },
+  });
+  const card: ReminderNudgeCard = {
+    id: randomUUID(),
+    key: `task:${item.id}`,
+    entity_kind: "task",
+    entity_id: item.id,
+    actions: ["done", "move", "skip", "book"],
+  };
+  return { me, item, card, client };
+}
+test("Done and Move use normal item writes and Undo preserves the original task", async () => {
+  const { item, card, client } = await fixture();
+  const done = await performReminderAction(client, card, "done");
+  assert.equal((await client.getItem(item.id)).status, "done");
+  await done.undo();
+  assert.equal((await client.getItem(item.id)).status, "todo");
+  const moved = await performReminderAction(client, card, "move", {
+    day: "2050-01-09",
+  });
+  assert.equal(
+    (await client.getItem(item.id)).due_at,
+    "2050-01-09T17:00:00.000Z",
+  );
+  await moved.undo();
+  assert.equal(
+    new Date((await client.getItem(item.id)).due_at!).toISOString(),
+    "2050-01-10T17:00:00.000Z",
+  );
+});
+test("Undo refuses to overwrite a later item edit", async () => {
+  const { item, card, client } = await fixture();
+  const receipt = await performReminderAction(client, card, "done");
+  const current = await client.getItem(item.id);
+  const { itemBody } = await import("@orbyn/core");
+  await client.updateItem(item.id, {
+    ...itemBody(current),
+    title: "Edited later",
+  });
+  await assert.rejects(receipt.undo(), { statusCode: 409 });
+  assert.equal((await client.getItem(item.id)).title, "Edited later");
+});
+test("Book time creates a real free working session and Undo removes it", async () => {
+  const { item, card, client } = await fixture();
+  const day = new Date("2050-01-03T12:00:00Z");
+  while ([0, 6].includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() + 1);
+  const receipt = await performReminderAction(client, card, "book", {
+    day: day.toISOString().slice(0, 10),
+    minutes: 45,
+  });
+  const sessions = (await client.itemSessions(item.id)).sessions;
+  assert.equal(sessions.length, 1);
+  assert.equal(
+    (Date.parse(sessions[0].end_at) - Date.parse(sessions[0].start_at)) / 60000,
+    45,
+  );
+  await receipt.undo();
+  assert.equal((await client.itemSessions(item.id)).sessions.length, 0);
+});
+test("Skip updates only the saved reminder turn and Undo restores it without editing work", async () => {
+  const { item, card, client, me } = await fixture();
+  const chatId = randomUUID();
+  await pool.query(
+    `INSERT INTO ai_chats(id, user_id, title, origin, turns) VALUES($1, $2, 'Reminders', 'reminders', $3)`,
+    [
+      chatId,
+      me.id,
+      JSON.stringify([
+        {
+          role: "assistant",
+          turn_id: card.id,
+          text: "Task reminder",
+          outcome: "info",
+          nudge: card,
+        },
+      ]),
+    ],
+  );
+  const receipt = await performReminderAction(client, card, "skip", {
+    chatId,
+    turnId: card.id,
+  });
+  assert.equal((await client.aiChat(chatId)).turns[0].outcome, "discarded");
+  assert.equal((await client.getItem(item.id)).status, "todo");
+  await receipt.undo();
+  assert.equal((await client.aiChat(chatId)).turns[0].outcome, "info");
+});
+
+test("promise actions update the existing record and Undo restores it", async () => {
+  const { client, card } = await fixture();
+  const record = await client.createWorkRecord({
+    kind: "promise",
+    title: "Promise to test",
+    due_at: "2050-01-10T17:00:00Z",
+  });
+  const promise = {
+    ...card,
+    entity_kind: "record" as const,
+    entity_id: record.id,
+    actions: ["done", "move", "skip"] as ReminderNudgeCard["actions"],
+  };
+  const done = await performReminderAction(client, promise, "done");
+  assert.equal((await client.getWorkRecord(record.id)).status, "done");
+  await done.undo();
+  assert.equal((await client.getWorkRecord(record.id)).status, record.status);
+  const moved = await performReminderAction(client, promise, "move", {
+    day: "2050-01-09",
+  });
+  assert.equal(
+    new Date((await client.getWorkRecord(record.id)).due_at!).toISOString(),
+    "2050-01-09T17:00:00.000Z",
+  );
+  await moved.undo();
+  assert.equal((await client.getWorkRecord(record.id)).due_at, record.due_at);
+});
+test("a started booked session cannot be removed by reminder Undo", async () => {
+  const { client, card, item } = await fixture();
+  const receipt = await performReminderAction(client, card, "book", {
+    day: "2050-01-03",
+    minutes: 30,
+  });
+  const block = (await client.itemSessions(item.id)).sessions[0];
+  await pool.query("UPDATE time_blocks SET started_at = now() WHERE id = $1", [
+    block.id,
+  ]);
+  await assert.rejects(receipt.undo(), { statusCode: 409 });
+  assert.equal((await client.itemSessions(item.id)).sessions.length, 1);
+});
+test("invalid days and unavailable choices fail without changing work", async () => {
+  const { client, card, item } = await fixture();
+  await assert.rejects(
+    performReminderAction(client, card, "move", { day: "2050-02-30" }),
+    { statusCode: 422 },
+  );
+  await assert.rejects(
+    performReminderAction(client, { ...card, actions: ["skip"] }, "done"),
+    { statusCode: 422 },
+  );
+  assert.equal((await client.getItem(item.id)).status, "todo");
+});
+
+test("Move preserves all-day midnight boundaries over Melbourne DST", async () => {
+  const { client, card, item } = await fixture();
+  const { itemBody } = await import("@orbyn/core");
+  const before = await client.updateItem(item.id, {
+    ...itemBody(await client.getItem(item.id)),
+    timezone: "Australia/Melbourne",
+    all_day: true,
+    due_at: "2026-10-02T14:00:00Z",
+    end_at: "2026-10-03T14:00:00Z",
+  });
+  const moved = await performReminderAction(client, card, "move", {
+    day: "2026-10-04",
+  });
+  const after = await client.getItem(item.id);
+  assert.equal(
+    new Date(after.due_at!).toISOString(),
+    "2026-10-03T14:00:00.000Z",
+  );
+  assert.equal(
+    new Date(after.end_at!).toISOString(),
+    "2026-10-04T13:00:00.000Z",
+  );
+  await moved.undo();
+  assert.equal((await client.getItem(item.id)).due_at, before.due_at);
+});
+test("routine Move uses the existing routine endpoint and Undo restores the next run", async () => {
+  const { client, card } = await fixture();
+  const routine = await client.createAgentRoutine({
+    instruction: "Review my week",
+    rrule: "FREQ=WEEKLY;BYDAY=FR",
+    timezone: "UTC",
+    next_run_at: "2050-01-07T17:00:00Z",
+  });
+  const routineCard = {
+    ...card,
+    entity_kind: "routine" as const,
+    entity_id: routine.id,
+    actions: ["move", "skip"] as ReminderNudgeCard["actions"],
+  };
+  const receipt = await performReminderAction(client, routineCard, "move", {
+    day: "2050-01-08",
+  });
+  assert.equal(
+    new Date(
+      (await client.listAgentRoutines()).find((r) => r.id === routine.id)!
+        .next_run_at,
+    ).toISOString(),
+    "2050-01-08T17:00:00.000Z",
+  );
+  await receipt.undo();
+  assert.equal(
+    (await client.listAgentRoutines()).find((r) => r.id === routine.id)!
+      .next_run_at,
+    routine.next_run_at,
+  );
+});
+
+test("ordinary action endpoints enforce sign-in, team write access, valid JSON and rate limits", async () => {
+  const { client, item, me, card } = await fixture();
+  const viewer = await h.register("nudge-viewer");
+  users.push(viewer.id);
+  assert.equal(
+    (await h.call(null, "PUT", `/items/${item.id}`, {})).statusCode,
+    401,
+  );
+  const team = await h.team(me, "Reminder team", [[viewer, "viewer"]]);
+  const { itemBody } = await import("@orbyn/core");
+  const moved = await client.updateItem(item.id, {
+    ...itemBody(await client.getItem(item.id)),
+    team_id: team,
+  });
+  assert.equal(
+    (
+      await h.call(viewer.token, "PUT", `/items/${item.id}`, {
+        ...itemBody(moved),
+        status: "done",
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "PUT",
+        url: `/items/${item.id}`,
+        headers: {
+          authorization: `Bearer ${me.token}`,
+          "content-type": "application/json",
+        },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+  const statuses: number[] = [];
+  for (let n = 0; n < 31; n++)
+    statuses.push(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/me/assistant/reminder-nudges/${card.id}/stop`,
+          headers: { authorization: `Bearer ${me.token}` },
+          remoteAddress: "10.98.4.3",
+        })
+      ).statusCode,
+    );
+  assert.ok(statuses.includes(429));
+});

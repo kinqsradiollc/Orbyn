@@ -508,11 +508,15 @@ async function updateChat(
           outcome: patch.outcome,
           history_text:
             turn.text +
-            (patch.outcome === "applied"
-              ? "\n\n(Proposed changes were approved and saved.)"
-              : patch.outcome === "discarded"
-                ? "\n\n(Proposed changes were discarded; nothing changed.)"
-                : ""),
+            (turn.nudge
+              ? patch.outcome === "discarded"
+                ? "\n\n(Reminder skipped.)"
+                : ""
+              : patch.outcome === "applied"
+                ? "\n\n(Proposed changes were approved and saved.)"
+                : patch.outcome === "discarded"
+                  ? "\n\n(Proposed changes were discarded; nothing changed.)"
+                  : ""),
         };
       });
       if (!changed) fail(404, "Chat turn not found");

@@ -1,41 +1,203 @@
-import { useState } from "react";
-import type { ReminderNudgeCard } from "@orbyn/core";
+import { useEffect, useState } from "react";
+import { localDateKey, type ReminderNudgeCard } from "@orbyn/core";
+import {
+  performReminderAction,
+  type ReminderActionReceipt,
+} from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
+import { MoreHorizontal } from "lucide-react";
+import { Popover } from "../../components/Popover";
+import "./reminder-nudge.css";
+import { DateField } from "../../components/DateField";
 
-/** Stop future reminders for the source behind a saved chat card. */
+/** Explicit work choices and Undo on a saved personal reminder. */
 export function ReminderNudge({
   card,
   busy,
+  chatId,
+  turnId,
+  skipped,
 }: {
   card: ReminderNudgeCard;
   busy: boolean;
+  chatId: string | null;
+  turnId: string;
+  skipped: boolean;
 }) {
+  const [menu, setMenu] = useState<DOMRect | null>(null);
   const [pending, setPending] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [error, setError] = useState("");
+  const [receipt, setReceipt] = useState<ReminderActionReceipt | null>(
+    skipped && chatId
+      ? {
+          message: "Skipped this reminder.",
+          undo: async () => {
+            await client.updateAiChat(chatId, {
+              turn_id: turnId,
+              outcome: "info",
+            });
+          },
+        }
+      : null,
+  );
+  const [choosing, setChoosing] = useState<"move" | "book" | null>(null);
+  const [day, setDay] = useState("");
+  const [minutes, setMinutes] = useState(30);
+  useEffect(() => {
+    void client.getPlannerPrefs().then(
+      (prefs) => setDay(localDateKey(new Date(), prefs.timezone)),
+      (e) => setError(errorText(e)),
+    );
+  }, []);
+  const run = async (work: () => Promise<void>) => {
+    setPending(true);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setPending(false);
+    }
+  };
+  const act = (action: ReminderNudgeCard["actions"][number]) =>
+    void run(async () => {
+      setReceipt(
+        await performReminderAction(client, card, action, {
+          day,
+          minutes,
+          ...(chatId ? { chatId } : {}),
+          turnId,
+        }),
+      );
+      setChoosing(null);
+    });
   return (
-    <div>
+    <div className="ai-nudge">
+      {receipt ? (
+        <div className="button-row start">
+          <span role="status">{receipt.message}</span>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || pending}
+            onClick={() =>
+              void run(async () => {
+                await receipt.undo();
+                setReceipt(null);
+              })
+            }
+          >
+            Undo
+          </button>
+        </div>
+      ) : (
+        <div className="button-row start">
+          {card.actions.map((action) => (
+            <button
+              type="button"
+              className="secondary"
+              key={action}
+              disabled={busy || pending}
+              onClick={() =>
+                action === "move" || action === "book"
+                  ? setChoosing(action)
+                  : act(action)
+              }
+            >
+              {
+                { done: "Done", move: "Move", skip: "Skip", book: "Book time" }[
+                  action
+                ]
+              }
+            </button>
+          ))}
+        </div>
+      )}
+      {choosing && (
+        <div className="agents-identity-form">
+          <label htmlFor={`nudge-day-${card.id}`}>
+            {choosing === "move" ? "New deadline day" : "Day to book time"}
+          </label>
+          <DateField
+            id={`nudge-day-${card.id}`}
+            type="date"
+            value={day}
+            onChange={(event) => setDay(event.target.value)}
+          />
+          {choosing === "book" && (
+            <label>
+              Minutes
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={minutes}
+                onChange={(event) => setMinutes(Number(event.target.value))}
+              />
+            </label>
+          )}
+          <div className="button-row start">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || pending || !day}
+              onClick={() => act(choosing)}
+            >
+              {choosing === "move" ? "Move deadline" : "Book time"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={() => setChoosing(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="button-row start">
-        <button
-          disabled={busy || pending || stopped}
-          onClick={() => {
-            setPending(true);
-            setError("");
-            void client
-              .stopReminderNudge(card.id)
-              .then(
-                () => setStopped(true),
-                (e) => setError(errorText(e)),
-              )
-              .finally(() => setPending(false));
-          }}
-        >
-          {stopped
-            ? "Reminders stopped for this thing"
-            : "Stop reminders for this thing"}
-        </button>
+        {stopped ? (
+          <span role="status">Reminders stopped for this thing.</span>
+        ) : (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Reminder options"
+            disabled={busy || pending}
+            onClick={(event) =>
+              setMenu(event.currentTarget.getBoundingClientRect())
+            }
+          >
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
+      {menu && (
+        <Popover
+          anchor={menu}
+          label="Reminder options"
+          onClose={() => setMenu(null)}
+        >
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || pending || stopped}
+            onClick={() => {
+              setMenu(null);
+              void run(async () => {
+                await client.stopReminderNudge(card.id);
+                setStopped(true);
+              });
+            }}
+          >
+            Stop reminders for this thing
+          </button>
+        </Popover>
+      )}
       {error && <p role="alert">{error}</p>}
     </div>
   );

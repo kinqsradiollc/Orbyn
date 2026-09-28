@@ -1,0 +1,11 @@
+.ai-nudge .button-row {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.ai-nudge .agents-identity-form {
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+  margin-top: 12px;
+}
