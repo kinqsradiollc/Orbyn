@@ -557,7 +557,11 @@ export async function buildMorning(
   name: string,
   now: Date,
   tz: string,
-  options: { agents?: boolean } = {},
+  options: {
+    agents?: boolean;
+    /** Replaces the brief writer (tests). */
+    writeBrief?: typeof writeMorningBrief;
+  } = {},
 ): Promise<{ subject: string; lines: string[] }> {
   const today = localDateKey(now, tz);
   const dayEnd = dayTime(addDays(today, 1), 0, tz);
@@ -652,32 +656,50 @@ export async function buildMorning(
   const todayConflicts = review.conflicts.filter(
     ({ block }) => block.start_at < dayEnd.toISOString(),
   );
-  const brief = await writeMorningBrief({
-    userId,
-    day: today,
-    timezone: tz,
-    events,
-    tasks: dueTasks.map((task) => ({
-      id: task.item_id!,
-      title: task.title,
-      start_at: task.start_at,
-    })),
-    blocks: blocks.map((block) => ({
-      item_id: block.item_id,
-      title: block.title,
-      start_at: block.start_at,
-      end_at: block.end_at,
-    })),
-    conflicts: todayConflicts,
-    atRisk: review.at_risk,
-    unfinished: review.unfinished,
-  });
-  lines.push(
-    `Your private Assistant brief: ${appLink(`/app/doc/${brief.docId}`)}`,
-  );
-  lines.push(
-    `Brief summary: ${brief.events} ${brief.events === 1 ? "event" : "events"}, ${brief.tasks} ${brief.tasks === 1 ? "task" : "tasks"} due, ${brief.sessions} ${brief.sessions === 1 ? "session" : "sessions"}, ${brief.clashes} ${brief.clashes === 1 ? "clash" : "clashes"}, ${brief.slipping} ${brief.slipping === 1 ? "item" : "items"} at risk, ${brief.goals} active goals, ${brief.ideas} ideas to review, and ${brief.questions} questions or approvals waiting.`,
-  );
+  // The private brief is the assistant's: only for people with an active
+  // assistant, and a failure leaves it out rather than losing the email.
+  const hasAssistant = (
+    await pool.query(
+      `SELECT 1 FROM agent_grants WHERE user_id = $1 AND kind = 'assistant'
+          AND revoked_at IS NULL AND suspended_at IS NULL`,
+      [userId],
+    )
+  ).rowCount;
+  if (hasAssistant) {
+    try {
+      const brief = await (options.writeBrief ?? writeMorningBrief)({
+        userId,
+        day: today,
+        timezone: tz,
+        events,
+        tasks: dueTasks.map((task) => ({
+          id: task.item_id!,
+          title: task.title,
+          start_at: task.start_at,
+        })),
+        blocks: blocks.map((block) => ({
+          item_id: block.item_id,
+          title: block.title,
+          start_at: block.start_at,
+          end_at: block.end_at,
+        })),
+        conflicts: todayConflicts,
+        atRisk: review.at_risk,
+        unfinished: review.unfinished,
+      });
+      lines.push(
+        `Your private Assistant brief: ${appLink(`/app/doc/${brief.docId}`)}`,
+      );
+      lines.push(
+        `Brief summary: ${brief.events} ${brief.events === 1 ? "event" : "events"}, ${brief.tasks} ${brief.tasks === 1 ? "task" : "tasks"} due, ${brief.sessions} ${brief.sessions === 1 ? "session" : "sessions"}, ${brief.clashes} ${brief.clashes === 1 ? "clash" : "clashes"}, ${brief.slipping} ${brief.slipping === 1 ? "item" : "items"} at risk, ${brief.goals} active goals, ${brief.ideas} ideas to review, and ${brief.questions} questions or approvals waiting.`,
+      );
+    } catch (error) {
+      console.error(
+        "Morning brief failed",
+        error instanceof Error ? error.message : "unknown",
+      );
+    }
+  }
   lines.push(`Open your day: ${appLink("/app")}`);
   return { subject: "Your day ahead", lines };
 }

@@ -184,7 +184,13 @@ test("assistant records have bounded retention and keep their saved notes", asyn
   assert.ok(removed.assistant_idea_days >= 1);
   assert.ok(removed.goal_checkins >= 1);
   assert.ok(removed.assistant_briefs >= 1);
-  assert.ok(removed.assistant_chat_shells >= 1);
+  assert.equal(removed.assistant_chat_shells, undefined);
+  assert.equal(
+    (await pool.query("SELECT 1 FROM ai_chats WHERE id = $1", [chatId]))
+      .rowCount,
+    1,
+    "a compacted chat keeps its history entry",
+  );
   assert.equal(
     (await pool.query("SELECT 1 FROM goals WHERE id = $1", [goalId])).rowCount,
     1,
