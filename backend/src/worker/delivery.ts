@@ -86,23 +86,32 @@ export async function deliverOne(): Promise<boolean> {
                 ).rowCount
               : n.kind === "invite"
                 ? await inviteStale(db, n)
-                : n.kind === "agent"
-                  ? // About the person's own security or team: goes out
-                    // while their account is active.
-                    !(
+                : n.kind === "assistant"
+                  ? !(
                       await db.query(
-                        "SELECT 1 FROM users WHERE id = $1 AND NOT disabled",
-                        [n.user_id],
+                        `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id
+                       WHERE c.id::text = split_part($2, ':', 2)
+                         AND c.user_id = $1 AND NOT u.disabled`,
+                        [n.user_id, n.ref],
                       )
                     ).rowCount
-                  : PLANNER_KINDS.includes(n.kind)
-                    ? await plannerNoticeStale(db, n, item)
-                    : !item ||
-                      !item.can_see ||
-                      item.disabled ||
-                      isClosed(item.status) ||
-                      item.reminder_version !== n.item_version ||
-                      (n.channel === "email" && !item.email_reminders);
+                  : n.kind === "agent"
+                    ? // About the person's own security or team: goes out
+                      // while their account is active.
+                      !(
+                        await db.query(
+                          "SELECT 1 FROM users WHERE id = $1 AND NOT disabled",
+                          [n.user_id],
+                        )
+                      ).rowCount
+                    : PLANNER_KINDS.includes(n.kind)
+                      ? await plannerNoticeStale(db, n, item)
+                      : !item ||
+                        !item.can_see ||
+                        item.disabled ||
+                        isClosed(item.status) ||
+                        item.reminder_version !== n.item_version ||
+                        (n.channel === "email" && !item.email_reminders);
     if (stale || !deviceExists) {
       await db.query("UPDATE notifications SET state='cancelled' WHERE id=$1", [
         n.id,

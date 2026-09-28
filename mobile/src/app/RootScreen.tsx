@@ -976,7 +976,12 @@ export function RootScreen() {
       typeof data[key] === "string" ? (data[key] as string) : "";
     const kind = text("kind");
     const itemId = text("itemId");
-    if (kind === "rollforward") void startRollForward();
+    if (kind === "assistant" && text("ref").startsWith("chat:")) {
+      setTab("AI");
+      void assistant
+        .openChat(text("ref").split(":")[1])
+        .catch((error: Error) => setError(error.message));
+    } else if (kind === "rollforward") void startRollForward();
     else if (kind === "at_risk" || kind === "deadline")
       void startPlanIt(itemId);
     else if (kind === "project" && text("ref")) {
@@ -1527,6 +1532,12 @@ export function RootScreen() {
                   )}
                   {tab === "Inbox" && (
                     <InboxScreen
+                      onOpenChat={(n, id) =>
+                        void noticeAction(n, async () => {
+                          await assistant.openChat(id);
+                          setTab("AI");
+                        })
+                      }
                       notices={notices}
                       busy={busy}
                       onRead={markRead}

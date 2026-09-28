@@ -383,6 +383,8 @@ export type Notice = {
      * or a team's first use (`ref` = "grant:<id>" or "team:<id>").
      */
     | "agent"
+    /** A saved assistant chat finished or needs you (`ref` = "chat:<id>:…"). */
+    | "assistant"
     /** Someone named you in a page or a remark (`ref` = "doc:<page id>:…"). */
     | "mention"
     /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */

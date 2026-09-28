@@ -1942,6 +1942,10 @@ export function App() {
                 )}
                 {view === "Notifications" && (
                   <NotificationsView
+                    onOpenChat={(id) => {
+                      navigate("AI assistant");
+                      void assistant.openChat(id).catch(report);
+                    }}
                     notices={notices}
                     onRead={planner.markRead}
                     onReschedule={reschedule}

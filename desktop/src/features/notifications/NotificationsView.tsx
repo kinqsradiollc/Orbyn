@@ -61,6 +61,8 @@ type Props = {
    * connection (a big job finished, say), where each change can be undone.
    */
   onOpenSetting?: (id: string) => void;
+  /** Reopens a saved assistant chat, including its active run. */
+  onOpenChat?: (id: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -79,6 +81,7 @@ const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
   review: Inbox,
   question: MessageCircleQuestion,
   agent: Bot,
+  assistant: Bot,
   system: Clock,
 };
 
@@ -208,6 +211,7 @@ export function NotificationsView({
   onStartSession,
   onOpenReview,
   onOpenSetting,
+  onOpenChat,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -311,6 +315,19 @@ export function NotificationsView({
                   <LayoutTemplate size={14} /> Review
                 </button>
               )}
+              {n.kind === "assistant" &&
+                n.ref?.startsWith("chat:") &&
+                onOpenChat && (
+                  <button
+                    className="secondary notice-action"
+                    onClick={() => {
+                      if (!n.read) onRead(n);
+                      onOpenChat(n.ref!.split(":")[1]);
+                    }}
+                  >
+                    <Bot size={14} /> Open chat
+                  </button>
+                )}
               {n.kind === "review" &&
                 n.ref?.startsWith("proposal:") &&
                 onOpenReview && (

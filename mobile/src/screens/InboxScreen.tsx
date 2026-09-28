@@ -156,6 +156,7 @@ export function InboxScreen({
   reviewPending = 0,
   onOpenReview,
   onOpenAgents,
+  onOpenChat,
 }: {
   notices: Notice[];
   busy: boolean;
@@ -190,6 +191,8 @@ export function InboxScreen({
    * connection (`ref` = "grant:<id>"), e.g. a big job it finished.
    */
   onOpenAgents?: (notice: Notice) => void;
+  /** Reopen the saved assistant chat behind a notice. */
+  onOpenChat?: (notice: Notice, chatId: string) => void;
 }) {
   const review =
     reviewPending > 0 && onOpenReview ? (
@@ -259,36 +262,41 @@ export function InboxScreen({
         const grant =
           n.kind === "agent" && !!n.ref?.startsWith("grant:") && !!onOpenAgents;
         const action =
-          n.kind === "session" && n.ref && n.item_id && onStartSession
-            ? { label: "Start", run: onStartSession }
-            : proposal && onOpenReview
-              ? {
-                  label: "Review",
-                  run: (x: Notice) => onOpenReview(proposal, x),
-                }
-              : n.kind === "conflict" && n.ref
-                ? { label: "Reschedule", run: onReschedule }
-                : n.kind === "rollforward"
-                  ? { label: "Roll forward", run: onRollForward }
-                  : n.kind === "at_risk" || n.kind === "deadline"
-                    ? { label: "Plan it", run: onPlanIt }
-                    : n.kind === "rsvp" && n.item_id
-                      ? { label: "Open event", run: onOpenItem }
-                      : n.kind === "template" && n.ref && onOpenTemplate
-                        ? { label: "Review", run: onOpenTemplate }
-                        : n.kind === "project" && n.ref && onOpenProject
-                          ? { label: "Open project", run: onOpenProject }
-                          : docId && onOpenDoc
-                            ? {
-                                label: "Open page",
-                                run: (x: Notice) => onOpenDoc(x, docId),
-                              }
-                            : grant && onOpenAgents
+          n.kind === "assistant" && n.ref?.startsWith("chat:") && onOpenChat
+            ? {
+                label: "Open chat",
+                run: (x: Notice) => onOpenChat(x, x.ref!.split(":")[1]),
+              }
+            : n.kind === "session" && n.ref && n.item_id && onStartSession
+              ? { label: "Start", run: onStartSession }
+              : proposal && onOpenReview
+                ? {
+                    label: "Review",
+                    run: (x: Notice) => onOpenReview(proposal, x),
+                  }
+                : n.kind === "conflict" && n.ref
+                  ? { label: "Reschedule", run: onReschedule }
+                  : n.kind === "rollforward"
+                    ? { label: "Roll forward", run: onRollForward }
+                    : n.kind === "at_risk" || n.kind === "deadline"
+                      ? { label: "Plan it", run: onPlanIt }
+                      : n.kind === "rsvp" && n.item_id
+                        ? { label: "Open event", run: onOpenItem }
+                        : n.kind === "template" && n.ref && onOpenTemplate
+                          ? { label: "Review", run: onOpenTemplate }
+                          : n.kind === "project" && n.ref && onOpenProject
+                            ? { label: "Open project", run: onOpenProject }
+                            : docId && onOpenDoc
                               ? {
-                                  label: "Open Connected agents",
-                                  run: onOpenAgents,
+                                  label: "Open page",
+                                  run: (x: Notice) => onOpenDoc(x, docId),
                                 }
-                              : null;
+                              : grant && onOpenAgents
+                                ? {
+                                    label: "Open Connected agents",
+                                    run: onOpenAgents,
+                                  }
+                                : null;
         return (
           <FadeIn key={n.id} index={i} style={[i > 0 && s.divider]}>
             <Pressable

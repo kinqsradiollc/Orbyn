@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { notifyAssistantAway } from "./notices.js";
 import {
   AssistantLeaseLost,
   assistantLeaseOwner,
@@ -581,6 +582,7 @@ async function finishJob(
         JSON.stringify({ label: "Answer ready", outcome }),
       ],
     );
+    await notifyAssistantAway(db, jobId, "done");
     if (
       request.automation?.kind === "goal" &&
       request.automation.id &&
@@ -914,6 +916,7 @@ async function waitFor(
       "UPDATE ai_chats SET turns = $3::jsonb, last_used_at = now() WHERE id = $1 AND user_id = $2",
       [request.chat_id, user.id, JSON.stringify(turns.slice(-200))],
     );
+    await notifyAssistantAway(db, jobId, "waiting", waiting.id);
   });
   const event: AgentTraceEvent = {
     step: envelope.state.lead_steps,
@@ -1108,6 +1111,7 @@ async function failJob(
         JSON.stringify({ label: "This run could not be completed" }),
       ],
     );
+    await notifyAssistantAway(db, jobId, "failed");
   });
   if (
     request.automation?.kind === "goal" &&
@@ -1928,6 +1932,7 @@ export async function failStaleAssistantJobs(
           [row.id, row.was === "waiting" ? 410 : 503, message, now],
         );
         ended.push(row);
+        await notifyAssistantAway(db, row.id, "failed");
       }
     }
     const ids = ended.map((row) => row.id);
