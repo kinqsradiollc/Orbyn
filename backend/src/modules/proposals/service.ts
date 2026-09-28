@@ -45,6 +45,12 @@ import { applySessionChange } from "../ai/session-change.js";
 import { linkDecision } from "../work-records/service.js";
 import { actionStaleness, applyAction } from "./actions.js";
 import { forgetMemory, rememberMemory } from "../memory/service.js";
+import {
+  readAgentRoutine,
+  routineFields,
+  saveAgentRoutine,
+} from "../assistant-workspace/routines.js";
+import { readGoal, saveGoal } from "../assistant-workspace/goals.js";
 
 /**
  * Proposals: changes waiting for a person's approval (the Review inbox).
@@ -68,6 +74,7 @@ type Row = {
   id: string;
   user_id: string;
   source: ProposalSource;
+  kind: "change" | "idea";
   grant_id: string | null;
   client_name: string;
   summary: string;
@@ -85,7 +92,7 @@ type Row = {
   team_ids: string[];
 };
 
-const SELECT = `SELECT id, user_id, source, grant_id, client_name, summary, status,
+const SELECT = `SELECT id, user_id, source, kind, grant_id, client_name, summary, status,
   applied, created_at, expires_at, decided_at, changes, actions, project,
   session_change, decision_links, applied_project_id, team_ids FROM proposals`;
 
@@ -104,6 +111,7 @@ export type NewProposal = {
   clientName: string;
   summary: string;
   changes: ReviewChange[];
+  kind?: "change" | "idea";
 };
 
 /**
@@ -127,12 +135,13 @@ export async function createAgentProposal(
   ];
   const row = (
     await db.query<{ id: string; expires_at: Date }>(
-      `INSERT INTO proposals (user_id, actions, source, grant_id, client_name,
+      `INSERT INTO proposals (user_id, actions, source, kind, grant_id, client_name,
          summary, changes, team_ids)
-       VALUES ($1, '[]'::jsonb, 'agent', $2, $3, $4, $5::jsonb, $6::uuid[])
+       VALUES ($1, '[]'::jsonb, 'agent', $2, $3, $4, $5, $6::jsonb, $7::uuid[])
        RETURNING id, expires_at`,
       [
         input.userId,
+        input.kind ?? "change",
         input.grantId,
         input.clientName.slice(0, 200),
         input.summary.slice(0, 500),
@@ -385,6 +394,33 @@ export async function staleness(
     }
     case "memory.remember":
       return null;
+    case "routine.save": {
+      if (!c.routine_id || !c.before) return null;
+      const found = await readAgentRoutine(db, userId, c.routine_id);
+      if (!found) return "That routine is gone.";
+      const now = routineFields(found);
+      const was = c.before;
+      return now.instruction === was.instruction &&
+        now.rrule === was.rrule &&
+        now.timezone === was.timezone &&
+        now.paused === was.paused
+        ? null
+        : "That routine changed since this was suggested.";
+    }
+    case "goal.save": {
+      if (!c.goal_id || !c.before) return null;
+      const found = await readGoal(db, userId, c.goal_id, true);
+      if (!found) return "That goal is gone, or kept out of the assistant.";
+      const was = c.before;
+      return found.title === was.title &&
+        found.target === was.target &&
+        found.target_date === was.target_date &&
+        found.plan_doc_id === was.plan_doc_id &&
+        found.project_id === was.project_id &&
+        found.status === was.status
+        ? null
+        : "That goal changed since this was suggested.";
+    }
     case "memory.forget": {
       const current = (
         await db.query<{ id: string; version: number }>(
@@ -532,6 +568,70 @@ function diffOf(c: ReviewChange, index: number, n: Names): ReviewDiff {
           after: fact,
         })),
       };
+    case "routine.save": {
+      const was = c.before;
+      const now = c.routine;
+      const row = (label: string, before: unknown, after: unknown) => ({
+        label,
+        before: was ? String(before) : null,
+        after: String(after),
+      });
+      return {
+        ...base,
+        headline: c.routine_id
+          ? `Change an assistant routine: ${quote(c.title)}`
+          : `New assistant routine: ${quote(c.title)}`,
+        rows: [
+          row("Instruction", was?.instruction, now.instruction),
+          row("Repeats", was?.rrule, now.rrule),
+          row("Time zone", was?.timezone, now.timezone ?? "UTC"),
+          row(
+            "Next run",
+            was ? when(was.next_run_at, n.tz) : "",
+            when(now.next_run_at, n.tz),
+          ),
+          row("Paused", was?.paused ? "Yes" : "No", now.paused ? "Yes" : "No"),
+          {
+            label: "Runs as",
+            before: null,
+            after: "Orbyn's assistant, on its own schedule",
+          },
+        ].filter((r) => r.before !== r.after),
+      };
+    }
+    case "goal.save": {
+      const was = c.before as Record<string, unknown> | null;
+      const now = c.goal as Record<string, unknown>;
+      const labels: Record<string, string> = {
+        title: "Title",
+        target: "Target",
+        target_date: "Target date",
+        project_id: "Project",
+        status: "Status",
+      };
+      return {
+        ...base,
+        headline: c.goal_id
+          ? `Change the goal ${quote(c.title)}`
+          : `New goal ${quote(c.title)}`,
+        rows: [
+          ...Object.entries(labels).map(([field, label]) => ({
+            label,
+            before: was ? shown(field, was[field], n) : null,
+            after: shown(field, now[field], n),
+          })),
+          ...(c.goal_id
+            ? []
+            : [
+                {
+                  label: "Check-ins",
+                  before: null,
+                  after: "Orbyn's assistant checks in weekly",
+                },
+              ]),
+        ].filter((r) => r.before !== r.after),
+      };
+    }
     case "memory.forget":
       return {
         ...base,
@@ -778,6 +878,7 @@ async function itemOf(
   return {
     id: row.id,
     source: row.source,
+    ...(row.kind === "idea" ? { kind: "idea" as const } : {}),
     proposer: proposerName(row.source, row.client_name),
     summary:
       row.summary ||
@@ -989,12 +1090,25 @@ export async function applyChange(
            updated_at = now()`,
         [u.id, c.name, c.persona],
       );
+      await db.query(
+        `UPDATE agent_grants SET name = $2, client_name = $2
+          WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
+        [u.id, c.name],
+      );
       return {};
     case "memory.remember":
       await rememberMemory(db, u.id, c.topic, c.facts, c.sources);
       return {};
     case "memory.forget":
       await forgetMemory(db, u.id, c.topic, { includeKeptOut: true });
+      return {};
+    case "routine.save":
+      await saveAgentRoutine(db, u.id, c.routine_id, c.routine, {
+        advance: true,
+      });
+      return {};
+    case "goal.save":
+      await saveGoal(db, u.id, c.goal_id, c.goal, true);
       return {};
     case "doc.edit":
       await saveDoc(

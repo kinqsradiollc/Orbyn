@@ -119,12 +119,12 @@ test("every tool passes the catalog lints", () => {
   }
 });
 
-test("budgets: the tool list stays small, and the instructions short", () => {
+test("budgets: the core tool list stays compact, and the instructions short", () => {
   const core = registry.all.filter(
     (c) => c.toolset === "core" && !c.legacyOnly,
   );
   const size = JSON.stringify(core.map((c) => describe(c))).length;
-  // About 21k tokens for the 29 core tools, reads and changes together
+  // About 23k tokens for the 33 core tools, reads and changes together
   // (roughly four characters a token): A3's twelve write tools share one
   // compact answer shape and pattern-free id and time fields to fit, A4's
   // get_links keeps its answer flat, and A5 adds only a few fields (starting
@@ -136,7 +136,7 @@ test("budgets: the tool list stays small, and the instructions short", () => {
   // agent), with pattern-free ids and plain-string enums in answers. H5
   // adds apply_plan (one call, whole job) with a lean answer, paid for by
   // a shorter client_ref description and tighter tool descriptions.
-  assert.ok(size < 84_000, `tools/list for core is ${size} characters`);
+  assert.ok(size < 92_000, `tools/list for core is ${size} characters`);
   assert.ok(
     INSTRUCTIONS.length <= 2048,
     `instructions are ${INSTRUCTIONS.length} characters`,

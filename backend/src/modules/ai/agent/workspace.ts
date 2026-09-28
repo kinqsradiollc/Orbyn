@@ -36,13 +36,14 @@ import {
   listProjects as listVisibleProjects,
 } from "../../projects/service.js";
 import { readableLinks } from "../../links/privacy.js";
+import { keptOutFor } from "../../../lib/assistant-off.js";
 
 /**
  * Read-only views of the workspace for the assistant: what to do first, the
  * projects, free time, and what is waiting on people. Every query is scoped
  * to the signed-in user and their teams exactly as the apps are; nothing
- * here writes. Changes still go through the propose_* tools and the user's
- * approval.
+ * here writes. Any writes in the run go through the shared capability
+ * registry and executor; supported changes remain undoable.
  */
 
 type TaskRow = {
@@ -117,7 +118,10 @@ export async function rankTasks(
   a: { limit?: number; team_id?: string; only_undated?: boolean },
 ) {
   const values: unknown[] = [ctx.user.id];
-  const where = [visibleItems(), "i.kind = 'task'"];
+  const where = [
+    visibleItems("i", { user: "$1", ai: true }),
+    "i.kind = 'task'",
+  ];
   if (a.team_id === "personal") where.push("i.team_id IS NULL");
   else if (a.team_id) {
     if (!isUuid(a.team_id))
@@ -642,15 +646,27 @@ export async function calendarGlance(ctx: AgentContext, days = 3) {
   const from = new Date(start);
   const to = new Date(start + days * 86_400_000);
   const endOfToday = new Date(start + 86_400_000);
-  const [entries, blocks, prefs, busy] = await Promise.all([
+  const [allEntries, allBlocks, prefs, keptOut] = await Promise.all([
     agendaEntries(pool, ctx.user.id, from, to),
     timeBlocks(pool, ctx.user.id, from, to),
     loadPrefs(pool, ctx.user.id),
-    busyIntervals(pool, ctx.user.id, now, endOfToday, {
-      blocks: true,
-      derived: true,
-    }),
+    keptOutFor(pool, ctx.user.id),
   ]);
+  const entries = allEntries.filter(
+    (entry) => !entry.item_id || !keptOut.items.has(entry.item_id),
+  );
+  const blocks = allBlocks.filter(
+    (block) => !block.item_id || !keptOut.items.has(block.item_id),
+  );
+  const hiddenBlockIds = allBlocks
+    .filter((block) => block.item_id && keptOut.items.has(block.item_id))
+    .map((block) => block.id);
+  const busy = await busyIntervals(pool, ctx.user.id, now, endOfToday, {
+    blocks: true,
+    derived: true,
+    excludeItemIds: [...keptOut.items],
+    excludeBlockIds: hiddenBlockIds,
+  });
   const free =
     now < endOfToday
       ? freeSpans(workingSpans(prefs, now, endOfToday), busy).filter(

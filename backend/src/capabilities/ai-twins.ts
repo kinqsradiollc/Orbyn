@@ -24,8 +24,8 @@ const CHAT: AiTwin = {
 
 /** Saved assistant chats: what an agent did is kept as its activity. */
 const SAVED: AiTwin = {
-  tools: ["list_agent_changes", "get_history"],
-  how: "Saved chats: an agent's work is kept as its activity (list_agent_changes) and each thing's history.",
+  tools: ["get_chats", "list_agent_changes", "get_history", "create_doc"],
+  how: "Saved chats: get_chats reads them; an agent's work is kept as activity and its notes as pages.",
 };
 
 /** Every hosted_ai route in exclusions.ts, with its agent-path twin. */
@@ -37,14 +37,10 @@ export const AI_TWINS: Record<string, AiTwin> = {
     tools: ["get_context"],
     how: "What the assistant can do here: tools/list and get_context say what this connection may do.",
   },
-  "GET /ai/chats/:id": SAVED,
   "PUT /ai/chats/:id": SAVED,
   "DELETE /ai/chats/:id": SAVED,
-  "GET /ai/projects/:id/chats": {
-    tools: ["get_project", "find_passages", "get_history"],
-    prompts: ["ask_project"],
-    how: "Asking a project: the agent reads the hub and the passages that answer, and writes the cited answer itself.",
-  },
+  "PATCH /ai/chats/:id": SAVED,
+  "POST /ai/chats/:id/save-note": SAVED,
   "POST /ai/project": {
     tools: ["create_project", "apply_plan", "plan_schedule"],
     prompts: ["project_kickoff"],

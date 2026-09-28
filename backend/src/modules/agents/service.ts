@@ -121,6 +121,7 @@ const LISTED = `g.revoked_at IS NULL
  * finished (a sign-in allowed but never completed doesn't count).
  */
 const LIVE = `revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+  AND kind <> 'assistant'
   AND (kind <> 'oauth' OR authorized_at IS NOT NULL)`;
 
 /**
@@ -400,11 +401,21 @@ export async function revokeGrant(
   requestId?: string,
 ): Promise<void> {
   await transaction(async (db) => {
+    const current = (
+      await db.query<{ id: string; kind: string; name: string }>(
+        `SELECT id, kind, name FROM agent_grants
+          WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE`,
+        [grantId, userId],
+      )
+    ).rows[0];
+    if (!current) fail(404, "Connection not found");
+    if (current.kind === "assistant")
+      fail(422, "The built-in Orbyn assistant cannot be revoked.");
     const gone = (
       await db.query<{ id: string; kind: string; name: string }>(
         `UPDATE agent_grants SET revoked_at = now()
-          WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
-          RETURNING id, kind, name`,
+            WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+            RETURNING id, kind, name`,
         [grantId, userId],
       )
     ).rows[0];
@@ -665,6 +676,8 @@ export async function setGrantToolsets(
       )
     ).rows[0];
     if (!row) fail(404, "Connection not found");
+    if (row.kind === "assistant")
+      fail(422, "The built-in assistant's tools are managed by Orbyn.");
     const wanted = new Set<string>(["core", ...d.toolsets]);
     if (
       wanted.has("booking") &&
@@ -702,18 +715,24 @@ export async function setGrantToolsets(
  * which ask-first items it may do alone. Full power and asking first need
  * a connection that may change things; one that may only suggest stays
  * there until it is connected again with more. Every copy hears at once.
+ *
+ * The built-in assistant's trust can be raised again (back to full power)
+ * only by the person signed in to Orbyn (`bySession`, the /me routes);
+ * anything else may only lower it.
  */
 export async function setGrantTrust(
   userId: string,
   grantId: string,
   input: AgentTrustInput,
   requestId?: string,
+  options: { bySession?: boolean } = {},
 ): Promise<AgentGrant> {
   const d = agentTrustInput.parse(input);
   return transaction(async (db) => {
     const row = (
       await db.query<{
         id: string;
+        kind: AgentGrantKind;
         name: string;
         access: AgentAccess;
         trust: AgentTrust;
@@ -722,13 +741,43 @@ export async function setGrantTrust(
         team_ids: string[] | null;
         personal: boolean;
       }>(
-        `SELECT id, name, access, trust, space_trust, acts_alone, team_ids, personal
+        `SELECT id, kind, name, access, trust, space_trust, acts_alone, team_ids, personal
            FROM agent_grants
           WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL FOR UPDATE`,
         [grantId, userId],
       )
     ).rows[0];
     if (!row) fail(404, "Connection not found");
+    if (row.kind === "assistant") {
+      const rank: Record<AgentTrust, number> = {
+        full: 0,
+        ask: 1,
+        suggest: 2,
+      };
+      const next = d.trust ?? row.trust;
+      const onlyLower = !options.bySession;
+      if (onlyLower && rank[next] < rank[row.trust])
+        fail(422, "The built-in assistant's trust can only be lowered.");
+      if (
+        (d.acts_alone ?? []).some(
+          (item) => !(row.acts_alone ?? []).includes(item),
+        )
+      )
+        fail(
+          422,
+          "The built-in assistant always asks first about protected actions.",
+        );
+      for (const [key, wanted] of Object.entries(d.spaces ?? {})) {
+        const space = key.toLowerCase();
+        const before = row.space_trust?.[space] ?? row.trust;
+        const after = wanted ?? next;
+        if (
+          onlyLower &&
+          (rank[after] < rank[before] || rank[after] < rank[next])
+        )
+          fail(422, "The built-in assistant's trust can only be lowered.");
+      }
+    }
     const wanted = [
       d.trust,
       ...Object.values(d.spaces ?? {}).filter((t) => t !== null),
@@ -755,8 +804,17 @@ export async function setGrantTrust(
     }
     const trust = d.trust ?? row.trust;
     // A space set to the connection's own level needs no entry.
-    for (const [space, value] of Object.entries(spaces))
+    for (const [space, value] of Object.entries(spaces)) {
+      if (row.kind === "assistant") {
+        const rank: Record<AgentTrust, number> = {
+          full: 0,
+          ask: 1,
+          suggest: 2,
+        };
+        if (rank[value] < rank[trust]) delete spaces[space];
+      }
       if (value === trust) delete spaces[space];
+    }
     const actsAlone = d.acts_alone
       ? AGENT_ASK_FIRST.filter((k) => d.acts_alone!.includes(k))
       : row.acts_alone;

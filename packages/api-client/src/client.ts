@@ -10,6 +10,15 @@ import {
   type AgentRuleInput,
   type AgentContextSettings,
   type PersonalAgentSettings,
+  type Goal,
+  type GoalCheckin,
+  type GoalInput,
+  type GoalUpdate,
+  type AgentRoutine,
+  type AgentRoutineInput,
+  type AgentRoutineUpdate,
+  type ApprovalScopes,
+  type AssistantIdea,
   type AgentIdentityInput,
   type NewAgentWake,
   type ProposalStatus,
@@ -294,9 +303,12 @@ import {
   type MilestoneUpdate,
   type PageMention,
   type OriginalsOverview,
-  type ProjectChat,
   type ProjectChatInput,
   type ProjectChatSummary,
+  type AiChat,
+  type AiChatSummary,
+  type ChatTraceEntry,
+  type UpdateAiChatInput,
   type CaptureAssistInput,
   type CaptureAssistResult,
   type FirstRunInput,
@@ -364,11 +376,84 @@ const MAX_CACHED = 100;
 const CHAT_POLL_MS = 1200;
 const CHAT_POLL_MAX_MS = 4000;
 const CHAT_WAIT_MS = 15 * 60_000;
+/** The longest a run may wait for a person's answer or approval while polled. */
+const CHAT_WAITING_MAX_MS = 2 * 60 * 60_000;
+
+/** An error named "AbortError", thrown when a caller's AbortSignal stops a poll. */
+export function abortError(): Error {
+  const error = new Error("The request was stopped.");
+  error.name = "AbortError";
+  return error;
+}
+
+/** Whether `error` came from an AbortSignal stopping the request. */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+/** Wait `ms`, rejecting early with an AbortError when `signal` aborts. */
+function pause(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+export type AssistantWaiting =
+  | { kind: "person"; question: string; choices: string[] }
+  | {
+      kind: "approval";
+      question: string;
+      detail: string;
+      steps: unknown[];
+      summary: string;
+      change_kinds?: string[];
+      automation_kind?: "goal" | "routine";
+      automation_id?: string;
+    };
+
+export type AssistantRunProgress = {
+  job_id: string;
+  state: "running" | "waiting" | "done";
+  label?: string;
+  step?: number;
+  waiting?: AssistantWaiting | null;
+};
 
 type ChatJob =
-  | { state: "running" }
-  | { state: "done"; proposal: Proposal }
+  | { state: "running"; progress?: { label?: string; step?: number } }
+  | {
+      state: "waiting";
+      progress?: { label?: string; step?: number };
+      waiting: AssistantWaiting | null;
+    }
+  | {
+      state: "done";
+      proposal?: Proposal;
+      answer?: string;
+      assistant_run?: Record<string, unknown>;
+      chat_id?: string;
+      turn_id?: string;
+      trace?: ChatTraceEntry[];
+    }
   | { state: "failed"; status?: number; message: string };
+
+export type ChatResult = {
+  proposal: Proposal;
+  chat_id: string;
+  turn_id: string;
+  trace: ChatTraceEntry[];
+  answer?: string;
+  assistant_run?: Record<string, unknown>;
+};
 
 /** What to say when a proxy answered instead of Orbyn (no JSON body). */
 function proxyMessage(status: number): string {
@@ -1079,12 +1164,24 @@ export class OrbynClient {
   }
   /** Your saved chats with the assistant about a project, newest first. */
   projectChats(projectId: string) {
-    return this.request<ProjectChatSummary[]>(
-      `/ai/projects/${projectId}/chats`,
-    );
+    return this.request<AiChatSummary[]>(`/ai/projects/${projectId}/chats`);
+  }
+  /** Your saved assistant chats, pinned first and then most recently used. */
+  aiChats(
+    options: { search?: string; project_id?: string; limit?: number } = {},
+  ) {
+    const query = new URLSearchParams();
+    if (options.search) query.set("search", options.search);
+    if (options.project_id) query.set("project_id", options.project_id);
+    if (options.limit) query.set("limit", String(options.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.request<AiChatSummary[]>(`/ai/chats${suffix}`);
   }
   projectChat(id: string) {
-    return this.request<ProjectChat>(`/ai/chats/${id}`);
+    return this.request<AiChat>(`/ai/chats/${id}`);
+  }
+  aiChat(id: string) {
+    return this.request<AiChat>(`/ai/chats/${id}`);
   }
   /** Save a project chat after a reply; the same id updates the same chat. */
   saveProjectChat(id: string, input: ProjectChatInput) {
@@ -1093,8 +1190,72 @@ export class OrbynClient {
       body: input,
     });
   }
+  updateAiChat(id: string, input: UpdateAiChatInput) {
+    return this.request<AiChatSummary>(`/ai/chats/${id}`, {
+      method: "PATCH",
+      body: input,
+    });
+  }
+  saveChatAsNote(id: string) {
+    return this.request<{ id: string; title: string }>(
+      `/ai/chats/${id}/save-note`,
+      { method: "POST" },
+    );
+  }
   deleteProjectChat(id: string) {
     return this.request<void>(`/ai/chats/${id}`, { method: "DELETE" });
+  }
+  listGoals() {
+    return this.request<Goal[]>("/me/goals");
+  }
+  createGoal(input: GoalInput) {
+    return this.request<Goal>("/me/goals", { method: "POST", body: input });
+  }
+  updateGoal(id: string, input: GoalUpdate) {
+    return this.request<Goal>(`/me/goals/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteGoal(id: string) {
+    return this.request<{ deleted: boolean }>(`/me/goals/${id}`, {
+      method: "DELETE",
+    });
+  }
+  goalCheckins(id: string) {
+    return this.request<GoalCheckin[]>(`/me/goals/${id}/checkins`);
+  }
+  listAgentRoutines() {
+    return this.request<AgentRoutine[]>("/me/agent-routines");
+  }
+  createAgentRoutine(input: AgentRoutineInput) {
+    return this.request<AgentRoutine>("/me/agent-routines", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateAgentRoutine(id: string, input: AgentRoutineUpdate) {
+    return this.request<AgentRoutine>(`/me/agent-routines/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteAgentRoutine(id: string) {
+    return this.request<{ deleted: boolean }>(`/me/agent-routines/${id}`, {
+      method: "DELETE",
+    });
+  }
+  assistantApprovalScopes() {
+    return this.request<ApprovalScopes>("/me/assistant/approval-scopes");
+  }
+  setAssistantApprovalScopes(input: ApprovalScopes) {
+    return this.request<ApprovalScopes>("/me/assistant/approval-scopes", {
+      method: "PUT",
+      body: input,
+    });
+  }
+  assistantIdeas() {
+    return this.request<AssistantIdea[]>("/me/assistant/ideas");
   }
   /** Checkpoints for the read-only project time machine, newest first. */
   projectCheckpoints(id: string, before?: string) {
@@ -2816,6 +2977,20 @@ export class OrbynClient {
       { method: "POST" },
     );
   }
+  /**
+   * What one assistant reply changed: the built-in assistant's activity for
+   * `job` (a reply's `assistant_run.plan_job`), newest first.
+   */
+  async assistantJobChanges(job: string) {
+    const { grants } = await this.agents();
+    const grant = grants.find((g) => g.kind === "assistant");
+    if (!grant) return { grantId: null, changes: [] as AgentActivity[] };
+    const activity = await this.agentActivity(grant.id);
+    return {
+      grantId: grant.id,
+      changes: activity.filter((a) => a.job === job),
+    };
+  }
   // ---- The Review inbox ----
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {
@@ -3084,18 +3259,78 @@ export class OrbynClient {
     timezone: string,
     history: ChatTurn[] = [],
     scope: ChatScope | null = null,
+    ids: { chatId?: string; turnId?: string } = {},
+    onProgress?: (progress: AssistantRunProgress) => void,
+    signal?: AbortSignal,
   ) {
-    const { id } = await this.request<{ id: string }>("/ai/chat/start", {
+    if (signal?.aborted) throw abortError();
+    const { id, chat_id, turn_id } = await this.request<{
+      id: string;
+      chat_id: string;
+      turn_id: string;
+    }>("/ai/chat/start", {
       method: "POST",
-      body: { message, timezone, history: history.slice(-12), scope },
+      body: {
+        message,
+        timezone,
+        history: history.slice(-12),
+        scope,
+        ...(ids.chatId ? { chat_id: ids.chatId } : {}),
+        ...(ids.turnId ? { turn_id: ids.turnId } : {}),
+      },
     });
-    const until = Date.now() + CHAT_WAIT_MS;
+    const started = Date.now();
     let delay = CHAT_POLL_MS;
-    while (Date.now() < until) {
-      await new Promise((r) => setTimeout(r, delay));
+    let deadline = started + CHAT_WAIT_MS;
+    let lastProgress = "";
+    while (Date.now() < deadline) {
+      await pause(delay, signal);
       delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
       const job = await this.request<ChatJob>(`/ai/chat/${id}`);
-      if (job.state === "done") return job.proposal;
+      if (signal?.aborted) throw abortError();
+      if (job.state === "running" || job.state === "waiting") {
+        const progress = {
+          job_id: id,
+          state: job.state,
+          ...(job.progress?.label ? { label: job.progress.label } : {}),
+          ...(job.progress?.step ? { step: job.progress.step } : {}),
+          ...(job.state === "waiting" ? { waiting: job.waiting } : {}),
+        } satisfies AssistantRunProgress;
+        const serialized = JSON.stringify(progress);
+        if (serialized !== lastProgress) onProgress?.(progress);
+        lastProgress = serialized;
+        // A question or approval can wait for the person longer than one run.
+        // Capped, so an unanswered question never keeps this polling forever.
+        if (job.state === "waiting")
+          deadline = Math.min(
+            Date.now() + CHAT_WAIT_MS,
+            started + CHAT_WAITING_MAX_MS,
+          );
+        continue;
+      }
+      if (job.state === "done") {
+        onProgress?.({ job_id: id, state: "done" });
+        const proposal =
+          job.proposal ??
+          ({
+            id: job.chat_id ?? chat_id,
+            summary: job.answer ?? "",
+            actions: [],
+            session_change: null,
+            decision_links: [],
+            plan: null,
+            sources: [],
+            notes: [],
+          } satisfies Proposal);
+        return {
+          proposal,
+          chat_id: job.chat_id ?? chat_id,
+          turn_id: job.turn_id ?? turn_id,
+          trace: job.trace ?? [],
+          ...(job.answer ? { answer: job.answer } : {}),
+          ...(job.assistant_run ? { assistant_run: job.assistant_run } : {}),
+        } satisfies ChatResult;
+      }
       if (job.state === "failed")
         throw new HttpError(job.status ?? 502, job.message);
     }
@@ -3103,6 +3338,28 @@ export class OrbynClient {
       504,
       "That took too long to answer. Try again, or ask for less at once.",
     );
+  }
+  answerAssistantRun(id: string, answer: string) {
+    return this.request<{ accepted: boolean; job_id: string }>(
+      `/ai/chat/${id}/answer`,
+      { method: "POST", body: { answer } },
+    );
+  }
+  approveAssistantRun(
+    id: string,
+    approved: boolean,
+    scope: "once" | "goal" | "routine" | "always" = "once",
+  ) {
+    return this.request<{ accepted: boolean; job_id: string }>(
+      `/ai/chat/${id}/approve`,
+      { method: "POST", body: { approved, scope } },
+    );
+  }
+  stopAssistantRun(id: string) {
+    return this.request<{ stopped: boolean }>(`/ai/chat/${id}/stop`, {
+      method: "POST",
+      body: {},
+    });
   }
   applyProposal(id: string, options?: { give_tasks_deadlines?: boolean }) {
     // `project_id`: the project a drafted-project proposal made, else null.

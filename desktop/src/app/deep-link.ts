@@ -29,6 +29,7 @@ export type DeepLink =
   | { kind: "today" }
   | { kind: "view"; id: string }
   | { kind: "review"; id: string | null }
+  | { kind: "assistant" }
   | { kind: "add"; text: string }
   | { kind: "search"; q: string }
   | { kind: "agents" };
@@ -53,6 +54,7 @@ export function deepLinkOf(
 ): DeepLink | null {
   if (/^\/app\/today\/?$/i.test(path)) return { kind: "today" };
   if (/^\/app\/agents\/?$/i.test(path)) return { kind: "agents" };
+  if (/^\/app\/assistant\/?$/i.test(path)) return { kind: "assistant" };
   if (/^\/app\/review\/?$/i.test(path)) return { kind: "review", id: null };
   if (/^\/app\/add\/?$/i.test(path))
     return { kind: "add", text: wordsIn(search, "text", 500) };
@@ -71,6 +73,7 @@ export function deepLinkOf(
 export function deepLinkPath(link: DeepLink): string {
   if (link.kind === "today") return "/app/today";
   if (link.kind === "agents") return "/app/agents";
+  if (link.kind === "assistant") return "/app/assistant";
   if (link.kind === "add")
     return link.text
       ? `/app/add?${new URLSearchParams({ text: link.text })}`
@@ -179,6 +182,8 @@ export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
       return { kind: "search", q: link.q };
     case "agents":
       return { kind: "agents" };
+    case "assistant":
+      return { kind: "assistant" };
     case "share":
       return {
         kind: "add",

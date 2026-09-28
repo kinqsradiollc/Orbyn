@@ -25,7 +25,7 @@ import {
 } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { keysFor } from "../../app/commands";
-import { NAV_GROUPS } from "../../app/views";
+import { NAV_GROUPS, navName, type View } from "../../app/views";
 import { setStartScreen, startScreen, usePrefs } from "../../app/prefs";
 import { SettingsSection } from "./SettingsSection";
 
@@ -122,7 +122,7 @@ export function ArrangeSettings({ user }: { user: User | null }) {
         onDrop={onDrop(group, labels, label)}
       >
         <GripVertical size={14} className="arrange-grip" aria-hidden="true" />
-        <span className="arrange-name">{label}</span>
+        <span className="arrange-name">{navName(label as View)}</span>
         <button
           className="icon-button"
           aria-label={`Move ${label} up`}

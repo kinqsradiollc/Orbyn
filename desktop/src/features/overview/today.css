@@ -253,3 +253,12 @@ button.today-title:hover {
     margin-block: -13px;
   }
 }
+.assistant-ideas .section-heading {
+  align-items: flex-start;
+}
+
+.assistant-ideas-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}

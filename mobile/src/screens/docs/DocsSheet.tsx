@@ -361,6 +361,7 @@ export function DocsSheet({
     setPicked(new Set());
     setFiling(null);
     setTemplating(false);
+    setNavigationOpen(false);
   }, [fixedKind]);
 
   /**
@@ -1115,214 +1116,179 @@ export function DocsSheet({
             )}
 
             {navigationOpen ? (
-              fixedKind ? (
-                <View style={styles.list}>
-                  <Text style={styles.navHeading}>
-                    {location.toUpperCase()}
-                  </Text>
-                  {(docs ?? []).map((doc) => (
-                    <View key={doc.id}>
-                      {navRow(
-                        doc.title || "Untitled",
-                        () => openHit(doc.id),
-                        open?.id === doc.id,
+              <View style={styles.list}>
+                <Text style={styles.navHeading}>WORKSPACE</Text>
+                {navRow(
+                  "All documents",
+                  () => selectCollection(null),
+                  !favoritesOnly &&
+                    !uploadsOnly &&
+                    !folderFilter &&
+                    !kindFilter,
+                  "fileText",
+                  docs?.filter(
+                    (d) =>
+                      d.kind !== "agenda" &&
+                      d.kind !== "memory" &&
+                      d.kind !== "agent",
+                  ).length,
+                )}
+                {navRow(
+                  "Pages",
+                  () => selectCollection(null, "doc"),
+                  !favoritesOnly && !folderFilter && kindFilter === "doc",
+                )}
+                {navRow(
+                  "Notes",
+                  () => selectCollection(null, "note"),
+                  !favoritesOnly && !folderFilter && kindFilter === "note",
+                )}
+                {navRow(
+                  "Favorites",
+                  () => selectCollection(null, null, true),
+                  favoritesOnly,
+                  "star",
+                )}
+                {navRow(
+                  "Uploads",
+                  () => selectCollection(null, null, false, null, true),
+                  uploadsOnly,
+                  "fileText",
+                  uploadCount || undefined,
+                )}
+                {navRow(
+                  "Archived",
+                  () =>
+                    selectCollection(
+                      null,
+                      null,
+                      false,
+                      null,
+                      false,
+                      false,
+                      true,
+                    ),
+                  archivedOnly,
+                  "folder",
+                )}
+                {navRow(
+                  "Trash",
+                  () => selectCollection(null, null, false, null, false, true),
+                  trashOnly,
+                  "trash",
+                )}
+                {agendas.length > 0 && (
+                  <>
+                    {navRow(
+                      "Agendas",
+                      () => selectCollection(null, "agenda"),
+                      !favoritesOnly && kindFilter === "agenda" && !agendaMonth,
+                    )}
+                    <View style={styles.navChildren}>
+                      {agendas.flatMap((y) =>
+                        y.months.map((m) => (
+                          <View key={m.key}>
+                            {navRow(
+                              `${m.label} ${y.year}`,
+                              () =>
+                                selectCollection(null, "agenda", false, m.key),
+                              kindFilter === "agenda" && agendaMonth === m.key,
+                            )}
+                          </View>
+                        )),
                       )}
                     </View>
-                  ))}
-                  {docs?.length === 0 && (
-                    <Text style={styles.empty}>
-                      {fixedKind === "memory"
-                        ? "Learned facts will appear here with their sources."
-                        : "Notes your agent makes will appear here."}
-                    </Text>
-                  )}
+                  </>
+                )}
+                <View style={styles.navChildren}>
+                  {(docs ?? [])
+                    .filter((d) => starred.has(favouriteKey("doc", d.id)))
+                    .map((d) => (
+                      <View key={d.id}>
+                        {navRow(d.title || "Untitled", () => openHit(d.id))}
+                      </View>
+                    ))}
                 </View>
-              ) : (
-                <View style={styles.list}>
-                  <Text style={styles.navHeading}>WORKSPACE</Text>
-                  {navRow(
-                    "All documents",
-                    () => selectCollection(null),
-                    !favoritesOnly &&
-                      !uploadsOnly &&
-                      !folderFilter &&
-                      !kindFilter,
-                    "fileText",
-                    docs?.filter(
-                      (d) =>
-                        d.kind !== "agenda" &&
-                        d.kind !== "memory" &&
-                        d.kind !== "agent",
-                    ).length,
-                  )}
-                  {navRow(
-                    "Pages",
-                    () => selectCollection(null, "doc"),
-                    !favoritesOnly && !folderFilter && kindFilter === "doc",
-                  )}
-                  {navRow(
-                    "Notes",
-                    () => selectCollection(null, "note"),
-                    !favoritesOnly && !folderFilter && kindFilter === "note",
-                  )}
-                  {navRow(
-                    "Favorites",
-                    () => selectCollection(null, null, true),
-                    favoritesOnly,
-                    "star",
-                  )}
-                  {navRow(
-                    "Uploads",
-                    () => selectCollection(null, null, false, null, true),
-                    uploadsOnly,
-                    "fileText",
-                    uploadCount || undefined,
-                  )}
-                  {navRow(
-                    "Archived",
-                    () =>
-                      selectCollection(
-                        null,
-                        null,
-                        false,
-                        null,
-                        false,
-                        false,
-                        true,
-                      ),
-                    archivedOnly,
-                    "folder",
-                  )}
-                  {navRow(
-                    "Trash",
-                    () =>
-                      selectCollection(null, null, false, null, false, true),
-                    trashOnly,
-                    "trash",
-                  )}
-                  {agendas.length > 0 && (
-                    <>
-                      {navRow(
-                        "Agendas",
-                        () => selectCollection(null, "agenda"),
-                        !favoritesOnly &&
-                          kindFilter === "agenda" &&
-                          !agendaMonth,
-                      )}
+                <Text style={styles.navHeading}>FOLDERS</Text>
+                {[
+                  ...folders
+                    .map((f) => ({ id: f.id, name: f.name }))
+                    .sort((a, b) => a.name.localeCompare(b.name)),
+                  { id: "none", name: "Unfiled" },
+                ].map((f) => (
+                  <View key={f.id}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        expanded: expandedFolder === f.id,
+                      }}
+                      style={styles.navRow}
+                      onPress={() =>
+                        setExpandedFolder(expandedFolder === f.id ? null : f.id)
+                      }
+                    >
+                      <Icon name="folder" size={18} color={colors.muted} />
+                      <Text style={styles.navTitle} numberOfLines={2}>
+                        {f.name}
+                      </Text>
+                      <Text style={styles.found}>
+                        {countIn(f.id === "none" ? null : f.id)}{" "}
+                        {expandedFolder === f.id ? "−" : "+"}
+                      </Text>
+                    </Pressable>
+                    {expandedFolder === f.id && (
                       <View style={styles.navChildren}>
-                        {agendas.flatMap((y) =>
-                          y.months.map((m) => (
-                            <View key={m.key}>
-                              {navRow(
-                                `${m.label} ${y.year}`,
-                                () =>
-                                  selectCollection(
-                                    null,
-                                    "agenda",
-                                    false,
-                                    m.key,
-                                  ),
-                                kindFilter === "agenda" &&
-                                  agendaMonth === m.key,
+                        {navRow(
+                          "View folder",
+                          () => selectCollection(f.id),
+                          folderFilter === f.id,
+                        )}
+                        {(docs ?? [])
+                          .filter((d) =>
+                            f.id === "none"
+                              ? !d.folder_id &&
+                                d.kind !== "agenda" &&
+                                d.kind !== "memory" &&
+                                d.kind !== "agent"
+                              : d.folder_id === f.id,
+                          )
+                          .sort((a, b) => a.title.localeCompare(b.title))
+                          .map((d) => (
+                            <View key={d.id}>
+                              {navRow(d.title || "Untitled", () =>
+                                openHit(d.id),
                               )}
                             </View>
-                          )),
-                        )}
+                          ))}
                       </View>
-                    </>
-                  )}
-                  <View style={styles.navChildren}>
-                    {(docs ?? [])
-                      .filter((d) => starred.has(favouriteKey("doc", d.id)))
-                      .map((d) => (
-                        <View key={d.id}>
-                          {navRow(d.title || "Untitled", () => openHit(d.id))}
-                        </View>
-                      ))}
+                    )}
                   </View>
-                  <Text style={styles.navHeading}>FOLDERS</Text>
-                  {[
-                    ...folders
-                      .map((f) => ({ id: f.id, name: f.name }))
-                      .sort((a, b) => a.name.localeCompare(b.name)),
-                    { id: "none", name: "Unfiled" },
-                  ].map((f) => (
-                    <View key={f.id}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          expanded: expandedFolder === f.id,
-                        }}
-                        style={styles.navRow}
-                        onPress={() =>
-                          setExpandedFolder(
-                            expandedFolder === f.id ? null : f.id,
-                          )
-                        }
-                      >
-                        <Icon name="folder" size={18} color={colors.muted} />
-                        <Text style={styles.navTitle} numberOfLines={2}>
-                          {f.name}
-                        </Text>
-                        <Text style={styles.found}>
-                          {countIn(f.id === "none" ? null : f.id)}{" "}
-                          {expandedFolder === f.id ? "−" : "+"}
-                        </Text>
-                      </Pressable>
-                      {expandedFolder === f.id && (
-                        <View style={styles.navChildren}>
-                          {navRow(
-                            "View folder",
-                            () => selectCollection(f.id),
-                            folderFilter === f.id,
-                          )}
-                          {(docs ?? [])
-                            .filter((d) =>
-                              f.id === "none"
-                                ? !d.folder_id &&
-                                  d.kind !== "agenda" &&
-                                  d.kind !== "memory" &&
-                                  d.kind !== "agent"
-                                : d.folder_id === f.id,
-                            )
-                            .sort((a, b) => a.title.localeCompare(b.title))
-                            .map((d) => (
-                              <View key={d.id}>
-                                {navRow(d.title || "Untitled", () =>
-                                  openHit(d.id),
-                                )}
-                              </View>
-                            ))}
-                        </View>
-                      )}
-                    </View>
-                  ))}
-                  <Button
-                    title="New folder"
-                    secondary
-                    onPress={() => setNaming(!naming)}
-                  />
-                  {naming && (
-                    <View style={styles.newFolder}>
-                      <TextInput
-                        style={[styles.search, { flex: 1, minWidth: 0 }]}
-                        value={folderName}
-                        placeholder="Folder name"
-                        placeholderTextColor={colors.faint}
-                        maxLength={60}
-                        onChangeText={setFolderName}
-                        onSubmitEditing={newFolder}
-                        accessibilityLabel="New folder name"
-                      />
-                      <Button
-                        title="Add"
-                        disabled={busy || !folderName.trim()}
-                        onPress={newFolder}
-                      />
-                    </View>
-                  )}
-                </View>
-              )
+                ))}
+                <Button
+                  title="New folder"
+                  secondary
+                  onPress={() => setNaming(!naming)}
+                />
+                {naming && (
+                  <View style={styles.newFolder}>
+                    <TextInput
+                      style={[styles.search, { flex: 1, minWidth: 0 }]}
+                      value={folderName}
+                      placeholder="Folder name"
+                      placeholderTextColor={colors.faint}
+                      maxLength={60}
+                      onChangeText={setFolderName}
+                      onSubmitEditing={newFolder}
+                      accessibilityLabel="New folder name"
+                    />
+                    <Button
+                      title="Add"
+                      disabled={busy || !folderName.trim()}
+                      onPress={newFolder}
+                    />
+                  </View>
+                )}
+              </View>
             ) : open || agendaGap ? (
               <>
                 {(agendaGap || open?.kind === "agenda") && (
@@ -1449,17 +1415,16 @@ export function DocsSheet({
             ) : (
               <View style={styles.list}>
                 <View style={styles.libraryToolbar}>
-                  <SmallAction
-                    label={
-                      fixedKind === "memory"
-                        ? "Browse Memory"
-                        : fixedKind === "agent"
-                          ? "Browse Agent notes"
-                          : "All folders"
-                    }
-                    disabled={false}
-                    onPress={() => setNavigationOpen(true)}
-                  />
+                  {/* Memory and Agent notes are one list each: there are
+                      no folders to browse, so no second panel of the same
+                      pages. */}
+                  {!fixedKind && (
+                    <SmallAction
+                      label="All folders"
+                      disabled={false}
+                      onPress={() => setNavigationOpen(true)}
+                    />
+                  )}
                   <SmallAction
                     label={
                       sort === "recent"

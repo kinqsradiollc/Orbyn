@@ -38,6 +38,13 @@ import { setFolds } from "../modules/docs/structure.js";
 import { setInstructions } from "../modules/agent-context/service.js";
 import { forgetMemory } from "../modules/memory/service.js";
 import {
+  deleteAgentRoutine,
+  readAgentRoutine,
+  routineFields,
+  saveAgentRoutine,
+} from "../modules/assistant-workspace/routines.js";
+import { readGoal, saveGoal } from "../modules/assistant-workspace/goals.js";
+import {
   deleteField,
   requireField,
   setFieldValue,
@@ -294,7 +301,84 @@ export type UndoOp =
   /** A view it pinned or unpinned in the sidebar (H6b). */
   | { op: "view.pin"; id: string; pinned: boolean }
   /** A source it took off a page (H6b): put its lines' uses back. */
-  | { op: "source.relink"; id: string; doc_id: string; lines: string[] };
+  | { op: "source.relink"; id: string; doc_id: string; lines: string[] }
+  /** An assistant routine it made: remove it while it is as it left it. */
+  | { op: "routine.delete"; id: string; expect: RoutineFields }
+  /** A routine it changed or paused: put its fields back. */
+  | {
+      op: "routine.restore";
+      id: string;
+      expect: RoutineFields;
+      fields: RoutineFields;
+    }
+  /** A routine it deleted: make it again with the same id. */
+  | { op: "routine.recreate"; id: string; fields: RoutineFields }
+  /** A goal it made: remove it while it is as it left it. */
+  | { op: "goal.delete"; id: string; expect: GoalFields }
+  /** A goal it changed: put its fields back. */
+  | { op: "goal.restore"; id: string; expect: GoalFields; fields: GoalFields }
+  /** A goal it deleted: make it again, with its check-ins. */
+  | {
+      op: "goal.recreate";
+      id: string;
+      fields: GoalFields;
+      checkins: {
+        week_of: string;
+        summary: string;
+        progress: Record<string, unknown>;
+      }[];
+    }
+  /** A goal's weekly check-in it saved: as it was (null: none). */
+  | {
+      op: "goal_checkin.restore";
+      goal_id: string;
+      week_of: string;
+      summary: string;
+      was: { summary: string; progress: Record<string, unknown> } | null;
+    };
+
+/** A routine's own fields, as undo keeps them. */
+export type RoutineFields = {
+  instruction: string;
+  rrule: string;
+  timezone: string;
+  next_run_at: string;
+  paused: boolean;
+};
+
+/** A goal's own fields, as undo keeps them. */
+export type GoalFields = {
+  title: string;
+  target: string;
+  target_date: string | null;
+  plan_doc_id: string | null;
+  project_id: string | null;
+  status: "active" | "paused" | "done";
+};
+
+/** A goal's fields from a read goal. */
+export const goalFields = (goal: GoalFields): GoalFields => ({
+  title: goal.title,
+  target: goal.target,
+  target_date: goal.target_date,
+  plan_doc_id: goal.plan_doc_id,
+  project_id: goal.project_id,
+  status: goal.status,
+});
+
+const sameRoutine = (a: RoutineFields, b: RoutineFields) =>
+  a.instruction === b.instruction &&
+  a.rrule === b.rrule &&
+  a.timezone === b.timezone &&
+  a.paused === b.paused;
+
+const sameGoal = (a: GoalFields, b: GoalFields) =>
+  a.title === b.title &&
+  a.target === b.target &&
+  a.target_date === b.target_date &&
+  a.plan_doc_id === b.plan_doc_id &&
+  a.project_id === b.project_id &&
+  a.status === b.status;
 
 /** Undo is kept this long after the change. */
 export const UNDO_DAYS = 30;
@@ -617,6 +701,11 @@ export async function runUndo(
             u.id,
           ]);
         }
+        await db.query(
+          `UPDATE agent_grants SET name = $2, client_name = $2
+            WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
+          [u.id, op.previous?.name ?? "Orbyn"],
+        );
         break;
       }
       case "occurrence.restore": {
@@ -888,6 +977,96 @@ export async function runUndo(
           name: op.fields.name,
           definition: readDefinition(op.fields.definition, view.source),
         });
+        break;
+      }
+      case "routine.delete": {
+        const now = await readAgentRoutine(db, u.id, op.id);
+        if (!now) break;
+        if (!sameRoutine(routineFields(now), op.expect)) changedSince();
+        await deleteAgentRoutine(db, u.id, op.id);
+        break;
+      }
+      case "routine.restore": {
+        const now = await readAgentRoutine(db, u.id, op.id);
+        if (!now) fail(404, "That routine is gone.");
+        if (!sameRoutine(routineFields(now), op.expect)) changedSince();
+        // Clears a saved approval if the instruction goes back.
+        await saveAgentRoutine(db, u.id, op.id, op.fields, { advance: true });
+        break;
+      }
+      case "routine.recreate": {
+        if (await readAgentRoutine(db, u.id, op.id)) changedSince();
+        const made = await saveAgentRoutine(db, u.id, null, op.fields, {
+          advance: true,
+        });
+        // Back under its own id, so links and the activity still name it.
+        await db.query(
+          "UPDATE agent_routines SET id = $2 WHERE id = $1 AND user_id = $3",
+          [made.id, op.id, u.id],
+        );
+        break;
+      }
+      case "goal.delete": {
+        const now = await readGoal(db, u.id, op.id);
+        if (!now) break;
+        if (!sameGoal(goalFields(now), op.expect)) changedSince();
+        await db.query("DELETE FROM goals WHERE id = $1 AND user_id = $2", [
+          op.id,
+          u.id,
+        ]);
+        break;
+      }
+      case "goal.restore": {
+        const now = await readGoal(db, u.id, op.id);
+        if (!now) fail(404, "That goal is gone.");
+        if (!sameGoal(goalFields(now), op.expect)) changedSince();
+        await saveGoal(db, u.id, op.id, op.fields);
+        break;
+      }
+      case "goal.recreate": {
+        if (await readGoal(db, u.id, op.id)) changedSince();
+        const made = await saveGoal(db, u.id, null, op.fields);
+        await db.query(
+          "UPDATE goals SET id = $2 WHERE id = $1 AND user_id = $3",
+          [made.id, op.id, u.id],
+        );
+        for (const c of op.checkins)
+          await db.query(
+            `INSERT INTO goals_checkins (goal_id, user_id, week_of, summary, progress, status)
+             VALUES ($1, $2, $3::date, $4, $5::jsonb, 'done')
+             ON CONFLICT (goal_id, week_of) DO NOTHING`,
+            [op.id, u.id, c.week_of, c.summary, JSON.stringify(c.progress)],
+          );
+        break;
+      }
+      case "goal_checkin.restore": {
+        const now = (
+          await db.query<{ summary: string }>(
+            `SELECT summary FROM goals_checkins
+              WHERE goal_id = $1 AND user_id = $2 AND week_of = $3::date FOR UPDATE`,
+            [op.goal_id, u.id, op.week_of],
+          )
+        ).rows[0];
+        if (!now) break;
+        if (now.summary !== op.summary) changedSince();
+        if (op.was)
+          await db.query(
+            `UPDATE goals_checkins SET summary = $4, progress = $5::jsonb
+              WHERE goal_id = $1 AND user_id = $2 AND week_of = $3::date`,
+            [
+              op.goal_id,
+              u.id,
+              op.week_of,
+              op.was.summary,
+              JSON.stringify(op.was.progress),
+            ],
+          );
+        else
+          await db.query(
+            `DELETE FROM goals_checkins
+              WHERE goal_id = $1 AND user_id = $2 AND week_of = $3::date`,
+            [op.goal_id, u.id, op.week_of],
+          );
         break;
       }
     }

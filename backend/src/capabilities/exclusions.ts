@@ -22,6 +22,8 @@ export const EXCLUSION_REASONS = {
     "Previewing a captured link makes Orbyn fetch an outside address for the agent. (Subscribing to a calendar by link, changing its link and refreshing it are the agent's since H6a/H6b, through the app's own subscription service and its public-address check.)",
   hosted_ai:
     "Orbyn's own assistant: agents bring their own model and never spend the hosted one.",
+  assistant_control:
+    "Controls for the built-in assistant's own runs and approval scope: its connected agents cannot inspect or operate these.",
   people_only:
     "Approving or declining a proposal, and undoing an agent's change: only a person signed in to Orbyn can.",
   admin: "The admin console and AI provider settings.",
@@ -62,6 +64,9 @@ export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
 /** Routes a capability already covers, with the capabilities that do. */
 export const COVERED: Record<string, string[]> = {
+  "GET /ai/chats": ["get_chats"],
+  "GET /ai/chats/:id": ["get_chats"],
+  "GET /ai/projects/:id/chats": ["get_chats"],
   "GET /search": ["search"],
   "GET /find": ["search"],
   // The link picker finds names as /find does; pills are titles and states
@@ -87,6 +92,15 @@ export const COVERED: Record<string, string[]> = {
   "GET /planner/next": ["get_today"],
   "GET /teams": ["get_context"],
   "GET /me": ["get_context"],
+  "GET /me/goals": ["manage_goals"],
+  "POST /me/goals": ["manage_goals"],
+  "PUT /me/goals/:id": ["manage_goals"],
+  "DELETE /me/goals/:id": ["manage_goals"],
+  "GET /me/goals/:id/checkins": ["manage_goals"],
+  "GET /me/agent-routines": ["manage_agent_routines"],
+  "POST /me/agent-routines": ["manage_agent_routines"],
+  "PUT /me/agent-routines/:id": ["manage_agent_routines"],
+  "DELETE /me/agent-routines/:id": ["manage_agent_routines"],
   "GET /planner/prefs": ["get_context"],
   "GET /today": ["get_today"],
   // Merged in the M1–M4 integration and classified in A1-late.
@@ -403,6 +417,9 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/chat": "hosted_ai",
   "GET /ai/chat/:id": "hosted_ai",
   "POST /ai/chat/start": "hosted_ai",
+  "POST /ai/chat/:id/answer": "assistant_control",
+  "POST /ai/chat/:id/approve": "assistant_control",
+  "POST /ai/chat/:id/stop": "assistant_control",
   "POST /ai/project": "hosted_ai",
   "POST /ai/proposals/:id/apply": "people_only",
   // The Review inbox and Undo: only the person signed in decides.
@@ -437,10 +454,13 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/providers/:id/test": "admin",
   "PUT /ai/settings": "admin",
   "PUT /ai/settings/semantic": "admin",
-  "GET /ai/projects/:id/chats": "hosted_ai",
-  "GET /ai/chats/:id": "hosted_ai",
   "PUT /ai/chats/:id": "hosted_ai",
   "DELETE /ai/chats/:id": "hosted_ai",
+  "PATCH /ai/chats/:id": "hosted_ai",
+  "POST /ai/chats/:id/save-note": "hosted_ai",
+  "GET /me/assistant/ideas": "assistant_control",
+  "GET /me/assistant/approval-scopes": "assistant_control",
+  "PUT /me/assistant/approval-scopes": "assistant_control",
   // The list of kept originals (files to download); the setting is covered.
   "GET /me/originals": "kept_files",
   "GET /docs/:id/original": "kept_files",

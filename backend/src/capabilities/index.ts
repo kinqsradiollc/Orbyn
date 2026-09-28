@@ -1,6 +1,7 @@
 import { getCalendar } from "./calendar-view.js";
 import { updateAgent } from "./agent-settings.js";
 import { manageMemory } from "./memory.js";
+import { getChats } from "./chats.js";
 import { getContext, getProfile } from "./context.js";
 import { listAgentChanges, undoCapability } from "./changes.js";
 import { ackInbox, askPerson, getInbox } from "./inbox.js";
@@ -62,6 +63,8 @@ import { createDocCapability, editDoc } from "./write-docs.js";
 import { appendDoc } from "./long-docs.js";
 import { saveSource } from "./citations.js";
 import { addFile } from "./agent-files.js";
+import { manageGoals } from "./goals.js";
+import { manageAgentRoutines } from "./agent-routines.js";
 import {
   createProjectCapability,
   link,
@@ -89,6 +92,8 @@ export const registry = new Registry([
   updateAgent,
   // Muse M2: the private Memory library and durable facts.
   manageMemory,
+  // Muse M3: the person's private history with Orbyn's built-in assistant.
+  getChats,
   // The first endpoint's tools, for old personal API keys only.
   searchItems,
   addTask,
@@ -160,6 +165,10 @@ export const registry = new Registry([
   importTasks,
   // Agent 2 (H2): files the agent sends.
   addFile,
+  // Muse M8: personal goals and weekly check-ins.
+  manageGoals,
+  // Muse M9: scheduled routines for Orbyn's built-in assistant.
+  manageAgentRoutines,
 ]);
 
 export { Registry };

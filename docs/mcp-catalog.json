@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-27",
+  "version": "2026-09-28",
   "server": {
     "name": "orbyn",
     "title": "Orbyn",
@@ -16,7 +16,7 @@
     {
       "name": "get_context",
       "title": "Who and where",
-      "description": "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
+      "description": "Call first. Returns the person and agent identity, local time, working hours, team roles and policy, connection access, trust and ask-first rules, spaces, toolsets, expiry, limits, conventions, About me, learning profile, instructions, standing rules, recent changes, and the private Memory topic index when Personal is available.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -156,6 +156,7 @@
             },
             "required": ["app", "today"]
           },
+          "memory": { "type": "array", "items": { "type": "string" } },
           "conventions": {
             "type": "object",
             "properties": {
@@ -268,6 +269,7 @@
           "teams",
           "limits",
           "links",
+          "memory",
           "conventions",
           "profile",
           "learning",
@@ -1882,6 +1884,162 @@
           }
         },
         "required": ["status"]
+      }
+    },
+    {
+      "name": "get_chats",
+      "title": "Read assistant chats",
+      "description": "Reads saved chats, turns, and content-free steps. Search titles and turns, or pass chat_id. Projects kept out of AI are hidden.",
+      "kind": "read",
+      "access": "read",
+      "toolset": "core",
+      "mode": "read",
+      "tier": "R",
+      "annotations": {
+        "title": "Read assistant chats",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chat_id": {
+            "description": "Open one chat by id.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "search": { "default": "", "type": "string", "maxLength": 200 },
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "limit": {
+            "default": 20,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "chats": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "pinned": { "type": "boolean" },
+                "turn_count": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "summary_doc_id": { "type": ["string", "null"] },
+                "summary": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "title": { "type": "string" },
+                        "text": { "type": "string" },
+                        "truncated": { "type": "boolean" },
+                        "url": { "type": "string" }
+                      },
+                      "required": ["title", "text", "truncated", "url"]
+                    },
+                    { "type": "null" }
+                  ],
+                  "description": "A compacted chat's private summary note (null when none or kept out)."
+                },
+                "swept_at": { "type": ["string", "null"] },
+                "scope": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["project", "task"] },
+                    "id": { "type": "string" }
+                  },
+                  "required": ["kind", "id"]
+                },
+                "turns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "enum": ["user", "assistant"]
+                      },
+                      "text": { "type": "string" },
+                      "outcome": {
+                        "type": "string",
+                        "enum": ["pending", "applied", "discarded", "info"]
+                      },
+                      "sources": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "title": { "type": "string" },
+                            "doc_id": { "type": "string" },
+                            "block_id": { "type": ["string", "null"] },
+                            "kind": {
+                              "type": "string",
+                              "enum": ["task", "decision", "change"]
+                            },
+                            "id": { "type": "string" }
+                          },
+                          "required": ["title"]
+                        }
+                      }
+                    },
+                    "required": ["role", "text"]
+                  }
+                },
+                "trace": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": ["thinking", "tool", "result", "reply", "error"]
+                      },
+                      "label": { "type": "string" },
+                      "tool": { "type": "string" }
+                    },
+                    "required": ["step", "kind", "label"]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "pinned",
+                "turn_count",
+                "summary_doc_id",
+                "summary",
+                "swept_at",
+                "scope",
+                "turns",
+                "trace"
+              ]
+            }
+          }
+        },
+        "required": ["chats"]
       }
     },
     {
@@ -4350,7 +4508,10 @@
                     "tasks_from_doc",
                     "comment_on_doc",
                     "update_study",
+                    "manage_memory",
                     "schedule_sessions",
+                    "reschedule_sessions",
+                    "update_planner_settings",
                     "save_source",
                     "save_record",
                     "add_progress"
@@ -8678,6 +8839,298 @@
           "app_url"
         ]
       }
+    },
+    {
+      "name": "manage_goals",
+      "title": "Manage goals",
+      "description": "List, read, create, update or complete your private goals. Personal only. Each goal can have a target, its own Agent plan note, an optional project, and weekly check-ins. Use a visible Orbyn project and a private Agent note for its plan. An active goal gets a weekly check-in that Orbyn's own assistant runs, so a connection that asks first or only suggests sends creates and updates to the person's Review inbox.",
+      "kind": "destructive",
+      "access": "write",
+      "toolset": "core",
+      "mode": "write",
+      "tier": "W2",
+      "annotations": {
+        "title": "Manage goals",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list", "read", "create", "update", "delete", "checkin"]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "goal": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "target": { "default": "", "type": "string", "maxLength": 2000 },
+              "target_date": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "plan_doc_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "project_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "status": {
+                "default": "active",
+                "type": "string",
+                "enum": ["active", "paused", "done"]
+              }
+            },
+            "required": ["title"],
+            "additionalProperties": false
+          },
+          "changes": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "target": { "default": "", "type": "string", "maxLength": 2000 },
+              "target_date": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "plan_doc_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "project_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "status": {
+                "default": "active",
+                "type": "string",
+                "enum": ["active", "paused", "done"]
+              }
+            },
+            "additionalProperties": false
+          },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "progress": {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": {}
+          },
+          "week_of": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "client_ref": {
+            "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ok", "done", "pending_review"]
+          },
+          "goals": { "type": "array", "items": {} },
+          "goal": { "anyOf": [{}, { "type": "null" }] },
+          "checkins": { "type": "array", "items": {} },
+          "pending": {
+            "type": ["object", "null"],
+            "properties": {
+              "status": { "type": "string", "const": "pending_review" },
+              "proposal_id": { "type": "string" },
+              "review_url": { "type": "string" },
+              "expires_at": { "type": "string" },
+              "changes": { "type": "number" }
+            },
+            "required": [
+              "status",
+              "proposal_id",
+              "review_url",
+              "expires_at",
+              "changes"
+            ]
+          }
+        },
+        "required": ["status", "goals", "goal", "checkins"]
+      }
+    },
+    {
+      "name": "manage_agent_routines",
+      "title": "Manage assistant routines",
+      "description": "List, create, update, pause, resume or delete recurring instructions for Orbyn's built-in assistant. Personal only. Use a supported time zone, an RRULE such as FREQ=WEEKLY;BYDAY=MO, and the next local run time. Each run is Orbyn's assistant working on its own, so creating, changing or resuming a routine always waits for the person's approval in Review; pausing and deleting happen at once.",
+      "kind": "destructive",
+      "access": "write",
+      "toolset": "core",
+      "mode": "write",
+      "tier": "W2",
+      "annotations": {
+        "title": "Manage assistant routines",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list", "create", "update", "pause", "resume", "delete"]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "routine": {
+            "type": "object",
+            "properties": {
+              "instruction": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "rrule": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "timezone": {
+                "default": "UTC",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "next_run_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "paused": { "default": false, "type": "boolean" }
+            },
+            "required": ["instruction", "rrule", "next_run_at"],
+            "additionalProperties": false
+          },
+          "changes": {
+            "type": "object",
+            "properties": {
+              "instruction": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "rrule": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "timezone": {
+                "default": "UTC",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "next_run_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              "paused": { "default": false, "type": "boolean" }
+            },
+            "additionalProperties": false
+          },
+          "client_ref": {
+            "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ok", "done", "pending_review"]
+          },
+          "routines": { "type": "array", "items": {} },
+          "routine": { "anyOf": [{}, { "type": "null" }] },
+          "pending": {
+            "type": ["object", "null"],
+            "properties": {
+              "status": { "type": "string", "const": "pending_review" },
+              "proposal_id": { "type": "string" },
+              "review_url": { "type": "string" },
+              "expires_at": { "type": "string" },
+              "changes": { "type": "number" }
+            },
+            "required": [
+              "status",
+              "proposal_id",
+              "review_url",
+              "expires_at",
+              "changes"
+            ]
+          }
+        },
+        "required": ["status", "routines", "routine"]
+      }
     }
   ],
   "resources": [
@@ -8881,6 +9334,7 @@
         "get_profile",
         "update_agent",
         "manage_memory",
+        "get_chats",
         "create_tasks",
         "update_tasks",
         "complete_tasks",
@@ -8899,7 +9353,9 @@
         "get_inbox",
         "ack_inbox",
         "ask_person",
-        "apply_plan"
+        "apply_plan",
+        "manage_goals",
+        "manage_agent_routines"
       ]
     },
     {
@@ -9000,6 +9456,16 @@
   ],
   "changelog": [
     {
+      "date": "2026-09-28",
+      "changes": [
+        "Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.",
+        "get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.",
+        "manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.",
+        "manage_agent_routines (core): scheduled runs of the built-in assistant. Personal only; creating, changing or resuming a routine always waits for the person's approval in Review, and a changed instruction clears any approval saved for that routine. Pausing and deleting happen at once.",
+        "Goal and routine changes made directly are undoable. Ideas (daily suggestions) always wait in Review. 65 tools, 33 core; no global tool ceiling."
+      ]
+    },
+    {
       "date": "2026-09-27",
       "changes": [
         "Your named agent and its Memory (Muse M1–M2), 62 tools: update_agent (core) changes the name and persona of the person's Orbyn agent (default Orbyn), with undo; get_context returns it as agent. manage_memory (core) lists, reads, remembers and forgets the person's private Memory notes (one note per topic, each fact with where it was learned), the same notes Orbyn's own agent learns on its own; Memory is personal only, and projects kept out of AI are never used. The About me page is the first Memory note. Agent notes (things the agent made) are ordinary pages whose kind fetch shows. The 60-tool cap is lifted.",
@@ -9042,5 +9508,5 @@
       ]
     }
   ],
-  "routes": { "covered": 256, "excluded": 205, "pending": 0 }
+  "routes": { "covered": 268, "excluded": 211, "pending": 0 }
 }

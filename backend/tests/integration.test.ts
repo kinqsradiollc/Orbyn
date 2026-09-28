@@ -2,6 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import type { Proposal } from "@orbyn/core";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
@@ -18,10 +19,28 @@ const provider = createServer((req, res) => {
   req.on("data", (chunk) => (body += chunk));
   req.on("end", () => {
     lastProviderRequest = JSON.parse(body || "{}");
+    const scripted = providerResponse as {
+      tool_calls?: { name: string; arguments: unknown }[];
+    };
+    const toolCalls = scripted.tool_calls?.map((call, index) => ({
+      id: `test_call_${index}`,
+      type: "function",
+      function: {
+        name: call.name,
+        arguments: JSON.stringify(call.arguments),
+      },
+    }));
     res.writeHead(providerStatus, { "Content-Type": "application/json" });
     res.end(
       JSON.stringify({
-        choices: [{ message: { content: JSON.stringify(providerResponse) } }],
+        choices: [
+          {
+            finish_reason: toolCalls?.length ? "tool_calls" : "stop",
+            message: toolCalls?.length
+              ? { content: null, tool_calls: toolCalls }
+              : { content: JSON.stringify(providerResponse) },
+          },
+        ],
       }),
     );
   });
@@ -60,6 +79,19 @@ const clean = (i: Record<string, unknown>) => ({
   reminder_minutes: i.reminder_minutes,
   version: i.version,
 });
+async function pollAssistant(token: string, jobId: string) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const response = await app.inject({
+      url: `/ai/chat/${jobId}`,
+      headers: headers(token),
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    const result = response.json();
+    if (result.state !== "running") return result;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  assert.fail("The fake-provider chat job did not finish.");
+}
 before(async () => {
   await migrate();
   // The assistant uses the stand-in provider, chosen as an admin would in the
@@ -197,7 +229,14 @@ test("validates dates, ownership fields, event starts, and pagination", async ()
   );
 });
 test("an assistant turn can be started, then polled for its answer", async () => {
-  providerResponse = { summary: "Nothing today.", actions: [] };
+  providerResponse = {
+    tool_calls: [
+      {
+        name: "finish",
+        arguments: { answer: "Nothing today.", steps: [] },
+      },
+    ],
+  };
   const started = await app.inject({
     method: "POST",
     url: "/ai/chat/start",
@@ -206,7 +245,11 @@ test("an assistant turn can be started, then polled for its answer", async () =>
   });
   assert.equal(started.statusCode, 202);
   const id = started.json().id;
-  let job = { state: "running" } as { state: string; proposal?: Proposal };
+  let job = { state: "running" } as {
+    state: string;
+    answer?: string;
+    assistant_run?: { outcome?: string };
+  };
   for (let i = 0; i < 50 && job.state === "running"; i++) {
     await new Promise((r) => setTimeout(r, 20));
     const r = await app.inject({
@@ -217,8 +260,8 @@ test("an assistant turn can be started, then polled for its answer", async () =>
     job = r.json();
   }
   assert.equal(job.state, "done");
-  assert.equal(job.proposal?.summary, "Nothing today.");
-  assert.deepEqual(job.proposal?.actions, []);
+  assert.equal(job.answer, "Nothing today.");
+  assert.equal(job.assistant_run?.outcome, "info");
   // Someone else's turn is not there; a stopped copy's turn is reported.
   assert.equal(
     (await app.inject({ url: `/ai/chat/${id}`, headers: headers(bob) }))
@@ -236,132 +279,39 @@ test("an assistant turn can be started, then polled for its answer", async () =>
   assert.equal(stale.status, 503);
 });
 
-test("AI summaries do not mutate and proposals apply exactly once", async () => {
-  const summary = await app.inject({
-    method: "POST",
-    url: "/ai/chat",
-    headers: headers(alice),
-    payload: { message: "Summarize", timezone: "Australia/Melbourne" },
-  });
-  assert.equal(summary.statusCode, 200);
-  assert.deepEqual(summary.json().actions, []);
+test("the legacy chat URL starts the persistent lead assistant", async () => {
   providerResponse = {
-    summary: "Proposed task",
-    actions: [{ operation: "create", data: payload("AI-created") }],
-  };
-  const r = await app.inject({
-    method: "POST",
-    url: "/ai/chat",
-    headers: headers(alice),
-    payload: { message: "Create a task" },
-  });
-  assert.equal(r.statusCode, 200);
-  const id = r.json().id;
-  assert.equal(
-    (
-      await pool.query(
-        "SELECT * FROM items WHERE user_id=$1 AND title='AI-created'",
-        [aliceId],
-      )
-    ).rowCount,
-    0,
-  );
-  assert.equal(
-    (
-      await app.inject({
-        method: "POST",
-        url: `/ai/proposals/${id}/apply`,
-        headers: headers(bob),
-      })
-    ).statusCode,
-    404,
-  );
-  const applied = await Promise.all(
-    [1, 2].map(() =>
-      app.inject({
-        method: "POST",
-        url: `/ai/proposals/${id}/apply`,
-        headers: headers(alice),
-      }),
-    ),
-  );
-  assert.ok(applied.every((r) => r.statusCode === 200));
-  assert.equal(
-    (
-      await pool.query(
-        "SELECT * FROM items WHERE user_id=$1 AND title='AI-created'",
-        [aliceId],
-      )
-    ).rowCount,
-    1,
-  );
-});
-test("AI proposal batch rolls back when an action targets another user", async () => {
-  const b = (
-    await app.inject({
-      method: "POST",
-      url: "/items",
-      headers: headers(bob),
-      payload: payload("Bob private"),
-    })
-  ).json();
-  providerResponse = {
-    summary: "Invalid batch",
-    actions: [
-      { operation: "create", data: payload("Must rollback") },
-      { operation: "delete", item_id: b.id, version: 1 },
+    tool_calls: [
+      {
+        name: "finish",
+        arguments: { answer: "The alias uses the lead assistant.", steps: [] },
+      },
     ],
   };
-  const r = await app.inject({
+  const started = await app.inject({
     method: "POST",
     url: "/ai/chat",
     headers: headers(alice),
-    payload: { message: "Change things" },
+    payload: { message: "Summarize today", timezone: "UTC" },
   });
-  assert.equal(r.statusCode, 200);
-  // The model cannot see Bob's item, so an action on it is dropped up front.
-  assert.deepEqual(
-    r.json().actions.map((a: { operation: string }) => a.operation),
-    ["create"],
-  );
-  // Apply still rolls the whole batch back if one action is forbidden.
-  const forged = (
-    await pool.query(
-      "INSERT INTO proposals(user_id,actions) VALUES($1,$2) RETURNING id",
-      [
-        aliceId,
-        JSON.stringify([
-          { operation: "create", data: payload("Must rollback") },
-          { operation: "delete", item_id: b.id, version: 1 },
-        ]),
-      ],
-    )
-  ).rows[0].id;
-  assert.equal(
-    (
-      await app.inject({
-        method: "POST",
-        url: `/ai/proposals/${forged}/apply`,
-        headers: headers(alice),
-      })
-    ).statusCode,
-    404,
-  );
-  assert.equal(
-    (
-      await pool.query(
-        "SELECT 1 FROM items WHERE user_id=$1 AND title='Must rollback'",
-        [aliceId],
-      )
-    ).rowCount,
-    0,
-  );
+  assert.equal(started.statusCode, 202, started.body);
+  const result = await pollAssistant(alice, started.json().id);
+  assert.equal(result.state, "done");
+  assert.equal(result.answer, "The alias uses the lead assistant.");
+  assert.equal("proposal" in result, false);
 });
 test("the assistant forwards conversation history to the provider", async () => {
-  providerResponse = { summary: "Tomorrow is clear too.", actions: [] };
-  const r = await app.inject({
+  providerResponse = {
+    tool_calls: [
+      {
+        name: "finish",
+        arguments: { answer: "Tomorrow is clear too.", steps: [] },
+      },
+    ],
+  };
+  const started = await app.inject({
     method: "POST",
-    url: "/ai/chat",
+    url: "/ai/chat/start",
     headers: headers(alice),
     payload: {
       message: "And tomorrow?",
@@ -372,7 +322,9 @@ test("the assistant forwards conversation history to the provider", async () => 
       ],
     },
   });
-  assert.equal(r.statusCode, 200);
+  assert.equal(started.statusCode, 202, started.body);
+  const result = await pollAssistant(alice, started.json().id);
+  assert.equal(result.state, "done");
   const messages = lastProviderRequest.messages;
   assert.deepEqual(
     messages.map((m) => m.role),
@@ -383,34 +335,250 @@ test("the assistant forwards conversation history to the provider", async () => 
   assert.match(messages[3].content, /And tomorrow\?/);
 });
 
-test("AI provider errors and invalid outputs are handled", async () => {
+test("assistant chats persist, resume from server history, and queue only each new pair", async () => {
   providerResponse = {
-    summary: "Invalid",
-    actions: [{ operation: "create", data: { title: "" } }],
+    tool_calls: [
+      {
+        name: "finish",
+        arguments: { answer: "A durable answer.", steps: [] },
+      },
+    ],
   };
+  const chatId = randomUUID();
+  const firstTurnId = randomUUID();
+  const secondTurnId = randomUUID();
+  const waitFor = async (jobId: string) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const response = await app.inject({
+        url: `/ai/chat/${jobId}`,
+        headers: headers(alice),
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      const body = response.json();
+      if (body.state !== "running") return body;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.fail("The fake-provider chat job did not finish.");
+  };
+  const start = async (turnId: string, message: string) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/ai/chat/start",
+      headers: headers(alice),
+      payload: {
+        chat_id: chatId,
+        turn_id: turnId,
+        message,
+        timezone: "UTC",
+        history: [],
+        scope: null,
+      },
+    });
+    assert.equal(response.statusCode, 202, response.body);
+    const started = response.json();
+    assert.equal(started.chat_id, chatId);
+    assert.equal(started.turn_id, turnId);
+    return waitFor(started.id);
+  };
+
+  const first = await start(firstTurnId, "First durable question");
+  assert.equal(first.state, "done");
+  assert.equal(first.chat_id, chatId);
+  assert.ok(
+    first.trace.some((entry: { kind: string }) => entry.kind === "reply"),
+  );
+  assert.doesNotMatch(JSON.stringify(first.trace), /First durable question/);
+
+  const second = await start(secondTurnId, "A follow-up question");
+  assert.equal(second.state, "done");
+  assert.deepEqual(
+    lastProviderRequest.messages.map((message) => message.role),
+    ["system", "user", "assistant", "user"],
+  );
+  assert.match(
+    lastProviderRequest.messages[1].content,
+    /First durable question/,
+  );
+  assert.match(lastProviderRequest.messages[2].content, /A durable answer/);
+
+  const saved = await app.inject({
+    url: `/ai/chats/${chatId}`,
+    headers: headers(alice),
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.deepEqual(
+    saved.json().turns.map((turn: { role: string }) => turn.role),
+    ["user", "assistant", "user", "assistant"],
+  );
+  assert.equal(saved.json().turns[0].turn_id, firstTurnId);
+  assert.equal(saved.json().turns[1].turn_id, firstTurnId);
+  assert.equal(saved.json().turns[1].outcome, "info");
+  assert.ok(saved.json().trace.length >= 4);
+
+  const queued = await pool.query<{
+    turns: { role: string; content: string }[];
+  }>(
+    `SELECT turns FROM memory_queue WHERE user_id = $1 AND chat_id = $2
+      ORDER BY queued_at`,
+    [aliceId, chatId],
+  );
+  assert.equal(queued.rows.length, 2);
+  assert.equal(queued.rows[0].turns.length, 2);
+  assert.equal(queued.rows[0].turns[0].content, "First durable question");
+  assert.equal(queued.rows[1].turns.length, 2);
+  assert.equal(queued.rows[1].turns[0].content, "A follow-up question");
+
+  const renamed = await app.inject({
+    method: "PATCH",
+    url: `/ai/chats/${chatId}`,
+    headers: headers(alice),
+    payload: { title: "Durable planning", pinned: true },
+  });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  assert.equal(renamed.json().title, "Durable planning");
+  assert.equal(renamed.json().pinned, true);
+  const search = await app.inject({
+    url: "/ai/chats?search=follow-up",
+    headers: headers(alice),
+  });
+  assert.equal(search.statusCode, 200, search.body);
+  assert.equal(search.json()[0].id, chatId);
+
+  const note = await app.inject({
+    method: "POST",
+    url: `/ai/chats/${chatId}/save-note`,
+    headers: headers(alice),
+  });
+  assert.equal(note.statusCode, 200, note.body);
+  const noteRow = await pool.query<{ kind: string }>(
+    "SELECT kind FROM docs WHERE id = $1",
+    [note.json().id],
+  );
+  assert.equal(noteRow.rows[0].kind, "agent");
+
+  const deleted = await app.inject({
+    method: "DELETE",
+    url: `/ai/chats/${chatId}`,
+    headers: headers(alice),
+  });
+  assert.equal(deleted.statusCode, 204);
   assert.equal(
     (
-      await app.inject({
-        method: "POST",
-        url: "/ai/chat",
-        headers: headers(alice),
-        payload: { message: "test" },
-      })
-    ).statusCode,
-    502,
+      await pool.query(
+        "SELECT 1 FROM memory_queue WHERE user_id = $1 AND chat_id = $2",
+        [aliceId, chatId],
+      )
+    ).rowCount,
+    0,
   );
+});
+
+test("migration 165 copies legacy project chats and is safe to repeat", async () => {
+  const db = await pool.connect();
+  const projectId = randomUUID();
+  const chatId = randomUUID();
+  const createdAt = new Date("2026-09-20T10:00:00.000Z");
+  const updatedAt = new Date("2026-09-21T10:00:00.000Z");
+  try {
+    await db.query("BEGIN");
+    await db.query(
+      "INSERT INTO projects (id, user_id, name) VALUES ($1, $2, 'Legacy chat project')",
+      [projectId, aliceId],
+    );
+    await db.query(
+      `INSERT INTO project_chats
+        (id, user_id, project_id, title, turns, created_at, updated_at)
+       VALUES ($1, $2, $3, 'Legacy planning', $4::jsonb, $5, $6)`,
+      [
+        chatId,
+        aliceId,
+        projectId,
+        JSON.stringify([{ role: "user", text: "Plan my week" }]),
+        createdAt,
+        updatedAt,
+      ],
+    );
+    const migration = await readFile(
+      new URL("../migrations/165_ai_chats.sql", import.meta.url),
+      "utf8",
+    );
+    await db.query(migration);
+    await db.query(migration);
+    const copied = await db.query<{
+      title: string;
+      turns: { role: string; text: string }[];
+      project_id: string;
+      scope_kind: string;
+      scope_id: string;
+      created_at: Date;
+      last_used_at: Date;
+    }>(
+      `SELECT title, turns, project_id, scope_kind, scope_id, created_at, last_used_at
+         FROM ai_chats WHERE id = $1`,
+      [chatId],
+    );
+    assert.deepEqual(copied.rows[0], {
+      title: "Legacy planning",
+      turns: [{ role: "user", text: "Plan my week" }],
+      project_id: projectId,
+      scope_kind: "project",
+      scope_id: projectId,
+      created_at: createdAt,
+      last_used_at: updatedAt,
+    });
+    await db.query("ROLLBACK");
+  } catch (error) {
+    await db.query("ROLLBACK");
+    throw error;
+  } finally {
+    db.release();
+  }
+});
+
+test("chat history sorts pinned first, then by most recently used", async () => {
+  const pinnedOld = randomUUID();
+  const pinnedNew = randomUUID();
+  const unpinnedOld = randomUUID();
+  const unpinnedNew = randomUUID();
+  try {
+    await pool.query(
+      `INSERT INTO ai_chats (id, user_id, title, pinned, last_used_at)
+       VALUES
+         ($1, $5, 'Pinned old', true, now() - interval '2 days'),
+         ($2, $5, 'Pinned new', true, now() - interval '1 day'),
+         ($3, $5, 'Unpinned old', false, now() - interval '3 days'),
+         ($4, $5, 'Unpinned new', false, now() - interval '1 hour')`,
+      [pinnedOld, pinnedNew, unpinnedOld, unpinnedNew, aliceId],
+    );
+    const listed = await app.inject({
+      url: "/ai/chats?limit=100",
+      headers: headers(alice),
+    });
+    assert.equal(listed.statusCode, 200, listed.body);
+    const ids = (listed.json() as { id: string }[])
+      .map((row) => row.id)
+      .filter((id) =>
+        [pinnedOld, pinnedNew, unpinnedOld, unpinnedNew].includes(id),
+      );
+    assert.deepEqual(ids, [pinnedNew, pinnedOld, unpinnedNew, unpinnedOld]);
+  } finally {
+    await pool.query("DELETE FROM ai_chats WHERE id = ANY($1::uuid[])", [
+      [pinnedOld, pinnedNew, unpinnedOld, unpinnedNew],
+    ]);
+  }
+});
+
+test("provider failures finish the persisted assistant job as failed", async () => {
   providerStatus = 500;
-  assert.equal(
-    (
-      await app.inject({
-        method: "POST",
-        url: "/ai/chat",
-        headers: headers(alice),
-        payload: { message: "test" },
-      })
-    ).statusCode,
-    502,
-  );
+  const started = await app.inject({
+    method: "POST",
+    url: "/ai/chat/start",
+    headers: headers(alice),
+    payload: { message: "Summarize today", timezone: "UTC" },
+  });
+  assert.equal(started.statusCode, 202, started.body);
+  const failed = await pollAssistant(alice, started.json().id);
+  assert.equal(failed.state, "failed", JSON.stringify(failed));
   providerStatus = 200;
 });
 test("reminder scheduling is durable, deduplicated, and honors completed items", async () => {

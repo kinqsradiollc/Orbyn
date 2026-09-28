@@ -5,12 +5,7 @@ import { randomUUID } from "node:crypto";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 
-/**
- * Every AI feature sees the real calendar: the assistant (both the fixed
- * graph used for Matilda and the tool loop), today's agenda and its
- * assistant-written summary, and the morning agenda the worker writes. A
- * stand-in provider records exactly what each call is sent.
- */
+/** Calendar agenda and morning summary flows use the current planner data. */
 type Sent = {
   body: {
     messages: { role: string; content: string }[];
@@ -54,7 +49,6 @@ const today = () => localDateKey(new Date(), TZ);
 const at = (offset: number, hour: number, minute = 0) =>
   dayTime(addDays(today(), offset), hour * 60 + minute, TZ).toISOString();
 
-let matilda = "";
 let plain = "";
 
 async function call(
@@ -163,15 +157,9 @@ const texts = (doc: { content: { text?: string }[] }) =>
 
 before(async () => {
   await migrate();
-  matilda = (
-    await pool.query<{ id: string }>(
-      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('matilda', 'Calendar stand-in (graph)', $1) RETURNING id",
-      [providerUrl],
-    )
-  ).rows[0].id;
   plain = (
     await pool.query<{ id: string }>(
-      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('openai-compatible', 'Calendar stand-in (tools)', $1) RETURNING id",
+      "INSERT INTO ai_providers(kind, name, base_url) VALUES ('openai-compatible', 'Calendar stand-in', $1) RETURNING id",
       [providerUrl],
     )
   ).rows[0].id;
@@ -181,96 +169,6 @@ after(async () => {
   await app.close();
   await pool.end();
   provider.close();
-});
-
-test("the assistant (Matilda's graph) answers from the real calendar", async () => {
-  await useProvider(matilda);
-  const me = await student();
-  reset(
-    "You have your standup at 9, time for the essay at 11 and the Algorithms lecture at 2.",
-  );
-  const r = await call(me.token, "POST", "/ai/chat", {
-    message: "What's on today?",
-    timezone: TZ,
-  });
-  assert.equal(r.status, 200, r.raw.body);
-  const data = lastUser(sent[0]);
-  // The subscribed class, today's repeat of the standup, and the time set aside.
-  assert.match(data, /Algorithms lecture/);
-  assert.match(data, /Uni timetable \(classes\)/);
-  assert.match(data, /"read_only":true/);
-  assert.match(data, /Team standup/);
-  assert.match(data, /Write the essay/);
-  assert.match(data, /free_today/);
-  // And the model is told what the calendar is.
-  assert.match(sent[0].body.messages[0].content, /subscribe to/);
-});
-
-test("a request that names a class finds it further ahead", async () => {
-  await useProvider(matilda);
-  const me = await student();
-  await pool.query(
-    `INSERT INTO external_events (subscription_id, uid, title, starts_at, ends_at, timezone)
-     SELECT id, 'lab', 'Compilers lab', $2, $3, $4 FROM calendar_subscriptions
-      WHERE user_id = $1 AND name = 'Uni timetable'`,
-    [me.id, at(20, 10), at(20, 12), TZ],
-  );
-  reset("Your next Compilers lab is in 20 days.");
-  const r = await call(me.token, "POST", "/ai/chat", {
-    message: "When is my compilers lab?",
-    timezone: TZ,
-  });
-  assert.equal(r.status, 200, r.raw.body);
-  assert.match(
-    lastUser(sent[0]),
-    /"matching_calendar":\[\{[^\]]*Compilers lab/,
-  );
-});
-
-test("with a per-message limit, the data is cut to fit and the request is whole", async () => {
-  await useProvider(matilda);
-  const me = await student();
-  // A calendar far fuller than fits in 16,000 characters.
-  await pool.query(
-    `INSERT INTO external_events (subscription_id, uid, title, starts_at, ends_at, location, timezone)
-     SELECT s.id, 'busy-' || n,
-            'A very long subscribed event title number ' || n || ' that takes up a great deal of room',
-            $2::timestamptz + (n * interval '5 minutes'), $2::timestamptz + (n * interval '5 minutes') + interval '1 hour',
-            'Building ' || n || ', Room with a long name', $3
-       FROM calendar_subscriptions s, generate_series(1, 90) n
-      WHERE s.user_id = $1 AND s.name = 'Uni timetable'`,
-    [me.id, at(0, 12), TZ],
-  );
-  reset("Here's your day.");
-  const message = "What do I have on today?";
-  const r = await call(me.token, "POST", "/ai/chat", {
-    message,
-    timezone: TZ,
-  });
-  assert.equal(r.status, 200, r.raw.body);
-  const content = lastUser(sent[0]);
-  assert.ok(content.length <= 16_000, `${content.length} characters`);
-  assert.ok(!content.endsWith("…"), "nothing clipped off the end");
-  assert.ok(content.includes(`My request: ${message}`));
-  // The calendar was shortened to fit, keeping the start of the day.
-  const shown = content.match(/A very long subscribed event/g)?.length ?? 0;
-  assert.ok(shown < 40, `${shown} of 90 shown`);
-  assert.match(content, /Team standup/);
-});
-
-test("the tool-using assistant gets the calendar in its overview too", async () => {
-  await useProvider(plain);
-  const me = await student();
-  reset("Your day: standup, essay time, then the lecture.");
-  const r = await call(me.token, "POST", "/ai/chat", {
-    message: "What's on today?",
-    timezone: TZ,
-  });
-  assert.equal(r.status, 200, r.raw.body);
-  const system = sent[0].body.messages[0].content;
-  assert.match(system, /Algorithms lecture/);
-  assert.match(system, /Team standup/);
-  assert.match(system, /get_calendar/);
 });
 
 test("today's agenda is written from the calendar, without waiting on the AI", async () => {

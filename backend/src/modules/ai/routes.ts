@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { loadPrefs } from "../planner/calendar.js";
 import { parseProjectDraft, PROJECT_DRAFT_PROMPT } from "./project-draft.js";
 import { proposeProject } from "./project-proposal.js";
 import { applyProposal } from "../proposals/service.js";
@@ -7,15 +6,13 @@ import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import {
   chatRequest,
   fail,
-  HttpError,
-  MAX_REMINDER_MINUTES,
   localDateKey,
   projectRequest,
-  type ChatTurn,
   type ChatScope,
   type Proposal,
   type DocBlock,
   quoteOf,
+  type ChatTraceEntry,
 } from "@orbyn/core";
 import { pool, transaction } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
@@ -25,47 +22,27 @@ import { assistantMayRead, docVisibleTo } from "../../lib/doc-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { pruneActions } from "./guards.js";
-import { ProviderError } from "./providers/adapters.js";
 import { resolveAi } from "./providers/resolve.js";
 import { complete } from "./providers/adapters.js";
-import { runAgent } from "./agent/loop.js";
-import {
-  overview,
-  related,
-  requestWords,
-  type AgentContext,
-  getItem,
-  recordSource,
-} from "./agent/tools.js";
-import { calendarMatches, getProject } from "./agent/workspace.js";
+import { beginChatTurn, resolveChatScope } from "./chats.js";
+import { type AgentContext, getItem } from "./agent/tools.js";
+import { getProject } from "./agent/workspace.js";
 import { rewriteAgenda } from "../docs/agenda.js";
 import { briefFor } from "./agenda-brief.js";
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
-import {
-  KeptOutError,
-  keptOutFor,
-  scrubKeptOut,
-} from "../../lib/assistant-off.js";
+import { KeptOutError, keptOutFor } from "../../lib/assistant-off.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
-import { enqueueMemory, recallMemory } from "../memory/service.js";
-
-/**
- * The request that decides whether changes are allowed. A short reply to the
- * assistant's own question ("the second one") carries the request it answers.
- */
-function intentOf(message: string, history: ChatTurn[]) {
-  const last = history.at(-1);
-  const asked = history.at(-2);
-  return last?.role === "assistant" &&
-    /\?\s*$/.test(last.content.trim()) &&
-    asked?.role === "user"
-    ? `${asked.content}\n${message}`
-    : message;
-}
+import {
+  ASSISTANT_STALE_MS,
+  answerAssistantApproval,
+  answerAssistantQuestion,
+  assistantRunStateFor,
+  runAssistantJob,
+  stopAssistantJob,
+} from "./agent/run.js";
 
 /** Permission-check the chosen project or task before its facts reach a provider. */
 async function scopeOverview(
@@ -180,333 +157,31 @@ async function scopeOverview(
   };
 }
 
-/** One assistant turn for `u`: run the agent and store what it proposes. */
-async function answer(
-  u: UserRow,
-  d: ChatRequest,
-  log: FastifyBaseLogger,
-  preloadedScope?: Awaited<ReturnType<typeof scopeOverview>>,
-  chatId: string = randomUUID(),
-): Promise<Proposal> {
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: d.timezone });
-  } catch {
-    fail(422, "Unknown timezone");
-  }
-  const ai = await resolveAi();
-  if (!ai)
-    fail(
-      503,
-      "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
-    );
-  const ctx: AgentContext = {
-    user: { id: u.id, role: u.role },
-    identity: (
-      await pool.query<{ name: string; persona: string }>(
-        `SELECT name, persona FROM agent_settings WHERE user_id = $1`,
-        [u.id],
-      )
-    ).rows[0] ?? { name: "Orbyn", persona: "" },
-    timezone: d.timezone,
-    intentText: intentOf(d.message, d.history),
-    actions: [],
-    clarification: null,
-    cited: new Map(),
-    notes: [],
-    scope: d.scope,
-    keptOut: await keptOutFor(pool, u.id),
-    allowOutsideScope:
-      /\b(outside|another project|other projects|all projects|whole workspace|across projects)\b/i.test(
-        d.message,
-      ),
-  };
-  const scoped =
-    preloadedScope === undefined
-      ? await scopeOverview(u, d.timezone, d.scope)
-      : preloadedScope;
-  const memory = await recallMemory(pool, u.id, d.message, 4_000, [
-    ...ctx.keptOut!.projects,
-  ]);
-  if (scoped?.kind === "project") {
-    for (const task of scoped.tasks.slice(0, 6))
-      recordSource(ctx, `task:${task.id}`, {
-        kind: "task",
-        id: task.id,
-        title: task.title,
-        quote: task.when ?? "No deadline",
-      });
-    for (const decision of scoped.open_decisions.slice(0, 4))
-      recordSource(ctx, `decision:${decision.id}`, {
-        kind: "decision",
-        id: decision.id,
-        project_id: scoped.id,
-        title: decision.title,
-        quote: decision.status,
-      });
-    for (const change of scoped.since_last_visit.slice(0, 4))
-      recordSource(ctx, `change:${change.id}`, {
-        kind: "change",
-        id: change.id,
-        project_id: scoped.id,
-        title: change.summary,
-        quote: change.at,
-      });
-    for (const page of scoped.pages.slice(0, 4))
-      recordSource(ctx, page.id, {
-        doc_id: page.id,
-        title: page.title,
-        block_id: page.first_lines[0]?.block_id ?? null,
-        quote: page.first_lines[0]?.text ?? "",
-      });
-  } else if (scoped?.kind === "task") {
-    recordSource(ctx, `task:${scoped.id}`, {
-      kind: "task",
-      id: scoped.id,
-      title: scoped.name,
-      quote: scoped.due_at ?? "No deadline",
-    });
-    if (scoped.source_page)
-      recordSource(ctx, scoped.source_page.doc_id, {
-        doc_id: scoped.source_page.doc_id,
-        title: scoped.source_page.title,
-        block_id: scoped.source_page.block_id,
-        quote: scoped.source_page.quote ?? "",
-      });
-  }
-  let result;
-  try {
-    const inside = d.scope && !ctx.allowOutsideScope;
-    result = await runAgent(
-      ai,
-      ctx,
-      d.message,
-      d.history,
-      // Nothing from a project kept out of the assistant is preloaded.
-      scrubKeptOut(
-        {
-          ...(!inside ? await overview(ctx) : {}),
-          matching_request: await related(ctx, d.message),
-          // Timetable, shift or exam events the request names, further ahead.
-          ...(!inside
-            ? {
-                matching_calendar: await calendarMatches(
-                  ctx,
-                  requestWords(d.message),
-                ),
-              }
-            : {}),
-          ...(scoped ? { scope: scoped } : {}),
-          ...(scoped
-            ? {
-                available_sources: [...(ctx.cited?.values() ?? [])].map(
-                  (source) => ({
-                    ref: `[${source.number}]`,
-                    title: source.title,
-                  }),
-                ),
-              }
-            : {}),
-          ...(memory ? { private_memory: memory } : {}),
-        },
-        ctx.keptOut!,
-      ),
-      log,
-    );
-  } catch (error) {
-    // Content is never logged: it contains the user's planner.
-    log.error(
-      {
-        event: "ai_provider_failed",
-        reason: (error as { reason?: string }).reason ?? "unexpected",
-        provider: ai.kind,
-      },
-      "AI provider failed",
-    );
-    // The provider's own reason is written for people (no key, no content).
-    fail(
-      502,
-      error instanceof ProviderError
-        ? `The AI provider could not answer: ${error.message} Please try again.`
-        : "The AI provider could not answer. Please try again.",
-    );
-  }
-  if (ctx.projectDraft && !ctx.clarification) {
-    const proposal = await proposeProject(
-      pool,
-      u.id,
-      ctx.projectDraft,
-      d.timezone,
-    );
-    await queueMemoryTurn(u, d, chatId, proposal.summary, log);
-    return { ...proposal, sources: result.sources };
-  }
-  let actions = result.actions;
-  if (result.legacy) {
-    // A reply in the old single-JSON format: keep only edits of items this
-    // user can see and nothing the request didn't ask for.
-    const ids = actions.flatMap((a) => (a.item_id ? [a.item_id] : []));
-    const titles = actions.flatMap((a) =>
-      a.operation === "create" && a.data ? [a.data.title.toLowerCase()] : [],
-    );
-    const items = (
-      await pool.query(
-        `SELECT i.* FROM items i WHERE ${visibleItems()}
-           AND (i.id = ANY($2::uuid[]) OR lower(i.title) = ANY($3))`,
-        [u.id, ids, titles],
-      )
-    ).rows;
-    actions = pruneActions(actions, items, ctx.intentText).slice(0, 20);
-  }
-  // New items proposed without alerts get the person's default alerts, so
-  // the review shows the reminder they'll really get.
-  const defaults = (await loadPrefs(pool, u.id)).default_alerts!;
-  actions = actions.map((a) => {
-    if (
-      a.operation !== "create" ||
-      !a.data ||
-      a.data.alerts !== undefined ||
-      a.data.reminder_minutes !== undefined
-    )
-      return a;
-    const alerts = defaults[a.data.all_day ? "all_day" : a.data.kind];
-    const soonest = alerts.length ? Math.min(...alerts) : null;
-    return {
-      ...a,
-      data: {
-        ...a.data,
-        alerts,
-        ...(soonest !== null && soonest <= MAX_REMINDER_MINUTES
-          ? { reminder_minutes: soonest }
-          : {}),
-      },
-    };
+/** Resolve the persisted conversation before accepting a new assistant turn. */
+async function prepareChatTurn(u: UserRow, d: ChatRequest) {
+  const chatId = d.chat_id ?? randomUUID();
+  const turnId = d.turn_id ?? randomUUID();
+  const scope = await resolveChatScope(pool, u.id, chatId, d.scope);
+  const scoped = await scopeOverview(u, d.timezone, scope);
+  const history = await beginChatTurn(u, {
+    chatId,
+    turnId,
+    message: d.message,
+    scope,
+    legacyHistory: d.history,
   });
-  log.info(
-    {
-      event: "ai_agent_turn",
-      provider: ai.kind,
-      steps: result.steps,
-      actions: actions.length,
-      partial: result.partial,
-      legacy: result.legacy,
-    },
-    "AI agent turn",
-  );
-  const p = (
-    await pool.query(
-      "INSERT INTO proposals(user_id,actions,session_change,decision_links) VALUES($1,$2,$3,$4) RETURNING id",
-      [
-        u.id,
-        JSON.stringify(actions),
-        ctx.sessionChange ? JSON.stringify(ctx.sessionChange) : null,
-        JSON.stringify(ctx.decisionLinks ?? []),
-      ],
-    )
-  ).rows[0];
-  const proposal: Proposal = {
-    id: p.id,
-    summary: result.summary,
-    actions,
-    follow_ups: result.follow_ups,
-    sources: result.sources,
-    notes: result.notes,
-    plan: ctx.plan ?? null,
-    session_change: ctx.sessionChange ?? null,
-    decision_links: ctx.decisionLinks ?? [],
+  return {
+    chatId,
+    turnId,
+    scoped,
+    request: { ...d, chat_id: chatId, turn_id: turnId, scope, history },
   };
-  await queueMemoryTurn(u, d, chatId, proposal.summary, log);
-  return proposal;
 }
 
-async function queueMemoryTurn(
-  user: UserRow,
-  request: ChatRequest,
-  chatId: string,
-  summary: string,
-  log: FastifyBaseLogger,
-) {
-  try {
-    let sourceProjectId =
-      request.scope?.kind === "project" ? request.scope.id : null;
-    if (!sourceProjectId && request.scope?.kind === "task") {
-      sourceProjectId =
-        (
-          await pool.query<{ project_id: string | null }>(
-            `SELECT i.project_id FROM items i
-              WHERE i.id = $2 AND ${visibleItems("i")}`,
-            [user.id, request.scope.id],
-          )
-        ).rows[0]?.project_id ?? null;
-    }
-    await enqueueMemory(pool, {
-      userId: user.id,
-      chatId,
-      sourceProjectId,
-      turns: [
-        ...request.history,
-        { role: "user", content: request.message },
-        { role: "assistant", content: summary.slice(0, 12_000) },
-      ],
-    });
-  } catch {
-    log.warn(
-      { event: "memory_queue_insert_failed" },
-      "Memory learning was not queued",
-    );
-  }
-}
+// A live run refreshes its heartbeat every few seconds, even inside a long
+// provider call, so a minute without one means its copy went away.
+const STALE_MS = ASSISTANT_STALE_MS;
 
-/** A running turn's `heartbeat_at` this old means its ai copy is gone. */
-const STALE_MS = 60_000;
-const HEARTBEAT_MS = 15_000;
-
-/**
- * Run a turn in the background, keeping the job row current. Nothing in
- * front of Orbyn (Cloudflare gives an origin 100 seconds) limits how long the
- * model may take, and a poll may land on any ai copy.
- */
-function runJob(
-  id: string,
-  u: UserRow,
-  d: ChatRequest,
-  log: FastifyBaseLogger,
-  scoped: Awaited<ReturnType<typeof scopeOverview>>,
-) {
-  const beat = setInterval(() => {
-    pool
-      .query("UPDATE ai_jobs SET heartbeat_at=now() WHERE id=$1", [id])
-      .catch(() => {});
-  }, HEARTBEAT_MS);
-  answer(u, d, log, scoped, id)
-    .then((proposal) =>
-      pool.query(
-        "UPDATE ai_jobs SET state='done', result=$2, heartbeat_at=now() WHERE id=$1",
-        [id, JSON.stringify(proposal)],
-      ),
-    )
-    .catch((error: unknown) => {
-      const status = error instanceof HttpError ? error.status : 500;
-      const message =
-        error instanceof HttpError
-          ? error.message
-          : "The assistant hit a problem. Please try again.";
-      if (!(error instanceof HttpError))
-        log.error({ event: "ai_job_failed", err: error }, "AI turn failed");
-      return pool.query(
-        `UPDATE ai_jobs SET state='failed', error_status=$2, error_message=$3,
-           heartbeat_at=now() WHERE id=$1`,
-        [id, status, message],
-      );
-    })
-    .catch(() => {})
-    .finally(() => clearInterval(beat));
-}
-
-/**
- * Propose-then-approve assistant. `/ai/chat` runs the agent (reads scoped to
- * the user's own and team items) and stores what it proposes; nothing changes
- * until the user calls `/ai/proposals/:id/apply`, which runs atomically.
- */
 export async function aiRoutes(app: FastifyInstance) {
   app.get("/ai/capabilities", async (r) => {
     await authenticate(r);
@@ -598,17 +273,11 @@ export async function aiRoutes(app: FastifyInstance) {
     };
   });
 
-  // The whole turn in one request. Anything in front of Orbyn that gives up
-  // early (Cloudflare after 100 seconds) cuts it off: apps use start + poll.
-  app.post("/ai/chat", strictRateLimit, async (r) => {
-    const u = await authenticate(r);
-    return answer(u, chatRequest.parse(r.body), r.log, undefined, randomUUID());
-  });
-
-  // Start a turn and hand back its job id; the answer comes from GET below.
-  app.post("/ai/chat/start", strictRateLimit, async (r, reply) => {
-    const u = await authenticate(r);
-    const d = chatRequest.parse(r.body);
+  const startChat = async (
+    u: UserRow,
+    d: ChatRequest,
+    log: FastifyBaseLogger,
+  ) => {
     try {
       new Intl.DateTimeFormat("en", { timeZone: d.timezone });
     } catch {
@@ -619,19 +288,40 @@ export async function aiRoutes(app: FastifyInstance) {
         503,
         "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
       );
-    const scoped = await scopeOverview(u, d.timezone, d.scope);
-    // Finished turns are read once and never needed again.
-    await pool.query(
-      "DELETE FROM ai_jobs WHERE created_at < now() - interval '1 day'",
-    );
+    const prepared = await prepareChatTurn(u, d);
     const job = (
-      await pool.query("INSERT INTO ai_jobs(user_id) VALUES($1) RETURNING id", [
-        u.id,
-      ])
+      await pool.query(
+        `INSERT INTO ai_jobs(user_id, progress) VALUES($1, $2::jsonb) RETURNING id`,
+        [u.id, JSON.stringify({ label: "Starting the lead assistant" })],
+      )
     ).rows[0];
-    runJob(job.id, u, d, r.log, scoped);
+    void runAssistantJob(
+      job.id,
+      u,
+      prepared.request as Parameters<typeof runAssistantJob>[2],
+      prepared.scoped,
+      undefined,
+      log,
+    );
+    return { id: job.id, chat_id: prepared.chatId, turn_id: prepared.turnId };
+  };
+
+  // Both paths now start the same persistent, multi-specialist assistant run.
+  // /ai/chat remains as a short alias for clients that have not switched to
+  // /ai/chat/start yet; neither path uses the removed proposal-only loop.
+  app.post("/ai/chat", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    const d = chatRequest.parse(r.body);
     reply.code(202);
-    return { id: job.id };
+    return startChat(u, d, r.log);
+  });
+
+  // Start a turn and hand back its job id; the answer comes from GET below.
+  app.post("/ai/chat/start", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    const d = chatRequest.parse(r.body);
+    reply.code(202);
+    return startChat(u, d, r.log);
   });
 
   // The turn's state: running, its proposal, or why it failed. A turn whose
@@ -640,14 +330,38 @@ export async function aiRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const job = (
       await pool.query(
-        `SELECT state, result, error_status, error_message,
+        `SELECT state, result, error_status, error_message, progress, run_state,
                 heartbeat_at < now() - ($3::int * interval '1 millisecond') AS stale
            FROM ai_jobs WHERE id=$1 AND user_id=$2`,
         [idParam(r), u.id, STALE_MS],
       )
     ).rows[0];
     if (!job) fail(404, "Conversation not found");
-    if (job.state === "done") return { state: "done", proposal: job.result };
+    if (job.state === "waiting") {
+      const run = assistantRunStateFor(job.run_state);
+      return {
+        state: "waiting",
+        progress: job.progress,
+        waiting: run?.state.waiting ?? null,
+      };
+    }
+    if (job.state === "done") {
+      const saved = job.result as
+        | {
+            answer?: string;
+            assistant_run?: Record<string, unknown>;
+            proposal?: Proposal;
+            chat_id?: string;
+            turn_id?: string;
+            trace?: ChatTraceEntry[];
+          }
+        | Proposal;
+      if (saved && typeof saved === "object" && "answer" in saved)
+        return { state: "done", ...saved };
+      return saved && typeof saved === "object" && "proposal" in saved
+        ? { state: "done", ...saved }
+        : { state: "done", proposal: saved };
+    }
     if (job.state === "failed")
       return {
         state: "failed",
@@ -661,7 +375,56 @@ export async function aiRoutes(app: FastifyInstance) {
         message:
           "The assistant was interrupted, probably by a server update. Please ask again.",
       };
-    return { state: "running" };
+    return { state: "running", progress: job.progress };
+  });
+
+  app.post("/ai/chat/:id/answer", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    try {
+      const result = await answerAssistantQuestion(
+        idParam(r),
+        u,
+        r.body,
+        r.log,
+      );
+      reply.code(202);
+      return result;
+    } catch (error) {
+      fail(
+        409,
+        error instanceof Error
+          ? error.message
+          : "This question can no longer be answered.",
+      );
+    }
+  });
+
+  app.post("/ai/chat/:id/approve", strictRateLimit, async (r, reply) => {
+    const u = await authenticate(r);
+    try {
+      const result = await answerAssistantApproval(
+        idParam(r),
+        u,
+        r.body,
+        r.log,
+      );
+      reply.code(202);
+      return result;
+    } catch (error) {
+      fail(
+        409,
+        error instanceof Error
+          ? error.message
+          : "This plan can no longer be approved.",
+      );
+    }
+  });
+
+  app.post("/ai/chat/:id/stop", async (r) => {
+    const u = await authenticate(r);
+    const stopped = await stopAssistantJob(idParam(r), u, r.log);
+    if (!stopped) fail(409, "This assistant run is no longer active.");
+    return { stopped: true };
   });
 
   // The assistant's Approve: the one proposals service applies it (the

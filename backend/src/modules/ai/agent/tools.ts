@@ -1,8 +1,3 @@
-import {
-  assistantRegistry,
-  assistantSpecs,
-  runAssistantTool,
-} from "../../../capabilities/assistant.js";
 import { parseProjectDraft } from "../project-draft.js";
 import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
@@ -46,7 +41,6 @@ import {
   findFreeTime,
   getCalendar,
   getStudy,
-  studyGlance,
   followThrough,
   getProject,
   listProjects,
@@ -282,7 +276,7 @@ const PROPOSED =
 export async function overview(ctx: AgentContext) {
   const rows = (
     await pool.query<Row>(
-      `${ITEM_SELECT} WHERE ${visibleItems()}
+      `${ITEM_SELECT} WHERE ${visibleItems("i", { user: "$1", ai: true })}
          AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '7 days')
        ORDER BY (i.due_at IS NULL), i.due_at, i.updated_at DESC LIMIT 500`,
       [ctx.user.id],
@@ -334,8 +328,8 @@ export async function overview(ctx: AgentContext) {
     // The real calendar for today and the next two days: events (repeating
     // ones included), subscribed calendars, time set aside, and free time.
     ...(await calendarGlance(ctx)),
-    // Cards due and the next exams, only for people who study in Orbyn.
-    ...(await studyGlance(ctx).then((study) => (study ? { study } : {}))),
+    // Study details are loaded on demand through the assistant-aware MCP
+    // capability, which can filter pages and exams from kept-out projects.
     note: 'Only some items are listed here; use search_items for the rest and rank_tasks for what to do first. "calendar" is everything on the calendar for today and the next two days, including calendars the user subscribes to (read_only: they can\'t be changed from Orbyn); use get_calendar for other days.',
   };
 }
@@ -1916,13 +1910,12 @@ export const TOOLS: Tool[] = [
   ),
 ];
 
-/**
- * The assistant's tools on the capability registry (capabilities/
- * assistant.ts): what it sends its provider, and how a call is found and
- * checked, come from there.
- */
-export const ASSISTANT_REGISTRY = assistantRegistry<AgentContext>(TOOLS);
-export const TOOL_SPECS = assistantSpecs(ASSISTANT_REGISTRY);
+/** Legacy protocol fixtures retained for direct loop tests. Live assistant
+ * runs build their tool list from the shared MCP capability registry. */
+const toolByName = new Map(
+  TOOLS.map((candidate) => [candidate.spec.name, candidate]),
+);
+export const TOOL_SPECS = TOOLS.map((candidate) => candidate.spec);
 
 const errorResult = (message: string) => ({
   content: JSON.stringify({ error: message }),
@@ -2283,7 +2276,8 @@ export async function runTool(
     return errorResult(
       "A project is already drafted for review. Do not add separate changes or schedules to this turn.",
     );
-  if (!ASSISTANT_REGISTRY.get(name))
+  const selected = toolByName.get(name);
+  if (!selected)
     return errorResult(
       `Unknown tool "${call.name.slice(0, 60)}". Available: ${TOOL_SPECS.map((t) => t.name).join(", ")}.`,
     );
@@ -2301,13 +2295,18 @@ export async function runTool(
     // (Drafting a project or asking a question reads nothing of the workspace.)
     if (!NO_READS.has(name))
       ctx.keptOut ??= await keptOutFor(pool, ctx.user.id);
-    const ran = (await runAssistantTool(ASSISTANT_REGISTRY, name, ctx, raw))!;
-    if (!ran.ok)
+    const parsed = selected.args.safeParse(raw);
+    if (!parsed.success)
       return errorResult(
-        `Invalid arguments for ${name}: ${problem(ran.error)}. Fix them and call it again.`,
+        `Invalid arguments for ${name}: ${problem(parsed.error)}. Fix them and call it again.`,
       );
     return {
-      content: cap(scrubKeptOut(ran.value, ctx.keptOut ?? NOTHING_KEPT_OUT)),
+      content: cap(
+        scrubKeptOut(
+          await selected.run(ctx, parsed.data as never),
+          ctx.keptOut ?? NOTHING_KEPT_OUT,
+        ),
+      ),
       isError: false,
     };
   } catch (error) {

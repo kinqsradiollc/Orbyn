@@ -8,6 +8,9 @@ import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
 import { agentRoutes } from "./modules/agents/routes.js";
 import { agentInboxRoutes } from "./modules/agent-inbox/routes.js";
 import { agentContextRoutes } from "./modules/agent-context/routes.js";
+import { assistantIdeasRoutes } from "./modules/assistant-ideas/routes.js";
+import { assistantGoalRoutes } from "./modules/assistant-workspace/goals.js";
+import { assistantRoutineRoutes } from "./modules/assistant-workspace/routines.js";
 import { memoryRoutes } from "./modules/memory/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
@@ -97,6 +100,11 @@ export const serviceModules: Record<
     // standing rules, and answering agents' questions (H0).
     agentInboxRoutes,
     agentContextRoutes,
+    assistantIdeasRoutes,
+    // Private goals and weekly check-ins for the built-in assistant (Muse M8).
+    assistantGoalRoutes,
+    // Scheduled routines and approval scopes for the built-in assistant (Muse M9).
+    assistantRoutineRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents
     // propose, and undoing what agents changed.

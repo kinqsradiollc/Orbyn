@@ -18,6 +18,7 @@ import { SmallAction } from "../components/SmallAction";
 import { percentOf } from "../lib/progress";
 import { ReviewCard } from "../components/ReviewCard";
 import { TodayCard } from "../components/TodayCard";
+import { AssistantIdeasCard } from "../components/AssistantIdeasCard";
 import { UpNextCard } from "../components/UpNextCard";
 import { usePlanned } from "../lib/plannedContext";
 import {
@@ -151,6 +152,7 @@ export function TodayScreen({
         prefill={quickAddPrefill}
         onPrefillUsed={onQuickAddPrefillUsed}
       />
+      <AssistantIdeasCard />
       <View style={s.stats}>
         {stats.map((stat, n) => (
           <FadeIn

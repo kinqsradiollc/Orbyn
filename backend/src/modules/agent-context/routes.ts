@@ -56,6 +56,11 @@ export async function agentContextRoutes(app: FastifyInstance) {
           [u.id, input.name, input.persona],
         )
       ).rows[0];
+      await db.query(
+        `UPDATE agent_grants SET name = $2, client_name = $2
+          WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
+        [u.id, saved.name],
+      );
       await audit(
         {
           actorId: u.id,

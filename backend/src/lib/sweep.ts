@@ -235,12 +235,12 @@ export const SWEEP_RULES: SweepRule[] = [
     key: "agent_activity",
     label: "Agent activity",
     detail:
-      "What each connected AI agent did (Settings → Connected agents → Activity).",
+      "What each connected AI agent did (Settings → Connected agents → Activity). A change that could be undone is kept this long after its undo window closes.",
     table: "agent_activity",
-    where: olderThan("at"),
-    days: 180,
+    where: `${olderThan("at")} AND (undo_until IS NULL OR ${olderThan("undo_until")})`,
+    days: 90,
     configurable: true,
-    min: 30,
+    min: 90,
   },
   {
     key: "agent_inbox",
@@ -258,10 +258,10 @@ export const SWEEP_RULES: SweepRule[] = [
     label: "Agents' questions",
     detail: "Questions agents asked, once answered or run out.",
     table: "agent_questions",
-    where: `${olderThan("created_at")} AND status <> 'open'`,
+    where: `${olderThan("created_at")} AND (status <> 'open' OR expires_at < now())`,
     days: 14,
     configurable: true,
-    min: 1,
+    min: 14,
   },
   {
     key: "agent_usage_daily",
@@ -446,11 +446,57 @@ export const SWEEP_RULES: SweepRule[] = [
   {
     key: "ai_jobs",
     label: "Assistant jobs",
-    detail: "Finished assistant turns, once their answer was read.",
+    detail:
+      "Assistant turns a day after they finished or stopped responding, and turns left waiting for an answer after 14 days.",
     table: "ai_jobs",
-    where: "created_at < now() - interval '1 day'",
+    // Running and waiting jobs hold the conversation in run_state, so a job
+    // that died or was never answered doesn't keep it forever.
+    where: `(created_at < now() - interval '1 day' AND state IN ('done', 'failed'))
+      OR (state = 'running' AND heartbeat_at < now() - interval '1 day')
+      OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days')`,
     days: 0,
     configurable: false,
+  },
+  {
+    key: "assistant_ideas",
+    label: "Assistant ideas",
+    detail: "Ideas the assistant suggested for your daily review.",
+    table: "assistant_ideas",
+    where: olderThan("created_at"),
+    days: 30,
+    configurable: true,
+    min: 7,
+  },
+  {
+    key: "assistant_idea_days",
+    label: "Daily idea checks",
+    detail: "The assistant's record of which days it checked for useful ideas.",
+    table: "assistant_idea_days",
+    where: "local_day < current_date - $1::int",
+    days: 30,
+    configurable: true,
+    min: 7,
+  },
+  {
+    key: "goal_checkins",
+    label: "Goal check-ins",
+    detail: "Weekly progress notes for goals, kept for 400 days by default.",
+    table: "goals_checkins",
+    where: "week_of < current_date - $1::int",
+    days: 400,
+    configurable: true,
+    min: 30,
+  },
+  {
+    key: "assistant_briefs",
+    label: "Morning brief index",
+    detail:
+      "The daily lookup records for private Agent briefs; the notes themselves remain until deleted.",
+    table: "assistant_briefs",
+    where: "local_day < current_date - $1::int",
+    days: 400,
+    configurable: true,
+    min: 30,
   },
   {
     key: "project_chats",
@@ -509,7 +555,12 @@ export async function retention(): Promise<Retention> {
   return Object.fromEntries(
     SWEEP_RULES.filter((r) => r.configurable).map((r) => [
       r.key,
-      typeof saved?.[r.key] === "number" ? saved[r.key] : r.days,
+      typeof saved?.[r.key] === "number"
+        ? // 0 keeps forever; anything shorter than the rule's minimum is raised to it.
+          saved[r.key] > 0
+          ? Math.max(saved[r.key], r.min ?? 1)
+          : saved[r.key]
+        : r.days,
     ]),
   );
 }

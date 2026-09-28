@@ -41,7 +41,7 @@ const kindOf = (c: Capability) =>
  * The catalog's version: the date of the last change to any tool's
  * contract. Bump it (and add a CHANGELOG entry) with every change.
  */
-export const CATALOG_VERSION = "2026-09-27";
+export const CATALOG_VERSION = "2026-09-28";
 
 /**
  * How tools change (the versioning and deprecation policy), in the words
@@ -57,6 +57,16 @@ export const VERSIONING_POLICY = [
 
 /** What changed in the MCP server, newest first. */
 export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-09-28",
+    changes: [
+      "Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.",
+      "get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.",
+      "manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.",
+      "manage_agent_routines (core): scheduled runs of the built-in assistant. Personal only; creating, changing or resuming a routine always waits for the person's approval in Review, and a changed instruction clears any approval saved for that routine. Pausing and deleting happen at once.",
+      "Goal and routine changes made directly are undoable. Ideas (daily suggestions) always wait in Review. 65 tools, 33 core; no global tool ceiling.",
+    ],
+  },
   {
     date: "2026-09-27",
     changes: [

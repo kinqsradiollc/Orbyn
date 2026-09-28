@@ -71,7 +71,7 @@ export function AgentWarmStartCards({
   const saveIdentity = () => {
     void run(async () => {
       const value = await client.updateAgentSettings({
-        name: identityName,
+        name: identityName.trim(),
         persona: identityPersona,
       });
       setIdentity(value);
@@ -110,8 +110,7 @@ export function AgentWarmStartCards({
       <View style={shared.card}>
         <Text style={shared.label}>Your assistant</Text>
         <Text style={[shared.small, s.gap]}>
-          Give your Orbyn assistant a name and describe how it should come
-          across.
+          The name your assistant goes by, and how it should come across.
         </Text>
         <Field label="Name">
           <TextInput
@@ -119,23 +118,26 @@ export function AgentWarmStartCards({
             onChangeText={setIdentityName}
             maxLength={40}
             autoCapitalize="words"
+            placeholder="Orbyn"
+            placeholderTextColor={colors.faint}
             style={shared.input}
           />
         </Field>
-        <Field label="Persona">
+        <Field label="Persona (optional)">
           <TextInput
             value={identityPersona}
             onChangeText={setIdentityPersona}
             maxLength={1000}
             multiline
-            style={[shared.input, { minHeight: 72 }]}
+            style={[shared.input, s.area]}
             placeholder="Warm, direct, and concise"
+            placeholderTextColor={colors.faint}
           />
         </Field>
         <Button
           title="Save"
           onPress={saveIdentity}
-          disabled={busy || identity === null}
+          disabled={busy || identity === null || !identityName.trim()}
           style={s.last}
         />
       </View>

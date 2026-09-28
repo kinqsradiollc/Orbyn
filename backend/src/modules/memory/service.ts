@@ -349,7 +349,7 @@ export async function rememberMemory(
   return { entry: entryOf(doc), created, changed };
 }
 
-/** Keep the completed visible turns until M3 gives each chat a durable row. */
+/** Queue the completed visible turns for off-request memory learning. */
 export async function enqueueMemory(
   db: Queryable,
   input: {

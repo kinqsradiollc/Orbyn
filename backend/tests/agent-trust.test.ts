@@ -30,6 +30,10 @@ const { limiter, strikes } =
 const { reviewCategory, sendPush, REVIEW_CATEGORY } =
   await import("../src/worker/channels/push.js");
 const { asksInChat } = await import("../src/modules/mcp-server/elicit.js");
+const { assistantPrincipal } =
+  await import("../src/modules/agents/assistant.js");
+const { liveGrantCount, setGrantTrust } =
+  await import("../src/modules/agents/service.js");
 
 const app = await buildApp();
 const h = helpers(app);
@@ -228,6 +232,101 @@ test("new connections start at full power; the trust settings validate and show"
     { spaces: { personal: null }, acts_alone: [] },
   );
   assert.deepEqual(reset.json().space_trust, {});
+});
+
+test("the built-in assistant is a stable grant; only the signed-in person raises its trust", async () => {
+  const user = await h.register("tr-built-in", "Built-in");
+  const identity = { id: user.id, name: user.name, role: "member" as const };
+  const principal = await assistantPrincipal(identity);
+  const again = await assistantPrincipal(identity);
+  assert.equal(again.grant_id, principal.grant_id);
+
+  const overview = (await h.call(user.token, "GET", "/me/agents")).json();
+  const grant = overview.grants.find(
+    (entry: any) => entry.id === principal.grant_id,
+  );
+  assert.equal(grant.kind, "assistant");
+  assert.equal(grant.name, "Orbyn");
+  assert.equal(grant.trust, "full");
+  assert.equal(await liveGrantCount(pool, user.id), 0);
+  await pool.query(
+    "UPDATE agent_grants SET space_trust = $2::jsonb WHERE id = $1",
+    [principal.grant_id, JSON.stringify({ personal: "full" })],
+  );
+
+  const lowered = await h.call(
+    user.token,
+    "PUT",
+    `/me/agents/${principal.grant_id}/trust`,
+    { trust: "ask" },
+  );
+  assert.equal(lowered.statusCode, 200, lowered.body);
+  assert.equal(lowered.json().trust, "ask");
+  assert.deepEqual(
+    lowered.json().space_trust,
+    {},
+    "lowering the grant also removes a more permissive space override",
+  );
+
+  const renamed = await h.call(user.token, "PUT", "/me/agent", {
+    name: "Muse",
+    persona: "A careful planning partner.",
+  });
+  assert.equal(renamed.statusCode, 200, renamed.body);
+  const refreshed = await assistantPrincipal(identity);
+  assert.equal(refreshed.client.name, "Muse");
+  const renamedGrant = (await h.call(user.token, "GET", "/me/agents"))
+    .json()
+    .grants.find((entry: any) => entry.id === principal.grant_id);
+  assert.equal(renamedGrant.name, "Muse");
+
+  // Anything but the person's own session may only lower it.
+  for (const body of [{ trust: "full" }, { spaces: { personal: "full" } }])
+    await assert.rejects(
+      setGrantTrust(user.id, principal.grant_id!, body as never),
+      /can only be lowered/,
+    );
+  // It always asks first about the protected actions.
+  const alone = await h.call(
+    user.token,
+    "PUT",
+    `/me/agents/${principal.grant_id}/trust`,
+    { acts_alone: ["bulk"] },
+  );
+  assert.equal(alone.statusCode, 422, alone.body);
+  // The person, signed in, can put it back to full power.
+  const raised = await h.call(
+    user.token,
+    "PUT",
+    `/me/agents/${principal.grant_id}/trust`,
+    { trust: "full" },
+  );
+  assert.equal(raised.statusCode, 200, raised.body);
+  assert.equal(raised.json().trust, "full");
+  assert.equal((await assistantPrincipal(identity)).trust.level, "full");
+
+  assert.equal(
+    (
+      await h.call(
+        user.token,
+        "PUT",
+        `/me/agents/${principal.grant_id}/toolsets`,
+        { toolsets: [] },
+      )
+    ).statusCode,
+    422,
+  );
+  assert.equal(
+    (await h.call(user.token, "DELETE", `/me/agents/${principal.grant_id}`))
+      .statusCode,
+    422,
+  );
+  await assert.rejects(
+    pool.query("UPDATE agent_grants SET revoked_at = now() WHERE id = $1", [
+      principal.grant_id,
+    ]),
+    /built-in assistant grant cannot be revoked/i,
+  );
 });
 
 test("the matrix without a form: full is direct, ask and suggest go to review, a teammate's work asks", async () => {

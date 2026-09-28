@@ -333,8 +333,14 @@ export function stepFormat(tools: ToolSpec[]) {
             tools.map((t) => [
               t.name,
               takesNoArguments(t)
-                ? { type: "boolean", description: `true to run ${t.name}.` }
-                : { ...nullable(strictSchema(t.parameters)) },
+                ? {
+                    type: "boolean",
+                    description: `${t.description} True to run ${t.name}.`,
+                  }
+                : {
+                    ...nullable(strictSchema(t.parameters)),
+                    description: t.description,
+                  },
             ]),
           ),
           answer: {
@@ -366,25 +372,31 @@ export function dropNullFields(value: unknown): unknown {
  * the shape: a schema alone names the fields but not what the tools do, and
  * Matilda then said it had no way to create tasks.
  */
-const JSON_PROTOCOL_NOTE = (tools: ToolSpec[]) =>
-  `Reply with ONE JSON object and nothing else. It has one field per tool, plus "answer".
-- To use tools: fill in the field of each tool to run now (its arguments as an object, or true for a tool without arguments), leave the other tool fields null (false for tools without arguments), and set "answer" to null.
-- To reply to the user: leave every tool field null or false, and put your reply in "answer" as a list of Markdown lines.
-Shape (placeholders, not data): {"search_items": {"query": "<words from the request>"}, "propose_create": null, ..., "answer": null}
-Tools:
-${tools
-  .map(
-    (t) =>
-      `- ${t.name}: ${t.description}${
-        takesNoArguments(t)
-          ? " (true or false)"
-          : ` Arguments: ${JSON.stringify(t.parameters)}`
-      }`,
-  )
-  .join("\n")}`;
+const JSON_PROTOCOL_BASE = `Reply with ONE JSON object containing one field per tool, plus "answer". To use tools, fill in each tool field to run now, leave unused tool fields null (or false for boolean fields), and set "answer" to null. To reply, leave every tool field unused and put your Markdown reply in "answer" as a list of lines.`;
+
+/** Include tool descriptions and argument shapes when the provider has no JSON schema. */
+export function jsonProtocolNote(tools: ToolSpec[], schemaEnforced: boolean) {
+  if (schemaEnforced || !tools.length)
+    return `${JSON_PROTOCOL_BASE}${schemaEnforced ? " Tool descriptions and argument shapes are in the schema." : ""}`;
+  return `${JSON_PROTOCOL_BASE}\nTools:\n${tools
+    .map(
+      (tool) =>
+        `- ${tool.name}: ${tool.description}${
+          takesNoArguments(tool)
+            ? " (true or false)"
+            : ` Arguments: ${JSON.stringify(tool.parameters)}`
+        }`,
+    )
+    .join("\n")}`;
+}
 
 /** The history as plain messages: tool calls become a sentence, results a user message. */
-function toJsonHistory(messages: AgentMessage[], tools: ToolSpec[]) {
+function toJsonHistory(
+  messages: AgentMessage[],
+  tools: ToolSpec[],
+  maxMessageChars?: number,
+  schemaEnforced = false,
+) {
   const out: { role: "system" | "user" | "assistant"; content: string }[] = [];
   for (const m of messages) {
     if (m.role === "tool")
@@ -403,11 +415,21 @@ function toJsonHistory(messages: AgentMessage[], tools: ToolSpec[]) {
       if (content) out.push({ role: "assistant", content });
     } else out.push({ role: m.role, content: m.content });
   }
-  if (tools.length && out[0]?.role === "system")
+  if (tools.length && out[0]?.role === "system") {
+    const suffix = `\n\n${jsonProtocolNote(tools, schemaEnforced)}`;
+    const maxSystemChars = maxMessageChars
+      ? Math.max(0, maxMessageChars - suffix.length)
+      : Number.POSITIVE_INFINITY;
+    const system = out[0].content;
+    const prefix =
+      system.length > maxSystemChars
+        ? `${system.slice(0, Math.max(0, maxSystemChars - 1))}…`
+        : system;
     out[0] = {
       ...out[0],
-      content: `${out[0].content}\n\n${JSON_PROTOCOL_NOTE(tools)}`,
+      content: `${prefix}${suffix}`,
     };
+  }
   return out;
 }
 
@@ -437,7 +459,12 @@ async function jsonStep(
       headers: headers(ai),
       body: JSON.stringify({
         ...(ai.format === "azure" ? {} : { model: ai.model }),
-        messages: toJsonHistory(messages, usable),
+        messages: toJsonHistory(
+          messages,
+          usable,
+          ai.limits?.maxMessageChars,
+          !!ai.structuredOutput,
+        ),
         ...(schema ? { response_format: stepFormat(usable) } : {}),
       }),
     },

@@ -60,7 +60,11 @@ import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale, isReducedMotion } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
-import { AssistantComposer, AssistantScreen } from "../screens/AssistantScreen";
+import {
+  AssistantComposer,
+  AssistantScreen,
+  AssistantTopBar,
+} from "../screens/AssistantScreen";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
 import { VerifyGateScreen } from "../screens/VerifyGateScreen";
@@ -203,6 +207,8 @@ export function RootScreen() {
     twoFactorRequired,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
+  /** The assistant's side menu of chats and shortcuts. */
+  const [assistantMenu, setAssistantMenu] = useState(false);
   // News from another device may be a session: planned time is asked again.
   usePresence(
     token,
@@ -932,6 +938,8 @@ export function RootScreen() {
       case "scan":
         return runScan();
       case "assistant":
+        setSheet(null);
+        back.current = [];
         return runCreate("ask");
       case "focus":
         return startFocus();
@@ -1173,59 +1181,69 @@ export function RootScreen() {
       today={todayList}
     >
       <View style={s.screen}>
-        <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
-          <View style={s.headerRow}>
-            <Brand size={24} />
-            <View style={s.headerActions}>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel={
-                  notices.some((n) => !n.read)
-                    ? "Notifications, unread updates"
-                    : "Notifications"
-                }
-                onPress={() => setTab("Inbox")}
-                style={s.notification}
-              >
-                <Icon
-                  name="bell"
-                  size={20}
-                  color={tab === "Inbox" ? colors.accent : colors.textSoft}
-                />
-                {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
-              </PressableScale>
-              {/* One + on every tab: a tap runs the favourite (New task
+        {tab === "AI" ? (
+          // The assistant draws its own bar (menu, name, new chat), as chat apps do.
+          <View style={{ paddingTop: insets.top }} />
+        ) : (
+          <View
+            style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}
+          >
+            <View style={s.headerRow}>
+              <Brand size={24} />
+              <View style={s.headerActions}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    notices.some((n) => !n.read)
+                      ? "Notifications, unread updates"
+                      : "Notifications"
+                  }
+                  onPress={() => setTab("Inbox")}
+                  style={s.notification}
+                >
+                  <Icon
+                    name="bell"
+                    size={20}
+                    color={tab === "Inbox" ? colors.accent : colors.textSoft}
+                  />
+                  {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
+                </PressableScale>
+                {/* One + on every tab: a tap runs the favourite (New task
                   unless another is chosen), a long press offers the rest. */}
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel={createLabel(arrangement.favourite)}
-                accessibilityHint="Hold for every way to start something."
-                accessibilityActions={[
-                  { name: "longpress", label: "Every way to start something" },
-                ]}
-                onAccessibilityAction={(e) => {
-                  if (e.nativeEvent.actionName === "longpress")
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={createLabel(arrangement.favourite)}
+                  accessibilityHint="Hold for every way to start something."
+                  accessibilityActions={[
+                    {
+                      name: "longpress",
+                      label: "Every way to start something",
+                    },
+                  ]}
+                  onAccessibilityAction={(e) => {
+                    if (e.nativeEvent.actionName === "longpress")
+                      setCreating(true);
+                  }}
+                  hitSlop={8}
+                  delayLongPress={350}
+                  onPress={() => runCreate(arrangement.favourite)}
+                  onLongPress={() => {
+                    tap();
                     setCreating(true);
-                }}
-                hitSlop={8}
-                delayLongPress={350}
-                onPress={() => runCreate(arrangement.favourite)}
-                onLongPress={() => {
-                  tap();
-                  setCreating(true);
-                }}
-                style={({ pressed }) => [s.add, pressed && s.addPressed]}
-              >
-                <Icon
-                  name="plus"
-                  size={20}
-                  color={colors.white}
-                  strokeWidth={2.2}
-                />
-              </PressableScale>
+                  }}
+                  style={({ pressed }) => [s.add, pressed && s.addPressed]}
+                >
+                  <Icon
+                    name="plus"
+                    size={20}
+                    color={colors.white}
+                    strokeWidth={2.2}
+                  />
+                </PressableScale>
+              </View>
             </View>
           </View>
-        </View>
+        )}
         <View style={sidePadding}>
           <View style={s.column}>
             <MaintenanceBanner
@@ -1240,6 +1258,17 @@ export function RootScreen() {
           onLayout={keyboard.onLayout}
           style={[s.body, { paddingBottom: keyboard.inset }]}
         >
+          {tab === "AI" && (
+            <View style={sidePadding}>
+              <View style={s.column}>
+                <AssistantTopBar
+                  assistant={assistant}
+                  busy={busy}
+                  onMenu={() => setAssistantMenu(true)}
+                />
+              </View>
+            </View>
+          )}
           <View style={taskBeside ? s.split : s.fill}>
             <ScrollView
               // Sticky headers can't be switched on and off on a mounted
@@ -1435,6 +1464,11 @@ export function RootScreen() {
                   {tab === "AI" && (
                     <AssistantScreen
                       assistant={assistant}
+                      drawerOpen={assistantMenu}
+                      onDrawerChange={setAssistantMenu}
+                      onOpenMemory={() => present({ sheet: "memory" })}
+                      onOpenAgentNotes={() => present({ sheet: "agent" })}
+                      onOpenSettings={() => present({ sheet: "connections" })}
                       onBackToProject={(id) => {
                         setProjectToOpen(id);
                         setSheet("projects");

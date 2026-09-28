@@ -148,16 +148,16 @@ A tool that can't do what was asked answers with `isError: true` and one of thes
 
 Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.
 
-| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `get_profile`, `update_agent`, `manage_memory`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo`, `get_inbox`, `ack_inbox`, `ask_person`, `apply_plan` |
-| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`, `append_doc`                                                                                                                                                                                                                                                                                                              |
-| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                                                                                    |
-| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`, `save_source`                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`                                                                                                                                                                                                                                                                                                                                                                                               |
-| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`, `add_file`                                                                                                                                                                                                                                                                                                                                                                                     |
+| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `get_profile`, `update_agent`, `manage_memory`, `get_chats`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo`, `get_inbox`, `ack_inbox`, `ask_person`, `apply_plan`, `manage_goals`, `manage_agent_routines` |
+| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`, `append_doc`                                                                                                                                                                                                                                                                                                                                                                    |
+| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`, `save_source`                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`, `add_file`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ## Tools
 
@@ -174,6 +174,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `get_profile`             | Connected account                      | read        | read, core           |
 | `update_agent`            | Change your agent                      | destructive | suggest, core        |
 | `manage_memory`           | Manage Memory                          | destructive | suggest, core        |
+| `get_chats`               | Read assistant chats                   | read        | read, core           |
 | `create_tasks`            | Add tasks or events                    | write       | suggest, core        |
 | `update_tasks`            | Change tasks or events                 | destructive | suggest, core        |
 | `complete_tasks`          | Complete or reopen tasks               | destructive | write, core          |
@@ -225,10 +226,12 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `cancel_import`           | Cancel an import                       | destructive | write, files         |
 | `import_tasks`            | Import tasks                           | write       | write, files         |
 | `add_file`                | Add a file                             | write       | suggest, files       |
+| `manage_goals`            | Manage goals                           | destructive | write, core          |
+| `manage_agent_routines`   | Manage assistant routines              | destructive | write, core          |
 
 ### `get_context`
 
-Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.
+Call first. Returns the person and agent identity, local time, working hours, team roles and policy, connection access, trust and ask-first rules, spaces, toolsets, expiry, limits, conventions, About me, learning profile, instructions, standing rules, recent changes, and the private Memory topic index when Personal is available.
 
 No arguments.
 
@@ -352,6 +355,17 @@ Lists and reads private Memory notes, saves facts with sources, or permanently f
 | `facts`             | list of string                       |                                                                       |
 | `sources`           | list of object                       | Default [].                                                           |
 | `client_ref`        | string                               | Idempotency key: sent again within 24 h, the first answer comes back. |
+
+### `get_chats`
+
+Reads saved chats, turns, and content-free steps. Search titles and turns, or pass chat_id. Projects kept out of AI are hidden.
+
+| Argument     | Type    | Notes                |
+| ------------ | ------- | -------------------- |
+| `chat_id`    | id      | Open one chat by id. |
+| `search`     | string  | Default "".          |
+| `project_id` | id      |                      |
+| `limit`      | integer | Default 20.          |
 
 ### `create_tasks`
 
@@ -992,6 +1006,33 @@ Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file l
 | `caption`            | string             |                                                                       |
 | `client_ref`         | string             | Idempotency key: sent again within 24 h, the first answer comes back. |
 
+### `manage_goals`
+
+List, read, create, update or complete your private goals. Personal only. Each goal can have a target, its own Agent plan note, an optional project, and weekly check-ins. Use a visible Orbyn project and a private Agent note for its plan. An active goal gets a weekly check-in that Orbyn's own assistant runs, so a connection that asks first or only suggests sends creates and updates to the person's Review inbox.
+
+| Argument            | Type                                                    | Notes                                                                 |
+| ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
+| `action` (required) | `list`, `read`, `create`, `update`, `delete`, `checkin` |                                                                       |
+| `id`                | id                                                      |                                                                       |
+| `goal`              | object                                                  |                                                                       |
+| `changes`           | object                                                  |                                                                       |
+| `summary`           | string                                                  |                                                                       |
+| `progress`          | object                                                  |                                                                       |
+| `week_of`           | string                                                  |                                                                       |
+| `client_ref`        | string                                                  | Idempotency key: sent again within 24 h, the first answer comes back. |
+
+### `manage_agent_routines`
+
+List, create, update, pause, resume or delete recurring instructions for Orbyn's built-in assistant. Personal only. Use a supported time zone, an RRULE such as FREQ=WEEKLY;BYDAY=MO, and the next local run time. Each run is Orbyn's assistant working on its own, so creating, changing or resuming a routine always waits for the person's approval in Review; pausing and deleting happen at once.
+
+| Argument            | Type                                                    | Notes                                                                 |
+| ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
+| `action` (required) | `list`, `create`, `update`, `pause`, `resume`, `delete` |                                                                       |
+| `id`                | id                                                      |                                                                       |
+| `routine`           | object                                                  |                                                                       |
+| `changes`           | object                                                  |                                                                       |
+| `client_ref`        | string                                                  | Idempotency key: sent again within 24 h, the first answer comes back. |
+
 ## Resources
 
 `resources/list` offers Today, who and where, the guides below, the person's favourites and about 30 things changed lately (paged, never the whole workspace). Every read checks permission again; something missing or out of reach is `-32602` either way.
@@ -1054,9 +1095,17 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 - Error codes and their meaning never change; new codes may be added.
 - Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.
 
-Catalog version: `2026-09-27`.
+Catalog version: `2026-09-28`.
 
 ## Changelog
+
+### 2026-09-28
+
+- Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.
+- get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.
+- manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.
+- manage_agent_routines (core): scheduled runs of the built-in assistant. Personal only; creating, changing or resuming a routine always waits for the person's approval in Review, and a changed instruction clears any approval saved for that routine. Pausing and deleting happen at once.
+- Goal and routine changes made directly are undoable. Ideas (daily suggestions) always wait in Review. 65 tools, 33 core; no global tool ceiling.
 
 ### 2026-09-27
 
@@ -1100,4 +1149,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 256 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.
+Routes: 268 of the app's signed-in routes are covered by tools, 211 are never for agents, and 0 are still to come.

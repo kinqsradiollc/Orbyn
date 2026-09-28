@@ -139,14 +139,15 @@ after(async () => {
   await pool.end();
 });
 
-test("62 tools: 30 core (apply_plan, get_profile, update_agent and manage_memory too), the rest in toolsets; each toolset's tools are its own", async () => {
+test("65 tools: 33 core, the rest in toolsets; each toolset's tools are its own", async () => {
   const listed = (await h.legacy(keys.all, "tools/list")).body.result.tools;
-  // The 60-tool cap was lifted for Muse (M1 update_agent, M2 manage_memory).
+  // Muse has no tool-count cap; each feature belongs in its intended toolset.
   // H6a folded mark_notifications_read into ack_inbox: not listed.
-  assert.equal(listed.length, 62);
+  assert.equal(listed.length, 65);
   assert.ok(!listed.some((t: any) => t.name === "mark_notifications_read"));
   const core = (await h.legacy(keys.core, "tools/list")).body.result.tools;
-  assert.equal(core.length, 30);
+  assert.equal(core.length, 33);
+  assert.ok(core.some((t: any) => t.name === "get_chats"));
   assert.ok(core.some((t: any) => t.name === "manage_memory"));
   assert.ok(core.some((t: any) => t.name === "update_agent"));
   assert.ok(
@@ -170,13 +171,63 @@ test("62 tools: 30 core (apply_plan, get_profile, update_agent and manage_memory
   );
 });
 
+test("get_chats reads private history without exposing projects kept out of AI", async () => {
+  const project = (
+    await h.call(olga.token, "POST", "/projects", { name: "Chat visibility" })
+  ).json();
+  const chatId = randomUUID();
+  const turnId = randomUUID();
+  const turns = [
+    { role: "user", text: "A saved question" },
+    {
+      role: "assistant",
+      text: "A saved answer",
+      turn_id: turnId,
+      outcome: "info",
+    },
+  ];
+  const saved = await h.call(olga.token, "PUT", `/ai/chats/${chatId}`, {
+    project_id: project.id,
+    turns,
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+
+  const summaries = ok(await tool(keys.all, "get_chats"));
+  assert.ok(summaries.chats.some((chat: any) => chat.id === chatId));
+  const history = ok(await tool(keys.all, "get_chats", { chat_id: chatId }));
+  assert.equal(history.chats[0].turns[1].text, "A saved answer");
+  assert.equal(history.chats[0].trace.length, 0);
+
+  const moKey = await h.agentKey(mo, {
+    access: "read",
+    personal: true,
+    toolsets: ["core"],
+  });
+  const privateRows = ok(await tool(moKey.key, "get_chats"));
+  assert.ok(!privateRows.chats.some((chat: any) => chat.id === chatId));
+  assert.equal(
+    code(await tool(moKey.key, "get_chats", { chat_id: chatId })),
+    "NOT_FOUND",
+  );
+
+  await h.call(olga.token, "PUT", `/projects/${project.id}/assistant`, {
+    off: true,
+  });
+  const hidden = ok(await tool(keys.all, "get_chats"));
+  assert.ok(!hidden.chats.some((chat: any) => chat.id === chatId));
+  assert.equal(
+    code(await tool(keys.all, "get_chats", { chat_id: chatId })),
+    "NOT_FOUND",
+  );
+});
+
 test("X-MCP-Toolsets and X-MCP-Readonly narrow a connection for one call, and never widen it", async () => {
   const narrow = async (key: string, headers: Record<string, string>) =>
     (
       await h.legacy(key, "tools/list", undefined, headers)
     ).body.result.tools.map((t: any) => t.name) as string[];
   const planner = await narrow(keys.all, { "x-mcp-toolsets": "core,planner" });
-  assert.equal(planner.length, 36);
+  assert.equal(planner.length, 39);
   assert.ok(planner.includes("what_if") && !planner.includes("get_team"));
   const ro = await narrow(keys.all, {
     "x-mcp-toolsets": "planner",
@@ -264,13 +315,13 @@ test("budgets: every combination of toolsets stays small", () => {
   };
   for (const t of optional)
     assert.ok(size([t]) < each[t], `${t} is ${size([t])} characters`);
-  // Every combination with core: under about 43k tokens. There is no total
+  // Every combination with core: under about 44k tokens. There is no total
   // tool-count cap; connections may have more than 60 tools.
   // H2 (append_doc, save_source, add_file) raised this from 150k, and H4
   // (study practice) from 156k.
   for (let mask = 0; mask < 1 << optional.length; mask++) {
     const sets = ["core", ...optional.filter((_, i) => mask & (1 << i))];
-    assert.ok(size(sets) < 170_000, `${sets.join("+")}: ${size(sets)}`);
+    assert.ok(size(sets) < 176_000, `${sets.join("+")}: ${size(sets)}`);
   }
 });
 
@@ -1349,7 +1400,7 @@ test("the developer page's catalog and security.txt are public", async () => {
   const r = await h.call(null, "GET", "/developers/mcp");
   assert.equal(r.statusCode, 200);
   const c = r.json();
-  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 62);
+  assert.equal(c.tools.filter((t: any) => !t.legacy_only).length, 65);
   assert.equal(c.toolsets.length, 8);
   assert.ok(c.versioning.length >= 3);
   assert.ok(c.changelog[0].date);

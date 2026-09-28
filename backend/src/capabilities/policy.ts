@@ -92,7 +92,10 @@ export type Decision =
     };
 
 const isAgent = (p: Principal) =>
-  p.via === "agent_key" || p.via === "oauth" || p.via === "legacy_key";
+  p.via === "assistant" ||
+  p.via === "agent_key" ||
+  p.via === "oauth" ||
+  p.via === "legacy_key";
 
 const lowest = (...levels: AgentAccess[]): AgentAccess =>
   levels.reduce((a, b) =>
@@ -233,7 +236,11 @@ export async function reachableTeams(
       [userId, grantTeamIds],
     )
   ).rows;
-  const agent = via === "agent_key" || via === "oauth" || via === "legacy_key";
+  const agent =
+    via === "assistant" ||
+    via === "agent_key" ||
+    via === "oauth" ||
+    via === "legacy_key";
   return agent ? rows.filter((t) => t.agent_access !== "off") : rows;
 }
 

@@ -9,11 +9,15 @@ const { migrate } = await import("../src/db/migrate.js");
 const { buildApp } = await import("../src/app.js");
 const { runTool } = await import("../src/modules/ai/agent/tools.js");
 const { mayChange, pruneActions } = await import("../src/modules/ai/guards.js");
+const { goalWeekStart, listGoals, readGoal, saveGoal } =
+  await import("../src/modules/assistant-workspace/goals.js");
+const { manageGoals } = await import("../src/capabilities/goals.js");
 
 const app = await buildApp();
 let token = "";
 let userId = "";
 let strangerId = "";
+let strangerToken = "";
 let projectId = "";
 
 const register = async (name: string) =>
@@ -63,7 +67,9 @@ before(async () => {
   const me = await register("Planner");
   token = me.token;
   userId = me.user.id;
-  strangerId = (await register("Stranger")).user.id;
+  const stranger = await register("Stranger");
+  strangerId = stranger.user.id;
+  strangerToken = stranger.token;
   projectId = (
     await post("/projects", { name: "Launch", deadline: inDays(3) })
   ).json().id;
@@ -290,4 +296,165 @@ test("get_project lists only the pages and records you could open yourself", asy
   );
   assert.equal(theirs.data.notes.length, 2);
   assert.equal(theirs.data.open_records.length, 2);
+});
+
+test("goals stay private and require valid inputs", async () => {
+  assert.equal((await app.inject({ url: "/me/goals" })).statusCode, 401);
+  assert.equal(
+    (
+      await app.inject({
+        method: "PUT",
+        url: "/me/goals/not-a-uuid",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { title: "Updated goal" },
+      })
+    ).statusCode,
+    422,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/me/goals",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        url: "/admin/overview",
+        headers: { authorization: `Bearer ${strangerToken}` },
+      })
+    ).statusCode,
+    403,
+  );
+
+  const limitedAddress = "10.99.254.7";
+  let rateLimited = false;
+  for (let attempt = 0; attempt < 11; attempt++) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      remoteAddress: limitedAddress,
+      payload: {
+        email: `rate-${randomUUID()}@example.com`,
+        password: "a-long-test-password",
+      },
+    });
+    if (attempt < 10) assert.equal(response.statusCode, 401, response.body);
+    else rateLimited = response.statusCode === 429;
+  }
+  assert.equal(rateLimited, true, "sign-in attempts are rate limited");
+
+  const plan = await post("/docs", {
+    title: "Capstone plan",
+    kind: "agent",
+    content: [{ type: "paragraph", text: "Finish the capstone in stages." }],
+  });
+  assert.equal(plan.statusCode, 201, plan.body);
+  const goalResponse = await post("/me/goals", {
+    title: "Finish the capstone",
+    target: "Submit the final project",
+    target_date: "2026-11-30",
+    plan_doc_id: plan.json().id,
+  });
+  assert.equal(goalResponse.statusCode, 201, goalResponse.body);
+  const goal = goalResponse.json();
+  const goals = await app.inject({
+    url: "/me/goals",
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(goals.statusCode, 200, goals.body);
+  assert.equal(goals.json()[0].plan_doc_id, plan.json().id);
+  assert.equal(
+    (
+      await app.inject({
+        url: `/me/goals/${goal.id}/checkins`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).json().length,
+    0,
+  );
+
+  const stranger = await register("Workspace stranger");
+  assert.deepEqual(
+    (
+      await app.inject({
+        url: "/me/goals",
+        headers: { authorization: `Bearer ${stranger.token}` },
+      })
+    ).json(),
+    [],
+  );
+  assert.equal(
+    (
+      await app.inject({
+        url: `/me/goals/${goal.id}/checkins`,
+        headers: { authorization: `Bearer ${stranger.token}` },
+      })
+    ).statusCode,
+    404,
+  );
+});
+
+test("agent goal reads leave goals linked to assistant-off projects out", async () => {
+  await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
+    projectId,
+  ]);
+  const goal = await saveGoal(pool, userId, null, {
+    title: "Hidden project goal",
+    project_id: projectId,
+  });
+
+  assert.ok((await listGoals(pool, userId)).some((row) => row.id === goal.id));
+  assert.ok(
+    !(await listGoals(pool, userId, true)).some((row) => row.id === goal.id),
+  );
+  assert.equal(await readGoal(pool, userId, goal.id, true), null);
+  await assert.rejects(
+    saveGoal(pool, userId, goal.id, { title: "Changed hidden goal" }, true),
+    /Goal not found/,
+  );
+});
+
+test("goal check-ins use the person's local Monday and the Agent tool saves them", async () => {
+  await pool.query(
+    `INSERT INTO planner_prefs (user_id, timezone) VALUES ($1, 'Australia/Melbourne')
+     ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone`,
+    [userId],
+  );
+  assert.equal(
+    await goalWeekStart(pool, userId, new Date("2026-09-27T14:30:00.000Z")),
+    "2026-09-28",
+  );
+
+  const goal = await saveGoal(pool, userId, null, {
+    title: "Weekly capstone review",
+  });
+  const ctx = {
+    principal: { user: { id: userId, role: "member" }, personal: true },
+    db: pool,
+    now: new Date(),
+    timezone: "Australia/Melbourne",
+    spaces: {},
+    cursor: { seal: async () => "", open: async () => 0 },
+  };
+  const result = await manageGoals.run(
+    ctx as never,
+    manageGoals.input.parse({
+      action: "checkin",
+      id: goal.id,
+      summary: "Finished the outline and set the next step.",
+      progress: { completed: ["outline"] },
+    }) as never,
+  );
+  const expectedWeek = await goalWeekStart(pool, userId);
+  assert.equal(result.structured.checkins[0].week_of, expectedWeek);
+  assert.equal(result.structured.checkins[0].status, "done");
 });
