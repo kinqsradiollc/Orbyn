@@ -21,7 +21,6 @@ import {
   type Item,
 } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
-import { WorkspaceStrip } from "./WorkspaceStrip";
 import { UpNextCard } from "./UpNextCard";
 import { TodayCard } from "./TodayCard";
 import { AssistantIdeasCard } from "./AssistantIdeasCard";
@@ -131,11 +130,6 @@ export function OverviewView({
             </button>
           </EmptyState>
         </section>
-        <WorkspaceStrip
-          onOpenDoc={onOpenDoc}
-          onOpenProject={onOpenProject}
-          onNavigate={onNavigate}
-        />
         <AssistantIdeasCard onReview={() => onNavigate("Review")} />
       </>
     );
@@ -324,11 +318,6 @@ export function OverviewView({
           </section>
         </div>
       </div>
-      <WorkspaceStrip
-        onOpenDoc={onOpenDoc}
-        onOpenProject={onOpenProject}
-        onNavigate={(view) => onNavigate(view)}
-      />
     </>
   );
 }

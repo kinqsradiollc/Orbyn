@@ -360,7 +360,8 @@ export function HomeSection({
 const s = themed(() =>
   StyleSheet.create({
     stripScroll: { marginHorizontal: -20, marginBottom: 16 },
-    strip: { paddingHorizontal: 20, gap: 10 },
+    // Hub cards in the strip line up at the same height.
+    strip: { paddingHorizontal: 20, gap: 10, alignItems: "stretch" },
     hub: {
       width: 220,
       borderRadius: radii.card,
