@@ -438,7 +438,7 @@ test("goal check-ins use the person's local Monday and the Agent tool saves them
     title: "Weekly capstone review",
   });
   const ctx = {
-    principal: { user: { id: userId, role: "member" } },
+    principal: { user: { id: userId, role: "member" }, personal: true },
     db: pool,
     now: new Date(),
     timezone: "Australia/Melbourne",

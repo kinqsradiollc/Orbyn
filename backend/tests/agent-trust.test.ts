@@ -32,7 +32,8 @@ const { reviewCategory, sendPush, REVIEW_CATEGORY } =
 const { asksInChat } = await import("../src/modules/mcp-server/elicit.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
-const { liveGrantCount } = await import("../src/modules/agents/service.js");
+const { liveGrantCount, setGrantTrust } =
+  await import("../src/modules/agents/service.js");
 
 const app = await buildApp();
 const h = helpers(app);
@@ -233,7 +234,7 @@ test("new connections start at full power; the trust settings validate and show"
   assert.deepEqual(reset.json().space_trust, {});
 });
 
-test("the built-in assistant is a stable grant whose trust can only be lowered", async () => {
+test("the built-in assistant is a stable grant; only the signed-in person raises its trust", async () => {
   const user = await h.register("tr-built-in", "Built-in");
   const identity = { id: user.id, name: user.name, role: "member" as const };
   const principal = await assistantPrincipal(identity);
@@ -279,19 +280,30 @@ test("the built-in assistant is a stable grant whose trust can only be lowered",
     .grants.find((entry: any) => entry.id === principal.grant_id);
   assert.equal(renamedGrant.name, "Muse");
 
-  for (const body of [
-    { trust: "full" },
-    { spaces: { personal: "full" } },
-    { acts_alone: ["bulk"] },
-  ]) {
-    const refused = await h.call(
-      user.token,
-      "PUT",
-      `/me/agents/${principal.grant_id}/trust`,
-      body,
+  // Anything but the person's own session may only lower it.
+  for (const body of [{ trust: "full" }, { spaces: { personal: "full" } }])
+    await assert.rejects(
+      setGrantTrust(user.id, principal.grant_id!, body as never),
+      /can only be lowered/,
     );
-    assert.equal(refused.statusCode, 422, refused.body);
-  }
+  // It always asks first about the protected actions.
+  const alone = await h.call(
+    user.token,
+    "PUT",
+    `/me/agents/${principal.grant_id}/trust`,
+    { acts_alone: ["bulk"] },
+  );
+  assert.equal(alone.statusCode, 422, alone.body);
+  // The person, signed in, can put it back to full power.
+  const raised = await h.call(
+    user.token,
+    "PUT",
+    `/me/agents/${principal.grant_id}/trust`,
+    { trust: "full" },
+  );
+  assert.equal(raised.statusCode, 200, raised.body);
+  assert.equal(raised.json().trust, "full");
+  assert.equal((await assistantPrincipal(identity)).trust.level, "full");
 
   assert.equal(
     (

@@ -42,11 +42,68 @@ export async function listAgentRoutines(
   return rows.map(routineOf);
 }
 
+/**
+ * Forget any approval the person saved for one routine ("approve this
+ * routine's changes"): once its instruction changes, the approval was for
+ * different work, so its next run asks again.
+ */
+export async function clearRoutineApprovalScopes(
+  db: Queryable,
+  userId: string,
+  routineId: string,
+) {
+  await db.query(
+    `UPDATE agent_grants SET approval_scopes = coalesce((
+        SELECT jsonb_object_agg(e.key, e.value)
+          FROM jsonb_each(approval_scopes) e
+         WHERE NOT (jsonb_typeof(e.value) = 'object'
+           AND e.value->>'scope' = 'routine' AND e.value->>'id' = $2)
+      ), '{}'::jsonb)
+      WHERE user_id = $1 AND kind = 'assistant'
+        AND jsonb_typeof(approval_scopes) = 'object'
+        AND EXISTS (
+          SELECT 1 FROM jsonb_each(approval_scopes) e
+           WHERE jsonb_typeof(e.value) = 'object'
+             AND e.value->>'scope' = 'routine' AND e.value->>'id' = $2)`,
+    [userId, routineId],
+  );
+}
+
+/** A routine's saved fields as its input shape (for review and undo). */
+export const routineFields = (routine: AgentRoutine) => ({
+  instruction: routine.instruction,
+  rrule: routine.rrule,
+  timezone: routine.timezone,
+  next_run_at: routine.next_run_at,
+  paused: routine.paused,
+});
+
+/** One of the person's routines, or null. */
+export async function readAgentRoutine(
+  db: Queryable,
+  userId: string,
+  id: string,
+): Promise<AgentRoutine | null> {
+  const row = (
+    await db.query<RoutineRow>(
+      `SELECT ${ROUTINE_SELECT} FROM agent_routines WHERE id = $2 AND user_id = $1`,
+      [userId, id],
+    )
+  ).rows[0];
+  return row ? routineOf(row) : null;
+}
+
+/**
+ * Make or change a routine. `advance` moves a next run already past to the
+ * next one the rule gives (a change approved or undone later), instead of
+ * refusing it.
+ */
 export async function saveAgentRoutine(
   db: Queryable,
   userId: string,
   id: string | null,
   raw: unknown,
+  options: { advance?: boolean } = {},
 ): Promise<AgentRoutine> {
   const current = id
     ? (
@@ -74,7 +131,7 @@ export async function saveAgentRoutine(
     fail(422, "Choose a supported time zone.");
   }
   if (
-    current?.paused &&
+    (options.advance || current?.paused) &&
     !parsed.paused &&
     new Date(parsed.next_run_at).getTime() <= Date.now()
   ) {
@@ -121,6 +178,8 @@ export async function saveAgentRoutine(
         )
       ).rows[0]?.id;
   if (!savedId) fail(404, "Assistant routine not found.");
+  if (current && current.instruction !== parsed.instruction)
+    await clearRoutineApprovalScopes(db, userId, savedId);
   const saved = (
     await db.query<RoutineRow>(
       `SELECT ${ROUTINE_SELECT} FROM agent_routines WHERE id = $1`,
@@ -140,6 +199,7 @@ export async function deleteAgentRoutine(
     [userId, id],
   );
   if (!result.rowCount) fail(404, "Assistant routine not found.");
+  await clearRoutineApprovalScopes(db, userId, id);
 }
 
 export async function assistantRoutineRoutes(app: FastifyInstance) {

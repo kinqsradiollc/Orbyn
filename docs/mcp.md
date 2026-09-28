@@ -1008,7 +1008,7 @@ Adds a file (base64, up to 25 MB; 500 MB a day) to a page as a picture or file l
 
 ### `manage_goals`
 
-List, read, create, update or complete your private goals. Each goal can have a target, its own Agent plan note, an optional project, and weekly check-ins. Use a visible Orbyn project and a private Agent note for its plan.
+List, read, create, update or complete your private goals. Personal only. Each goal can have a target, its own Agent plan note, an optional project, and weekly check-ins. Use a visible Orbyn project and a private Agent note for its plan. An active goal gets a weekly check-in that Orbyn's own assistant runs, so a connection that asks first or only suggests sends creates and updates to the person's Review inbox.
 
 | Argument            | Type                                                    | Notes                                                                 |
 | ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -1023,7 +1023,7 @@ List, read, create, update or complete your private goals. Each goal can have a 
 
 ### `manage_agent_routines`
 
-List, create, update, pause, resume or delete recurring instructions for Orbyn's built-in assistant. Use a supported time zone, an RRULE such as FREQ=WEEKLY;BYDAY=MO, and the next local run time. Each due run goes through the assistant and follows the saved approval scope.
+List, create, update, pause, resume or delete recurring instructions for Orbyn's built-in assistant. Personal only. Use a supported time zone, an RRULE such as FREQ=WEEKLY;BYDAY=MO, and the next local run time. Each run is Orbyn's assistant working on its own, so creating, changing or resuming a routine always waits for the person's approval in Review; pausing and deleting happen at once.
 
 | Argument            | Type                                                    | Notes                                                                 |
 | ------------------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
@@ -1101,11 +1101,11 @@ Catalog version: `2026-09-28`.
 
 ### 2026-09-28
 
-- Ideas (Muse M7): the Assistant can suggest up to three small daily changes from planner context. Ideas wait in Review for the person's approval; the planner remains a planner. 63 tools, 31 core.
-- Goals (Muse M8): manage_goals is a core tool for private dated goals, weekly check-ins and replanning. The registry has no global tool-count cap; this snapshot has 64 tools, 32 core. Planner capabilities stay in the planner toolset.
-- Routines and Upcoming (Muse M9): manage_agent_routines is a core tool for scheduled Assistant runs with pause, resume and saved approval scopes. Upcoming shows personal goals, weekly check-ins and routines on web and phone. The registry has 65 listable tools, 33 core, with no global ceiling.
-- Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.
-- Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.
+- Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.
+- get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.
+- manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.
+- manage_agent_routines (core): scheduled runs of the built-in assistant. Personal only; creating, changing or resuming a routine always waits for the person's approval in Review, and a changed instruction clears any approval saved for that routine. Pausing and deleting happen at once.
+- Goal and routine changes made directly are undoable. Ideas (daily suggestions) always wait in Review. 65 tools, 33 core; no global tool ceiling.
 
 ### 2026-09-27
 
