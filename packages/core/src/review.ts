@@ -212,6 +212,16 @@ export const reviewChange = z.discriminatedUnion("type", [
     /** The routine as the agent saw it, to tell a later change apart. */
     before: agentRoutineInput.nullable(),
   }),
+  /**
+   * A task handed to the person's own agent (W3), asked by an outside
+   * agent: the run spends Orbyn's hosted assistant, so the person decides.
+   */
+  z.object({
+    type: z.literal("task.hand"),
+    item_id: id,
+    title,
+    team_id: space,
+  }),
   /** A private goal made or changed; `goal` is the whole goal after it. */
   z.object({
     type: z.literal("goal.save"),

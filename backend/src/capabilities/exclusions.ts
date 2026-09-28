@@ -118,6 +118,8 @@ export const COVERED: Record<string, string[]> = {
   "DELETE /items/:id": ["propose_changes"],
   "POST /items/:id/steps": ["edit_checklist"],
   "PUT /items/:id/steps/:stepId": ["edit_checklist"],
+  // W3: handing a task to the person's own agent (always through Review).
+  "POST /items/:id/agent": ["update_tasks"],
   // The toolsets (A5): every route a signed-in person uses, reachable
   // through a tool (writes through the same services as these routes).
   "GET /docs/:id/versions/:version/changes": ["get_history"],
@@ -497,6 +499,10 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/2fa/setup": "sign_in",
   "POST /me/agent-keys": "credentials",
   "GET /me/agents": "credentials",
+  // W2/W3: the board's agent lanes, and taking a task back from the
+  // person's agent (it stops a hosted assistant run).
+  "GET /me/agent-work": "assistant_control",
+  "DELETE /items/:id/agent": "assistant_control",
   "DELETE /me/agents/:id": "credentials",
   "GET /me/agents/:id/activity": "credentials",
   "POST /me/agents/:id/restore": "credentials",

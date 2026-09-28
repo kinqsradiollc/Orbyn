@@ -9,6 +9,7 @@ import { policy, type Principal } from "../../../capabilities/policy.js";
 import { pool, transaction } from "../../../db/pool.js";
 import type { Queryable } from "../../../db/pool.js";
 import { keptOutFor } from "../../../lib/assistant-off.js";
+import { announceTo } from "../../presence/live.js";
 import { recallMemory } from "../../memory/service.js";
 import type { UserRow } from "../../../lib/auth.js";
 import type { Proposal } from "@orbyn/core";
@@ -49,7 +50,8 @@ const approvalInput = z
   .strict();
 
 export type AssistantAutomation = {
-  kind: "idea" | "goal" | "routine";
+  /** A task handed to the agent (W3) carries its item's id. */
+  kind: "idea" | "goal" | "routine" | "task";
   id?: string;
   local_day?: string;
   slot?: number;
@@ -548,6 +550,17 @@ async function finishJob(
         jobId,
       ],
     );
+  } else if (request.automation?.kind === "task" && request.automation.id) {
+    await finishTask(
+      jobId,
+      user,
+      request.automation.id,
+      summary,
+      outcome === "applied" ||
+        (outcome === "info" && !extra.stopped && !extra.timed_out)
+        ? "done"
+        : "needs_you",
+    );
   } else if (
     request.automation?.kind === "idea" &&
     request.automation.local_day
@@ -581,6 +594,81 @@ async function finishJob(
       [user.id, request.automation.local_day, request.automation.slot ?? 1],
     );
   }
+}
+
+/**
+ * A handed task's run ended (W3): the task goes back to the person with
+ * what the agent did in one line and a short note in its timeline, "via"
+ * the agent. Nothing happens when the task was taken back meanwhile.
+ */
+async function finishTask(
+  jobId: string,
+  user: UserRow,
+  itemId: string,
+  summary: string,
+  state: "done" | "needs_you",
+) {
+  const text = summary
+    .replace(
+      /\n+(I’ve put these changes in Review for you|Done — you can undo this change)\.?\s*$/,
+      "",
+    )
+    .trim();
+  const [line] = ideaText(text);
+  const back = (
+    await pool.query<{
+      user_id: string;
+      team_id: string | null;
+      grant_id: string;
+    }>(
+      `UPDATE items i SET agent_state = $3, agent_result = $4,
+         agent_grant_id = NULL, agent_claimed_at = NULL, updated_at = now()
+        FROM items old
+       WHERE i.id = $1 AND old.id = i.id AND i.agent_job_id = $2
+         AND i.agent_grant_id IS NOT NULL
+       RETURNING i.user_id, i.team_id, old.agent_grant_id AS grant_id`,
+      [itemId, jobId, state, line.slice(0, 300)],
+    )
+  ).rows[0];
+  if (!back) return;
+  const note =
+    state === "needs_you" && summary.includes("in Review")
+      ? `${text}\n\nSome changes wait for you in Review.`
+      : text;
+  await pool.query(
+    `INSERT INTO item_updates (item_id, user_id, body, via_grant_id)
+     VALUES ($1, $2, $3, $4)`,
+    [itemId, user.id, note.slice(0, 1000), back.grant_id],
+  );
+  await pool.query(
+    `UPDATE items SET updates_count = updates_count + 1, last_update_at = now()
+      WHERE id = $1`,
+    [itemId],
+  );
+  await announceTo(
+    pool,
+    { user_id: back.user_id, team_id: back.team_id },
+    "changed",
+    { entity_type: "task", entity_id: itemId },
+  ).catch(() => undefined);
+}
+
+/** Record where a handed task's run stands, when it runs or waits on the person. */
+async function markTask(
+  jobId: string,
+  request: PersistedChatRequest,
+  state: "working" | "needs_you",
+  result: string | null = null,
+) {
+  if (request.automation?.kind !== "task" || !request.automation.id) return;
+  await pool
+    .query(
+      `UPDATE items SET agent_state = $3, agent_result = $4, updated_at = now()
+        WHERE id = $1 AND agent_job_id = $2 AND agent_grant_id IS NOT NULL
+          AND agent_state IS DISTINCT FROM $3`,
+      [request.automation.id, jobId, state, result?.slice(0, 300) ?? null],
+    )
+    .catch(() => undefined);
 }
 
 /** Persist and start a background lead run for a worker-owned task. */
@@ -679,6 +767,12 @@ async function waitFor(
     [jobId, JSON.stringify(envelope), JSON.stringify(progress)],
   );
   if (!parked.rowCount) return false;
+  await markTask(
+    jobId,
+    request,
+    "needs_you",
+    envelope.state.waiting?.question ?? null,
+  );
   await transaction(async (db) => {
     const row = (
       await db.query<{ turns: unknown }>(
@@ -878,6 +972,19 @@ async function failJob(
         ],
       )
       .catch(() => undefined);
+  // A handed task waits for the worker's next try (worker/assistant-tasks.ts).
+  if (request.automation?.kind === "task" && request.automation.id)
+    await pool
+      .query(
+        `UPDATE items SET agent_state = 'queued', agent_result = $3, updated_at = now()
+          WHERE id = $1 AND agent_job_id = $2 AND agent_grant_id IS NOT NULL`,
+        [
+          request.automation.id,
+          jobId,
+          "The last try didn't finish. It will be tried again later.",
+        ],
+      )
+      .catch(() => undefined);
   if (request.automation?.kind === "routine" && request.automation.id)
     await pool
       .query(
@@ -955,6 +1062,7 @@ export async function runAssistantJob(
     envelope.state.memory = prepared.memory;
     envelope.state.context = scoped ?? prepared.snapshot;
     const currentMessage = envelope.state.answer_to_person || request.message;
+    await markTask(jobId, request, "working");
     await saveProgress(jobId, envelope, {
       label: "Starting the lead assistant",
       step: envelope.state.lead_steps,

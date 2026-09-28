@@ -62,6 +62,8 @@ import {
   visibleProjects,
 } from "../../lib/visibility.js";
 import { readableLinks } from "../links/privacy.js";
+import { handTaskToAgent, recentAgentWork } from "./agent.js";
+import { takeTaskBack } from "./agent-take-back.js";
 
 /** ORDER BY for each list order but the score, which is worked out in code. */
 const ORDER: Record<Exclude<ItemSort, "score">, string> = {
@@ -565,6 +567,24 @@ export async function itemRoutes(app: FastifyInstance) {
       await recomputeProgress(db, id);
       return itemDetail(id, via(db));
     });
+  });
+
+  // Handing a task to your own agent (W3): the worker runs it; taking it
+  // back stops the run. Connected agents' recent work names their lanes.
+  app.post("/items/:id/agent", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    return transaction((db) => handTaskToAgent(db, u, id));
+  });
+
+  app.delete("/items/:id/agent", async (r) => {
+    const u = await authenticate(r);
+    return takeTaskBack(u, idParam(r), r.log);
+  });
+
+  app.get("/me/agent-work", async (r) => {
+    const u = await authenticate(r);
+    return recentAgentWork(reader(r.headers), u.id);
   });
 
   // Progress updates: a note in the task's timeline that can also change its

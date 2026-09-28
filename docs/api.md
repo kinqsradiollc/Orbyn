@@ -1930,6 +1930,9 @@ responses also include `steps_total`, `steps_done`, `updates_count`, and `last_u
 | `PUT /items/:id/steps/:stepId`    | `{ "title"?, "done"? }`; returns the item detail                                                         |
 | `DELETE /items/:id/steps/:stepId` | Removes a step; returns the item detail                                                                  |
 | `POST /items/:id/updates`         | `{ "body"?, "status"?, "progress"? }` posts a timeline entry; returns detail                             |
+| `POST /items/:id/agent`           | Hands a task to your own agent (W3): queued for the worker; 409 at 5 at once, kept-out or paused         |
+| `DELETE /items/:id/agent`         | Takes it back from your agent and stops its run; returns the item                                        |
+| `GET /me/agent-work`              | Connected agents that made or changed tasks you see in the last day, for the board's lanes               |
 
 When a task has steps, its progress is the share of steps done, and ticking the first step moves a
 `todo` task to `in_progress`. Manual progress is refused (`409`) while a checklist exists. Marking a

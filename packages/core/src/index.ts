@@ -72,6 +72,7 @@ export * from "./search-query.js";
 export * from "./security-page.js";
 export * from "./links.js";
 export * from "./task-groups.js";
+export * from "./agent-tasks.js";
 export * from "./doc-outline.js";
 export * from "./fields.js";
 export * from "./page-files.js";

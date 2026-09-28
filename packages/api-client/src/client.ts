@@ -3169,6 +3169,24 @@ export class OrbynClient {
     });
   }
 
+  /**
+   * Hand a task to your own agent (W3): it works on it in the background
+   * and gives it back with a note. At most five at once.
+   */
+  handTaskToAgent(id: string) {
+    return this.request<Item>(`/items/${id}/agent`, { method: "POST" });
+  }
+  /** Take a task back from your agent; a run working on it stops. */
+  takeTaskBack(id: string) {
+    return this.request<Item>(`/items/${id}/agent`, { method: "DELETE" });
+  }
+  /** Connected agents that made or changed tasks lately, for the board's lanes. */
+  agentWork() {
+    return this.request<
+      { grant_id: string; name: string; item_ids: string[] }[]
+    >("/me/agent-work");
+  }
+
   /** A task with its checklist steps and progress timeline. */
   getItem(id: string) {
     return this.request<ItemDetail>(`/items/${id}`);
