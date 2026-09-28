@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import {
   addDays,
@@ -8,6 +8,8 @@ import {
   nextOccurrence,
   weekdayOf,
   type AgentRoutine,
+  type ApprovalScopes,
+  type AssistantChangeKind,
   type DocSummary,
   type Goal,
   type GoalCheckin,
@@ -16,7 +18,13 @@ import {
 import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
+import { Popover } from "../../components/Popover";
 import { client } from "../../lib/api";
+import {
+  CHANGE_KIND_LABELS,
+  checkinStatusLabel,
+  dayLabel,
+} from "../../lib/assistant-labels";
 
 const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
@@ -43,9 +51,18 @@ function summaryOf(goal: Goal) {
   return typeof goal.progress.summary === "string" ? goal.progress.summary : "";
 }
 
-/** Personal goals, their weekly check-ins, and scheduled Assistant routines. */
-export function AssistantUpcoming() {
+/** Personal goals, their weekly check-ins, and scheduled assistant routines. */
+export function AssistantUpcoming({ agentName }: { agentName: string }) {
   const { ask } = useConfirm();
+  const live = useRef(true);
+  useEffect(
+    () => () => {
+      live.current = false;
+    },
+    [],
+  );
+  const [loading, setLoading] = useState(true);
+  const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
@@ -70,39 +87,79 @@ export function AssistantUpcoming() {
   const [menu, setMenu] = useState<{
     kind: "goal" | "routine";
     id: string;
+    anchor: DOMRect;
   } | null>(null);
 
   const load = async () => {
-    const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs] =
+    const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs, scopes] =
       await Promise.all([
         client.listGoals(),
         client.listAgentRoutines(),
         client.listProjects(),
         client.listDocs({ kind: "agent" }),
         client.getPlannerPrefs(),
+        client.assistantApprovalScopes().catch(() => ({}) as ApprovalScopes),
       ]);
+    if (!live.current) return;
+    setAllowed(scopes);
     setGoals(nextGoals);
     setRoutines(nextRoutines);
     setProjects(nextProjects);
     setAgentDocs(nextDocs);
     setTimezone(prefs.timezone || "UTC");
     setRoutineDay(localDateKey(new Date(), prefs.timezone || "UTC"));
+    // One goal's check-ins failing leaves the others (and the goal) shown.
     const results = await Promise.all(
       nextGoals
         .slice(0, 30)
         .map(
           async (goal) =>
-            [goal.id, await client.goalCheckins(goal.id)] as const,
+            [
+              goal.id,
+              await client.goalCheckins(goal.id).catch(() => []),
+            ] as const,
         ),
     );
-    setCheckins(Object.fromEntries(results));
+    if (live.current) setCheckins(Object.fromEntries(results));
   };
 
   useEffect(() => {
-    void load().catch(() =>
-      setError("Upcoming goals and routines could not be loaded."),
-    );
+    void load()
+      .catch(
+        () =>
+          live.current &&
+          setError("Upcoming goals and routines could not be loaded."),
+      )
+      .finally(() => live.current && setLoading(false));
   }, []);
+
+  const removeAllowed = async (kind: AssistantChangeKind) => {
+    const next = { ...allowed };
+    delete next[kind];
+    setSaving(true);
+    setError("");
+    try {
+      const saved = await client.setAssistantApprovalScopes(next);
+      if (live.current) setAllowed(saved);
+    } catch {
+      if (live.current)
+        setError("That permission could not be removed. Try again.");
+    } finally {
+      if (live.current) setSaving(false);
+    }
+  };
+  const allowedRows = (
+    Object.entries(allowed) as [
+      AssistantChangeKind,
+      ApprovalScopes[AssistantChangeKind],
+    ][]
+  ).filter(([, rule]) => !!rule);
+  const ruleLabel = (rule: ApprovalScopes[AssistantChangeKind]) =>
+    rule === "always"
+      ? "Always"
+      : rule?.scope === "goal"
+        ? `For the goal “${goals.find((g) => g.id === rule.id)?.title ?? "a goal"}”`
+        : `For the routine “${routines.find((r) => r.id === rule?.id)?.instruction ?? "a routine"}”`;
 
   const activeGoals = useMemo(
     () => goals.filter((goal) => goal.status !== "done"),
@@ -251,8 +308,8 @@ export function AssistantUpcoming() {
           </span>
           <h2 id="ai-upcoming-title">Goals and routines</h2>
           <p>
-            Weekly goal check-ins and scheduled Assistant runs use your planner
-            time zone ({timezone}).
+            Weekly goal check-ins and {agentName}’s scheduled runs use your
+            planner time zone ({timezone}).
           </p>
         </div>
         <div className="ai-upcoming-add">
@@ -360,7 +417,7 @@ export function AssistantUpcoming() {
         >
           <h3>New routine</h3>
           <label>
-            What should Orbyn do?
+            What should {agentName} do?
             <textarea
               required
               maxLength={4000}
@@ -420,7 +477,9 @@ export function AssistantUpcoming() {
       <div className="ai-upcoming-grid">
         <section>
           <h3>Goals</h3>
-          {activeGoals.length ? (
+          {loading ? (
+            <p className="ai-upcoming-empty">Loading goals…</p>
+          ) : activeGoals.length ? (
             <ul className="ai-upcoming-list">
               {activeGoals.map((goal) => {
                 const history = checkins[goal.id] ?? [];
@@ -435,16 +494,17 @@ export function AssistantUpcoming() {
                     <div className="ai-upcoming-row-main">
                       <strong>{goal.title}</strong>
                       <small>
-                        Weekly check-in {checkinDay}
+                        Weekly check-in {dayLabel(checkinDay)}
                         {goal.target_date
-                          ? ` · target ${goal.target_date}`
+                          ? ` · target ${dayLabel(goal.target_date)}`
                           : ""}
                         {goal.project_name ? ` · ${goal.project_name}` : ""}
                       </small>
                       {summaryOf(goal) && <p>{summaryOf(goal)}</p>}
                       {latest && (
                         <small>
-                          Last check-in · {latest.status} · {latest.summary}
+                          Last check-in · {checkinStatusLabel(latest.status)}
+                          {latest.summary ? ` · ${latest.summary}` : ""}
                         </small>
                       )}
                     </div>
@@ -465,32 +525,48 @@ export function AssistantUpcoming() {
                       <button
                         type="button"
                         className="ai-menu-trigger"
-                        aria-label={`More options for ${goal.title}`}
-                        onClick={() =>
+                        aria-label={`Options for ${goal.title}`}
+                        aria-haspopup="dialog"
+                        aria-expanded={menu?.id === goal.id}
+                        onClick={(event) =>
                           setMenu(
                             menu?.id === goal.id
                               ? null
-                              : { kind: "goal", id: goal.id },
+                              : {
+                                  kind: "goal",
+                                  id: goal.id,
+                                  anchor:
+                                    event.currentTarget.getBoundingClientRect(),
+                                },
                           )
                         }
                       >
                         <MoreHorizontal size={16} />
                       </button>
                       {menu?.id === goal.id && (
-                        <div className="ai-upcoming-menu">
-                          <button
-                            type="button"
-                            onClick={() => void setGoalStatus(goal, "done")}
-                          >
-                            Mark done
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void deleteSelected()}
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <Popover
+                          anchor={menu.anchor}
+                          label={`Options for ${goal.title}`}
+                          onClose={() => setMenu(null)}
+                        >
+                          <div className="popover-actions">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenu(null);
+                                void setGoalStatus(goal, "done");
+                              }}
+                            >
+                              Mark done
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deleteSelected()}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </Popover>
                       )}
                     </div>
                   </li>
@@ -503,7 +579,9 @@ export function AssistantUpcoming() {
         </section>
         <section>
           <h3>Routines</h3>
-          {routines.length ? (
+          {loading ? (
+            <p className="ai-upcoming-empty">Loading routines…</p>
+          ) : routines.length ? (
             <ul className="ai-upcoming-list">
               {routines.map((routine) => (
                 <li key={routine.id}>
@@ -531,26 +609,39 @@ export function AssistantUpcoming() {
                     <button
                       type="button"
                       className="ai-menu-trigger"
-                      aria-label="Routine options"
-                      onClick={() =>
+                      aria-label={`Options for ${routine.instruction}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={menu?.id === routine.id}
+                      onClick={(event) =>
                         setMenu(
                           menu?.id === routine.id
                             ? null
-                            : { kind: "routine", id: routine.id },
+                            : {
+                                kind: "routine",
+                                id: routine.id,
+                                anchor:
+                                  event.currentTarget.getBoundingClientRect(),
+                              },
                         )
                       }
                     >
                       <MoreHorizontal size={16} />
                     </button>
                     {menu?.id === routine.id && (
-                      <div className="ai-upcoming-menu">
-                        <button
-                          type="button"
-                          onClick={() => void deleteSelected()}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      <Popover
+                        anchor={menu.anchor}
+                        label={`Options for ${routine.instruction}`}
+                        onClose={() => setMenu(null)}
+                      >
+                        <div className="popover-actions">
+                          <button
+                            type="button"
+                            onClick={() => void deleteSelected()}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </Popover>
                     )}
                   </div>
                 </li>
@@ -560,6 +651,32 @@ export function AssistantUpcoming() {
             <p className="ai-upcoming-empty">No scheduled routines yet.</p>
           )}
         </section>
+        {allowedRows.length > 0 && (
+          <section>
+            <h3>Allowed without asking</h3>
+            <ul className="ai-upcoming-list">
+              {allowedRows.map(([kind, rule]) => (
+                <li key={kind}>
+                  <div className="ai-upcoming-row-main">
+                    <strong>{CHANGE_KIND_LABELS[kind] ?? kind}</strong>
+                    <small>{ruleLabel(rule)}</small>
+                  </div>
+                  <div className="ai-upcoming-row-actions">
+                    <button
+                      type="button"
+                      className="ai-ghost"
+                      disabled={saving}
+                      aria-label={`Ask again before changing ${(CHANGE_KIND_LABELS[kind] ?? kind).toLowerCase()}`}
+                      onClick={() => void removeAllowed(kind)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </section>
   );
