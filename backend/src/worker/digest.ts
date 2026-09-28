@@ -3,13 +3,17 @@ import {
   addDays,
   agentJobText,
   clockMinutes,
+  docInput,
   dayTime,
   localDateKey,
   mergeAgentKinds,
+  parseDoc,
   type AgendaEntry,
   type DigestPrefs,
 } from "@orbyn/core";
-import { pool } from "../db/pool.js";
+import { pool, transaction } from "../db/pool.js";
+import { keptOutFor } from "../lib/assistant-off.js";
+import type { UserRow } from "../lib/auth.js";
 import { namedThings } from "../lib/named-things.js";
 import {
   agendaEntries,
@@ -23,6 +27,7 @@ import { LIVE_CARDS } from "../modules/study/service.js";
 import { appLink } from "../modules/booking/service.js";
 import { emailEnabled, sendEmail } from "./channels/email.js";
 import { chatFor, postChat } from "../modules/chat/channel.js";
+import { createDoc } from "../modules/docs/service.js";
 
 /** "9:00 am" in the person's zone. */
 function clockOf(iso: string, tz: string) {
@@ -36,6 +41,373 @@ function clockOf(iso: string, tz: string) {
 }
 
 const bullet = (s: string) => `• ${s}`;
+
+function linkText(title: string) {
+  return (
+    title
+      .replace(/[\[\]\r\n]/g, " ")
+      .trim()
+      .slice(0, 180) || "Open item"
+  );
+}
+
+function plainText(value: string, max = 500) {
+  return value
+    .replace(/[\r\n]+/g, " ")
+    .replace(/[\[\]()*_#`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+function linked(title: string, path: string) {
+  return `[${linkText(title)}](${appLink(path)})`;
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      return objectValue(JSON.parse(value) as unknown);
+    } catch {
+      return {};
+    }
+  }
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+type BriefInputs = {
+  userId: string;
+  day: string;
+  timezone: string;
+  events: AgendaEntry[];
+  tasks: { id: string; title: string; start_at: string }[];
+  blocks: {
+    item_id: string;
+    title: string;
+    start_at: string;
+    end_at: string;
+  }[];
+  conflicts: {
+    block: { item_id: string; title: string; start_at: string };
+    entry: AgendaEntry;
+  }[];
+  atRisk: { item_id: string; title: string; deadline_at?: string | null }[];
+  unfinished: { item_id: string; title: string }[];
+};
+
+/** Create one private Agent brief per local day, safely across worker replicas. */
+async function writeMorningBrief(input: BriefInputs): Promise<{
+  docId: string;
+  events: number;
+  tasks: number;
+  sessions: number;
+  clashes: number;
+  slipping: number;
+  goals: number;
+  ideas: number;
+  questions: number;
+}> {
+  const keptOut = await keptOutFor(pool, input.userId);
+  const hiddenIds = new Set([...keptOut.ids, ...keptOut.projects]);
+  const hiddenTerms = keptOut.projects.size
+    ? (
+        await pool.query<{ term: string }>(
+          `SELECT name AS term FROM projects WHERE id = ANY($1::uuid[])
+           UNION SELECT title FROM items WHERE project_id = ANY($1::uuid[])
+           UNION SELECT title FROM docs WHERE project_id = ANY($1::uuid[])
+           UNION SELECT title FROM work_records WHERE project_id = ANY($1::uuid[])`,
+          [[...keptOut.projects]],
+        )
+      ).rows
+        .map(({ term }) => term.trim().toLocaleLowerCase())
+        .filter((term) => term.length >= 3)
+    : [];
+  const mentionsKeptOut = (value: unknown): boolean => {
+    if (typeof value === "string") {
+      for (const match of value.matchAll(/[0-9a-f-]{36}/gi))
+        if (hiddenIds.has(match[0].toLowerCase())) return true;
+      const text = value.toLocaleLowerCase();
+      if (hiddenTerms.some((term) => text.includes(term))) return true;
+      return false;
+    }
+    if (Array.isArray(value)) return value.some(mentionsKeptOut);
+    if (value && typeof value === "object")
+      return Object.values(value).some(mentionsKeptOut);
+    return false;
+  };
+  const visibleEvents = input.events.filter(
+    (event) =>
+      (!event.item_id || !keptOut.items.has(event.item_id)) &&
+      !mentionsKeptOut(event.title),
+  );
+  const visibleTasks = input.tasks.filter(
+    (task) =>
+      !keptOut.items.has(task.id) && !mentionsKeptOut(task.title),
+  );
+  const visibleBlocks = input.blocks.filter(
+    (block) =>
+      !keptOut.items.has(block.item_id) && !mentionsKeptOut(block.title),
+  );
+  const visibleConflicts = input.conflicts.filter(
+    ({ block, entry }) =>
+      !keptOut.items.has(block.item_id) &&
+      (!entry.item_id || !keptOut.items.has(entry.item_id)) &&
+      !mentionsKeptOut([block.title, entry.title]),
+  );
+  const visibleAtRisk = input.atRisk.filter(
+    (task) =>
+      !keptOut.items.has(task.item_id) && !mentionsKeptOut(task.title),
+  );
+  const visibleUnfinished = input.unfinished.filter(
+    (block) =>
+      !keptOut.items.has(block.item_id) && !mentionsKeptOut(block.title),
+  );
+  const [goals, ideas, questions, jobs] = await Promise.all([
+    pool.query<{
+      id: string;
+      title: string;
+      target_date: string | null;
+      project_id: string | null;
+      plan_doc_id: string | null;
+      progress: Record<string, unknown> | null;
+      checkin: string | null;
+      week_of: string | null;
+    }>(
+      `SELECT g.id, g.title, g.target_date::text, g.project_id, g.plan_doc_id,
+              g.progress, recent.summary AS checkin, recent.week_of::text
+         FROM goals g
+         LEFT JOIN LATERAL (
+           SELECT c.summary, c.week_of FROM goals_checkins c
+            WHERE c.goal_id = g.id AND c.status = 'done'
+            ORDER BY c.week_of DESC LIMIT 1
+         ) recent ON true
+        WHERE g.user_id = $1 AND g.status = 'active'
+          AND NOT EXISTS (
+            SELECT 1 FROM projects hidden
+             WHERE hidden.assistant_off AND (
+               hidden.id = g.project_id OR EXISTS (
+                 SELECT 1 FROM docs plan
+                  WHERE plan.id = g.plan_doc_id AND plan.project_id = hidden.id
+               )
+             )
+          )
+        ORDER BY g.target_date NULLS LAST, g.updated_at DESC LIMIT 12`,
+      [input.userId],
+    ),
+    pool.query<{
+      title: string;
+      summary: string;
+      proposal_id: string;
+      changes: unknown;
+    }>(
+      `SELECT i.title, i.summary, i.proposal_id, p.changes
+         FROM assistant_ideas i JOIN proposals p ON p.id = i.proposal_id
+        WHERE i.user_id = $1 AND p.status = 'pending'
+        ORDER BY i.created_at DESC LIMIT 3`,
+      [input.userId],
+    ),
+    pool.query<{ id: string; question: string; detail: string | null }>(
+      `SELECT id, question, detail FROM agent_questions
+        WHERE user_id = $1 AND status = 'open' AND expires_at > now()
+        ORDER BY created_at LIMIT 12`,
+      [input.userId],
+    ),
+    pool.query<{ run_state: unknown }>(
+      `SELECT run_state FROM ai_jobs
+        WHERE user_id = $1 AND state = 'waiting' AND run_state IS NOT NULL
+          AND run_state->'state'->'waiting'->>'kind' IN ('person', 'approval')
+        ORDER BY created_at DESC LIMIT 12`,
+      [input.userId],
+    ),
+  ]);
+
+  const sections: string[] = [`# ${input.day} — Morning brief`, "## Today"];
+  const today: string[] = [];
+  for (const event of visibleEvents.slice(0, 20)) {
+    const when = event.all_day
+      ? "All day"
+      : clockOf(event.start_at, input.timezone);
+    const path = event.item_id ? `/app/task/${event.item_id}` : "/app/today";
+    today.push(
+      `- ${when} — ${linked(event.title, path)}${event.calendar ? ` (${event.calendar})` : ""}`,
+    );
+  }
+  for (const task of visibleTasks.slice(0, 12))
+    today.push(
+      `- Due ${clockOf(task.start_at, input.timezone)} — ${linked(task.title, `/app/task/${task.id}`)}`,
+    );
+  for (const block of visibleBlocks.slice(0, 20))
+    today.push(
+      `- Session ${clockOf(block.start_at, input.timezone)}–${clockOf(block.end_at, input.timezone)} — ${linked(block.title, `/app/task/${block.item_id}`)}`,
+    );
+  sections.push(
+    ...(today.length ? today : ["- Nothing scheduled for the rest of today."]),
+  );
+
+  sections.push("## Clashes");
+  const conflicts = visibleConflicts.slice(0, 12).map(({ block, entry }) => {
+    const eventPath = entry.item_id
+      ? `/app/task/${entry.item_id}`
+      : "/app/today";
+    return `- ${linked(block.title, `/app/task/${block.item_id}`)} overlaps ${linked(entry.title, eventPath)} at ${clockOf(block.start_at, input.timezone)}.`;
+  });
+  sections.push(
+    ...(conflicts.length ? conflicts : ["- No calendar clashes today."]),
+  );
+
+  sections.push("## Slipping work");
+  const slipping = new Map<string, string>();
+  for (const task of visibleAtRisk)
+    slipping.set(
+      task.item_id,
+      `- At risk — ${linked(task.title, `/app/task/${task.item_id}`)}${task.deadline_at ? ` (deadline ${clockOf(task.deadline_at, input.timezone)})` : ""}`,
+    );
+  for (const block of visibleUnfinished)
+    slipping.set(
+      block.item_id,
+      `- Still open after a planned session — ${linked(block.title, `/app/task/${block.item_id}`)}`,
+    );
+  sections.push(
+    ...([...slipping.values()].slice(0, 12).length
+      ? [...slipping.values()].slice(0, 12)
+      : ["- No slipping work flagged."]),
+  );
+
+  sections.push("## Goal progress");
+  const goalLines = goals.rows
+    .filter(
+      (goal) =>
+        !mentionsKeptOut(goal.title) &&
+        !mentionsKeptOut(goal.progress) &&
+        !mentionsKeptOut(goal.checkin),
+    )
+    .map((goal) => {
+    const progress = objectValue(goal.progress);
+    const summary =
+      goal.checkin ??
+      (typeof progress.summary === "string"
+        ? progress.summary
+        : "No weekly check-in yet.");
+    const path = goal.plan_doc_id
+      ? `/app/doc/${goal.plan_doc_id}`
+      : goal.project_id
+        ? `/app/project/${goal.project_id}`
+        : "/app/assistant";
+    return `- ${linked(goal.title, path)}${goal.target_date ? ` · target ${goal.target_date}` : ""}: ${plainText(summary) || "No weekly check-in yet."}`;
+    });
+  sections.push(...(goalLines.length ? goalLines : ["- No active goals."]));
+
+  sections.push("## Ideas ready to review");
+  const ideaLines = ideas.rows
+    .filter(
+      (idea) =>
+        !mentionsKeptOut(idea.title) &&
+        !mentionsKeptOut(idea.summary) &&
+        !mentionsKeptOut(idea.changes),
+    )
+    .map(
+      (idea) =>
+        `- ${linked(idea.title, `/app/review/${idea.proposal_id}`)} — ${plainText(idea.summary)}`,
+    );
+  sections.push(
+    ...(ideaLines.length ? ideaLines : ["- No new ideas waiting for review."]),
+  );
+
+  sections.push("## Questions and approvals");
+  const questionLines = questions.rows
+    .filter((question) => !mentionsKeptOut([question.question, question.detail]))
+    .map(
+      (question) =>
+        `- ${linked(question.question, "/app/review")}${question.detail ? ` — ${plainText(question.detail)}` : ""}`,
+    );
+  for (const job of jobs.rows) {
+    if (mentionsKeptOut(job.run_state)) continue;
+    const envelope = objectValue(job.run_state);
+    const state = objectValue(envelope.state);
+    const waiting = objectValue(state.waiting);
+    const question =
+      typeof waiting.question === "string" ? waiting.question.trim() : "";
+    if (question)
+      questionLines.push(
+        `- ${linked(question, "/app/assistant")}${waiting.kind === "approval" ? " — plan approval needed" : " — your answer is needed"}`,
+      );
+  }
+  sections.push(
+    ...(questionLines.length
+      ? questionLines.slice(0, 12)
+      : ["- No questions or approvals waiting."]),
+  );
+  sections.push(
+    "## Open your day",
+    `- [Today in Orbyn](${appLink("/app/today")})`,
+  );
+
+  const markdown = sections.join("\n\n");
+  return transaction(async (db) => {
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      `assistant-brief:${input.userId}:${input.day}`,
+    ]);
+    const existing = (
+      await db.query<{ doc_id: string | null }>(
+        "SELECT doc_id FROM assistant_briefs WHERE user_id = $1 AND local_day = $2::date FOR UPDATE",
+        [input.userId, input.day],
+      )
+    ).rows[0];
+    if (existing?.doc_id)
+      return {
+        docId: existing.doc_id,
+        events: visibleEvents.length,
+        tasks: visibleTasks.length,
+        sessions: visibleBlocks.length,
+        clashes: visibleConflicts.length,
+        slipping: new Set([
+          ...visibleAtRisk.map((task) => task.item_id),
+          ...visibleUnfinished.map((block) => block.item_id),
+        ]).size,
+        goals: goalLines.length,
+        ideas: ideaLines.length,
+        questions: Math.min(questionLines.length, 12),
+      };
+    const user = (
+      await db.query<UserRow>(
+        "SELECT * FROM users WHERE id = $1 AND disabled = false",
+        [input.userId],
+      )
+    ).rows[0];
+    if (!user) throw new Error("The brief owner is no longer active.");
+    const doc = await createDoc(
+      db,
+      user,
+      docInput.parse({
+        title: `Assistant brief — ${input.day}`,
+        kind: "agent",
+        content: parseDoc(markdown),
+      }),
+    );
+    await db.query(
+      `INSERT INTO assistant_briefs (user_id, local_day, doc_id)
+       VALUES ($1, $2::date, $3)
+       ON CONFLICT (user_id, local_day) DO UPDATE SET doc_id = EXCLUDED.doc_id, created_at = now()`,
+      [input.userId, input.day, doc.id],
+    );
+    return {
+      docId: doc.id,
+      events: visibleEvents.length,
+      tasks: visibleTasks.length,
+      sessions: visibleBlocks.length,
+      clashes: visibleConflicts.length,
+      slipping: new Set([
+        ...visibleAtRisk.map((task) => task.item_id),
+        ...visibleUnfinished.map((block) => block.item_id),
+      ]).size,
+      goals: goalLines.length,
+      ideas: ideaLines.length,
+      questions: Math.min(questionLines.length, 12),
+    };
+  });
+}
 
 /** "9:00 am — Lecture (Uni timetable)", or "All day — Exam (Exams)". */
 function agendaLine(e: AgendaEntry, tz: string) {
@@ -277,6 +649,35 @@ export async function buildMorning(
   // What connected agents did since yesterday's digest, unless turned off.
   if (options.agents !== false)
     lines.push(...(await buildAgentSection(userId, now)));
+  const todayConflicts = review.conflicts.filter(
+    ({ block }) => block.start_at < dayEnd.toISOString(),
+  );
+  const brief = await writeMorningBrief({
+    userId,
+    day: today,
+    timezone: tz,
+    events,
+    tasks: dueTasks.map((task) => ({
+      id: task.item_id!,
+      title: task.title,
+      start_at: task.start_at,
+    })),
+    blocks: blocks.map((block) => ({
+      item_id: block.item_id,
+      title: block.title,
+      start_at: block.start_at,
+      end_at: block.end_at,
+    })),
+    conflicts: todayConflicts,
+    atRisk: review.at_risk,
+    unfinished: review.unfinished,
+  });
+  lines.push(
+    `Your private Assistant brief: ${appLink(`/app/doc/${brief.docId}`)}`,
+  );
+  lines.push(
+    `Brief summary: ${brief.events} ${brief.events === 1 ? "event" : "events"}, ${brief.tasks} ${brief.tasks === 1 ? "task" : "tasks"} due, ${brief.sessions} ${brief.sessions === 1 ? "session" : "sessions"}, ${brief.clashes} ${brief.clashes === 1 ? "clash" : "clashes"}, ${brief.slipping} ${brief.slipping === 1 ? "item" : "items"} at risk, ${brief.goals} active goals, ${brief.ideas} ideas to review, and ${brief.questions} questions or approvals waiting.`,
+  );
   lines.push(`Open your day: ${appLink("/app")}`);
   return { subject: "Your day ahead", lines };
 }

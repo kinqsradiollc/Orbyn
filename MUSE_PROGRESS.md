@@ -15,17 +15,17 @@
 | M4 — Lead and specialists | Done, committed | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces on desktop and mobile. Fake-provider tests cover exam revision and stop/approval races. |
 | M5 — Sweep old history | Done, committed | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes; pinned chats stay. Tests cover retries, invalid summaries, privacy and retention limits. |
 | M6 — One set of tools | Done; focused verification passed | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. The M6 catalog snapshot is exactly 63 tools, 31 core; later M8/M9 additions bring the full tree to 65/33. |
-| M7 — Ideas feed | Implemented; focused checks passed; final full-suite run pending | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. The feed filters existing ideas that reference assistant-off work. |
-| M8 — Goals | Implemented; focused integration checks passed; final full-suite run pending | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. The weekly scanner uses the person's local Monday and does not run kept-out goals. |
-| M9 — Routines and Upcoming | Implemented; focused verification passed | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
-| M10 — Morning brief | In progress; not yet committed or fully verified | 172 | Daily private Agent brief covers Today, clashes, slipping work, goals, ideas and pending questions. Digest email links to the brief; email is mocked in tests. |
+| M7 — Ideas feed | Done; full backend suite passed | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. The feed filters existing ideas that reference assistant-off work. |
+| M8 — Goals | Done; full backend suite passed | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. The weekly scanner uses the person's local Monday and does not run kept-out goals. |
+| M9 — Routines and Upcoming | Done; full backend suite passed | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
+| M10 — Morning brief | Done; implementation and full backend suite passed | 172 | One private Agent brief per local day covers Today, clashes, slipping work, goals, ideas and pending questions. Digest email links to the brief; email is mocked in tests. Brief creation is concurrent-safe and filters assistant-off content. |
 
 ## Verification
 
-- `npm run build:packages` and the full backend, desktop and mobile typechecks passed. Focused M8 checks cover goal API privacy/validation, local-week dates, the weekly worker with a fake provider, route inventory, and catalog parity.
-- Focused M9 routine API/worker, route inventory, M10 brief privacy, and catalog parity checks passed. The regenerated M9 catalog has 65 listable tools and 33 core tools, no global tool-count cap, 268 routes covered, 211 excluded and 0 pending.
-- The disposable test Postgres was recreated from Compose's `test` profile and is healthy at `127.0.0.1:55434`. Its tmpfs data reset, so the former preview account no longer exists. The full suite has not yet been rerun against this fresh database.
-- Desktop preview: `http://localhost:5175/app` serves HTTP 200; the worktree API at `http://localhost:8011/health` returns `200` with `status: ok`. Signed into a fresh disposable account and visually confirmed Assistant history, New chat and Upcoming at the desktop viewport; narrow-width and native Expo checks remain pending.
+- `npm run build:packages`, `npm run typecheck` (backend, desktop and mobile), and the full backend suite passed. The backend suite reported 1,512 passed, 0 failed.
+- Focused M8 goal privacy/validation, local-week dates, and weekly-worker checks passed. M9 routine API/worker, route inventory and catalog parity passed. M10 tests cover kept-out data filtering, saved private-doc behavior, digest links and concurrent idempotence. The current catalog has 65 listable tools and 33 core tools, no global tool-count cap, 268 routes covered, 211 excluded and 0 pending.
+- The disposable test Postgres from Compose's `test` profile is healthy at `127.0.0.1:55434`.
+- Desktop preview: `http://localhost:5175/app` serves HTTP 200; the worktree API at `http://localhost:8011/health` returns `200` with `status: ok`. Signed into a fresh disposable account and visually confirmed Assistant history, New chat and Upcoming at the desktop viewport. Narrow-width and native Expo interaction checks remain pending.
 - Expo Metro is listening on port 8085. The M2 worktree's port 8083 and simulator remain untouched.
 
 ## Decisions and owner notes
@@ -36,6 +36,4 @@
 
 ## Remaining end-to-end verification
 
-- Run the full suite after M10 against the restored disposable database, then refresh the M7–M10 integration results.
-- Confirm the website at a narrow mobile width and recheck native Expo interactions without using the M2 simulator.
-- Recheck native Expo interactions without using the M2 simulator.
+- Confirm the website at a narrow mobile width and recheck native Expo interactions on port 8085 without using the M2 simulator or its port 8083.
