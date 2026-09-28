@@ -139,13 +139,18 @@ async function briefVisibility(userId: string) {
 }
 
 /** Read the latest night's saved results without making a model call. */
-export async function buildOvernightSection(userId: string, day: string) {
+export async function buildOvernightSection(
+  userId: string,
+  day: string,
+  nightId?: string,
+) {
   const { mentionsKeptOut } = await briefVisibility(userId);
   const night = (
     await pool.query<{ id: string; summary: unknown }>(
       `SELECT id, summary FROM assistant_nights WHERE user_id = $1
-     AND local_day BETWEEN $2::date - 1 AND $2::date ORDER BY local_day DESC LIMIT 1`,
-      [userId, day],
+     AND local_day BETWEEN $2::date - 1 AND $2::date AND ($3::uuid IS NULL OR id = $3)
+     ORDER BY local_day DESC LIMIT 1`,
+      [userId, day, nightId ?? null],
     )
   ).rows[0];
   if (!night) return null;

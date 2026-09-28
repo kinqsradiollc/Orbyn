@@ -95,13 +95,25 @@ export function OvernightView(props: Props) {
           </p>
         </div>
         <div className="overnight-actions">
-          <button disabled={busy} onClick={() => void bulk("keep")}>
+          <button
+            className="secondary"
+            disabled={busy || !night.runs.length}
+            onClick={() => void bulk("keep")}
+          >
             Keep all
           </button>
-          <button disabled={busy} onClick={() => void bulk("undo")}>
+          <button
+            className="secondary"
+            disabled={busy || !night.runs.length}
+            onClick={() => void bulk("undo")}
+          >
             Undo all
           </button>
-          <button disabled={busy} onClick={() => void act(async () => {})}>
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => void act(async () => {})}
+          >
             Refresh
           </button>
         </div>
@@ -187,14 +199,23 @@ function RunCard({
       </p>
       <div className="overnight-actions">
         {run.chat_id && (
-          <button onClick={() => onOpenChat(run.chat_id!)}>Open chat</button>
+          <button
+            className="secondary"
+            onClick={() => onOpenChat(run.chat_id!)}
+          >
+            Open chat
+          </button>
         )}
         {run.proposal && (
-          <button onClick={() => onOpenReview(run.proposal!.id)}>
+          <button
+            className="secondary"
+            onClick={() => onOpenReview(run.proposal!.id)}
+          >
             Open Review
           </button>
         )}
         <button
+          className="secondary"
           disabled={
             busy ||
             !done ||
@@ -206,6 +227,7 @@ function RunCard({
           {pending && chosen.size < choices.length ? "Keep selected" : "Keep"}
         </button>
         <button
+          className="secondary"
           disabled={
             busy ||
             !["done", "failed"].includes(run.state) ||
@@ -255,6 +277,7 @@ function RunCard({
                 <div className="overnight-actions">
                   {change.links?.map((link) => (
                     <button
+                      className="secondary"
                       key={link.kind + link.id}
                       onClick={() => onOpen(link.kind, link.id)}
                     >
@@ -263,6 +286,7 @@ function RunCard({
                   ))}
                   {change.undoable && (
                     <button
+                      className="secondary"
                       disabled={busy}
                       onClick={() =>
                         void act(() =>

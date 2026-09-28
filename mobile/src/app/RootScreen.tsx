@@ -981,7 +981,9 @@ export function RootScreen() {
       typeof data[key] === "string" ? (data[key] as string) : "";
     const kind = text("kind");
     const itemId = text("itemId");
-    if (
+    if (kind === "assistant" && text("ref").startsWith("overnight:")) {
+      present({ sheet: "overnight" });
+    } else if (
       (kind === "assistant" || kind === "reminder_nudge") &&
       text("ref").startsWith("chat:")
     ) {
@@ -1541,6 +1543,10 @@ export function RootScreen() {
                   )}
                   {tab === "Inbox" && (
                     <InboxScreen
+                      onOpenOvernight={(n) => {
+                        void markRead(n);
+                        present({ sheet: "overnight" });
+                      }}
                       onOpenChat={(n, id) =>
                         void noticeAction(n, async () => {
                           await assistant.openChat(id);

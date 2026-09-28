@@ -91,14 +91,7 @@ export async function deliverOne(): Promise<boolean> {
                 : n.kind === "reminder_nudge"
                   ? await reminderNudgeStale(db, n)
                   : n.kind === "assistant"
-                    ? !(
-                        await db.query(
-                          `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id
-                       WHERE c.id::text = split_part($2, ':', 2)
-                         AND c.user_id = $1 AND NOT u.disabled`,
-                          [n.user_id, n.ref],
-                        )
-                      ).rowCount
+                    ? await assistantNoticeStale(db, n)
                     : n.kind === "agent"
                       ? // About the person's own security or team: goes out
                         // while their account is active.
@@ -157,6 +150,26 @@ export async function deliverOne(): Promise<boolean> {
     }
     return true;
   });
+}
+
+/** Assistant notices remain private to the owner of their saved chat or night. */
+export async function assistantNoticeStale(
+  db: Db,
+  notice: { user_id: string; ref: string },
+): Promise<boolean> {
+  return !(
+    await db.query(
+      `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id
+                       WHERE c.id::text = split_part($2, ':', 2)
+                         AND c.user_id = $1 AND NOT u.disabled AND split_part($2, ':', 1) = 'chat'
+                       UNION ALL SELECT 1 FROM assistant_nights n JOIN users u ON u.id = n.user_id
+                       WHERE n.id::text = split_part($2, ':', 2) AND n.user_id = $1 AND NOT u.disabled
+                         AND split_part($2, ':', 1) = 'overnight'
+                         AND EXISTS(SELECT 1 FROM agent_grants g WHERE g.user_id = u.id AND g.kind = 'assistant'
+                           AND g.revoked_at IS NULL AND g.suspended_at IS NULL)`,
+      [notice.user_id, notice.ref],
+    )
+  ).rowCount;
 }
 
 /** Recheck the personal source and channel preferences even when chat is off. */

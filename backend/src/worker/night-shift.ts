@@ -12,6 +12,7 @@ import { assistantPrincipal } from "../modules/agents/assistant.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
 import { assistantNightWindow } from "./night-window.js";
 import { LEAD_TOKEN_BUDGET } from "../modules/ai/agent/lead.js";
+import { queueOvernightNotices } from "./overnight-notices.js";
 
 type Candidate = {
   kind: string;
@@ -305,6 +306,7 @@ export async function scanNightShift(
     WHERE status = 'running' AND summary->>'end_at' IS NOT NULL AND (summary->>'end_at')::timestamptz <= $1`,
     [now],
   );
+  await queueOvernightNotices(now, options.only);
   const ai = options.ai === undefined ? await resolveAi() : options.ai;
   if (!ai) return 0;
   const people = (

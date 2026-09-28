@@ -63,6 +63,7 @@ type Props = {
   onOpenSetting?: (id: string) => void;
   /** Reopens a saved assistant chat, including its active run. */
   onOpenChat?: (id: string) => void;
+  onOpenOvernight?: () => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -212,6 +213,7 @@ export function NotificationsView({
   onOpenReview,
   onOpenSetting,
   onOpenChat,
+  onOpenOvernight,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   return (
@@ -315,6 +317,19 @@ export function NotificationsView({
                   <LayoutTemplate size={14} /> Review
                 </button>
               )}
+              {n.kind === "assistant" &&
+                n.ref?.startsWith("overnight:") &&
+                onOpenOvernight && (
+                  <button
+                    className="secondary notice-action"
+                    onClick={() => {
+                      if (!n.read) onRead(n);
+                      onOpenOvernight();
+                    }}
+                  >
+                    <Bot size={14} /> Review Overnight
+                  </button>
+                )}
               {(n.kind === "assistant" || n.kind === "reminder_nudge") &&
                 n.ref?.startsWith("chat:") &&
                 onOpenChat && (

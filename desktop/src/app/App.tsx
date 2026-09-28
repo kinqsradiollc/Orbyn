@@ -1944,6 +1944,7 @@ export function App() {
                 )}
                 {view === "Notifications" && (
                   <NotificationsView
+                    onOpenOvernight={() => navigate("Overnight")}
                     onOpenChat={(id) => {
                       navigate("AI assistant");
                       void assistant.openChat(id).catch(report);

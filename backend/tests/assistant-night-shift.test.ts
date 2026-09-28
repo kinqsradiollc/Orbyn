@@ -4,9 +4,12 @@ import { randomUUID } from "node:crypto";
 import "./setup.js";
 import { defaultNightShift } from "@orbyn/core";
 import type { ResolvedAi } from "../src/modules/ai/providers/adapters.js";
-const { pool } = await import("../src/db/pool.js");
+const { pool, transaction } = await import("../src/db/pool.js");
+const { assistantNoticeStale } = await import("../src/worker/delivery.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { scanNightShift } = await import("../src/worker/night-shift.js");
+const { queueOvernightNotices } =
+  await import("../src/worker/overnight-notices.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { recordNightRun } =
@@ -78,6 +81,89 @@ async function complete(id: string, tokens = 100) {
   );
   await recordNightRun(pool, id, "Night result", "kept");
 }
+test("morning notices wait for the window, survive concurrent workers and open the owned Overnight", async () => {
+  const me = await person();
+  const other = await person();
+  const createNight = async (id: string) =>
+    (
+      await pool.query(
+        `INSERT INTO assistant_nights(user_id, local_day, status, summary)
+     VALUES($1, '2055-01-01', 'done', $2::jsonb) RETURNING id`,
+        [
+          id,
+          JSON.stringify({
+            end_at: "2055-01-02T08:00:00Z",
+            not_done: [{ title: "Plan tomorrow", reason: "The window ended" }],
+          }),
+        ],
+      )
+    ).rows[0].id;
+  const nightId = await createNight(me.id);
+  await createNight(other.id);
+  await pool.query("UPDATE users SET disabled = true WHERE id = $1", [
+    other.id,
+  ]);
+  const token = `ExpoPushToken[${randomUUID()}]`;
+  await pool.query("INSERT INTO devices(user_id, token) VALUES($1, $2)", [
+    me.id,
+    token,
+  ]);
+  assert.equal(
+    await queueOvernightNotices(new Date("2055-01-02T07:59:00Z"), [
+      me.id,
+      other.id,
+    ]),
+    0,
+  );
+  const now = new Date("2055-01-02T08:00:00Z");
+  const claims = await Promise.all([
+    queueOvernightNotices(now, [me.id, other.id]),
+    queueOvernightNotices(now, [me.id, other.id]),
+  ]);
+  assert.equal(
+    claims.reduce((a, b) => a + b, 0),
+    1,
+  );
+  const notices = (
+    await pool.query("SELECT * FROM notifications WHERE ref = $1", [
+      `overnight:${nightId}`,
+    ])
+  ).rows;
+  assert.equal(notices.length, 2);
+  assert.deepEqual(notices.map((n) => n.channel).sort(), ["inapp", "push"]);
+  assert.ok(
+    notices.every((n) => n.user_id === me.id && n.kind === "assistant"),
+  );
+  assert.equal(
+    await transaction((db) => assistantNoticeStale(db, notices[0])),
+    false,
+  );
+  assert.equal(
+    await transaction((db) =>
+      assistantNoticeStale(db, {
+        ...notices[0],
+        user_id: other.id,
+      }),
+    ),
+    true,
+  );
+  assert.match(notices[0].body, /1 not done tonight/);
+  assert.equal(await queueOvernightNotices(now, [me.id, other.id]), 0);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS count FROM notifications WHERE user_id = $1",
+        [other.id],
+      )
+    ).rows[0].count,
+    0,
+  );
+  await pool.query("UPDATE users SET disabled = true WHERE id = $1", [me.id]);
+  assert.equal(
+    await transaction((db) => assistantNoticeStale(db, notices[0])),
+    true,
+  );
+});
 test("two workers queue Tonight first, then wait for completion and respect the ten-run cap", async () => {
   const me = await person();
   const now = new Date("2050-01-01T23:00:00Z");
