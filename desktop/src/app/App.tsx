@@ -835,7 +835,20 @@ export function App() {
   const changeItem = (i: Item, change: ColumnChange | Partial<ItemInput>) => {
     if (!guard(i)) return;
     void act(async () => {
-      await client.updateItem(i.id, { ...itemBody(i), ...change });
+      // Handing a task to your agent or taking it back (W3), and giving it
+      // to someone at the same time.
+      if ("agent" in change) {
+        const { agent, ...rest } = change;
+        const after =
+          agent === "hand"
+            ? await client.handTaskToAgent(i.id)
+            : await client.takeTaskBack(i.id);
+        if ("assignee_id" in rest)
+          await client.updateItem(i.id, {
+            ...itemBody(after),
+            assignee_id: rest.assignee_id ?? null,
+          });
+      } else await client.updateItem(i.id, { ...itemBody(i), ...change });
       await refresh();
     });
   };
@@ -1327,6 +1340,11 @@ export function App() {
                     onChanged={refresh}
                     onNewItem={(prefill) => newItem(null, prefill)}
                     onChangeItem={changeItem}
+                    agentName={assistant.agentName}
+                    onOpenReview={(id) => {
+                      setReviewToOpen(id);
+                      navigate("Review");
+                    }}
                   />
                 )}
                 {view === "Lists" && (

@@ -184,6 +184,7 @@ export const VIEW_GROUP_LABELS: Record<string, string> = {
   project: "Project",
   due_week: "Due week",
   assignee: "Assignee",
+  owner: "Who's on it",
   kind: "Kind",
   folder: "Folder",
   team: "Team",

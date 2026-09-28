@@ -25,6 +25,15 @@ import {
   groupTasks,
   isBoardGroup,
   TASK_GROUP_LABELS,
+  BOARD_FILTERS,
+  BOARD_FILTER_LABELS,
+  boardFilterCounts,
+  isAgentLane,
+  matchesBoardFilter,
+  NO_GROUP,
+  OWNER_REVIEW,
+  type BoardFilter,
+  type ReviewItem,
   type BoardGroupBy,
   type ColumnChange,
   type GroupNames,
@@ -58,6 +67,7 @@ import {
 } from "../lib/planning";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { client } from "../lib/api";
+import { openReview } from "../lib/review";
 import { tap } from "../lib/haptics";
 import { usePlanning } from "../lib/planningContext";
 import { usePlanned } from "../lib/plannedContext";
@@ -147,6 +157,7 @@ const GROUPS: Group[] = [
   "project",
   "due_week",
   "assignee",
+  "owner",
 ];
 const GROUP_LABELS: Record<Group, string> = {
   none: "No grouping",
@@ -158,6 +169,7 @@ const GROUP_LABELS: Record<Group, string> = {
   project: "By project",
   due_week: "By due week",
   assignee: "By assignee",
+  owner: "By who's on it",
 };
 const GROUP_KEY = "orbyn-tasks-group";
 /** The grouping chosen on this device. */
@@ -371,6 +383,37 @@ export function TasksScreen({
       live = false;
     };
   }, [filters.group, projects.length]);
+  // "Who's on it" (W2): your agent's name, connected agents' recent work,
+  // what waits in Review, and the quick filters.
+  const owners = (layout === "board" ? boardGroup : filters.group) === "owner";
+  const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
+  const [agentName, setAgentName] = useState("Orbyn");
+  const [agentWork, setAgentWork] = useState<
+    { grant_id: string; name: string; item_ids: string[] }[]
+  >([]);
+  const [reviewCards, setReviewCards] = useState<ReviewItem[]>([]);
+  const itemsKey = items
+    .map((i) => `${i.id}:${i.version}:${i.agent_state ?? ""}`)
+    .join();
+  useEffect(() => {
+    if (!owners) return;
+    let live = true;
+    client
+      .agentSettings()
+      .then((a) => live && setAgentName(a.name || "Orbyn"))
+      .catch(() => {});
+    client
+      .agentWork()
+      .then((work) => live && setAgentWork(work))
+      .catch(() => {});
+    client
+      .reviewInbox()
+      .then((inbox) => live && setReviewCards(inbox.pending))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [owners, itemsKey]);
   const twoColumns = useWindowDimensions().width >= BOARD_WIDE;
   const now = new Date();
   /**
@@ -433,8 +476,13 @@ export function TasksScreen({
     f === "all" ? found.length : found.filter((i) => i.status === f).length;
   const order = sorter(sort, byPriority(now, items));
   // Finished and cancelled items always go last, whatever the order.
+  const boardCounts = boardFilterCounts(found, now, reviewCards.length);
   const visible = found
-    .filter((i) => status === "all" || i.status === status)
+    .filter((i) =>
+      owners
+        ? matchesBoardFilter(i, boardFilter, now)
+        : status === "all" || i.status === status,
+    )
     .sort(
       (a, b) =>
         Number(isClosed(a.status)) - Number(isClosed(b.status)) || order(a, b),
@@ -535,8 +583,9 @@ export function TasksScreen({
     if (within(i, 1, 2)) return "tomorrow";
     return within(i, 2, 7) ? "soon" : null;
   };
+  // Grouped by who's on it, every task stays in its lane.
   const sections =
-    filters.due === "any"
+    filters.due === "any" && !owners
       ? (["overdue", ...PINS] as const)
           .filter((key) => key === "overdue" || pins.includes(key))
           .map((key) => ({
@@ -566,6 +615,8 @@ export function TasksScreen({
     projects,
     userId: user?.id,
     now,
+    agentName,
+    agents: agentWork,
   };
   const groups = groupTasks(rest, filters.group, names);
   // The board: every column a card could go to (DATA-03).
@@ -580,8 +631,43 @@ export function TasksScreen({
               : undefined,
         })
       : [];
+  // Nothing is moved into Review or a connected agent's lane.
   const targets =
-    layout === "board" ? boardColumns(items, boardGroup, names) : [];
+    layout === "board"
+      ? boardColumns(items, boardGroup, names).filter(
+          (c) => c.key !== OWNER_REVIEW && !isAgentLane(c.key),
+        )
+      : [];
+  /** What waits in Review, as rows that open it (the "Needs review" lane). */
+  const reviewRows = (
+    <View style={s.reviewList}>
+      {reviewCards.length ? (
+        reviewCards.map((p) => (
+          <PressableScale
+            key={p.id}
+            accessibilityRole="button"
+            accessibilityLabel={`Review: ${p.summary}`}
+            onPress={() => openReview(p.id)}
+            style={s.reviewRow}
+          >
+            <Text style={s.reviewTitle} numberOfLines={2}>
+              {p.summary}
+            </Text>
+            <Text style={s.reviewMeta}>
+              {p.source === "assistant" ? agentName : p.proposer} ·{" "}
+              {p.changes.length === 1
+                ? "1 change"
+                : `${p.changes.length} changes`}
+            </Text>
+          </PressableScale>
+        ))
+      ) : (
+        <View style={s.emptyColumn}>
+          <Text style={shared.small}>Nothing waits for your review.</Text>
+        </View>
+      )}
+    </View>
+  );
   /** Drop the picked-up card on a column. */
   const dropOn = (to: string) => {
     if (!picked) return;
@@ -649,50 +735,76 @@ export function TasksScreen({
         style={s.chipScroll}
         contentContainerStyle={s.chips}
         accessibilityRole="tablist"
-        accessibilityLabel="Filter by status"
+        accessibilityLabel={owners ? "Show" : "Filter by status"}
       >
-        {STATUS_FILTERS.map((f) => {
-          const selected = f === status;
-          const tone = f === "all" ? null : statusTones[f];
-          const n = count(f);
-          return (
-            <PressableScale
-              key={f}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-              accessibilityLabel={`${statusFilterLabel(f)}, ${n} item${n === 1 ? "" : "s"}`}
-              onPress={() => {
-                animateLayout();
-                setStatus(f);
-              }}
-              style={[
-                s.chip,
-                selected && {
-                  backgroundColor: tone?.bg ?? colors.accent,
-                  borderColor: tone?.fg ?? colors.accent,
-                },
-              ]}
-            >
-              {tone && <View style={[s.dot, { backgroundColor: tone.fg }]} />}
-              <Text
+        {owners &&
+          BOARD_FILTERS.map((f) => {
+            const selected = f === boardFilter;
+            const n = boardCounts[f];
+            return (
+              <PressableScale
+                key={f}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${BOARD_FILTER_LABELS[f]}, ${n}`}
+                onPress={() => {
+                  animateLayout();
+                  setBoardFilter(f);
+                }}
+                style={[s.chip, selected && s.chipSoft]}
+              >
+                <Text style={[s.chipText, selected && s.chipSoftText]}>
+                  {BOARD_FILTER_LABELS[f]}
+                </Text>
+                <Text style={[s.chipCount, selected && s.chipSoftText]}>
+                  {n}
+                </Text>
+              </PressableScale>
+            );
+          })}
+        {!owners &&
+          STATUS_FILTERS.map((f) => {
+            const selected = f === status;
+            const tone = f === "all" ? null : statusTones[f];
+            const n = count(f);
+            return (
+              <PressableScale
+                key={f}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${statusFilterLabel(f)}, ${n} item${n === 1 ? "" : "s"}`}
+                onPress={() => {
+                  animateLayout();
+                  setStatus(f);
+                }}
                 style={[
-                  s.chipText,
-                  selected && { color: tone?.fg ?? colors.white },
+                  s.chip,
+                  selected && {
+                    backgroundColor: tone?.bg ?? colors.accent,
+                    borderColor: tone?.fg ?? colors.accent,
+                  },
                 ]}
               >
-                {statusFilterLabel(f)}
-              </Text>
-              <Text
-                style={[
-                  s.chipCount,
-                  selected && { color: tone?.fg ?? colors.white },
-                ]}
-              >
-                {n}
-              </Text>
-            </PressableScale>
-          );
-        })}
+                {tone && <View style={[s.dot, { backgroundColor: tone.fg }]} />}
+                <Text
+                  style={[
+                    s.chipText,
+                    selected && { color: tone?.fg ?? colors.white },
+                  ]}
+                >
+                  {statusFilterLabel(f)}
+                </Text>
+                <Text
+                  style={[
+                    s.chipCount,
+                    selected && { color: tone?.fg ?? colors.white },
+                  ]}
+                >
+                  {n}
+                </Text>
+              </PressableScale>
+            );
+          })}
       </ScrollView>
 
       <PressableScale
@@ -919,7 +1031,7 @@ export function TasksScreen({
         </>
       )}
 
-      {visible.length === 0 ? (
+      {visible.length === 0 && !(owners && reviewCards.length) ? (
         <>
           <SectionHeading title={title} count={0} />
           <EmptyState
@@ -977,7 +1089,11 @@ export function TasksScreen({
                 >
                   <SectionHeading
                     title={column.title}
-                    count={column.items.length}
+                    count={
+                      owners && column.key === OWNER_REVIEW
+                        ? reviewCards.length
+                        : column.items.length
+                    }
                     time={
                       column.minutes ? durationText(column.minutes) : undefined
                     }
@@ -989,7 +1105,9 @@ export function TasksScreen({
                     folded={folded}
                     onToggleFold={() => toggleFold(column.key)}
                     onAdd={
-                      onAddWith && boardGroup !== "assignee"
+                      onAddWith &&
+                      boardGroup !== "assignee" &&
+                      boardGroup !== "owner"
                         ? () =>
                             onAddWith(
                               columnPrefill(boardGroup, column.key, names),
@@ -997,7 +1115,9 @@ export function TasksScreen({
                         : undefined
                     }
                   />
-                  {folded ? null : column.items.length > 0 ? (
+                  {folded ? null : owners && column.key === OWNER_REVIEW ? (
+                    reviewRows
+                  ) : column.items.length > 0 ? (
                     <ItemRows
                       items={column.items}
                       {...rowProps}
@@ -1042,6 +1162,17 @@ export function TasksScreen({
               const folded = grouped && folds.has(g.key);
               return (
                 <View key={g.key}>
+                  {owners && g.key === NO_GROUP && (
+                    <>
+                      <SectionHeading
+                        title="Needs review"
+                        count={reviewCards.length}
+                        folded={folds.has(OWNER_REVIEW)}
+                        onToggleFold={() => toggleFold(OWNER_REVIEW)}
+                      />
+                      {!folds.has(OWNER_REVIEW) && reviewRows}
+                    </>
+                  )}
                   <SectionHeading
                     title={
                       grouped
@@ -1062,6 +1193,17 @@ export function TasksScreen({
                 </View>
               );
             })}
+          {owners && !groups.some((g) => g.key === NO_GROUP) && (
+            <View>
+              <SectionHeading
+                title="Needs review"
+                count={reviewCards.length}
+                folded={folds.has(OWNER_REVIEW)}
+                onToggleFold={() => toggleFold(OWNER_REVIEW)}
+              />
+              {!folds.has(OWNER_REVIEW) && reviewRows}
+            </View>
+          )}
         </>
       )}
     </>
@@ -1180,6 +1322,27 @@ const s = themed(() =>
       color: colors.text,
     },
     moveNote: { marginBottom: 12, color: colors.danger },
+    chipSoft: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accent,
+    },
+    chipSoftText: { color: colors.accent },
+    reviewList: { gap: 8, marginBottom: 22 },
+    reviewRow: {
+      gap: 4,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: radii.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    reviewTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
+    reviewMeta: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     emptyColumn: {
       borderWidth: 1,
       borderStyle: "dashed",
