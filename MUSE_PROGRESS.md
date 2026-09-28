@@ -2,47 +2,42 @@
 
 ## Scope and branch
 
-- M3–M10 code is present on `muse/m3-m10`, based on `origin/main` at `6e7d3ae`; artifact acceptance is still open.
-- M1/M2 are already present in that base through PR #132; per the user, Claude has reviewed them.
-- Planner stays a planner. The MCP registry exposes 65 listable tools (33 core); there is no 60-tool ceiling.
-- The M2 worktree and its active preview processes remain untouched.
-- No commit, push, or pull request has been made.
+- Branch: `muse/m3-m10`, based on `origin/main` at `6e7d3ae` (M1/M2 merged by PR #132; Claude reviewed them per the user).
+- The M3, M4 and M5 base commits are `b3a47933`, `ab49b5f0` and `0bcff46c`. This M3 follow-up registers `get_chats`; M6–M10 are implemented in the working tree and are being committed in order.
+- The planner remains a planner. The full working tree has 65 listable tools, 33 core; the M3 follow-up snapshot has 63 tools, 31 core. There is no global 60-tool ceiling.
+- The M2 worktree and its preview processes remain untouched. No PR or merge is planned.
 
 ## Chunk status
 
-| Chunk | Status | Migrations | Notes |
+| Chunk | Status | Migrations | Implementation and tests |
 | --- | --- | --- | --- |
-| M3 — Chat history | Persistence/API foundation committed; new-turn and web/mobile history integration remains | 165 | Unified durable chat records, legacy project-chat migration, search/list/read/update/delete/save-as-note APIs, private `get_chats` capability, and content-free activity trace. The M4 assistant runner wires each new turn into the persistent history. |
-| M4 — Lead and specialists | Backend runtime committed; cross-platform client controls follow with the complete assistant surface | 167 | Lead with six specialists, max three concurrent and one delegation level; checked atomic plans, person questions and approvals, stop/report/apply/undo, persistent trace, per-run caps and progress. Fake-provider tests cover the exam-revision worked example and stop/approval races. |
-| M5 — Sweep old history | Worker and privacy-retention implementation verified | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes with Asked/Decided/Changed/links, then clears turns/traces and queues Memory. Pinned chats stay. The tests cover retries, invalid summaries, assistant-off projects, and retention boundaries. |
-| M6 — One set of tools | Code present; audit open | 166 | Removed the separate assistant registry/proposal-only path; built-in assistant and Connected agents use the shared MCP registry. Grant trust can only lower to Ask/Suggest. The artifact's dedicated parity test still needs audit. |
-| M7 — Ideas feed | Code present; audit open | 171 | Daily Review ideas (up to three) from tasks, calendar, study, deadlines, and Memory; Today and Review surfaces, and undo. |
-| M8 — Goals | Code present; audit open | 168 | Dated goals with optional project and Agent plan note, weekly check-ins, and replanning worker. |
-| M9 — Routines and Upcoming | Code present; audit open | 169 | Recurring assistant routines, Upcoming list, pause/resume, and approval scopes. |
-| M10 — Morning brief | Code present; audit open | 172 | Daily private Agent brief with Today, clashes, slipping work, goal progress, ideas, pending questions, and quick links; email digest links to the brief. |
+| M3 — Chat history | Base committed; `get_chats` registry follow-up in this commit | 165 | Durable private chats, migration from project chats, list/read/search/update/delete/save-as-note APIs, private `get_chats`, and content-free traces. New turns queue only their own memory content. |
+| M4 — Lead and specialists | Done, committed | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces. Fake-provider tests cover exam revision and stop/approval races. |
+| M5 — Sweep old history | Done, committed | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes; pinned chats stay. Tests cover retries, invalid summaries, privacy and retention limits. |
+| M6 — One set of tools | Implemented; integration verification blocked | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. Parity test checks the shared list; 65/33 count remains exact. |
+| M7 — Ideas feed | Implemented; integration verification blocked | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. Privacy filters exclude assistant-off data. |
+| M8 — Goals | Implemented; integration verification blocked | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. |
+| M9 — Routines and Upcoming | Implemented; integration verification blocked | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
+| M10 — Morning brief | Implemented; integration verification blocked | 172 | Daily private Agent brief covers Today, clashes, slipping work, goals, ideas and pending questions. Digest email links to the brief; email is mocked in tests. |
 
 ## Verification
 
-- Latest complete required gate passed on the full M3–M10 working tree: `npm run build:packages`, `npm run typecheck`, `npm run format:check`, and `npm test`; the backend suite passed 1,503/1,503 tests against the disposable test database. Repeat all four checks before every chunk commit.
-- `npm run mcp:catalog -w backend` completed and regenerated the MCP docs and distribution manifests.
-- Latest read-only check: `git diff --check` passed.
-- Web preview at `http://localhost:5175`: previously verified the disposable account, Docs/Today/Assistant views, persistent chat actions, goal creation, and routine pause/resume. Artifact-required 1440 px and 390 px visual checks are not evidenced.
-- iPhone 17 Expo Go preview on port 8085: previously verified Assistant, chat history/search, Upcoming, and native goal/routine forms. The native session’s chat/goal/routine lists were empty, so persistence actions were verified in the web preview and backend tests.
-- M10’s test saves one private brief per local day, checks its Agent-note content and email link, and verifies the daily scan does not send duplicates. SMTP delivery was mocked; no external email was sent.
+- `npm run build:packages`: passed.
+- `npm run typecheck`: passed for backend, desktop and mobile.
+- `npm run format:check`: passed; `git diff --check`: passed.
+- Focused registry, protocol and structured-provider tests: 28/28 passed, including exact 65-tool parity and the Matilda local-day prompt.
+- `npm run mcp:catalog -w backend`: passed and regenerated the catalog and distribution metadata.
+- Latest full `npm test` attempt: 339 passed, 125 failed. 124 database-backed test files could not connect to `127.0.0.1:55434`; the remaining failure was a structured-provider test still importing the removed graph prompt. That test now uses the shared assistant prompt and passes in the focused suite. The full suite has not passed because the database is unavailable.
+- Desktop preview: `http://localhost:5175/app` serves HTTP 200 and remains open in the in-app browser. The page shows a cached signed-in session, but `/health` returns 503 and `GET /lists` returns 500 while PostgreSQL is unavailable. Exact 1440 px and 390 px visual checks are still unverified.
+- Expo Metro is listening on port 8085. Native interactions were not rechecked in this run.
+- Disk has about 19 GB free. Docker Desktop displays “Engine running,” but its local socket does not answer `/_ping`; `postgres-test` is stopped and the Compose start command stalled. Port 55434 refuses connections. Its database is tmpfs, so the prior test account may need to be recreated after the database returns.
 
-## Remaining verification
+## Decisions and owner notes
 
-- Web preview at `http://localhost:5175` and iPhone 17 Expo Go were previously exercised on the disposable account as listed above. The exact 1440 px and 390 px web viewport checks are still unverified.
-- Disk remains above the 3 GB floor. The M2 worktree and its preview processes remain untouched.
-- Commits and push are in progress; no PR or merge will be opened.
+- M7 uses three numbered idea slots per local day so a worker can persist up to three distinct suggestions.
+- Assistant-off privacy is applied to every new agent path, including linked goals, plan docs, events, sessions, ideas and saved briefs.
+- Assistant and privacy/retention wording was updated; `DEFAULT_LEGAL_VERSION` was not changed. Owner review of the revised copy is still needed.
 
-## Owner
+## Blocked
 
-- Updated the assistant and privacy language plus retention periods for private chats, traces, ideas, goals, routines and briefs. `DEFAULT_LEGAL_VERSION` was not changed; please review the revised copy before merge.
-
-## Preview services
-
-- API: `http://localhost:8011`, using the verified `_test` database and a local mock AI provider.
-- Desktop web: `http://localhost:5175`.
-- Expo Go Metro: port `8085`.
-- The M2 preview on ports 4173 and 8083 was left alone.
+- The full database suite, live API behavior and current test-account validity depend on the disposable PostgreSQL service at `127.0.0.1:55434`. Docker Desktop’s UI reports the engine running, but the daemon socket times out and `postgres-test` remains stopped. The web shell stays available at `http://localhost:5175/app`; API-backed features will work again once that test database is reachable.

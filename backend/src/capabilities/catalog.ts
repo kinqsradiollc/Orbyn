@@ -41,7 +41,7 @@ const kindOf = (c: Capability) =>
  * The catalog's version: the date of the last change to any tool's
  * contract. Bump it (and add a CHANGELOG entry) with every change.
  */
-export const CATALOG_VERSION = "2026-09-27";
+export const CATALOG_VERSION = "2026-09-28";
 
 /**
  * How tools change (the versioning and deprecation policy), in the words
@@ -57,6 +57,12 @@ export const VERSIONING_POLICY = [
 
 /** What changed in the MCP server, newest first. */
 export const CHANGELOG: { date: string; changes: string[] }[] = [
+  {
+    date: "2026-09-28",
+    changes: [
+      "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.",
+    ],
+  },
   {
     date: "2026-09-27",
     changes: [

@@ -148,16 +148,16 @@ A tool that can't do what was asked answers with `isError: true` and one of thes
 
 Every connection has the core tools. The others come in toolsets, chosen on the consent page when an app signs in, or in Settings → Connected agents (bookings need the app to ask for them when it signs in). A call can narrow them with `X-MCP-Toolsets` (and to reading with `X-MCP-Readonly`), never widen them.
 
-| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `get_profile`, `update_agent`, `manage_memory`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo`, `get_inbox`, `ack_inbox`, `ask_person`, `apply_plan` |
-| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`, `append_doc`                                                                                                                                                                                                                                                                                                              |
-| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                                                                                    |
-| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`, `save_source`                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`                                                                                                                                                                                                                                                                                                                                                                                               |
-| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`, `add_file`                                                                                                                                                                                                                                                                                                                                                                                     |
+| Toolset         | What                                | Tools                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core`          | Tasks, calendar, projects and pages | `get_context`, `search`, `fetch`, `get_today`, `get_calendar`, `query`, `get_project`, `find_passages`, `get_profile`, `update_agent`, `manage_memory`, `get_chats`, `create_tasks`, `update_tasks`, `complete_tasks`, `edit_checklist`, `plan_schedule`, `schedule_sessions`, `reschedule_sessions`, `create_doc`, `edit_doc`, `link`, `create_project`, `propose_changes`, `get_links`, `list_agent_changes`, `undo`, `get_inbox`, `ack_inbox`, `ask_person`, `apply_plan` |
+| `workspace`     | Projects, history and organising    | `save_view`, `update_project`, `get_history`, `save_template`, `organize`, `comment_on_doc`, `resolve_suggestions`, `tasks_from_doc`, `append_doc`                                                                                                                                                                                                                                                                                                                           |
+| `planner`       | Planner                             | `get_work_patterns`, `what_if`, `log_focus`, `set_focus_timer`, `manage_routines`, `update_planner_settings`                                                                                                                                                                                                                                                                                                                                                                 |
+| `study`         | Study                               | `get_study`, `update_study`, `plan_revision`, `save_source`                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `followthrough` | Follow-through                      | `get_follow_through`, `add_progress`, `answer_ask`, `save_record`                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `teams`         | Teams                               | `get_team`, `find_time`                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `booking`       | Bookings                            | `get_bookings`, `booking_action`                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `files`         | Files                               | `list_imports`, `start_import`, `cancel_import`, `import_tasks`, `add_file`                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ## Tools
 
@@ -174,6 +174,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 | `get_profile`             | Connected account                      | read        | read, core           |
 | `update_agent`            | Change your agent                      | destructive | suggest, core        |
 | `manage_memory`           | Manage Memory                          | destructive | suggest, core        |
+| `get_chats`               | Read assistant chats                   | read        | read, core           |
 | `create_tasks`            | Add tasks or events                    | write       | suggest, core        |
 | `update_tasks`            | Change tasks or events                 | destructive | suggest, core        |
 | `complete_tasks`          | Complete or reopen tasks               | destructive | write, core          |
@@ -228,7 +229,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 
 ### `get_context`
 
-Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.
+Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; the private Memory topic index when Personal is available; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.
 
 No arguments.
 
@@ -352,6 +353,17 @@ Lists and reads private Memory notes, saves facts with sources, or permanently f
 | `facts`             | list of string                       |                                                                       |
 | `sources`           | list of object                       | Default [].                                                           |
 | `client_ref`        | string                               | Idempotency key: sent again within 24 h, the first answer comes back. |
+
+### `get_chats`
+
+Reads saved chats, turns, and content-free steps. Search titles and turns, or pass chat_id. Projects kept out of AI are hidden.
+
+| Argument     | Type    | Notes                |
+| ------------ | ------- | -------------------- |
+| `chat_id`    | id      | Open one chat by id. |
+| `search`     | string  | Default "".          |
+| `project_id` | id      |                      |
+| `limit`      | integer | Default 20.          |
 
 ### `create_tasks`
 
@@ -1054,9 +1066,13 @@ Personal API keys on the legacy address also get the first endpoint's three tool
 - Error codes and their meaning never change; new codes may be added.
 - Every change to a tool, resource or prompt shows in docs/mcp-catalog.json, which CI compares with the code, and in this changelog. The catalog's version is the date of its last change.
 
-Catalog version: `2026-09-27`.
+Catalog version: `2026-09-28`.
 
 ## Changelog
+
+### 2026-09-28
+
+- Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.
 
 ### 2026-09-27
 
@@ -1100,4 +1116,4 @@ Catalog version: `2026-09-27`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 256 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.
+Routes: 259 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.

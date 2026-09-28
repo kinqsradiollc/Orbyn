@@ -1,6 +1,7 @@
 import { getCalendar } from "./calendar-view.js";
 import { updateAgent } from "./agent-settings.js";
 import { manageMemory } from "./memory.js";
+import { getChats } from "./chats.js";
 import { getContext, getProfile } from "./context.js";
 import { listAgentChanges, undoCapability } from "./changes.js";
 import { ackInbox, askPerson, getInbox } from "./inbox.js";
@@ -89,6 +90,8 @@ export const registry = new Registry([
   updateAgent,
   // Muse M2: the private Memory library and durable facts.
   manageMemory,
+  // Muse M3: the person's private history with Orbyn's built-in assistant.
+  getChats,
   // The first endpoint's tools, for old personal API keys only.
   searchItems,
   addTask,

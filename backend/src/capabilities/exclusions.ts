@@ -62,6 +62,9 @@ export type ExclusionReason = keyof typeof EXCLUSION_REASONS;
 
 /** Routes a capability already covers, with the capabilities that do. */
 export const COVERED: Record<string, string[]> = {
+  "GET /ai/chats": ["get_chats"],
+  "GET /ai/chats/:id": ["get_chats"],
+  "GET /ai/projects/:id/chats": ["get_chats"],
   "GET /search": ["search"],
   "GET /find": ["search"],
   // The link picker finds names as /find does; pills are titles and states
@@ -437,10 +440,10 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/providers/:id/test": "admin",
   "PUT /ai/settings": "admin",
   "PUT /ai/settings/semantic": "admin",
-  "GET /ai/projects/:id/chats": "hosted_ai",
-  "GET /ai/chats/:id": "hosted_ai",
   "PUT /ai/chats/:id": "hosted_ai",
   "DELETE /ai/chats/:id": "hosted_ai",
+  "PATCH /ai/chats/:id": "hosted_ai",
+  "POST /ai/chats/:id/save-note": "hosted_ai",
   // The list of kept originals (files to download); the setting is covered.
   "GET /me/originals": "kept_files",
   "GET /docs/:id/original": "kept_files",

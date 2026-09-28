@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-27",
+  "version": "2026-09-28",
   "server": {
     "name": "orbyn",
     "title": "Orbyn",
@@ -16,7 +16,7 @@
     {
       "name": "get_context",
       "title": "Who and where",
-      "description": "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
+      "description": "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; the private Memory topic index when Personal is available; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -156,6 +156,23 @@
             },
             "required": ["app", "today"]
           },
+          "memory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "topic": { "type": "string" },
+                "facts": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "updated_at": { "type": "string" }
+              },
+              "required": ["id", "topic", "facts", "updated_at"]
+            }
+          },
           "conventions": {
             "type": "object",
             "properties": {
@@ -268,6 +285,7 @@
           "teams",
           "limits",
           "links",
+          "memory",
           "conventions",
           "profile",
           "learning",
@@ -1882,6 +1900,145 @@
           }
         },
         "required": ["status"]
+      }
+    },
+    {
+      "name": "get_chats",
+      "title": "Read assistant chats",
+      "description": "Reads saved chats, turns, and content-free steps. Search titles and turns, or pass chat_id. Projects kept out of AI are hidden.",
+      "kind": "read",
+      "access": "read",
+      "toolset": "core",
+      "mode": "read",
+      "tier": "R",
+      "annotations": {
+        "title": "Read assistant chats",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "chat_id": {
+            "description": "Open one chat by id.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "search": { "default": "", "type": "string", "maxLength": 200 },
+          "project_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "limit": {
+            "default": 20,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "chats": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "pinned": { "type": "boolean" },
+                "turn_count": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "summary_doc_id": { "type": ["string", "null"] },
+                "swept_at": { "type": ["string", "null"] },
+                "scope": {
+                  "type": ["object", "null"],
+                  "properties": {
+                    "kind": { "type": "string", "enum": ["project", "task"] },
+                    "id": { "type": "string" }
+                  },
+                  "required": ["kind", "id"]
+                },
+                "turns": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "enum": ["user", "assistant"]
+                      },
+                      "text": { "type": "string" },
+                      "outcome": {
+                        "type": "string",
+                        "enum": ["pending", "applied", "discarded", "info"]
+                      },
+                      "sources": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "title": { "type": "string" },
+                            "doc_id": { "type": "string" },
+                            "block_id": { "type": ["string", "null"] },
+                            "kind": {
+                              "type": "string",
+                              "enum": ["task", "decision", "change"]
+                            },
+                            "id": { "type": "string" }
+                          },
+                          "required": ["title"]
+                        }
+                      }
+                    },
+                    "required": ["role", "text"]
+                  }
+                },
+                "trace": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": ["thinking", "tool", "result", "reply", "error"]
+                      },
+                      "label": { "type": "string" },
+                      "tool": { "type": "string" }
+                    },
+                    "required": ["step", "kind", "label"]
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "pinned",
+                "turn_count",
+                "summary_doc_id",
+                "swept_at",
+                "scope",
+                "turns",
+                "trace"
+              ]
+            }
+          }
+        },
+        "required": ["chats"]
       }
     },
     {
@@ -4350,6 +4507,7 @@
                     "tasks_from_doc",
                     "comment_on_doc",
                     "update_study",
+                    "manage_memory",
                     "schedule_sessions",
                     "save_source",
                     "save_record",
@@ -8881,6 +9039,7 @@
         "get_profile",
         "update_agent",
         "manage_memory",
+        "get_chats",
         "create_tasks",
         "update_tasks",
         "complete_tasks",
@@ -9000,6 +9159,12 @@
   ],
   "changelog": [
     {
+      "date": "2026-09-28",
+      "changes": [
+        "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core."
+      ]
+    },
+    {
       "date": "2026-09-27",
       "changes": [
         "Your named agent and its Memory (Muse M1–M2), 62 tools: update_agent (core) changes the name and persona of the person's Orbyn agent (default Orbyn), with undo; get_context returns it as agent. manage_memory (core) lists, reads, remembers and forgets the person's private Memory notes (one note per topic, each fact with where it was learned), the same notes Orbyn's own agent learns on its own; Memory is personal only, and projects kept out of AI are never used. The About me page is the first Memory note. Agent notes (things the agent made) are ordinary pages whose kind fetch shows. The 60-tool cap is lifted.",
@@ -9042,5 +9207,5 @@
       ]
     }
   ],
-  "routes": { "covered": 256, "excluded": 205, "pending": 0 }
+  "routes": { "covered": 259, "excluded": 205, "pending": 0 }
 }
