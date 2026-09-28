@@ -1,16 +1,9 @@
 import { z } from "zod";
 import type { AssistantSource } from "./docs.js";
-
-/**
- * Saved project chats: a person's own conversations with the assistant
- * about one project, kept so they can be picked up again. Only the words
- * are kept (and the sources a reply cited), never a pending change: a
- * proposal still has to be asked for again. Never shared, even in a team
- * project.
- */
+import type { ChatScope } from "./schemas.js";
 
 /** Turns kept per chat, and characters per turn. */
-export const CHAT_TURNS_MAX = 40;
+export const CHAT_TURNS_MAX = 200;
 export const CHAT_TURN_CHARS = 12000;
 
 const chatSource = z
@@ -30,35 +23,80 @@ export const savedChatTurn = z
   .object({
     role: z.enum(["user", "assistant"]),
     text: z.string().max(CHAT_TURN_CHARS),
+    /** Context sent back to the model, including the change outcome. */
+    history_text: z.string().max(CHAT_TURN_CHARS).optional(),
+    turn_id: z.uuid().optional(),
+    proposal_id: z.uuid().optional(),
+    outcome: z.enum(["pending", "applied", "discarded", "info"]).optional(),
     sources: z.array(chatSource).max(20).optional(),
   })
   .strict();
 export type SavedChatTurn = z.output<typeof savedChatTurn>;
 
-/** `PUT /ai/chats/:id`: save a chat (made by the app) after a reply. */
+/** One observable step in a chat turn. Content is never recorded here. */
+export const chatTraceEntry = z
+  .object({
+    turn_id: z.uuid(),
+    step: z.number().int().min(1).max(64),
+    kind: z.enum(["thinking", "tool", "result", "reply", "error"]),
+    label: z.string().trim().min(1).max(180),
+    tool: z.string().max(50).optional(),
+    at: z.iso.datetime(),
+  })
+  .strict();
+export type ChatTraceEntry = z.output<typeof chatTraceEntry>;
+
+/** A list row in the assistant's saved chat history. */
+export type AiChatSummary = {
+  id: string;
+  project_id: string | null;
+  project_name: string | null;
+  title: string;
+  pinned: boolean;
+  turn_count: number;
+  created_at: string;
+  last_used_at: string;
+  summary_doc_id: string | null;
+  swept_at: string | null;
+  scope: ChatScope | null;
+};
+
+export type AiChat = AiChatSummary & {
+  turns: SavedChatTurn[];
+  trace: ChatTraceEntry[];
+};
+
+/** The old names stay as aliases for clients being migrated to `ai_chats`. */
+export type ProjectChatSummary = AiChatSummary;
+export type ProjectChat = AiChat;
+
+export const updateAiChatInput = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    pinned: z.boolean().optional(),
+    turn_id: z.uuid().optional(),
+    outcome: z.enum(["pending", "applied", "discarded", "info"]).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.title !== undefined ||
+      value.pinned !== undefined ||
+      (value.turn_id !== undefined && value.outcome !== undefined),
+  );
+export type UpdateAiChatInput = z.output<typeof updateAiChatInput>;
+
+/** Legacy save input accepted while older clients roll forward. */
 export const projectChatInput = z
   .object({
     project_id: z.uuid(),
-    /** Its name in the list; the first question when left out. */
     title: z.string().trim().min(1).max(120).optional(),
     turns: z.array(savedChatTurn).min(1).max(CHAT_TURNS_MAX),
   })
   .strict();
 export type ProjectChatInput = z.input<typeof projectChatInput>;
 
-/** A saved chat in a project's list. */
-export type ProjectChatSummary = {
-  id: string;
-  project_id: string;
-  title: string;
-  turn_count: number;
-  created_at: string;
-  updated_at: string;
-};
-
-export type ProjectChat = ProjectChatSummary & { turns: SavedChatTurn[] };
-
-/** A chat's name from its first question: one line, at most 80 characters. */
+/** A chat's name comes from its first question: one line, at most 80 characters. */
 export function chatTitle(turns: { role: string; text: string }[]): string {
   const first = turns.find((t) => t.role === "user")?.text ?? "";
   const line = first.replace(/\s+/g, " ").trim();
@@ -66,22 +104,29 @@ export function chatTitle(turns: { role: string; text: string }[]): string {
   return line.length > 80 ? `${line.slice(0, 79).trimEnd()}…` : line;
 }
 
-/** A conversation's turns as either app keeps them. */
+/** A conversation's turns as kept by either app. */
 type LiveTurn =
-  | { role: "user"; text: string }
+  | { id?: string; role: "user"; text: string }
   | {
+      id?: string;
       role: "assistant";
-      proposal: { summary: string; sources?: AssistantSource[] };
+      proposal: { id?: string; summary: string; sources?: AssistantSource[] };
     };
 
-/** The turns to save: the words and cited sources, never pending changes. */
+/** The words and cited sources saved after a turn. */
 export function savedTurnsOf(turns: LiveTurn[]): SavedChatTurn[] {
   return turns.slice(-CHAT_TURNS_MAX).map((t) =>
     t.role === "user"
-      ? { role: "user", text: t.text.slice(0, CHAT_TURN_CHARS) }
+      ? {
+          role: "user",
+          text: t.text.slice(0, CHAT_TURN_CHARS),
+          ...(t.id ? { turn_id: t.id } : {}),
+        }
       : {
           role: "assistant",
           text: t.proposal.summary.slice(0, CHAT_TURN_CHARS),
+          ...(t.id ? { turn_id: t.id } : {}),
+          ...(t.proposal.id ? { proposal_id: t.proposal.id } : {}),
           ...(t.proposal.sources?.length
             ? {
                 sources: t.proposal.sources.slice(0, 20).map((s) => ({
@@ -102,16 +147,13 @@ export function savedTurnsOf(turns: LiveTurn[]): SavedChatTurn[] {
   );
 }
 
-/**
- * A saved assistant turn as a reply to show: its words and sources, with no
- * changes to approve (those have to be asked for again).
- */
+/** A saved assistant reply; its proposal is fetched only while it is pending. */
 export function savedReply(
   turn: SavedChatTurn,
   n: number,
 ): { id: string; summary: string; actions: []; sources: AssistantSource[] } {
   return {
-    id: `saved-${n}`,
+    id: turn.proposal_id ?? `saved-${n}`,
     summary: turn.text,
     actions: [],
     sources: (turn.sources ?? []).map((s): AssistantSource =>
