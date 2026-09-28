@@ -4,6 +4,7 @@ import {
   Alert,
   Easing,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,17 +17,20 @@ import {
   type Item,
   type Plan,
   type PersonalAgentSettings,
+  type ChatTraceEntry,
+  type AiChatSummary,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
+import { MoreMenu, type MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
 import { Field } from "../components/Field";
 import { client } from "../lib/api";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion, Pressable } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { colors, fonts, radii, themed, tint } from "../theme";
 import { shared } from "../styles";
 
 /** Same starter prompts as the desktop assistant. */
@@ -60,6 +64,10 @@ export function AssistantScreen({
   const {
     turns,
     thinking,
+    runProgress,
+    answerWaiting,
+    approveWaiting,
+    stopRun,
     ask,
     apply,
     discard,
@@ -67,14 +75,26 @@ export function AssistantScreen({
     scope,
     setScope,
     savedChats,
+    activeChatId,
+    chatSearch,
+    searchChats,
     openChat,
     deleteChat,
+    renameChat,
+    pinChat,
+    keepChatAsNote,
   } = assistant;
   const { height } = useWindowDimensions();
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [identitySaving, setIdentitySaving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<AiChatSummary | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [personAnswer, setPersonAnswer] = useState("");
+  const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
     void client
       .agentSettings()
@@ -108,7 +128,51 @@ export function AssistantScreen({
       setIdentitySaving(false);
     }
   };
-  const locked = busy || thinking;
+  const chatActions = (chat: AiChatSummary): MoreAction[] => [
+    {
+      label: chat.pinned ? "Unpin chat" : "Pin chat",
+      onPress: () => void pinChat(chat.id, !chat.pinned).catch(() => undefined),
+    },
+    {
+      label: "Rename",
+      onPress: () => {
+        setRenameTarget(chat);
+        setRenameDraft(chat.title);
+      },
+    },
+    {
+      label: "Save as Agent note",
+      onPress: () =>
+        void keepChatAsNote(chat.id)
+          .then((note) => onKeptNote?.(note.id))
+          .catch(() =>
+            Alert.alert(
+              "Couldn't save",
+              "Try saving this chat as a note again.",
+            ),
+          ),
+    },
+    {
+      label: "Delete chat",
+      destructive: true,
+      onPress: () =>
+        Alert.alert(
+          "Delete chat?",
+          `“${chat.title}” will be removed from your chat history.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () => void deleteChat(chat.id).catch(() => undefined),
+            },
+          ],
+        ),
+    },
+  ];
+  const waiting = runProgress?.state === "waiting" ? runProgress.waiting : null;
+  const locked = busy || thinking || !!waiting;
+  useEffect(() => setPersonAnswer(""), [runProgress?.waiting?.question]);
   // Quick replies only make sense on the newest assistant reply.
   const latestReplyId = [...turns]
     .reverse()
@@ -173,11 +237,146 @@ export function AssistantScreen({
           </View>
         </View>
       </Modal>
+      <Modal
+        visible={historyOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setHistoryOpen(false)}
+      >
+        <View style={s.historyBackdrop}>
+          <View style={s.historySheet}>
+            <View style={s.historyHead}>
+              <Text style={shared.title}>Chats</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close chat history"
+                hitSlop={8}
+                onPress={() => setHistoryOpen(false)}
+              >
+                <Icon name="x" size={20} color={colors.textSoft} />
+              </Pressable>
+            </View>
+            <TextInput
+              style={[shared.input, s.historySearch]}
+              value={chatSearch}
+              onChangeText={searchChats}
+              placeholder="Search chats"
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Search chats"
+            />
+            <ScrollView
+              style={s.historyList}
+              keyboardShouldPersistTaps="handled"
+            >
+              {savedChats?.map((chat) => (
+                <View
+                  key={chat.id}
+                  style={[
+                    s.historyRow,
+                    chat.id === activeChatId && s.historyRowActive,
+                  ]}
+                >
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open the chat “${chat.title}”`}
+                    onPress={() => {
+                      setHistoryOpen(false);
+                      void openChat(chat.id).catch(() =>
+                        Alert.alert("Couldn't open chat", "Try again."),
+                      );
+                    }}
+                    style={s.historyOpen}
+                  >
+                    <Text style={s.historyTitle} numberOfLines={1}>
+                      {chat.pinned ? "Pinned · " : ""}
+                      {chat.title}
+                    </Text>
+                    <Text style={shared.small} numberOfLines={1}>
+                      {chat.swept_at
+                        ? "Summary saved"
+                        : (chat.project_name ??
+                          new Date(chat.last_used_at).toLocaleDateString([], {
+                            day: "numeric",
+                            month: "short",
+                          }))}
+                    </Text>
+                  </Pressable>
+                  <MoreMenu
+                    label={`Options for ${chat.title}`}
+                    title={chat.title}
+                    disabled={locked}
+                    actions={chatActions(chat)}
+                  />
+                </View>
+              ))}
+              {savedChats?.length === 0 && (
+                <Text style={[shared.small, s.historyEmpty]}>
+                  No matching chats.
+                </Text>
+              )}
+              {savedChats === null && (
+                <Text style={[shared.small, s.historyEmpty]}>
+                  Loading chats…
+                </Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={!!renameTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameTarget(null)}
+      >
+        <View style={s.identityBackdrop}>
+          <View style={s.identitySheet}>
+            <Text style={shared.title}>Rename chat</Text>
+            <TextInput
+              autoFocus
+              maxLength={120}
+              value={renameDraft}
+              onChangeText={setRenameDraft}
+              style={shared.input}
+              accessibilityLabel="Chat title"
+            />
+            <View style={s.identityActions}>
+              <Button
+                title="Save"
+                disabled={renameBusy || !renameDraft.trim()}
+                onPress={() => {
+                  if (!renameTarget || !renameDraft.trim()) return;
+                  setRenameBusy(true);
+                  void renameChat(renameTarget.id, renameDraft.trim())
+                    .then(() => setRenameTarget(null))
+                    .catch(() =>
+                      Alert.alert("Couldn't rename chat", "Try again."),
+                    )
+                    .finally(() => setRenameBusy(false));
+                }}
+              />
+              <Button
+                title="Cancel"
+                secondary
+                disabled={renameBusy}
+                onPress={() => setRenameTarget(null)}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <View style={s.historyTrigger}>
+        <SmallAction
+          label="Chat history"
+          disabled={locked}
+          onPress={() => setHistoryOpen(true)}
+        />
+      </View>
       {scope && (
         <View style={s.scopeRow}>
           <SmallAction
             label={`In: ${scope.name} ×`}
-            disabled={thinking}
+            disabled={locked}
             onPress={() => setScope(null)}
           />
           {scope.kind === "project" && onBackToProject && (
@@ -199,6 +398,20 @@ export function AssistantScreen({
             Plan your time, find an answer, or turn an idea into a next step.
             You’ll review every change before it’s saved.
           </Text>
+          {activeChat?.swept_at && (
+            <View style={s.sweptNote}>
+              <Text style={s.historyTitle}>
+                This chat has been saved as a summary note.
+              </Text>
+              {activeChat.summary_doc_id && (
+                <SmallAction
+                  label="Open summary"
+                  disabled={locked}
+                  onPress={() => onKeptNote?.(activeChat.summary_doc_id!)}
+                />
+              )}
+            </View>
+          )}
           <View style={s.chips}>
             {suggestions.map((text) => (
               <PressableScale
@@ -217,46 +430,6 @@ export function AssistantScreen({
               </PressableScale>
             ))}
           </View>
-          {scope?.kind === "project" && !!savedChats?.length && (
-            <View style={s.saved}>
-              <Text style={shared.label}>Saved chats about {scope.name}</Text>
-              {savedChats.slice(0, 5).map((c) => (
-                <View key={c.id} style={s.savedRow}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open the chat “${c.title}”`}
-                    disabled={locked}
-                    onPress={() => void openChat(c.id).catch(() => undefined)}
-                    style={({ pressed }) => [
-                      s.savedOpen,
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Text style={s.savedTitle} numberOfLines={1}>
-                      {c.title}
-                    </Text>
-                    <Text style={shared.small}>
-                      {new Date(c.updated_at).toLocaleDateString([], {
-                        day: "numeric",
-                        month: "short",
-                      })}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete the chat “${c.title}”`}
-                    hitSlop={10}
-                    onPress={() => void deleteChat(c.id).catch(() => undefined)}
-                  >
-                    <Icon name="trash" size={16} color={colors.muted} />
-                  </Pressable>
-                </View>
-              ))}
-              <Text style={shared.small}>
-                Only you see these. They go after a year unused.
-              </Text>
-            </View>
-          )}
         </FadeIn>
       ) : (
         <View style={s.threadHead}>
@@ -329,9 +502,134 @@ export function AssistantScreen({
                     }
                   />
                 )}
+                <ChatTrace trace={turn.trace} />
               </View>
             </FadeIn>
           ),
+        )}
+        {waiting && (
+          <View style={s.runCard} accessibilityLiveRegion="polite">
+            {waiting.kind === "person" ? (
+              <>
+                <Text style={s.runTitle}>One quick question</Text>
+                <Text style={s.runBody}>{waiting.question}</Text>
+                {!!waiting.choices.length && (
+                  <View style={s.runChoices}>
+                    {waiting.choices.map((choice) => (
+                      <Button
+                        key={choice}
+                        title={choice}
+                        secondary
+                        disabled={busy}
+                        style={s.runChoice}
+                        onPress={() => void answerWaiting(choice)}
+                      />
+                    ))}
+                  </View>
+                )}
+                <TextInput
+                  style={s.runInput}
+                  maxLength={4000}
+                  value={personAnswer}
+                  onChangeText={setPersonAnswer}
+                  placeholder="Or type your answer…"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Your answer"
+                  returnKeyType="send"
+                  onSubmitEditing={() => {
+                    const answer = personAnswer.trim();
+                    if (!busy && answer) {
+                      setPersonAnswer("");
+                      void answerWaiting(answer);
+                    }
+                  }}
+                />
+                <Button
+                  title="Answer"
+                  disabled={busy || !personAnswer.trim()}
+                  style={s.runButton}
+                  onPress={() => {
+                    const answer = personAnswer.trim();
+                    if (answer) {
+                      setPersonAnswer("");
+                      void answerWaiting(answer);
+                    }
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <Text style={s.runTitle}>Review the staged changes</Text>
+                <Text style={s.runBody}>{waiting.question}</Text>
+                <Text style={s.runBody}>{waiting.summary}</Text>
+                {!!waiting.detail && (
+                  <Text style={s.runBody}>{waiting.detail}</Text>
+                )}
+                {!!waiting.steps.length && (
+                  <View style={s.runSteps}>
+                    {waiting.steps.slice(0, 20).map((step, index) => {
+                      const tool =
+                        step && typeof step === "object" && "tool" in step
+                          ? String(step.tool)
+                          : "Change";
+                      return (
+                        <Text key={`${tool}-${index}`} style={s.runStep}>
+                          • {tool}
+                        </Text>
+                      );
+                    })}
+                  </View>
+                )}
+                <Button
+                  title="Apply this plan"
+                  disabled={busy}
+                  style={s.runButton}
+                  onPress={() => void approveWaiting(true, "once")}
+                />
+                {waiting.automation_kind && (
+                  <Button
+                    title={`Apply and remember for this ${waiting.automation_kind}`}
+                    secondary
+                    disabled={busy}
+                    style={s.runButton}
+                    onPress={() =>
+                      void approveWaiting(true, waiting.automation_kind)
+                    }
+                  />
+                )}
+                {!!waiting.change_kinds?.length && (
+                  <Button
+                    title={`Always allow: ${waiting.change_kinds.join(", ")}`}
+                    secondary
+                    disabled={busy}
+                    style={s.runButton}
+                    onPress={() => void approveWaiting(true, "always")}
+                  />
+                )}
+                <Button
+                  title="Hold changes"
+                  secondary
+                  disabled={busy}
+                  style={s.runButton}
+                  onPress={() => void approveWaiting(false)}
+                />
+              </>
+            )}
+          </View>
+        )}
+        {runProgress?.state === "running" && (
+          <View style={s.runProgress} accessibilityLiveRegion="polite">
+            <Text style={s.runBody}>
+              {runProgress.label ?? "Working through your request…"}
+            </Text>
+            <Button
+              title="Stop"
+              secondary
+              disabled={busy}
+              style={s.runStop}
+              onPress={() => void stopRun()}
+            />
+          </View>
         )}
         {thinking && (
           <FadeIn from="left" style={s.botRow}>
@@ -365,8 +663,9 @@ export function AssistantComposer({
   assistant: Assistant;
   busy: boolean;
 }) {
-  const { message, setMessage, thinking, ask } = assistant;
-  const canSend = !busy && !thinking && !!message.trim();
+  const { message, setMessage, thinking, runProgress, ask } = assistant;
+  const canSend =
+    !busy && !thinking && runProgress?.state !== "waiting" && !!message.trim();
   // Four lines at the user's text size, not four lines of the default size.
   const { fontScale } = useWindowDimensions();
   return (
@@ -528,6 +827,40 @@ function TypingIndicator() {
   );
 }
 
+/** A short, content-free account of the steps behind an assistant reply. */
+function ChatTrace({ trace }: { trace: ChatTraceEntry[] }) {
+  const [open, setOpen] = useState(false);
+  if (!trace.length) return null;
+  return (
+    <View style={s.trace}>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`${open ? "Hide" : "Show"} assistant steps`}
+        onPress={() => setOpen((shown) => !shown)}
+        style={({ pressed }) => [s.traceToggle, pressed && { opacity: 0.7 }]}
+      >
+        <Text style={s.traceToggleText}>
+          {open ? "Hide steps" : `Steps (${trace.length})`}
+        </Text>
+      </PressableScale>
+      {open && (
+        <View style={s.traceList}>
+          {trace.map((entry, index) => (
+            <View
+              key={`${entry.turn_id}-${entry.step}-${index}`}
+              style={s.traceRow}
+            >
+              <Text style={s.traceLabel}>{entry.label}</Text>
+              {entry.tool && <Text style={s.traceTool}>{entry.tool}</Text>}
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 /** Line height of the message box; it grows to five lines before scrolling. */
 const LINE = 21;
 
@@ -548,6 +881,57 @@ const s = themed(() =>
     identityIntro: { marginBottom: 2 },
     identityPersona: { minHeight: 78, textAlignVertical: "top" },
     identityActions: { flexDirection: "row", gap: 8, alignItems: "center" },
+    historyBackdrop: {
+      flex: 1,
+      justifyContent: "center",
+      padding: 16,
+      backgroundColor: tint(colors.shadow, 0.5),
+    },
+    historySheet: {
+      maxHeight: "80%",
+      padding: 16,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+      gap: 12,
+    },
+    historyHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    historySearch: { marginBottom: 0 },
+    historyList: { flexGrow: 0, maxHeight: 520 },
+    historyRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 8,
+      borderRadius: radii.input,
+    },
+    historyRowActive: { backgroundColor: colors.surfaceMuted },
+    historyOpen: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 52,
+      justifyContent: "center",
+      gap: 3,
+    },
+    historyTitle: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.text,
+    },
+    historyEmpty: { marginVertical: 8, textAlign: "center" },
+    historyTrigger: { flexDirection: "row", justifyContent: "flex-end" },
+    sweptNote: {
+      alignSelf: "stretch",
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surfaceMuted,
+      gap: 10,
+    },
     saved: {
       alignSelf: "stretch",
       gap: 6,
@@ -684,6 +1068,89 @@ const s = themed(() =>
       borderTopLeftRadius: 5,
       padding: 14,
     },
+    trace: {
+      marginTop: 8,
+      paddingTop: 6,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    traceToggle: {
+      alignSelf: "flex-start",
+      minHeight: 36,
+      justifyContent: "center",
+    },
+    traceToggleText: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.textSoft,
+    },
+    traceList: { gap: 8, paddingBottom: 4 },
+    traceRow: { gap: 2 },
+    traceLabel: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSoft,
+    },
+    traceTool: {
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      color: colors.muted,
+    },
+    runCard: {
+      gap: 9,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.card,
+      backgroundColor: colors.surface,
+    },
+    runTitle: {
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.text,
+    },
+    runBody: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 20,
+      color: colors.textSoft,
+    },
+    runChoices: { gap: 4 },
+    runChoice: { marginBottom: 0, minHeight: 44 },
+    runInput: {
+      minHeight: 48,
+      paddingHorizontal: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      backgroundColor: colors.surface,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      color: colors.text,
+    },
+    runSteps: {
+      gap: 4,
+      padding: 10,
+      borderRadius: radii.input,
+      backgroundColor: colors.surfaceMuted,
+    },
+    runStep: {
+      fontFamily: fonts.regular,
+      fontSize: 11,
+      lineHeight: 18,
+      color: colors.textSoft,
+    },
+    runButton: { alignSelf: "flex-start", marginBottom: 0, minHeight: 44 },
+    runProgress: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      paddingHorizontal: 8,
+    },
+    runStop: { marginBottom: 0, minHeight: 44 },
     typing: {
       width: "auto",
       alignSelf: "flex-start",
