@@ -1363,6 +1363,9 @@ export function RootScreen() {
                   {tab === "Today" && (
                     <TodayScreen
                       items={items}
+                      homeLayout={accountPrefs.prefs.home}
+                      agentName={assistant.agentName}
+                      onOpenLink={(link) => openLink.current?.(link)}
                       onOpenWorkspace={(what) => present({ sheet: what })}
                       onPlanDay={() => {
                         setTab("AI");
@@ -1423,10 +1426,24 @@ export function RootScreen() {
                       }}
                       onChangeItem={(i, change) =>
                         void act(async () => {
-                          await client.updateItem(i.id, {
-                            ...itemBody(i),
-                            ...change,
-                          });
+                          // Handing a task to your agent or taking it back
+                          // (W3), and giving it to someone at the same time.
+                          if ("agent" in change) {
+                            const { agent, ...rest } = change;
+                            const after =
+                              agent === "hand"
+                                ? await client.handTaskToAgent(i.id)
+                                : await client.takeTaskBack(i.id);
+                            if ("assignee_id" in rest)
+                              await client.updateItem(i.id, {
+                                ...itemBody(after),
+                                assignee_id: rest.assignee_id ?? null,
+                              });
+                          } else
+                            await client.updateItem(i.id, {
+                              ...itemBody(i),
+                              ...change,
+                            });
                           await refresh({ animate: true });
                         })
                       }

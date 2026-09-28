@@ -1,0 +1,316 @@
+/* Home (W1): the greeting, hubs of quick links and the three panels.
+   Tokens only; type sizes from the scale (11/13/15/18/24/36). */
+
+.home-when {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.home-when strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-textSoft);
+  font-variant-numeric: tabular-nums;
+}
+.page-heading p.home-quote {
+  font-style: italic;
+  color: var(--color-textSoft);
+  max-width: 70ch;
+}
+
+/* --------------------------------------------------------------- hubs --- */
+
+.home-hubs {
+  margin-bottom: 24px;
+}
+.home-hubs-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: 16px;
+  /* Hubs in a row line up at the same height. */
+  align-items: stretch;
+}
+.card.home-hub {
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.home-hub-cover {
+  height: 84px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.home-hub-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 6px 16px;
+}
+.home-hub-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  font-size: 15px;
+}
+.home-hub-head h2 span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-hub-links {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 10px;
+}
+.home-hub-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+}
+.home-hub-link:hover {
+  background: var(--color-hover);
+}
+.home-hub-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-hub-empty {
+  margin: 0;
+  padding: 4px 16px 14px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.home-hub-new {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed var(--color-borderStrong);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-accentText);
+  font-size: 13px;
+}
+.home-hub-new:hover {
+  background: var(--color-hover);
+}
+
+/* The hub dialog. */
+.home-hub-dialog {
+  width: 560px;
+}
+.home-hub-form {
+  display: block;
+}
+.home-hub-look {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.home-hub-look .secondary {
+  margin-left: auto;
+}
+.home-hub-look-icon {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  color: var(--color-text);
+}
+.home-hub-sub {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.home-hub-sub small {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.home-hub-edit-list,
+.home-hub-pick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.home-hub-edit-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  font-size: 13px;
+}
+.home-hub-edit-list li + li,
+.home-hub-pick li + li {
+  border-top: 1px solid var(--color-divider);
+}
+.home-hub-edit-list .home-hub-name {
+  flex: 1;
+}
+.modal .home-hub-edit-list input.home-hub-tag {
+  width: 110px;
+  flex: none;
+  margin-top: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.home-hub-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.modal .home-hub-add input {
+  flex: 1;
+  margin-top: 0;
+}
+.home-hub-pick button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+}
+.home-hub-pick button:hover {
+  background: var(--color-hover);
+}
+
+/* ------------------------------------------------------------- panels --- */
+
+.home-panels {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.home-panels-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.home-panels-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .home-panels-2,
+  .home-panels-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.card.home-panel {
+  margin-bottom: 0;
+}
+.home-panel .section-heading {
+  min-height: 58px;
+}
+.home-panel .section-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.home-panel-body {
+  padding: 0 12px 14px;
+}
+.home-panel-body > p.muted {
+  margin: 0 8px;
+  font-size: 13px;
+}
+.home-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.home-row {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: left;
+}
+.home-row:hover {
+  background: var(--color-hover);
+}
+.home-row strong {
+  font-weight: 600;
+}
+.home-row small {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.home-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-brief {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 8px;
+  background: var(--color-sunken);
+  border: 1px solid var(--color-border);
+}
+.home-brief small {
+  grid-column: 1;
+}
+.home-brief svg {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  color: var(--color-muted);
+}
+.home-reflect {
+  display: flex;
+  gap: 8px;
+  padding: 0 8px;
+}
+.home-reflect input {
+  flex: 1;
+  min-width: 0;
+}
+.home-reflection {
+  margin: 10px 8px 6px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.home-reflection li + li {
+  margin-top: 4px;
+}
+.home-panel-body > .text-button {
+  margin: 8px 8px 0;
+}

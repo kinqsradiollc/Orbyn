@@ -28,6 +28,7 @@ export const TASK_GROUPS = [
   "project",
   "due_week",
   "assignee",
+  "owner",
 ] as const;
 export type TaskGroupBy = (typeof TASK_GROUPS)[number];
 
@@ -41,6 +42,7 @@ export const TASK_GROUP_LABELS: Record<TaskGroupBy, string> = {
   project: "Project",
   due_week: "Due week",
   assignee: "Assignee",
+  owner: "Who's on it",
 };
 
 /** Groupings whose columns a card can be dragged between. */
@@ -50,6 +52,7 @@ export const BOARD_GROUPS = [
   "priority",
   "assignee",
   "tag",
+  "owner",
 ] as const satisfies readonly TaskGroupBy[];
 export type BoardGroupBy = (typeof BOARD_GROUPS)[number];
 
@@ -58,6 +61,18 @@ export const isBoardGroup = (by: string): by is BoardGroupBy =>
 
 /** The key of the group for tasks without the thing grouped by. */
 export const NO_GROUP = "~none";
+
+/**
+ * "Who's on it" lanes (W2): you, each teammate with work, your own agent
+ * (tasks handed to it), each connected agent that worked on tasks lately,
+ * the Review inbox's proposals, and the Backlog (NO_GROUP: nobody's yet).
+ */
+export const OWNER_ME = "me";
+export const OWNER_AGENT = "agent";
+export const OWNER_REVIEW = "review";
+/** A connected agent's lane: `agent:<grant id>`. */
+export const ownerAgentKey = (grantId: string) => `agent:${grantId}`;
+export const isAgentLane = (key: string) => key.startsWith("agent:");
 
 /** How long a task looks, for grouping by size. */
 export type TaskSize = "quick" | "short" | "long" | "none";
@@ -97,6 +112,13 @@ export type GroupNames = {
   projects?: { id: string; name: string }[];
   /** You: "Assigned to me" is named for you. */
   userId?: string | null;
+  /** Your own agent's chosen name, for its lane ("Orbyn" by default). */
+  agentName?: string;
+  /**
+   * Connected agents with work lately (tasks they made or changed in the
+   * last day), for their lanes when grouping by who's on it.
+   */
+  agents?: { grant_id: string; name: string; item_ids: string[] }[];
   /** For due weeks; the device's clock otherwise. */
   now?: Date;
 };
@@ -241,8 +263,43 @@ function groupsOf(
               : i.assignee_name || "Someone",
         },
       ];
+    case "owner":
+      return [ownerOf(i, names)];
   }
 }
+
+/**
+ * The one "Who's on it" lane a task is in: your agent's when it's handed
+ * over; a connected agent's for open, unassigned work it touched lately;
+ * else its assignee (you, or a teammate); your own tasks are yours; a
+ * team's task nobody has is in the Backlog.
+ */
+function ownerOf(i: Item, names: GroupNames): { key: string; title: string } {
+  if (i.agent_grant_id)
+    return { key: OWNER_AGENT, title: names.agentName || "Orbyn" };
+  if (!i.assignee_id && !isClosed(i.status)) {
+    const agent = names.agents?.find((a) => a.item_ids.includes(i.id));
+    if (agent) return { key: ownerAgentKey(agent.grant_id), title: agent.name };
+  }
+  if (i.assignee_id && i.assignee_id !== names.userId)
+    return { key: i.assignee_id, title: i.assignee_name || "Someone" };
+  if (i.assignee_id || !i.team_id) return { key: OWNER_ME, title: "You" };
+  return { key: NO_GROUP, title: "Backlog" };
+}
+
+/** Where a "Who's on it" lane sits: you, teammates, your agent, connected agents, Review, Backlog. */
+const ownerRank = (key: string) =>
+  key === OWNER_ME
+    ? 0
+    : key === OWNER_AGENT
+      ? 2
+      : isAgentLane(key)
+        ? 3
+        : key === OWNER_REVIEW
+          ? 4
+          : key === NO_GROUP
+            ? 5
+            : 1;
 
 /** A list's name, with its team's when another list shares the name. */
 function listTitle(
@@ -275,6 +332,11 @@ function orderGroups(
         Number(a.key === NO_GROUP) - Number(b.key === NO_GROUP) ||
         Number(b.key === "overdue") - Number(a.key === "overdue") ||
         a.key.localeCompare(b.key),
+    );
+  if (by === "owner")
+    return groups.sort(
+      (a, b) =>
+        ownerRank(a.key) - ownerRank(b.key) || a.title.localeCompare(b.title),
     );
   if (by === "list" && names.lists) {
     const order = names.lists.map((l) => l.id);
@@ -379,11 +441,26 @@ export function boardColumns(
       ];
       break;
     }
+    case "owner": {
+      // You, your agent, Review and the Backlog always show; teammates and
+      // connected agents only with work.
+      const lanes = [...grouped.values()];
+      if (!grouped.has(OWNER_ME)) lanes.push(empty(OWNER_ME, "You"));
+      if (!grouped.has(OWNER_AGENT))
+        lanes.push(empty(OWNER_AGENT, names.agentName || "Orbyn"));
+      lanes.push(empty(OWNER_REVIEW, "Needs review"));
+      if (!grouped.has(NO_GROUP)) lanes.push(empty(NO_GROUP, "Backlog"));
+      all = orderGroups("owner", lanes, names);
+      break;
+    }
   }
   // Anything grouped under a column the names don't know yet still shows.
   for (const g of grouped.values())
     if (!all.some((c) => c.key === g.key)) all.splice(all.length - 1, 0, g);
-  return options.hideEmpty ? all.filter((c) => c.items.length) : all;
+  // Review's cards are proposals, not tasks: its lane is kept for them.
+  return options.hideEmpty
+    ? all.filter((c) => c.items.length || c.key === OWNER_REVIEW)
+    : all;
 }
 
 /** What moving a card to another column changes on its task. */
@@ -392,7 +469,12 @@ export type ColumnChange =
   | { list_id: string | null }
   | { priority: Priority }
   | { assignee_id: string | null }
-  | { tag_ids: string[] };
+  | { tag_ids: string[] }
+  /**
+   * Hand the task to your agent, or take it back from it (and, with
+   * `assignee_id`, give it to someone at the same time).
+   */
+  | { agent: "hand" | "take_back"; assignee_id?: string | null };
 
 export type DropResult =
   { ok: true; change: ColumnChange } | { ok: false; reason: string } | null;
@@ -448,6 +530,8 @@ export function dropChange(
       return item.assignee_id === to
         ? null
         : { ok: true, change: { assignee_id: to } };
+    case "owner":
+      return ownerDrop(item, to, names);
     case "tag": {
       const now = item.tag_ids ?? [];
       const kept = now.filter((id) => id !== from);
@@ -466,6 +550,57 @@ export function dropChange(
       return same ? null : { ok: true, change: { tag_ids: kept } };
     }
   }
+}
+
+/** What dropping a card on a "Who's on it" lane changes. */
+function ownerDrop(item: Item, to: string, names: GroupNames): DropResult {
+  const agent = names.agentName || "Orbyn";
+  const withAgent = !!item.agent_grant_id;
+  if (to === OWNER_AGENT) {
+    if (withAgent) return null;
+    if (item.kind !== "task")
+      return { ok: false, reason: `Only tasks can be handed to ${agent}.` };
+    if (isClosed(item.status))
+      return { ok: false, reason: "This task is finished already." };
+    return { ok: true, change: { agent: "hand" } };
+  }
+  if (to === OWNER_REVIEW)
+    return {
+      ok: false,
+      reason: "Needs review holds what agents propose; a task can't go there.",
+    };
+  if (isAgentLane(to))
+    return {
+      ok: false,
+      reason: `Connected agents pick up their own work. Hand it to ${agent} or a person instead.`,
+    };
+  // Taking it back from your agent, and giving it to someone at once.
+  const give = (assignee: string | null): DropResult =>
+    withAgent
+      ? {
+          ok: true,
+          change:
+            assignee === (item.assignee_id ?? null)
+              ? { agent: "take_back" }
+              : { agent: "take_back", assignee_id: assignee },
+        }
+      : assignee === (item.assignee_id ?? null)
+        ? null
+        : { ok: true, change: { assignee_id: assignee } };
+  if (to === OWNER_ME) {
+    if (!item.team_id) return give(null);
+    if (!names.userId) return null;
+    return give(names.userId);
+  }
+  if (!item.team_id)
+    return {
+      ok: false,
+      reason:
+        to === NO_GROUP
+          ? "Your own tasks are always yours: only a team's task waits in the Backlog."
+          : "Only a team's tasks can be assigned to someone.",
+    };
+  return give(to === NO_GROUP ? null : to);
 }
 
 /**
@@ -500,6 +635,7 @@ export function columnPrefill(
         : {};
     }
     case "assignee":
+    case "owner":
       return {};
   }
 }

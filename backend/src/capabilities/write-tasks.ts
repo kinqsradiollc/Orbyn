@@ -15,6 +15,7 @@ import {
   type ItemRow,
 } from "../modules/items/service.js";
 import { editSteps, mergedItem } from "../modules/proposals/service.js";
+import { agentNameOf, handTaskToAgent } from "../modules/items/agent.js";
 import {
   editFollowing,
   editOccurrence,
@@ -415,6 +416,12 @@ const change = z
     target_value: z.number().nullable().optional(),
     current_value: z.number().nullable().optional(),
     value_unit: z.string().trim().max(16).optional(),
+    agent: z
+      .literal("assistant")
+      .optional()
+      .describe(
+        "Hand it to the person's own Orbyn agent (always asks, in Review).",
+      ),
     scope: z
       .enum(["this", "following"])
       .optional()
@@ -454,7 +461,7 @@ export const updateTasks = defineCapability({
   name: "update_tasks",
   title: "Change tasks or events",
   description:
-    "Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first. Undo keeps the old values.",
+    "Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first; handing it to their agent always asks. Undo keeps the old values.",
   input: z
     .object({
       changes: z.array(change).min(1).max(MAX_BATCH),
@@ -499,8 +506,21 @@ export const updateTasks = defineCapability({
         parent,
         scope,
         occurrence,
+        agent,
         ...fields
       } = c;
+      if (agent) {
+        await handToAgent(ctx, row, review, done);
+        lastTeam = row.team_id;
+        if (
+          !Object.keys(fields).length &&
+          team === undefined &&
+          project === undefined &&
+          parent === undefined &&
+          !skip
+        )
+          continue;
+      }
       if (skip) {
         if (
           destination(ctx, row.team_id, "W2", [], { owner: row }) === "review"
@@ -623,13 +643,53 @@ export const updateTasks = defineCapability({
       review,
       reviewSummary:
         review.length === 1
-          ? `Change “${cleanTitle(String(review[0].title))}”`
+          ? review[0].type === "task.hand"
+            ? `Hand “${cleanTitle(String(review[0].title))}” to ${await agentNameOf(db, ctx.principal.user.id)}`
+            : `Change “${cleanTitle(String(review[0].title))}”`
           : `Change ${review.length} tasks and events`,
       undo,
       teamId: lastTeam,
     });
   },
 });
+
+/**
+ * Hand a task to the person's own agent (W3). Only the person does it
+ * directly; an outside agent's hand-over spends Orbyn's hosted assistant,
+ * so it always waits for them in Review, and the assistant itself works on
+ * a task rather than handing it to itself.
+ */
+async function handToAgent(
+  ctx: CapabilityContext,
+  row: ItemRow,
+  review: ReviewChangeInput[],
+  done: DoneEntry[],
+) {
+  if (ctx.principal.via === "assistant")
+    throw new CapabilityError(
+      "INVALID",
+      "You are the person's agent: work on the task yourself instead of handing it over.",
+    );
+  if (row.kind !== "task")
+    throw new CapabilityError("INVALID", "Only tasks can be handed over.");
+  // Checks the connection may change the task at all (else NOT_FOUND or READ_ONLY).
+  const where = destination(ctx, row.team_id, "W2", [], { owner: row });
+  if (ctx.principal.via === "session" && where === "direct") {
+    const item = await handTaskToAgent(
+      dbOf(ctx),
+      actorOf(ctx.principal),
+      row.id,
+    );
+    done.push(itemEntry(item as unknown as ItemRow, "Handed to the agent"));
+    return;
+  }
+  review.push({
+    type: "task.hand",
+    item_id: row.id,
+    title: row.title,
+    team_id: row.team_id,
+  });
+}
 
 /**
  * Changes one occurrence of a repeating item ("this"), or it and every later

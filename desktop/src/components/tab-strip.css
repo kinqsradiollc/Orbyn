@@ -1,0 +1,101 @@
+/* Tabs (W4): a strip under the top bar, pinned with it while the page
+   scrolls. Pinned tabs are icons on the left; the rest share the width and
+   clip their names. */
+.tab-strip {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 4px 35px;
+  border-bottom: 1px solid var(--border);
+  background: var(--color-sunken);
+}
+.tab-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.tab-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 1 200px;
+  min-width: 72px;
+  height: 32px;
+  padding: 0 4px 0 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+}
+.tab-item:hover {
+  background: var(--color-hover);
+}
+.tab-item.is-active {
+  border-color: var(--border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.tab-item.is-pinned {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 0;
+}
+.tab-item.is-dragging {
+  opacity: 0.5;
+}
+/* Where a dragged tab will land. */
+.tab-item.is-over {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+.tab-main {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.tab-item.is-pinned .tab-main {
+  padding: 0 10px;
+}
+.tab-main svg {
+  flex-shrink: 0;
+}
+.tab-main:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+.tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-item .icon-button {
+  flex-shrink: 0;
+  padding: 3px;
+}
+/* ⋯ shows on the tab in front and on the one under the pointer. */
+.tab-more {
+  visibility: hidden;
+}
+.tab-item.is-active .tab-more,
+.tab-item:hover .tab-more {
+  visibility: visible;
+}
+@media (max-width: 899px) {
+  .tab-strip {
+    display: none;
+  }
+}

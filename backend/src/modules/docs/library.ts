@@ -8,6 +8,7 @@ import { requireTeam } from "../../lib/teams.js";
 import { audit } from "../../lib/audit.js";
 import { announceDocChange } from "./live.js";
 import { TAG_IN_SPACE, checkLinks, readDoc, requireDoc } from "./service.js";
+import { followFolder, lockTree } from "./tree.js";
 import { actAs } from "../../lib/actor.js";
 
 /**
@@ -131,18 +132,27 @@ export async function libraryRoutes(app: FastifyInstance) {
               [id, b.archived],
             );
           if (b.folder_id === undefined) return null;
+          await lockTree(db, doc);
           // Filing a page is an edit like moving it alone: a new version.
-          return (
+          // It leaves a parent filed elsewhere, unless that parent is being
+          // moved with it (W5); pages inside it follow it.
+          const version =
             (
               await db.query<{ version: number }>(
                 `UPDATE docs SET folder_id = $2, in_uploads = false,
+                      parent_id = CASE
+                        WHEN parent_id = ANY($3::uuid[]) OR EXISTS (
+                          SELECT 1 FROM docs p WHERE p.id = docs.parent_id
+                             AND p.folder_id IS NOT DISTINCT FROM $2::uuid)
+                        THEN parent_id END,
                       version = version + 1, updated_at = now()
                 WHERE id = $1 AND folder_id IS DISTINCT FROM $2
                 RETURNING version`,
-                [id, b.folder_id],
+                [id, b.folder_id, b.ids],
               )
-            ).rows[0]?.version ?? null
-          );
+            ).rows[0]?.version ?? null;
+          await followFolder(db, id, b.folder_id);
+          return version;
         });
         done.push(id);
         if (version !== null) changed.push({ id, version });

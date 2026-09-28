@@ -116,6 +116,7 @@ import {
 } from "./write.js";
 import { applyDirect } from "./direct.js";
 import { historyList, isHistoryList } from "./history-lists.js";
+import { coverArg, iconArg, iconValue, seeCoverPicture } from "./looks.js";
 import {
   ORGANIZE_MORE,
   organizeMore,
@@ -140,7 +141,7 @@ export const updateProjectCapability = defineCapability({
   name: "update_project",
   title: "Change a project",
   description:
-    "Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).",
+    "Changes a project's name, summary, status (active, done, archived), deadline, main page, cover picture or icon; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).",
   input: z
     .object({
       project: z.string().trim().min(1).max(300),
@@ -199,6 +200,8 @@ export const updateProjectCapability = defineCapability({
           "No id: add (name, due_on YYYY-MM-DD). id: change or remove. tasks: the project's tasks to put in it.",
         ),
       assistant: z.enum(["off", "on"]).optional(),
+      cover: coverArg,
+      icon: iconArg,
       client_ref: clientRefInput,
     })
     .strict(),
@@ -233,8 +236,10 @@ export const updateProjectCapability = defineCapability({
         status: string;
         deadline: Date | null;
         doc_id: string | null;
+        cover_file_id: string | null;
+        icon: string | null;
       }>(
-        "SELECT name, summary, status, deadline, doc_id FROM projects WHERE id = $1",
+        "SELECT name, summary, status, deadline, doc_id, cover_file_id, icon FROM projects WHERE id = $1",
         [project.id],
       )
     ).rows[0];
@@ -280,6 +285,11 @@ export const updateProjectCapability = defineCapability({
     if (a.deadline !== undefined) patch.deadline = a.deadline;
     if (docTarget !== undefined) patch.doc_id = docTarget;
     if (nextStages) patch.stages = nextStages;
+    // Its cover and icon (W6).
+    if (a.cover !== undefined)
+      patch.cover_file_id =
+        a.cover === null ? null : await seeCoverPicture(ctx, a.cover);
+    if (a.icon !== undefined) patch.icon = iconValue(a.icon);
 
     const done: DoneEntry[] = [];
     const review: ReviewChangeInput[] = [];
@@ -312,6 +322,8 @@ export const updateProjectCapability = defineCapability({
             status: current.status,
             deadline: current.deadline?.toISOString() ?? null,
             doc_id: current.doc_id,
+            cover_file_id: current.cover_file_id,
+            icon: current.icon,
           },
           stages: nextStages ? stages : null,
         });
@@ -1145,7 +1157,7 @@ export const organize = defineCapability({
   name: "organize",
   title: "Organise pages, fields and teams",
   description:
-    "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.",
+    'Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover, icon), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team\'s is asked first). nest (id: page; to: the page it goes inside, same space, or "top"; position?: 0 first among the pages there): a page inside a page takes its folder, loops refused. Deleting goes through propose_changes.',
   input: z
     .object({
       changes: z
@@ -1186,6 +1198,9 @@ export const organize = defineCapability({
               person: idField.optional(),
               role: z.enum(TEAM_ROLES).optional(),
               minutes: z.number().int().min(30).max(2400).nullable().optional(),
+              cover: coverArg,
+              icon: iconArg,
+              position: z.number().int().min(0).max(10_000).optional(),
             })
             .strict(),
         )

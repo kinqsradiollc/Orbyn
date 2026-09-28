@@ -118,6 +118,8 @@ export const COVERED: Record<string, string[]> = {
   "DELETE /items/:id": ["propose_changes"],
   "POST /items/:id/steps": ["edit_checklist"],
   "PUT /items/:id/steps/:stepId": ["edit_checklist"],
+  // W3: handing a task to the person's own agent (always through Review).
+  "POST /items/:id/agent": ["update_tasks"],
   // The toolsets (A5): every route a signed-in person uses, reachable
   // through a tool (writes through the same services as these routes).
   "GET /docs/:id/versions/:version/changes": ["get_history"],
@@ -273,7 +275,7 @@ export const COVERED: Record<string, string[]> = {
   "POST /planner/plans/:id/apply": ["schedule_sessions"],
   "GET /planner/plans/:id/stale": ["schedule_sessions"],
   "POST /docs": ["create_doc"],
-  "PUT /docs/:id": ["edit_doc", "link"],
+  "PUT /docs/:id": ["edit_doc", "link", "organize"],
   "POST /docs/:id/suggestions": ["edit_doc"],
   "DELETE /docs/:id": ["propose_changes"],
   "POST /docs/:id/versions/:version/restore": ["propose_changes"],
@@ -326,6 +328,10 @@ export const COVERED: Record<string, string[]> = {
   "POST /docs/:id/extract": ["organize"],
   "POST /docs/:id/merge": ["organize"],
   "PUT /docs/:id/aliases": ["organize"],
+  // A page's cover and icon (W6): organize "look".
+  "PUT /docs/:id/look": ["organize"],
+  // Home's "How did today go?" (W1): a line under Reflection on the agenda.
+  "POST /me/home/reflection": ["edit_doc", "append_doc"],
   "GET /docs/:id/folds": ["fetch"],
   "PUT /docs/:id/folds": ["organize"],
   "DELETE /docs/:id/sources/:sourceId": ["organize"],
@@ -497,6 +503,10 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/2fa/setup": "sign_in",
   "POST /me/agent-keys": "credentials",
   "GET /me/agents": "credentials",
+  // W2/W3: the board's agent lanes, and taking a task back from the
+  // person's agent (it stops a hosted assistant run).
+  "GET /me/agent-work": "assistant_control",
+  "DELETE /items/:id/agent": "assistant_control",
   "DELETE /me/agents/:id": "credentials",
   "GET /me/agents/:id/activity": "credentials",
   "POST /me/agents/:id/restore": "credentials",
@@ -578,10 +588,15 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /docs/files/:id": "file_bytes",
   "DELETE /docs/files/:id": "file_bytes",
   "GET /files/usage": "file_bytes",
+  // Your pictures, to pick a cover from (W6).
+  "GET /me/pictures": "file_bytes",
   // D5: later page, navigation and mobile features.
   "GET /me/prefs": "navigation",
   "PUT /me/prefs": "navigation",
   "DELETE /me/prefs": "navigation",
+  // Home's panels in one read (W1); agents read goals, routines and today
+  // with manage_goals, manage_routines and get_today.
+  "GET /me/home": "navigation",
   "GET /starred": "navigation",
   "GET /links/map": "connections_map",
   "PUT /docs/:id/archive": "library",

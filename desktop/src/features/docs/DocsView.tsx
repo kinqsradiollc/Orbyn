@@ -23,6 +23,8 @@ import {
   ArchiveRestore,
   Tag as TagIcon,
   X,
+  Brain,
+  Sparkles,
 } from "lucide-react";
 import {
   agendaDay,
@@ -55,6 +57,13 @@ import { MakeCardsDialog } from "../study/StudyView";
 import { PageTemplatesDialog } from "./PageTemplates";
 import { PublishDialog } from "../publish/PublishDialog";
 import { announceStars } from "../../app/prefs";
+import {
+  TreeFolder,
+  TreeMoveMenu,
+  TreePages,
+  useTreeOpen,
+  type TreeMoveTo,
+} from "./DocsTree";
 import "./docs.css";
 
 const when = (iso: string) => {
@@ -100,6 +109,15 @@ export function DocsView({
   openTemplates?: number;
 }) {
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
+  /** Memory and Agent notes, for their folders in the library's tree. */
+  const [memoryDocs, setMemoryDocs] = useState<DocSummary[]>([]);
+  const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
+  const tree = useTreeOpen();
+  /** A page whose "Move to…" is open, from its ⋯ in the tree. */
+  const [treeMoving, setTreeMoving] = useState<{
+    doc: DocSummary;
+    anchor: DOMRect;
+  } | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [stars, setStars] = useState<Favourite[]>([]);
   /** null = everything; a folder id = that folder; "none" = unfiled. */
@@ -307,6 +325,14 @@ export function DocsView({
     void client.listFolders().then(setFolders, () => setFolders([]));
     void client.listTrash().then(setTrash, () => {});
     void client.listFavourites().then(setStars, () => setStars([]));
+    if (!fixedKind) {
+      void client
+        .listDocs({ kind: "memory" })
+        .then(setMemoryDocs, () => setMemoryDocs([]));
+      void client
+        .listDocs({ kind: "agent" })
+        .then(setAgentDocs, () => setAgentDocs([]));
+    }
     return client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
       (rows) => {
         setDocs(rows);
@@ -664,9 +690,9 @@ export function DocsView({
   const fileIn = async (doc: DocSummary, folderId: string) => {
     setBusy(true);
     try {
-      const full = await client.getDoc(doc.id);
-      const saved = await client.updateDoc(doc.id, {
-        version: full.version,
+      // To the folder's top level: out of any page it was inside (W5).
+      const saved = await client.moveDoc(doc.id, {
+        parent_id: null,
         folder_id: folderId || null,
       });
       setFiling(null);
@@ -677,6 +703,7 @@ export function DocsView({
               ? {
                   ...d,
                   folder_id: saved.folder_id,
+                  parent_id: saved.parent_id,
                   in_uploads: false,
                   updated_at: saved.updated_at,
                 }
@@ -728,7 +755,8 @@ export function DocsView({
       if (!id) return;
       e.preventDefault();
       const doc = (docs ?? []).find((d) => d.id === id);
-      if (!doc || (doc.folder_id ?? "") === folderId) return;
+      if (!doc || ((doc.folder_id ?? "") === folderId && !doc.parent_id))
+        return;
       const folder = folders.find((f) => f.id === folderId);
       if (folder && (folder.team_id ?? null) !== (doc.team_id ?? null)) {
         toast({
@@ -777,6 +805,117 @@ export function DocsView({
     .filter((f) =>
       f.name.toLocaleLowerCase().includes(moveQuery.trim().toLocaleLowerCase()),
     );
+  // ---- the library's tree (W5) ----
+  const everyPage = [...(docs ?? []), ...memoryDocs, ...agentDocs];
+  const unfiled = (docs ?? []).filter(
+    (d) => !d.folder_id && d.kind !== "agenda",
+  );
+  const writable = (doc: DocSummary) =>
+    !canWriteDoc || canWriteDoc(doc.team_id);
+  /** Move a page in the tree, then read the library again. */
+  const moveInTree = (doc: DocSummary, to: TreeMoveTo) => {
+    setBusy(true);
+    setTreeMoving(null);
+    client
+      .moveDoc(doc.id, to)
+      .then((saved) => {
+        if (saved.parent_id) tree.show(saved.parent_id);
+        return load();
+      })
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
+  /** Rename a page from the tree, in place. */
+  const renameInTree = (doc: DocSummary, title: string) => {
+    setBusy(true);
+    client
+      .getDoc(doc.id)
+      .then((full) =>
+        client.updateDoc(doc.id, { title, version: full.version }),
+      )
+      .then((saved) => {
+        setDocs(
+          (all) =>
+            all?.map((d) => (d.id === doc.id ? { ...d, title } : d)) ?? all,
+        );
+        // The open page takes the new name (and version) afresh.
+        if (open?.id === saved.id) {
+          setOpen(null);
+          window.setTimeout(() => setOpen(saved), 0);
+        }
+        return load();
+      })
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
+  /** A new page inside a page, opened to write in. */
+  const newInside = (parent: DocSummary) => {
+    setBusy(true);
+    client
+      .createDoc({
+        title: "",
+        kind:
+          parent.kind === "memory" || parent.kind === "agent"
+            ? parent.kind
+            : "doc",
+        team_id: parent.team_id,
+        parent_id: parent.id,
+        content: [{ type: "paragraph", text: "" }],
+      })
+      .then((doc) => {
+        tree.show(parent.id);
+        setOpen(doc);
+        void load();
+      })
+      .catch(report)
+      .finally(() => setBusy(false));
+  };
+  const treePages = (pages: DocSummary[]) => (
+    <TreePages
+      pages={pages}
+      all={everyPage}
+      openId={open?.id ?? null}
+      busy={busy}
+      tree={tree}
+      canWrite={writable}
+      onOpen={openPage}
+      onMove={moveInTree}
+      onRename={renameInTree}
+      onNewInside={newInside}
+      onMoveMenu={(doc, anchor) => setTreeMoving({ doc, anchor })}
+    />
+  );
+  /** Memory's or Agent notes' folder: a note dropped there goes to its top. */
+  const libraryDrop = (kind: "memory" | "agent") => ({
+    className: dropFolder === kind ? "is-drop" : undefined,
+    onDragOver: (e: DragEvent) => {
+      if (!carries(e, DOC_MIME)) return;
+      e.preventDefault();
+      if (dropFolder !== kind) setDropFolder(kind);
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDropFolder((f) => (f === kind ? null : f));
+    },
+    onDrop: (e: DragEvent) => {
+      setDropFolder(null);
+      const id = e.dataTransfer.getData(DOC_MIME);
+      const doc = everyPage.find((d) => d.id === id);
+      if (!doc) return;
+      e.preventDefault();
+      if (doc.kind !== kind) {
+        toast({
+          text:
+            kind === "memory"
+              ? "Only Memory notes go in Memory."
+              : "Only Agent notes go in Agent notes.",
+          tone: "warn",
+        });
+        return;
+      }
+      if (doc.parent_id) moveInTree(doc, { parent_id: null });
+    },
+  });
   const pageLink = (doc: DocSummary) => (
     <button
       key={doc.id}
@@ -1007,55 +1146,72 @@ export function DocsView({
             {folders
               .filter((f) => !f.archived_at)
               .sort((a, b) => a.name.localeCompare(b.name))
-              .map((folder) => (
-                <details key={folder.id} className="docs-nav-folder">
-                  <summary {...folderDrop(folder.id)}>
-                    <ChevronRight size={14} />
-                    <FolderIcon size={16} />
-                    <span>{folder.name}</span>
-                  </summary>
-                  <div className="docs-nav-children">
+              .map((folder) => {
+                const inside = (docs ?? []).filter(
+                  (d) => d.folder_id === folder.id,
+                );
+                return (
+                  <TreeFolder
+                    key={folder.id}
+                    id={`folder:${folder.id}`}
+                    name={folder.name}
+                    count={inside.length}
+                    tree={tree}
+                    drop={folderDrop(folder.id)}
+                  >
                     <button
                       aria-current={
                         !open && folderFilter === folder.id ? "page" : undefined
                       }
                       onClick={() => select(folder.id)}
                     >
-                      View folder{" "}
-                      <span className="folder-n">
-                        {
-                          (docs ?? []).filter((d) => d.folder_id === folder.id)
-                            .length
-                        }
-                      </span>
+                      View folder
                     </button>
-                    {(docs ?? [])
-                      .filter((d) => d.folder_id === folder.id)
-                      .sort((a, b) => a.title.localeCompare(b.title))
-                      .map(pageLink)}
-                  </div>
-                </details>
-              ))}
-            <details className="docs-nav-folder">
-              <summary {...folderDrop("")}>
-                <ChevronRight size={14} />
-                <FolderIcon size={16} />
-                <span>Unfiled</span>
-              </summary>
-              <div className="docs-nav-children">
-                <button
-                  aria-current={
-                    !open && folderFilter === "none" ? "page" : undefined
-                  }
-                  onClick={() => select("none")}
-                >
-                  View unfiled
-                </button>
-                {(docs ?? [])
-                  .filter((d) => !d.folder_id && d.kind !== "agenda")
-                  .map(pageLink)}
-              </div>
-            </details>
+                    {treePages(inside)}
+                  </TreeFolder>
+                );
+              })}
+            <TreeFolder
+              id="folder:unfiled"
+              name="Unfiled"
+              count={unfiled.length}
+              tree={tree}
+              drop={folderDrop("")}
+            >
+              <button
+                aria-current={
+                  !open && folderFilter === "none" ? "page" : undefined
+                }
+                onClick={() => select("none")}
+              >
+                View unfiled
+              </button>
+              {treePages(unfiled)}
+            </TreeFolder>
+            {memoryDocs.length > 0 && (
+              <TreeFolder
+                id="folder:memory"
+                icon={Brain}
+                name="Memory"
+                count={memoryDocs.length}
+                tree={tree}
+                drop={libraryDrop("memory")}
+              >
+                {treePages(memoryDocs)}
+              </TreeFolder>
+            )}
+            {agentDocs.length > 0 && (
+              <TreeFolder
+                id="folder:agent"
+                icon={Sparkles}
+                name="Agent notes"
+                count={agentDocs.length}
+                tree={tree}
+                drop={libraryDrop("agent")}
+              >
+                {treePages(agentDocs)}
+              </TreeFolder>
+            )}
             <button
               className="docs-nav-trash"
               aria-current={!open && archivedOnly ? "page" : undefined}
@@ -1083,7 +1239,7 @@ export function DocsView({
         )}
         {fixedKind && (
           <div className="docs-nav-children is-flat">
-            {(docs ?? []).map(pageLink)}
+            {treePages(docs ?? [])}
             {docs?.length === 0 && (
               <p className="muted docs-nav-empty">No notes yet</p>
             )}
@@ -1667,6 +1823,17 @@ export function DocsView({
               )}
           </div>
         </Popover>
+      )}
+      {treeMoving && (
+        <TreeMoveMenu
+          doc={treeMoving.doc}
+          all={everyPage}
+          folders={folders}
+          anchor={treeMoving.anchor}
+          busy={busy}
+          onPick={(to) => moveInTree(treeMoving.doc, to)}
+          onClose={() => setTreeMoving(null)}
+        />
       )}
       {tagging && (
         <Popover

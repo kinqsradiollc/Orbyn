@@ -65,6 +65,7 @@ import { LinkedHere } from "./links";
 import { ConnectionsMap } from "./ConnectionsMap";
 import { FieldsSection } from "../views/FieldsSection";
 import { AliasesField } from "./AliasesField";
+import { CoverImage, LookIconView } from "../../components/Look";
 import { deviceTimeZone } from "../../lib/planning";
 
 /** "Fri 16 Oct, 5 pm", or just the day. */
@@ -1015,8 +1016,15 @@ export function ProjectsSheet({
             </View>
           ) : open ? (
             <View style={styles.page}>
+              {/* Its cover and icon (W6), set on the web. */}
+              <CoverImage
+                fileId={open.cover_file_id}
+                height={120}
+                style={{ borderRadius: radii.input, marginBottom: 12 }}
+              />
               {draft === null ? (
                 <View style={styles.titleRow}>
+                  <LookIconView icon={open.icon} size={24} />
                   <Text style={styles.title}>{open.name}</Text>
                   <MoreMenu
                     label="Project options"

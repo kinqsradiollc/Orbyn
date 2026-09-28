@@ -9,6 +9,9 @@ import {
   docFoldsInput,
   docMergeInput,
   fail,
+  lookInput,
+  type Look,
+  type LookInput,
   linkMarkdown,
   newBlockId,
   plainText,
@@ -23,12 +26,17 @@ import {
   type Db,
   type Queryable,
 } from "../../db/pool.js";
-import { allowPageFiles } from "../../lib/page-file-access.js";
+import {
+  allowPageFiles,
+  coverLetGo,
+  requireCoverPicture,
+} from "../../lib/page-file-access.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { announceDocChange } from "./live.js";
 import { readableLinks } from "../links/privacy.js";
 import {
+  announceDocs,
   COLUMNS,
   JOINS,
   LINKED,
@@ -428,6 +436,48 @@ export async function setAliases(
 }
 
 /**
+ * A page's cover and icon (W6), in `db`'s transaction. Like its other
+ * names, they aren't the page's words: its version stays. Whoever may
+ * change the page may change them; a new cover is a picture they can see.
+ * Returns the look it had before, for undo.
+ */
+export async function setLook(
+  db: Db,
+  u: UserRow,
+  id: string,
+  look: LookInput,
+): Promise<{ version: number; before: Look; after: Look }> {
+  const doc = await requireDoc(db, id, u, "items:write");
+  const before = (
+    await db.query<Look>("SELECT cover_file_id, icon FROM docs WHERE id = $1", [
+      id,
+    ])
+  ).rows[0];
+  if (look.cover_file_id && look.cover_file_id !== before.cover_file_id)
+    await requireCoverPicture(db, u.id, look.cover_file_id);
+  const after = (
+    await db.query<Look>(
+      `UPDATE docs SET
+         cover_file_id = CASE WHEN $2::boolean THEN $3::uuid ELSE cover_file_id END,
+         icon = CASE WHEN $4::boolean THEN $5::text ELSE icon END
+       WHERE id = $1 RETURNING cover_file_id, icon`,
+      [
+        id,
+        look.cover_file_id !== undefined,
+        look.cover_file_id ?? null,
+        look.icon !== undefined,
+        look.icon ?? null,
+      ],
+    )
+  ).rows[0];
+  if (before.cover_file_id !== after.cover_file_id)
+    await coverLetGo(db, before.cover_file_id);
+  // Lists and the library show icons: they read again.
+  await announceDocs(db, doc.user_id, doc.team_id, id);
+  return { version: doc.version, before, after };
+}
+
+/**
  * The headings `userId` folded on a page (EDT-14), set as a whole (an empty
  * list unfolds all). Returns what was folded before, for undo.
  */
@@ -635,6 +685,23 @@ export async function docStructureRoutes(app: FastifyInstance) {
    * they aren't the page's words, so its version stays and open editors are
    * only told to read them again.
    */
+  /**
+   * A page's cover and icon (W6). Its version stays; open editors are told
+   * to read them again, as for its other names.
+   */
+  app.put("/docs/:id/look", async (r): Promise<Look> => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const look = lookInput.parse(r.body ?? {});
+    const { version, after } = await transaction((db) =>
+      setLook(db, u, id, look),
+    );
+    await announceDocChange(pool, id, version, "look", { tags: true }).catch(
+      () => {},
+    );
+    return after;
+  });
+
   app.put("/docs/:id/aliases", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);

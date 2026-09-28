@@ -95,6 +95,7 @@ import {
   type CommandMemory,
 } from "../app/commands";
 import { openPageCommands } from "../app/page-commands";
+import { openInNewTab, wantsNewTab } from "../app/tabs";
 import { usePrefs } from "../app/prefs";
 import {
   deviceTimeZone,
@@ -1174,7 +1175,21 @@ export function CommandBar({
                       className={n === current ? "active" : ""}
                       onMouseEnter={() => setActive(n)}
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={c.run}
+                      onClick={(e) => {
+                        // ⌘-click a page or project: a new tab (W4).
+                        const t = c.target;
+                        if (t && t.kind !== "task" && wantsNewTab(e)) {
+                          onClose();
+                          openInNewTab({ kind: t.kind, id: t.id });
+                        } else c.run();
+                      }}
+                      onAuxClick={(e) => {
+                        const t = c.target;
+                        if (!t || t.kind === "task" || !wantsNewTab(e)) return;
+                        e.preventDefault();
+                        onClose();
+                        openInNewTab({ kind: t.kind, id: t.id });
+                      }}
                     >
                       <Icon size={15} aria-hidden="true" />
                       <span className="command-label">{c.label}</span>

@@ -169,11 +169,20 @@ export const SWEEP_RULES: SweepRule[] = [
     key: "page_files",
     label: "Pictures and files in pages",
     detail:
-      "Files no page shows any more (30 days after their line was removed, or once their page is deleted for good), and uploads that never finished.",
+      "Files no page shows any more and no cover wears (30 days after their line was removed, or once their page is deleted for good), and uploads that never finished.",
     table: "page_files",
     where: `(status <> 'ready' AND created_at < now() - interval '1 day')
          OR (NOT EXISTS (SELECT 1 FROM page_file_refs r
                           WHERE r.file_id = page_files.id)
+             -- A cover (W6) or a Home hub's cover (W1) is a use too.
+             AND NOT EXISTS (SELECT 1 FROM docs cd
+                              WHERE cd.cover_file_id = page_files.id)
+             AND NOT EXISTS (SELECT 1 FROM projects cp
+                              WHERE cp.cover_file_id = page_files.id)
+             AND NOT EXISTS (SELECT 1 FROM account_prefs ap
+                              WHERE ap.user_id = page_files.user_id
+                                AND ap.home -> 'hubs' @> jsonb_build_array(
+                                  jsonb_build_object('cover_file_id', page_files.id::text)))
              AND (doc_id IS NULL
                OR coalesce(unused_since, created_at)
                     < now() - interval '30 days'))`,

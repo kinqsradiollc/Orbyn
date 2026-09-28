@@ -34,7 +34,7 @@ import { pool } from "../db/pool.js";
 import { announceTo } from "../modules/presence/live.js";
 import { savePrefs } from "../modules/planner/routines.js";
 import { restoreSubscription } from "../modules/planner/subscriptions.js";
-import { setFolds } from "../modules/docs/structure.js";
+import { setFolds, setLook } from "../modules/docs/structure.js";
 import { setInstructions } from "../modules/agent-context/service.js";
 import { forgetMemory } from "../modules/memory/service.js";
 import {
@@ -121,6 +121,8 @@ export type UndoOp =
       version: number;
       folder_id?: string | null;
       project_id?: string | null;
+      /** The page it sat inside (W5; null: the top level). */
+      parent_id?: string | null;
     }
   /** A page it made: move it to Trash. */
   | { op: "doc.trash"; doc_id: string; version: number }
@@ -170,6 +172,9 @@ export type UndoOp =
         status: string;
         deadline: string | null;
         doc_id: string | null;
+        /** Its cover and icon (W6); left out by changes made before them. */
+        cover_file_id?: string | null;
+        icon?: string | null;
       };
       stages: { id: string; name: string }[] | null;
     }
@@ -254,6 +259,13 @@ export type UndoOp =
   | { op: "originals.set"; keep: boolean }
   /** A page's other names it changed (H6b): put them back. */
   | { op: "aliases.set"; doc_id: string; aliases: string[] }
+  /** A page's cover and icon (W6): as they were. */
+  | {
+      op: "look.set";
+      doc_id: string;
+      cover_file_id: string | null;
+      icon: string | null;
+    }
   /** The headings the person had folded on a page (H6b). */
   | { op: "folds.set"; doc_id: string; block_ids: string[] }
   /** A field it made (H6b): remove it (and any values set since). */
@@ -507,6 +519,7 @@ export async function runUndo(
           version: doc.version,
           ...(op.folder_id !== undefined ? { folder_id: op.folder_id } : {}),
           ...(op.project_id !== undefined ? { project_id: op.project_id } : {}),
+          ...(op.parent_id !== undefined ? { parent_id: op.parent_id } : {}),
         });
         carry.set(`doc:${op.doc_id}`, saved.version);
         after.push(() =>
@@ -664,6 +677,10 @@ export async function runUndo(
           status: op.fields.status as never,
           deadline: op.fields.deadline,
           doc_id: op.fields.doc_id,
+          ...(op.fields.cover_file_id !== undefined
+            ? { cover_file_id: op.fields.cover_file_id }
+            : {}),
+          ...(op.fields.icon !== undefined ? { icon: op.fields.icon } : {}),
           ...(op.stages ? { stages: op.stages } : {}),
         });
         break;
@@ -832,6 +849,12 @@ export async function runUndo(
         ]);
         break;
       }
+      case "look.set":
+        await setLook(db, u, op.doc_id, {
+          cover_file_id: op.cover_file_id,
+          icon: op.icon,
+        });
+        break;
       case "folds.set":
         await setFolds(db, u.id, op.doc_id, op.block_ids);
         break;

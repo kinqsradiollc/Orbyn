@@ -365,6 +365,14 @@ export type Doc = {
   /** The tags on this page, from the same vocabulary tasks use. */
   tags?: { id: string; name: string; color: string }[];
   folder_id: string | null;
+  /**
+   * The page this one sits inside (W5), or null at its folder's top level.
+   * A parent in Trash (or out of reach) isn't listed: its pages then show
+   * at the top level until it comes back.
+   */
+  parent_id?: string | null;
+  /** Its place among the pages beside it, once someone has ordered them. */
+  sort_order?: number | null;
   version: number;
   created_at: string;
   updated_at: string;
@@ -410,6 +418,10 @@ export type Doc = {
   archived_at?: string | null;
   /** Archived, itself or through its folder: left out of lists and search. */
   archived?: boolean;
+  /** A cover picture from the file store (W6), or null. */
+  cover_file_id?: string | null;
+  /** An emoji or "icon:<name>" (W6), or null. */
+  icon?: string | null;
 };
 
 /** A note an event has (`GET /docs/event-notes`): enough to mark the event. */

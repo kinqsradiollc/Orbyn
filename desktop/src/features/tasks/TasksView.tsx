@@ -28,6 +28,18 @@ import {
   isBoardGroup,
   BOARD_GROUPS,
   TASK_GROUP_LABELS,
+  BOARD_FILTERS,
+  BOARD_FILTER_LABELS,
+  BOARD_RANGES,
+  BOARD_RANGE_LABELS,
+  boardFilterCounts,
+  inBoardRange,
+  isAgentLane,
+  matchesBoardFilter,
+  OWNER_REVIEW,
+  type BoardFilter,
+  type BoardRange,
+  type ReviewItem,
   type BoardGroupBy,
   type ColumnChange,
   type GroupNames,
@@ -58,6 +70,7 @@ import {
   type Size,
 } from "../../lib/planning";
 import { TaskBoard } from "./TaskBoard";
+import { DateField } from "../../components/DateField";
 
 type Props = {
   items: Item[];
@@ -76,7 +89,14 @@ type Props = {
   onNewItem?: (prefill: Partial<ItemInput>) => void;
   /** A card dragged to another column: its list, priority, assignee or tags. */
   onChangeItem?: (item: Item, change: ColumnChange) => void;
+  /** Your agent's chosen name, for its lane and badges. */
+  agentName?: string;
+  /** Open a proposal in Review (the "Who's on it" board's Review lane). */
+  onOpenReview?: (id: string) => void;
 };
+
+/** How often the list looks again while your agent works on a task (its progress line). */
+const AGENT_POLL_MS = 20_000;
 
 type Filter = Status | "all";
 type Layout = "list" | "board";
@@ -91,6 +111,7 @@ const LIST_GROUPS: Group[] = [
   "project",
   "due_week",
   "assignee",
+  "owner",
 ];
 
 const LAYOUT_KEY = "orbyn-tasks-layout";
@@ -246,6 +267,8 @@ export function TasksView({
   onChanged,
   onNewItem,
   onChangeItem,
+  agentName = "Orbyn",
+  onOpenReview,
 }: Props) {
   const { lists, tags } = usePlanning();
   const { feed } = usePlanned();
@@ -345,6 +368,44 @@ export function TasksView({
   const [assignee, setAssignee] = useState("any");
   /** On a phone the filters fold behind one button (see .filter-bar). */
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // "Who's on it" (W2): quick filters, a date range, connected agents' work
+  // and what waits in Review.
+  const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
+  const [range, setRange] = useState<BoardRange>({ kind: "all" });
+  const [agentWork, setAgentWork] = useState<
+    { grant_id: string; name: string; item_ids: string[] }[]
+  >([]);
+  const [reviewCards, setReviewCards] = useState<ReviewItem[]>([]);
+  const owners = layout === "board" && boardGroup === "owner";
+  const itemsKey = items
+    .map((i) => `${i.id}:${i.version}:${i.agent_state ?? ""}`)
+    .join();
+  useEffect(() => {
+    if (!owners) return;
+    let live = true;
+    client
+      .agentWork()
+      .then((work) => live && setAgentWork(work))
+      .catch(() => {});
+    client
+      .reviewInbox()
+      .then((inbox) => live && setReviewCards(inbox.pending))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [owners, itemsKey]);
+  // While your agent has work, its progress is looked at again every few seconds.
+  const agentBusy = items.some(
+    (i) => i.agent_state === "queued" || i.agent_state === "working",
+  );
+  useEffect(() => {
+    if (!agentBusy || !onChanged) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void onChanged();
+    }, AGENT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [agentBusy, onChanged]);
   const activeFilters = [due, priority, listId, tagId, size, assignee].filter(
     (v) => v !== "any",
   ).length;
@@ -426,8 +487,22 @@ export function TasksView({
     )
     .sort(sortBy(sort, now, items));
   const counts = statusCounts(matching);
-  const visible =
-    filter === "all" ? matching : matching.filter((i) => i.status === filter);
+  // Sessions per task, for the range's "planned" dates.
+  const plannedAt = new Map(
+    (feed?.tasks ?? []).map((t) => [
+      t.item_id,
+      t.sessions.map((x) => x.start_at),
+    ]),
+  );
+  const ranged = owners
+    ? matching.filter((i) => inBoardRange(i, range, now, plannedAt.get(i.id)))
+    : matching;
+  const boardCounts = boardFilterCounts(ranged, now, reviewCards.length);
+  const visible = owners
+    ? ranged.filter((i) => matchesBoardFilter(i, boardFilter, now))
+    : filter === "all"
+      ? matching
+      : matching.filter((i) => i.status === filter);
   const empty =
     query.trim() || active
       ? emptySearch
@@ -442,8 +517,9 @@ export function TasksView({
   // first that takes it: a late task planned today stays under Overdue).
   const open = visible.filter((i) => !isClosed(i.status));
   const taken = new Set<string>();
+  // Grouped by who's on it, every task stays in its lane.
   const pinned =
-    layout === "list"
+    layout === "list" && group !== "owner"
       ? [
           { id: "overdue" as const, label: "Overdue" },
           ...PINNABLE.filter((p) => pins.includes(p.id)),
@@ -472,6 +548,8 @@ export function TasksView({
     projects,
     userId,
     now,
+    agentName,
+    agents: agentWork,
   };
   /** The unpinned items split into titled groups (an item can sit in several tag groups). */
   const groups =
@@ -498,10 +576,10 @@ export function TasksView({
       : [];
   const targets =
     layout === "board"
-      ? boardColumns(items, boardGroup, names).map(({ key, title }) => ({
-          key,
-          title,
-        }))
+      ? boardColumns(items, boardGroup, names)
+          // Nothing is moved into Review or a connected agent's lane.
+          .filter((c) => c.key !== OWNER_REVIEW && !isAgentLane(c.key))
+          .map(({ key, title }) => ({ key, title }))
       : [];
   const moveCard = (item: Item, from: string, to: string) => {
     const result = dropChange(item, boardGroup, from, to, names);
@@ -900,22 +978,82 @@ export function TasksView({
           </button>
         )}
       </div>
-      <div className="filter-chips" role="group" aria-label="Filter by status">
-        {(["all", ...STATUSES] as Filter[]).map((f) => (
-          <button
-            key={f}
-            aria-pressed={filter === f}
-            className={
-              (filter === f ? "active " : "") + (f === "all" ? "" : "tone-" + f)
-            }
-            onClick={() => setFilter(f)}
+      {owners ? (
+        <div className="board-tools">
+          <div
+            className="filter-chips"
+            role="group"
+            aria-label="Show on the board"
           >
-            {f !== "all" && <i aria-hidden="true" />}
-            {f === "all" ? "All" : statusLabels[f]}
-            <span>{counts[f]}</span>
-          </button>
-        ))}
-      </div>
+            {BOARD_FILTERS.map((f) => (
+              <button
+                key={f}
+                aria-pressed={boardFilter === f}
+                className={boardFilter === f ? "active" : ""}
+                onClick={() => setBoardFilter(f)}
+              >
+                {BOARD_FILTER_LABELS[f]}
+                <span>{boardCounts[f]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="board-range">
+            <div className="segmented" role="group" aria-label="Dates">
+              {BOARD_RANGES.map((k) => (
+                <button
+                  key={k}
+                  aria-pressed={range.kind === k}
+                  className={range.kind === k ? "active" : ""}
+                  onClick={() => setRange((r) => ({ ...r, kind: k }))}
+                >
+                  {BOARD_RANGE_LABELS[k]}
+                </button>
+              ))}
+            </div>
+            {range.kind === "range" && (
+              <div className="board-range-days">
+                <DateField
+                  aria-label="From"
+                  value={range.from ?? ""}
+                  onChange={(e) =>
+                    setRange((r) => ({ ...r, from: e.target.value || null }))
+                  }
+                />
+                <DateField
+                  aria-label="To"
+                  value={range.to ?? ""}
+                  min={range.from ?? undefined}
+                  onChange={(e) =>
+                    setRange((r) => ({ ...r, to: e.target.value || null }))
+                  }
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="filter-chips"
+          role="group"
+          aria-label="Filter by status"
+        >
+          {(["all", ...STATUSES] as Filter[]).map((f) => (
+            <button
+              key={f}
+              aria-pressed={filter === f}
+              className={
+                (filter === f ? "active " : "") +
+                (f === "all" ? "" : "tone-" + f)
+              }
+              onClick={() => setFilter(f)}
+            >
+              {f !== "all" && <i aria-hidden="true" />}
+              {f === "all" ? "All" : statusLabels[f]}
+              <span>{counts[f]}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {moveError && (
         <div className="error" role="alert">
           {moveError}
@@ -927,7 +1065,7 @@ export function TasksView({
           their own list, team or parent task.
         </p>
       )}
-      {!visible.length ? (
+      {!visible.length && !owners ? (
         <EmptyState icon={ListTodo} title={empty.title} body={empty.body} />
       ) : layout === "board" ? (
         <TaskBoard
@@ -942,12 +1080,20 @@ export function TasksView({
           onOpen={onOpen}
           onMove={moveCard}
           onAdd={
-            onNewItem && boardGroup !== "assignee"
+            onNewItem && boardGroup !== "assignee" && boardGroup !== "owner"
               ? (key) => onNewItem(columnPrefill(boardGroup, key, names))
               : undefined
           }
           folded={folds}
           onToggleFold={toggleGroupFold}
+          reviewCards={owners ? reviewCards : []}
+          onOpenReview={onOpenReview}
+          agentName={agentName}
+          agentOf={(i) =>
+            i.assignee_id
+              ? undefined
+              : agentWork.find((a) => a.item_ids.includes(i.id))?.name
+          }
         />
       ) : (
         <>

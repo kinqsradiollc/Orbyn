@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Orbit, X } from "lucide-react";
+import { Orbit, Settings, X, type LucideIcon } from "lucide-react";
 import {
   dayZone,
   deadlineOf,
@@ -27,9 +27,14 @@ import { usePlanningData } from "../hooks/usePlanningData";
 import { PlanningContext } from "./planning";
 import { OPEN_LINK_EVENT } from "../features/docs/DocLinks";
 import {
+  activeTab,
   hasUnseenRelease,
+  HttpError,
+  placeOf,
   type ObjectRef,
   type StarredItem,
+  type TabAction,
+  type TabPlace,
 } from "@orbyn/core";
 import {
   deepLinkKey,
@@ -61,6 +66,7 @@ import {
   UpdateBanner,
 } from "../components/SystemBanners";
 import { PageHeading, Topbar } from "../components/Topbar";
+import { HomeSections, HomeTop } from "../features/overview/Home";
 import { ItemEditor } from "../components/ItemEditor";
 import { CommandBar } from "../components/CommandBar";
 import { Celebration } from "../components/Celebration";
@@ -89,7 +95,17 @@ import {
   RecentChangesDialog,
 } from "../features/changes/RecentChanges";
 import { PEEK_EVENT } from "../features/docs/DocLinks";
-import { openPageCommands } from "./page-commands";
+import { openPageCommands, watchOpenPage } from "./page-commands";
+import {
+  OPEN_TAB_EVENT,
+  PAGE_VIEWS,
+  setTabsShown,
+  useTabState,
+  useTabsEnabled,
+  useWideEnoughForTabs,
+  type TabRequest,
+} from "./tabs";
+import { TabStrip } from "../components/TabStrip";
 import { AuthPage } from "../features/auth/AuthPage";
 import {
   ForgotPasswordPage,
@@ -137,7 +153,7 @@ import type { AuthMode } from "../hooks/usePlanner";
 import { PublicInvitePage } from "../features/booking/PublicInvite";
 import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
-import type { View } from "./views";
+import { NAV, navName, type View } from "./views";
 import { ReviewView } from "../features/review/ReviewView";
 import { onOpenReview } from "../lib/review";
 import { onLive } from "../lib/live";
@@ -225,6 +241,26 @@ export function App() {
   }, [token]);
   usePresence(token, () => void refresh({ silent: true }));
   const [view, setView] = useState<View>("Overview");
+  /** The screen showing, for listeners that outlive a render. */
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  // Tabs (W4): on unless turned off on this device, and shown only in a
+  // window wide enough for them. Narrower, one screen shows, as before.
+  const tabsOn = useTabsEnabled();
+  const wideEnough = useWideEnoughForTabs();
+  // A window with one page alone (NAV-06) has no tabs.
+  const tabsLive = tabsOn && wideEnough && !pageWindowId;
+  const tabsLiveRef = useRef(tabsLive);
+  tabsLiveRef.current = tabsLive;
+  const tabs = useTabState();
+  useEffect(() => setTabsShown(tabsLive), [tabsLive]);
+  /**
+   * The thing a tab is opening (a page, project, view or chat): until it
+   * shows, what the screens say they show is someone else's.
+   */
+  const pendingPlace = useRef<(TabPlace & { since: number }) | null>(null);
+  /** Counts places shown from tabs, so each starts its screen afresh. */
+  const [shownSeq, setShownSeq] = useState(0);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   /** The occurrence being edited, when the editor opened from a repeating entry. */
@@ -259,12 +295,19 @@ export function App() {
   const [reviewPending, setReviewPending] = useState(0);
   /** A saved view to open (from the sidebar or a link), and the one open. */
   const [viewToOpen, setViewToOpen] = useState<string | null>(null);
+  /** Bumped by Home's goals and routines to open the assistant's Upcoming. */
+  const [upcomingAsked, setUpcomingAsked] = useState(0);
   const [shownView, setShownView] = useState<string | null>(null);
   /** Saved views pinned to the sidebar. */
   const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
+  /** Saved views' names, for their tabs. */
+  const [viewNames, setViewNames] = useState<Record<string, string>>({});
   const loadPinnedViews = useCallback(() => {
     client.listViews().then(
-      (views) => setPinnedViews(views.filter((v) => v.pinned)),
+      (views) => {
+        setPinnedViews(views.filter((v) => v.pinned));
+        setViewNames(Object.fromEntries(views.map((v) => [v.id, v.name])));
+      },
       () => {
         // The sidebar goes without pins until the next try.
       },
@@ -465,6 +508,15 @@ export function App() {
     if (!token || started.current) return;
     started.current = true;
     if (linked || pageWindowId) return;
+    // Tabs kept on this device open where they were instead.
+    if (tabsLive) {
+      const saved = tabs.ref.current;
+      const here = placeOf(activeTab(saved));
+      if (saved.tabs.length > 1 || here.view !== "Overview" || here.id) {
+        showPlace(here);
+        return;
+      }
+    }
     const start = startScreen();
     if (start === "agenda") setView("Agenda");
     else if (start === "tasks") setView("My tasks");
@@ -600,7 +652,8 @@ export function App() {
                       }
                     : token
                       ? {
-                          title: view + " · Orbyn",
+                          title:
+                            (view === "Overview" ? "Home" : view) + " · Orbyn",
                           description: app,
                           index: false,
                         }
@@ -835,7 +888,20 @@ export function App() {
   const changeItem = (i: Item, change: ColumnChange | Partial<ItemInput>) => {
     if (!guard(i)) return;
     void act(async () => {
-      await client.updateItem(i.id, { ...itemBody(i), ...change });
+      // Handing a task to your agent or taking it back (W3), and giving it
+      // to someone at the same time.
+      if ("agent" in change) {
+        const { agent, ...rest } = change;
+        const after =
+          agent === "hand"
+            ? await client.handTaskToAgent(i.id)
+            : await client.takeTaskBack(i.id);
+        if ("assignee_id" in rest)
+          await client.updateItem(i.id, {
+            ...itemBody(after),
+            assignee_id: rest.assignee_id ?? null,
+          });
+      } else await client.updateItem(i.id, { ...itemBody(i), ...change });
       await refresh();
     });
   };
@@ -886,6 +952,295 @@ export function App() {
     setPlanRequest(null);
     setBookingFocus(null);
   };
+
+  // ── Tabs (W4) ─────────────────────────────────────────────────────────
+  // Each tab is a screen and the thing open there. The app shows one place
+  // at a time as before; the active tab follows wherever it goes, and
+  // choosing a tab (or going back in one) shows that tab's place.
+
+  /** A screen says what it shows now: the active tab follows. */
+  const reportPlace = (place: TabPlace) => {
+    if (!tabsLiveRef.current) return;
+    const waiting = pendingPlace.current;
+    if (waiting) {
+      const same = waiting.view === place.view && waiting.id === place.id;
+      // Something else, while a tab's own thing is still on its way.
+      if (!same && Date.now() - waiting.since < 8000) return;
+      pendingPlace.current = null;
+    }
+    tabs.act({ type: "go", place });
+    if (place.id && place.title)
+      tabs.act({
+        type: "retitle",
+        view: place.view,
+        id: place.id,
+        title: place.title,
+      });
+  };
+
+  /** Show a tab's place: its screen, afresh, with its thing open. */
+  const showPlace = (place: TabPlace) => {
+    const next = place.view as View;
+    if (next !== view) planner.setError("");
+    setMobileNav(false);
+    setQuery("");
+    setPlanRequest(null);
+    setBookingFocus(null);
+    setShownSeq((n) => n + 1);
+    setView(next);
+    const id = place.id;
+    pendingPlace.current = id ? { ...place, since: Date.now() } : null;
+    const missed = () => {
+      // Gone or out of reach: the screen shows without it, quietly.
+      if (pendingPlace.current?.id === id) pendingPlace.current = null;
+    };
+    if (!id) {
+      // A tab on the assistant with no chat yet is a new chat.
+      if (next === "AI assistant" && assistant.activeChatId) assistant.reset();
+      return;
+    }
+    if (PAGE_VIEWS.includes(next))
+      void client.getDoc(id).then((doc) => {
+        setNoteBlockId(null);
+        setNoteDoc(doc);
+      }, missed);
+    else if (next === "Projects") setProjectToOpen(id);
+    else if (next === "Views") setViewToOpen(id);
+    else if (next === "AI assistant") {
+      if (assistant.activeChatId === id) pendingPlace.current = null;
+      else void assistant.openChat(id).catch(missed);
+    } else pendingPlace.current = null;
+  };
+
+  /** Change the tabs as the person asked, and show what came to the front. */
+  const tabAct = (action: TabAction) => {
+    if (!tabsLive) return;
+    const before = activeTab(tabs.ref.current);
+    const was = placeOf(before);
+    const after = activeTab(tabs.act(action));
+    if (after.key !== before.key || placeOf(after) !== was)
+      showPlace(placeOf(after));
+  };
+  const tabActRef = useRef(tabAct);
+  tabActRef.current = tabAct;
+
+  /** A thing's current name (a page's title, a project's name). */
+  const titleFor = (place: TabPlace): Promise<string> => {
+    const id = place.id;
+    if (!id) return Promise.resolve("");
+    if (PAGE_VIEWS.includes(place.view as View))
+      return client.getDoc(id).then((d) => d.title || "Untitled");
+    if (place.view === "Projects")
+      return client.getProject(id).then((p) => p.name);
+    if (place.view === "Views")
+      return client.listViews().then((list) => {
+        const found = list.find((v) => v.id === id);
+        if (!found) throw new HttpError(404, "That view is gone.");
+        return found.name;
+      });
+    if (place.view === "AI assistant") return client.aiChat(id).then(() => "");
+    return Promise.resolve("");
+  };
+
+  // Moving to another screen is a step in the active tab. Turning tabs on
+  // (or widening the window) starts the tab where the app already is.
+  const lastView = useRef(view);
+  const lastLive = useRef(tabsLive);
+  useEffect(() => {
+    const moved = lastView.current !== view;
+    const turnedOn = tabsLive && !lastLive.current;
+    lastView.current = view;
+    lastLive.current = tabsLive;
+    if (!tabsLive || !(moved || turnedOn)) return;
+    const here = placeOf(activeTab(tabs.ref.current));
+    if (here.view === view) return;
+    pendingPlace.current = null;
+    tabs.act({ type: "go", place: { view, id: null, title: "" } });
+  }, [view, tabsLive, tabs]);
+
+  // The page open in Docs (or Memory, or Agent notes), and its title.
+  const pageTab = useRef<string | null>(null);
+  /** The app's frame; gone while a gate (terms, sign-in) stands in for it. */
+  const shellEl = useRef<HTMLDivElement | null>(null);
+  useEffect(
+    () =>
+      watchOpenPage((page) => {
+        const here = viewRef.current;
+        if (!tabsLiveRef.current || !PAGE_VIEWS.includes(here)) return;
+        const key = tabs.ref.current.active;
+        if (page) {
+          pageTab.current = key;
+          reportPlace({ view: here, id: page.docId, title: page.title });
+        } else if (
+          pageTab.current === key &&
+          !pendingPlace.current &&
+          shellEl.current
+        )
+          // Back to the library, in the same tab.
+          reportPlace({ view: here, id: null, title: "" });
+      }),
+    [], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // The chat open in the assistant.
+  useEffect(() => {
+    if (!tabsLive || view !== "AI assistant") return;
+    const chat = assistant.activeChatId;
+    const waiting = pendingPlace.current;
+    if (waiting?.view === "AI assistant" && waiting.id === chat)
+      pendingPlace.current = null;
+    const here = placeOf(activeTab(tabs.ref.current));
+    if (here.view !== "AI assistant" || here.id === chat) return;
+    if (pendingPlace.current) {
+      if (Date.now() - pendingPlace.current.since < 8000) return;
+      pendingPlace.current = null;
+    }
+    tabs.act({
+      type: "replace",
+      place: { view: "AI assistant", id: chat, title: "" },
+    });
+  }, [tabsLive, view, assistant.activeChatId, tabs]);
+
+  // Saved views' names reach their tabs once the list has them.
+  useEffect(() => {
+    for (const [id, title] of Object.entries(viewNames))
+      tabs.act({ type: "retitle", view: "Views", id, title });
+  }, [viewNames]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Kept tabs whose thing is gone (deleted, or no longer shared) close,
+  // without a word, once signed in.
+  const tabsChecked = useRef(false);
+  useEffect(() => {
+    if (!token || !tabsLive || tabsChecked.current) return;
+    tabsChecked.current = true;
+    const gone = (e: unknown) =>
+      e instanceof HttpError && [403, 404, 410].includes(e.statusCode);
+    void Promise.all(
+      tabs.ref.current.tabs.map(async (tab) => {
+        const place = placeOf(tab);
+        if (!place.id) return null;
+        try {
+          const title = await titleFor(place);
+          if (title)
+            tabs.act({
+              type: "retitle",
+              view: place.view,
+              id: place.id,
+              title,
+            });
+          return null;
+        } catch (e) {
+          return gone(e) ? tab.key : null;
+        }
+      }),
+    ).then((keys) => {
+      const drop = keys.filter((k): k is string => !!k);
+      if (drop.length) tabActRef.current({ type: "drop", keys: drop });
+    });
+  }, [token, tabsLive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Asked for a new tab: ⌘-click, a middle click, or "Open in new tab".
+  const openTabRef = useRef<(request: TabRequest) => void>(() => {});
+  openTabRef.current = (request) => {
+    if (!tabsLive) return;
+    const place: TabPlace =
+      request.kind === "screen"
+        ? { view: request.view, id: null, title: "" }
+        : {
+            view:
+              request.kind === "doc"
+                ? "Docs"
+                : request.kind === "project"
+                  ? "Projects"
+                  : "Views",
+            id: request.id,
+            title:
+              request.title ??
+              (request.kind === "view" ? (viewNames[request.id] ?? "") : ""),
+          };
+    tabAct({ type: "open", place, background: true });
+    if (place.id && !place.title)
+      void titleFor(place).then(
+        (title) =>
+          title &&
+          tabs.act({ type: "retitle", view: place.view, id: place.id!, title }),
+        () => {
+          // Its name shows once the tab is opened.
+        },
+      );
+  };
+  useEffect(() => {
+    const onOpen = (e: Event) =>
+      openTabRef.current((e as CustomEvent<TabRequest>).detail);
+    window.addEventListener(OPEN_TAB_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_TAB_EVENT, onOpen);
+  }, []);
+
+  // The browser's back and forward move through the active tab: each step
+  // in a tab is a step in the browser's history (the address stays /app).
+  const historyAt = useRef<number>(
+    typeof window.history.state?.orbynTab === "number"
+      ? window.history.state.orbynTab
+      : 0,
+  );
+  const movesSeen = useRef(tabs.state.moves);
+  useEffect(() => {
+    if (tabs.state.moves === movesSeen.current) return;
+    movesSeen.current = tabs.state.moves;
+    if (!tabsLive || nativeDesktop || !location.pathname.startsWith("/app"))
+      return;
+    historyAt.current += 1;
+    window.history.pushState({ orbynTab: historyAt.current }, "");
+  }, [tabs.state.moves, tabsLive, nativeDesktop]);
+  useEffect(() => {
+    if (!tabsLive || nativeDesktop) return;
+    const pop = (e: PopStateEvent) => {
+      if (!location.pathname.startsWith("/app")) return;
+      const state = e.state as { orbynTab?: unknown } | null;
+      const at = typeof state?.orbynTab === "number" ? state.orbynTab : 0;
+      const steps = at - historyAt.current;
+      historyAt.current = at;
+      for (let i = 0; i < Math.abs(steps); i++)
+        tabActRef.current({ type: steps < 0 ? "back" : "forward" });
+    };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [tabsLive, nativeDesktop]);
+
+  // ⌘W (Ctrl+W) closes the tab, ⌘⇧T brings the last one back, and
+  // Ctrl+Tab / Ctrl+Shift+Tab go round them.
+  useEffect(() => {
+    if (!token || !tabsLive || isPublicBooking || !inShell) return;
+    const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || document.querySelector('[aria-modal="true"]')) return;
+      const mod = mac ? e.metaKey : e.ctrlKey;
+      const key = e.key.toLowerCase();
+      const now = tabs.ref.current;
+      let action: TabAction | null = null;
+      if (e.ctrlKey && key === "tab" && now.tabs.length > 1)
+        action = { type: "cycle", step: e.shiftKey ? -1 : 1 };
+      else if (mod && !e.shiftKey && key === "w" && now.tabs.length > 1)
+        action = { type: "close", key: now.active };
+      else if (mod && e.shiftKey && key === "t" && now.closed.length)
+        action = { type: "reopen" };
+      if (!action) return;
+      e.preventDefault();
+      tabActRef.current(action);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [token, tabsLive, isPublicBooking, inShell]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** A tab's name: the thing's own, else its screen's. */
+  const tabTitle = (place: TabPlace) =>
+    place.view === "AI assistant"
+      ? assistant.agentName
+      : place.title || navName(place.view as View, assistant.agentName);
+  const tabIcon = (place: TabPlace): LucideIcon =>
+    place.view === "Settings"
+      ? Settings
+      : (NAV.find((n) => n.label === place.view)?.icon ?? Orbit);
 
   /** Settings, at one setting ("agents": Connected agents). */
   const openSetting = (id: string) => {
@@ -1233,7 +1588,7 @@ export function App() {
             onSignOut={() => void planner.logout()}
             agentName={assistant.agentName}
           />
-          <div className="shell">
+          <div className="shell" ref={shellEl}>
             <AnnouncementBanner />
             <MaintenanceBanner
               maintenance={planner.maintenance}
@@ -1255,6 +1610,14 @@ export function App() {
               onOpenCommand={() => openCommand()}
               timeZone={accountZone}
             />
+            {tabsLive && (
+              <TabStrip
+                tabs={tabs.state}
+                onAction={tabAct}
+                titleOf={tabTitle}
+                iconOf={tabIcon}
+              />
+            )}
             <main className="content">
               {error && (
                 <div role="alert" className="error">
@@ -1268,13 +1631,28 @@ export function App() {
                   </button>
                 </div>
               )}
-              <div key={view} className="view-enter">
-                {view !== "AI assistant" && (
-                  <PageHeading
-                    view={view}
+              <div
+                // A tab's place always starts its screen afresh; without
+                // tabs the count never moves, so this is the screen alone.
+                key={`${shownSeq}:${view}`}
+                className="view-enter"
+                id={tabsLive ? "tab-panel" : undefined}
+                role={tabsLive ? "tabpanel" : undefined}
+              >
+                {view === "Overview" ? (
+                  <HomeTop
                     user={user}
+                    timeZone={accountZone}
                     onNewItem={() => newItem()}
                   />
+                ) : (
+                  view !== "AI assistant" && (
+                    <PageHeading
+                      view={view}
+                      user={user}
+                      onNewItem={() => newItem()}
+                    />
+                  )
                 )}
                 {view === "Overview" && (
                   <WelcomeBack
@@ -1286,6 +1664,22 @@ export function App() {
                       }, report)
                     }
                     onOpenAsks={() => navigate("Notifications")}
+                  />
+                )}
+                {view === "Overview" && (
+                  <HomeSections
+                    report={report}
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    }}
+                    onOpenDoc={(id) => openPage(id)}
+                    onOpenStudy={() => navigate("Study")}
+                    onOpenView={openSavedView}
+                    onOpenUpcoming={() => {
+                      setUpcomingAsked((n) => n + 1);
+                      navigate("AI assistant");
+                    }}
                   />
                 )}
                 {view === "Overview" && (
@@ -1327,6 +1721,11 @@ export function App() {
                     onChanged={refresh}
                     onNewItem={(prefill) => newItem(null, prefill)}
                     onChangeItem={changeItem}
+                    agentName={assistant.agentName}
+                    onOpenReview={(id) => {
+                      setReviewToOpen(id);
+                      navigate("Review");
+                    }}
                   />
                 )}
                 {view === "Lists" && (
@@ -1384,7 +1783,15 @@ export function App() {
                     revision={revision}
                     openViewId={viewToOpen}
                     onViewOpened={() => setViewToOpen(null)}
-                    onSelected={setShownView}
+                    onSelected={(id) => {
+                      setShownView(id);
+                      if (id && viewRef.current === "Views")
+                        reportPlace({
+                          view: "Views",
+                          id,
+                          title: viewNames[id] ?? "",
+                        });
+                    }}
                     onOpenItem={openItem}
                     onOpenDoc={(id) =>
                       void client.getDoc(id).then((doc) => {
@@ -1417,6 +1824,14 @@ export function App() {
                     initialProjectId={projectToOpen}
                     initialSection={projectSectionToOpen}
                     initialSourceId={projectSourceId}
+                    onShown={(project) => {
+                      if (viewRef.current === "Projects")
+                        reportPlace({
+                          view: "Projects",
+                          id: project?.id ?? null,
+                          title: project?.name ?? "",
+                        });
+                    }}
                     onInitialProjectShown={() => {
                       setProjectToOpen(null);
                       setProjectSectionToOpen(null);
@@ -1502,6 +1917,7 @@ export function App() {
                     onShowOnCalendar={showOnCalendar}
                     onOpenSource={openSource}
                     onKeptNote={(docId) => openPage(docId)}
+                    openUpcoming={upcomingAsked}
                   />
                 )}
                 {view === "Teams" && (

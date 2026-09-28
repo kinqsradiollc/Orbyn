@@ -1385,6 +1385,15 @@ coming back to, and are private to whoever starred them.
 A document is filed by sending `folder_id` to `POST /docs` or `PUT /docs/:id`; `null` unfiles it,
 and leaving the field out keeps it where it is.
 
+Pages inside pages (W5): `parent_id` on `POST /docs` or `PUT /docs/:id` puts a page inside another
+page of the same space (your own, or one team's) and library (Memory and Agent notes keep to their
+own kind); it takes that page's folder, and pages inside a page follow it to any folder. `null`
+brings it to its folder's top level; a new `folder_id` alone leaves a parent filed elsewhere.
+`position` (0 first) places it among the pages beside it. A loop, another space or another library
+is `422`; a parent you can't see (or in Trash) is `404`. `GET /docs` lists `parent_id` and
+`sort_order`. A page in Trash keeps its pages (the apps show them at the top level until it's
+back); deleted for good, they move up a level.
+
 ## Saved views and your own fields
 
 A saved view (DATA-01) is a named filter, sort, grouping and layout over tasks, pages or projects.
@@ -1930,6 +1939,9 @@ responses also include `steps_total`, `steps_done`, `updates_count`, and `last_u
 | `PUT /items/:id/steps/:stepId`    | `{ "title"?, "done"? }`; returns the item detail                                                         |
 | `DELETE /items/:id/steps/:stepId` | Removes a step; returns the item detail                                                                  |
 | `POST /items/:id/updates`         | `{ "body"?, "status"?, "progress"? }` posts a timeline entry; returns detail                             |
+| `POST /items/:id/agent`           | Hands a task to your own agent (W3): queued for the worker; 409 at 5 at once, kept-out or paused         |
+| `DELETE /items/:id/agent`         | Takes it back from your agent and stops its run; returns the item                                        |
+| `GET /me/agent-work`              | Connected agents that made or changed tasks you see in the last day, for the board's lanes               |
 
 When a task has steps, its progress is the share of steps done, and ticking the first step moves a
 `todo` task to `in_progress`. Manual progress is refused (`409`) while a checklist exists. Marking a
@@ -3099,8 +3111,29 @@ same as `markdown`. Without `team_id`, your own personal tasks.
   replaced whole; view choices are merged by place (`null` clears one). A shortcut must name a
   command and keys can do only one thing (400). Refused for personal API keys. 30 a minute.
 - `DELETE /me/prefs`: everything back as it came.
+- `home` (W1), in both: `{ hubs: [{ id, title, cover_file_id, icon, auto, links: [{ kind:
+project|deck|page|view, id, label, tag? }] }], order, hidden, quote: { on, doc_id } }`, replaced
+  whole. At most 8 hubs of 6 links; a hub's cover must be a picture you can see (404).
 
 What opens at start (NAV-12), the theme and text size stay on each device.
+
+### Home (W1)
+
+- `GET /me/home` → `{ today, timezone, goals, routines, brief, agenda_doc_id, reflection }`:
+  active goals (those tied to a project kept out of AI left out) with `progress` (0–1, from the
+  project's tasks or the plan's ticks, else null) and `next_checkin`; the next five unpaused
+  routine runs; today's morning brief; the lines under Reflection on today's agenda.
+- `POST /me/home/reflection` `{ text }` (1–500) → `201 { doc_id, reflection }`: adds the line
+  under a Reflection heading on today's agenda page (written first if need be), as one save of
+  yours. 30 a minute.
+
+### Covers and icons (W6)
+
+- `PUT /docs/:id/look` `{ cover_file_id?, icon? }` → `{ cover_file_id, icon }`; `PUT /projects/:id`
+  takes the same two fields. `null` takes one off. A cover is a picture you can see (404
+  otherwise); an icon is one emoji or `icon:<name>` (422 otherwise). The page's version stays.
+  Whoever can see the page or project can see its cover.
+- `GET /me/pictures` → your pictures on pages you can open, newest first (60), to choose from.
 
 ### Archiving and tidying the library (SRCH-03, ORG-03)
 

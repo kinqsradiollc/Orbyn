@@ -378,7 +378,7 @@ Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !
 
 ### `update_tasks`
 
-Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first. Undo keeps the old values.
+Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first; handing it to their agent always asks. Undo keeps the old values.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -611,7 +611,7 @@ Creates a saved view, or changes one (view + version): a name, what it lists (so
 
 ### `update_project`
 
-Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).
+Changes a project's name, summary, status (active, done, archived), deadline, main page, cover picture or icon; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).
 
 | Argument             | Type                         | Notes                                                                                                |
 | -------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------- |
@@ -627,6 +627,8 @@ Changes a project's name, summary, status (active, done, archived), deadline or 
 | `unpin`              | list of id                   |                                                                                                      |
 | `milestones`         | list of object               | No id: add (name, due_on YYYY-MM-DD). id: change or remove. tasks: the project's tasks to put in it. |
 | `assistant`          | `off`, `on`                  |                                                                                                      |
+| `cover`              | string or null               | `orbyn://file/<id>`: a picture on a page you reach; null: no cover.                                  |
+| `icon`               | string or null               | An emoji or `icon:<name>` (e.g. icon:target); null: no icon.                                         |
 | `client_ref`         | string                       | Idempotency key: sent again within 24 h, the first answer comes back.                                |
 
 ### `get_history`
@@ -660,7 +662,7 @@ Saves a project template (kind "project": from_project, or tasks with estimates 
 
 ### `organize`
 
-Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.
+Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover, icon), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: `source:<id>)`. Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). nest (id: page; to: the page it goes inside, same space, or "top"; position?: 0 first among the pages there): a page inside a page takes its folder, loops refused. Deleting goes through propose_changes.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -1101,6 +1103,9 @@ Catalog version: `2026-09-28`.
 
 ### 2026-09-28
 
+- Hand a task to Orbyn (W3): update_tasks takes agent "assistant" to hand a task to the person's own agent to work on. It runs Orbyn's hosted assistant, so an outside agent's hand-over always waits for the person in Review (a task.hand proposal); the built-in assistant can't hand a task to itself. Still 65 tools.
+- Covers and icons (W6): update_project takes cover (a picture on a page the connection reaches, as `orbyn://file/<id>`; null takes it off) and icon (one emoji, or `icon:<name>` for one of the app's icons; null takes it off); organize takes look (id: a page; cover, icon) for a page's cover and icon. Both are undoable; get_project and fetch are unchanged. Still 65 tools.
+- Pages inside pages (W5), still 65 tools: organize "nest" (id: the page; to: the page it goes inside, in the same space and library, or "top"; position: 0 first among the pages there) puts a page inside another page, where it takes that page's folder; a loop, another space, or mixing Memory or Agent notes with other pages is refused. Undo puts it back where it was. link doc_folder moves a page out of a parent filed elsewhere, and its undo puts it back inside.
 - Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.
 - get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.
 - manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.
@@ -1149,4 +1154,4 @@ Catalog version: `2026-09-28`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 268 of the app's signed-in routes are covered by tools, 211 are never for agents, and 0 are still to come.
+Routes: 271 of the app's signed-in routes are covered by tools, 215 are never for agents, and 0 are still to come.

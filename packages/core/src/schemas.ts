@@ -4,6 +4,7 @@ import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
 import { CALLOUT_KINDS, DOC_KINDS } from "./docs.js";
 import { aliasesInput } from "./links.js";
+import { lookIconInput } from "./covers.js";
 import { PROJECT_STATUSES } from "./projects.js";
 import { FAVOURITE_KINDS } from "./folders.js";
 
@@ -384,6 +385,11 @@ export const docInput = z
     project_id: z.uuid().nullable().default(null),
     /** Tags, by id, from the vocabulary this person or team already has. */
     tags: z.array(z.uuid()).max(20).default([]),
+    /**
+     * The page it sits inside (W5), in the same space; it takes that page's
+     * folder and goes last among its pages.
+     */
+    parent_id: z.uuid().nullable().default(null),
   })
   .strict();
 
@@ -407,6 +413,14 @@ export const docUpdate = z
     tags: z.array(z.uuid()).max(20).optional(),
     /** Other names the page goes by (LNK-03). */
     aliases: aliasesInput.optional(),
+    /**
+     * The page it sits inside (W5), or null for its folder's top level. A
+     * page nested takes its parent's folder; a page given only a new folder
+     * leaves its parent. Pages inside it always follow it.
+     */
+    parent_id: z.uuid().nullable().optional(),
+    /** Where it goes among the pages beside it (0 first), after any move. */
+    position: z.number().int().min(0).max(10_000).optional(),
     version: z.number().int().positive(),
   })
   .strict();
@@ -491,6 +505,10 @@ export const projectUpdate = z
     doc_id: z.uuid().nullable().optional(),
     /** Other names the project goes by, such as a course code (LNK-03). */
     aliases: aliasesInput.optional(),
+    /** A cover picture (W6): a picture you can read; null clears it. */
+    cover_file_id: z.uuid().nullable().optional(),
+    /** An emoji or "icon:<name>" (W6); null clears it. */
+    icon: lookIconInput.nullable().optional(),
     stages: z
       .array(
         z.object({

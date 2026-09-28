@@ -98,6 +98,10 @@ import {
   type StarredItem,
   type AccountPrefs,
   type AccountPrefsInput,
+  type CoverPicture,
+  type HomeSummary,
+  type Look,
+  type LookInput,
   type ConnectionMap,
   type TeamPolicies,
   type RecordingSummary,
@@ -1289,6 +1293,10 @@ export class OrbynClient {
       stages?: { id?: string; name: string }[];
       /** Other names, such as a course code (LNK-03). */
       aliases?: string[];
+      /** A cover picture (W6); null takes it off. */
+      cover_file_id?: string | null;
+      /** An emoji or "icon:<name>" (W6); null takes it off. */
+      icon?: string | null;
     },
   ) {
     return this.request<Project>(`/projects/${id}`, {
@@ -1536,6 +1544,32 @@ export class OrbynClient {
   }
   resetPrefs() {
     return this.request<void>("/me/prefs", { method: "DELETE" });
+  }
+
+  // Home (W1)
+  /** Home's panels: active goals, next routine runs, today's brief and reflection. */
+  getHome() {
+    return this.request<HomeSummary>("/me/home");
+  }
+  /** "How did today go?": a line under Reflection on today's agenda. */
+  addReflection(text: string) {
+    return this.request<{ doc_id: string; reflection: string[] }>(
+      "/me/home/reflection",
+      { method: "POST", body: { text } },
+    );
+  }
+
+  // Covers and icons (W6)
+  /** A page's cover and icon; null takes one off. Its version stays. */
+  setDocLook(docId: string, look: LookInput) {
+    return this.request<Look>(`/docs/${docId}/look`, {
+      method: "PUT",
+      body: look,
+    });
+  }
+  /** Your pictures, newest first, to choose a cover from. */
+  myPictures() {
+    return this.request<CoverPicture[]>("/me/pictures");
   }
 
   // Archiving and tidying the library (SRCH-03, ORG-03)
@@ -1983,6 +2017,8 @@ export class OrbynClient {
     project_id?: string | null;
     tags?: string[];
     content?: DocBlock[];
+    /** Made inside this page (W5): its space's, it takes that page's folder. */
+    parent_id?: string | null;
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
@@ -2000,6 +2036,10 @@ export class OrbynClient {
       folder_id?: string | null;
       project_id?: string | null;
       tags?: string[];
+      /** The page it sits inside (W5), or null for its folder's top level. */
+      parent_id?: string | null;
+      /** Its place among the pages beside it after the move, 0 first. */
+      position?: number;
       version: number;
     },
     options: { ticksFrom?: number } = {},
@@ -2011,6 +2051,23 @@ export class OrbynClient {
         ? { headers: { "X-Orbyn-Ticks-From": String(options.ticksFrom) } }
         : {}),
     });
+  }
+  /**
+   * Move a page in the library's tree (W5): inside another page
+   * (`parent_id`), to a folder's top level (`folder_id`, with `parent_id`
+   * null), and/or to `position` among the pages there. Reads the page's
+   * version first, so a list that is a moment old can still move it.
+   */
+  async moveDoc(
+    id: string,
+    to: {
+      parent_id?: string | null;
+      folder_id?: string | null;
+      position?: number;
+    },
+  ) {
+    const { version } = await this.getDoc(id);
+    return this.updateDoc(id, { ...to, version });
   }
   /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {
@@ -3167,6 +3224,24 @@ export class OrbynClient {
     return this.request<void>(`/items/${id}?version=${version}${scope}`, {
       method: "DELETE",
     });
+  }
+
+  /**
+   * Hand a task to your own agent (W3): it works on it in the background
+   * and gives it back with a note. At most five at once.
+   */
+  handTaskToAgent(id: string) {
+    return this.request<Item>(`/items/${id}/agent`, { method: "POST" });
+  }
+  /** Take a task back from your agent; a run working on it stops. */
+  takeTaskBack(id: string) {
+    return this.request<Item>(`/items/${id}/agent`, { method: "DELETE" });
+  }
+  /** Connected agents that made or changed tasks lately, for the board's lanes. */
+  agentWork() {
+    return this.request<
+      { grant_id: string; name: string; item_ids: string[] }[]
+    >("/me/agent-work");
   }
 
   /** A task with its checklist steps and progress timeline. */
