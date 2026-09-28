@@ -21,6 +21,11 @@ export const assistantActive = (userColumn: string) =>
             WHERE ag.user_id = ${userColumn} AND ag.kind = 'assistant'
               AND ag.revoked_at IS NULL AND ag.suspended_at IS NULL)`;
 
+/** Night-shift users run due goals and routines through their serialized night queue. */
+export const nightShiftOwns = (userColumn: string) =>
+  `EXISTS (SELECT 1 FROM agent_settings ns WHERE ns.user_id = ${userColumn}
+    AND ns.night_shift->>'enabled' = 'true')`;
+
 /**
  * SQL true when the person used Orbyn recently: a signed-in session was seen
  * (sessions.last_seen_at) or the assistant was used (agent_grants.last_used_at).

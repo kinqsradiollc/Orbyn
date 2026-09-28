@@ -32,6 +32,7 @@ import { scanAssistantIdeas } from "./assistant-ideas.js";
 import { scanAssistantGoals } from "./assistant-goals.js";
 import { scanAssistantRoutines } from "./assistant-routines.js";
 import { scanAssistantTasks } from "./assistant-tasks.js";
+import { scanNightShift } from "./night-shift.js";
 import { env } from "../config/env.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
 import type { FastifyBaseLogger } from "fastify";
@@ -126,6 +127,7 @@ export async function runWorker() {
   let lastAssistantGoals = -Infinity;
   let lastAssistantRoutines = -Infinity;
   let lastAssistantTasks = -Infinity;
+  let lastNightShift = -Infinity;
   let lastClock = -Infinity;
   while (!stopping) {
     let backlog = false;
@@ -196,6 +198,14 @@ export async function runWorker() {
             // An idea day remains eligible after its claim timeout.
           }
           lastAssistantIdeas = tick();
+        }
+        if (tick() - lastNightShift >= 60_000) {
+          try {
+            await scanNightShift();
+          } catch {
+            // The night claim and queue roll back together; a later scan retries.
+          }
+          lastNightShift = tick();
         }
         if (tick() - lastAssistantGoals >= ASSISTANT_GOALS_MS) {
           try {

@@ -1042,6 +1042,7 @@ export const aiProviderUpdate = z
 /** Which provider and model the assistant uses; a null provider turns the assistant off. */
 export const aiSettingsInput = z
   .object({
+    night_token_budget: z.number().int().min(1000).max(10000000).optional(),
     provider_id: z.uuid().nullable(),
     model: z.string().trim().max(200).default(""),
     /**

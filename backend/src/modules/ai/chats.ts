@@ -184,11 +184,12 @@ export async function beginChatTurn(
     scope: ChatScope | null;
     legacyHistory: ChatTurn[];
     /** A background run's chat: its origin and list title. */
-    origin?: "idea" | "goal" | "routine" | "task";
+    origin?: "idea" | "goal" | "routine" | "task" | "night";
     title?: string;
   },
+  sharedDb?: Queryable,
 ): Promise<ChatTurn[]> {
-  return transaction(async (db) => {
+  const begin = async (db: Queryable) => {
     const projectId = await projectForScope(db, user, input.scope);
     if (projectId) {
       const project = await visibleProject(db, user.id, projectId);
@@ -283,7 +284,8 @@ export async function beginChatTurn(
       );
     }
     return history;
-  });
+  };
+  return sharedDb ? begin(sharedDb) : transaction(begin);
 }
 
 /** Save the completed answer and its safe, content-free trace. */

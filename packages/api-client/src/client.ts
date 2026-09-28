@@ -3925,7 +3925,11 @@ export class OrbynClient {
       body: input,
     });
   }
-  updateAiSettings(input: { provider_id: string | null; model?: string }) {
+  updateAiSettings(input: {
+    provider_id: string | null;
+    model?: string;
+    night_token_budget?: number;
+  }) {
     return this.request<AiSettings>("/ai/settings", {
       method: "PUT",
       body: input,

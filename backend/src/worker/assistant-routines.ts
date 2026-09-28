@@ -3,7 +3,11 @@ import { pool, transaction } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
 import { resolveAi } from "../modules/ai/providers/resolve.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
-import { assistantActive, jobReleased } from "./assistant-scan.js";
+import {
+  assistantActive,
+  jobReleased,
+  nightShiftOwns,
+} from "./assistant-scan.js";
 
 const CLAIM_RETRY_MINUTES = 30;
 const ROUTINE_BATCH = 10;
@@ -43,6 +47,7 @@ export async function scanAssistantRoutines(
             -- person no longer holds the routine (after a restart, say).
             AND ${jobReleased("r.current_job_id", "$1")}
             AND ${assistantActive("r.user_id")}
+            AND NOT ${nightShiftOwns("r.user_id")}
             AND (r.claimed_at IS NULL OR r.claimed_at < $1 - make_interval(mins => $2))
             AND ($3::uuid[] IS NULL OR r.user_id = ANY($3::uuid[]))
           ORDER BY r.next_run_at, r.id LIMIT $4

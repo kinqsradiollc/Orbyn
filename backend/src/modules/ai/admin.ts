@@ -48,8 +48,9 @@ async function currentSettings(): Promise<AiSettings> {
       embedding_model: string;
       semantic_accepted_at: Date | null;
       measure_running: boolean;
+      night_token_budget: number;
     }>(
-      `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled,
+      `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled, s.night_token_budget,
               s.embedding_model, s.semantic_accepted_at,
               EXISTS (SELECT 1 FROM service_heartbeats h WHERE h.service = 'measure'
                         AND h.last_seen_at > now() - interval '3 minutes') AS measure_running
@@ -58,6 +59,7 @@ async function currentSettings(): Promise<AiSettings> {
   ).rows[0];
   const fromDatabase = !!(row?.provider_id && row.enabled && row.model);
   return {
+    night_token_budget: row?.night_token_budget ?? 1000000,
     provider_id: row?.provider_id ?? null,
     model: row?.model ?? "",
     source: fromDatabase ? "database" : "none",
@@ -402,13 +404,14 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     await transaction(async (db) => {
       await db.query(
         `UPDATE ai_settings SET provider_id=$1, model=$2, updated_by=$3,
-           semantic_search = coalesce($4, semantic_search), updated_at=now()
+           semantic_search = coalesce($4, semantic_search), night_token_budget = coalesce($5, night_token_budget), updated_at=now()
          WHERE id`,
         [
           d.provider_id,
           d.provider_id ? d.model : "",
           actor.id,
           d.semantic_search ?? null,
+          d.night_token_budget ?? null,
         ],
       );
       await audit(

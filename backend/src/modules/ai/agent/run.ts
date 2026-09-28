@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { notifyAssistantAway } from "./notices.js";
+import { recordNightRun } from "./night-status.js";
 import {
   AssistantLeaseLost,
   assistantLeaseOwner,
@@ -58,7 +59,13 @@ const approvalInput = z
 
 export type AssistantAutomation = {
   /** A task handed to the agent (W3) carries its item's id. */
-  kind: "idea" | "goal" | "routine" | "task";
+  kind: "idea" | "goal" | "routine" | "task" | "night";
+  night_id?: string;
+  night_kind?: string;
+  source_kind?: "task" | "goal" | "routine";
+  wait_for_ok?: boolean;
+  token_budget?: number;
+  end_at?: string;
   id?: string;
   local_day?: string;
   slot?: number;
@@ -74,6 +81,18 @@ export type PersistedChatRequest = {
   scope: ChatScope | null;
   automation?: AssistantAutomation;
 };
+
+/** Night jobs retain the completion rules of the task, goal or routine they run. */
+function automationKind(request: PersistedChatRequest) {
+  return request.automation?.source_kind ?? request.automation?.kind;
+}
+
+function isAutomation(
+  request: PersistedChatRequest,
+  kind: AssistantAutomation["kind"],
+): request is PersistedChatRequest & { automation: AssistantAutomation } {
+  return !!request.automation && automationKind(request) === kind;
+}
 
 type RunEnvelope = {
   version: 1;
@@ -243,7 +262,7 @@ async function approvalScopeCovers(
       rule === "always" ||
       (!!rule &&
         typeof rule === "object" &&
-        request.automation?.kind === rule.scope &&
+        isAutomation(request, rule.scope) &&
         request.automation.id === rule.id);
     if (!covered) return false;
     const teams = await teamsForStep(step);
@@ -259,7 +278,7 @@ async function approvalScopeCovers(
     if (
       rule !== "always" &&
       rule.scope === "goal" &&
-      request.automation?.kind === "goal" &&
+      isAutomation(request, "goal") &&
       !(await stepsBelongToGoal(userId, request.automation.id!, steps))
     )
       return false;
@@ -274,7 +293,26 @@ async function approvalScopeCovers(
  */
 async function principalFor(user: UserRow, request: PersistedChatRequest) {
   const principal = await assistantPrincipal(user, { refusePaused: true });
-  if (request.automation?.kind === "idea")
+  if (isAutomation(request, "task") && request.automation.id) {
+    const hidden = await pool.query(
+      `SELECT 1 FROM items i JOIN projects p ON p.id = i.project_id
+      WHERE i.id = $1 AND p.assistant_off`,
+      [request.automation.id],
+    );
+    if (hidden.rowCount)
+      throw new Error("This task's project is kept out of the assistant.");
+  }
+  if (isAutomation(request, "goal") && request.automation.id) {
+    const hidden = await pool.query(
+      `SELECT 1 FROM goals g WHERE g.id = $1 AND EXISTS(
+       SELECT 1 FROM projects p WHERE p.assistant_off AND
+        (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))`,
+      [request.automation.id],
+    );
+    if (hidden.rowCount)
+      throw new Error("This goal's project is kept out of the assistant.");
+  }
+  if (isAutomation(request, "idea"))
     principal.trust = { level: "suggest", spaces: {}, acts_alone: [] };
   return principal;
 }
@@ -564,6 +602,7 @@ async function finishJob(
           )
         ).rows[0]?.trace ?? [],
       assistant_run: {
+        token_estimate: state.token_estimate,
         reports: state.reports.map(({ steps, ...report }) => ({
           ...report,
           step_ids: steps.map((step) => step.id),
@@ -583,8 +622,14 @@ async function finishJob(
       ],
     );
     await notifyAssistantAway(db, jobId, "done");
+    await recordNightRun(
+      db,
+      jobId,
+      summary,
+      outcome === "pending" ? "pending" : "kept",
+    );
     if (
-      request.automation?.kind === "goal" &&
+      isAutomation(request, "goal") &&
       request.automation.id &&
       request.automation.week_of
     ) {
@@ -635,10 +680,7 @@ async function finishJob(
           }),
         ],
       );
-    } else if (
-      request.automation?.kind === "routine" &&
-      request.automation.id
-    ) {
+    } else if (isAutomation(request, "routine") && request.automation.id) {
       await db.query(
         `UPDATE agent_routines SET last_result = $3::jsonb,
          current_job_id = NULL, claimed_at = NULL, updated_at = now()
@@ -655,7 +697,7 @@ async function finishJob(
           jobId,
         ],
       );
-    } else if (request.automation?.kind === "task" && request.automation.id) {
+    } else if (isAutomation(request, "task") && request.automation.id) {
       await finishTask(
         jobId,
         user,
@@ -667,10 +709,7 @@ async function finishJob(
           : "needs_you",
         db,
       );
-    } else if (
-      request.automation?.kind === "idea" &&
-      request.automation.local_day
-    ) {
+    } else if (isAutomation(request, "idea") && request.automation.local_day) {
       const proposalId =
         typeof extra.proposal_id === "string"
           ? extra.proposal_id.replace(/^proposal:/, "")
@@ -768,7 +807,7 @@ async function markTask(
   state: "working" | "needs_you",
   result: string | null = null,
 ) {
-  if (request.automation?.kind !== "task" || !request.automation.id) return;
+  if (!isAutomation(request, "task") || !request.automation.id) return;
   await pool
     .query(
       `UPDATE items SET agent_state = $3, agent_result = $4, updated_at = now()
@@ -789,26 +828,35 @@ export async function startAssistantAutomation(input: {
   onQueued?: (db: Queryable, jobId: string) => Promise<void>;
   /** The chat's title in the person's list (goal and routine runs). */
   title?: string;
+  /** A scheduler can commit its claim, chat and queued run together. */
+  db?: Queryable;
 }): Promise<string | null> {
   const row = (
-    await pool.query<{ id: string; name: string; role: SystemRole }>(
-      `SELECT id, name, role FROM users WHERE id = $1 AND NOT disabled`,
-      [input.userId],
-    )
+    await (input.db ?? pool).query<{
+      id: string;
+      name: string;
+      role: SystemRole;
+    }>(`SELECT id, name, role FROM users WHERE id = $1 AND NOT disabled`, [
+      input.userId,
+    ])
   ).rows[0];
   if (!row) return null;
   const user = row as UserRow;
   const chatId = randomUUID();
   const turnId = randomUUID();
-  const history = await beginChatTurn(user, {
-    chatId,
-    turnId,
-    message: input.message,
-    scope: null,
-    legacyHistory: [],
-    origin: input.automation.kind,
-    title: input.title,
-  });
+  const history = await beginChatTurn(
+    user,
+    {
+      chatId,
+      turnId,
+      message: input.message,
+      scope: null,
+      legacyHistory: [],
+      origin: input.automation.kind,
+      title: input.title,
+    },
+    input.db,
+  );
   const request: PersistedChatRequest = {
     message: input.message,
     history,
@@ -818,7 +866,7 @@ export async function startAssistantAutomation(input: {
     scope: null,
     automation: input.automation,
   };
-  const jobId = await transaction(async (db) => {
+  const enqueue = async (db: Queryable) => {
     const row = (
       await db.query<{ id: string }>(
         `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id, state)
@@ -829,7 +877,17 @@ export async function startAssistantAutomation(input: {
           JSON.stringify({
             version: 1,
             request,
-            state: newState(input.message),
+            state: {
+              ...newState(input.message),
+              ...(input.automation.token_budget
+                ? {
+                    token_budget: Math.min(
+                      input.automation.token_budget,
+                      LEAD_TOKEN_BUDGET,
+                    ),
+                  }
+                : {}),
+            },
           }),
           chatId,
           turnId,
@@ -838,7 +896,8 @@ export async function startAssistantAutomation(input: {
     ).rows[0];
     if (row && input.onQueued) await input.onQueued(db, row.id);
     return row?.id ?? null;
-  });
+  };
+  const jobId = input.db ? await enqueue(input.db) : await transaction(enqueue);
   if (!jobId) return null;
   return jobId;
 }
@@ -917,6 +976,7 @@ async function waitFor(
       [request.chat_id, user.id, JSON.stringify(turns.slice(-200))],
     );
     await notifyAssistantAway(db, jobId, "waiting", waiting.id);
+    await recordNightRun(db, jobId, text, "pending");
   });
   const event: AgentTraceEvent = {
     step: envelope.state.lead_steps,
@@ -959,9 +1019,29 @@ async function approvePlan(
   const checked = await checkMergedPlan(pool, principal, state.selected_steps);
   if (!checked.steps.length)
     return { applied: false, structured: null, why: [] as string[] };
+  const nightReview =
+    !!request.automation?.night_id &&
+    (request.automation.wait_for_ok !== false ||
+      principal.trust.level !== "full" ||
+      Object.values(principal.trust.spaces).some((level) => level !== "full") ||
+      checked.steps.some((step) => {
+        const capability = registry.get(step.tool);
+        return (
+          capability?.annotations.destructiveHint ||
+          capability?.effects?.some((effect) =>
+            ["email_outside", "notify_member", "publish"].includes(effect),
+          )
+        );
+      }));
+  const applyingPrincipal = nightReview
+    ? {
+        ...principal,
+        trust: { level: "suggest" as const, spaces: {}, acts_alone: [] },
+      }
+    : principal;
   const result = await execute(
     registry,
-    principal,
+    applyingPrincipal,
     "apply_plan",
     {
       steps: checked.steps,
@@ -971,10 +1051,16 @@ async function approvePlan(
     {
       primary: true,
       requestId: jobId,
-      asking: reviewed ? "approved" : "collect",
+      asking: reviewed && !nightReview ? "approved" : "collect",
       reviewed:
-        reviewed ||
-        (await approvalScopeCovers(user.id, principal, request, checked.steps)),
+        !nightReview &&
+        (reviewed ||
+          (await approvalScopeCovers(
+            user.id,
+            principal,
+            request,
+            checked.steps,
+          ))),
       write: (run) =>
         transaction(async (db) => {
           await assertAssistantLease(jobId, db, true);
@@ -1037,10 +1123,9 @@ function approvalWaiting(
     steps: state.selected_steps,
     summary: state.answer ?? "",
     change_kinds: [...new Set(state.selected_steps.map(changeKind))],
-    ...(request.automation?.kind === "goal" ||
-    request.automation?.kind === "routine"
+    ...(isAutomation(request, "goal") || isAutomation(request, "routine")
       ? {
-          automation_kind: request.automation.kind,
+          automation_kind: automationKind(request) as "goal" | "routine",
           automation_id: request.automation.id,
         }
       : {}),
@@ -1104,6 +1189,7 @@ async function failJob(
     await db.query(
       `UPDATE ai_jobs SET state = 'failed', error_status = 502,
        error_message = $2, run_state = NULL, progress = $3::jsonb,
+       result = jsonb_build_object('assistant_run', jsonb_build_object('token_estimate', coalesce((run_state->'state'->>'token_estimate')::int, 0))),
        heartbeat_at = now(), lease_until = NULL, claimed_by = NULL WHERE id = $1`,
       [
         jobId,
@@ -1112,9 +1198,10 @@ async function failJob(
       ],
     );
     await notifyAssistantAway(db, jobId, "failed");
+    await recordNightRun(db, jobId, message, "pending");
   });
   if (
-    request.automation?.kind === "goal" &&
+    isAutomation(request, "goal") &&
     request.automation.id &&
     request.automation.week_of
   )
@@ -1132,7 +1219,7 @@ async function failJob(
       )
       .catch(() => undefined);
   // A handed task waits for the worker's next try (worker/assistant-tasks.ts).
-  if (request.automation?.kind === "task" && request.automation.id)
+  if (isAutomation(request, "task") && request.automation.id)
     await pool
       .query(
         `UPDATE items SET agent_state = 'queued', agent_result = $3, updated_at = now()
@@ -1144,7 +1231,7 @@ async function failJob(
         ],
       )
       .catch(() => undefined);
-  if (request.automation?.kind === "routine" && request.automation.id)
+  if (isAutomation(request, "routine") && request.automation.id)
     await pool
       .query(
         `UPDATE agent_routines SET last_result = $3::jsonb, current_job_id = NULL,
@@ -1192,15 +1279,23 @@ export async function runAssistantJob(
     },
   };
   shutdownControls.set(jobId, shutdownControl);
+  const nightEnd = request.automation?.end_at
+    ? Date.parse(request.automation.end_at)
+    : NaN;
   const deadline = setTimeout(
     () => interrupt("deadline"),
     Math.max(
       1,
-      loaded?.reviewed
-        ? 30_000
-        : assistantRunLimits.maxRunMs -
-            (loaded?.elapsed_ms ?? 0) -
-            (Date.now() - (loaded?.started_at ?? Date.now())),
+      Math.min(
+        Number.isFinite(nightEnd) && !loaded?.reviewed
+          ? nightEnd - Date.now()
+          : Infinity,
+        loaded?.reviewed
+          ? 30_000
+          : assistantRunLimits.maxRunMs -
+              (loaded?.elapsed_ms ?? 0) -
+              (Date.now() - (loaded?.started_at ?? Date.now())),
+      ),
     ),
   );
   const checkCancel = () =>
@@ -1290,7 +1385,7 @@ export async function runAssistantJob(
             history: request.history,
             context: prepared.context,
             allowChanges:
-              request.automation?.kind === "idea" ||
+              isAutomation(request, "idea") ||
               mayChange(envelope.state.original_request),
             log,
             trace: trace.record,
@@ -1320,7 +1415,7 @@ export async function runAssistantJob(
           });
       fallback = result.state.answer ?? "";
       if (result.state.waiting) {
-        if (request.automation?.kind === "idea") {
+        if (isAutomation(request, "idea")) {
           result.state.waiting = null;
           await trace.flush();
           await finishJob(
@@ -1551,7 +1646,7 @@ export async function runAssistantJob(
           !state.waiting &&
           state.plan.length &&
           principal &&
-          request.automation?.kind !== "idea"
+          !isAutomation(request, "idea")
         ) {
           state.selected_steps = state.plan;
           state.answer ||=
@@ -1725,7 +1820,7 @@ export async function answerAssistantApproval(
       throw new Error("This plan has no changes to remember.");
     if (
       (scope === "goal" || scope === "routine") &&
-      (seen.request.automation?.kind !== scope || !seen.request.automation.id)
+      (automationKind(seen.request) !== scope || !seen.request.automation?.id)
     )
       throw new Error(
         `This approval can only be saved for the current ${scope}.`,

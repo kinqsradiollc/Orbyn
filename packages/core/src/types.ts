@@ -570,6 +570,8 @@ export type AiProvider = {
 };
 
 export type AiSettings = {
+  /** Shared token allowance for one person's night, set by a workspace admin. */
+  night_token_budget?: number;
   provider_id: string | null;
   model: string;
   /** Where the assistant's configuration currently comes from. */

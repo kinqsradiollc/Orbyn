@@ -12,6 +12,7 @@ import {
   type AiTestResult,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { Field } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
@@ -60,6 +61,11 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [failed, setFailed] = useState(false);
+  const [nightBudget, setNightBudget] = useState("1000000");
+  useEffect(
+    () => setNightBudget(String(data?.settings.night_token_budget ?? 1000000)),
+    [data?.settings.night_token_budget],
+  );
 
   const load = async () => setData(await client.listAiProviders());
   const firstLoad = () =>
@@ -144,6 +150,38 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
             {settings.model || "—"}
           </Text>
         </View>
+        <Field label="Night-shift tokens per person">
+          <TextInput
+            accessibilityLabel="Night-shift tokens per person"
+            style={shared.input}
+            keyboardType="number-pad"
+            value={nightBudget}
+            onChangeText={setNightBudget}
+          />
+        </Field>
+        <Text style={shared.small}>
+          Shared across up to ten runs each night. Remaining work waits for
+          morning.
+        </Text>
+        <Button
+          title="Save night budget"
+          disabled={
+            busy ||
+            !Number.isInteger(Number(nightBudget)) ||
+            Number(nightBudget) < 1000 ||
+            Number(nightBudget) > 10000000
+          }
+          onPress={() =>
+            void act(async () => {
+              await client.updateAiSettings({
+                provider_id: settings.provider_id,
+                model: settings.model,
+                night_token_budget: Number(nightBudget),
+              });
+              await load();
+            })
+          }
+        />
         <Button
           secondary
           title="Turn off assistant"

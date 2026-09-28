@@ -7,6 +7,7 @@ import {
   FAILED_RETRY_HOURS,
   MAX_AUTOMATION_ATTEMPTS,
   assistantActive,
+  nightShiftOwns,
   jobDead,
 } from "./assistant-scan.js";
 
@@ -72,6 +73,7 @@ export async function scanAssistantGoals(
          LEFT JOIN goals_checkins c ON c.goal_id = g.id AND c.week_of = wk.week_of
         WHERE g.status = 'active'
           AND ${assistantActive("g.user_id")}
+          AND NOT ${nightShiftOwns("g.user_id")}
           AND NOT EXISTS (
             SELECT 1 FROM projects hidden
              WHERE hidden.assistant_off AND (

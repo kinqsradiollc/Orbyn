@@ -56,6 +56,11 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   /** Models returned by "Load models", per provider. */
   const [loaded, setLoaded] = useState<Record<string, string[]>>({});
   const [tests, setTests] = useState<Record<string, AiTestResult>>({});
+  const [nightBudget, setNightBudget] = useState("1000000");
+  useEffect(
+    () => setNightBudget(String(data?.settings.night_token_budget ?? 1000000)),
+    [data?.settings.night_token_budget],
+  );
   const formRef = useRef<HTMLElement>(null);
   const reportRef = useRef(report);
   reportRef.current = report;
@@ -199,6 +204,48 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         )}
       </section>
 
+      <section className="card ai-assistant">
+        <h3>Night-shift token budget</h3>
+        <p className="muted">
+          The shared allowance for one person’s night, across up to ten runs.
+          Remaining work appears in the morning review.
+        </p>
+        <label className="settings-field">
+          Tokens per night
+          <input
+            type="number"
+            min={1000}
+            max={10000000}
+            step={1000}
+            value={nightBudget}
+            onChange={(e) => setNightBudget(e.target.value)}
+          />
+        </label>
+        <button
+          className="secondary"
+          disabled={
+            busy ||
+            !settings ||
+            !Number.isInteger(Number(nightBudget)) ||
+            Number(nightBudget) < 1000 ||
+            Number(nightBudget) > 10000000
+          }
+          onClick={() =>
+            settings &&
+            void mutate(
+              () =>
+                client.updateAiSettings({
+                  provider_id: settings.provider_id,
+                  model: settings.model,
+                  night_token_budget: Number(nightBudget),
+                }),
+              "Change the night-shift budget for everyone?",
+            )
+          }
+        >
+          Save night budget
+        </button>
+      </section>
       <SemanticSetup
         settings={settings}
         providerName={active?.name ?? null}

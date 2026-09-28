@@ -386,3 +386,135 @@ test("SIGKILL after apply commits reuses its durable receipt even after client_r
   );
   await end(second, "SIGTERM");
 });
+
+test("a night claim and its chat roll back together when queueing fails", async () => {
+  const { transaction } = await import("../src/db/pool.js");
+  const { startAssistantAutomation } =
+    await import("../src/modules/ai/agent/run.js");
+  const before = (
+    await pool.query(
+      "SELECT count(*)::int AS n FROM ai_chats WHERE user_id = $1",
+      [user.id],
+    )
+  ).rows[0].n;
+  await assert.rejects(
+    transaction(async (db) => {
+      const night = (
+        await db.query(
+          "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, '2099-01-01') RETURNING id",
+          [user.id],
+        )
+      ).rows[0];
+      await startAssistantAutomation({
+        userId: user.id,
+        message: "A night transaction",
+        timezone: "UTC",
+        automation: { kind: "night", night_id: night.id },
+        db,
+        onQueued: async () => {
+          throw new Error("Simulated queue failure");
+        },
+      });
+    }),
+    /Simulated queue failure/,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM ai_chats WHERE user_id = $1",
+        [user.id],
+      )
+    ).rows[0].n,
+    before,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM assistant_nights WHERE user_id = $1 AND local_day = '2099-01-01'",
+        [user.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("night work waits in Review by default and ordinary private work applies when morning hold is off", async () => {
+  for (const hold of [true, false]) {
+    const title = `Night hold ${hold}-${randomUUID()}`;
+    const run = await enqueue(`Create ${title}`);
+    const nightId = (
+      await pool.query(
+        "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, $2) RETURNING id",
+        [user.id, hold ? "2099-01-02" : "2099-01-03"],
+      )
+    ).rows[0].id;
+    run.checkpoint.request.automation = {
+      kind: "night",
+      night_id: nightId,
+      night_kind: "tidy",
+      wait_for_ok: hold,
+    };
+    const step = {
+      id: "s1",
+      tool: "create_tasks" as const,
+      args: { tasks: [{ title, kind: "task" }] },
+    };
+    run.checkpoint.state.answer = "The night task is ready.";
+    run.checkpoint.state.plan = [step];
+    run.checkpoint.state.selected_steps = [step];
+    run.checkpoint.state.reports = [
+      {
+        specialist: "projects",
+        task_id: "night1",
+        status: "done",
+        summary: "Task staged",
+        findings: [],
+        steps: [step],
+        open_questions: [],
+      },
+    ];
+    await pool.query("UPDATE ai_jobs SET run_state = $2::jsonb WHERE id = $1", [
+      run.id,
+      JSON.stringify(run.checkpoint),
+    ]);
+    await pool.query(
+      "INSERT INTO assistant_night_runs(night_id, job_id, kind) VALUES($1, $2, 'tidy')",
+      [nightId, run.id],
+    );
+    const runner = await start();
+    const completed = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(completed.state, "done", completed.error_message);
+    assert.equal(
+      completed.result.assistant_run.outcome,
+      hold ? "pending" : "applied",
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM items WHERE user_id = $1 AND title = $2",
+          [user.id, title],
+        )
+      ).rows[0].n,
+      hold ? 0 : 1,
+    );
+    if (hold) {
+      const proposal =
+        completed.apply_result.structured.proposal_id ??
+        completed.apply_result.structured.pending?.proposal_id;
+      assert.ok(proposal);
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT status FROM proposals WHERE id = $1 AND user_id = $2",
+            [String(proposal).replace(/^proposal:/, ""), user.id],
+          )
+        ).rows[0]?.status,
+        "pending",
+      );
+    }
+    await end(runner, "SIGTERM");
+  }
+});

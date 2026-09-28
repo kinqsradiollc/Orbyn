@@ -460,11 +460,25 @@ export const SWEEP_RULES: SweepRule[] = [
     table: "ai_jobs",
     // Durable queued/running checkpoints must survive an outage until a runner
     // recovers them; only non-resumable legacy jobs can be swept as stale.
-    where: `(created_at < now() - interval '1 day' AND state IN ('done', 'failed'))
+    where: `((created_at < now() - interval '1 day' AND state IN ('done', 'failed'))
       OR (state = 'running' AND run_state IS NULL AND heartbeat_at < now() - interval '1 day')
-      OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days')`,
+      OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days'))
+      AND NOT EXISTS (SELECT 1 FROM assistant_night_runs nr WHERE nr.job_id = ai_jobs.id)`,
     days: 0,
     configurable: false,
+  },
+  {
+    key: "assistant_nights",
+    label: "Assistant nights",
+    detail:
+      "Night-shift summaries and their per-run review links, kept for 30 days.",
+    table: "assistant_nights",
+    where: `local_day < current_date - $1::int AND NOT EXISTS (
+      SELECT 1 FROM assistant_night_runs nr JOIN ai_jobs j ON j.id = nr.job_id
+      WHERE nr.night_id = assistant_nights.id AND j.state IN ('queued', 'running', 'waiting'))`,
+    days: 30,
+    configurable: true,
+    min: 3,
   },
   {
     key: "assistant_ideas",
