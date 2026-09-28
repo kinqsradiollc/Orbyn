@@ -1,3 +1,4 @@
+import { ReminderNudge } from "../components/ReminderNudge";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -520,6 +521,9 @@ export function AssistantScreen({
                       void assistant.applyPlan(turn.id, moves)
                     }
                   />
+                )}
+                {turn.nudge && (
+                  <ReminderNudge card={turn.nudge} busy={locked} />
                 )}
                 {turn.changesJob && (
                   <TurnChanges

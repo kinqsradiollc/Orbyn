@@ -30,6 +30,46 @@ async function firstParty(r: FastifyRequest) {
 }
 
 export async function agentContextRoutes(app: FastifyInstance) {
+  app.post(
+    "/me/assistant/reminder-nudges/:id/stop",
+    writeRateLimit,
+    async (r): Promise<{ stopped: true }> => {
+      const user = await firstParty(r);
+      const id = idParam(r);
+      await transaction(async (db) => {
+        await db.query(
+          "SELECT pg_advisory_xact_lock(hashtext('assistant-nudge:' || $1))",
+          [user.id],
+        );
+        const row = (
+          await db.query<{ nudge_key: string }>(
+            "SELECT nudge_key FROM assistant_nudges WHERE id = $1 AND user_id = $2",
+            [id, user.id],
+          )
+        ).rows[0];
+        if (!row) fail(404, "Reminder not found.");
+        await db.query(
+          `UPDATE assistant_nudges SET stopped = true WHERE id = (
+            SELECT id FROM assistant_nudges WHERE user_id = $1 AND nudge_key = $2
+            ORDER BY stopped DESC, sent_at DESC, id DESC LIMIT 1
+          )`,
+          [user.id, row.nudge_key],
+        );
+        await audit(
+          {
+            actorId: user.id,
+            action: "assistant_reminder_nudges.stop",
+            targetType: "user",
+            targetId: user.id,
+            details: { nudge_id: id },
+            requestId: r.id,
+          },
+          db,
+        );
+      });
+      return { stopped: true };
+    },
+  );
   app.get(
     "/me/assistant/reminder-nudges",
     async (r): Promise<ReminderNudgeSettings> => {

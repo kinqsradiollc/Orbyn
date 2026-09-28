@@ -3075,6 +3075,15 @@ export class OrbynClient {
   reminderNudgeSettings() {
     return this.request<ReminderNudgeSettings>("/me/assistant/reminder-nudges");
   }
+  /** Stop future templated reminders for this card's source. */
+  stopReminderNudge(id: string) {
+    return this.request<{ stopped: true }>(
+      `/me/assistant/reminder-nudges/${id}/stop`,
+      {
+        method: "POST",
+      },
+    );
+  }
   updateReminderNudgeSettings(input: ReminderNudgeSettings) {
     return this.request<ReminderNudgeSettings>(
       "/me/assistant/reminder-nudges",

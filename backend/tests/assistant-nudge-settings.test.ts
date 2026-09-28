@@ -204,3 +204,79 @@ test("reminder settings are person-only, persist per owner and reject malformed 
     );
   assert.ok(statuses.includes(429));
 });
+
+test("stopping a source is person-only, idempotent and keeps one stop across historical cards", async () => {
+  const me = await h.register("nudge-stop");
+  const other = await h.register("nudge-stop-other");
+  users.push(me.id, other.id);
+  const { randomUUID } = await import("node:crypto");
+  const first = randomUUID(),
+    latest = randomUUID(),
+    entity = randomUUID();
+  await pool.query(
+    `INSERT INTO assistant_nudges(id, user_id, nudge_key, entity_kind, entity_id, local_day, sent_at)
+    VALUES($1, $3, $4, 'task', $5, '2050-01-01', '2050-01-01T12:00:00Z'),
+          ($2, $3, $4, 'task', $5, '2050-01-02', '2050-01-02T12:00:00Z')`,
+    [first, latest, me.id, `task:${entity}`, entity],
+  );
+  const url = `/me/assistant/reminder-nudges/${first}/stop`;
+  assert.equal((await h.call(null, "POST", url)).statusCode, 401);
+  assert.equal((await h.call(other.token, "POST", url)).statusCode, 404);
+  const key = (
+    await h.call(me.token, "POST", "/me/api-keys", { name: "Nudge stop" })
+  ).json().key;
+  assert.equal((await h.call(key, "POST", url)).statusCode, 403);
+  assert.equal(
+    (
+      await h.call(
+        me.token,
+        "POST",
+        "/me/assistant/reminder-nudges/not-an-id/stop",
+      )
+    ).statusCode,
+    422,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url,
+        headers: {
+          authorization: `Bearer ${me.token}`,
+          "content-type": "application/json",
+        },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+  for (const id of [first, latest, first]) {
+    const result = await h.call(
+      me.token,
+      "POST",
+      `/me/assistant/reminder-nudges/${id}/stop`,
+    );
+    assert.equal(result.statusCode, 200, result.body);
+    assert.deepEqual(result.json(), { stopped: true });
+  }
+  const stopped = (
+    await pool.query(
+      "SELECT id FROM assistant_nudges WHERE user_id = $1 AND stopped",
+      [me.id],
+    )
+  ).rows;
+  assert.deepEqual(stopped, [{ id: latest }]);
+  const statuses: number[] = [];
+  for (let n = 0; n < 31; n++)
+    statuses.push(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers: { authorization: `Bearer ${me.token}` },
+          remoteAddress: "10.98.4.2",
+        })
+      ).statusCode,
+    );
+  assert.ok(statuses.includes(429));
+});

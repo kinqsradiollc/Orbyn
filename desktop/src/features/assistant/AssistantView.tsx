@@ -39,6 +39,7 @@ import {
   traceLines,
 } from "../../lib/assistant-labels";
 import { TurnChanges } from "./TurnChanges";
+import { ReminderNudge } from "./ReminderNudge";
 import { ProposalReview } from "../../components/ProposalReview";
 import { AssistantUpcoming } from "./AssistantUpcoming";
 import { client } from "../../lib/api";
@@ -538,6 +539,9 @@ export function AssistantView({
                         : undefined
                     }
                   />
+                  {turn.nudge && (
+                    <ReminderNudge card={turn.nudge} busy={locked} />
+                  )}
                   {turn.changesJob && (
                     <TurnChanges
                       job={turn.changesJob}

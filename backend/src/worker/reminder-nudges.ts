@@ -273,7 +273,7 @@ export async function scanReminderNudges(now = new Date(), only?: string[]) {
   let afterPerson: string | null = null;
   let sent = 0;
   for (;;) {
-    const people = (
+    const people: { id: string }[] = (
       await pool.query<{ id: string }>(
         `SELECT u.id FROM users u JOIN agent_grants g ON g.user_id = u.id AND g.kind = 'assistant'
          WHERE NOT u.disabled AND g.suspended_at IS NULL AND g.revoked_at IS NULL

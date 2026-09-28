@@ -6,6 +6,7 @@ import {
   type ChatTurn,
   type ChatScope,
   type ChatTraceEntry,
+  type ReminderNudgeCard,
   type Item,
   type Proposal,
   type AiChatSummary,
@@ -24,6 +25,7 @@ export type Turn =
       id: string;
       role: "assistant";
       proposal: Proposal;
+      nudge?: ReminderNudgeCard;
       state: TurnState;
       /** The items this reply changes, as they were when it arrived. */
       before: Item[];
@@ -485,6 +487,7 @@ export function useAssistant({
               id: `${t.turn_id ?? nextId()}-assistant`,
               role: "assistant",
               proposal: savedReply(t, n) as Proposal,
+              nudge: t.nudge,
               state: t.outcome === "pending" ? "info" : (t.outcome ?? "info"),
               before: [],
               turnId: t.turn_id ?? newId(),
