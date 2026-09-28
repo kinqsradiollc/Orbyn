@@ -68,6 +68,7 @@ type Row = {
   id: string;
   user_id: string;
   source: ProposalSource;
+  kind: "change" | "idea";
   grant_id: string | null;
   client_name: string;
   summary: string;
@@ -85,7 +86,7 @@ type Row = {
   team_ids: string[];
 };
 
-const SELECT = `SELECT id, user_id, source, grant_id, client_name, summary, status,
+const SELECT = `SELECT id, user_id, source, kind, grant_id, client_name, summary, status,
   applied, created_at, expires_at, decided_at, changes, actions, project,
   session_change, decision_links, applied_project_id, team_ids FROM proposals`;
 
@@ -104,6 +105,7 @@ export type NewProposal = {
   clientName: string;
   summary: string;
   changes: ReviewChange[];
+  kind?: "change" | "idea";
 };
 
 /**
@@ -127,12 +129,13 @@ export async function createAgentProposal(
   ];
   const row = (
     await db.query<{ id: string; expires_at: Date }>(
-      `INSERT INTO proposals (user_id, actions, source, grant_id, client_name,
+      `INSERT INTO proposals (user_id, actions, source, kind, grant_id, client_name,
          summary, changes, team_ids)
-       VALUES ($1, '[]'::jsonb, 'agent', $2, $3, $4, $5::jsonb, $6::uuid[])
+       VALUES ($1, '[]'::jsonb, 'agent', $2, $3, $4, $5, $6::jsonb, $7::uuid[])
        RETURNING id, expires_at`,
       [
         input.userId,
+        input.kind ?? "change",
         input.grantId,
         input.clientName.slice(0, 200),
         input.summary.slice(0, 500),
@@ -778,6 +781,7 @@ async function itemOf(
   return {
     id: row.id,
     source: row.source,
+    ...(row.kind === "idea" ? { kind: "idea" as const } : {}),
     proposer: proposerName(row.source, row.client_name),
     summary:
       row.summary ||

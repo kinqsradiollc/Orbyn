@@ -449,6 +449,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /ai/chats/:id": "hosted_ai",
   "PATCH /ai/chats/:id": "hosted_ai",
   "POST /ai/chats/:id/save-note": "hosted_ai",
+  "GET /me/assistant/ideas": "assistant_control",
   // The list of kept originals (files to download); the setting is covered.
   "GET /me/originals": "kept_files",
   "GET /docs/:id/original": "kept_files",

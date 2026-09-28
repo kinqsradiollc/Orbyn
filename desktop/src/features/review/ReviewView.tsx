@@ -169,6 +169,7 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
         <span className="review-card-text">
           <strong>{item.summary}</strong>
           <small>
+            {item.kind === "idea" ? "Idea · " : ""}
             {item.proposer} · {item.changes.length} change
             {item.changes.length === 1 ? "" : "s"} ·{" "}
             {item.status === "pending"
@@ -218,6 +219,7 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
           <>
             <header className="review-detail-head">
               <span className="eyebrow">
+                {open.kind === "idea" ? "IDEA · " : ""}
                 {open.proposer.toUpperCase()} ·{" "}
                 {STATUS[open.status].toUpperCase()}
               </span>

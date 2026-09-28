@@ -1072,6 +1072,7 @@ Catalog version: `2026-09-28`.
 
 ### 2026-09-28
 
+- Ideas (Muse M7): the Assistant can suggest up to three small daily changes from planner context. Ideas wait in Review for the person's approval; the planner remains a planner. 63 tools, 31 core.
 - Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.
 - Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.
 
@@ -1117,4 +1118,4 @@ Catalog version: `2026-09-28`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 259 of the app's signed-in routes are covered by tools, 208 are never for agents, and 0 are still to come.
+Routes: 259 of the app's signed-in routes are covered by tools, 209 are never for agents, and 0 are still to come.

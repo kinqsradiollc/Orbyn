@@ -155,6 +155,7 @@ export function ReviewSheet({
       <View style={s.flex}>
         <Text style={s.cardTitle}>{item.summary}</Text>
         <Text style={shared.small}>
+          {item.kind === "idea" ? "Idea · " : ""}
           {item.proposer} · {item.changes.length} change
           {item.changes.length === 1 ? "" : "s"} ·{" "}
           {item.status === "pending"

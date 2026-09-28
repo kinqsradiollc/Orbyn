@@ -15,7 +15,7 @@
 | M4 — Lead and specialists | Server, desktop run controls, and polling client committed; mobile screen still in the working tree | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces. Fake-provider tests cover exam revision and stop/approval races. |
 | M5 — Sweep old history | Done, committed | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes; pinned chats stay. Tests cover retries, invalid summaries, privacy and retention limits. |
 | M6 — One set of tools | Done; focused verification passed | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. The M6 catalog snapshot is exactly 63 tools, 31 core; later M8/M9 additions bring the full tree to 65/33. |
-| M7 — Ideas feed | Implemented; integration verification blocked | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. Privacy filters exclude assistant-off data. |
+| M7 — Ideas feed | Implemented; focused checks passed; database integration blocked | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. The feed filters existing ideas that reference assistant-off work. |
 | M8 — Goals | Implemented; integration verification blocked | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. |
 | M9 — Routines and Upcoming | Implemented; integration verification blocked | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
 | M10 — Morning brief | Implemented; integration verification blocked | 172 | Daily private Agent brief covers Today, clashes, slipping work, goals, ideas and pending questions. Digest email links to the brief; email is mocked in tests. |
@@ -23,8 +23,8 @@
 ## Verification
 
 - `npm run build:packages`, `npm run typecheck`, and `npm run format:check`: passed on the current full worktree.
-- M6 focused registry, protocol, structured-provider and catalog tests: 28/28 passed against the 63-tool, 31-core M6 snapshot.
-- `npm run mcp:catalog -w backend`: passed for the M6 snapshot; catalog reports 63 tools, 31 core, with 259 routes covered, 208 excluded and 0 pending.
+- Focused registry, protocol, structured-provider and catalog tests: 28/28 passed against the M7 snapshot.
+- `npm run mcp:catalog -w backend`: passed for M7; catalog reports 63 tools, 31 core, with 259 routes covered, 209 excluded and 0 pending.
 - Latest full `npm test`: 340 passed, 124 failed out of 464. All 124 failing test files stopped at `ECONNREFUSED 127.0.0.1:55434`; no other test failure remained. The full suite is still unverified until the database is reachable.
 - Desktop preview: `http://localhost:5175/app` serves HTTP 200 and remains open in the in-app browser. The page shows a cached signed-in session, but `/health` returns 503 and `GET /lists` returns 500 while PostgreSQL is unavailable. Exact 1440 px and 390 px visual checks are still unverified.
 - Expo Metro is listening on port 8085. Native interactions were not rechecked in this run.

@@ -24,6 +24,7 @@ import { EmptyState } from "../../components/EmptyState";
 import { WorkspaceStrip } from "./WorkspaceStrip";
 import { UpNextCard } from "./UpNextCard";
 import { TodayCard } from "./TodayCard";
+import { AssistantIdeasCard } from "./AssistantIdeasCard";
 import { usePlanned } from "../../app/planned";
 import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
@@ -135,6 +136,7 @@ export function OverviewView({
           onOpenProject={onOpenProject}
           onNavigate={onNavigate}
         />
+        <AssistantIdeasCard onReview={() => onNavigate("Review")} />
       </>
     );
 
@@ -159,6 +161,7 @@ export function OverviewView({
           finished since Sunday
         </Stat>
       </section>
+      <AssistantIdeasCard onReview={() => onNavigate("Review")} />
       <div className="overview-grid">
         <div>
           {/* Older servers have no Today list: what's due today, as before. */}

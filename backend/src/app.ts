@@ -8,6 +8,7 @@ import { mcpServerRoutes } from "./modules/mcp-server/routes.js";
 import { agentRoutes } from "./modules/agents/routes.js";
 import { agentInboxRoutes } from "./modules/agent-inbox/routes.js";
 import { agentContextRoutes } from "./modules/agent-context/routes.js";
+import { assistantIdeasRoutes } from "./modules/assistant-ideas/routes.js";
 import { memoryRoutes } from "./modules/memory/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
@@ -97,6 +98,7 @@ export const serviceModules: Record<
     // standing rules, and answering agents' questions (H0).
     agentInboxRoutes,
     agentContextRoutes,
+    assistantIdeasRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents
     // propose, and undoing what agents changed.

@@ -10,6 +10,7 @@ import {
   type AgentRuleInput,
   type AgentContextSettings,
   type PersonalAgentSettings,
+  type AssistantIdea,
   type AgentIdentityInput,
   type NewAgentWake,
   type ProposalStatus,
@@ -1165,6 +1166,9 @@ export class OrbynClient {
   }
   deleteProjectChat(id: string) {
     return this.request<void>(`/ai/chats/${id}`, { method: "DELETE" });
+  }
+  assistantIdeas() {
+    return this.request<AssistantIdea[]>("/me/assistant/ideas");
   }
   /** Checkpoints for the read-only project time machine, newest first. */
   projectCheckpoints(id: string, before?: string) {

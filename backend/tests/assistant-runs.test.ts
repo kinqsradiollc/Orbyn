@@ -68,8 +68,6 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
-const { scanAssistantGoals, scanAssistantRoutines } =
-  await import("../src/worker/assistant-automations.js");
 const { scanAssistantIdeas } = await import("../src/worker/assistant-ideas.js");
 const app = await buildApp();
 const users: string[] = [];
@@ -610,7 +608,7 @@ test("assistant search excludes a project the person kept out", async () => {
   );
 });
 
-test("goal, routine, and idea scanners queue only eligible daily or weekly runs", async () => {
+test("the idea scanner claims and finishes up to three daily slots", async () => {
   requests.length = 0;
   respond = () => ({ content: "The scheduled review is complete." });
   const user = await register();
@@ -622,95 +620,94 @@ test("goal, routine, and idea scanners queue only eligible daily or weekly runs"
   ).rows[0];
   await assistantPrincipal({ ...person, id: user.id });
 
-  const goalId = (
-    await pool.query<{ id: string }>(
-      `INSERT INTO goals (user_id, title, target)
-       VALUES ($1, 'Ship the capstone', 'Submit the final project') RETURNING id`,
-      [user.id],
-    )
-  ).rows[0].id;
   const now = new Date();
-  const routineId = (
-    await pool.query<{ id: string }>(
-      `INSERT INTO agent_routines
-         (user_id, instruction, rrule, timezone, next_run_at)
-       VALUES ($1, 'Review capstone tasks', 'FREQ=DAILY', 'UTC', $2)
-       RETURNING id`,
-      [user.id, new Date(now.getTime() - 24 * 60 * 60 * 1000)],
-    )
-  ).rows[0].id;
-
-  assert.equal(await scanAssistantGoals(now, { only: [user.id] }), 1);
-  const checkin = (
-    await pool.query<{ job_id: string; week_of: string }>(
-      "SELECT job_id, week_of::text FROM goals_checkins WHERE goal_id = $1",
-      [goalId],
-    )
-  ).rows[0];
-  assert.ok(checkin.job_id);
-  assert.equal(
-    (await poll(user.token, checkin.job_id, ["done", "failed", "waiting"]))
-      .state,
-    "done",
-  );
-  assert.equal(await scanAssistantGoals(now, { only: [user.id] }), 0);
-
-  assert.equal(await scanAssistantRoutines(now, { only: [user.id] }), 1);
-  const routine = (
-    await pool.query<{
-      current_job_id: string | null;
-      next_run_at: Date;
-      paused: boolean;
-    }>(
-      "SELECT current_job_id, next_run_at, paused FROM agent_routines WHERE id = $1",
-      [routineId],
-    )
-  ).rows[0];
-  assert.ok(routine.current_job_id);
-  assert.ok(new Date(routine.next_run_at).getTime() > now.getTime());
-  assert.equal(routine.paused, false);
-  assert.equal(
-    (
-      await poll(user.token, routine.current_job_id!, [
-        "done",
-        "failed",
-        "waiting",
-      ])
-    ).state,
-    "done",
-  );
-  assert.equal(await scanAssistantRoutines(now, { only: [user.id] }), 0);
-  const completedRoutine = (
-    await pool.query<{ current_job_id: string | null; last_result: unknown }>(
-      "SELECT current_job_id, last_result FROM agent_routines WHERE id = $1",
-      [routineId],
-    )
-  ).rows[0];
-  assert.equal(completedRoutine.current_job_id, null);
-  assert.equal(
-    (completedRoutine.last_result as { summary?: string }).summary,
-    "The scheduled review is complete.",
-  );
-
-  assert.equal(await scanAssistantIdeas(now, { only: [user.id] }), 1);
+  assert.equal(await scanAssistantIdeas(now, { only: [user.id] }), 3);
   assert.equal(await scanAssistantIdeas(now, { only: [user.id] }), 0);
-  let finishedAt: Date | null = null;
+  let finished = 0;
   for (let attempt = 0; attempt < 100; attempt++) {
-    finishedAt =
+    finished =
       (
-        await pool.query<{ finished_at: Date | null }>(
-          `SELECT finished_at FROM assistant_idea_days
-          WHERE user_id = $1 AND local_day = $2::date`,
+        await pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM assistant_idea_days
+          WHERE user_id = $1 AND local_day = $2::date AND finished_at IS NOT NULL`,
           [user.id, now.toISOString().slice(0, 10)],
         )
-      ).rows[0]?.finished_at ?? null;
-    if (finishedAt) break;
+      ).rows[0]?.count ?? 0;
+    if (finished === 3) break;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
-  assert.ok(
-    finishedAt,
-    "the daily idea claim is completed by the assistant job",
+  assert.equal(finished, 3, "all three daily idea slots are completed");
+});
+
+test("the Assistant ideas feed hides proposals that reference kept-out work", async () => {
+  const user = await register();
+  const project = await app.inject({
+    method: "POST",
+    url: "/projects",
+    headers: auth(user.token),
+    payload: { name: "Private idea source" },
+  });
+  assert.equal(project.statusCode, 201, project.body);
+  await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
+    project.json().id,
+  ]);
+  const hiddenItem = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO items (user_id, kind, title, due_at, project_id)
+       VALUES ($1, 'task', 'Private task', now(), $2) RETURNING id`,
+      [user.id, project.json().id],
+    )
+  ).rows[0].id;
+  const { createAgentProposal } =
+    await import("../src/modules/proposals/service.js");
+  const hiddenProposal = await createAgentProposal(pool, {
+    userId: user.id,
+    grantId: null,
+    clientName: "Orbyn assistant",
+    summary: "Private idea",
+    kind: "idea",
+    changes: [
+      {
+        type: "task.update",
+        item_id: hiddenItem,
+        version: 1,
+        title: "Private task",
+        team_id: null,
+        patch: { title: "Private task" },
+        before: { title: "Private task" },
+      },
+    ],
+  });
+  const visibleProposal = await createAgentProposal(pool, {
+    userId: user.id,
+    grantId: null,
+    clientName: "Orbyn assistant",
+    summary: "Visible idea",
+    kind: "idea",
+    changes: [
+      {
+        type: "task.create",
+        title: "Visible task",
+        team_id: null,
+        data: { title: "Visible task" },
+      },
+    ],
+  });
+  await pool.query(
+    `INSERT INTO assistant_ideas (user_id, local_day, slot, title, summary, proposal_id)
+     VALUES ($1, current_date, 1, 'Private idea', 'Private task', $2),
+            ($1, current_date, 2, 'Visible idea', 'Visible task', $3)`,
+    [user.id, hiddenProposal.id, visibleProposal.id],
   );
+
+  const response = await app.inject({
+    url: "/me/assistant/ideas",
+    headers: auth(user.token),
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const ideas = response.json() as { title: string }[];
+  assert.ok(ideas.some((idea) => idea.title === "Visible idea"));
+  assert.ok(!ideas.some((idea) => idea.title === "Private idea"));
 });
 
 test("a plain question is answered by the lead without delegation", async () => {

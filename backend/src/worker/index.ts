@@ -27,6 +27,7 @@ import { deliverWakes } from "../modules/agent-inbox/wake.js";
 import { scanAgentJobs } from "./agent-jobs.js";
 import { drainMemoryQueue } from "./memory.js";
 import { sweepOldChats } from "./chat-sweep.js";
+import { scanAssistantIdeas } from "./assistant-ideas.js";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -56,6 +57,8 @@ async function heartbeat() {
 const SWEEP_MS = 3_600_000;
 /** Compact stale chats once a day; the ordinary record sweeper remains hourly. */
 const CHAT_SWEEP_MS = 86_400_000;
+/** Daily Assistant ideas are queued away from request paths. */
+const ASSISTANT_IDEAS_MS = 60_000;
 
 export async function runWorker() {
   let stopping = false;
@@ -71,6 +74,7 @@ export async function runWorker() {
   let lastNotices = -Infinity;
   let lastSwept = -Infinity;
   let lastChatSwept = -Infinity;
+  let lastAssistantIdeas = -Infinity;
   let lastClock = -Infinity;
   while (!stopping) {
     let backlog = false;
@@ -130,6 +134,14 @@ export async function runWorker() {
           }
           lastChatSwept =
             tick() - (failed ? CHAT_SWEEP_MS - CHAT_SWEEP_RETRY_MS : 0);
+        }
+        if (tick() - lastAssistantIdeas >= ASSISTANT_IDEAS_MS) {
+          try {
+            await scanAssistantIdeas();
+          } catch {
+            // An idea day remains eligible after its claim timeout.
+          }
+          lastAssistantIdeas = tick();
         }
         // Study cards for pages changed outside the API's own saves (imports,
         // templates, the assistant, team changes): the API syncs what it
