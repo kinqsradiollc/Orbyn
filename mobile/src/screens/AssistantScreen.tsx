@@ -18,13 +18,13 @@ import {
 } from "@orbyn/core";
 import { BottomSheet } from "../components/BottomSheet";
 import { Button } from "../components/Button";
-import { EmptyState } from "../components/EmptyState";
-import { Icon } from "../components/Icon";
+import { Icon, type IconName } from "../components/Icon";
+import { AssistantDrawer } from "../components/AssistantDrawer";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
 import { AssistantUpcoming } from "../components/AssistantUpcoming";
 import { TurnChanges } from "../components/TurnChanges";
-import { MoreMenu, type MoreAction } from "../components/MoreMenu";
+import type { MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
 import { Field } from "../components/Field";
 import { client } from "../lib/api";
@@ -37,11 +37,69 @@ import {
 } from "../lib/assistant-labels";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, Pressable } from "../motion";
-import { colors, fonts, radii, themed } from "../theme";
+import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
-/** Same starter prompts as the desktop assistant. */
+/** Same starter prompts as the desktop assistant, one icon each. */
 const SUGGESTIONS = assistantSuggestions.map((s) => s.title);
+const SUGGESTION_ICONS: IconName[] = ["calendar", "flag", "sun", "squarePen"];
+
+/** Starter prompts for what the chat is about. */
+function suggestionsFor(scope: Assistant["scope"]): string[] {
+  if (!scope) return SUGGESTIONS;
+  return scope.kind === "project"
+    ? [
+        "Where does it stand?",
+        "What's at risk before the deadline?",
+        "What changed since I last looked?",
+      ]
+    : ["Will I finish this by the deadline?", "What should I plan next?"];
+}
+
+/**
+ * The assistant's top bar: the side menu on the left, its name in the
+ * middle, New chat on the right. It stays put while the chat scrolls.
+ */
+export function AssistantTopBar({
+  assistant,
+  busy,
+  onMenu,
+}: {
+  assistant: Assistant;
+  busy: boolean;
+  onMenu: () => void;
+}) {
+  const { agentName, reset, thinking, runProgress, turns } = assistant;
+  const locked = busy || thinking || runProgress?.state === "waiting";
+  return (
+    <View style={s.topBar}>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Chats and more"
+        onPress={onMenu}
+        style={({ pressed }) => [s.round, pressed && s.roundPressed]}
+      >
+        <Icon name="menu" size={20} color={colors.text} strokeWidth={2} />
+      </PressableScale>
+      <Text style={s.topName} numberOfLines={1} accessibilityRole="header">
+        {agentName}
+      </Text>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="New chat"
+        disabled={locked || turns.length === 0}
+        onPress={reset}
+        style={({ pressed }) => [
+          s.round,
+          pressed && s.roundPressed,
+          (locked || turns.length === 0) && { opacity: 0.45 },
+        ]}
+      >
+        <Icon name="squarePen" size={19} color={colors.text} />
+      </PressableScale>
+    </View>
+  );
+}
 
 /**
  * The conversation: starter prompts, then each message and reply. The message
@@ -56,8 +114,20 @@ export function AssistantScreen({
   onKeptNote,
   onShowOnCalendar,
   onBackToProject,
+  drawerOpen,
+  onDrawerChange,
+  onOpenMemory,
+  onOpenAgentNotes,
+  onOpenSettings,
 }: {
   assistant: Assistant;
+  /** The side menu of chats and shortcuts, opened from the top bar. */
+  drawerOpen: boolean;
+  onDrawerChange: (open: boolean) => void;
+  onOpenMemory?: () => void;
+  onOpenAgentNotes?: () => void;
+  /** Settings → Connected agents, where the assistant is set up. */
+  onOpenSettings?: () => void;
   items: Item[];
   busy: boolean;
   /** Opens a page the assistant read, at the line it cited. */
@@ -100,12 +170,16 @@ export function AssistantScreen({
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [identitySaving, setIdentitySaving] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [upcomingOpen, setUpcomingOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<AiChatSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
-  const renameNext = useRef<AiChatSummary | null>(null);
+  // What opens once the side menu has gone (iOS shows one sheet at a time).
+  const afterDrawer = useRef<(() => void) | null>(null);
+  const closeDrawerThen = (next: () => void) => {
+    afterDrawer.current = next;
+    onDrawerChange(false);
+  };
   const [personAnswer, setPersonAnswer] = useState("");
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
@@ -150,10 +224,8 @@ export function AssistantScreen({
     {
       label: "Rename",
       onPress: () => {
-        // The rename sheet opens once Chats has gone (iOS shows one at a time).
-        renameNext.current = chat;
         setRenameDraft(chat.title);
-        setHistoryOpen(false);
+        closeDrawerThen(() => setRenameTarget(chat));
       },
     },
     {
@@ -196,15 +268,6 @@ export function AssistantScreen({
   const latestReplyId = [...turns]
     .reverse()
     .find((t) => t.role === "assistant")?.id;
-  const suggestions = scope
-    ? scope.kind === "project"
-      ? [
-          "Where does it stand?",
-          "What's at risk before the deadline?",
-          "What changed since I last looked?",
-        ]
-      : ["Will I finish this by the deadline?", "What should I plan next?"]
-    : SUGGESTIONS;
 
   return (
     <>
@@ -257,82 +320,60 @@ export function AssistantScreen({
           />
         </Field>
       </BottomSheet>
-      <BottomSheet
-        visible={historyOpen}
-        title="Chats"
-        onClose={() => setHistoryOpen(false)}
+      <AssistantDrawer
+        visible={drawerOpen}
+        onClose={() => onDrawerChange(false)}
         afterClose={() => {
-          if (renameNext.current) setRenameTarget(renameNext.current);
-          renameNext.current = null;
+          const next = afterDrawer.current;
+          afterDrawer.current = null;
+          next?.();
         }}
-      >
-        <TextInput
-          style={[shared.input, s.historySearch]}
-          value={chatSearch}
-          onChangeText={searchChats}
-          placeholder="Search chats"
-          placeholderTextColor={colors.faint}
-          accessibilityLabel="Search chats"
-        />
-        {savedChats?.map((chat) => (
-          <View
-            key={chat.id}
-            style={[
-              s.historyRow,
-              chat.id === activeChatId && s.historyRowActive,
-            ]}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Open the chat “${chat.title}”`}
-              onPress={() => {
-                setHistoryOpen(false);
-                void openChat(chat.id).catch(() =>
-                  Alert.alert("Couldn't open chat", "Try again."),
-                );
-              }}
-              style={s.historyOpen}
-            >
-              <Text style={s.historyTitle} numberOfLines={1}>
-                {chat.title}
-              </Text>
-              <Text style={shared.small} numberOfLines={1}>
-                {chat.pinned ? "Pinned · " : ""}
-                {chat.swept_at
-                  ? "Summary saved"
-                  : (chat.project_name ??
-                    new Date(chat.last_used_at).toLocaleDateString([], {
-                      day: "numeric",
-                      month: "short",
-                    }))}
-              </Text>
-            </Pressable>
-            <MoreMenu
-              label={`Options for ${chat.title}`}
-              title={chat.title}
-              disabled={locked}
-              actions={chatActions(chat)}
-            />
-          </View>
-        ))}
-        {savedChats?.length === 0 &&
-          (chatSearch.trim() ? (
-            <EmptyState
-              icon="search"
-              title="No chats match"
-              body="Try other words, or clear the search."
-            />
-          ) : (
-            <EmptyState
-              icon="comment"
-              title="No chats yet"
-              body={`Chats with ${agentName} are kept here.`}
-            />
-          ))}
-        {savedChats === null && (
-          <Text style={[shared.small, s.historyEmpty]}>Loading chats…</Text>
-        )}
-      </BottomSheet>
+        agentName={agentName}
+        chats={savedChats}
+        activeChatId={activeChatId}
+        search={chatSearch}
+        onSearch={searchChats}
+        locked={locked}
+        chatActions={chatActions}
+        onOpenChat={(chat) => {
+          onDrawerChange(false);
+          void openChat(chat.id).catch(() =>
+            Alert.alert("Couldn't open chat", "Try again."),
+          );
+        }}
+        onNewChat={() => {
+          onDrawerChange(false);
+          reset();
+        }}
+        shortcuts={[
+          {
+            icon: "calendarCheck",
+            label: "Upcoming",
+            onPress: () => closeDrawerThen(() => setUpcomingOpen(true)),
+          },
+          ...(onOpenMemory
+            ? [
+                {
+                  icon: "sparkles" as const,
+                  label: "Memory",
+                  onPress: () => closeDrawerThen(onOpenMemory),
+                },
+              ]
+            : []),
+          ...(onOpenAgentNotes
+            ? [
+                {
+                  icon: "fileText" as const,
+                  label: "Agent notes",
+                  onPress: () => closeDrawerThen(onOpenAgentNotes),
+                },
+              ]
+            : []),
+        ]}
+        onSettings={
+          onOpenSettings ? () => closeDrawerThen(onOpenSettings) : undefined
+        }
+      />
       <BottomSheet
         visible={!!renameTarget}
         title="Rename chat"
@@ -375,26 +416,6 @@ export function AssistantScreen({
           />
         </Field>
       </BottomSheet>
-      <View style={s.threadHead}>
-        <Text style={[shared.eyebrow, s.threadEyebrow]}>
-          {turns.length ? "CONVERSATION" : ""}
-        </Text>
-        <View style={s.headActions}>
-          <SmallAction
-            label="Chats"
-            disabled={locked}
-            onPress={() => setHistoryOpen(true)}
-          />
-          <SmallAction
-            label="Upcoming"
-            disabled={locked}
-            onPress={() => setUpcomingOpen(true)}
-          />
-          {turns.length > 0 && (
-            <SmallAction label="New chat" disabled={locked} onPress={reset} />
-          )}
-        </View>
-      </View>
       <AssistantUpcoming
         agentName={agentName}
         visible={upcomingOpen}
@@ -417,18 +438,10 @@ export function AssistantScreen({
         </View>
       )}
       {turns.length === 0 && (
-        <FadeIn style={[s.welcome, { minHeight: Math.max(400, height - 480) }]}>
-          <View style={s.badge}>
-            <Icon name="sparkles" size={18} color={colors.accent} />
-          </View>
-          <Text style={s.welcomeTitle}>A little clarity for your day.</Text>
-          <Text style={[shared.subtitle, s.intro]}>
-            Plan your time, find an answer, or turn an idea into a next step.
-            You’ll review every change before it’s saved.
-          </Text>
-          {activeChat?.swept_at && (
+        <FadeIn style={[s.welcome, { minHeight: Math.max(240, height - 420) }]}>
+          {activeChat?.swept_at ? (
             <View style={s.sweptNote}>
-              <Text style={s.historyTitle}>
+              <Text style={s.sweptTitle}>
                 This chat has been saved as a summary note.
               </Text>
               {activeChat.summary_doc_id && (
@@ -439,25 +452,11 @@ export function AssistantScreen({
                 />
               )}
             </View>
+          ) : (
+            <Text style={s.welcomeLine}>
+              Ask for anything — you can undo what I change.
+            </Text>
           )}
-          <View style={s.chips}>
-            {suggestions.map((text) => (
-              <PressableScale
-                key={text}
-                accessibilityRole="button"
-                disabled={locked}
-                onPress={() => ask(text)}
-                style={({ pressed }) => [
-                  s.chip,
-                  pressed && s.chipPressed,
-                  locked && { opacity: 0.5 },
-                ]}
-              >
-                <Text style={s.chipText}>{text}</Text>
-                <Icon name="arrowRight" size={18} color={colors.accent} />
-              </PressableScale>
-            ))}
-          </View>
         </FadeIn>
       )}
 
@@ -694,44 +693,103 @@ export function AssistantComposer({
   assistant: Assistant;
   busy: boolean;
 }) {
-  const { message, setMessage, thinking, runProgress, ask, agentName } =
-    assistant;
-  const canSend =
-    !busy && !thinking && runProgress?.state !== "waiting" && !!message.trim();
+  const {
+    message,
+    setMessage,
+    thinking,
+    runProgress,
+    ask,
+    stopRun,
+    agentName,
+    turns,
+    scope,
+  } = assistant;
+  const running = runProgress?.state === "running";
+  const locked = busy || thinking || runProgress?.state === "waiting";
+  const canSend = !locked && !!message.trim();
   // Four lines at the user's text size, not four lines of the default size.
   const { fontScale } = useWindowDimensions();
+  const suggestions = suggestionsFor(scope);
   return (
-    <View style={s.composer}>
-      <TextInput
-        style={[s.input, { maxHeight: LINE * 4 * fontScale + 20 }]}
-        multiline
-        placeholder={`Ask ${agentName}…`}
-        placeholderTextColor={colors.faint}
-        value={message}
-        onChangeText={setMessage}
-        maxLength={4000}
-        textAlignVertical="center"
-        accessibilityLabel="Message your assistant"
-      />
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel={thinking ? "Thinking" : "Send"}
-        accessibilityState={{ disabled: !canSend }}
-        disabled={!canSend}
-        onPress={() => ask()}
-        style={({ pressed }) => [
-          s.send,
-          pressed && { backgroundColor: colors.accentPressed },
-          !canSend && { opacity: 0.4 },
-        ]}
-      >
-        <Icon
-          name="arrowRight"
-          size={18}
-          color={colors.white}
-          strokeWidth={2.2}
+    <View>
+      {turns.length === 0 && !thinking && (
+        <FadeIn style={s.suggestions}>
+          {suggestions.map((text, n) => (
+            <Pressable
+              key={text}
+              accessibilityRole="button"
+              disabled={locked}
+              onPress={() => ask(text)}
+              style={({ pressed }) => [
+                s.suggestion,
+                pressed && { backgroundColor: colors.surfaceMuted },
+                locked && { opacity: 0.5 },
+              ]}
+            >
+              <Icon
+                name={SUGGESTION_ICONS[n % SUGGESTION_ICONS.length]}
+                size={18}
+                color={colors.textSoft}
+              />
+              <Text style={s.suggestionText} numberOfLines={1}>
+                {text}
+              </Text>
+            </Pressable>
+          ))}
+        </FadeIn>
+      )}
+      <View style={s.composer}>
+        <TextInput
+          style={[s.input, { maxHeight: LINE * 4 * fontScale + 20 }]}
+          multiline
+          placeholder={`Ask ${agentName}…`}
+          placeholderTextColor={colors.faint}
+          value={message}
+          onChangeText={setMessage}
+          maxLength={4000}
+          textAlignVertical="center"
+          accessibilityLabel={`Message ${agentName}`}
         />
-      </PressableScale>
+        {running ? (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Stop"
+            disabled={busy}
+            onPress={() => void stopRun()}
+            style={({ pressed }) => [
+              s.send,
+              pressed && { backgroundColor: colors.accentPressed },
+            ]}
+          >
+            <Icon
+              name="square"
+              size={14}
+              color={colors.white}
+              strokeWidth={3}
+            />
+          </PressableScale>
+        ) : (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Send"
+            accessibilityState={{ disabled: !canSend }}
+            disabled={!canSend}
+            onPress={() => ask()}
+            style={({ pressed }) => [
+              s.send,
+              pressed && { backgroundColor: colors.accentPressed },
+              !canSend && { opacity: 0.4 },
+            ]}
+          >
+            <Icon
+              name="arrowUp"
+              size={18}
+              color={colors.white}
+              strokeWidth={2.2}
+            />
+          </PressableScale>
+        )}
+      </View>
     </View>
   );
 }
@@ -855,28 +913,6 @@ const s = themed(() =>
     multiline: { minHeight: 78, textAlignVertical: "top" },
     sheetActions: { flexDirection: "row", gap: 8 },
     sheetAction: { flex: 1 },
-    historySearch: { marginBottom: 8 },
-    historyRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      paddingHorizontal: 8,
-      borderRadius: radii.input,
-    },
-    historyRowActive: { backgroundColor: colors.surfaceMuted },
-    historyOpen: {
-      flex: 1,
-      minWidth: 0,
-      minHeight: 52,
-      justifyContent: "center",
-      gap: 3,
-    },
-    historyTitle: {
-      fontFamily: fonts.medium,
-      fontSize: 15,
-      color: colors.text,
-    },
-    historyEmpty: { marginVertical: 8, textAlign: "center" },
     sweptNote: {
       alignSelf: "stretch",
       padding: 14,
@@ -887,70 +923,66 @@ const s = themed(() =>
       gap: 10,
     },
     welcome: {
-      justifyContent: "center",
-      paddingVertical: 24,
-      marginBottom: 20,
-    },
-    welcomeTitle: {
-      fontFamily: fonts.display,
-      fontSize: 36,
-      lineHeight: 42,
-      letterSpacing: -0.8,
-      color: colors.text,
-    },
-    badge: {
-      width: 52,
-      height: 52,
-      borderRadius: 18,
-      backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: 14,
+      paddingVertical: 24,
     },
-    intro: { marginBottom: 16 },
-    chips: { gap: 10 },
+    welcomeLine: {
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.muted,
+      textAlign: "center",
+    },
+    sweptTitle: {
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      color: colors.text,
+    },
+    topBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 6,
+    },
+    round: {
+      width: controls.tap,
+      height: controls.tap,
+      borderRadius: radii.pill,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    roundPressed: { backgroundColor: colors.surfaceMuted },
+    topName: {
+      flex: 1,
+      textAlign: "center",
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      color: colors.text,
+    },
+    suggestions: { gap: 2, marginBottom: 10 },
+    suggestion: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+      minHeight: controls.tap,
+      paddingHorizontal: 12,
+      borderRadius: radii.input,
+    },
+    suggestionText: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      color: colors.text,
+    },
     scopeRow: {
       flexDirection: "row",
       flexWrap: "wrap",
       gap: 8,
       marginBottom: 12,
-    },
-    chip: {
-      width: "100%",
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      // A finger's worth of height, like every other control on the phone.
-      minHeight: 44,
-      justifyContent: "center",
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.softBorder,
-      borderRadius: 16,
-      paddingHorizontal: 16,
-      paddingVertical: 15,
-    },
-    chipPressed: { backgroundColor: colors.accentSoft },
-    chipText: {
-      flex: 1,
-      fontFamily: fonts.medium,
-      fontSize: 15,
-      lineHeight: 22,
-      color: colors.accent,
-    },
-    threadHead: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      marginBottom: 10,
-    },
-    threadEyebrow: { marginBottom: 0 },
-    headActions: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "flex-end",
-      gap: 8,
     },
     thread: { gap: 12, marginBottom: 14 },
     userRow: { flexDirection: "row", justifyContent: "flex-end" },

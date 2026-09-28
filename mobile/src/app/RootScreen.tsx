@@ -60,7 +60,11 @@ import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import { toggledStatus } from "../lib/progress";
 import { FadeIn, PressableScale, isReducedMotion } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
-import { AssistantComposer, AssistantScreen } from "../screens/AssistantScreen";
+import {
+  AssistantComposer,
+  AssistantScreen,
+  AssistantTopBar,
+} from "../screens/AssistantScreen";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
 import { VerifyGateScreen } from "../screens/VerifyGateScreen";
@@ -203,6 +207,8 @@ export function RootScreen() {
     twoFactorRequired,
   } = planner;
   const assistant = useAssistant({ token, act, refresh, items });
+  /** The assistant's side menu of chats and shortcuts. */
+  const [assistantMenu, setAssistantMenu] = useState(false);
   // News from another device may be a session: planned time is asked again.
   usePresence(
     token,
@@ -1242,6 +1248,17 @@ export function RootScreen() {
           onLayout={keyboard.onLayout}
           style={[s.body, { paddingBottom: keyboard.inset }]}
         >
+          {tab === "AI" && (
+            <View style={sidePadding}>
+              <View style={s.column}>
+                <AssistantTopBar
+                  assistant={assistant}
+                  busy={busy}
+                  onMenu={() => setAssistantMenu(true)}
+                />
+              </View>
+            </View>
+          )}
           <View style={taskBeside ? s.split : s.fill}>
             <ScrollView
               // Sticky headers can't be switched on and off on a mounted
@@ -1437,6 +1454,11 @@ export function RootScreen() {
                   {tab === "AI" && (
                     <AssistantScreen
                       assistant={assistant}
+                      drawerOpen={assistantMenu}
+                      onDrawerChange={setAssistantMenu}
+                      onOpenMemory={() => present({ sheet: "memory" })}
+                      onOpenAgentNotes={() => present({ sheet: "agent" })}
+                      onOpenSettings={() => present({ sheet: "connections" })}
                       onBackToProject={(id) => {
                         setProjectToOpen(id);
                         setSheet("projects");
