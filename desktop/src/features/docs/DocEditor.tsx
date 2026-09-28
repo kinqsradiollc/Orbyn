@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -86,7 +87,7 @@ import {
   mentionQuery,
   listLayout,
   activityOriginLabel,
-  pageFooter,
+  pageStatus,
   plainText,
   proposeEdit,
   restoreLine,
@@ -859,6 +860,48 @@ export function DocEditor({
    */
   /** Bumped when someone else sets a field, so Info reads the values afresh. */
   const [fieldsStamp, setFieldsStamp] = useState(0);
+  /** How many of the page's fields are filled in, for the status line. */
+  const [propertyCount, setPropertyCount] = useState(0);
+  useEffect(() => {
+    let live = true;
+    client.targetFields("page", doc.id).then(
+      (f) =>
+        live &&
+        setPropertyCount(
+          f.fields.filter((field) => {
+            const v = f.values[field.id];
+            return (
+              v !== null &&
+              v !== undefined &&
+              v !== "" &&
+              !(Array.isArray(v) && !v.length)
+            );
+          }).length,
+        ),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id, fieldsStamp, showInfo]);
+  /** Offline: a failed save waits, and goes again once back online. */
+  const [offline, setOffline] = useState(
+    () => typeof navigator !== "undefined" && navigator.onLine === false,
+  );
+  useEffect(() => {
+    const down = () => setOffline(true);
+    const up = () => {
+      setOffline(false);
+      if (canWrite && dirty.current)
+        void persistRef.current(live.current.title, live.current.blocks);
+    };
+    window.addEventListener("offline", down);
+    window.addEventListener("online", up);
+    return () => {
+      window.removeEventListener("offline", down);
+      window.removeEventListener("online", up);
+    };
+  }, [canWrite]);
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
@@ -2459,16 +2502,18 @@ export function DocEditor({
   const writtenVia = doc.via_agent
     ? activityOriginLabel({ via_agent: doc.via_agent })
     : null;
-  const footerText =
-    pageFooter({
-      ...stats,
-      selected: picked ? countWords(plainText(picked.quote)) : 0,
-      savedAt,
-      saving: save === "saving",
-      failed: save === "error",
-      now,
-      linked: linkedCount,
-    }) + (writtenVia ? ` · written ${writtenVia}` : "");
+  // The status line (W5): each part opens what it's about.
+  const footerParts = pageStatus({
+    ...stats,
+    selected: picked ? countWords(plainText(picked.quote)) : 0,
+    savedAt,
+    saving: save === "saving",
+    failed: save === "error",
+    offline: offline && (save === "error" || dirty.current),
+    now,
+    linked: linkedCount,
+    properties: propertyCount,
+  });
   const stale =
     doc.kind === "doc" &&
     pageFreshness(doc.updated_at, doc.reviewed_at).state !== "fresh";
@@ -3721,26 +3766,41 @@ export function DocEditor({
               )}
               <OriginalLine doc={doc} canWrite={canWrite} report={report} />
               <p className="doc-footer">
-                {/* The one muted line at the end opens the page's Info. */}
-                <button
-                  type="button"
-                  className="doc-footer-button"
-                  aria-label="Page info"
-                  aria-pressed={showInfo}
-                  onClick={() => {
-                    setShowHistory(false);
-                    setHistoryView(null);
-                    setShowInfo(true);
-                  }}
-                >
-                  {footerText}
-                  {stale && (
-                    <span className="doc-footer-stale">
-                      {" "}
-                      · Might be out of date
-                    </span>
-                  )}
-                </button>
+                {/* The status line (W5): "3 linked here" opens the links,
+                  everything else the page's Info. */}
+                {footerParts.map((part, n) => (
+                  <Fragment key={part.key}>
+                    {n > 0 && " · "}
+                    <button
+                      type="button"
+                      className="doc-footer-button"
+                      aria-label={
+                        part.key === "linked"
+                          ? `${part.text}: show the links`
+                          : `${part.text}: page info`
+                      }
+                      onClick={() => {
+                        setShowHistory(false);
+                        setHistoryView(null);
+                        setShowInfo(true);
+                        if (part.key === "linked")
+                          linkedRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                      }}
+                    >
+                      {part.text}
+                    </button>
+                  </Fragment>
+                ))}
+                {writtenVia && ` · written ${writtenVia}`}
+                {stale && (
+                  <span className="doc-footer-stale">
+                    {" "}
+                    · Might be out of date
+                  </span>
+                )}
               </p>
               <div ref={linkedRef} />
               <LinkedHere
@@ -3788,7 +3848,10 @@ export function DocEditor({
               outline={outline}
               current={readingAt}
               viewers={viewers}
-              facts={footerText}
+              facts={
+                footerParts.map((p) => p.text).join(" · ") +
+                (writtenVia ? ` · written ${writtenVia}` : "")
+              }
               revision={`${savedAt ?? ""}:${fieldsStamp}`}
               onTags={setTags}
               onJump={jumpTo}

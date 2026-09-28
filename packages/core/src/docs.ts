@@ -365,6 +365,14 @@ export type Doc = {
   /** The tags on this page, from the same vocabulary tasks use. */
   tags?: { id: string; name: string; color: string }[];
   folder_id: string | null;
+  /**
+   * The page this one sits inside (W5), or null at its folder's top level.
+   * A parent in Trash (or out of reach) isn't listed: its pages then show
+   * at the top level until it comes back.
+   */
+  parent_id?: string | null;
+  /** Its place among the pages beside it, once someone has ordered them. */
+  sort_order?: number | null;
   version: number;
   created_at: string;
   updated_at: string;

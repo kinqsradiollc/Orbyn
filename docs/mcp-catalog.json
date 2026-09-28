@@ -5248,7 +5248,7 @@
     {
       "name": "organize",
       "title": "Organise pages, fields and teams",
-      "description": "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.",
+      "description": "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). nest (id: page; to: the page it goes inside, same space, or \"top\"; position?: 0 first among the pages there): a page inside a page takes its folder, loops refused. Deleting goes through propose_changes.",
       "kind": "destructive",
       "access": "write",
       "toolset": "workspace",
@@ -5290,6 +5290,7 @@
                     "set_role",
                     "meeting_budget",
                     "instructions",
+                    "nest",
                     "create_list",
                     "rename_list",
                     "create_tag",
@@ -5374,6 +5375,11 @@
                     { "type": "integer", "minimum": 30, "maximum": 2400 },
                     { "type": "null" }
                   ]
+                },
+                "position": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
                 }
               },
               "required": ["do"],
@@ -9458,6 +9464,7 @@
     {
       "date": "2026-09-28",
       "changes": [
+        "Pages inside pages (W5), still 65 tools: organize \"nest\" (id: the page; to: the page it goes inside, in the same space and library, or \"top\"; position: 0 first among the pages there) puts a page inside another page, where it takes that page's folder; a loop, another space, or mixing Memory or Agent notes with other pages is refused. Undo puts it back where it was. link doc_folder moves a page out of a parent filed elsewhere, and its undo puts it back inside.",
         "Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.",
         "get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.",
         "manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.",

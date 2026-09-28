@@ -1385,6 +1385,15 @@ coming back to, and are private to whoever starred them.
 A document is filed by sending `folder_id` to `POST /docs` or `PUT /docs/:id`; `null` unfiles it,
 and leaving the field out keeps it where it is.
 
+Pages inside pages (W5): `parent_id` on `POST /docs` or `PUT /docs/:id` puts a page inside another
+page of the same space (your own, or one team's) and library (Memory and Agent notes keep to their
+own kind); it takes that page's folder, and pages inside a page follow it to any folder. `null`
+brings it to its folder's top level; a new `folder_id` alone leaves a parent filed elsewhere.
+`position` (0 first) places it among the pages beside it. A loop, another space or another library
+is `422`; a parent you can't see (or in Trash) is `404`. `GET /docs` lists `parent_id` and
+`sort_order`. A page in Trash keeps its pages (the apps show them at the top level until it's
+back); deleted for good, they move up a level.
+
 ## Saved views and your own fields
 
 A saved view (DATA-01) is a named filter, sort, grouping and layout over tasks, pages or projects.

@@ -319,12 +319,8 @@ const MONTHS = [
   "Dec",
 ];
 
-/**
- * The quiet line at the end of a page: "1,204 words · 5 min read · Saved 2
- * min ago". With words selected it counts those first ("12 of 1,204
- * words"), and while a save is under way it says so instead of when.
- */
-export function pageFooter(o: {
+/** What the line at the end of a page says (see pageStatus). */
+export type PageStatusFacts = {
   words: number;
   minutes: number;
   /** Words in the current selection, when there is one. */
@@ -333,21 +329,66 @@ export function pageFooter(o: {
   savedAt?: string | null;
   saving?: boolean;
   failed?: boolean;
+  /** Offline with changes waiting: they're saved once back online. */
+  offline?: boolean;
   now?: Date;
   /** How many places link to the page ("3 linked here"); left out at 0. */
   linked?: number;
-}): string {
-  const parts = [
-    o.selected
-      ? `${figure(o.selected)} of ${figure(o.words)} words`
-      : `${figure(o.words)} ${o.words === 1 ? "word" : "words"}`,
+  /** How many of the page's own fields are filled in; left out at 0. */
+  properties?: number;
+};
+
+/**
+ * One part of the line at the end of a page, by what it is about, so an
+ * app can make "3 linked here" open the links and the rest open Info.
+ */
+export type PageStatusPart = {
+  key: "words" | "read" | "linked" | "properties" | "saved";
+  text: string;
+};
+
+/**
+ * The quiet line at the end of a page (W5 status line), in parts: "1,204
+ * words · 5 min read · 3 linked here · 2 properties · Saved 2 min ago".
+ * With words selected it counts those first ("12 of 1,204 words"); while a
+ * save is under way it says so instead of when, and offline it says the
+ * changes wait.
+ */
+export function pageStatus(o: PageStatusFacts): PageStatusPart[] {
+  const parts: PageStatusPart[] = [
+    {
+      key: "words",
+      text: o.selected
+        ? `${figure(o.selected)} of ${figure(o.words)} words`
+        : `${figure(o.words)} ${o.words === 1 ? "word" : "words"}`,
+    },
   ];
-  if (o.minutes) parts.push(`${o.minutes} min read`);
-  if (o.linked) parts.push(`${figure(o.linked)} linked here`);
-  if (o.saving) parts.push("Saving…");
-  else if (o.failed) parts.push("Not saved");
-  else if (o.savedAt) parts.push(`Saved ${savedAgo(o.savedAt, o.now)}`);
-  return parts.join(" · ");
+  if (o.minutes) parts.push({ key: "read", text: `${o.minutes} min read` });
+  if (o.linked)
+    parts.push({ key: "linked", text: `${figure(o.linked)} linked here` });
+  if (o.properties)
+    parts.push({
+      key: "properties",
+      text: `${figure(o.properties)} ${o.properties === 1 ? "property" : "properties"}`,
+    });
+  const saved = o.saving
+    ? "Saving…"
+    : o.offline
+      ? "Offline — will save"
+      : o.failed
+        ? "Not saved"
+        : o.savedAt
+          ? `Saved ${savedAgo(o.savedAt, o.now)}`
+          : null;
+  if (saved) parts.push({ key: "saved", text: saved });
+  return parts;
+}
+
+/** The line at the end of a page as one string (see pageStatus). */
+export function pageFooter(o: PageStatusFacts): string {
+  return pageStatus(o)
+    .map((p) => p.text)
+    .join(" · ");
 }
 
 // ------------------------------------------------------------ show changes ---

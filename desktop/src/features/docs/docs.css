@@ -4067,3 +4067,88 @@ input.doc-image-caption:focus {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+
+/* ---- the library's tree (W5) ---- */
+/* A folder's row opens and closes it; the caret turns when open. */
+.docs-tree-caret {
+  transition: transform 120ms ease;
+}
+.docs-navigation [aria-expanded="true"] > .docs-tree-caret {
+  transform: rotate(90deg);
+}
+.docs-navigation .docs-tree-summary.is-drop {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+  background: var(--color-accentSoft);
+}
+/* A page's row: its caret, its title and its ⋯, indented by depth. */
+.docs-tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding-left: calc(var(--depth, 0) * 12px);
+  border-radius: var(--radius-sm);
+}
+.docs-navigation .docs-tree-row > .docs-nav-page {
+  flex: 1;
+  min-width: 0;
+  padding-left: 4px;
+}
+.docs-navigation .docs-tree-toggle {
+  flex: none;
+  width: 24px;
+  min-height: 0;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
+}
+/* The ⋯ sits over the row's end, so titles keep the whole width. */
+.docs-navigation .docs-tree-more {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 28px;
+  min-height: 0;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  transform: translateY(-50%);
+  background: var(--color-sunken);
+  opacity: 0;
+}
+.docs-tree-row:hover > .docs-tree-more,
+.docs-tree-row:focus-within > .docs-tree-more,
+.docs-navigation .docs-tree-more[aria-expanded="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .docs-navigation .docs-tree-more {
+    opacity: 1;
+  }
+}
+/* Where a dragged page will land: inside a page, or above or below it. */
+.docs-tree-row.is-drop-inside {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -2px;
+  background: var(--color-accentSoft);
+}
+.docs-tree-row.is-drop-before {
+  box-shadow: 0 -2px 0 var(--color-accent);
+}
+.docs-tree-row.is-drop-after {
+  box-shadow: 0 2px 0 var(--color-accent);
+}
+.docs-tree-rename {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+}
+.docs-tree-path {
+  color: var(--color-muted);
+  font-size: 11px;
+}

@@ -33,6 +33,7 @@ import { CapabilityError, type CapabilityContext } from "./registry.js";
 import { actionChange, entryOf, quoted, seeDoc, seeProject } from "./shared.js";
 import type { UndoOp } from "./undo.js";
 import { afterSave } from "./write-docs.js";
+import { saveDoc } from "../modules/docs/service.js";
 import {
   actorOf,
   cantWait,
@@ -69,6 +70,7 @@ export const ORGANIZE_MORE = [
   "set_role",
   "meeting_budget",
   "instructions",
+  "nest",
 ] as const;
 export type OrganizeMore = (typeof ORGANIZE_MORE)[number];
 
@@ -91,6 +93,7 @@ export type MoreChange = {
   person?: string;
   role?: TeamRole;
   minutes?: number | null;
+  position?: number;
 };
 
 /** What the changes add to organize's answer. */
@@ -337,6 +340,48 @@ export async function organizeMore(
           into.title,
           out.version,
           `Merged ${quoted(doc.title)} in (it's in Trash; ${out.rewritten.length} page${out.rewritten.length === 1 ? "" : "s"} relinked here, which undo leaves)`,
+        ),
+      );
+      return;
+    }
+    case "nest": {
+      // A page inside another page (W5), or back at its folder's top level.
+      const doc = await pageFor(ctx, c.id);
+      const to = need(c.to, 'to: the page it goes inside, or "top"');
+      const parent = /^top$/i.test(to) ? null : await seeDoc(ctx, to);
+      const was = (
+        await db.query<{
+          parent_id: string | null;
+          folder_id: string | null;
+          version: number;
+        }>("SELECT parent_id, folder_id, version FROM docs WHERE id = $1", [
+          doc.id,
+        ])
+      ).rows[0];
+      const saved = await saveDoc(db, actor, doc.id, {
+        version: was.version,
+        parent_id: parent?.id ?? null,
+        ...(c.position !== undefined ? { position: c.position } : {}),
+      });
+      st.undo.push({
+        op: "doc.file",
+        doc_id: doc.id,
+        version: saved.version,
+        folder_id: was.folder_id,
+        parent_id: was.parent_id,
+      });
+      st.after.push(() =>
+        announceDocChange(pool, doc.id, saved.version, by(ctx)),
+      );
+      st.done.push(
+        entryOf(
+          "doc",
+          doc.id,
+          doc.title,
+          saved.version,
+          parent
+            ? `Moved inside ${quoted(parent.title)}`
+            : "Moved to the top level of its folder",
         ),
       );
       return;

@@ -46,6 +46,9 @@ import {
   type Folder,
   type Project,
   type SearchHit,
+  docTree,
+  nestTargets,
+  treeRows,
 } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
@@ -143,6 +146,15 @@ export function DocsSheet({
 }) {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
+  /** Pages opened in the library's tree to show the pages inside (W5). */
+  const [treeOpen, setTreeOpen] = useState<Set<string>>(new Set());
+  const toggleTree = (id: string) =>
+    setTreeOpen((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   /** Pages nobody has changed or confirmed in months. */
   const [fading, setFading] = useState<Set<string>>(new Set());
@@ -456,23 +468,37 @@ export function DocsSheet({
     });
   };
 
-  /** Put a page in a folder, or take it out of one. */
+  /**
+   * Put a page at a folder's top level (out of any page it was inside), or
+   * take it out of its folder.
+   */
   const fileIn = (doc: DocSummary, folderId: string | null) =>
     void run(async () => {
-      const full = await client.getDoc(doc.id);
-      await client.updateDoc(doc.id, {
-        version: full.version,
-        folder_id: folderId,
-      });
+      await client.moveDoc(doc.id, { parent_id: null, folder_id: folderId });
       setFiling(null);
       setDocs(
         (all) =>
           all?.map((d) =>
             d.id === doc.id
-              ? { ...d, folder_id: folderId, in_uploads: false }
+              ? {
+                  ...d,
+                  folder_id: folderId,
+                  parent_id: null,
+                  in_uploads: false,
+                }
               : d,
           ) ?? all,
       );
+      void loadList();
+    });
+  /** Put a page inside another page (W5); it takes that page's folder. */
+  const nestIn = (doc: DocSummary, parentId: string) =>
+    void run(async () => {
+      await client.moveDoc(doc.id, { parent_id: parentId });
+      setFiling(null);
+      setTreeOpen((was) => new Set([...was, parentId]));
+      await loadList();
+      showToast({ text: "Moved" });
     });
   const fileInProject = (doc: DocSummary, projectId: string) =>
     void run(async () => {
@@ -808,6 +834,49 @@ export function DocsSheet({
     </Pressable>
   );
 
+  /**
+   * A folder's pages as a tree (W5): a page's pages indented under it, shown
+   * when it's opened.
+   */
+  const treeList = (pages: DocSummary[]) =>
+    treeRows(docTree(pages), (id) => treeOpen.has(id)).map(
+      ({ doc, depth, children, open: expanded }) => {
+        const title = doc.title || "Untitled";
+        return (
+          <View
+            key={doc.id}
+            style={[styles.treeRow, { paddingLeft: depth * 16 }]}
+          >
+            {children > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${expanded ? "Close" : "Open"} the pages in ${title}`}
+                accessibilityState={{ expanded }}
+                hitSlop={8}
+                onPress={() => toggleTree(doc.id)}
+                style={styles.treeToggle}
+              >
+                <Icon
+                  name={expanded ? "chevronDown" : "chevronRight"}
+                  size={16}
+                  color={colors.muted}
+                />
+              </Pressable>
+            ) : (
+              <View style={styles.treeToggle} />
+            )}
+            <View style={styles.treeTitle}>
+              {navRow(
+                children > 0 && !expanded ? `${title} (${children})` : title,
+                () => openHit(doc.id),
+                open?.id === doc.id,
+              )}
+            </View>
+          </View>
+        );
+      },
+    );
+
   /** How many pages sit in each folder, for the library to show. */
   const countIn = (id: string | null) =>
     (docs ?? []).filter((d) =>
@@ -836,7 +905,7 @@ export function DocsSheet({
       ...(doc.kind !== "memory"
         ? [
             {
-              label: "Move to folder…",
+              label: "Move to…",
               icon: "folder" as const,
               onPress: () => {
                 setMoveQuery("");
@@ -999,6 +1068,102 @@ export function DocsSheet({
 
   /** The editor hands back whatever went wrong; show it where they are. */
   const report = (e: unknown) => setError(errorText(e));
+  /** Pages the page being moved could go inside (W5), found by name. */
+  const nestHere = filing
+    ? nestTargets(
+        (docs ?? []).filter(
+          (d) => d.kind !== "agenda" || d.id === filing.parent_id,
+        ),
+        filing,
+      ).filter((d) =>
+        (d.title || "Untitled")
+          .toLocaleLowerCase()
+          .includes(moveQuery.trim().toLocaleLowerCase()),
+      )
+    : [];
+  /** "Move to…": a folder's top level, or inside another page. */
+  const filingPanel = filing ? (
+    <View style={styles.filing}>
+      <Text style={styles.filingTitle}>
+        {picking
+          ? `Move ${picked.size} page${picked.size === 1 ? "" : "s"}`
+          : `Move “${filing.title || "Untitled"}”`}
+      </Text>
+      {folders.length + nestHere.length > 5 && (
+        <TextInput
+          value={moveQuery}
+          onChangeText={setMoveQuery}
+          placeholder="Find a folder or page"
+          placeholderTextColor={colors.faint}
+          accessibilityLabel="Find a folder or page"
+          style={styles.moveSearch}
+        />
+      )}
+      {!picking && nestHere.length > 0 && (
+        <Text style={styles.filingLabel}>Folders</Text>
+      )}
+      <ChipRow label="Folder">
+        <Chip
+          label="Unfiled"
+          selected={!picking && !filing.folder_id && !filing.parent_id}
+          onPress={() =>
+            picking ? bulk({ folder_id: null }) : fileIn(filing, null)
+          }
+        />
+        {folders
+          .filter((f) => !f.archived_at)
+          .filter((f) =>
+            f.name
+              .toLocaleLowerCase()
+              .includes(moveQuery.trim().toLocaleLowerCase()),
+          )
+          .map((f) => (
+            <Chip
+              key={f.id}
+              label={f.name}
+              selected={
+                !picking && filing.folder_id === f.id && !filing.parent_id
+              }
+              onPress={() =>
+                picking ? bulk({ folder_id: f.id }) : fileIn(filing, f.id)
+              }
+            />
+          ))}
+      </ChipRow>
+      {!picking && nestHere.length > 0 && (
+        <>
+          <Text style={styles.filingLabel}>Inside a page</Text>
+          <ChipRow label="Inside a page">
+            {nestHere.slice(0, 30).map((d) => (
+              <Chip
+                key={d.id}
+                label={d.title || "Untitled"}
+                selected={filing.parent_id === d.id}
+                onPress={() => nestIn(filing, d.id)}
+              />
+            ))}
+          </ChipRow>
+        </>
+      )}
+      {filing.in_uploads && !filing.team_id && personalProjects.length > 0 && (
+        <ChipRow label="Personal project">
+          {personalProjects.map((project) => (
+            <Chip
+              key={project.id}
+              label={project.name}
+              selected={false}
+              onPress={() => fileInProject(filing, project.id)}
+            />
+          ))}
+        </ChipRow>
+      )}
+      <SmallAction
+        label="Cancel"
+        disabled={false}
+        onPress={() => setFiling(null)}
+      />
+    </View>
+  ) : null;
 
   return (
     <Sheet
@@ -1243,23 +1408,16 @@ export function DocsSheet({
                           () => selectCollection(f.id),
                           folderFilter === f.id,
                         )}
-                        {(docs ?? [])
-                          .filter((d) =>
+                        {treeList(
+                          (docs ?? []).filter((d) =>
                             f.id === "none"
                               ? !d.folder_id &&
                                 d.kind !== "agenda" &&
                                 d.kind !== "memory" &&
                                 d.kind !== "agent"
                               : d.folder_id === f.id,
-                          )
-                          .sort((a, b) => a.title.localeCompare(b.title))
-                          .map((d) => (
-                            <View key={d.id}>
-                              {navRow(d.title || "Untitled", () =>
-                                openHit(d.id),
-                              )}
-                            </View>
-                          ))}
+                          ),
+                        )}
                       </View>
                     )}
                   </View>
@@ -1314,73 +1472,87 @@ export function DocsSheet({
                     />
                   </View>
                 ) : (
-                  <OpenDoc
-                    key={open!.id}
-                    doc={open!}
-                    onOpenProject={onOpenProject}
-                    initialBlockId={
-                      initialDoc?.id === open!.id ? initialBlockId : null
-                    }
-                    onTargetOffset={(y) =>
-                      requestAnimationFrame(() =>
-                        scroller.current?.scrollTo({
-                          y: Math.max(0, y - 80),
-                          animated: true,
-                        }),
-                      )
-                    }
-                    isToday={
-                      !open!.agenda_date || open!.agenda_date === agendaToday
-                    }
-                    userId={userId}
-                    canWriteDoc={canWriteDoc}
-                    onChanged={(saved) => {
-                      setOpen((current) =>
-                        current?.id === saved.id ? saved : current,
-                      );
-                      setDocs(
-                        (current) =>
-                          current?.map((d) =>
-                            d.id === saved.id
-                              ? {
-                                  ...d,
-                                  title: saved.title,
-                                  updated_at: saved.updated_at,
-                                }
-                              : d,
-                          ) ?? current,
-                      );
-                    }}
-                    onItemsChanged={onItemsChanged}
-                    onDeleted={backToList}
-                    onUndoDelete={(back) => {
-                      // Undo from the toast: the page comes back open.
-                      setOpen(back);
-                      void loadList();
-                    }}
-                    headerSlot={headerSlot}
-                    toolbarSlot={toolbarSlot}
-                    historyKey={historyKey}
-                    onShowHistory={showHistory}
-                    onShowInLibrary={() => {
-                      const here = open!;
-                      backToList();
-                      if (here.archived)
-                        selectCollection(
-                          null,
-                          null,
-                          false,
-                          null,
-                          false,
-                          false,
-                          true,
+                  <>
+                    {filingPanel}
+                    <OpenDoc
+                      key={open!.id}
+                      doc={open!}
+                      onOpenProject={onOpenProject}
+                      initialBlockId={
+                        initialDoc?.id === open!.id ? initialBlockId : null
+                      }
+                      onTargetOffset={(y) =>
+                        requestAnimationFrame(() =>
+                          scroller.current?.scrollTo({
+                            y: Math.max(0, y - 80),
+                            animated: true,
+                          }),
+                        )
+                      }
+                      isToday={
+                        !open!.agenda_date || open!.agenda_date === agendaToday
+                      }
+                      userId={userId}
+                      canWriteDoc={canWriteDoc}
+                      onChanged={(saved) => {
+                        setOpen((current) =>
+                          current?.id === saved.id ? saved : current,
                         );
-                      else selectCollection(here.folder_id ?? "none");
-                      setFlash(here.id);
-                      setTimeout(() => setFlash(null), 2000);
-                    }}
-                    report={report}
-                  />
+                        setDocs(
+                          (current) =>
+                            current?.map((d) =>
+                              d.id === saved.id
+                                ? {
+                                    ...d,
+                                    title: saved.title,
+                                    updated_at: saved.updated_at,
+                                  }
+                                : d,
+                            ) ?? current,
+                        );
+                      }}
+                      onItemsChanged={onItemsChanged}
+                      onDeleted={backToList}
+                      onUndoDelete={(back) => {
+                        // Undo from the toast: the page comes back open.
+                        setOpen(back);
+                        void loadList();
+                      }}
+                      headerSlot={headerSlot}
+                      toolbarSlot={toolbarSlot}
+                      historyKey={historyKey}
+                      onShowHistory={showHistory}
+                      onShowInLibrary={() => {
+                        const here = open!;
+                        backToList();
+                        if (here.archived)
+                          selectCollection(
+                            null,
+                            null,
+                            false,
+                            null,
+                            false,
+                            false,
+                            true,
+                          );
+                        else selectCollection(here.folder_id ?? "none");
+                        setFlash(here.id);
+                        setTimeout(() => setFlash(null), 2000);
+                      }}
+                      onMoveTo={
+                        !canWriteDoc || canWriteDoc(open!.team_id)
+                          ? () => {
+                              setMoveQuery("");
+                              setFiling(
+                                (docs ?? []).find((d) => d.id === open!.id) ??
+                                  (open as unknown as DocSummary),
+                              );
+                            }
+                          : undefined
+                      }
+                      report={report}
+                    />
+                  </>
                 )}
               </>
             ) : templating ? (
@@ -1686,74 +1858,7 @@ export function DocsSheet({
                     </View>
                   </View>
                 )}
-                {!!filing && (
-                  <View style={styles.filing}>
-                    <Text style={styles.filingTitle}>
-                      {picking
-                        ? `Move ${picked.size} page${picked.size === 1 ? "" : "s"}`
-                        : `File “${filing.title || "Untitled"}”`}
-                    </Text>
-                    {folders.length > 5 && (
-                      <TextInput
-                        value={moveQuery}
-                        onChangeText={setMoveQuery}
-                        placeholder="Find a folder"
-                        placeholderTextColor={colors.faint}
-                        accessibilityLabel="Find a folder"
-                        style={styles.moveSearch}
-                      />
-                    )}
-                    <ChipRow label="Folder">
-                      <Chip
-                        label="Unfiled"
-                        selected={!picking && !filing.folder_id}
-                        onPress={() =>
-                          picking
-                            ? bulk({ folder_id: null })
-                            : fileIn(filing, null)
-                        }
-                      />
-                      {folders
-                        .filter((f) => !f.archived_at)
-                        .filter((f) =>
-                          f.name
-                            .toLocaleLowerCase()
-                            .includes(moveQuery.trim().toLocaleLowerCase()),
-                        )
-                        .map((f) => (
-                          <Chip
-                            key={f.id}
-                            label={f.name}
-                            selected={!picking && filing.folder_id === f.id}
-                            onPress={() =>
-                              picking
-                                ? bulk({ folder_id: f.id })
-                                : fileIn(filing, f.id)
-                            }
-                          />
-                        ))}
-                    </ChipRow>
-                    {filing.in_uploads &&
-                      !filing.team_id &&
-                      personalProjects.length > 0 && (
-                        <ChipRow label="Personal project">
-                          {personalProjects.map((project) => (
-                            <Chip
-                              key={project.id}
-                              label={project.name}
-                              selected={false}
-                              onPress={() => fileInProject(filing, project.id)}
-                            />
-                          ))}
-                        </ChipRow>
-                      )}
-                    <SmallAction
-                      label="Cancel"
-                      disabled={false}
-                      onPress={() => setFiling(null)}
-                    />
-                  </View>
-                )}
+                {filingPanel}
                 {fading.size > 0 && !hits && !trashOnly && (
                   <Pressable
                     accessibilityRole="button"
@@ -2144,10 +2249,13 @@ function OpenDoc({
   historyKey,
   onShowHistory,
   onShowInLibrary,
+  onMoveTo,
   report,
 }: {
   doc: Doc;
   onShowInLibrary?: () => void;
+  /** "Move to…" in the page's ⋯ (W5). */
+  onMoveTo?: () => void;
   headerSlot?: SlotHandle;
   toolbarSlot?: SlotHandle;
   /** Bumped to open the history below the page. */
@@ -2236,6 +2344,7 @@ function OpenDoc({
         toolbarSlot={toolbarSlot}
         onShowHistory={onShowHistory}
         onShowInLibrary={onShowInLibrary}
+        onMoveTo={onMoveTo}
         report={report}
       />
       <DocComments state={comments} userId={userId} />
@@ -2449,6 +2558,14 @@ const styles = themed(() =>
       fontSize: 15,
       fontFamily: fonts.medium,
     },
+    treeRow: { flexDirection: "row", alignItems: "center" },
+    treeToggle: {
+      width: 28,
+      height: 34,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    treeTitle: { flex: 1, minWidth: 0 },
     navChildren: {
       marginLeft: 18,
       paddingLeft: 10,
@@ -2527,6 +2644,7 @@ const styles = themed(() =>
       fontSize: 15,
       fontFamily: fonts.semibold,
     },
+    filingLabel: { color: colors.muted, fontSize: 13 },
     list: { gap: 12 },
     // Title, time and the two controls share the first line; the preview gets
     // the whole width underneath. Laid out side by side on a 375pt phone the

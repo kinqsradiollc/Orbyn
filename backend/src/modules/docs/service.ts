@@ -39,6 +39,13 @@ import { allowPageFiles } from "../../lib/page-file-access.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import type { z } from "zod";
 import { viaAgentColumn } from "../../lib/via-agent.js";
+import {
+  checkParent,
+  followFolder,
+  lockTree,
+  placeAt,
+  planMove,
+} from "./tree.js";
 
 /**
  * The docs service: reading, checking and writing pages, their tags, task
@@ -47,7 +54,8 @@ import { viaAgentColumn } from "../../lib/via-agent.js";
  * go through these, so a page is read and changed one way everywhere.
  */
 export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title, d.kind,
-  d.item_id, d.project_id, p.name AS project_name, d.folder_id, d.version,
+  d.item_id, d.project_id, p.name AS project_name, d.folder_id,
+  d.parent_id, d.sort_order, d.version,
   d.created_at, d.updated_at, d.reviewed_at, d.imported_from, d.in_uploads,
   (SELECT json_build_object('id', k.id, 'doc_id', k.doc_id, 'file_name', k.file_name,
       'file_type', k.file_type, 'bytes', k.bytes, 'created_at', k.created_at)
@@ -1048,7 +1056,10 @@ export function changeFor(
 
 // --- Writing pages ------------------------------------------------------
 
-export type DocCreate = z.output<typeof docInput>;
+/** A new page; parent_id (W5) may be left out by callers that never nest. */
+export type DocCreate = Omit<z.output<typeof docInput>, "parent_id"> & {
+  parent_id?: string | null;
+};
 export type DocSave = z.output<typeof docUpdate>;
 
 /** Tells open apps (lists, projects) that a space's pages changed. */
@@ -1092,13 +1103,23 @@ export async function createDoc(
   await actAs(db, u.id);
   if (data.team_id) await requireTeam(data.team_id, u, "items:write", db);
   await checkLinks(db, u, data.team_id ?? null, data);
+  // Made inside a page (W5): in that page's space, library and folder.
+  let folderId = data.folder_id ?? null;
+  const parentId = data.parent_id ?? null;
+  if (parentId) {
+    const space = { user_id: u.id, team_id: data.team_id ?? null };
+    await lockTree(db, space);
+    folderId = (
+      await checkParent(db, u, { ...space, kind: data.kind }, parentId)
+    ).folder_id;
+  }
   // Pictures and files the new page shows must be ones its maker can read.
   await allowPageFiles(db, u.id, data.content);
   const id = (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
-         folder_id, project_id)
-         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8) RETURNING id`,
+         folder_id, project_id, parent_id)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9) RETURNING id`,
       [
         u.id,
         data.team_id,
@@ -1106,11 +1127,14 @@ export async function createDoc(
         data.kind,
         JSON.stringify(data.content),
         data.item_id,
-        data.folder_id,
+        folderId,
         data.project_id,
+        parentId,
       ],
     )
   ).rows[0].id;
+  // A new page inside a page goes last among its pages.
+  if (parentId) await placeAt(db, id, Number.MAX_SAFE_INTEGER);
   await setTags(db, id, u, data.team_id, data.tags);
   await announceDocs(db, u.id, data.team_id, id);
   return (
@@ -1165,6 +1189,8 @@ export async function saveDoc(
   });
   if (current.version !== body.version)
     fail(409, "This document changed somewhere else. Refresh and try again.");
+  // Where it sits in the tree (W5): its parent, and the folder that brings.
+  const move = await planMove(db, u, current, body);
   // Lines tied to tasks are stored as their tasks now stand.
   const content = body.content
     ? await syncTicks(
@@ -1188,8 +1214,12 @@ export async function saveDoc(
        project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
        aliases = coalesce($8::text[], aliases),
        -- Filing an imported page anywhere takes it out of Uploads.
-       in_uploads = CASE WHEN $4::boolean OR $6::boolean THEN false
-                         ELSE in_uploads END,
+       in_uploads = CASE WHEN $4::boolean OR $6::boolean OR $9::boolean
+                         THEN false ELSE in_uploads END,
+       parent_id = CASE WHEN $9::boolean THEN $10::uuid ELSE parent_id END,
+       -- A page that changes parent starts at the end of its new place.
+       sort_order = CASE WHEN $9::boolean AND $10::uuid IS DISTINCT FROM parent_id
+                         THEN NULL ELSE sort_order END,
        version = version + 1,
        updated_at = now()
      WHERE id = $1`,
@@ -1197,18 +1227,27 @@ export async function saveDoc(
       id,
       body.title ?? null,
       content === undefined ? null : JSON.stringify(content),
-      body.folder_id !== undefined,
-      body.folder_id ?? null,
+      move.folder !== undefined,
+      move.folder ?? null,
       body.project_id !== undefined,
       body.project_id ?? null,
       body.aliases ?? null,
+      move.parent !== undefined,
+      move.parent ?? null,
     ],
   );
+  // Pages inside it follow it to its folder.
+  if (move.folder !== undefined) await followFolder(db, id, move.folder);
+  if (body.position !== undefined) await placeAt(db, id, body.position);
+  else if (move.moved && move.parent)
+    await placeAt(db, id, Number.MAX_SAFE_INTEGER);
   if (body.tags) await setTags(db, id, u, current.team_id, body.tags);
   if (
     body.title !== undefined ||
     body.folder_id !== undefined ||
-    body.project_id !== undefined
+    body.project_id !== undefined ||
+    body.parent_id !== undefined ||
+    body.position !== undefined
   )
     await announceDocs(db, current.user_id, current.team_id, id);
   return readDoc(db, id, u.id);
