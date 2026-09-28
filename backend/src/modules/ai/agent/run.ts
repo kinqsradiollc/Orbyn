@@ -1169,7 +1169,14 @@ export async function runAssistantJob(
       if (stopReason === "deadline") {
         // Out of time: never write. Staged work waits for the person's yes.
         const state = envelope.state;
-        if (!state.waiting && state.plan.length && principal) {
+        // A background idea run has nobody watching its chat: it drops the
+        // work rather than leave a question there.
+        if (
+          !state.waiting &&
+          state.plan.length &&
+          principal &&
+          request.automation?.kind !== "idea"
+        ) {
           state.selected_steps = state.plan;
           state.answer ||=
             "I ran out of time before finishing. These are the changes prepared so far.";

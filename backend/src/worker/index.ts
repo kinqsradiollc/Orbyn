@@ -25,6 +25,7 @@ import { scanAgentStudy } from "../modules/agent-inbox/scan.js";
 import { expireQuestions } from "../modules/agent-inbox/questions.js";
 import { deliverWakes } from "../modules/agent-inbox/wake.js";
 import { scanAgentJobs } from "./agent-jobs.js";
+import { failStaleAssistantJobs } from "../modules/ai/agent/run.js";
 import { drainMemoryQueue } from "./memory.js";
 import { sweepOldChats } from "./chat-sweep.js";
 import { scanAssistantIdeas } from "./assistant-ideas.js";
@@ -59,6 +60,8 @@ const SWEEP_MS = 3_600_000;
 const CHAT_SWEEP_MS = 3_600_000;
 /** Daily Assistant ideas are queued away from request paths. */
 const ASSISTANT_IDEAS_MS = 60_000;
+/** Stuck assistant runs are looked for at most this often. */
+const STALE_JOBS_MS = 60_000;
 /** Weekly goal check-ins are queued off the request path. */
 const ASSISTANT_GOALS_MS = 60_000;
 /** Scheduled Assistant routines are claimed off the request path. */
@@ -103,6 +106,7 @@ export async function runWorker() {
   let lastSwept = -Infinity;
   let lastChatSwept = -Infinity;
   let lastAssistantIdeas = -Infinity;
+  let lastStaleJobs = -Infinity;
   let lastAssistantGoals = -Infinity;
   let lastAssistantRoutines = -Infinity;
   let lastClock = -Infinity;
@@ -158,9 +162,16 @@ export async function runWorker() {
           startChatSweep();
           lastChatSwept = tick();
         }
-        // TODO(engine): once run.ts exports failStaleAssistantJobs(now), call it
-        // here at most once a minute to fail stale running jobs and clear their
-        // automation links. The scans already treat such jobs as released.
+        // Assistant runs whose server stopped mid-way, and questions left
+        // unanswered for a week, end here (their automation links cleared).
+        if (tick() - lastStaleJobs >= STALE_JOBS_MS) {
+          try {
+            await failStaleAssistantJobs(new Date());
+          } catch {
+            // Tried again next minute.
+          }
+          lastStaleJobs = tick();
+        }
         if (tick() - lastAssistantIdeas >= ASSISTANT_IDEAS_MS) {
           try {
             await scanAssistantIdeas();

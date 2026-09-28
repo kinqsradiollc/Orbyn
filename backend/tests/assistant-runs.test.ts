@@ -2016,7 +2016,7 @@ test("the time limit parks staged work on an approval card instead of applying i
   }
 });
 
-test("an idea run that hits the time limit keeps its suggest-only trust", async () => {
+test("an idea run that hits the time limit drops its staged work: nobody watches its chat", async () => {
   requests.length = 0;
   respond = stageTask("Idea deadline task", () => hold());
   assistantRunLimits.maxRunMs = 2000;
@@ -2030,23 +2030,17 @@ test("an idea run that hits the time limit keeps its suggest-only trust", async 
       automation: { kind: "idea", local_day: "2026-09-28", slot: 1 },
     });
     assert.ok(jobId);
-    const waiting = await poll(
+    const ended = await poll(
       user.token,
       jobId,
       ["waiting", "done", "failed"],
       400,
     );
-    assert.equal(waiting.state, "waiting", JSON.stringify(waiting));
-    assert.equal(waiting.waiting?.kind, "approval");
-    assert.match(
-      waiting.waiting?.detail,
-      /set to suggest changes/,
-      "the card is checked with the idea's lowered trust",
+    assert.notEqual(
+      ended.state,
+      "waiting",
+      "no question is left in the idea's chat",
     );
-    assert.equal(await itemCount(user.id, "Idea deadline task"), 0);
-    const declined = await answerCard(user.token, jobId, false);
-    assert.equal(declined.statusCode, 202, declined.body);
-    await poll(user.token, jobId, ["done", "failed"]);
     assert.equal(await itemCount(user.id, "Idea deadline task"), 0);
   } finally {
     assistantRunLimits.maxRunMs = 600_000;
