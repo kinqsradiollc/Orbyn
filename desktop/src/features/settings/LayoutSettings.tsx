@@ -10,6 +10,10 @@ import {
   ALWAYS_SHOWN,
   arrangeEntries,
   COMMANDS,
+  HOME_PANEL_LABELS,
+  homePanels,
+  type DocSummary,
+  type HomePanel,
   dropEntry,
   effectiveKeys,
   hasSystemPermission,
@@ -28,6 +32,7 @@ import { keysFor } from "../../app/commands";
 import { NAV_GROUPS, navName, type View } from "../../app/views";
 import { setStartScreen, startScreen, usePrefs } from "../../app/prefs";
 import { SettingsSection } from "./SettingsSection";
+import { client } from "../../lib/api";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -187,6 +192,128 @@ export function ArrangeSettings({ user }: { user: User | null }) {
         <button
           className="text-button"
           onClick={() => save({ sidebar: { order: [], hidden: [] } })}
+        >
+          <RotateCcw size={14} /> Back to how it came
+        </button>
+      )}
+    </SettingsSection>
+  );
+}
+
+/**
+ * Home (W1): show, hide and reorder its hubs and panels, and the line from
+ * one of your pages under the greeting. It follows the account.
+ */
+export function HomeArrangeSettings() {
+  const { prefs, save } = usePrefs();
+  const home = prefs.home;
+  const order = homePanels(home, true);
+  const [pages, setPages] = useState<DocSummary[] | null>(null);
+  useEffect(() => {
+    client.listDocs().then(
+      (all) => setPages(all.filter((d) => d.kind !== "agenda")),
+      () => setPages([]),
+    );
+  }, []);
+  const reorder = (next: HomePanel[]) =>
+    save({ home: { ...home, order: next } });
+  const toggle = (p: HomePanel) =>
+    save({
+      home: {
+        ...home,
+        hidden: home.hidden.includes(p)
+          ? home.hidden.filter((h) => h !== p)
+          : [...home.hidden, p],
+      },
+    });
+  const quote = home.quote;
+  const setQuote = (next: Partial<typeof quote>) =>
+    save({ home: { ...home, quote: { ...quote, ...next } } });
+  return (
+    <SettingsSection className="card settings-card">
+      <h2>Home</h2>
+      <p className="muted">
+        Show, hide and reorder what Home shows under the greeting, on every
+        computer you sign in to.
+      </p>
+      <ul className="arrange-list">
+        {order.map((p, i) => {
+          const label = HOME_PANEL_LABELS[p];
+          const hidden = home.hidden.includes(p);
+          return (
+            <li
+              key={p}
+              className={"arrange-row" + (hidden ? " is-hidden" : "")}
+            >
+              <span className="arrange-name">{label}</span>
+              <button
+                className="icon-button"
+                aria-label={`Move ${label} up`}
+                disabled={i === 0}
+                onClick={() => reorder(moveEntry(order, p, -1) as HomePanel[])}
+              >
+                <ArrowUp size={14} />
+              </button>
+              <button
+                className="icon-button"
+                aria-label={`Move ${label} down`}
+                disabled={i === order.length - 1}
+                onClick={() => reorder(moveEntry(order, p, 1) as HomePanel[])}
+              >
+                <ArrowDown size={14} />
+              </button>
+              <input
+                type="checkbox"
+                role="switch"
+                className="ai-switch"
+                aria-label={`Show ${label}`}
+                checked={!hidden}
+                onChange={() => toggle(p)}
+              />
+            </li>
+          );
+        })}
+      </ul>
+      <div className="preference home-quote-setting">
+        <span>
+          <strong>A quote under the greeting</strong>
+          <small>
+            A line from one of your pages, a different one each visit.
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="ai-switch"
+          aria-label="Show a quote under the greeting"
+          checked={quote.on}
+          onChange={(e) => setQuote({ on: e.target.checked })}
+        />
+      </div>
+      {quote.on && (
+        <div className="preference home-quote-setting">
+          <span>
+            <strong>Quotes page</strong>
+            <small>Each line of the page is a quote.</small>
+          </span>
+          <Select
+            aria-label="Quotes page"
+            value={quote.doc_id ?? ""}
+            onChange={(e) => setQuote({ doc_id: e.target.value || null })}
+          >
+            <option value="">Choose a page</option>
+            {(pages ?? []).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.title || "Untitled"}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+      {(home.order.length > 0 || home.hidden.length > 0) && (
+        <button
+          className="text-button"
+          onClick={() => save({ home: { ...home, order: [], hidden: [] } })}
         >
           <RotateCcw size={14} /> Back to how it came
         </button>

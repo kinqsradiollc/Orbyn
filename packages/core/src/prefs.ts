@@ -14,6 +14,7 @@
  */
 import { z } from "zod";
 import type { CommandDef } from "./commands.js";
+import { lookIconInput } from "./covers.js";
 
 // ------------------------------------------------------------ sidebar ---
 
@@ -267,6 +268,150 @@ export const viewChoices = z.record(
 );
 export type ViewChoices = z.infer<typeof viewChoices>;
 
+// ---------------------------------------------------------------- home ---
+
+/** The panels on Home that can be hidden and reordered (W1). */
+export const HOME_PANELS = ["hubs", "goals", "routines", "reflection"] as const;
+export type HomePanel = (typeof HOME_PANELS)[number];
+
+export const HOME_PANEL_LABELS: Record<HomePanel, string> = {
+  hubs: "Hubs",
+  goals: "Goals",
+  routines: "Routines",
+  reflection: "Reflection",
+};
+
+/** What a hub's quick link opens. */
+export const HUB_LINK_KINDS = ["project", "deck", "page", "view"] as const;
+export type HubLinkKind = (typeof HUB_LINK_KINDS)[number];
+
+export const HUB_LINK_KIND_LABELS: Record<HubLinkKind, string> = {
+  project: "Project",
+  deck: "Deck",
+  page: "Page",
+  view: "View",
+};
+
+/**
+ * What a hub lists until links are chosen: the latest projects, study
+ * decks or pages. A hub with links of its own shows those instead.
+ */
+export const HUB_AUTO = ["projects", "study", "docs"] as const;
+export type HubAuto = (typeof HUB_AUTO)[number];
+
+export const hubLink = z
+  .object({
+    kind: z.enum(HUB_LINK_KINDS),
+    id: z.uuid(),
+    /** Its name when it was chosen, shown if it can't be read now. */
+    label: z.string().trim().min(1).max(80),
+    /** The small chip beside it; its kind when left out. */
+    tag: z.string().trim().max(24).optional(),
+  })
+  .strict();
+export type HubLink = z.infer<typeof hubLink>;
+
+/** A hub can hold six quick links at most; the card shows three to six. */
+export const MAX_HUB_LINKS = 6;
+export const MAX_HUBS = 8;
+
+export const homeHub = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z0-9-]{1,40}$/)
+      .max(40),
+    title: z.string().trim().min(1).max(40),
+    cover_file_id: z.uuid().nullable().default(null),
+    icon: lookIconInput.nullable().default(null),
+    auto: z.enum(HUB_AUTO).nullable().default(null),
+    links: z.array(hubLink).max(MAX_HUB_LINKS).default([]),
+  })
+  .strict();
+export type HomeHub = z.infer<typeof homeHub>;
+
+/** How Home is laid out: hubs, panel order, hidden panels and the quote. */
+export const homeLayout = z
+  .object({
+    hubs: z
+      .array(homeHub)
+      .max(MAX_HUBS)
+      .refine((h) => new Set(h.map((x) => x.id)).size === h.length, {
+        message: "Two hubs have the same id.",
+      }),
+    order: z.array(z.enum(HOME_PANELS)).max(HOME_PANELS.length).default([]),
+    hidden: z.array(z.enum(HOME_PANELS)).max(HOME_PANELS.length).default([]),
+    /** A line from one of your pages under the greeting; off by default. */
+    quote: z
+      .object({
+        on: z.boolean().default(false),
+        doc_id: z.uuid().nullable().default(null),
+      })
+      .strict()
+      .default({ on: false, doc_id: null }),
+  })
+  .strict();
+export type HomeLayout = z.infer<typeof homeLayout>;
+
+/** Home as it comes: Projects, Study and Docs hubs, every panel shown. */
+export const DEFAULT_HOME: HomeLayout = {
+  hubs: [
+    {
+      id: "projects",
+      title: "Projects",
+      cover_file_id: null,
+      icon: "icon:boxes",
+      auto: "projects",
+      links: [],
+    },
+    {
+      id: "study",
+      title: "Study",
+      cover_file_id: null,
+      icon: "icon:graduationCap",
+      auto: "study",
+      links: [],
+    },
+    {
+      id: "docs",
+      title: "Docs",
+      cover_file_id: null,
+      icon: "icon:fileText",
+      auto: "docs",
+      links: [],
+    },
+  ],
+  order: [],
+  hidden: [],
+  quote: { on: false, doc_id: null },
+};
+
+/** Home's panels in the chosen order (the rest after), hidden ones left out unless asked. */
+export function homePanels(
+  layout: Pick<HomeLayout, "order" | "hidden"> | null | undefined,
+  showHidden = false,
+): HomePanel[] {
+  const order = (layout?.order ?? []).filter((p) =>
+    (HOME_PANELS as readonly string[]).includes(p),
+  );
+  const all = [...new Set([...order, ...HOME_PANELS])];
+  const hidden = new Set(layout?.hidden ?? []);
+  return all.filter((p) => showHidden || !hidden.has(p));
+}
+
+/** A new hub's id, unlike the ones there. */
+export function newHubId(hubs: Pick<HomeHub, "id">[], title: string): string {
+  const base =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 30) || "hub";
+  let id = base;
+  for (let n = 2; hubs.some((h) => h.id === id); n++) id = `${base}-${n}`;
+  return id;
+}
+
 // ------------------------------------------------------------- the lot ---
 
 /** What GET /me/prefs answers. */
@@ -274,6 +419,8 @@ export type AccountPrefs = {
   sidebar: SidebarArrangement;
   shortcuts: ShortcutOverrides;
   views: ViewChoices;
+  /** How Home is laid out (W1); the defaults until something is chosen. */
+  home: HomeLayout;
   updated_at: string | null;
 };
 
@@ -281,12 +428,13 @@ export const EMPTY_PREFS: AccountPrefs = {
   sidebar: { order: [], hidden: [] },
   shortcuts: {},
   views: {},
+  home: DEFAULT_HOME,
   updated_at: null,
 };
 
 /**
- * PUT /me/prefs: any of the three. The sidebar and shortcuts are replaced
- * whole; view choices are merged by place (null clears one place).
+ * PUT /me/prefs: any of these. The sidebar, shortcuts and Home are
+ * replaced whole; view choices are merged by place (null clears one place).
  */
 export const accountPrefsInput = z
   .object({
@@ -301,20 +449,22 @@ export const accountPrefsInput = z
         viewChoice.nullable(),
       )
       .optional(),
+    home: homeLayout.optional(),
   })
   .strict()
   .refine(
     (p) =>
       p.sidebar !== undefined ||
       p.shortcuts !== undefined ||
-      p.views !== undefined,
+      p.views !== undefined ||
+      p.home !== undefined,
     { message: "Nothing to change." },
   )
   .refine((p) => !p.views || Object.keys(p.views).length <= 60, {
     message: "Too many views at once.",
     path: ["views"],
   });
-export type AccountPrefsInput = z.infer<typeof accountPrefsInput>;
+export type AccountPrefsInput = z.input<typeof accountPrefsInput>;
 
 /** How many places' view choices an account keeps. */
 export const MAX_VIEW_CHOICES = 60;
@@ -331,13 +481,13 @@ export const START_SCREENS = [
 export type StartScreen = (typeof START_SCREENS)[number];
 
 export const START_SCREEN_LABELS: Record<StartScreen, string> = {
-  overview: "Overview",
+  overview: "Home",
   agenda: "Today's agenda",
   tasks: "My tasks",
   "last-page": "The last page I had open",
 };
 
-/** A stored choice, or Overview for anything else. */
+/** A stored choice, or Home ("overview") for anything else. */
 export const readStartScreen = (raw: string | null | undefined): StartScreen =>
   (START_SCREENS as readonly string[]).includes(raw ?? "")
     ? (raw as StartScreen)

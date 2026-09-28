@@ -35,6 +35,7 @@ import { PasskeysSettings } from "./PasskeysSettings";
 import { PrivacySettings } from "./PrivacySettings";
 import {
   ArrangeSettings,
+  HomeArrangeSettings,
   ShortcutSettings,
   StartSettings,
 } from "./LayoutSettings";
@@ -238,6 +239,7 @@ export function SettingsView({
         )}
         {tab === "account" && <StartSettings />}
         {tab === "account" && <ArrangeSettings user={user} />}
+        {tab === "account" && <HomeArrangeSettings />}
         {tab === "account" && <ShortcutSettings />}
         {tab === "account" && (
           <SettingsSection className="card settings-card">

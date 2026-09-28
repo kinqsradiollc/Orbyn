@@ -1363,6 +1363,9 @@ export function RootScreen() {
                   {tab === "Today" && (
                     <TodayScreen
                       items={items}
+                      homeLayout={accountPrefs.prefs.home}
+                      agentName={assistant.agentName}
+                      onOpenLink={(link) => openLink.current?.(link)}
                       onOpenWorkspace={(what) => present({ sheet: what })}
                       onPlanDay={() => {
                         setTab("AI");

@@ -99,6 +99,7 @@ import {
   type AccountPrefs,
   type AccountPrefsInput,
   type CoverPicture,
+  type HomeSummary,
   type Look,
   type LookInput,
   type ConnectionMap,
@@ -1543,6 +1544,19 @@ export class OrbynClient {
   }
   resetPrefs() {
     return this.request<void>("/me/prefs", { method: "DELETE" });
+  }
+
+  // Home (W1)
+  /** Home's panels: active goals, next routine runs, today's brief and reflection. */
+  getHome() {
+    return this.request<HomeSummary>("/me/home");
+  }
+  /** "How did today go?": a line under Reflection on today's agenda. */
+  addReflection(text: string) {
+    return this.request<{ doc_id: string; reflection: string[] }>(
+      "/me/home/reflection",
+      { method: "POST", body: { text } },
+    );
   }
 
   // Covers and icons (W6)

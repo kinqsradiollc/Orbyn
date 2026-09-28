@@ -3099,8 +3099,29 @@ same as `markdown`. Without `team_id`, your own personal tasks.
   replaced whole; view choices are merged by place (`null` clears one). A shortcut must name a
   command and keys can do only one thing (400). Refused for personal API keys. 30 a minute.
 - `DELETE /me/prefs`: everything back as it came.
+- `home` (W1), in both: `{ hubs: [{ id, title, cover_file_id, icon, auto, links: [{ kind:
+project|deck|page|view, id, label, tag? }] }], order, hidden, quote: { on, doc_id } }`, replaced
+  whole. At most 8 hubs of 6 links; a hub's cover must be a picture you can see (404).
 
 What opens at start (NAV-12), the theme and text size stay on each device.
+
+### Home (W1)
+
+- `GET /me/home` → `{ today, timezone, goals, routines, brief, agenda_doc_id, reflection }`:
+  active goals (those tied to a project kept out of AI left out) with `progress` (0–1, from the
+  project's tasks or the plan's ticks, else null) and `next_checkin`; the next five unpaused
+  routine runs; today's morning brief; the lines under Reflection on today's agenda.
+- `POST /me/home/reflection` `{ text }` (1–500) → `201 { doc_id, reflection }`: adds the line
+  under a Reflection heading on today's agenda page (written first if need be), as one save of
+  yours. 30 a minute.
+
+### Covers and icons (W6)
+
+- `PUT /docs/:id/look` `{ cover_file_id?, icon? }` → `{ cover_file_id, icon }`; `PUT /projects/:id`
+  takes the same two fields. `null` takes one off. A cover is a picture you can see (404
+  otherwise); an icon is one emoji or `icon:<name>` (422 otherwise). The page's version stays.
+  Whoever can see the page or project can see its cover.
+- `GET /me/pictures` → your pictures on pages you can open, newest first (60), to choose from.
 
 ### Archiving and tidying the library (SRCH-03, ORG-03)
 

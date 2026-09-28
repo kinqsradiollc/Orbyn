@@ -98,7 +98,8 @@ const go = (
 
 export const COMMANDS: CommandDef[] = [
   // Every screen.
-  go("Overview", "home today start"),
+  // Home (W1): keyed "Overview" still, so changed shortcuts keep working.
+  go("Overview", "home overview today start dashboard hubs", "Go to Home"),
   go("Agenda", "day page notes today"),
   go("My tasks", "todo list"),
   go("Calendar", "events week month"),

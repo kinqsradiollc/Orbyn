@@ -10,7 +10,6 @@ import {
   EMPTY_PREFS,
   readStartScreen,
   type AccountPrefs,
-  type AccountPrefsInput,
   type StarredItem,
   type StartScreen,
   type ViewChoice,
@@ -25,12 +24,15 @@ import { client } from "../lib/api";
  */
 export type Prefs = {
   prefs: AccountPrefs;
-  /** Save the sidebar or shortcuts (replaced whole). */
-  save: (input: Pick<AccountPrefsInput, "sidebar" | "shortcuts">) => void;
+  /** Save the sidebar, shortcuts or Home's layout (each replaced whole). */
+  save: (input: SaveInput) => void;
   /** How one place was left: a task list, the calendar. */
   viewChoice: (place: string) => ViewChoice | undefined;
   setViewChoice: (place: string, choice: ViewChoice | null) => void;
 };
+
+/** What `save` replaces whole: the sidebar, shortcuts or Home's layout. */
+type SaveInput = Partial<Pick<AccountPrefs, "sidebar" | "shortcuts" | "home">>;
 
 const noop = () => {};
 export const PrefsContext = createContext<Prefs>({
@@ -67,13 +69,10 @@ export function useAccountPrefs(
     };
   }, [token]);
 
-  const save = useCallback(
-    (input: Pick<AccountPrefsInput, "sidebar" | "shortcuts">) => {
-      setPrefs((p) => ({ ...p, ...input }) as AccountPrefs);
-      client.savePrefs(input).then(setPrefs, (e) => reportRef.current(e));
-    },
-    [],
-  );
+  const save = useCallback((input: SaveInput) => {
+    setPrefs((p) => ({ ...p, ...input }));
+    client.savePrefs(input).then(setPrefs, (e) => reportRef.current(e));
+  }, []);
 
   const pending = useRef<Record<string, ViewChoice | null>>({});
   const timer = useRef<number | null>(null);

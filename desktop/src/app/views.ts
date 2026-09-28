@@ -1,12 +1,12 @@
 import {
   Bell,
   Brain,
+  House,
   CalendarCheck,
   ListChecks,
   Inbox,
   ShieldCheck,
   Sparkles,
-  Sun,
   Table2,
   Users,
   type LucideIcon,
@@ -107,7 +107,8 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
   {
     label: "TODAY",
     items: [
-      { label: "Overview", icon: Sun },
+      // Keyed "Overview" still, so saved sidebars and links keep working.
+      { label: "Overview", icon: House },
       { label: "Agenda", icon: CONCEPT_ICON.agenda },
       { label: "My tasks", icon: CONCEPT_ICON.task },
       { label: "Calendar", icon: CONCEPT_ICON.event },
@@ -141,9 +142,11 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
 /** Every destination, flat — for anything that walks the whole navigation. */
 /**
  * What the sidebar calls a destination, where that differs from its key:
- * the assistant goes by the name it was given, and "Agent" holds notes.
+ * the assistant goes by the name it was given, "Agent" holds notes, and
+ * "Overview" is Home (W1; the key stays for saved sidebars and links).
  */
 export function navName(view: View, agentName?: string): string {
+  if (view === "Overview") return "Home";
   if (view === "AI assistant") return agentName?.trim() || view;
   if (view === "Agent") return "Agent notes";
   return view;

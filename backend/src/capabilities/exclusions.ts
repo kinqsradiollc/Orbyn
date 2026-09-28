@@ -328,6 +328,8 @@ export const COVERED: Record<string, string[]> = {
   "PUT /docs/:id/aliases": ["organize"],
   // A page's cover and icon (W6): organize "look".
   "PUT /docs/:id/look": ["organize"],
+  // Home's "How did today go?" (W1): a line under Reflection on the agenda.
+  "POST /me/home/reflection": ["edit_doc", "append_doc"],
   "GET /docs/:id/folds": ["fetch"],
   "PUT /docs/:id/folds": ["organize"],
   "DELETE /docs/:id/sources/:sourceId": ["organize"],
@@ -586,6 +588,9 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /me/prefs": "navigation",
   "PUT /me/prefs": "navigation",
   "DELETE /me/prefs": "navigation",
+  // Home's panels in one read (W1); agents read goals, routines and today
+  // with manage_goals, manage_routines and get_today.
+  "GET /me/home": "navigation",
   "GET /starred": "navigation",
   "GET /links/map": "connections_map",
   "PUT /docs/:id/archive": "library",
