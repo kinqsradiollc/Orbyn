@@ -1,5 +1,7 @@
+import { fail } from "@orbyn/core";
 import type { Queryable } from "../db/pool.js";
 import { docVisibleTo } from "./doc-visibility.js";
+import { visibleProjects } from "./visibility.js";
 
 /**
  * Who can read a picture or file in a page (EDT-01), in one place.
@@ -19,7 +21,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * SQL true when page file `f` is one `user` may read: they uploaded it, or
- * can read a live page it was added to or shown on.
+ * can read a live page it was added to or shown on, or a project or page
+ * that wears it as a cover (W6; a cover is set only by someone who could
+ * read the picture, see {@link requireCoverPicture}).
  */
 export function pageFileReadableBy(user: string, f = "f") {
   return `(${f}.user_id = ${user}
@@ -27,7 +31,48 @@ export function pageFileReadableBy(user: string, f = "f") {
                     WHERE fd.id = ${f}.doc_id AND ${docVisibleTo(user, "fd")})
         OR EXISTS (SELECT 1 FROM page_file_refs fr
                      JOIN docs fs ON fs.id = fr.doc_id
-                    WHERE fr.file_id = ${f}.id AND ${docVisibleTo(user, "fs")}))`;
+                    WHERE fr.file_id = ${f}.id AND ${docVisibleTo(user, "fs")})
+        OR EXISTS (SELECT 1 FROM docs fc
+                    WHERE fc.cover_file_id = ${f}.id AND ${docVisibleTo(user, "fc")})
+        OR EXISTS (SELECT 1 FROM projects fp
+                    WHERE fp.cover_file_id = ${f}.id
+                      AND ${visibleProjects("fp", { user })}))`;
+}
+
+/**
+ * A picture `userId` may set as a cover: one they can read now, uploaded
+ * whole. 404 otherwise, the same as for an id that doesn't exist.
+ */
+export async function requireCoverPicture(
+  db: Queryable,
+  userId: string,
+  fileId: string,
+): Promise<void> {
+  const ok = (
+    await db.query(
+      `SELECT 1 FROM page_files f
+        WHERE f.id = $2 AND f.kind = 'image' AND f.status = 'ready'
+          AND f.doc_id IS NOT NULL AND ${pageFileReadableBy("$1")}`,
+      [userId, fileId],
+    )
+  ).rowCount;
+  if (!ok) fail(404, "That cover picture wasn't found.");
+}
+
+/**
+ * A cover taken off: a picture no page shows and nothing else wears starts
+ * its 30 days (as a removed line's does), so undo can still bring it back.
+ */
+export async function coverLetGo(db: Queryable, fileId: string | null) {
+  if (!fileId) return;
+  await db.query(
+    `UPDATE page_files f SET unused_since = now()
+      WHERE f.id = $1
+        AND NOT EXISTS (SELECT 1 FROM page_file_refs r WHERE r.file_id = f.id)
+        AND NOT EXISTS (SELECT 1 FROM docs d WHERE d.cover_file_id = f.id)
+        AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.cover_file_id = f.id)`,
+    [fileId],
+  );
 }
 
 /** The pictures and files a page's lines point at. */

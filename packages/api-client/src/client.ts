@@ -98,6 +98,9 @@ import {
   type StarredItem,
   type AccountPrefs,
   type AccountPrefsInput,
+  type CoverPicture,
+  type Look,
+  type LookInput,
   type ConnectionMap,
   type TeamPolicies,
   type RecordingSummary,
@@ -1289,6 +1292,10 @@ export class OrbynClient {
       stages?: { id?: string; name: string }[];
       /** Other names, such as a course code (LNK-03). */
       aliases?: string[];
+      /** A cover picture (W6); null takes it off. */
+      cover_file_id?: string | null;
+      /** An emoji or "icon:<name>" (W6); null takes it off. */
+      icon?: string | null;
     },
   ) {
     return this.request<Project>(`/projects/${id}`, {
@@ -1536,6 +1543,19 @@ export class OrbynClient {
   }
   resetPrefs() {
     return this.request<void>("/me/prefs", { method: "DELETE" });
+  }
+
+  // Covers and icons (W6)
+  /** A page's cover and icon; null takes one off. Its version stays. */
+  setDocLook(docId: string, look: LookInput) {
+    return this.request<Look>(`/docs/${docId}/look`, {
+      method: "PUT",
+      body: look,
+    });
+  }
+  /** Your pictures, newest first, to choose a cover from. */
+  myPictures() {
+    return this.request<CoverPicture[]>("/me/pictures");
   }
 
   // Archiving and tidying the library (SRCH-03, ORG-03)

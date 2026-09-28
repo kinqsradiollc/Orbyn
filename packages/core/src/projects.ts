@@ -46,6 +46,10 @@ export type Project = {
   done_count: number;
   /** Other names the project goes by, such as a course code (LNK-03). */
   aliases?: string[];
+  /** A cover picture from the file store (W6), or null. */
+  cover_file_id?: string | null;
+  /** An emoji or "icon:<name>" (W6), or null. */
+  icon?: string | null;
 };
 
 /** Your open work in a project, measured against each task's planning target. */

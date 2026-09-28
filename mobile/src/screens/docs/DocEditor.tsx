@@ -145,6 +145,7 @@ import { announceStars, rememberLastPage } from "../../lib/accountPrefs";
 import { RecordSheet, RecordingSummarySheet } from "./RecordSheet";
 import { LinkCardSheet } from "./LinkCardSheet";
 import { EmbedSheet, MergeSheet, TemplateSheet } from "./PageActions";
+import { CoverImage, LookIconView } from "../../components/Look";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /** Kinds that carry on when Return is pressed at the end of a line. */
@@ -2451,6 +2452,17 @@ export function DocEditor({
               onPress={() => setMenu("page")}
             />
           </SlotFill>
+        )}
+        {/* Its cover and icon (W6), set on the web; read-only here. */}
+        <CoverImage
+          fileId={doc.cover_file_id}
+          height={140}
+          style={{ borderRadius: radii.input, marginBottom: 12 }}
+        />
+        {!!doc.icon && (
+          <View style={{ marginBottom: 6 }}>
+            <LookIconView icon={doc.icon} size={36} />
+          </View>
         )}
         {reading ? (
           <Text style={styles.title} accessibilityRole="header">

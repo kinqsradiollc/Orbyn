@@ -60,6 +60,7 @@ export const CHANGELOG: { date: string; changes: string[] }[] = [
   {
     date: "2026-09-28",
     changes: [
+      "Covers and icons (W6): update_project takes cover (a picture on a page the connection reaches, as orbyn://file/<id>; null takes it off) and icon (one emoji, or icon:<name> for one of the app's icons; null takes it off); organize takes look (id: a page; cover, icon) for a page's cover and icon. Both are undoable; get_project and fetch are unchanged. Still 65 tools.",
       "Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.",
       "get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.",
       "manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.",

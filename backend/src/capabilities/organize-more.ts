@@ -15,6 +15,7 @@ import {
   mergePages,
   setAliases,
   setFolds,
+  setLook,
 } from "../modules/docs/structure.js";
 import { linkMentionIn } from "../modules/links/more.js";
 import { removePageSource } from "../modules/sources/service.js";
@@ -33,6 +34,7 @@ import { CapabilityError, type CapabilityContext } from "./registry.js";
 import { actionChange, entryOf, quoted, seeDoc, seeProject } from "./shared.js";
 import type { UndoOp } from "./undo.js";
 import { afterSave } from "./write-docs.js";
+import { iconValue, seeCoverPicture } from "./looks.js";
 import {
   actorOf,
   cantWait,
@@ -54,6 +56,7 @@ import {
 
 export const ORGANIZE_MORE = [
   "aliases",
+  "look",
   "fold",
   "link_mention",
   "extract",
@@ -91,6 +94,8 @@ export type MoreChange = {
   person?: string;
   role?: TeamRole;
   minutes?: number | null;
+  cover?: string | null;
+  icon?: string | null;
 };
 
 /** What the changes add to organize's answer. */
@@ -190,6 +195,38 @@ export async function organizeMore(
             ? `Also called ${names.join(", ")}`
             : "Other names cleared",
         ),
+      );
+      return;
+    }
+    case "look": {
+      // A page's cover picture and icon (W6); either or both.
+      const doc = await pageFor(ctx, c.id);
+      if (c.cover === undefined && c.icon === undefined)
+        throw invalid("This change needs cover, icon or both.");
+      const look = {
+        ...(c.cover !== undefined
+          ? {
+              cover_file_id:
+                c.cover === null ? null : await seeCoverPicture(ctx, c.cover),
+            }
+          : {}),
+        ...(c.icon !== undefined ? { icon: iconValue(c.icon) } : {}),
+      };
+      const r = await setLook(db, actor, doc.id, look);
+      st.undo.push({ op: "look.set", doc_id: doc.id, ...r.before });
+      st.after.push(() =>
+        announceDocChange(pool, doc.id, r.version, by(ctx), { tags: true }),
+      );
+      const words = [
+        c.cover !== undefined
+          ? c.cover
+            ? "Cover set"
+            : "Cover taken off"
+          : "",
+        c.icon !== undefined ? (c.icon ? "Icon set" : "Icon taken off") : "",
+      ].filter(Boolean);
+      st.done.push(
+        entryOf("doc", doc.id, doc.title, r.version, words.join(", ")),
       );
       return;
     }

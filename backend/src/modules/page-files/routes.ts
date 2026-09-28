@@ -5,6 +5,7 @@ import {
   pageFileInput,
   pageFileType,
   PAGE_FILE_TYPES,
+  type CoverPicture,
   type PageFile,
   type PageFileLink,
   type PageFilesUsage,
@@ -251,6 +252,30 @@ export async function pageFileRoutes(app: FastifyInstance) {
     await mayDelete(pool, u, file);
     await pool.query("DELETE FROM page_files WHERE id = $1", [file.id]);
     return reply.code(204).send();
+  });
+
+  /**
+   * Your pictures, newest first, to choose a cover from (W6): ones you
+   * added to pages you can still open.
+   */
+  app.get("/me/pictures", async (r): Promise<CoverPicture[]> => {
+    const u = await authenticate(r);
+    const rows = (
+      await reader(r.headers).query<CoverPicture & { created_at: Date }>(
+        `SELECT f.id, f.name, f.doc_id, d.title AS doc_title, f.width, f.height,
+                f.created_at
+           FROM page_files f JOIN docs d ON d.id = f.doc_id
+          WHERE f.user_id = $1 AND f.kind = 'image' AND f.status = 'ready'
+            AND ${docVisibleTo("$1")}
+          ORDER BY f.created_at DESC, f.id
+          LIMIT 60`,
+        [u.id],
+      )
+    ).rows;
+    return rows.map((row) => ({
+      ...row,
+      created_at: new Date(row.created_at).toISOString(),
+    }));
   });
 
   /** How much of your space pictures and files in pages take. */

@@ -410,6 +410,10 @@ export type Doc = {
   archived_at?: string | null;
   /** Archived, itself or through its folder: left out of lists and search. */
   archived?: boolean;
+  /** A cover picture from the file store (W6), or null. */
+  cover_file_id?: string | null;
+  /** An emoji or "icon:<name>" (W6), or null. */
+  icon?: string | null;
 };
 
 /** A note an event has (`GET /docs/event-notes`): enough to mark the event. */

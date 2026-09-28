@@ -53,7 +53,7 @@ export const COLUMNS = `d.id, d.user_id, d.team_id, t.name AS team_name, d.title
       'file_type', k.file_type, 'bytes', k.bytes, 'created_at', k.created_at)
       FROM kept_files k WHERE k.doc_id = d.id) AS original,
   to_char(d.agenda_date, 'YYYY-MM-DD') AS agenda_date, d.occurrence,
-  d.aliases, d.archived_at,
+  d.aliases, d.archived_at, d.cover_file_id, d.icon,
   (d.archived_at IS NOT NULL OR EXISTS (
      SELECT 1 FROM folders af WHERE af.id = d.folder_id
         AND af.archived_at IS NOT NULL)) AS archived,

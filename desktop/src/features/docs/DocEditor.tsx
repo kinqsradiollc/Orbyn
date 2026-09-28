@@ -167,6 +167,8 @@ import { announceStars, rememberLastPage } from "../../app/prefs";
 import { MergeDialog, TemplateInsert } from "./PageActions";
 import { PublishDialog } from "../publish/PublishDialog";
 import { openObject } from "./DocLinks";
+import { Cover, LookDialog, LookIcon } from "../../components/Look";
+import type { Look } from "@orbyn/core";
 
 type Kind = (typeof BLOCK_KINDS)[number];
 
@@ -553,6 +555,39 @@ export function DocEditor({
   const [flash, setFlash] = useState<string | null>(null);
   /** The page's ⋯ menu, and "Merge into…". */
   const [moreMenu, setMoreMenu] = useState(false);
+  // The page's cover and icon (W6), kept apart from its words: changing
+  // them doesn't make a new version.
+  const [look, setLook] = useState<Look>({
+    cover_file_id: doc.cover_file_id ?? null,
+    icon: doc.icon ?? null,
+  });
+  const [lookOpen, setLookOpen] = useState(false);
+  useEffect(() => {
+    setLook({
+      cover_file_id: doc.cover_file_id ?? null,
+      icon: doc.icon ?? null,
+    });
+  }, [doc.id, doc.cover_file_id, doc.icon]);
+  const docNow = useRef(doc);
+  docNow.current = doc;
+  /** The look saved: shown here, and handed up so the open page keeps it. */
+  const lookSaved = (saved: Look) => {
+    setLook(saved);
+    if (docNow.current.id === doc.id)
+      onChanged({ ...docNow.current, ...saved });
+  };
+  const saveLook = async (next: Look) => {
+    const before = look;
+    lookSaved(await client.setDocLook(doc.id, next));
+    toast({
+      text: "Cover and icon saved",
+      action: {
+        label: "Undo",
+        run: () =>
+          void client.setDocLook(doc.id, before).then(lookSaved, report),
+      },
+    });
+  };
   const [merging, setMerging] = useState(false);
   /** "Publish to web…" (SHR-05). */
   const [publishing, setPublishing] = useState(false);
@@ -2971,6 +3006,19 @@ export function DocEditor({
                       </button>
                     </li>
                   )}
+                  {canWrite && doc.kind !== "memory" && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          setLookOpen(true);
+                        }}
+                      >
+                        Cover and icon
+                      </button>
+                    </li>
+                  )}
                   {canWrite &&
                     doc.kind !== "agenda" &&
                     doc.kind !== "memory" && (
@@ -3371,6 +3419,26 @@ export function DocEditor({
               />
             )}
             <div className="doc-page" ref={pageRef} hidden={!!historyView}>
+              {look.cover_file_id && (
+                <Cover fileId={look.cover_file_id} className="doc-cover" />
+              )}
+              {look.icon && (
+                <div className="doc-look-icon">
+                  <span>
+                    <LookIcon icon={look.icon} size={36} />
+                  </span>
+                </div>
+              )}
+              {lookOpen && (
+                <LookDialog
+                  title="Page cover and icon"
+                  look={look}
+                  uploadTo={doc.id}
+                  report={report}
+                  onSave={saveLook}
+                  onClose={() => setLookOpen(false)}
+                />
+              )}
               {reading ? (
                 <h1 className="doc-title is-reading" dir="auto">
                   {title || "Untitled"}

@@ -326,6 +326,8 @@ export const COVERED: Record<string, string[]> = {
   "POST /docs/:id/extract": ["organize"],
   "POST /docs/:id/merge": ["organize"],
   "PUT /docs/:id/aliases": ["organize"],
+  // A page's cover and icon (W6): organize "look".
+  "PUT /docs/:id/look": ["organize"],
   "GET /docs/:id/folds": ["fetch"],
   "PUT /docs/:id/folds": ["organize"],
   "DELETE /docs/:id/sources/:sourceId": ["organize"],
@@ -578,6 +580,8 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /docs/files/:id": "file_bytes",
   "DELETE /docs/files/:id": "file_bytes",
   "GET /files/usage": "file_bytes",
+  // Your pictures, to pick a cover from (W6).
+  "GET /me/pictures": "file_bytes",
   // D5: later page, navigation and mobile features.
   "GET /me/prefs": "navigation",
   "PUT /me/prefs": "navigation",

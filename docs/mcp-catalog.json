@@ -4840,7 +4840,7 @@
     {
       "name": "update_project",
       "title": "Change a project",
-      "description": "Changes a project's name, summary, status (active, done, archived), deadline or main page; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).",
+      "description": "Changes a project's name, summary, status (active, done, archived), deadline, main page, cover picture or icon; adds, renames or reorders stages (stages it isn't told about are kept); pins or unpins web links on its Home; adds, changes, fills or removes milestones; keeps it out of AI (assistant off: it leaves this connection's sight) or asks the person to let it back in (on). Removing stages, milestones or unpinning is a delete (undo 30 days; asked first where needed).",
       "kind": "destructive",
       "access": "write",
       "toolset": "workspace",
@@ -4935,6 +4935,17 @@
             }
           },
           "assistant": { "type": "string", "enum": ["off", "on"] },
+          "cover": {
+            "description": "A picture on a page you reach: orbyn://file/<id> (add_file adds one); null takes the cover off.",
+            "anyOf": [
+              { "type": "string", "maxLength": 300 },
+              { "type": "null" }
+            ]
+          },
+          "icon": {
+            "description": "One emoji, or one of the app's icons as icon:<name> (icon:target, icon:graduationCap, icon:boxes…); null takes it off.",
+            "anyOf": [{ "type": "string", "maxLength": 40 }, { "type": "null" }]
+          },
           "client_ref": {
             "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
             "type": "string",
@@ -5248,7 +5259,7 @@
     {
       "name": "organize",
       "title": "Organise pages, fields and teams",
-      "description": "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.",
+      "description": "Up to 25 changes, each undoable. create_list/create_tag/create_folder (name, space), rename_list/rename_tag/rename_folder (id, name), star/unstar (kind doc, project or view; id), tag_page (id: page; add: tag names, remove: tag ids). Pages (id: the page): aliases (add: its other names, replacing), look (cover: orbyn://file/<id> or null, icon: an emoji or icon:<name> or null), fold (lines: heading anchors folded, replacing), link_mention (lines: [anchor], words, to: page or project named), extract (lines, version, name?: to a new page), merge (to: page, version; this one goes to Trash), remove_source (to: source:<id>). Fields: create_field (name, type, for, space, add: choices, calendar), change_field (id, name, add, calendar), set_field (id, to: page or project, value; null clears). Teams, asked first: create_team (name; not undoable), rename_team, invite (email, role), remove_member (person), set_role (person, role), meeting_budget (minutes; null none), with id: the team. instructions (id: personal or a team; value: what agents there follow, empty clears; a team's is asked first). Deleting goes through propose_changes.",
       "kind": "destructive",
       "access": "write",
       "toolset": "workspace",
@@ -5275,6 +5286,7 @@
                   "type": "string",
                   "enum": [
                     "aliases",
+                    "look",
                     "fold",
                     "link_mention",
                     "extract",
@@ -5372,6 +5384,20 @@
                 "minutes": {
                   "anyOf": [
                     { "type": "integer", "minimum": 30, "maximum": 2400 },
+                    { "type": "null" }
+                  ]
+                },
+                "cover": {
+                  "description": "A picture on a page you reach: orbyn://file/<id> (add_file adds one); null takes the cover off.",
+                  "anyOf": [
+                    { "type": "string", "maxLength": 300 },
+                    { "type": "null" }
+                  ]
+                },
+                "icon": {
+                  "description": "One emoji, or one of the app's icons as icon:<name> (icon:target, icon:graduationCap, icon:boxes…); null takes it off.",
+                  "anyOf": [
+                    { "type": "string", "maxLength": 40 },
                     { "type": "null" }
                   ]
                 }
@@ -9458,6 +9484,7 @@
     {
       "date": "2026-09-28",
       "changes": [
+        "Covers and icons (W6): update_project takes cover (a picture on a page the connection reaches, as orbyn://file/<id>; null takes it off) and icon (one emoji, or icon:<name> for one of the app's icons; null takes it off); organize takes look (id: a page; cover, icon) for a page's cover and icon. Both are undoable; get_project and fetch are unchanged. Still 65 tools.",
         "Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.",
         "get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.",
         "manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.",
@@ -9508,5 +9535,5 @@
       ]
     }
   ],
-  "routes": { "covered": 268, "excluded": 211, "pending": 0 }
+  "routes": { "covered": 270, "excluded": 213, "pending": 0 }
 }
