@@ -149,6 +149,16 @@ function TrustPanel({
   busy: boolean;
 }) {
   const changes = grant.access === "write";
+  const assistantGrant = grant.kind === "assistant";
+  const allowedTrust = AGENT_TRUST.filter(
+    (trust) =>
+      !assistantGrant ||
+      (trust !== "full" &&
+        AGENT_TRUST.indexOf(trust) >= AGENT_TRUST.indexOf(grant.trust)),
+  );
+  const trustChoices = assistantGrant
+    ? [...new Set([grant.trust, ...allowedTrust])]
+    : AGENT_TRUST;
   const spaces = [
     ...(grant.personal ? [{ id: "personal", name: "Personal" }] : []),
     ...grant.teams,
@@ -163,22 +173,30 @@ function TrustPanel({
         </Text>
       ) : (
         <>
+          {assistantGrant && (
+            <Text style={shared.small}>
+              {grant.name} is built in, so it cannot be disconnected. Its trust
+              can only be lowered. Protected actions stay ask-first.
+            </Text>
+          )}
           <Field
             label="How much it does alone"
             hint={AGENT_TRUST_LABELS[draft.trust].blurb}
           >
             <ChipRow label="How much it does alone">
-              {AGENT_TRUST.map((t) => (
+              {trustChoices.map((t) => (
                 <Chip
                   key={t}
-                  label={AGENT_TRUST_LABELS[t].name}
+                  label={`${AGENT_TRUST_LABELS[t].name}${assistantGrant && t === "full" ? " · current" : ""}`}
                   selected={draft.trust === t}
+                  disabled={assistantGrant && t === "full"}
                   onPress={() => onChange({ ...draft, trust: t })}
                 />
               ))}
             </ChipRow>
           </Field>
-          {spaces.length > 1 &&
+          {!assistantGrant &&
+            spaces.length > 1 &&
             spaces.map((sp) => (
               <Field key={sp.id} label={sp.name}>
                 <ChipRow label={`In ${sp.name}`}>
@@ -203,7 +221,7 @@ function TrustPanel({
                 </ChipRow>
               </Field>
             ))}
-          {draft.trust === "full" && (
+          {!assistantGrant && draft.trust === "full" && (
             <>
               <Text style={shared.label}>
                 At full power it still asks first about
@@ -315,11 +333,13 @@ function LinkChip({ link }: { link: AgentActivityLink }) {
 
 /** A connection's title in the list. */
 const grantTitle = (g: AgentGrant) =>
-  g.kind === "legacy"
-    ? `API key “${g.name}”`
-    : g.kind === "key"
-      ? `Agent key “${g.name}”`
-      : g.client_name || "An app";
+  g.kind === "assistant"
+    ? g.name
+    : g.kind === "legacy"
+      ? `API key “${g.name}”`
+      : g.kind === "key"
+        ? `Agent key “${g.name}”`
+        : g.client_name || "An app";
 
 /**
  * Settings → Connections → Connected agents, on the phone: the AI agents
@@ -673,7 +693,9 @@ export function ConnectedAgentsCard({
                       <Pill label="Differs by space" />
                     )}
                   <Pill label={spacesText(g)} />
-                  {g.kind !== "legacy" && <Pill label={toolsetsText(g)} />}
+                  {g.kind !== "legacy" && g.kind !== "assistant" && (
+                    <Pill label={toolsetsText(g)} />
+                  )}
                   {g.hide_outside_content && (
                     <Pill label="Outside content hidden" />
                   )}
@@ -727,7 +749,7 @@ export function ConnectedAgentsCard({
                       setHearing(hearing === g.id ? null : g.id);
                     }}
                   />
-                  {g.kind !== "legacy" && (
+                  {g.kind !== "legacy" && g.kind !== "assistant" && (
                     <SmallAction
                       label={editing?.id === g.id ? "Close tools" : "Tools"}
                       disabled={busy}
@@ -753,12 +775,18 @@ export function ConnectedAgentsCard({
                       onPress={() => restore(g)}
                     />
                   )}
-                  <SmallAction
-                    destructive
-                    label={g.kind === "legacy" ? "Disconnect" : "Revoke"}
-                    disabled={busy}
-                    onPress={() => revoke(g)}
-                  />
+                  {g.kind !== "assistant" && (
+                    <SmallAction
+                      destructive
+                      label={
+                        g.kind === "legacy" || g.kind === "oauth"
+                          ? "Disconnect"
+                          : "Revoke"
+                      }
+                      disabled={busy}
+                      onPress={() => revoke(g)}
+                    />
+                  )}
                 </View>
                 {hearing === g.id && (
                   <InboxPanel

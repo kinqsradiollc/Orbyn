@@ -7,7 +7,9 @@ import {
   type AgentTrust,
 } from "@orbyn/core";
 import { cachedSettings } from "../lib/settings.js";
+import { keptOutFor } from "../lib/assistant-off.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
+import { listMemory } from "../modules/memory/service.js";
 import { cleanTitle, localDay, localTime } from "./format.js";
 import { levelIn, trustIn } from "./policy.js";
 import { appUrl, todayUrl } from "./refs.js";
@@ -73,6 +75,7 @@ const output = z.object({
     calls_left_today: z.number(),
   }),
   links: z.object({ app: z.string(), today: z.string() }),
+  memory: z.array(z.string()),
   conventions: z.object({
     ids: z.string(),
     links: z.string(),
@@ -86,7 +89,7 @@ export const getContext = defineCapability({
   name: "get_context",
   title: "Who and where",
   description:
-    "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
+    "Call first. Returns the person and agent identity, local time, working hours, team roles and policy, connection access, trust and ask-first rules, spaces, toolsets, expiry, limits, conventions, About me, learning profile, instructions, standing rules, recent changes, and the private Memory topic index when Personal is available.",
   input: z.object({}).strict(),
   output,
   annotations: {
@@ -119,6 +122,13 @@ export const getContext = defineCapability({
           )
         ).rows[0]
       : undefined;
+    const keptOut = p.personal ? await keptOutFor(ctx.db, p.user.id) : null;
+    const memories = p.personal
+      ? await listMemory(ctx.db, p.user.id, {
+          limit: 50,
+          keptOutProjects: keptOut ? [...keptOut.projects] : [],
+        })
+      : [];
     const expires = grant?.expires_at ?? null;
     const limits = cachedSettings().agents.agent_limits;
     const structured: z.output<typeof output> = {
@@ -156,6 +166,7 @@ export const getContext = defineCapability({
         flags: p.flags,
         expires_at: expires ? expires.toISOString() : null,
       },
+      memory: memories.map((entry) => entry.topic),
       teams: p.teams.map((t) => ({
         id: t.id,
         name: cleanTitle(t.name),
@@ -182,6 +193,7 @@ export const getContext = defineCapability({
     const markdown = [
       `Acting for ${u.name}. It is ${u.now_local} (${u.timezone}); working hours ${u.working_hours.start}–${u.working_hours.end}.`,
       `Their Orbyn assistant is named ${agent.name}${agent.persona ? `: ${agent.persona}` : ""}.`,
+      `Private Memory topics: ${structured.memory.length ? structured.memory.join(", ") : p.personal ? "no notes yet" : "not available to this connection"}.`,
       `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust as AgentTrust].name.toLowerCase()})` : ""}, ${
         [
           ...(p.personal ? ["Personal"] : []),

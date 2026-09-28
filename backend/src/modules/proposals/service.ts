@@ -989,6 +989,11 @@ export async function applyChange(
            updated_at = now()`,
         [u.id, c.name, c.persona],
       );
+      await db.query(
+        `UPDATE agent_grants SET name = $2, client_name = $2
+          WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
+        [u.id, c.name],
+      );
       return {};
     case "memory.remember":
       await rememberMemory(db, u.id, c.topic, c.facts, c.sources);

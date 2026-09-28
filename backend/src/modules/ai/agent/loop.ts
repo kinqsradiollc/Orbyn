@@ -6,7 +6,6 @@ import {
   ProviderError,
   type ResolvedAi,
 } from "../providers/adapters.js";
-import { parseReply } from "../replySchema.js";
 import {
   EMPTY_ANSWER_NOTE,
   FINAL_STEP_NOTE,
@@ -18,14 +17,15 @@ import {
   rejectsTools,
   startingMode,
   step,
+  jsonProtocolNote,
   type AgentMessage,
   type Mode,
   type StepResult,
   type ToolCall,
   type ToolSpec,
 } from "./protocol.js";
-import { runTool, TOOL_SPECS, type AgentContext } from "./tools.js";
-import { runGraph, runGraphToolStep } from "./graph.js";
+import type { AgentContext } from "./tools.js";
+import { runGraphToolStep } from "./graph.js";
 import { finalizeSources } from "./sources.js";
 
 /**
@@ -78,7 +78,7 @@ export type AgentLoopOptions = {
   systemPrompt?: string;
   /** Narrowed MCP tool descriptions for a specialist or the lead. */
   tools?: ToolSpec[];
-  /** Route a tool through MCP or stage it, rather than the legacy registry. */
+  /** Execute through the shared registry, or stage a specialist's tool for the lead. */
   executeTool?: (call: ToolCall, ctx: AgentContext) => Promise<LoopToolResult>;
   /** Maximum model/tool iterations for this run. */
   maxSteps?: number;
@@ -146,9 +146,12 @@ export async function runAgent(
   trace?: AgentTrace,
   options: AgentLoopOptions = {},
 ): Promise<AgentResult> {
-  // Providers that are weak at multi-step tool use get the fixed graph.
-  if (ai.structuredOutput && !options.forceToolLoop)
-    return runGraph(ai, ctx, message, history, overview, log, trace);
+  // Structured-output providers use the same tool loop with the JSON step
+  // protocol. The legacy proposal graph is not part of the assistant runtime.
+  const forceToolLoop = options.forceToolLoop || !!ai.structuredOutput;
+  const jsonNoteChars = options.tools?.length
+    ? jsonProtocolNote(options.tools, !!ai.structuredOutput).length + 2
+    : 0;
   // A provider with a per-message limit gets the overview cut to fit beside
   // the rules, rather than the prompt clipped at the end.
   const fitted = ai.limits
@@ -156,6 +159,7 @@ export async function runAgent(
         overview,
         ai.limits.maxMessageChars -
           agentPrompt(ctx.timezone, {}, new Date(), ctx.identity).length -
+          jsonNoteChars -
           200,
       )
     : overview;
@@ -190,7 +194,7 @@ export async function runAgent(
       try {
         // The JSON protocol offers fewer tools: the overview is already in the
         // prompt, and Matilda wandered through get_overview and list_teams.
-        const available = options.tools ?? TOOL_SPECS;
+        const available = options.tools ?? [];
         const tools =
           mode === "json"
             ? available.filter(
@@ -211,7 +215,7 @@ export async function runAgent(
             throw new AgentTokenBudgetExhausted();
           options.tokenBudget.used += estimated;
         }
-        if (options.forceToolLoop && ai.structuredOutput)
+        if (forceToolLoop && ai.structuredOutput)
           return await runGraphToolStep(ai, fittedMessages, tools, {
             toolsAllowed,
             signal,
@@ -250,26 +254,6 @@ export async function runAgent(
   ): Promise<AgentResult> => {
     let summary = text.trim();
     let actions = ctx.actions;
-    let legacy = false;
-    // An older-style single JSON reply ({summary, actions}) from a provider
-    // that answered without tools: keep working, vetted by the route.
-    if (
-      !ctx.actions.length &&
-      /^\s*(```json\s*)?\{[\s\S]*"summary"[\s\S]*\}\s*(```)?\s*$/.test(summary)
-    ) {
-      try {
-        const reply = parseReply(summary, ctx.timezone);
-        summary = reply.summary.trim();
-        actions = reply.actions;
-        legacy = true;
-      } catch {
-        // A broken plan must not reach the user as raw JSON.
-        throw new ProviderError(
-          "invalid_json",
-          "The provider returned an invalid plan.",
-        );
-      }
-    }
     // Structured replies from some providers are thin: write the answer as prose.
     if (
       mode === "json" &&
@@ -316,7 +300,7 @@ export async function runAgent(
       follow_ups: ctx.clarification?.options ?? [],
       sources: checked.sources,
       notes: ctx.notes ?? [],
-      legacy,
+      legacy: false,
       steps,
       partial,
     };
@@ -362,13 +346,12 @@ export async function runAgent(
             }
           : options.executeTool
             ? await options.executeTool(c, ctx)
-            : await (async () => {
-                const legacy = await runTool(c, ctx);
-                return {
-                  content: legacy.content,
-                  isError: legacy.isError,
-                };
-              })();
+            : {
+                content: JSON.stringify({
+                  error: "This run does not have a tool executor.",
+                }),
+                isError: true,
+              };
         messages.push({
           role: "tool",
           tool_call_id: c.id,

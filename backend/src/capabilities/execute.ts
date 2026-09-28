@@ -266,6 +266,8 @@ export type ExecuteOptions = {
    * once the person said yes there.
    */
   asking?: Asking["mode"];
+  /** A yes in the app's review card, so ask-first and suggest rules are satisfied. */
+  reviewed?: boolean;
   /** The person's answer to a question asked in the chat (ask_person). */
   chatAnswer?: ChatAnswer;
 };
@@ -316,6 +318,7 @@ export async function execute(
       ? {
           mode: options.asking,
           reasons: [],
+          ...(options.reviewed ? { reviewed: true } : {}),
           ...(options.chatAnswer ? { answer: options.chatAnswer } : {}),
         }
       : undefined;

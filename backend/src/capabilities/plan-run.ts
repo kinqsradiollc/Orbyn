@@ -78,6 +78,7 @@ export const PLAN_TOOLS = [
   "tasks_from_doc",
   "comment_on_doc",
   "update_study",
+  "manage_memory",
   "schedule_sessions",
   "save_source",
   "save_record",

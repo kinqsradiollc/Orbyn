@@ -60,6 +60,7 @@ export const CHANGELOG: { date: string; changes: string[] }[] = [
   {
     date: "2026-09-28",
     changes: [
+      "Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.",
       "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.",
     ],
   },

@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  type ChatScope,
-  type ChatTurn,
-  type AssistantChangeKind,
-  type SystemRole,
-} from "@orbyn/core";
+import { type ChatScope, type ChatTurn, type SystemRole } from "@orbyn/core";
 import type { FastifyBaseLogger } from "fastify";
 import { z } from "zod";
 import { execute } from "../../../capabilities/execute.js";
@@ -29,6 +24,7 @@ import {
   assistantApprovalScopes,
   assistantPrincipal,
 } from "../../agents/assistant.js";
+import type { AssistantChangeKind } from "./change-kind.js";
 
 const MAX_RUN_MS = 600_000;
 const pendingInput = z
@@ -45,6 +41,7 @@ export type AssistantAutomation = {
   kind: "idea" | "goal" | "routine";
   id?: string;
   local_day?: string;
+  slot?: number;
   week_of?: string;
 };
 
@@ -413,6 +410,15 @@ async function finishJob(
       `INSERT INTO goals_checkins (goal_id, user_id, week_of, summary, progress, status, job_id, claimed_at)
        SELECT g.id, g.user_id, $3::date, $4, $5::jsonb, 'done', $6, now()
          FROM goals g WHERE g.id = $1 AND g.user_id = $2
+           AND NOT EXISTS (
+             SELECT 1 FROM projects hidden
+              WHERE hidden.assistant_off AND (
+                hidden.id = g.project_id OR EXISTS (
+                  SELECT 1 FROM docs plan
+                   WHERE plan.id = g.plan_doc_id AND plan.project_id = hidden.id
+                )
+              )
+           )
        ON CONFLICT (goal_id, week_of) DO UPDATE
          SET summary = EXCLUDED.summary, progress = EXCLUDED.progress,
              status = 'done', job_id = EXCLUDED.job_id, claimed_at = now()`,
@@ -426,8 +432,17 @@ async function finishJob(
       ],
     );
     await pool.query(
-      `UPDATE goals SET progress = $3::jsonb, updated_at = now()
-        WHERE id = $1 AND user_id = $2`,
+      `UPDATE goals g SET progress = $3::jsonb, updated_at = now()
+        WHERE g.id = $1 AND g.user_id = $2
+          AND NOT EXISTS (
+            SELECT 1 FROM projects hidden
+             WHERE hidden.assistant_off AND (
+               hidden.id = g.project_id OR EXISTS (
+                 SELECT 1 FROM docs plan
+                  WHERE plan.id = g.plan_doc_id AND plan.project_id = hidden.id
+               )
+             )
+          )`,
       [
         request.automation.id,
         user.id,
@@ -465,12 +480,13 @@ async function finishJob(
         : null;
     if (proposalId) {
       await pool.query(
-        `INSERT INTO assistant_ideas (user_id, local_day, title, summary, proposal_id)
-         VALUES ($1, $2::date, $3, $4, $5)
+        `INSERT INTO assistant_ideas (user_id, local_day, slot, title, summary, proposal_id)
+         VALUES ($1, $2::date, $3, $4, $5, $6)
          ON CONFLICT DO NOTHING`,
         [
           user.id,
           request.automation.local_day,
+          request.automation.slot ?? 1,
           summary.split(/\n/)[0].slice(0, 160) || "A useful next step",
           summary.slice(0, 2000),
           proposalId,
@@ -482,10 +498,10 @@ async function finishJob(
       );
     }
     await pool.query(
-      `INSERT INTO assistant_idea_days (user_id, local_day, finished_at)
-       VALUES ($1, $2::date, now())
-       ON CONFLICT (user_id, local_day) DO UPDATE SET finished_at = now()`,
-      [user.id, request.automation.local_day],
+      `INSERT INTO assistant_idea_days (user_id, local_day, slot, finished_at)
+       VALUES ($1, $2::date, $3, now())
+       ON CONFLICT (user_id, local_day, slot) DO UPDATE SET finished_at = now()`,
+      [user.id, request.automation.local_day, request.automation.slot ?? 1],
     );
   }
 }

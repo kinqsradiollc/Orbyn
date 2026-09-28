@@ -92,6 +92,11 @@ export const updateAgent = defineCapability({
         [p.user.id, a.name, a.persona],
       )
     ).rows[0];
+    await db.query(
+      `UPDATE agent_grants SET name = $2, client_name = $2
+        WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
+      [p.user.id, saved.name],
+    );
     return {
       structured: {
         status: "done" as const,

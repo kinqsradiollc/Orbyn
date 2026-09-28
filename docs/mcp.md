@@ -229,7 +229,7 @@ Every connection has the core tools. The others come in toolsets, chosen on the 
 
 ### `get_context`
 
-Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; the private Memory topic index when Personal is available; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.
+Call first. Returns the person and agent identity, local time, working hours, team roles and policy, connection access, trust and ask-first rules, spaces, toolsets, expiry, limits, conventions, About me, learning profile, instructions, standing rules, recent changes, and the private Memory topic index when Personal is available.
 
 No arguments.
 
@@ -1072,6 +1072,7 @@ Catalog version: `2026-09-28`.
 
 ### 2026-09-28
 
+- Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.
 - Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core.
 
 ### 2026-09-27
@@ -1116,4 +1117,4 @@ Catalog version: `2026-09-28`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 259 of the app's signed-in routes are covered by tools, 205 are never for agents, and 0 are still to come.
+Routes: 259 of the app's signed-in routes are covered by tools, 208 are never for agents, and 0 are still to come.

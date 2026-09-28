@@ -127,6 +127,42 @@ test("the JSON protocol carries tool calls in a schema-checked reply", async (t)
   assert.match(body.messages[3].content, /^\[Tool result: search_items\]/);
 });
 
+test("JSON fallback without a provider schema still describes its tools", async (t) => {
+  const tool = {
+    name: "lookup",
+    description: "Look up a task by its title.",
+    parameters: {
+      type: "object",
+      properties: { title: { type: "string" } },
+      required: ["title"],
+    },
+  };
+  const sent = reply(t, {
+    choices: [
+      {
+        message: {
+          content: JSON.stringify({
+            lookup: { title: "Write the report" },
+            answer: null,
+          }),
+        },
+      },
+    ],
+  });
+  const out = await step(base, history, [tool], {
+    mode: "json",
+    toolsAllowed: true,
+    signal,
+  });
+  assert.equal(out.toolCalls[0].name, "lookup");
+  assert.deepEqual(JSON.parse(out.toolCalls[0].arguments), {
+    title: "Write the report",
+  });
+  assert.equal(sent[0].body.response_format, undefined);
+  assert.match(sent[0].body.messages[0].content, /Look up a task by its title/);
+  assert.match(sent[0].body.messages[0].content, /"title":\{"type":"string"\}/);
+});
+
 test("the JSON protocol reads answers, and prose as the answer", async (t) => {
   const ai = { ...base, structuredOutput: "json_schema" as const };
   reply(t, {
@@ -194,8 +230,10 @@ test("the JSON protocol reads one named field per tool", async (t) => {
   ]);
   assert.equal(schema.properties.get_overview.type, "boolean");
   assert.deepEqual(schema.properties.search_items.type, ["object", "null"]);
-  // The tools are described in the system message even with a schema.
-  assert.match(sent[0].body.messages[0].content, /- propose_create: /);
+  assert.equal(
+    schema.properties.search_items.description,
+    TOOL_SPECS.find((s) => s.name === "search_items")?.description,
+  );
 
   // A tool field with only nulls in it is not a call.
   t.mock.restoreAll();
@@ -351,6 +389,51 @@ test("the agent loop does not retry errors a retry won't fix", async (t) => {
   assert.equal(calls, 1);
 });
 
+test("the agent loop cannot fall back to the legacy proposal tools", async (t) => {
+  const bodies: Record<string, any>[] = [];
+  let calls = 0;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      calls++;
+      return calls === 1
+        ? Response.json({
+            choices: [
+              {
+                finish_reason: "tool_calls",
+                message: {
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "unexpected",
+                      type: "function",
+                      function: {
+                        name: "propose_create",
+                        arguments: JSON.stringify({
+                          items: [{ title: "Must not be created" }],
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          })
+        : Response.json(answer("I did not make a change."));
+    },
+  );
+  const result = await runAgent(base, ctx(), "Add a task", [], {});
+  assert.equal(result.summary, "I did not make a change.");
+  assert.equal(calls, 2);
+  assert.deepEqual(bodies[0].tools, []);
+  assert.match(
+    bodies[1].messages.at(-1).content,
+    /does not have a tool executor/i,
+  );
+});
+
 for (const [name, ai] of [
   ["agent loop", base],
   ["Matilda graph", matilda],
@@ -383,7 +466,7 @@ const bigData = {
   })),
 };
 
-test("Matilda requests fit its 64 KiB and 16,000-character limits", async (t) => {
+test("Matilda JSON tool-loop requests fit its 64 KiB and 16,000-character limits", async (t) => {
   const limits = AI_PROVIDERS.matilda.limits!;
   assert.deepEqual(limits, { maxBodyBytes: 65_536, maxMessageChars: 16_000 });
   const bodies: string[] = [];
@@ -393,17 +476,31 @@ test("Matilda requests fit its 64 KiB and 16,000-character limits", async (t) =>
     async (_url: string, init: RequestInit) => {
       bodies.push(String(init.body));
       return Response.json(
-        answer(JSON.stringify({ summary: ["Which day?"], actions: [] })),
+        answer(JSON.stringify({ lookup: null, answer: ["Which day?"] })),
       );
     },
   );
   const request = "Add a task to call Mum";
+  const tools = [
+    {
+      name: "lookup",
+      description: "Look up a task.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
+      },
+    },
+  ];
   const result = await runAgent(
     { ...matilda, limits },
     ctx(request),
     request,
     longHistory,
     bigData,
+    undefined,
+    undefined,
+    { tools },
   );
   assert.equal(result.summary, "Which day?");
   assert.equal(bodies.length, 1);
@@ -411,11 +508,11 @@ test("Matilda requests fit its 64 KiB and 16,000-character limits", async (t) =>
   const size = Buffer.byteLength(bodies[0]);
   assert.ok(size <= limits.maxBodyBytes, `${size} bytes`);
   const { messages, response_format } = JSON.parse(bodies[0]);
-  assert.equal(response_format.json_schema.name, "orbyn_reply");
+  assert.equal(response_format.json_schema.name, "orbyn_step");
   for (const m of messages)
     assert.ok(m.content.length <= limits.maxMessageChars, `${m.role} too long`);
   assert.equal(messages[0].role, "system");
-  assert.match(messages.at(-1).content, /^My planner data/);
+  assert.equal(messages.at(-1).content, request);
   // Oldest history is dropped first; what remains is the most recent.
   const kept = messages.slice(1, -1);
   assert.ok(kept.length < longHistory.length);
@@ -432,18 +529,14 @@ test("providers without limits get every recent turn", async (t) => {
   assert.equal(messages[1].content.length, 4001);
 });
 
-test("an old-style plan without words still gets a summary", async (t) => {
-  reply(
-    t,
-    answer(
-      JSON.stringify({
-        summary: " ",
-        actions: [{ operation: "create", data: { title: "Plumber" } }],
-      }),
-    ),
-  );
+test("legacy JSON actions are not turned into planner changes", async (t) => {
+  const legacy = JSON.stringify({
+    summary: "A plumber visit is ready for review.",
+    actions: [{ operation: "create", data: { title: "Plumber" } }],
+  });
+  reply(t, answer(legacy));
   const result = await runAgent(base, ctx(), "Add a plumber visit", [], {});
-  assert.equal(result.legacy, true);
-  assert.equal(result.actions.length, 1);
-  assert.equal(result.summary, "Here's the change for you to review.");
+  assert.equal(result.legacy, false);
+  assert.equal(result.actions.length, 0);
+  assert.equal(result.summary, legacy);
 });

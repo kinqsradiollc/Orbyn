@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 const { REPLY_FORMAT, dropNulls, parseReply } =
   await import("../src/modules/ai/replySchema.js");
 const { complete } = await import("../src/modules/ai/providers/adapters.js");
-const { graphPrompt } = await import("../src/modules/ai/agent/graph.js");
+const { agentPrompt } = await import("../src/modules/ai/agent/prompt.js");
 const { AI_PROVIDERS } = await import("@orbyn/core");
 
 test("Matilda is flagged for structured output; others are not", () => {
@@ -119,9 +119,9 @@ test("only providers with structured output receive the reply schema", async () 
 
 test("today is the user's local day in the Matilda prompt", () => {
   // 16:06 UTC on Monday is already Tuesday in Melbourne.
-  const prompt = graphPrompt(
+  const prompt = agentPrompt(
     "Australia/Melbourne",
-    "answer",
+    {},
     new Date("2026-09-14T16:06:00Z"),
   );
   assert.match(prompt, /it is Tuesday 15 September 2026/);

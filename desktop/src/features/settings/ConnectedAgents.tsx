@@ -167,6 +167,16 @@ function TrustEdit({
   pending: boolean;
 }) {
   const changes = grant.access === "write";
+  const assistantGrant = grant.kind === "assistant";
+  const allowedTrust = AGENT_TRUST.filter(
+    (trust) =>
+      !assistantGrant ||
+      (trust !== "full" &&
+        AGENT_TRUST.indexOf(trust) >= AGENT_TRUST.indexOf(grant.trust)),
+  );
+  const trustChoices = assistantGrant
+    ? [...new Set([grant.trust, ...allowedTrust])]
+    : AGENT_TRUST;
   const spaces = [
     ...(grant.personal ? [{ id: "personal", name: "Personal" }] : []),
     ...grant.teams,
@@ -181,6 +191,12 @@ function TrustEdit({
         </p>
       ) : (
         <>
+          {assistantGrant && (
+            <p className="muted">
+              {grant.name} is built in, so it cannot be disconnected. Its trust
+              can only be lowered. Protected actions stay ask-first.
+            </p>
+          )}
           <div className="settings-field">
             <label htmlFor={`trust-${grant.id}`}>How much it does alone</label>
             <Select
@@ -190,9 +206,14 @@ function TrustEdit({
                 onChange({ ...draft, trust: e.target.value as AgentTrust })
               }
             >
-              {AGENT_TRUST.map((t) => (
-                <option key={t} value={t}>
+              {trustChoices.map((t) => (
+                <option
+                  key={t}
+                  value={t}
+                  disabled={assistantGrant && t === "full"}
+                >
                   {AGENT_TRUST_LABELS[t].name}
+                  {assistantGrant && t === "full" ? " · current" : ""}
                 </option>
               ))}
             </Select>
@@ -200,7 +221,7 @@ function TrustEdit({
               {AGENT_TRUST_LABELS[draft.trust].blurb}
             </small>
           </div>
-          {spaces.length > 1 && (
+          {!assistantGrant && spaces.length > 1 && (
             <fieldset className="agents-trust-spaces">
               <legend>In each space</legend>
               {spaces.map((sp) => (
@@ -234,7 +255,7 @@ function TrustEdit({
               ))}
             </fieldset>
           )}
-          {draft.trust === "full" && (
+          {!assistantGrant && draft.trust === "full" && (
             <fieldset className="agents-trust-list">
               <legend>At full power it still asks first about</legend>
               {AGENT_ASK_FIRST.map((k) => {
@@ -296,6 +317,7 @@ function TrustEdit({
 
 /** The app a connection is for, in the list's first column. */
 function clientLabel(g: AgentGrant) {
+  if (g.kind === "assistant") return "Built in";
   if (g.kind === "legacy") return "API key";
   if (g.kind === "key") return "Agent key";
   return "Signed in";
@@ -303,6 +325,7 @@ function clientLabel(g: AgentGrant) {
 
 /** A connection's title in the list. */
 function grantTitle(g: AgentGrant) {
+  if (g.kind === "assistant") return g.name;
   if (g.kind === "legacy") return `API key “${g.name}”`;
   if (g.kind === "key") return `Agent key “${g.name}”`;
   return g.client_name || "An app";
@@ -612,7 +635,9 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
               <li key={g.id} className="agents-row">
                 <span className="agents-client">{clientLabel(g)}</span>
                 <span className="agents-icon" aria-hidden="true">
-                  {g.kind === "legacy" ? (
+                  {g.kind === "assistant" ? (
+                    <Bot size={15} />
+                  ) : g.kind === "legacy" ? (
                     <KeyRound size={15} />
                   ) : g.kind === "oauth" ? (
                     <Globe size={15} />
@@ -644,7 +669,7 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                         <span className="agents-tag">Differs by space</span>
                       )}
                     <span className="agents-tag">{spacesText(g)}</span>
-                    {g.kind !== "legacy" && (
+                    {g.kind !== "legacy" && g.kind !== "assistant" && (
                       <span className="agents-tag">{toolsetsText(g)}</span>
                     )}
                     {g.hide_outside_content && (
@@ -751,14 +776,16 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                         Restore
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className="danger-text"
-                      disabled={action.pending}
-                      onClick={() => void revoke(g)}
-                    >
-                      {g.kind === "key" ? "Revoke" : "Disconnect"}
-                    </button>
+                    {g.kind !== "assistant" && (
+                      <button
+                        type="button"
+                        className="danger-text"
+                        disabled={action.pending}
+                        onClick={() => void revoke(g)}
+                      >
+                        {g.kind === "key" ? "Revoke" : "Disconnect"}
+                      </button>
+                    )}
                   </div>
                   {trusting?.id === g.id && (
                     <TrustEdit

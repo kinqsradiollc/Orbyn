@@ -617,6 +617,11 @@ export async function runUndo(
             u.id,
           ]);
         }
+        await db.query(
+          `UPDATE agent_grants SET name = $2, client_name = $2
+            WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
+          [u.id, op.previous?.name ?? "Orbyn"],
+        );
         break;
       }
       case "occurrence.restore": {

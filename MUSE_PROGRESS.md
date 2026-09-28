@@ -14,7 +14,7 @@
 | M3 — Chat history | Server, APIs, MCP registry, and desktop history UI committed; mobile screen still in the working tree | 165 | Durable private chats, migration from project chats, list/read/search/update/delete/save-as-note APIs, private `get_chats`, and content-free traces. New turns queue only their own memory content. |
 | M4 — Lead and specialists | Server, desktop run controls, and polling client committed; mobile screen still in the working tree | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces. Fake-provider tests cover exam revision and stop/approval races. |
 | M5 — Sweep old history | Done, committed | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes; pinned chats stay. Tests cover retries, invalid summaries, privacy and retention limits. |
-| M6 — One set of tools | Implemented; integration verification blocked | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. Parity test checks the shared list; 65/33 count remains exact. |
+| M6 — One set of tools | Done; focused verification passed | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. The M6 catalog snapshot is exactly 63 tools, 31 core; later M8/M9 additions bring the full tree to 65/33. |
 | M7 — Ideas feed | Implemented; integration verification blocked | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. Privacy filters exclude assistant-off data. |
 | M8 — Goals | Implemented; integration verification blocked | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. |
 | M9 — Routines and Upcoming | Implemented; integration verification blocked | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
@@ -22,15 +22,13 @@
 
 ## Verification
 
-- `npm run build:packages`: passed.
-- `npm run typecheck`: passed for backend, desktop and mobile.
-- `npm run format:check`: passed; `git diff --check`: passed.
-- Focused registry, protocol and structured-provider tests: 28/28 passed, including exact 65-tool parity and the Matilda local-day prompt.
-- `npm run mcp:catalog -w backend`: passed and regenerated the catalog and distribution metadata.
-- Latest full `npm test` attempt: 339 passed, 125 failed. 124 database-backed test files could not connect to `127.0.0.1:55434`; the remaining failure was a structured-provider test still importing the removed graph prompt. That test now uses the shared assistant prompt and passes in the focused suite. The full suite has not passed because the database is unavailable.
+- `npm run build:packages`, `npm run typecheck`, and `npm run format:check`: passed on the current full worktree.
+- M6 focused registry, protocol, structured-provider and catalog tests: 28/28 passed against the 63-tool, 31-core M6 snapshot.
+- `npm run mcp:catalog -w backend`: passed for the M6 snapshot; catalog reports 63 tools, 31 core, with 259 routes covered, 208 excluded and 0 pending.
+- Latest full `npm test`: 340 passed, 124 failed out of 464. All 124 failing test files stopped at `ECONNREFUSED 127.0.0.1:55434`; no other test failure remained. The full suite is still unverified until the database is reachable.
 - Desktop preview: `http://localhost:5175/app` serves HTTP 200 and remains open in the in-app browser. The page shows a cached signed-in session, but `/health` returns 503 and `GET /lists` returns 500 while PostgreSQL is unavailable. Exact 1440 px and 390 px visual checks are still unverified.
 - Expo Metro is listening on port 8085. Native interactions were not rechecked in this run.
-- Disk has about 19 GB free. Docker Desktop processes are running, but the Docker API socket still times out on `/_ping`, `docker ps` does not return, and `postgres-test` cannot be inspected or started. Port 55434 refuses connections. Its database is tmpfs, so the prior test account may need to be recreated after the database returns.
+- Docker CLI reports the `desktop-linux` context, but `docker ps` does not return and port 55434 refuses connections. The disposable database uses tmpfs, so the prior test account may need to be recreated after the database returns.
 
 ## Decisions and owner notes
 
@@ -40,4 +38,4 @@
 
 ## Blocked
 
-- The full database suite, live API behavior and current test-account validity depend on the disposable PostgreSQL service at `127.0.0.1:55434`. Docker Desktop is running, but its daemon socket times out and the database port refuses connections. The web shell stays available at `http://localhost:5175/app`; API-backed features will work again once that test database is reachable.
+- The full database suite, live API behavior and current test-account validity depend on the disposable PostgreSQL service at `127.0.0.1:55434`. The port still refuses connections and the Docker CLI hangs on its active context. The web shell stays available at `http://localhost:5175/app`; API-backed features will work again once that test database is reachable.

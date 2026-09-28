@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ASSISTANT_TOOL_DESCRIPTIONS } from "../../../capabilities/assistant.js";
 import { registry } from "../../../capabilities/index.js";
 import { execute, withReadContext } from "../../../capabilities/execute.js";
 import { policy, type Principal } from "../../../capabilities/policy.js";
@@ -66,7 +67,10 @@ const reportTool = {
   parameters: z.toJSONSchema(reportInput) as Record<string, unknown>,
 };
 
-const toolSpecs = (name: SpecialistName, allowChanges: boolean) =>
+export const specialistToolSpecs = (
+  name: SpecialistName,
+  allowChanges: boolean,
+) =>
   specialistToolNames(name)
     .filter((toolName) => {
       const cap = registry.get(toolName)!;
@@ -82,7 +86,7 @@ const toolSpecs = (name: SpecialistName, allowChanges: boolean) =>
       const info = describe(cap);
       return {
         name: info.name,
-        description: info.description,
+        description: ASSISTANT_TOOL_DESCRIPTIONS[toolName] ?? info.description,
         parameters: info.inputSchema,
       };
     });
@@ -308,7 +312,7 @@ export async function runSpecialist(input: {
       {
         systemPrompt,
         tools: [
-          ...toolSpecs(input.task.specialist, input.allowChanges),
+          ...specialistToolSpecs(input.task.specialist, input.allowChanges),
           reportTool,
         ],
         executeTool: (call) => executeTool(call),

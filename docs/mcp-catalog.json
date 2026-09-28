@@ -16,7 +16,7 @@
     {
       "name": "get_context",
       "title": "Who and where",
-      "description": "Call first. Who this connection acts for (name), their named Orbyn agent and its persona, time zone, local time, working hours, teams (role, agent policy), what it may do (access, trust per space: full, ask or suggest; what asks first; spaces, toolsets, expiry), limits, conventions; the private Memory topic index when Personal is available; their About me page (profile; change it with edit_doc), learning profile, instructions per space and standing rules (follow them), and since: what changed since this connection last spoke.",
+      "description": "Call first. Returns the person and agent identity, local time, working hours, team roles and policy, connection access, trust and ask-first rules, spaces, toolsets, expiry, limits, conventions, About me, learning profile, instructions, standing rules, recent changes, and the private Memory topic index when Personal is available.",
       "kind": "read",
       "access": "read",
       "toolset": "core",
@@ -156,23 +156,7 @@
             },
             "required": ["app", "today"]
           },
-          "memory": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": { "type": "string" },
-                "topic": { "type": "string" },
-                "facts": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "updated_at": { "type": "string" }
-              },
-              "required": ["id", "topic", "facts", "updated_at"]
-            }
-          },
+          "memory": { "type": "array", "items": { "type": "string" } },
           "conventions": {
             "type": "object",
             "properties": {
@@ -9161,6 +9145,7 @@
     {
       "date": "2026-09-28",
       "changes": [
+        "Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.",
         "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core."
       ]
     },
@@ -9207,5 +9192,5 @@
       ]
     }
   ],
-  "routes": { "covered": 259, "excluded": 205, "pending": 0 }
+  "routes": { "covered": 259, "excluded": 208, "pending": 0 }
 }

@@ -182,8 +182,13 @@ export const AGENT_TOOLSETS = [
 ] as const;
 export type AgentToolset = (typeof AGENT_TOOLSETS)[number];
 
-/** How a connection was made: OAuth sign-in, an agent key, or an old API key. */
-export const AGENT_GRANT_KINDS = ["oauth", "key", "legacy"] as const;
+/** How a connection was made, including Orbyn's built-in assistant. */
+export const AGENT_GRANT_KINDS = [
+  "oauth",
+  "key",
+  "legacy",
+  "assistant",
+] as const;
 export type AgentGrantKind = (typeof AGENT_GRANT_KINDS)[number];
 
 /**

@@ -41,7 +41,6 @@ import {
   findFreeTime,
   getCalendar,
   getStudy,
-  studyGlance,
   followThrough,
   getProject,
   listProjects,
@@ -277,7 +276,7 @@ const PROPOSED =
 export async function overview(ctx: AgentContext) {
   const rows = (
     await pool.query<Row>(
-      `${ITEM_SELECT} WHERE ${visibleItems()}
+      `${ITEM_SELECT} WHERE ${visibleItems("i", { user: "$1", ai: true })}
          AND (i.status NOT IN ('done', 'cancelled') OR i.updated_at > now() - interval '7 days')
        ORDER BY (i.due_at IS NULL), i.due_at, i.updated_at DESC LIMIT 500`,
       [ctx.user.id],
@@ -329,8 +328,8 @@ export async function overview(ctx: AgentContext) {
     // The real calendar for today and the next two days: events (repeating
     // ones included), subscribed calendars, time set aside, and free time.
     ...(await calendarGlance(ctx)),
-    // Cards due and the next exams, only for people who study in Orbyn.
-    ...(await studyGlance(ctx).then((study) => (study ? { study } : {}))),
+    // Study details are loaded on demand through the assistant-aware MCP
+    // capability, which can filter pages and exams from kept-out projects.
     note: 'Only some items are listed here; use search_items for the rest and rank_tasks for what to do first. "calendar" is everything on the calendar for today and the next two days, including calendars the user subscribes to (read_only: they can\'t be changed from Orbyn); use get_calendar for other days.',
   };
 }

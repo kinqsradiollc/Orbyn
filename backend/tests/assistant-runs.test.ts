@@ -490,6 +490,62 @@ test("lowered assistant trust asks before applying the checked plan", async () =
   );
 });
 
+test("get_context returns the private Memory topic index and filters kept-out sources", async () => {
+  const user = await register();
+  const project = await app.inject({
+    method: "POST",
+    url: "/projects",
+    headers: auth(user.token),
+    payload: { name: "Memory source kept out" },
+  });
+  assert.equal(project.statusCode, 201, project.body);
+  await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
+    project.json().id,
+  ]);
+
+  const { transaction } = await import("../src/db/pool.js");
+  const { rememberMemory } = await import("../src/modules/memory/service.js");
+  const { registry } = await import("../src/capabilities/index.js");
+  const { execute } = await import("../src/capabilities/execute.js");
+  await transaction(async (db) => {
+    await rememberMemory(
+      db,
+      user.id,
+      "Visible preference",
+      ["Likes clear plans"],
+      [],
+    );
+    await rememberMemory(
+      db,
+      user.id,
+      "Kept-out project note",
+      ["Private project detail"],
+      [{ type: "project", id: project.json().id, label: "Hidden project" }],
+    );
+  });
+  const person = (
+    await pool.query<{ name: string; role: "member" }>(
+      "SELECT name, role FROM users WHERE id = $1",
+      [user.id],
+    )
+  ).rows[0];
+  const principal = await assistantPrincipal({ ...person, id: user.id });
+  const internal = await execute(registry, principal, "get_context", {});
+  assert.equal(internal.result.isError, undefined);
+  const topics = internal.result.structuredContent?.memory as string[];
+  assert.ok(topics.includes("Visible preference"));
+  assert.ok(!topics.includes("Kept-out project note"));
+
+  const external = await execute(
+    registry,
+    { ...principal, personal: false },
+    "get_context",
+    {},
+  );
+  assert.equal(external.result.isError, undefined);
+  assert.deepEqual(external.result.structuredContent?.memory, []);
+});
+
 test("assistant search excludes a project the person kept out", async () => {
   requests.length = 0;
   const user = await register();
@@ -503,6 +559,18 @@ test("assistant search excludes a project the person kept out", async () => {
   await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
     project.json().id,
   ]);
+  const hiddenItem = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO items (user_id, kind, title, due_at, project_id)
+       VALUES ($1, 'task', 'ZEBRA_PRIVATE_TASK', now(), $2) RETURNING id`,
+      [user.id, project.json().id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO time_blocks (item_id, user_id, start_at, end_at)
+     VALUES ($1, $2, now() + interval '1 hour', now() + interval '2 hours')`,
+    [hiddenItem, user.id],
+  );
 
   respond = (request) => {
     const previousTool = [...request.messages]
@@ -523,15 +591,12 @@ test("assistant search excludes a project the person kept out", async () => {
   const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
   assert.equal(result.state, "done", JSON.stringify(result));
   assert.ok(
-    requests.every(
-      (request) =>
-        !request.messages.some(
-          (message) =>
-            message.role === "system" &&
-            message.content.includes("ZEBRA_PRIVATE_PROJECT"),
-        ),
+    requests.every((request) =>
+      request.messages.every(
+        (message) => !message.content?.includes("ZEBRA_PRIVATE_"),
+      ),
     ),
-    "the hidden project is absent from the lead context",
+    "the hidden project's task and schedule are absent from every model message",
   );
   const toolReplies = requests.flatMap((request) =>
     request.messages.filter((message) => message.role === "tool"),
@@ -805,6 +870,11 @@ test("exam revision checks Study and the calendar, asks about session length, th
   };
 
   const user = await register();
+  await pool.query(
+    `INSERT INTO agent_settings (user_id, name, persona)
+     VALUES ($1, 'Muse', 'A careful planning partner.')`,
+    [user.id],
+  );
   const prefs = await app.inject({
     method: "PUT",
     url: "/planner/prefs",
@@ -889,24 +959,48 @@ test("exam revision checks Study and the calendar, asks about session length, th
   );
   const planJob = result.assistant_run?.plan_job as string;
   assert.ok(planJob, "the applied revision plan has one undoable job id");
-  const person = (
-    await pool.query<{ name: string; role: "member" }>(
-      "SELECT name, role FROM users WHERE id = $1",
-      [user.id],
-    )
-  ).rows[0];
-  const principal = await assistantPrincipal({ ...person, id: user.id });
-  const { registry } = await import("../src/capabilities/index.js");
-  const { execute } = await import("../src/capabilities/execute.js");
-  const { transaction } = await import("../src/db/pool.js");
-  const undone = await execute(
-    registry,
-    principal,
-    "undo",
-    { job: planJob },
-    { primary: true, write: (run) => transaction(run) },
+  const connected = await app.inject({
+    method: "GET",
+    url: "/me/agents",
+    headers: auth(user.token),
+  });
+  assert.equal(connected.statusCode, 200, connected.body);
+  const grant = connected
+    .json()
+    .grants.find(
+      (entry: { id: string; kind: string }) => entry.kind === "assistant",
+    );
+  assert.ok(grant);
+  assert.equal(grant.name, "Muse", "Connected agents uses the named agent");
+  const activity = await app.inject({
+    method: "GET",
+    url: `/me/agents/${grant.id}/activity`,
+    headers: auth(user.token),
+  });
+  assert.equal(activity.statusCode, 200, activity.body);
+  assert.ok(
+    activity
+      .json()
+      .some(
+        (entry: { job: string | null; undoable: boolean }) =>
+          entry.job === planJob && entry.undoable,
+      ),
+    "the assistant's checked plan appears in Connected agents activity",
   );
-  assert.notEqual(undone.result.isError, true, JSON.stringify(undone.result));
+  const via = await pool.query<{ client_name: string }>(
+    `SELECT DISTINCT client_name FROM agent_activity
+      WHERE grant_id = $1 AND request_id = $2`,
+    [grant.id, planJob],
+  );
+  assert.ok(via.rows.length > 0);
+  assert.ok(via.rows.every((row) => row.client_name === "Muse"));
+  const undone = await app.inject({
+    method: "POST",
+    url: `/me/agents/${grant.id}/jobs/${planJob}/undo`,
+    headers: auth(user.token),
+  });
+  assert.equal(undone.statusCode, 200, undone.body);
+  assert.ok(undone.json().undone > 0);
   assert.equal(
     (await pool.query("SELECT 1 FROM items WHERE id = $1", [task.id])).rowCount,
     0,

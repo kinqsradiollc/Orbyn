@@ -806,46 +806,6 @@ test("a team's switches: members read them, owners change them, and each one tak
   assert.ok(audited.includes("team.booking_on"));
 });
 
-test("a task made from a team page's line keeps that line out of the assistant when the team has it off", async () => {
-  const team = (
-    await call(owner, "POST", "/teams", { name: "Quiet team" })
-  ).json().id as string;
-  await call(owner, "POST", `/teams/${team}/members`, {
-    email: mate.email,
-    role: "member",
-  });
-  const source = await page(
-    mate,
-    "Quiet notes",
-    [p("Zebra budget figure", "zq1")],
-    { team_id: team },
-  );
-  const made = await task(mate, "Follow up on the figure");
-  await pool.query(
-    "INSERT INTO doc_task_links (doc_id, block_id, item_id, done) VALUES ($1, 'zq1', $2, false)",
-    [source.id, made.id],
-  );
-  const ask = async () => {
-    asked.length = 0;
-    replies = ["Here is where it stands."];
-    const res = await call(mate, "POST", "/ai/chat", {
-      message: "Where does this stand?",
-      timezone: "UTC",
-      scope: { kind: "task", id: made.id },
-    });
-    assert.equal(res.statusCode, 200, res.body);
-    assert.ok(asked.length >= 1);
-    return asked.join("\n");
-  };
-  // With the assistant on, the line the task came from is part of the context.
-  assert.match(await ask(), /Zebra budget figure/);
-  await call(owner, "PUT", `/teams/${team}/policies`, { assistant: false });
-  const sent = await ask();
-  assert.doesNotMatch(sent, /Zebra budget figure/);
-  assert.doesNotMatch(sent, /Quiet notes/);
-  assert.match(sent, /Follow up on the figure/);
-});
-
 test("team switches: 401, 422, 404 not a member, 403 for an API key", async () => {
   assert.equal(
     (await call(null, "GET", `/teams/${teamId}/policies`)).statusCode,

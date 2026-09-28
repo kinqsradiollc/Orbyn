@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { ASSISTANT_TOOL_DESCRIPTIONS } from "../../../capabilities/assistant.js";
 import { registry } from "../../../capabilities/index.js";
 import { execute } from "../../../capabilities/execute.js";
 import { policy, type Principal } from "../../../capabilities/policy.js";
@@ -22,7 +23,7 @@ import {
 } from "./specialist.js";
 import { checkMergedPlan } from "./checker.js";
 import type { PlanStep } from "../../../capabilities/plan-run.js";
-import type { AssistantChangeKind } from "@orbyn/core";
+import type { AssistantChangeKind } from "./change-kind.js";
 import type { ToolSpec, ToolCall } from "./protocol.js";
 
 export const LEAD_MAX_STEPS = 8;
@@ -99,13 +100,13 @@ const leadTool = (name: string, description: string, schema: z.ZodType) => ({
   parameters: z.toJSONSchema(schema) as Record<string, unknown>,
 });
 
-const leadTools: ToolSpec[] = [
+export const leadTools: ToolSpec[] = [
   ...SHARED_ASSISTANT_READS.map((name) => {
     const cap = registry.get(name)!;
     const info = describe(cap);
     return {
       name,
-      description: info.description,
+      description: ASSISTANT_TOOL_DESCRIPTIONS[name] ?? info.description,
       parameters: info.inputSchema,
     };
   }),
