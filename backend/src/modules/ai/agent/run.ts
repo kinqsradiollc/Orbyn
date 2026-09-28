@@ -713,8 +713,8 @@ export async function startAssistantAutomation(input: {
   const jobId = await transaction(async (db) => {
     const row = (
       await db.query<{ id: string }>(
-        `INSERT INTO ai_jobs (user_id, progress, run_state)
-         VALUES ($1, $2::jsonb, $3::jsonb) RETURNING id`,
+        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id)
+         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5) RETURNING id`,
         [
           user.id,
           JSON.stringify({ label: "Starting a scheduled run" }),
@@ -723,6 +723,8 @@ export async function startAssistantAutomation(input: {
             request,
             state: newState(input.message),
           }),
+          chatId,
+          turnId,
         ],
       )
     ).rows[0];

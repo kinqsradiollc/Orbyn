@@ -59,9 +59,19 @@ export type AiChatSummary = {
   summary_doc_id: string | null;
   swept_at: string | null;
   scope: ChatScope | null;
+  active?: "working" | "needs_you" | null;
+};
+
+/** A live assistant job that a client can reattach to. */
+export type ActiveChatJob = {
+  id: string;
+  state: "queued" | "running" | "waiting";
+  progress: { label?: string; [key: string]: unknown } | null;
+  waiting: unknown;
 };
 
 export type AiChat = AiChatSummary & {
+  active_job?: ActiveChatJob | null;
   turns: SavedChatTurn[];
   trace: ChatTraceEntry[];
 };

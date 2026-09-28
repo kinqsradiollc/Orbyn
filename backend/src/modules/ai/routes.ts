@@ -33,7 +33,7 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { requireTeam } from "../../lib/teams.js";
 import { visibleProjectActivity } from "../projects/activity-visibility.js";
 import { KeptOutError, keptOutFor } from "../../lib/assistant-off.js";
-import { visibleItems } from "../../lib/visibility.js";
+import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { projectVisible } from "../projects/service.js";
 import {
   ASSISTANT_STALE_MS,
@@ -183,6 +183,23 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest) {
 const STALE_MS = ASSISTANT_STALE_MS;
 
 export async function aiRoutes(app: FastifyInstance) {
+  app.get("/ai/jobs/active", async (r) => {
+    const u = await authenticate(r);
+    return (
+      await pool.query(
+        `SELECT j.id, j.chat_id, j.turn_id, j.state, j.progress,
+                j.run_state->'state'->'waiting' AS waiting
+         FROM ai_jobs j JOIN ai_chats c ON c.id = j.chat_id
+         LEFT JOIN projects p ON p.id = c.project_id
+         WHERE j.user_id = $1 AND c.user_id = $1
+           AND j.state IN ('queued', 'running', 'waiting')
+           AND (c.project_id IS NULL OR
+             (NOT p.assistant_off AND ${visibleProjects("p")}))
+         ORDER BY j.created_at DESC, j.id DESC`,
+        [u.id],
+      )
+    ).rows;
+  });
   app.get("/ai/capabilities", async (r) => {
     await authenticate(r);
     const provider = await resolveAi();
@@ -291,8 +308,13 @@ export async function aiRoutes(app: FastifyInstance) {
     const prepared = await prepareChatTurn(u, d);
     const job = (
       await pool.query(
-        `INSERT INTO ai_jobs(user_id, progress) VALUES($1, $2::jsonb) RETURNING id`,
-        [u.id, JSON.stringify({ label: "Starting the lead assistant" })],
+        `INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id) VALUES($1, $2::jsonb, $3, $4) RETURNING id`,
+        [
+          u.id,
+          JSON.stringify({ label: "Starting the lead assistant" }),
+          prepared.chatId,
+          prepared.turnId,
+        ],
       )
     ).rows[0];
     void runAssistantJob(

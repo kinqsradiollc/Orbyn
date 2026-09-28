@@ -33,6 +33,10 @@ const PROJECT_VISIBLE =
 const SUMMARY = `c.id, c.project_id, p.name AS project_name, c.title, c.pinned,
   jsonb_array_length(c.turns)::int AS turn_count, c.created_at, c.last_used_at,
   c.summary_doc_id, c.swept_at,
+  (SELECT CASE WHEN j.state = 'waiting' THEN 'needs_you' ELSE 'working' END
+   FROM ai_jobs j WHERE j.chat_id = c.id AND j.user_id = c.user_id
+   AND j.state IN ('queued', 'running', 'waiting')
+   ORDER BY j.created_at DESC, j.id DESC LIMIT 1) AS active,
   CASE WHEN c.scope_kind IS NULL THEN NULL
        ELSE jsonb_build_object('kind', c.scope_kind, 'id', c.scope_id) END AS scope`;
 
@@ -59,6 +63,7 @@ type SummaryRow = Omit<
 > & {
   turn_count: number;
   scope: ChatScope | null;
+  active: "working" | "needs_you" | null;
 };
 
 const listQuery = z.object({
@@ -106,6 +111,7 @@ function summaryOf(row: SummaryRow): AiChatSummary {
     summary_doc_id: row.summary_doc_id,
     swept_at: dateText(row.swept_at),
     scope: row.scope,
+    active: row.active,
   };
 }
 
@@ -425,6 +431,16 @@ export async function readAiChat(
     )
   ).rows[0];
   if (!row) fail(404, "Chat not found");
+  const activeJob =
+    (
+      await db.query<NonNullable<AiChat["active_job"]>>(
+        `SELECT id, state, progress, run_state->'state'->'waiting' AS waiting
+     FROM ai_jobs WHERE chat_id = $1 AND user_id = $2
+     AND state IN ('queued', 'running', 'waiting')
+     ORDER BY created_at DESC, id DESC LIMIT 1`,
+        [id, userId],
+      )
+    ).rows[0] ?? null;
   return {
     id: row.id,
     project_id: row.project_id,
@@ -437,6 +453,12 @@ export async function readAiChat(
     summary_doc_id: row.summary_doc_id,
     swept_at: dateText(row.swept_at),
     scope: scopeOf(row),
+    active: activeJob
+      ? activeJob.state === "waiting"
+        ? "needs_you"
+        : "working"
+      : null,
+    active_job: activeJob,
     turns: row.swept_at ? [] : turnsOf(row.turns),
     trace: row.swept_at ? [] : traceOf(row.trace),
   };
