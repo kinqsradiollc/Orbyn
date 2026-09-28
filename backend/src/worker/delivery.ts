@@ -173,6 +173,8 @@ export async function reminderNudgeStale(
        JOIN agent_grants g ON g.user_id = u.id AND g.kind = 'assistant'
        LEFT JOIN agent_settings a ON a.user_id = u.id
        WHERE n.id::text = $2 AND n.user_id = $1 AND NOT n.stopped AND NOT u.disabled
+         AND NOT EXISTS (SELECT 1 FROM assistant_nudges stopped
+           WHERE stopped.user_id = n.user_id AND stopped.nudge_key = n.nudge_key AND stopped.stopped)
          AND g.suspended_at IS NULL AND g.revoked_at IS NULL`,
       [notice.user_id, id],
     )

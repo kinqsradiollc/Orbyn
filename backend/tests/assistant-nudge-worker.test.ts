@@ -115,6 +115,26 @@ test("chat-off delivery resolves the ledger and cancels completed or stopped sou
   await pool.query("UPDATE items SET status = 'todo' WHERE id = $1", [
     candidate.entity_id,
   ]);
+  // A newer reminder can be stopped while an older notice is still queued.
+  await pool.query(
+    `INSERT INTO assistant_nudges(user_id, nudge_key, entity_kind, entity_id, local_day, stopped)
+     VALUES($1, $2, $3, $4, $5, true)`,
+    [
+      me.id,
+      ledger.nudge_key,
+      ledger.entity_kind,
+      ledger.entity_id,
+      ledger.local_day,
+    ],
+  );
+  assert.equal(
+    await transaction((db) => reminderNudgeStale(db, notice, now)),
+    true,
+  );
+  await pool.query(
+    "DELETE FROM assistant_nudges WHERE user_id = $1 AND stopped",
+    [me.id],
+  );
   await pool.query("UPDATE assistant_nudges SET stopped = true WHERE id = $1", [
     ledger.id,
   ]);
