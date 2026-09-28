@@ -335,7 +335,7 @@ export function AssistantView({
                   {chat.pinned && <Pin size={12} aria-label="Pinned" />}
                   <span>{chat.title}</span>
                   {chat.active && (
-                    <small role="status">
+                    <small className="ai-op ai-op-update" role="status">
                       {chat.active === "needs_you" ? "Needs you" : "Working"}
                     </small>
                   )}
