@@ -1,0 +1,159 @@
+/* Covers and icons (W6): the picture across a header or card, and the
+   dialog that changes them. Tokens only; sizes from the type scale. */
+
+.look-emoji {
+  line-height: 1;
+  display: inline-block;
+}
+
+.look-cover {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-sunken);
+}
+.look-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.look-dialog {
+  width: 560px;
+}
+.look-body {
+  padding: 0 22px 22px;
+}
+.look-body > p {
+  margin: 8px 0 0;
+}
+.look-heading {
+  margin: 20px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.look-preview {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  min-height: 64px;
+  background: var(--color-sunken);
+}
+.look-preview-cover {
+  height: 96px;
+}
+.look-preview-icon {
+  position: absolute;
+  left: 14px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.look-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.look-choice {
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-textSoft);
+  font-size: 18px;
+}
+.look-choice:hover {
+  background: var(--color-hover);
+}
+.look-choice.is-on {
+  background: var(--color-selected);
+  border-color: var(--color-focus);
+  color: var(--color-selectedText);
+}
+
+.look-typed {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.look-typed input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.look-pictures {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+.look-picture {
+  height: 64px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-sunken);
+  color: var(--color-muted);
+}
+.look-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.look-picture.is-on {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+.look-body .file-picker {
+  margin-bottom: 6px;
+}
+
+/* A page's cover and icon in the editor (W6): the cover spans the top of
+   the page card, the icon sits over its lower edge above the title. */
+.doc-page > .doc-cover {
+  height: 180px;
+  margin: -28px calc(-1 * clamp(18px, 4vw, 40px)) 4px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.doc-page > .doc-look-icon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  color: var(--color-textSoft);
+}
+.doc-page > .doc-look-icon > span {
+  display: grid;
+  place-items: center;
+  min-width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+}
+.doc-page > .doc-cover + .doc-look-icon {
+  margin-top: -40px;
+}
+.doc-page > .doc-cover + .doc-look-icon > span {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}

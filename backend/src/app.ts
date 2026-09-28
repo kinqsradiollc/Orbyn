@@ -73,6 +73,7 @@ import { pageImportRoutes } from "./modules/imports/pages.js";
 import { aiCaptureRoutes } from "./modules/ai/capture.js";
 import { aiRecordingRoutes } from "./modules/ai/recording.js";
 import { prefRoutes } from "./modules/users/prefs.js";
+import { homeRoutes } from "./modules/home/routes.js";
 import { libraryRoutes } from "./modules/docs/library.js";
 import { teamPolicyRoutes } from "./modules/teams/policies.js";
 import { clipRoutes } from "./modules/clip/routes.js";
@@ -164,6 +165,8 @@ export const serviceModules: Record<
     pageImportRoutes,
     // Choices that follow the account: Arrange, shortcuts, view choices (D5).
     prefRoutes,
+    // Home's goals, routines and reflection panels (W1).
+    homeRoutes,
     // Archiving, and moving or tagging several pages at once (D5).
     libraryRoutes,
     // A team's switches for publishing, the assistant and booking (OTH-04).

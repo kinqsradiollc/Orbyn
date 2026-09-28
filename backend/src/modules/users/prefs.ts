@@ -2,17 +2,21 @@ import type { FastifyInstance } from "fastify";
 import {
   accountPrefsInput,
   COMMANDS,
+  DEFAULT_HOME,
   fail,
+  homeLayout,
   MAX_VIEW_CHOICES,
   type AccountPrefs,
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { writeRateLimit } from "../../lib/params.js";
+import { pageFileReadableBy } from "../../lib/page-file-access.js";
 
 /**
- * Choices that follow the account (NAV-08, NAV-09, SHR-08): the sidebar's
- * arrangement, changed shortcuts and view choices. One row per person;
+ * Choices that follow the account (NAV-08, NAV-09, SHR-08, W1): the
+ * sidebar's arrangement, changed shortcuts, view choices and how Home is
+ * laid out. One row per person;
  * reading gives the defaults until something is chosen. Theme, text size
  * and what opens at start stay on each device, in the apps.
  */
@@ -21,7 +25,15 @@ type Row = {
   sidebar: AccountPrefs["sidebar"];
   shortcuts: AccountPrefs["shortcuts"];
   views: AccountPrefs["views"];
+  home: unknown;
   updated_at: Date | null;
+};
+
+/** Home as stored, read through its schema; the defaults when unset or unreadable. */
+const homeOf = (raw: unknown): AccountPrefs["home"] => {
+  if (!raw) return DEFAULT_HOME;
+  const read = homeLayout.safeParse(raw);
+  return read.success ? read.data : DEFAULT_HOME;
 };
 
 const shape = (row: Row | undefined): AccountPrefs => ({
@@ -31,6 +43,7 @@ const shape = (row: Row | undefined): AccountPrefs => ({
   },
   shortcuts: row?.shortcuts ?? {},
   views: row?.views ?? {},
+  home: homeOf(row?.home),
   updated_at: row?.updated_at ? row.updated_at.toISOString() : null,
 });
 
@@ -41,7 +54,7 @@ export async function prefRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const row = (
       await reader(r.headers).query<Row>(
-        "SELECT sidebar, shortcuts, views, updated_at FROM account_prefs WHERE user_id = $1",
+        "SELECT sidebar, shortcuts, views, home, updated_at FROM account_prefs WHERE user_id = $1",
         [u.id],
       )
     ).rows[0];
@@ -65,6 +78,28 @@ export async function prefRoutes(app: FastifyInstance) {
         seen.set(k, id);
       }
     }
+    // A hub's cover is a picture its owner can see; the quote's page too.
+    if (input.home) {
+      const covers = [
+        ...new Set(
+          input.home.hubs.flatMap((h) =>
+            h.cover_file_id ? [h.cover_file_id] : [],
+          ),
+        ),
+      ];
+      if (covers.length) {
+        const seen = (
+          await pool.query(
+            `SELECT f.id FROM page_files f
+              WHERE f.id = ANY ($2::uuid[]) AND f.kind = 'image'
+                AND f.status = 'ready' AND ${pageFileReadableBy("$1")}`,
+            [u.id, covers],
+          )
+        ).rowCount;
+        if (seen !== covers.length)
+          fail(404, "That cover picture wasn't found.");
+      }
+    }
     const saved = await transaction(async (db) => {
       await db.query(
         "INSERT INTO account_prefs (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
@@ -72,7 +107,7 @@ export async function prefRoutes(app: FastifyInstance) {
       );
       const current = (
         await db.query<Row>(
-          "SELECT sidebar, shortcuts, views, updated_at FROM account_prefs WHERE user_id = $1 FOR UPDATE",
+          "SELECT sidebar, shortcuts, views, home, updated_at FROM account_prefs WHERE user_id = $1 FOR UPDATE",
           [u.id],
         )
       ).rows[0];
@@ -89,14 +124,16 @@ export async function prefRoutes(app: FastifyInstance) {
               SET sidebar = coalesce($2::jsonb, sidebar),
                   shortcuts = coalesce($3::jsonb, shortcuts),
                   views = $4::jsonb,
+                  home = coalesce($5::jsonb, home),
                   updated_at = now()
             WHERE user_id = $1
-            RETURNING sidebar, shortcuts, views, updated_at`,
+            RETURNING sidebar, shortcuts, views, home, updated_at`,
           [
             u.id,
             input.sidebar ? JSON.stringify(input.sidebar) : null,
             input.shortcuts ? JSON.stringify(input.shortcuts) : null,
             JSON.stringify(views),
+            input.home ? JSON.stringify(input.home) : null,
           ],
         )
       ).rows[0];

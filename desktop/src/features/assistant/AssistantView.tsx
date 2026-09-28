@@ -63,6 +63,8 @@ type Props = {
   onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
+  /** Bumped to open Upcoming (goals and routines), as Home's panels do. */
+  openUpcoming?: number;
 };
 
 export function AssistantView({
@@ -74,6 +76,7 @@ export function AssistantView({
   onShowOnCalendar,
   onOpenSource,
   onKeptNote,
+  openUpcoming = 0,
 }: Props) {
   const {
     message,
@@ -155,7 +158,10 @@ export function AssistantView({
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identityError, setIdentityError] = useState("");
   const [personAnswer, setPersonAnswer] = useState("");
-  const [upcomingOpen, setUpcomingOpen] = useState(false);
+  const [upcomingOpen, setUpcomingOpen] = useState(openUpcoming > 0);
+  useEffect(() => {
+    if (openUpcoming > 0) setUpcomingOpen(true);
+  }, [openUpcoming]);
   const [approveMenu, setApproveMenu] = useState<DOMRect | null>(null);
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {

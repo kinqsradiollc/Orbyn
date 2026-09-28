@@ -5,6 +5,7 @@ import {
   emptyPlans,
   overviewItems,
   todayIsCurrent,
+  type HomeLayout,
   type Item,
   type Plan,
   type StudyOverview,
@@ -19,6 +20,7 @@ import { percentOf } from "../lib/progress";
 import { ReviewCard } from "../components/ReviewCard";
 import { TodayCard } from "../components/TodayCard";
 import { AssistantIdeasCard } from "../components/AssistantIdeasCard";
+import { HomeSection } from "../components/Home";
 import { UpNextCard } from "../components/UpNextCard";
 import { usePlanned } from "../lib/plannedContext";
 import {
@@ -57,8 +59,17 @@ export function TodayScreen({
   onPlanTask,
   onPlanAgain,
   onOpenCalendar,
+  homeLayout,
+  agentName,
+  onOpenLink,
   ...handlers
 }: ListHandlers & {
+  /** Home's layout (W1): its hubs and which panels show, in order. */
+  homeLayout?: HomeLayout;
+  /** The assistant's name, for Upcoming. */
+  agentName: string;
+  /** Opens a project, page or saved view from a hub or the brief. */
+  onOpenLink: (link: { kind: "project" | "doc" | "view"; id: string }) => void;
   items: Item[];
   /** Starts focus mode on a task. */
   onFocus: (item: Item) => void;
@@ -151,6 +162,13 @@ export function TodayScreen({
         onAsk={onAsk}
         prefill={quickAddPrefill}
         onPrefillUsed={onQuickAddPrefillUsed}
+      />
+      <HomeSection
+        layout={homeLayout}
+        agentName={agentName}
+        onOpenLink={onOpenLink}
+        onOpenStudy={() => onOpenWorkspace("study")}
+        onOpenDoc={(id) => onOpenLink({ kind: "doc", id })}
       />
       <AssistantIdeasCard />
       <View style={s.stats}>

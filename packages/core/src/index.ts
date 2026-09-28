@@ -89,6 +89,8 @@ export * from "./publish.js";
 export * from "./app-imports.js";
 export * from "./capture-assist.js";
 export * from "./prefs.js";
+export * from "./covers.js";
+export * from "./home.js";
 export * from "./connections.js";
 export * from "./slides.js";
 export * from "./clip.js";

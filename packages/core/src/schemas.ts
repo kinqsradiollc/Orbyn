@@ -4,6 +4,7 @@ import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
 import { CALLOUT_KINDS, DOC_KINDS } from "./docs.js";
 import { aliasesInput } from "./links.js";
+import { lookIconInput } from "./covers.js";
 import { PROJECT_STATUSES } from "./projects.js";
 import { FAVOURITE_KINDS } from "./folders.js";
 
@@ -491,6 +492,10 @@ export const projectUpdate = z
     doc_id: z.uuid().nullable().optional(),
     /** Other names the project goes by, such as a course code (LNK-03). */
     aliases: aliasesInput.optional(),
+    /** A cover picture (W6): a picture you can read; null clears it. */
+    cover_file_id: z.uuid().nullable().optional(),
+    /** An emoji or "icon:<name>" (W6); null clears it. */
+    icon: lookIconInput.nullable().optional(),
     stages: z
       .array(
         z.object({

@@ -38,6 +38,7 @@ import {
   type DocSummary,
   type WorkRecord,
   type SearchHit,
+  type Look,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Timeline } from "./Timeline";
@@ -54,6 +55,7 @@ import { StarButton } from "../../components/StarButton";
 import { LinkedHere } from "../docs/DocLinks";
 import { AliasesField } from "../docs/AliasesField";
 import { canOpenTabs, openInNewTab } from "../../app/tabs";
+import { Cover, LookDialog, LookIcon } from "../../components/Look";
 
 /** "Fri 16 Oct", or "Fri 16 Oct, 5 pm" with the time. */
 function dayLabel(iso: string, withTime = false) {
@@ -187,6 +189,23 @@ export function ProjectDetail({
   }, [project.id]);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The ⋯ menu's Cover and icon dialog (W6). */
+  const [lookOpen, setLookOpen] = useState(false);
+  const saveLook = async (look: Look) => {
+    const before: Look = {
+      cover_file_id: project.cover_file_id ?? null,
+      icon: project.icon ?? null,
+    };
+    onChanged(await client.updateProject(project.id, look));
+    toast({
+      text: "Cover and icon saved",
+      action: {
+        label: "Undo",
+        run: () =>
+          void client.updateProject(project.id, before).then(onChanged, report),
+      },
+    });
+  };
   /** Unassigned team tasks ticked to claim with "Plan this project". */
   const [claiming, setClaiming] = useState<string[]>([]);
   /** The ⋯ menu's Rename or Summary & brief dialog, with what's typed. */
@@ -815,6 +834,14 @@ export function ProjectDetail({
                   >
                     Summary & brief
                   </button>
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setLookOpen(true);
+                    }}
+                  >
+                    Cover and icon
+                  </button>
                   {(["active", "done", "archived"] as const).map((status) => (
                     <button
                       key={status}
@@ -873,6 +900,19 @@ export function ProjectDetail({
         </div>
       </div>
 
+      {lookOpen && (
+        <LookDialog
+          title="Project cover and icon"
+          look={{
+            cover_file_id: project.cover_file_id ?? null,
+            icon: project.icon ?? null,
+          }}
+          uploadTo={project.doc_id}
+          report={report}
+          onSave={saveLook}
+          onClose={() => setLookOpen(false)}
+        />
+      )}
       {editing && (
         <div
           className="modal-backdrop"
@@ -1093,9 +1133,23 @@ export function ProjectDetail({
         </section>
       )}
 
-      <header className="project-header">
+      <header
+        className={
+          "project-header" + (project.cover_file_id ? " has-cover" : "")
+        }
+      >
+        <Cover fileId={project.cover_file_id} className="project-cover" />
         <div className="project-title-row">
-          <h2>{project.name}</h2>
+          <h2>
+            {project.icon && (
+              <LookIcon
+                icon={project.icon}
+                size={22}
+                className="project-look-icon"
+              />
+            )}
+            {project.name}
+          </h2>
         </div>
         <p className="muted">{project.summary || "No summary yet."}</p>
         <div className="project-meta">

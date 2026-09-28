@@ -66,6 +66,7 @@ import {
   UpdateBanner,
 } from "../components/SystemBanners";
 import { PageHeading, Topbar } from "../components/Topbar";
+import { HomeSections, HomeTop } from "../features/overview/Home";
 import { ItemEditor } from "../components/ItemEditor";
 import { CommandBar } from "../components/CommandBar";
 import { Celebration } from "../components/Celebration";
@@ -294,6 +295,8 @@ export function App() {
   const [reviewPending, setReviewPending] = useState(0);
   /** A saved view to open (from the sidebar or a link), and the one open. */
   const [viewToOpen, setViewToOpen] = useState<string | null>(null);
+  /** Bumped by Home's goals and routines to open the assistant's Upcoming. */
+  const [upcomingAsked, setUpcomingAsked] = useState(0);
   const [shownView, setShownView] = useState<string | null>(null);
   /** Saved views pinned to the sidebar. */
   const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
@@ -649,7 +652,8 @@ export function App() {
                       }
                     : token
                       ? {
-                          title: view + " · Orbyn",
+                          title:
+                            (view === "Overview" ? "Home" : view) + " · Orbyn",
                           description: app,
                           index: false,
                         }
@@ -1635,12 +1639,20 @@ export function App() {
                 id={tabsLive ? "tab-panel" : undefined}
                 role={tabsLive ? "tabpanel" : undefined}
               >
-                {view !== "AI assistant" && (
-                  <PageHeading
-                    view={view}
+                {view === "Overview" ? (
+                  <HomeTop
                     user={user}
+                    timeZone={accountZone}
                     onNewItem={() => newItem()}
                   />
+                ) : (
+                  view !== "AI assistant" && (
+                    <PageHeading
+                      view={view}
+                      user={user}
+                      onNewItem={() => newItem()}
+                    />
+                  )
                 )}
                 {view === "Overview" && (
                   <WelcomeBack
@@ -1652,6 +1664,22 @@ export function App() {
                       }, report)
                     }
                     onOpenAsks={() => navigate("Notifications")}
+                  />
+                )}
+                {view === "Overview" && (
+                  <HomeSections
+                    report={report}
+                    onOpenProject={(id) => {
+                      setProjectToOpen(id);
+                      setView("Projects");
+                    }}
+                    onOpenDoc={(id) => openPage(id)}
+                    onOpenStudy={() => navigate("Study")}
+                    onOpenView={openSavedView}
+                    onOpenUpcoming={() => {
+                      setUpcomingAsked((n) => n + 1);
+                      navigate("AI assistant");
+                    }}
                   />
                 )}
                 {view === "Overview" && (
@@ -1889,6 +1917,7 @@ export function App() {
                     onShowOnCalendar={showOnCalendar}
                     onOpenSource={openSource}
                     onKeptNote={(docId) => openPage(docId)}
+                    openUpcoming={upcomingAsked}
                   />
                 )}
                 {view === "Teams" && (

@@ -813,3 +813,9 @@
   color: var(--color-muted);
   font-size: 11px;
 }
+
+/* Home in Arrange (W1): the quote's switch and page, under the panels. */
+.home-quote-setting {
+  gap: 16px;
+  margin-top: 14px;
+}

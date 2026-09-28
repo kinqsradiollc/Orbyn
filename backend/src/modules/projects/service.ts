@@ -15,6 +15,7 @@ import { type UserRow } from "../../lib/auth.js";
 import { requireTeam } from "../../lib/teams.js";
 import { PROJECT_COUNTS } from "./counts.js";
 import { visibleProjects } from "../../lib/visibility.js";
+import { coverLetGo, requireCoverPicture } from "../../lib/page-file-access.js";
 
 import type { QueryResultRow } from "pg";
 /**
@@ -25,7 +26,7 @@ import type { QueryResultRow } from "pg";
 // A brief page in Trash is no brief: the project reads as having none until
 // the page is restored (the link itself is kept for that).
 export const COLUMNS = `p.id, p.user_id, p.team_id, t.name AS team_name, p.name, p.summary,
-  p.status, p.deadline, p.aliases, p.assistant_off,
+  p.status, p.deadline, p.aliases, p.assistant_off, p.cover_file_id, p.icon,
   (SELECT b.id FROM docs b WHERE b.id = p.doc_id AND b.deleted_at IS NULL) AS doc_id,
   p.created_at, p.updated_at,
   ${PROJECT_COUNTS}`;
@@ -205,7 +206,8 @@ export async function deleteProject(db: Db, u: UserRow, id: string) {
 }
 
 /**
- * Change a project's name, summary, status, deadline, main page or stages.
+ * Change a project's name, summary, status, deadline, main page, cover,
+ * icon or stages.
  * Stages given without an id are new; ones left out are removed (their
  * tasks stay in the project with no stage). Callers that must keep stages
  * they weren't told about (agents) pass every stage.
@@ -220,11 +222,15 @@ export async function updateProject(
   const owned = await requireProject(db, id, u, "items:write");
   await announceProjects(db, owned);
   const before = (
-    await db.query<{ name: string; deadline: Date | null }>(
-      "SELECT name, deadline FROM projects WHERE id = $1",
-      [id],
-    )
+    await db.query<{
+      name: string;
+      deadline: Date | null;
+      cover_file_id: string | null;
+    }>("SELECT name, deadline, cover_file_id FROM projects WHERE id = $1", [id])
   ).rows[0];
+  // A new cover is a picture the changer can see (W6).
+  if (body.cover_file_id && body.cover_file_id !== before.cover_file_id)
+    await requireCoverPicture(db, u.id, body.cover_file_id);
   await db.query(
     `UPDATE projects SET
        name = coalesce($2, name),
@@ -233,6 +239,8 @@ export async function updateProject(
        deadline = CASE WHEN $5::boolean THEN $6::timestamptz ELSE deadline END,
        doc_id = CASE WHEN $7::boolean THEN $8::uuid ELSE doc_id END,
        aliases = coalesce($9::text[], aliases),
+       cover_file_id = CASE WHEN $10::boolean THEN $11::uuid ELSE cover_file_id END,
+       icon = CASE WHEN $12::boolean THEN $13::text ELSE icon END,
        updated_at = now()
      WHERE id = $1`,
     [
@@ -245,8 +253,17 @@ export async function updateProject(
       body.doc_id !== undefined,
       body.doc_id ?? null,
       body.aliases ?? null,
+      body.cover_file_id !== undefined,
+      body.cover_file_id ?? null,
+      body.icon !== undefined,
+      body.icon ?? null,
     ],
   );
+  if (
+    body.cover_file_id !== undefined &&
+    body.cover_file_id !== before.cover_file_id
+  )
+    await coverLetGo(db, before.cover_file_id);
   // Pages are found by their project's name too: index them again.
   if (body.name !== undefined && body.name !== before.name)
     await db.query(

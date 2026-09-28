@@ -4,7 +4,8 @@
  *   /app/task/<id>            a task or event
  *   /app/doc/<id>#<line>      a page, scrolled to the line when given
  *   /app/project/<id>         a project
- *   /app/today                the Today list (on Overview)
+ *   /app/today                the Today list (on Home)
+ *   /app/home, /app/overview  Home (W1; Overview was its old name)
  *   /app/view/<id>            a saved view (D4a)
  *   /app/review[/<id>]        the Review inbox (Notifications until it lands)
  *   /app/add?text=<words>     Quick add, filled in, to confirm (never adds)
@@ -52,7 +53,7 @@ export function deepLinkOf(
   hash = "",
   search = "",
 ): DeepLink | null {
-  if (/^\/app\/today\/?$/i.test(path)) return { kind: "today" };
+  if (/^\/app\/(today|home|overview)\/?$/i.test(path)) return { kind: "today" };
   if (/^\/app\/agents\/?$/i.test(path)) return { kind: "agents" };
   if (/^\/app\/assistant\/?$/i.test(path)) return { kind: "assistant" };
   if (/^\/app\/review\/?$/i.test(path)) return { kind: "review", id: null };

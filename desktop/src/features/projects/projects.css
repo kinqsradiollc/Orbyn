@@ -1552,3 +1552,24 @@
 .milestone-more .text-button.is-destructive {
   color: var(--color-danger);
 }
+
+/* A project's cover and icon (W6): the cover runs edge to edge across the
+   top of the header card; the icon sits before the name. */
+.project-header.has-cover {
+  overflow: hidden;
+  padding-top: 0;
+}
+.project-cover {
+  height: 140px;
+  margin: 0 -18px 6px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.project-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.project-look-icon {
+  flex: none;
+  color: var(--color-textSoft);
+}
