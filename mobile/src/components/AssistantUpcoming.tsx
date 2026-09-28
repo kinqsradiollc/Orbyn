@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Modal,
   ScrollView,
@@ -15,6 +15,8 @@ import {
   nextOccurrence,
   weekdayOf,
   type AgentRoutine,
+  type ApprovalScopes,
+  type AssistantChangeKind,
   type DocSummary,
   type Goal,
   type GoalCheckin,
@@ -27,6 +29,11 @@ import { MoreMenu, type MoreAction } from "./MoreMenu";
 import { PressableScale, Pressable } from "../motion";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
+import {
+  CHANGE_KIND_LABELS,
+  checkinStatusLabel,
+  dayLabel,
+} from "../lib/assistant-labels";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -58,14 +65,26 @@ function summaryOf(goal: Goal) {
   return typeof goal.progress.summary === "string" ? goal.progress.summary : "";
 }
 
-/** Goals, weekly check-ins and scheduled Assistant runs on the phone. */
+/** Goals, weekly check-ins and scheduled assistant runs on the phone. */
 export function AssistantUpcoming({
+  agentName,
   visible,
   onClose,
 }: {
+  /** The name the person gave their assistant. */
+  agentName: string;
   visible: boolean;
   onClose: () => void;
 }) {
+  const live = useRef(true);
+  useEffect(
+    () => () => {
+      live.current = false;
+    },
+    [],
+  );
+  const [loading, setLoading] = useState(true);
+  const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
   const [checkins, setCheckins] = useState<Record<string, GoalCheckin[]>>({});
   const [routines, setRoutines] = useState<AgentRoutine[]>([]);
@@ -92,14 +111,17 @@ export function AssistantUpcoming({
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
-    const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs] =
+    const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs, scopes] =
       await Promise.all([
         client.listGoals(),
         client.listAgentRoutines(),
         client.listProjects(),
         client.listDocs({ kind: "agent" }),
         client.getPlannerPrefs(),
+        client.assistantApprovalScopes().catch(() => ({}) as ApprovalScopes),
       ]);
+    if (!live.current) return;
+    setAllowed(scopes);
     const zone = prefs.timezone || "UTC";
     setGoals(nextGoals);
     setRoutines(nextRoutines);
@@ -107,23 +129,60 @@ export function AssistantUpcoming({
     setAgentDocs(nextDocs);
     setTimezone(zone);
     setRoutineDay(localDateKey(new Date(), zone));
+    // One goal's check-ins failing leaves the others (and the goal) shown.
     const results = await Promise.all(
       nextGoals
         .slice(0, 30)
         .map(
           async (goal) =>
-            [goal.id, await client.goalCheckins(goal.id)] as const,
+            [
+              goal.id,
+              await client.goalCheckins(goal.id).catch(() => []),
+            ] as const,
         ),
     );
-    setCheckins(Object.fromEntries(results));
+    if (live.current) setCheckins(Object.fromEntries(results));
   };
 
   useEffect(() => {
     if (!visible) return;
-    void load().catch(() =>
-      setError("Upcoming goals and routines could not be loaded."),
-    );
+    setError("");
+    void load()
+      .catch(
+        () =>
+          live.current &&
+          setError("Upcoming goals and routines could not be loaded."),
+      )
+      .finally(() => live.current && setLoading(false));
   }, [visible]);
+
+  const removeAllowed = async (kind: AssistantChangeKind) => {
+    const next = { ...allowed };
+    delete next[kind];
+    setSaving(true);
+    setError("");
+    try {
+      const saved = await client.setAssistantApprovalScopes(next);
+      if (live.current) setAllowed(saved);
+    } catch {
+      if (live.current)
+        setError("That permission could not be removed. Try again.");
+    } finally {
+      if (live.current) setSaving(false);
+    }
+  };
+  const allowedRows = (
+    Object.entries(allowed) as [
+      AssistantChangeKind,
+      ApprovalScopes[AssistantChangeKind],
+    ][]
+  ).filter(([, rule]) => !!rule);
+  const ruleLabel = (rule: ApprovalScopes[AssistantChangeKind]) =>
+    rule === "always"
+      ? "Always"
+      : rule?.scope === "goal"
+        ? `For the goal “${goals.find((g) => g.id === rule.id)?.title ?? "a goal"}”`
+        : `For the routine “${routines.find((r) => r.id === rule?.id)?.instruction ?? "a routine"}”`;
 
   const createGoal = async () => {
     if (!goalTitle.trim() || saving) return;
@@ -403,7 +462,7 @@ export function AssistantUpcoming({
           {routineForm && (
             <View style={s.form}>
               <Text style={shared.sectionTitle}>New routine</Text>
-              <Field label="What should Orbyn do?">
+              <Field label={`What should ${agentName} do?`}>
                 <TextInput
                   value={routineText}
                   onChangeText={setRoutineText}
@@ -459,7 +518,9 @@ export function AssistantUpcoming({
             </Text>
           )}
           <Text style={shared.sectionTitle}>Goals</Text>
-          {activeGoals.length ? (
+          {loading ? (
+            <Text style={shared.small}>Loading goals…</Text>
+          ) : activeGoals.length ? (
             activeGoals.map((goal) => {
               const history = checkins[goal.id] ?? [];
               const latest = history[0];
@@ -473,8 +534,10 @@ export function AssistantUpcoming({
                   <View style={s.flex}>
                     <Text style={s.rowTitle}>{goal.title}</Text>
                     <Text style={shared.small}>
-                      Weekly check-in · {checkinDay}
-                      {goal.target_date ? ` · target ${goal.target_date}` : ""}
+                      Weekly check-in · {dayLabel(checkinDay)}
+                      {goal.target_date
+                        ? ` · target ${dayLabel(goal.target_date)}`
+                        : ""}
                       {goal.project_name ? ` · ${goal.project_name}` : ""}
                     </Text>
                     {!!summaryOf(goal) && (
@@ -482,12 +545,13 @@ export function AssistantUpcoming({
                     )}
                     {latest && (
                       <Text style={shared.small}>
-                        Last check-in · {latest.status} · {latest.summary}
+                        Last check-in · {checkinStatusLabel(latest.status)}
+                        {latest.summary ? ` · ${latest.summary}` : ""}
                       </Text>
                     )}
                   </View>
                   <MoreMenu
-                    label={`Goal options for ${goal.title}`}
+                    label={`Options for ${goal.title}`}
                     title={goal.title}
                     actions={goalActions(goal)}
                     disabled={saving}
@@ -499,7 +563,9 @@ export function AssistantUpcoming({
             <Text style={shared.small}>No active goals yet.</Text>
           )}
           <Text style={[shared.sectionTitle, s.sectionGap]}>Routines</Text>
-          {routines.length ? (
+          {loading ? (
+            <Text style={shared.small}>Loading routines…</Text>
+          ) : routines.length ? (
             routines.map((routine) => (
               <View key={routine.id} style={s.row}>
                 <View style={s.flex}>
@@ -517,7 +583,7 @@ export function AssistantUpcoming({
                   )}
                 </View>
                 <MoreMenu
-                  label="Routine options"
+                  label={`Options for ${routine.instruction}`}
                   title={routine.instruction}
                   actions={routineActions(routine)}
                   disabled={saving}
@@ -526,6 +592,35 @@ export function AssistantUpcoming({
             ))
           ) : (
             <Text style={shared.small}>No scheduled routines yet.</Text>
+          )}
+          {allowedRows.length > 0 && (
+            <>
+              <Text style={[shared.sectionTitle, s.sectionGap]}>
+                Allowed without asking
+              </Text>
+              {allowedRows.map(([kind, rule]) => (
+                <View key={kind} style={s.row}>
+                  <View style={s.flex}>
+                    <Text style={s.rowTitle}>
+                      {CHANGE_KIND_LABELS[kind] ?? kind}
+                    </Text>
+                    <Text style={shared.small}>{ruleLabel(rule)}</Text>
+                  </View>
+                  <MoreMenu
+                    label={`Options for ${CHANGE_KIND_LABELS[kind] ?? kind}`}
+                    title={CHANGE_KIND_LABELS[kind] ?? kind}
+                    disabled={saving}
+                    actions={[
+                      {
+                        label: "Remove",
+                        destructive: true,
+                        onPress: () => void removeAllowed(kind),
+                      },
+                    ]}
+                  />
+                </View>
+              ))}
+            </>
           )}
         </ScrollView>
         {picker && (

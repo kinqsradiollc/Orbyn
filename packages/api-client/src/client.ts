@@ -376,6 +376,36 @@ const MAX_CACHED = 100;
 const CHAT_POLL_MS = 1200;
 const CHAT_POLL_MAX_MS = 4000;
 const CHAT_WAIT_MS = 15 * 60_000;
+/** The longest a run may wait for a person's answer or approval while polled. */
+const CHAT_WAITING_MAX_MS = 2 * 60 * 60_000;
+
+/** An error named "AbortError", thrown when a caller's AbortSignal stops a poll. */
+export function abortError(): Error {
+  const error = new Error("The request was stopped.");
+  error.name = "AbortError";
+  return error;
+}
+
+/** Whether `error` came from an AbortSignal stopping the request. */
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+/** Wait `ms`, rejecting early with an AbortError when `signal` aborts. */
+function pause(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(abortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export type AssistantWaiting =
   | { kind: "person"; question: string; choices: string[] }
@@ -2947,6 +2977,20 @@ export class OrbynClient {
       { method: "POST" },
     );
   }
+  /**
+   * What one assistant reply changed: the built-in assistant's activity for
+   * `job` (a reply's `assistant_run.plan_job`), newest first.
+   */
+  async assistantJobChanges(job: string) {
+    const { grants } = await this.agents();
+    const grant = grants.find((g) => g.kind === "assistant");
+    if (!grant) return { grantId: null, changes: [] as AgentActivity[] };
+    const activity = await this.agentActivity(grant.id);
+    return {
+      grantId: grant.id,
+      changes: activity.filter((a) => a.job === job),
+    };
+  }
   // ---- The Review inbox ----
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {
@@ -3217,7 +3261,9 @@ export class OrbynClient {
     scope: ChatScope | null = null,
     ids: { chatId?: string; turnId?: string } = {},
     onProgress?: (progress: AssistantRunProgress) => void,
+    signal?: AbortSignal,
   ) {
+    if (signal?.aborted) throw abortError();
     const { id, chat_id, turn_id } = await this.request<{
       id: string;
       chat_id: string;
@@ -3233,14 +3279,15 @@ export class OrbynClient {
         ...(ids.turnId ? { turn_id: ids.turnId } : {}),
       },
     });
-    const until = Date.now() + CHAT_WAIT_MS;
+    const started = Date.now();
     let delay = CHAT_POLL_MS;
-    let deadline = until;
+    let deadline = started + CHAT_WAIT_MS;
     let lastProgress = "";
     while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, delay));
+      await pause(delay, signal);
       delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
       const job = await this.request<ChatJob>(`/ai/chat/${id}`);
+      if (signal?.aborted) throw abortError();
       if (job.state === "running" || job.state === "waiting") {
         const progress = {
           job_id: id,
@@ -3253,7 +3300,12 @@ export class OrbynClient {
         if (serialized !== lastProgress) onProgress?.(progress);
         lastProgress = serialized;
         // A question or approval can wait for the person longer than one run.
-        if (job.state === "waiting") deadline = Date.now() + CHAT_WAIT_MS;
+        // Capped, so an unanswered question never keeps this polling forever.
+        if (job.state === "waiting")
+          deadline = Math.min(
+            Date.now() + CHAT_WAIT_MS,
+            started + CHAT_WAITING_MAX_MS,
+          );
         continue;
       }
       if (job.state === "done") {

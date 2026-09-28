@@ -21,10 +21,18 @@ import {
   type AssistantSource,
   type Item,
   type Plan,
-  type PersonalAgentSettings,
   type AiChatSummary,
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
+import { useConfirm } from "../../components/Confirm";
+import { useToast } from "../../components/Toast";
+import { errorText } from "../../lib/errors";
+import {
+  changeKindWords,
+  stepLabel,
+  toolLabel,
+} from "../../lib/assistant-labels";
+import { TurnChanges } from "./TurnChanges";
 import { ProposalReview } from "../../components/ProposalReview";
 import { AssistantUpcoming } from "./AssistantUpcoming";
 import { client } from "../../lib/api";
@@ -86,7 +94,14 @@ export function AssistantView({
     renameChat,
     pinChat,
     keepChatAsNote,
+    turnChanges,
+    undoTurnChanges,
+    identity,
+    setIdentity,
+    agentName,
   } = assistant;
+  const { ask: confirm } = useConfirm();
+  const toast = useToast();
   const suggestions = scope
     ? scope.kind === "project"
       ? [
@@ -119,27 +134,33 @@ export function AssistantView({
     chat: AiChatSummary;
     anchor: DOMRect;
   } | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
-  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  // The rename being typed, for the chat it belongs to.
+  const [rename, setRename] = useState<{ id: string; draft: string } | null>(
+    null,
+  );
+  const renameDraft =
+    rename && rename.id === chatMenu?.chat.id ? rename.draft : null;
+  const closeChatMenu = () => {
+    setChatMenu(null);
+    setRename(null);
+  };
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
-  const [identityLoading, setIdentityLoading] = useState(true);
   const [identitySaving, setIdentitySaving] = useState(false);
   const [identityError, setIdentityError] = useState("");
   const [personAnswer, setPersonAnswer] = useState("");
   const [upcomingOpen, setUpcomingOpen] = useState(false);
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
-    void client
-      .agentSettings()
-      .then((value) => {
-        setIdentity(value);
-        setIdentityName(value.name);
-        setIdentityPersona(value.persona);
-      })
-      .catch(() => undefined)
-      .finally(() => setIdentityLoading(false));
-  }, []);
+    if (!identity) return;
+    setIdentityName(identity.name);
+    setIdentityPersona(identity.persona);
+  }, [identity]);
+  /** Runs a chat menu action, closing the menu or showing why it failed. */
+  const chatAction = (run: () => Promise<unknown>, failed: string) =>
+    void run().then(closeChatMenu, (e: unknown) =>
+      toast({ tone: "warn", text: `${failed} ${errorText(e)}` }),
+    );
   const saveIdentity = async (e: FormEvent) => {
     e.preventDefault();
     if (identitySaving) return;
@@ -291,7 +312,7 @@ export function AssistantView({
                 className="ai-history-open"
                 disabled={locked}
                 onClick={() => {
-                  setChatMenu(null);
+                  closeChatMenu();
                   setHistoryOpen(false);
                   void openChat(chat.id).catch(() => undefined);
                 }}
@@ -316,6 +337,7 @@ export function AssistantView({
                 className="ai-history-options"
                 aria-label={`Options for ${chat.title}`}
                 title="Chat options"
+                disabled={locked}
                 onClick={(event) =>
                   setChatMenu({
                     chat,
@@ -336,7 +358,7 @@ export function AssistantView({
         </div>
       </aside>
       <div className="ai-main">
-        {!identityLoading && identity && !identity.named_at && (
+        {identity && !identity.named_at && (
           <div className="ai-name-overlay">
             <form
               className="ai-name-sheet"
@@ -408,7 +430,7 @@ export function AssistantView({
               setHistoryOpen(false);
               reset();
             }}
-            disabled={thinking}
+            disabled={locked}
             aria-label="New chat"
             title="New chat"
           >
@@ -433,21 +455,9 @@ export function AssistantView({
               In: {scope.name} <X size={14} aria-hidden="true" />
             </button>
           )}
-          {turns.length > 0 && (
-            <button
-              type="button"
-              className="ai-ghost ai-icon"
-              onClick={reset}
-              disabled={locked}
-              aria-label="New chat"
-              title="New chat"
-            >
-              <SquarePen size={16} />
-            </button>
-          )}
         </div>
 
-        {upcomingOpen && <AssistantUpcoming />}
+        {upcomingOpen && <AssistantUpcoming agentName={agentName} />}
 
         <div className="ai-thread" aria-live="polite" ref={threadRef}>
           {empty && <h2 className="ai-greeting">What’s on your mind today?</h2>}
@@ -496,6 +506,13 @@ export function AssistantView({
                         : undefined
                     }
                   />
+                  {turn.changesJob && (
+                    <TurnChanges
+                      job={turn.changesJob}
+                      load={turnChanges}
+                      undo={undoTurnChanges}
+                    />
+                  )}
                   {!!turn.trace.length && (
                     <details className="ai-trace">
                       <summary>Steps ({turn.trace.length})</summary>
@@ -503,7 +520,9 @@ export function AssistantView({
                         {turn.trace.map((entry, index) => (
                           <li key={`${entry.turn_id}-${entry.step}-${index}`}>
                             <span>{entry.label}</span>
-                            {entry.tool && <small>{entry.tool}</small>}
+                            {entry.tool && (
+                              <small>{toolLabel(entry.tool)}</small>
+                            )}
                           </li>
                         ))}
                       </ol>
@@ -563,6 +582,14 @@ export function AssistantView({
                       >
                         Answer
                       </button>
+                      <button
+                        type="button"
+                        className="ai-ghost"
+                        disabled={busy}
+                        onClick={() => void stopRun()}
+                      >
+                        Stop
+                      </button>
                     </form>
                   </>
                 ) : (
@@ -574,11 +601,8 @@ export function AssistantView({
                     {!!waiting.steps.length && (
                       <ul>
                         {waiting.steps.slice(0, 20).map((step, index) => {
-                          const tool =
-                            step && typeof step === "object" && "tool" in step
-                              ? String(step.tool)
-                              : "Change";
-                          return <li key={`${tool}-${index}`}>{tool}</li>;
+                          const label = stepLabel(step);
+                          return <li key={`${label}-${index}`}>{label}</li>;
                         })}
                       </ul>
                     )}
@@ -610,7 +634,7 @@ export function AssistantView({
                           disabled={busy}
                           onClick={() => void approveWaiting(true, "always")}
                         >
-                          Always allow: {waiting.change_kinds.join(", ")}
+                          Always allow {changeKindWords(waiting.change_kinds)}
                         </button>
                       )}
                       <button
@@ -619,7 +643,15 @@ export function AssistantView({
                         disabled={busy}
                         onClick={() => void approveWaiting(false)}
                       >
-                        Hold changes
+                        Decline
+                      </button>
+                      <button
+                        type="button"
+                        className="ai-ghost"
+                        disabled={busy}
+                        onClick={() => void stopRun()}
+                      >
+                        Stop
                       </button>
                     </div>
                   </>
@@ -649,7 +681,7 @@ export function AssistantView({
               <div
                 className="ai-bubble ai-bubble-bot ai-typing"
                 role="status"
-                aria-label="Orbyn is thinking"
+                aria-label={`${agentName} is thinking`}
               >
                 <span />
                 <span />
@@ -690,7 +722,7 @@ export function AssistantView({
               rows={1}
               aria-label="Message your assistant"
               aria-describedby="ai-composer-hint"
-              placeholder="Ask Orbyn…"
+              placeholder={`Ask ${agentName}…`}
               value={message}
               maxLength={4000}
               onChange={(e) => setMessage(e.target.value)}
@@ -752,16 +784,18 @@ export function AssistantView({
           <Popover
             anchor={chatMenu.anchor}
             label={`Options for ${chatMenu.chat.title}`}
-            onClose={() => setChatMenu(null)}
+            onClose={closeChatMenu}
           >
-            {renameDraft !== "" ? (
+            {renameDraft !== null ? (
               <form
                 className="ai-rename-chat"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (!renameDraft.trim()) return;
-                  void renameChat(chatMenu.chat.id, renameDraft.trim()).then(
-                    () => setChatMenu(null),
+                  const title = renameDraft.trim();
+                  if (!title) return;
+                  chatAction(
+                    () => renameChat(chatMenu.chat.id, title),
+                    "The chat could not be renamed.",
                   );
                 }}
               >
@@ -770,13 +804,18 @@ export function AssistantView({
                   id="ai-rename-chat"
                   maxLength={120}
                   value={renameDraft}
-                  onChange={(event) => setRenameDraft(event.target.value)}
+                  onChange={(event) =>
+                    setRename({
+                      id: chatMenu.chat.id,
+                      draft: event.target.value,
+                    })
+                  }
                 />
                 <div>
                   <button type="submit" disabled={!renameDraft.trim()}>
                     Save
                   </button>
-                  <button type="button" onClick={() => setRenameDraft("")}>
+                  <button type="button" onClick={() => setRename(null)}>
                     Cancel
                   </button>
                 </div>
@@ -786,8 +825,11 @@ export function AssistantView({
                 <button
                   type="button"
                   onClick={() =>
-                    void pinChat(chatMenu.chat.id, !chatMenu.chat.pinned).then(
-                      () => setChatMenu(null),
+                    chatAction(
+                      () => pinChat(chatMenu.chat.id, !chatMenu.chat.pinned),
+                      chatMenu.chat.pinned
+                        ? "The chat could not be unpinned."
+                        : "The chat could not be pinned.",
                     )
                   }
                 >
@@ -796,7 +838,12 @@ export function AssistantView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRenameDraft(chatMenu.chat.title)}
+                  onClick={() =>
+                    setRename({
+                      id: chatMenu.chat.id,
+                      draft: chatMenu.chat.title,
+                    })
+                  }
                 >
                   <Pencil size={15} aria-hidden="true" />
                   Rename
@@ -804,12 +851,13 @@ export function AssistantView({
                 <button
                   type="button"
                   onClick={() =>
-                    void keepChatAsNote(chatMenu.chat.id)
-                      .then((note) => {
-                        setChatMenu(null);
-                        onKeptNote?.(note.id);
-                      })
-                      .catch(() => undefined)
+                    chatAction(
+                      () =>
+                        keepChatAsNote(chatMenu.chat.id).then((note) =>
+                          onKeptNote?.(note.id),
+                        ),
+                      "The chat could not be saved as a note.",
+                    )
                   }
                 >
                   <History size={15} aria-hidden="true" />
@@ -818,10 +866,22 @@ export function AssistantView({
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`Delete “${chatMenu.chat.title}”?`))
-                      void deleteChat(chatMenu.chat.id).then(() =>
-                        setChatMenu(null),
+                    const chat = chatMenu.chat;
+                    closeChatMenu();
+                    void confirm({
+                      title: `Delete “${chat.title}”?`,
+                      body: "It will be removed from your chat history.",
+                      confirmLabel: "Delete",
+                      destructive: true,
+                    }).then((ok) => {
+                      if (!ok) return;
+                      deleteChat(chat.id).catch((e: unknown) =>
+                        toast({
+                          tone: "warn",
+                          text: `The chat could not be deleted. ${errorText(e)}`,
+                        }),
                       );
+                    });
                   }}
                 >
                   <Trash2 size={15} aria-hidden="true" />

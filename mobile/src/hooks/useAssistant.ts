@@ -10,6 +10,7 @@ import {
   type Item,
   type Proposal,
   type AiChatSummary,
+  type PersonalAgentSettings,
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import type { AssistantRunProgress } from "@orbyn/api-client";
@@ -39,6 +40,11 @@ export type Turn =
       turnId: string;
       /** Content-free steps the assistant took to answer. */
       trace: ChatTraceEntry[];
+      /**
+       * The job id of what this reply applied directly (from the server's
+       * `assistant_run.plan_job`), for listing and undoing it; null otherwise.
+       */
+      changesJob: string | null;
     };
 
 export type AssistantScope = ChatScope & { name: string };
@@ -51,6 +57,16 @@ type Options = {
   /** Current planner items, snapshotted when a reply arrives. */
   items: Item[];
 };
+
+/** How long the chat search waits for typing to pause before asking. */
+const SEARCH_DELAY_MS = 250;
+
+/** The job a finished run applied, from the reply's `assistant_run`. */
+function appliedJob(run: Record<string, unknown> | undefined): string | null {
+  return run?.outcome === "applied" && typeof run.plan_job === "string"
+    ? run.plan_job
+    : null;
+}
 
 let sequence = 0;
 const nextId = () => `turn-${++sequence}`;
@@ -81,28 +97,78 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [savedChats, setSavedChats] = useState<AiChatSummary[] | null>(null);
   const [chatSearch, setChatSearch] = useState("");
-  const loadChats = () =>
-    client
-      .aiChats({ search: chatSearch })
-      .then(setSavedChats, () => setSavedChats([]));
-  useEffect(() => {
-    setSavedChats(null);
-    void loadChats();
-  }, [chatSearch, token]);
+  const chatSearchRef = useRef(chatSearch);
+  chatSearchRef.current = chatSearch;
+  // Only the newest chat list request may set the list.
+  const chatsRequest = useRef(0);
+  // The running question's poll, stopped when the conversation is left.
+  const poll = useRef<AbortController | null>(null);
+  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+
+  const loadChats = () => {
+    const request = ++chatsRequest.current;
+    return client.aiChats({ search: chatSearchRef.current }).then(
+      (list) => {
+        if (request === chatsRequest.current) setSavedChats(list);
+      },
+      () => {
+        if (request === chatsRequest.current) setSavedChats([]);
+      },
+    );
+  };
 
   useEffect(() => {
+    const timer = setTimeout(
+      () => {
+        setSavedChats(null);
+        void loadChats();
+      },
+      chatSearch ? SEARCH_DELAY_MS : 0,
+    );
+    return () => {
+      clearTimeout(timer);
+      chatsRequest.current += 1;
+    };
+  }, [chatSearch, token]);
+
+  const stopPolling = () => {
+    poll.current?.abort();
+    poll.current = null;
+  };
+
+  /** Leave the conversation: stop its poll and start an empty one. */
+  const clearConversation = () => {
     generation.current += 1;
+    stopPolling();
     sending.current = false;
     setThinking(false);
     setRunProgress(null);
     setTurns([]);
     setMessage("");
-    setScopeState(null);
-    scopeRef.current = null;
     chatId.current = null;
     setActiveChatId(null);
+  };
+
+  useEffect(() => {
+    let live = true;
+    setIdentity(null);
+    if (!token) return;
+    void client
+      .agentSettings()
+      .then((value) => live && setIdentity(value))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    clearConversation();
+    setScopeState(null);
+    scopeRef.current = null;
     return () => {
       generation.current += 1;
+      stopPolling();
     };
   }, [token]);
 
@@ -140,6 +206,9 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     const requestedChatId = chatId.current;
     setActiveChatId(requestedChatId);
     const requestedTurnId = newId();
+    stopPolling();
+    const controller = new AbortController();
+    poll.current = controller;
     const userTurn: Turn = { id: nextId(), role: "user", text: trimmed };
     setTurns((t) => [...t, userTurn]);
     setMessage("");
@@ -156,9 +225,12 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           },
           { chatId: requestedChatId, turnId: requestedTurnId },
           (progress) => {
+            // A run left behind (new scope, chat or session) stays out of view.
+            if (request !== generation.current) return;
             setRunProgress(progress.state === "done" ? null : progress);
             setThinking(progress.state === "running");
           },
+          controller.signal,
         );
         if (request !== generation.current) return;
         chatId.current = result.chat_id;
@@ -181,7 +253,11 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           before: itemsRef.current.filter((i) => touched.has(i.id)),
           planApplied: !!proposal.plan?.applied,
           turnId: result.turn_id,
-          trace: result.trace,
+          // The chat's trace covers every turn; keep this reply's steps only.
+          trace: result.trace.filter(
+            (entry) => entry.turn_id === result.turn_id,
+          ),
+          changesJob: appliedJob(result.assistant_run),
         };
         setTurns((t) => [...t, reply]);
         if (state !== "pending")
@@ -202,9 +278,11 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           throw error;
         });
       } finally {
+        if (poll.current === controller) poll.current = null;
         if (request === generation.current) {
           sending.current = false;
           setThinking(false);
+          setRunProgress(null);
         }
       }
     })();
@@ -337,12 +415,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     });
   };
 
+  /** Start a new chat; does nothing while a question is still running. */
   const reset = () => {
     if (sending.current) return;
-    setTurns([]);
-    setMessage("");
-    chatId.current = null;
-    setActiveChatId(null);
+    clearConversation();
   };
 
   /** Pick up any saved assistant chat where it was left. */
@@ -376,6 +452,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
               planApplied: false,
               turnId: t.turn_id ?? newId(),
               trace: chat.trace.filter((entry) => entry.turn_id === t.turn_id),
+              changesJob: null,
             },
       ),
     );
@@ -384,9 +461,23 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   const deleteChat = async (id: string) => {
     await client.deleteProjectChat(id);
-    if (chatId.current === id) chatId.current = null;
-    if (activeChatId === id) setActiveChatId(null);
+    // Deleting the open chat starts a new, empty one, so its turns aren't
+    // shown or sent as history with the next question.
+    if (chatId.current === id) clearConversation();
     setSavedChats((list) => list?.filter((c) => c.id !== id) ?? null);
+  };
+
+  /** What a reply applied directly (see `Turn.changesJob`). */
+  const turnChanges = (job: string) =>
+    client.assistantJobChanges(job).then((r) => r.changes);
+
+  /** Undo everything a reply applied, then reload the planner. */
+  const undoTurnChanges = async (job: string) => {
+    const { grantId } = await client.assistantJobChanges(job);
+    if (!grantId) throw new Error("There is nothing here to undo.");
+    const { undone } = await client.undoAgentJob(grantId, job);
+    await refresh();
+    return undone;
   };
 
   const renameChat = async (id: string, title: string) => {
@@ -411,15 +502,9 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       scopeRef.current?.id === next?.id
     )
       return;
-    generation.current += 1;
-    sending.current = false;
-    setThinking(false);
+    clearConversation();
     scopeRef.current = next;
     setScopeState(next);
-    setTurns([]);
-    setMessage("");
-    chatId.current = null;
-    setActiveChatId(null);
     void loadChats();
   };
 
@@ -452,6 +537,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     renameChat,
     pinChat,
     keepChatAsNote,
+    turnChanges,
+    undoTurnChanges,
+    /** The person's assistant settings (null until loaded). */
+    identity,
+    setIdentity,
+    /** The name the person gave their assistant. */
+    agentName: identity?.name || "Orbyn",
   };
 }
 

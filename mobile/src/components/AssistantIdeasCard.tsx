@@ -11,8 +11,13 @@ import { Icon } from "./Icon";
 /** Ready-to-review ideas surfaced on Today. */
 export function AssistantIdeasCard() {
   const [ideas, setIdeas] = useState<AssistantIdea[]>([]);
+  const [agentName, setAgentName] = useState("Orbyn");
   useEffect(() => {
     let live = true;
+    void client
+      .agentSettings()
+      .then((value) => live && setAgentName(value.name || "Orbyn"))
+      .catch(() => undefined);
     void client
       .assistantIdeas()
       .then(
@@ -37,7 +42,7 @@ export function AssistantIdeasCard() {
         <View style={s.flex}>
           <Text style={shared.sectionTitle}>For today</Text>
           <Text style={shared.small}>
-            Ideas from your Assistant, ready for Review.
+            Ideas from {agentName}, ready for Review.
           </Text>
         </View>
       </View>

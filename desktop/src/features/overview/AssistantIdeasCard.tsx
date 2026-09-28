@@ -6,8 +6,13 @@ import { client } from "../../lib/api";
 /** Ready-to-review ideas surfaced beside today's plan. */
 export function AssistantIdeasCard({ onReview }: { onReview: () => void }) {
   const [ideas, setIdeas] = useState<AssistantIdea[]>([]);
+  const [agentName, setAgentName] = useState("Orbyn");
   useEffect(() => {
     let live = true;
+    void client
+      .agentSettings()
+      .then((value) => live && setAgentName(value.name || "Orbyn"))
+      .catch(() => undefined);
     void client
       .assistantIdeas()
       .then(
@@ -37,7 +42,7 @@ export function AssistantIdeasCard({ onReview }: { onReview: () => void }) {
             For today
           </h2>
           <p className="section-hint">
-            A few ideas from your Assistant, ready for Review.
+            A few ideas from {agentName}, ready for Review.
           </p>
         </div>
         <button type="button" className="text-button" onClick={onReview}>

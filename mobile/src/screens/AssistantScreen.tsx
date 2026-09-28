@@ -16,7 +16,6 @@ import {
   type AssistantSource,
   type Item,
   type Plan,
-  type PersonalAgentSettings,
   type ChatTraceEntry,
   type AiChatSummary,
 } from "@orbyn/core";
@@ -25,10 +24,13 @@ import { Icon } from "../components/Icon";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
 import { AssistantUpcoming } from "../components/AssistantUpcoming";
+import { TurnChanges } from "../components/TurnChanges";
 import { MoreMenu, type MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
 import { Field } from "../components/Field";
 import { client } from "../lib/api";
+import { errorText } from "../lib/errors";
+import { changeKindWords, stepLabel, toolLabel } from "../lib/assistant-labels";
 import type { Assistant } from "../hooks/useAssistant";
 import { FadeIn, PressableScale, useReducedMotion, Pressable } from "../motion";
 import { colors, fonts, radii, themed, tint } from "../theme";
@@ -84,9 +86,13 @@ export function AssistantScreen({
     renameChat,
     pinChat,
     keepChatAsNote,
+    turnChanges,
+    undoTurnChanges,
+    identity,
+    setIdentity,
+    agentName,
   } = assistant;
   const { height } = useWindowDimensions();
-  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [identitySaving, setIdentitySaving] = useState(false);
@@ -98,15 +104,10 @@ export function AssistantScreen({
   const [personAnswer, setPersonAnswer] = useState("");
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
-    void client
-      .agentSettings()
-      .then((value) => {
-        setIdentity(value);
-        setIdentityName(value.name);
-        setIdentityPersona(value.persona);
-      })
-      .catch(() => undefined);
-  }, []);
+    if (!identity) return;
+    setIdentityName(identity.name);
+    setIdentityPersona(identity.persona);
+  }, [identity]);
   const saveIdentity = async (skip = false) => {
     if (identitySaving) return;
     setIdentitySaving(true);
@@ -133,7 +134,13 @@ export function AssistantScreen({
   const chatActions = (chat: AiChatSummary): MoreAction[] => [
     {
       label: chat.pinned ? "Unpin chat" : "Pin chat",
-      onPress: () => void pinChat(chat.id, !chat.pinned).catch(() => undefined),
+      onPress: () =>
+        void pinChat(chat.id, !chat.pinned).catch((e: unknown) =>
+          Alert.alert(
+            chat.pinned ? "Couldn't unpin chat" : "Couldn't pin chat",
+            errorText(e),
+          ),
+        ),
     },
     {
       label: "Rename",
@@ -166,7 +173,10 @@ export function AssistantScreen({
             {
               text: "Delete",
               style: "destructive",
-              onPress: () => void deleteChat(chat.id).catch(() => undefined),
+              onPress: () =>
+                void deleteChat(chat.id).catch((e: unknown) =>
+                  Alert.alert("Couldn't delete chat", errorText(e)),
+                ),
             },
           ],
         ),
@@ -380,6 +390,7 @@ export function AssistantScreen({
         />
       </View>
       <AssistantUpcoming
+        agentName={agentName}
         visible={upcomingOpen}
         onClose={() => setUpcomingOpen(false)}
       />
@@ -448,9 +459,14 @@ export function AssistantScreen({
           <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Start a new conversation"
-            disabled={thinking}
+            accessibilityState={{ disabled: locked }}
+            disabled={locked}
             onPress={reset}
-            style={({ pressed }) => [s.newChat, pressed && s.chipPressed]}
+            style={({ pressed }) => [
+              s.newChat,
+              pressed && s.chipPressed,
+              locked && { opacity: 0.5 },
+            ]}
           >
             <Icon
               name="plus"
@@ -513,6 +529,13 @@ export function AssistantScreen({
                     }
                   />
                 )}
+                {turn.changesJob && (
+                  <TurnChanges
+                    job={turn.changesJob}
+                    load={turnChanges}
+                    undo={undoTurnChanges}
+                  />
+                )}
                 <ChatTrace trace={turn.trace} />
               </View>
             </FadeIn>
@@ -567,6 +590,13 @@ export function AssistantScreen({
                     }
                   }}
                 />
+                <Button
+                  title="Stop"
+                  secondary
+                  disabled={busy}
+                  style={s.runButton}
+                  onPress={() => void stopRun()}
+                />
               </>
             ) : (
               <>
@@ -579,13 +609,10 @@ export function AssistantScreen({
                 {!!waiting.steps.length && (
                   <View style={s.runSteps}>
                     {waiting.steps.slice(0, 20).map((step, index) => {
-                      const tool =
-                        step && typeof step === "object" && "tool" in step
-                          ? String(step.tool)
-                          : "Change";
+                      const label = stepLabel(step);
                       return (
-                        <Text key={`${tool}-${index}`} style={s.runStep}>
-                          • {tool}
+                        <Text key={`${label}-${index}`} style={s.runStep}>
+                          • {label}
                         </Text>
                       );
                     })}
@@ -610,7 +637,7 @@ export function AssistantScreen({
                 )}
                 {!!waiting.change_kinds?.length && (
                   <Button
-                    title={`Always allow: ${waiting.change_kinds.join(", ")}`}
+                    title={`Always allow ${changeKindWords(waiting.change_kinds)}`}
                     secondary
                     disabled={busy}
                     style={s.runButton}
@@ -618,11 +645,18 @@ export function AssistantScreen({
                   />
                 )}
                 <Button
-                  title="Hold changes"
+                  title="Decline"
                   secondary
                   disabled={busy}
                   style={s.runButton}
                   onPress={() => void approveWaiting(false)}
+                />
+                <Button
+                  title="Stop"
+                  secondary
+                  disabled={busy}
+                  style={s.runButton}
+                  onPress={() => void stopRun()}
                 />
               </>
             )}
@@ -647,7 +681,7 @@ export function AssistantScreen({
             <View style={s.avatar}>
               <Icon name="sparkles" size={13} color={colors.accent} />
             </View>
-            <TypingIndicator />
+            <TypingIndicator label={`${agentName} is thinking`} />
           </FadeIn>
         )}
       </View>
@@ -674,7 +708,8 @@ export function AssistantComposer({
   assistant: Assistant;
   busy: boolean;
 }) {
-  const { message, setMessage, thinking, runProgress, ask } = assistant;
+  const { message, setMessage, thinking, runProgress, ask, agentName } =
+    assistant;
   const canSend =
     !busy && !thinking && runProgress?.state !== "waiting" && !!message.trim();
   // Four lines at the user's text size, not four lines of the default size.
@@ -684,7 +719,7 @@ export function AssistantComposer({
       <TextInput
         style={[s.input, { maxHeight: LINE * 4 * fontScale + 20 }]}
         multiline
-        placeholder="Ask Orbyn…"
+        placeholder={`Ask ${agentName}…`}
         placeholderTextColor={colors.faint}
         value={message}
         onChangeText={setMessage}
@@ -792,7 +827,7 @@ function PlanCard({
 }
 
 /** Three softly bouncing dots while the assistant is working (still under reduced motion). */
-function TypingIndicator() {
+function TypingIndicator({ label }: { label: string }) {
   const reduced = useReducedMotion();
   const progress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -815,7 +850,7 @@ function TypingIndicator() {
     <View
       style={[s.botBubble, s.typing]}
       accessibilityRole="progressbar"
-      accessibilityLabel="Orbyn is thinking"
+      accessibilityLabel={label}
     >
       {[0, 1, 2].map((n) => {
         const start = n * 0.15;
@@ -863,7 +898,9 @@ function ChatTrace({ trace }: { trace: ChatTraceEntry[] }) {
               style={s.traceRow}
             >
               <Text style={s.traceLabel}>{entry.label}</Text>
-              {entry.tool && <Text style={s.traceTool}>{entry.tool}</Text>}
+              {entry.tool && (
+                <Text style={s.traceTool}>{toolLabel(entry.tool)}</Text>
+              )}
             </View>
           ))}
         </View>
@@ -896,7 +933,7 @@ const s = themed(() =>
       flex: 1,
       justifyContent: "center",
       padding: 16,
-      backgroundColor: tint(colors.shadow, 0.5),
+      backgroundColor: tint(colors.shadow, 0.35),
     },
     historySheet: {
       maxHeight: "80%",
@@ -942,31 +979,6 @@ const s = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surfaceMuted,
       gap: 10,
-    },
-    saved: {
-      alignSelf: "stretch",
-      gap: 6,
-      marginTop: 18,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
-    },
-    savedRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-    savedOpen: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-      minHeight: 40,
-    },
-    savedTitle: {
-      flex: 1,
-      fontFamily: fonts.medium,
-      fontSize: 15,
-      color: colors.text,
     },
     welcome: {
       justifyContent: "center",
