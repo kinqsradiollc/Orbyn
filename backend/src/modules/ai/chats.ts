@@ -294,6 +294,7 @@ export async function finishChatTurn(
   result: {
     summary: string;
     proposalId?: string;
+    changesJob?: string;
     outcome?: SavedChatTurn["outcome"];
     sources?: SavedChatTurn["sources"];
     trace: ChatTraceEntry[];
@@ -323,6 +324,7 @@ export async function finishChatTurn(
       history_text: result.summary.slice(0, 12_000),
       turn_id: turnId,
       ...(result.proposalId ? { proposal_id: result.proposalId } : {}),
+      ...(result.changesJob ? { changes_job: result.changesJob } : {}),
       outcome: result.failed
         ? "info"
         : (result.outcome ?? (result.proposalId ? "pending" : "info")),

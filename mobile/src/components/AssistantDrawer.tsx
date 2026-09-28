@@ -157,6 +157,11 @@ export function AssistantDrawer({
       <Text style={s.chatTitle} numberOfLines={1}>
         {chat.title}
       </Text>
+      {chat.active && (
+        <Text style={s.activeJob} accessibilityRole="text">
+          {chat.active === "needs_you" ? "Needs you" : "Working"}
+        </Text>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Options for ${chat.title}`}
@@ -419,6 +424,15 @@ const s = themed(() =>
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
+    },
+    activeJob: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      color: colors.textSoft,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.pill,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
     },
     empty: {
       marginTop: 18,

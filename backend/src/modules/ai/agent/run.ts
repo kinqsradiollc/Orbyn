@@ -449,6 +449,9 @@ async function finishJob(
   await finishChatTurn(user.id, request.chat_id, request.turn_id, {
     summary,
     outcome,
+    ...(outcome === "applied" && typeof extra.plan_job === "string"
+      ? { changesJob: extra.plan_job }
+      : {}),
     trace: [],
   });
   const result = {

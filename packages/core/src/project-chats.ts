@@ -27,6 +27,8 @@ export const savedChatTurn = z
     history_text: z.string().max(CHAT_TURN_CHARS).optional(),
     turn_id: z.uuid().optional(),
     proposal_id: z.uuid().optional(),
+    /** Capability job containing the changes and their Undo records. */
+    changes_job: z.uuid().optional(),
     outcome: z.enum(["pending", "applied", "discarded", "info"]).optional(),
     sources: z.array(chatSource).max(20).optional(),
   })

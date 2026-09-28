@@ -3354,6 +3354,23 @@ export class OrbynClient {
         ...(ids.turnId ? { turn_id: ids.turnId } : {}),
       },
     });
+    return this.pollAssistantRun(
+      id,
+      { chatId: chat_id, turnId: turn_id },
+      onProgress,
+      signal,
+    );
+  }
+
+  /** Attach to an existing server run without starting another turn. */
+  async pollAssistantRun(
+    id: string,
+    ids: { chatId: string; turnId: string },
+    onProgress?: (progress: AssistantRunProgress) => void,
+    signal?: AbortSignal,
+  ) {
+    const { chatId: chat_id, turnId: turn_id } = ids;
+    if (signal?.aborted) throw abortError();
     const started = Date.now();
     let delay = CHAT_POLL_MS;
     let deadline = started + CHAT_WAIT_MS;

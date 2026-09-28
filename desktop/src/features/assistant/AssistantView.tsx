@@ -334,6 +334,11 @@ export function AssistantView({
                 <span className="ai-history-chat-title">
                   {chat.pinned && <Pin size={12} aria-label="Pinned" />}
                   <span>{chat.title}</span>
+                  {chat.active && (
+                    <small role="status">
+                      {chat.active === "needs_you" ? "Needs you" : "Working"}
+                    </small>
+                  )}
                 </span>
                 <small>
                   {chat.swept_at

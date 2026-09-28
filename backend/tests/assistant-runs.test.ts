@@ -2586,3 +2586,98 @@ test("stale running jobs and week-old cards fail and free their automations", as
   assert.equal(polled.json().state, "failed");
   assert.ok(!(await failStaleAssistantJobs()).includes(crashed));
 });
+
+test("a dropped client reattaches to the same run and saves its reply once", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  respond = async () => {
+    await gate;
+    return {
+      name: "finish",
+      arguments: { answer: "Tomorrow is ready.", steps: [] },
+    };
+  };
+  const user = await register();
+  const { OrbynClient } = await import("@orbyn/api-client");
+  const transport: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    const response = await app.inject({
+      method: (init?.method ?? "GET") as "GET" | "POST",
+      url: url.pathname + url.search,
+      headers: Object.fromEntries(new Headers(init?.headers).entries()),
+      ...(init?.body ? { payload: String(init.body) } : {}),
+    });
+    return new Response(response.body, {
+      status: response.statusCode,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    getToken: () => user.token,
+    fetch: transport,
+  });
+  const disconnect = new AbortController();
+  let jobId = "";
+  try {
+    await assert.rejects(
+      client.chat(
+        "Plan tomorrow",
+        "UTC",
+        [],
+        null,
+        {},
+        (progress) => {
+          jobId = progress.job_id;
+          disconnect.abort();
+        },
+        disconnect.signal,
+      ),
+      { name: "AbortError" },
+    );
+    assert.ok(jobId);
+    const active = await app.inject({
+      url: "/ai/jobs/active",
+      headers: auth(user.token),
+    });
+    const job = active.json().find((row: { id: string }) => row.id === jobId);
+    assert.ok(job);
+    const reopened = await client.aiChat(job.chat_id);
+    assert.equal(reopened.active_job?.id, jobId);
+    assert.equal(
+      reopened.turns.filter((turn) => turn.role === "user").length,
+      1,
+    );
+    release();
+    const freshClient = new OrbynClient({
+      baseUrl: "http://orbyn.test",
+      getToken: () => user.token,
+      fetch: transport,
+    });
+    const result = await freshClient.pollAssistantRun(jobId, {
+      chatId: job.chat_id,
+      turnId: job.turn_id,
+    });
+    assert.equal(result.answer, "Tomorrow is ready.");
+    const finished = await freshClient.aiChat(job.chat_id);
+    assert.equal(finished.active_job, null);
+    assert.equal(
+      finished.turns.filter(
+        (turn) => turn.role === "assistant" && turn.turn_id === job.turn_id,
+      ).length,
+      1,
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT id FROM ai_jobs WHERE chat_id = $1", [
+          job.chat_id,
+        ])
+      ).rowCount,
+      1,
+    );
+  } finally {
+    release();
+  }
+});

@@ -7,5 +7,6 @@ export type {
   DocNews,
   AssistantWaiting,
   AssistantRunProgress,
+  ChatResult,
 } from "./client.js";
 export { HttpError } from "@orbyn/core";

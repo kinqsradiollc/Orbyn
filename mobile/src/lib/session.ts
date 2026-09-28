@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 
 const SESSION_KEY = "orbyn-session";
 const PUSH_KEY = "orbyn-push";
+const ASSISTANT_CHAT_KEY = "orbyn-assistant-chat";
 
 /**
  * Where the session token is kept. On a phone that is the keychain, through
@@ -58,8 +59,20 @@ export async function saveSession(token: string) {
 
 export async function clearSession() {
   await store.remove(SESSION_KEY);
+  await store.remove(ASSISTANT_CHAT_KEY).catch(() => undefined);
   session.token = "";
 }
+
+/** Remember the chat to reattach to after the app restarts. */
+export const saveAssistantChat = (id: string | null) =>
+  (id
+    ? store.set(ASSISTANT_CHAT_KEY, id)
+    : store.remove(ASSISTANT_CHAT_KEY)
+  ).catch(() => undefined);
+
+/** Unavailable storage must not prevent opening the assistant. */
+export const loadAssistantChat = () =>
+  store.get(ASSISTANT_CHAT_KEY).catch(() => null);
 
 export const getPushToken = () => store.get(PUSH_KEY);
 

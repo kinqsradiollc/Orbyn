@@ -13,7 +13,8 @@ import {
   type PersonalAgentSettings,
 } from "@orbyn/core";
 import { client } from "../lib/api";
-import type { AssistantRunProgress } from "@orbyn/api-client";
+import { loadAssistantChat, saveAssistantChat } from "../lib/session";
+import type { AssistantRunProgress, ChatResult } from "@orbyn/api-client";
 
 /** What happened to an assistant reply's proposed changes. */
 export type TurnState = "pending" | "applied" | "discarded" | "info";
@@ -137,7 +138,8 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   };
 
   /** Leave the conversation: stop its poll and start an empty one. */
-  const clearConversation = () => {
+  const clearConversation = (forget = true) => {
+    if (forget) void saveAssistantChat(null);
     generation.current += 1;
     stopPolling();
     sending.current = false;
@@ -162,8 +164,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     };
   }, [token]);
 
+  const previousToken = useRef(token);
   useEffect(() => {
-    clearConversation();
+    clearConversation(!!previousToken.current && !token);
+    previousToken.current = token;
     setScopeState(null);
     scopeRef.current = null;
     return () => {
@@ -196,6 +200,42 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       )
       .slice(-12);
 
+  const acceptResult = (result: ChatResult) => {
+    const { proposal } = result;
+    const touched = new Set(
+      proposal.actions.map((a) => a.item_id).filter((id): id is string => !!id),
+    );
+    const state =
+      proposal.actions.length || proposal.session_change ? "pending" : "info";
+    const reply: Turn = {
+      id: nextId(),
+      role: "assistant",
+      proposal,
+      state,
+      before: itemsRef.current.filter((i) => touched.has(i.id)),
+      planApplied: !!proposal.plan?.applied,
+      turnId: result.turn_id,
+      // The chat's trace covers every turn; keep this reply's steps only.
+      trace: result.trace.filter((entry) => entry.turn_id === result.turn_id),
+      changesJob: appliedJob(result.assistant_run),
+    };
+    setTurns((t) => [
+      ...t.filter(
+        (turn) => turn.role !== "assistant" || turn.turnId !== result.turn_id,
+      ),
+      reply,
+    ]);
+    if (state !== "pending")
+      void client
+        .updateAiChat(result.chat_id, {
+          turn_id: result.turn_id,
+          outcome: state,
+        })
+        .then(loadChats)
+        .catch(() => undefined);
+    else void loadChats();
+  };
+
   const ask = (text: string = message) => {
     const trimmed = text.trim();
     if (!trimmed || sending.current) return Promise.resolve();
@@ -205,6 +245,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     chatId.current ??= newId();
     const requestedChatId = chatId.current;
     setActiveChatId(requestedChatId);
+    void saveAssistantChat(requestedChatId);
     const requestedTurnId = newId();
     stopPolling();
     const controller = new AbortController();
@@ -234,41 +275,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         );
         if (request !== generation.current) return;
         chatId.current = result.chat_id;
-        const { proposal } = result;
-        const touched = new Set(
-          proposal.actions
-            .map((a) => a.item_id)
-            .filter((id): id is string => !!id),
-        );
-        if (request !== generation.current) return;
-        const state =
-          proposal.actions.length || proposal.session_change
-            ? "pending"
-            : "info";
-        const reply: Turn = {
-          id: nextId(),
-          role: "assistant",
-          proposal,
-          state,
-          before: itemsRef.current.filter((i) => touched.has(i.id)),
-          planApplied: !!proposal.plan?.applied,
-          turnId: result.turn_id,
-          // The chat's trace covers every turn; keep this reply's steps only.
-          trace: result.trace.filter(
-            (entry) => entry.turn_id === result.turn_id,
-          ),
-          changesJob: appliedJob(result.assistant_run),
-        };
-        setTurns((t) => [...t, reply]);
-        if (state !== "pending")
-          void client
-            .updateAiChat(result.chat_id, {
-              turn_id: result.turn_id,
-              outcome: state,
-            })
-            .then(loadChats)
-            .catch(() => undefined);
-        else void loadChats();
+        acceptResult(result);
       } catch (error) {
         if (request !== generation.current) return;
         // Nothing typed is lost: the message goes back in the box and act() shows the error.
@@ -423,10 +430,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   /** Pick up any saved assistant chat where it was left. */
   const openChat = async (id: string) => {
-    if (sending.current) return;
+    clearConversation();
+    const request = generation.current;
     const chat = await client.aiChat(id);
+    if (request !== generation.current) return;
     chatId.current = chat.id;
     setActiveChatId(chat.id);
+    void saveAssistantChat(chat.id);
     const nextScope = chat.scope
       ? {
           ...chat.scope,
@@ -452,12 +462,61 @@ export function useAssistant({ token, act, refresh, items }: Options) {
               planApplied: false,
               turnId: t.turn_id ?? newId(),
               trace: chat.trace.filter((entry) => entry.turn_id === t.turn_id),
-              changesJob: null,
+              changesJob: t.changes_job ?? null,
             },
       ),
     );
+    if (chat.active_job) {
+      const job = chat.active_job;
+      const controller = new AbortController();
+      poll.current = controller;
+      sending.current = true;
+      setThinking(job.state !== "waiting");
+      void client
+        .pollAssistantRun(
+          job.id,
+          {
+            chatId: chat.id,
+            turnId:
+              [...chat.turns].reverse().find((turn) => turn.role === "user")
+                ?.turn_id ?? newId(),
+          },
+          (progress) => {
+            if (request !== generation.current) return;
+            setRunProgress(progress.state === "done" ? null : progress);
+            setThinking(progress.state === "running");
+          },
+          controller.signal,
+        )
+        .then((result) => {
+          if (request === generation.current) acceptResult(result);
+        })
+        .catch((error) => {
+          if (request === generation.current && !controller.signal.aborted)
+            void act(async () => {
+              throw error;
+            });
+        })
+        .finally(() => {
+          if (poll.current === controller) poll.current = null;
+          if (request === generation.current) {
+            sending.current = false;
+            setThinking(false);
+            setRunProgress(null);
+          }
+        });
+    }
     void loadChats();
   };
+
+  useEffect(() => {
+    if (!token) return;
+    const request = generation.current;
+    void loadAssistantChat().then((id) => {
+      if (id && request === generation.current)
+        void openChat(id).catch(() => saveAssistantChat(null));
+    });
+  }, [token]);
 
   const deleteChat = async (id: string) => {
     await client.deleteProjectChat(id);
