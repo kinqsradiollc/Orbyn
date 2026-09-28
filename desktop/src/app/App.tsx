@@ -1249,6 +1249,7 @@ export function App() {
             />
             <Topbar
               view={view}
+              agentName={assistant.agentName}
               onToggleMenu={() => setMobileNav(!mobileNav)}
               onOpenNotifications={() => navigate("Notifications")}
               onOpenCommand={() => openCommand()}

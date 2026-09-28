@@ -1181,59 +1181,69 @@ export function RootScreen() {
       today={todayList}
     >
       <View style={s.screen}>
-        <View style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}>
-          <View style={s.headerRow}>
-            <Brand size={24} />
-            <View style={s.headerActions}>
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel={
-                  notices.some((n) => !n.read)
-                    ? "Notifications, unread updates"
-                    : "Notifications"
-                }
-                onPress={() => setTab("Inbox")}
-                style={s.notification}
-              >
-                <Icon
-                  name="bell"
-                  size={20}
-                  color={tab === "Inbox" ? colors.accent : colors.textSoft}
-                />
-                {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
-              </PressableScale>
-              {/* One + on every tab: a tap runs the favourite (New task
+        {tab === "AI" ? (
+          // The assistant draws its own bar (menu, name, new chat), as chat apps do.
+          <View style={{ paddingTop: insets.top }} />
+        ) : (
+          <View
+            style={[s.header, sidePadding, { paddingTop: insets.top + 10 }]}
+          >
+            <View style={s.headerRow}>
+              <Brand size={24} />
+              <View style={s.headerActions}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    notices.some((n) => !n.read)
+                      ? "Notifications, unread updates"
+                      : "Notifications"
+                  }
+                  onPress={() => setTab("Inbox")}
+                  style={s.notification}
+                >
+                  <Icon
+                    name="bell"
+                    size={20}
+                    color={tab === "Inbox" ? colors.accent : colors.textSoft}
+                  />
+                  {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
+                </PressableScale>
+                {/* One + on every tab: a tap runs the favourite (New task
                   unless another is chosen), a long press offers the rest. */}
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel={createLabel(arrangement.favourite)}
-                accessibilityHint="Hold for every way to start something."
-                accessibilityActions={[
-                  { name: "longpress", label: "Every way to start something" },
-                ]}
-                onAccessibilityAction={(e) => {
-                  if (e.nativeEvent.actionName === "longpress")
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={createLabel(arrangement.favourite)}
+                  accessibilityHint="Hold for every way to start something."
+                  accessibilityActions={[
+                    {
+                      name: "longpress",
+                      label: "Every way to start something",
+                    },
+                  ]}
+                  onAccessibilityAction={(e) => {
+                    if (e.nativeEvent.actionName === "longpress")
+                      setCreating(true);
+                  }}
+                  hitSlop={8}
+                  delayLongPress={350}
+                  onPress={() => runCreate(arrangement.favourite)}
+                  onLongPress={() => {
+                    tap();
                     setCreating(true);
-                }}
-                hitSlop={8}
-                delayLongPress={350}
-                onPress={() => runCreate(arrangement.favourite)}
-                onLongPress={() => {
-                  tap();
-                  setCreating(true);
-                }}
-                style={({ pressed }) => [s.add, pressed && s.addPressed]}
-              >
-                <Icon
-                  name="plus"
-                  size={20}
-                  color={colors.white}
-                  strokeWidth={2.2}
-                />
-              </PressableScale>
+                  }}
+                  style={({ pressed }) => [s.add, pressed && s.addPressed]}
+                >
+                  <Icon
+                    name="plus"
+                    size={20}
+                    color={colors.white}
+                    strokeWidth={2.2}
+                  />
+                </PressableScale>
+              </View>
             </View>
           </View>
-        </View>
+        )}
         <View style={sidePadding}>
           <View style={s.column}>
             <MaintenanceBanner

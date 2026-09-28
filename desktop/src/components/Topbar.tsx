@@ -2,6 +2,7 @@ import { Bell, Menu, Plus, Search } from "lucide-react";
 import type { User } from "@orbyn/core";
 import {
   SCREENS,
+  navName,
   VIEWS_WITHOUT_NEW_ITEM,
   viewTitle,
   type View,
@@ -11,6 +12,8 @@ import { usePrefs } from "../app/prefs";
 
 type TopbarProps = {
   view: View;
+  /** The assistant's chosen name, shown for its view. */
+  agentName?: string;
   onToggleMenu: () => void;
   onOpenNotifications: () => void;
   /** Opens the command bar (also ⌘K / Ctrl+K). */
@@ -28,6 +31,7 @@ export const COMMAND_SHORTCUT = keysFor(commandById("app.search"), isMac).join(
 /** Sticky header: mobile menu toggle, breadcrumb, search, today's date, and the bell. */
 export function Topbar({
   view,
+  agentName,
   onToggleMenu,
   onOpenNotifications,
   onOpenCommand,
@@ -51,7 +55,8 @@ export function Topbar({
         <Menu size={20} />
       </button>
       <span>
-        My workspace <span className="slash">/</span> <strong>{view}</strong>
+        My workspace <span className="slash">/</span>{" "}
+        <strong>{navName(view, agentName)}</strong>
       </span>
       <div>
         <button

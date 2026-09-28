@@ -1126,6 +1126,11 @@
 .ai-upcoming-form {
   margin-top: 8px;
 }
+/* Every field keeps the settings gap, the date and select ones too. */
+.ai-upcoming-form .settings-field {
+  display: block;
+  margin: 0 0 16px;
+}
 .ai-upcoming-pair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
