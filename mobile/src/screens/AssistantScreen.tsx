@@ -118,6 +118,7 @@ export function AssistantScreen({
   onDrawerChange,
   onOpenMemory,
   onOpenAgentNotes,
+  onOpenOvernight,
   onOpenSettings,
 }: {
   assistant: Assistant;
@@ -126,6 +127,7 @@ export function AssistantScreen({
   onDrawerChange: (open: boolean) => void;
   onOpenMemory?: () => void;
   onOpenAgentNotes?: () => void;
+  onOpenOvernight?: () => void;
   /** Settings → Connected agents, where the assistant is set up. */
   onOpenSettings?: () => void;
   items: Item[];
@@ -366,6 +368,15 @@ export function AssistantScreen({
                   icon: "fileText" as const,
                   label: "Agent notes",
                   onPress: () => closeDrawerThen(onOpenAgentNotes),
+                },
+              ]
+            : []),
+          ...(onOpenOvernight
+            ? [
+                {
+                  icon: "sparkles" as const,
+                  label: "Overnight",
+                  onPress: () => closeDrawerThen(onOpenOvernight),
                 },
               ]
             : []),

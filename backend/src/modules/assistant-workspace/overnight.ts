@@ -17,6 +17,7 @@ import {
 } from "../proposals/service.js";
 import { grantActivity } from "../agents/service.js";
 import { undoActivity, undoJob } from "../../capabilities/undo.js";
+import { registry } from "../../capabilities/index.js";
 
 type RunRow = {
   id: string;
@@ -103,7 +104,8 @@ async function runContext(db: Queryable, userId: string, row: RunRow) {
                 title:
                   typeof step.summary === "string"
                     ? step.summary
-                    : String(step.tool ?? step.id),
+                    : (registry.get(String(step.tool))?.title ??
+                      "Proposed change"),
               },
             ]
           : [];

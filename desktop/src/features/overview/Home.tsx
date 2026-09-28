@@ -820,6 +820,7 @@ function ReflectionPanel({
           <ArrowUpRight size={14} aria-hidden="true" />
         </button>
       )}
+      {data?.brief?.overnight && <a href="/app/overnight">Review Overnight</a>}
       <form
         className="home-reflect"
         onSubmit={(e) => {

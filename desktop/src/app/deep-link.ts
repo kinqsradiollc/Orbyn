@@ -31,6 +31,7 @@ export type DeepLink =
   | { kind: "view"; id: string }
   | { kind: "review"; id: string | null }
   | { kind: "assistant" }
+  | { kind: "overnight" }
   | { kind: "add"; text: string }
   | { kind: "search"; q: string }
   | { kind: "agents" };
@@ -56,6 +57,7 @@ export function deepLinkOf(
   if (/^\/app\/(today|home|overview)\/?$/i.test(path)) return { kind: "today" };
   if (/^\/app\/agents\/?$/i.test(path)) return { kind: "agents" };
   if (/^\/app\/assistant\/?$/i.test(path)) return { kind: "assistant" };
+  if (/^\/app\/overnight\/?$/i.test(path)) return { kind: "overnight" };
   if (/^\/app\/review\/?$/i.test(path)) return { kind: "review", id: null };
   if (/^\/app\/add\/?$/i.test(path))
     return { kind: "add", text: wordsIn(search, "text", 500) };
@@ -75,6 +77,7 @@ export function deepLinkPath(link: DeepLink): string {
   if (link.kind === "today") return "/app/today";
   if (link.kind === "agents") return "/app/agents";
   if (link.kind === "assistant") return "/app/assistant";
+  if (link.kind === "overnight") return "/app/overnight";
   if (link.kind === "add")
     return link.text
       ? `/app/add?${new URLSearchParams({ text: link.text })}`

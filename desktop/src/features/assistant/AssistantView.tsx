@@ -303,6 +303,7 @@ export function AssistantView({
               <SquarePen size={16} aria-hidden="true" />
             </button>
           </div>
+          <a href="/app/overnight">Overnight</a>
           <input
             type="search"
             aria-label="Search chats"

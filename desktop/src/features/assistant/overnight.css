@@ -1,0 +1,62 @@
+.overnight {
+  display: grid;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+.overnight-card {
+  padding: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  min-width: 0;
+}
+.overnight-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.overnight-head h2,
+.overnight-head h3 {
+  margin: 0;
+}
+.overnight-head span {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.overnight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.overnight-actions button {
+  min-height: 44px;
+}
+.overnight-summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.overnight-card details {
+  margin-top: 16px;
+}
+.overnight-card summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.overnight-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.overnight-change {
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+}
+@media (max-width: 600px) {
+  .overnight-card {
+    padding: 16px;
+  }
+}

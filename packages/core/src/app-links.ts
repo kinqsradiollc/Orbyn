@@ -27,6 +27,7 @@ export type AppLink =
   | { kind: "scan" }
   /** The assistant, ready to ask. */
   | { kind: "assistant" }
+  | { kind: "overnight" }
   /** Focus on what's next (a Siri action, the Live Activity). */
   | { kind: "focus" }
   /** "Share into Orbyn" with this text or link, to choose where it goes. */
@@ -119,6 +120,7 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   if (head === "today") return { kind: "today" };
   if (head === "agents") return { kind: "agents" };
   if (head === "assistant" && !id) return { kind: "assistant" };
+  if (head === "overnight" && !id) return { kind: "overnight" };
   if (head === "search")
     return { kind: "search", q: (text("q") ?? "").slice(0, 200) };
   // These three are the phone's own; the web has no such pages.

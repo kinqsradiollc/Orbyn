@@ -83,6 +83,7 @@ import { PlanSheet } from "../screens/PlanSheet";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { StatusSheet } from "../screens/StatusSheet";
 import { ReviewSheet } from "../screens/ReviewSheet";
+import { OvernightSheet } from "../screens/OvernightSheet";
 import { onLive } from "../lib/live";
 import { onOpenReview } from "../lib/review";
 import { TagsSheet } from "../screens/TagsSheet";
@@ -156,6 +157,7 @@ type SheetName =
   | "sync"
   | "progress"
   | "review"
+  | "overnight"
   | "views"
   | "search"
   | "changes"
@@ -854,6 +856,7 @@ export function RootScreen() {
     "go.docs": () => present({ sheet: "docs" }),
     "go.memory": () => present({ sheet: "memory" }),
     "go.agent": () => present({ sheet: "agent" }),
+    "go.overnight": () => present({ sheet: "overnight" }),
     "go.views": () => present({ sheet: "views" }),
     "go.study": () => present({ sheet: "study" }),
     "go.lists": () => present({ sheet: "lists" }),
@@ -941,6 +944,8 @@ export function RootScreen() {
         setSheet(null);
         back.current = [];
         return runCreate("ask");
+      case "overnight":
+        return present({ sheet: "overnight" });
       case "focus":
         return startFocus();
       case "share":
@@ -1490,6 +1495,7 @@ export function RootScreen() {
                       onDrawerChange={setAssistantMenu}
                       onOpenMemory={() => present({ sheet: "memory" })}
                       onOpenAgentNotes={() => present({ sheet: "agent" })}
+                      onOpenOvernight={() => present({ sheet: "overnight" })}
                       onOpenSettings={() => present({ sheet: "connections" })}
                       onBackToProject={(id) => {
                         setProjectToOpen(id);
@@ -2078,6 +2084,21 @@ export function RootScreen() {
           onCount={setReviewPending}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
+        />
+        <OvernightSheet
+          visible={sheet === "overnight"}
+          onClose={closeSheet}
+          onDismiss={onSheetDismissed}
+          onOpenChat={(id) => {
+            closeSheet();
+            setTab("AI");
+            void assistant.openChat(id).catch((e) => setError(errorText(e)));
+          }}
+          onOpenReview={(id) => {
+            setReviewFocus(id);
+            present({ sheet: "review" });
+          }}
+          onOpen={(kind, id) => openLink.current?.({ kind, id })}
         />
         <StatusSheet
           visible={sheet === "status"}

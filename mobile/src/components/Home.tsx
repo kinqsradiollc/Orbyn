@@ -173,7 +173,10 @@ export function HomeSection({
 }: {
   layout: HomeLayout | undefined;
   agentName: string;
-  onOpenLink: (link: { kind: "project" | "doc" | "view"; id: string }) => void;
+  onOpenLink: (
+    link:
+      { kind: "project" | "doc" | "view"; id: string } | { kind: "overnight" },
+  ) => void;
   onOpenStudy: () => void;
   onOpenDoc: (id: string) => void;
 }) {
@@ -313,6 +316,13 @@ export function HomeSection({
             </View>
             <Icon name="arrowRight" size={16} color={colors.accent} />
           </Pressable>
+        )}
+        {data?.brief?.overnight && (
+          <Button
+            title="Review Overnight"
+            secondary
+            onPress={() => onOpenLink({ kind: "overnight" })}
+          />
         )}
         <TextInput
           style={shared.input}

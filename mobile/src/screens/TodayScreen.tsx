@@ -69,7 +69,10 @@ export function TodayScreen({
   /** The assistant's name, for Upcoming. */
   agentName: string;
   /** Opens a project, page or saved view from a hub or the brief. */
-  onOpenLink: (link: { kind: "project" | "doc" | "view"; id: string }) => void;
+  onOpenLink: (
+    link:
+      { kind: "project" | "doc" | "view"; id: string } | { kind: "overnight" },
+  ) => void;
   items: Item[];
   /** Starts focus mode on a task. */
   onFocus: (item: Item) => void;

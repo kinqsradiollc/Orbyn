@@ -379,6 +379,7 @@ test("web links to add or search open a filled-in bar, and survive sign-in", () 
   assert.deepEqual(deepLinkOf("/app/review"), { kind: "review", id: null });
   assert.deepEqual(deepLinkOf("/app/review/"), { kind: "review", id: null });
   assert.deepEqual(deepLinkOf("/app/assistant"), { kind: "assistant" });
+  assert.deepEqual(deepLinkOf("/app/overnight"), { kind: "overnight" });
   assert.equal(deepLinkPath({ kind: "assistant" }), "/app/assistant");
   assert.deepEqual(safeNext("?next=%2Fapp%2Fassistant"), {
     kind: "assistant",

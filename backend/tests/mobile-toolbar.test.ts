@@ -279,6 +279,10 @@ test("links into the app open one thing each", () => {
   assert.deepEqual(parseAppLink("orbyn://agenda"), { kind: "agenda" });
   assert.deepEqual(parseAppLink("orbyn://scan"), { kind: "scan" });
   assert.deepEqual(parseAppLink("orbyn://assistant"), { kind: "assistant" });
+  assert.deepEqual(parseAppLink("orbyn://overnight"), { kind: "overnight" });
+  assert.deepEqual(parseAppLink("https://orbyn.dev/app/overnight"), {
+    kind: "overnight",
+  });
   assert.deepEqual(parseAppLink("https://orbyn.dev/app/assistant"), {
     kind: "assistant",
   });

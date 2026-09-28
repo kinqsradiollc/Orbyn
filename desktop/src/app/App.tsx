@@ -155,6 +155,7 @@ import { PublicProfilePage } from "../features/booking/PublicProfile";
 import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
 import { NAV, navName, type View } from "./views";
 import { ReviewView } from "../features/review/ReviewView";
+import { OvernightView } from "../features/assistant/OvernightView";
 import { onOpenReview } from "../lib/review";
 import { onLive } from "../lib/live";
 import "../styles/planning.css";
@@ -434,6 +435,7 @@ export function App() {
     // Settings → Connected agents: what agents did, to undo (H7).
     else if (link.kind === "agents") openSetting("agents");
     else if (link.kind === "assistant") setView("AI assistant");
+    else if (link.kind === "overnight") setView("Overnight");
     else setView("Overview");
   };
   // How many proposals wait, for the sidebar: read when signed in and again
@@ -1992,6 +1994,26 @@ export function App() {
                     focusId={reviewToOpen}
                     onFocused={() => setReviewToOpen(null)}
                     onCount={setReviewPending}
+                  />
+                )}
+                {view === "Overnight" && (
+                  <OvernightView
+                    report={report}
+                    onOpenChat={(id) => {
+                      navigate("AI assistant");
+                      void assistant.openChat(id).catch(report);
+                    }}
+                    onOpenReview={(id) => {
+                      setReviewToOpen(id);
+                      navigate("Review");
+                    }}
+                    onOpen={(kind, id) =>
+                      openDeepLink(
+                        kind === "doc"
+                          ? { kind, id, block: null }
+                          : { kind, id },
+                      )
+                    }
                   />
                 )}
                 {view === "Settings" && (

@@ -27,6 +27,7 @@ export type CommandView =
   | "Projects"
   | "Booking"
   | "Review"
+  | "Overnight"
   | "Views";
 
 export type CommandGroup =
@@ -115,6 +116,7 @@ export const COMMANDS: CommandDef[] = [
   go("Booking", "booking pages meetings"),
   go("Notifications", "inbox notices alerts"),
   go("Review", "proposals approve agents suggestions changes"),
+  go("Overnight", "night shift morning keep undo review"),
   { ...go("Admin", "console users"), needs: "admin" },
   go("Settings", "preferences account"),
   // Making things.
