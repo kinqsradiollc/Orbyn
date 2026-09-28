@@ -45,7 +45,15 @@ export const agentRoutineInput = z
   })
   .strict();
 
-export const agentRoutineUpdate = agentRoutineInput.partial().strict();
+export const agentRoutineUpdate = z
+  .object({
+    instruction: agentRoutineInput.shape.instruction.optional(),
+    rrule: agentRoutineInput.shape.rrule.optional(),
+    timezone: agentRoutineInput.shape.timezone.removeDefault().optional(),
+    next_run_at: agentRoutineInput.shape.next_run_at.optional(),
+    paused: agentRoutineInput.shape.paused.removeDefault().optional(),
+  })
+  .strict();
 export type AgentRoutineInput = z.input<typeof agentRoutineInput>;
 export type AgentRoutineUpdate = z.input<typeof agentRoutineUpdate>;
 

@@ -297,3 +297,228 @@ test("ordinary action endpoints enforce sign-in, team write access, valid JSON a
     );
   assert.ok(statuses.includes(429));
 });
+
+test("goal Done and Move use ordinary goal writes and restore through Undo", async () => {
+  const { client, card } = await fixture();
+  const goal = await client.createGoal({
+    title: "Goal action test",
+    target_date: "2050-01-10",
+  });
+  const goalCard = {
+    ...card,
+    entity_kind: "goal" as const,
+    entity_id: goal.id,
+    actions: ["done", "move", "skip"] as ReminderNudgeCard["actions"],
+  };
+  const done = await performReminderAction(client, goalCard, "done");
+  assert.equal(
+    (await client.listGoals()).find((g) => g.id === goal.id)!.status,
+    "done",
+  );
+  await done.undo();
+  const moved = await performReminderAction(client, goalCard, "move", {
+    day: "2050-01-09",
+  });
+  assert.equal(
+    (await client.listGoals()).find((g) => g.id === goal.id)!.target_date,
+    "2050-01-09",
+  );
+  await moved.undo();
+  assert.equal(
+    (await client.listGoals()).find((g) => g.id === goal.id)!.target_date,
+    goal.target_date,
+  );
+});
+test("comment Done resolves the existing thread and Undo restores it", async () => {
+  const { client, card, me } = await fixture();
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Comment action') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const comment = (
+    await pool.query(
+      "INSERT INTO doc_comments(doc_id,user_id,body) VALUES($1,$2,'Comment action') RETURNING id",
+      [doc, me.id],
+    )
+  ).rows[0].id;
+  const commentCard = {
+    ...card,
+    entity_kind: "comment" as const,
+    entity_id: comment,
+    source_id: doc,
+    actions: ["done", "skip"] as ReminderNudgeCard["actions"],
+  };
+  const receipt = await performReminderAction(client, commentCard, "done");
+  assert.ok(
+    (await client.listDocComments(doc)).find((c) => c.id === comment)!
+      .resolved_at,
+  );
+  await receipt.undo();
+  assert.equal(
+    (await client.listDocComments(doc)).find((c) => c.id === comment)!
+      .resolved_at,
+    null,
+  );
+});
+test("habit Done records a real check-in with optimistic Undo and enforces the API shield", async () => {
+  const { client, card, me } = await fixture();
+  const other = await h.register("habit-other");
+  users.push(other.id);
+  const habit = (
+    await pool.query(
+      "INSERT INTO habits(user_id,name,cadence,duration_minutes) VALUES($1,'Habit action',1,30) RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const block = (
+    await pool.query(
+      "INSERT INTO habit_blocks(user_id,habit_id,start_at,end_at) VALUES($1,$2,now()-interval '1 hour',now()-interval '30 minutes') RETURNING id",
+      [me.id, habit],
+    )
+  ).rows[0].id;
+  const habitCard = {
+    ...card,
+    entity_kind: "habit" as const,
+    entity_id: habit,
+    source_id: block,
+    actions: ["done", "skip"] as ReminderNudgeCard["actions"],
+  };
+  const receipt = await performReminderAction(client, habitCard, "done");
+  assert.equal((await client.getHabitBlock(block)).outcome, "done");
+  await receipt.undo();
+  assert.equal((await client.getHabitBlock(block)).outcome, null);
+  const current = await client.getHabitBlock(block);
+  const again = await performReminderAction(client, habitCard, "done");
+  const changed = await client.getHabitBlock(block);
+  await client.checkInHabitBlock(block, {
+    outcome: "skipped",
+    version: changed.version,
+  });
+  await assert.rejects(again.undo(), { statusCode: 409 });
+  const url = `/planner/habits/blocks/${block}/check-in`;
+  assert.equal(
+    (
+      await h.call(null, "POST", url, {
+        outcome: "done",
+        version: current.version,
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await h.call(other.token, "POST", url, {
+        outcome: "done",
+        version: current.version,
+      })
+    ).statusCode,
+    404,
+  );
+  const readKey = {
+    key: (
+      await h.call(me.token, "POST", "/me/api-keys", { name: "Habit check-in" })
+    ).json().key,
+  };
+  assert.equal(
+    (
+      await h.call(readKey.key, "POST", url, {
+        outcome: "done",
+        version: current.version,
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url,
+        headers: {
+          authorization: `Bearer ${me.token}`,
+          "content-type": "application/json",
+        },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (await h.call(me.token, "POST", url, { outcome: "unknown", version: 1 }))
+      .statusCode,
+    422,
+  );
+  const statuses: number[] = [];
+  for (let n = 0; n < 31; n++)
+    statuses.push(
+      (
+        await app.inject({
+          method: "POST",
+          url,
+          headers: { authorization: `Bearer ${me.token}` },
+          payload: { outcome: "done", version: current.version },
+          remoteAddress: "10.98.4.4",
+        })
+      ).statusCode,
+    );
+  assert.ok(statuses.includes(429));
+});
+test("exam Book uses the non-AI revision planner and Undo removes its untouched work", async () => {
+  const { client, card, me } = await fixture();
+  const day = new Date();
+  day.setUTCDate(day.getUTCDate() + 1);
+  day.setUTCHours(12, 0, 0, 0);
+  while ([0, 6].includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() + 1);
+  const starts = new Date(day);
+  starts.setUTCDate(starts.getUTCDate() + 5);
+  const key = `own:${randomUUID()}`;
+  const exam = (
+    await pool.query(
+      "INSERT INTO study_exams(user_id,exam_key,title,starts_at,own) VALUES($1,$2,'Exam action',$3,true) RETURNING id",
+      [me.id, key, starts],
+    )
+  ).rows[0].id;
+  const examCard = {
+    ...card,
+    entity_kind: "exam" as const,
+    entity_id: exam,
+    exam_key: key,
+    actions: ["skip", "book"] as ReminderNudgeCard["actions"],
+  };
+  const receipt = await performReminderAction(client, examCard, "book", {
+    day: day.toISOString().slice(0, 10),
+    minutes: 30,
+  });
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM items WHERE user_id=$1 AND title='Revise for Exam action'",
+        [me.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+  await receipt.undo();
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM items WHERE user_id=$1 AND title='Revise for Exam action'",
+        [me.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("partial goal and routine updates contain only the fields the person sent", async () => {
+  const { goalUpdate, agentRoutineUpdate } = await import("@orbyn/core");
+  assert.deepEqual(goalUpdate.parse({ status: "done" }), { status: "done" });
+  assert.deepEqual(goalUpdate.parse({ target_date: "2050-01-08" }), {
+    target_date: "2050-01-08",
+  });
+  assert.deepEqual(
+    agentRoutineUpdate.parse({ next_run_at: "2050-01-08T06:00:00Z" }),
+    { next_run_at: "2050-01-08T06:00:00Z" },
+  );
+});

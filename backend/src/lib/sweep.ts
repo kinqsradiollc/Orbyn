@@ -501,7 +501,9 @@ export const SWEEP_RULES: SweepRule[] = [
       OR entity_kind = 'routine' AND EXISTS(SELECT 1 FROM agent_routines WHERE id = entity_id)
       OR entity_kind = 'habit' AND EXISTS(SELECT 1 FROM habits WHERE id = entity_id)
       OR entity_kind = 'job' AND EXISTS(SELECT 1 FROM ai_jobs WHERE id = entity_id)
-      OR entity_kind = 'goal' AND EXISTS(SELECT 1 FROM goals WHERE id = entity_id))`,
+      OR entity_kind = 'goal' AND EXISTS(SELECT 1 FROM goals WHERE id = entity_id)
+      OR entity_kind = 'comment' AND EXISTS(SELECT 1 FROM doc_comments WHERE id = entity_id)
+      OR entity_kind = 'exam' AND EXISTS(SELECT 1 FROM study_exams WHERE id = entity_id))`,
     days: 0,
     configurable: false,
   },

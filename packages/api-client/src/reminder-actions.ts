@@ -167,8 +167,13 @@ export async function performReminderAction(
       (row) => row.id === card.entity_id,
     );
     if (!before) throw new HttpError(404, "Routine not found.");
+    const oldClock = zonedParts(new Date(before.next_run_at), before.timezone);
     const after = await client.updateAgentRoutine(before.id, {
-      next_run_at: dueAt!,
+      next_run_at: dayTime(
+        options.day!,
+        oldClock.hour * 60 + oldClock.minute,
+        before.timezone,
+      ).toISOString(),
     });
     return {
       message: "Moved the next routine run.",
@@ -184,6 +189,111 @@ export async function performReminderAction(
         await client.updateAgentRoutine(before.id, {
           next_run_at: before.next_run_at,
         });
+      },
+    };
+  }
+  if (card.entity_kind === "goal" && (action === "done" || action === "move")) {
+    const before = (await client.listGoals()).find(
+      (row) => row.id === card.entity_id,
+    );
+    if (!before) throw new HttpError(404, "Goal not found.");
+    const after = await client.updateGoal(
+      before.id,
+      action === "done" ? { status: "done" } : { target_date: options.day! },
+    );
+    return {
+      message:
+        action === "done" ? "Marked the goal done." : "Moved the goal date.",
+      undo: async () => {
+        const current = (await client.listGoals()).find(
+          (row) => row.id === before.id,
+        );
+        if (current?.updated_at !== after.updated_at)
+          throw new HttpError(409, "This goal changed. Open it to review.");
+        await client.updateGoal(
+          before.id,
+          action === "done"
+            ? { status: before.status }
+            : { target_date: before.target_date },
+        );
+      },
+    };
+  }
+  if (card.entity_kind === "comment" && action === "done" && card.source_id) {
+    const docId = card.source_id;
+    const before = (await client.listDocComments(docId)).find(
+      (row) => row.id === card.entity_id,
+    );
+    if (!before) throw new HttpError(404, "Comment not found.");
+    await client.resolveDocComment(docId, before.id, true);
+    return {
+      message: "Resolved the comment.",
+      undo: async () => {
+        await client.resolveDocComment(docId, before.id, !!before.resolved_at);
+      },
+    };
+  }
+  if (card.entity_kind === "habit" && action === "done" && card.source_id) {
+    const before = await client.getHabitBlock(card.source_id);
+    const after = await client.checkInHabitBlock(before.id, {
+      outcome: "done",
+      version: before.version,
+    });
+    return {
+      message: "Checked in the habit session.",
+      undo: async () => {
+        await client.checkInHabitBlock(before.id, {
+          outcome: before.outcome,
+          version: after.version,
+        });
+      },
+    };
+  }
+  if (card.entity_kind === "exam" && action === "book" && card.exam_key) {
+    const prefs = await client.getPlannerPrefs();
+    const plan = await client.planRevision({
+      key: card.exam_key,
+      minutes: options.minutes ?? 30,
+      timezone: prefs.timezone,
+    });
+    const sessions = plan.sessions.filter(
+      (session) =>
+        localDateKey(new Date(session.start_at), prefs.timezone) ===
+        options.day,
+    );
+    if (!sessions.length)
+      throw new HttpError(
+        409,
+        "No free revision time on that day before the exam. Choose an earlier free day.",
+      );
+    const applied = await client.applyRevision({
+      key: card.exam_key,
+      sessions,
+    });
+    const item = await client.getItem(applied.item_id);
+    return {
+      message: "Booked revision time before the exam.",
+      undo: async () => {
+        const current = await client.getItem(item.id);
+        const blocks = (await client.itemSessions(item.id)).sessions;
+        if (
+          current.version !== item.version ||
+          blocks.some(
+            (block) =>
+              block.started_at ||
+              block.outcome ||
+              !sessions.some(
+                (session) =>
+                  session.start_at === block.start_at &&
+                  session.end_at === block.end_at,
+              ),
+          )
+        )
+          throw new HttpError(
+            409,
+            "This revision work changed. Open it to review.",
+          );
+        await client.deleteItem(item.id, item.version);
       },
     };
   }

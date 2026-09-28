@@ -13,7 +13,16 @@ export const goalInput = z
   })
   .strict();
 
-export const goalUpdate = goalInput.partial().strict();
+export const goalUpdate = z
+  .object({
+    title: goalInput.shape.title.optional(),
+    target: goalInput.shape.target.removeDefault().optional(),
+    target_date: goalInput.shape.target_date.removeDefault().optional(),
+    plan_doc_id: goalInput.shape.plan_doc_id.removeDefault().optional(),
+    project_id: goalInput.shape.project_id.removeDefault().optional(),
+    status: goalInput.shape.status.removeDefault().optional(),
+  })
+  .strict();
 export type GoalInput = z.input<typeof goalInput>;
 export type GoalUpdate = z.input<typeof goalUpdate>;
 

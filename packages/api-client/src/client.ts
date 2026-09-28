@@ -246,6 +246,7 @@ import {
   type Habit,
   type HabitBlock,
   type HabitInput,
+  type HabitCheckInInput,
   type HabitPlan,
   type HabitPlanInput,
   type HabitUpdate,
@@ -2421,6 +2422,26 @@ export class OrbynClient {
     return this.request<HabitBlock[]>("/planner/habits/plan/apply", {
       method: "POST",
       body: { blocks },
+    });
+  }
+  /** Record a habit session, or undo it against its current version. */
+  getHabitBlock(id: string) {
+    return this.request<{
+      id: string;
+      outcome: "done" | "skipped" | null;
+      outcome_at: string | null;
+      version: number;
+    }>(`/planner/habits/blocks/${id}`);
+  }
+  checkInHabitBlock(id: string, input: HabitCheckInInput) {
+    return this.request<{
+      id: string;
+      outcome: "done" | "skipped" | null;
+      outcome_at: string | null;
+      version: number;
+    }>(`/planner/habits/blocks/${id}/check-in`, {
+      method: "POST",
+      body: input,
     });
   }
   deleteHabitBlock(id: string) {

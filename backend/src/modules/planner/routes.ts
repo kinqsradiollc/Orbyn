@@ -21,6 +21,7 @@ import {
   frameSkipInput,
   frameUpdate,
   habitApplyInput,
+  habitCheckInInput,
   habitInput,
   habitPlanInput,
   habitUpdate,
@@ -60,8 +61,8 @@ import {
 } from "@orbyn/core";
 import { z } from "zod";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
-import { authenticate, digest } from "../../lib/auth.js";
-import { idParam, strictRateLimit } from "../../lib/params.js";
+import { authenticate, digest, isApiKeyRequest } from "../../lib/auth.js";
+import { idParam, strictRateLimit, writeRateLimit } from "../../lib/params.js";
 import { queueWebhooks } from "../../lib/webhooks.js";
 import {
   busyIntervals,
@@ -374,6 +375,58 @@ export async function plannerRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const d = habitApplyInput.parse(r.body);
     return transaction((db) => applyHabitPlan(db, u.id, d));
+  });
+
+  app.get("/planner/habits/blocks/:id", async (r) => {
+    const user = await authenticate(r);
+    const row = (
+      await reader(r.headers).query<{
+        id: string;
+        outcome: string | null;
+        outcome_at: Date | null;
+        version: number;
+      }>(
+        "SELECT id,outcome,outcome_at,version FROM habit_blocks WHERE id=$1 AND user_id=$2",
+        [idParam(r), user.id],
+      )
+    ).rows[0];
+    if (!row) fail(404, "Habit session not found.");
+    return { ...row, outcome_at: row.outcome_at?.toISOString() ?? null };
+  });
+
+  app.post("/planner/habits/blocks/:id/check-in", writeRateLimit, async (r) => {
+    const user = await authenticate(r);
+    const id = idParam(r);
+    if (isApiKeyRequest(r))
+      fail(403, "Only you can check in your habit sessions.");
+    const input = habitCheckInInput.parse(r.body);
+    return transaction(async (db) => {
+      const block = (
+        await db.query<{
+          id: string;
+          outcome: string | null;
+          outcome_at: Date | null;
+          version: number;
+        }>(
+          `UPDATE habit_blocks SET outcome=$3, outcome_at=CASE WHEN $3::text IS NULL THEN NULL ELSE now() END, version=version+1
+         WHERE id=$1 AND user_id=$2 AND version=$4 RETURNING id,outcome,outcome_at,version`,
+          [id, user.id, input.outcome, input.version],
+        )
+      ).rows[0];
+      if (!block) {
+        if (
+          !(
+            await db.query(
+              "SELECT 1 FROM habit_blocks WHERE id=$1 AND user_id=$2",
+              [id, user.id],
+            )
+          ).rowCount
+        )
+          fail(404, "Habit session not found.");
+        fail(409, "This habit session changed. Refresh it before checking in.");
+      }
+      return { ...block, outcome_at: block.outcome_at?.toISOString() ?? null };
+    });
   });
 
   app.delete("/planner/habits/blocks/:id", async (r, reply) => {

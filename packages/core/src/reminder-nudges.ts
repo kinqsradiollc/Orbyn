@@ -26,8 +26,19 @@ export const reminderNudgeCard = z
   .object({
     id: z.uuid(),
     key: z.string().min(1).max(180),
-    entity_kind: z.enum(["task", "record", "routine", "habit", "job", "goal"]),
+    entity_kind: z.enum([
+      "task",
+      "record",
+      "routine",
+      "habit",
+      "job",
+      "goal",
+      "comment",
+      "exam",
+    ]),
     entity_id: z.uuid(),
+    source_id: z.uuid().optional(),
+    exam_key: z.string().min(1).max(500).optional(),
     actions: z.array(z.enum(["done", "move", "skip", "book"])).max(4),
   })
   .strict();

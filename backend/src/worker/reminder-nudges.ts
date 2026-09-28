@@ -11,6 +11,7 @@ import {
   type ReminderNudgeSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../db/pool.js";
+import { visibleDocs } from "../lib/visibility.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 
 export type NudgeCandidate = {
@@ -26,6 +27,8 @@ export type NudgeCandidate = {
     | "waiting";
   entity_kind: ReminderNudgeCard["entity_kind"];
   entity_id: string;
+  source_id?: string;
+  exam_key?: string;
   text: string;
   actions: ReminderNudgeCard["actions"];
 };
@@ -129,6 +132,8 @@ export async function postReminderNudge(
           entity_kind: candidate.entity_kind,
           entity_id: candidate.entity_id,
           actions: candidate.actions,
+          ...(candidate.source_id ? { source_id: candidate.source_id } : {}),
+          ...(candidate.exam_key ? { exam_key: candidate.exam_key } : {}),
         },
       };
       await db.query(
@@ -263,6 +268,93 @@ export async function reminderNudgeCandidates(
       entity_id: job.id,
       text: `“${job.title}” has been waiting for your answer for several hours.`,
       actions: ["skip"],
+    })),
+  );
+
+  const goals = (
+    await db.query<{ id: string; title: string }>(
+      `SELECT g.id, g.title FROM goals g
+      WHERE g.user_id = $1 AND g.status = 'active' AND g.target_date >= $3::date AND g.target_date <= $4::date
+        AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))
+        AND (NOT EXISTS(SELECT 1 FROM items i WHERE i.user_id = $1 AND i.kind = 'task' AND i.status NOT IN ('done','cancelled') AND (i.project_id = g.project_id OR EXISTS(SELECT 1 FROM doc_task_links l WHERE l.doc_id = g.plan_doc_id AND l.item_id = i.id)))
+          OR EXISTS(SELECT 1 FROM items i WHERE i.user_id = $1 AND i.kind = 'task' AND i.status NOT IN ('done','cancelled') AND i.estimate_minutes > i.spent_minutes
+            AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.id = i.project_id AND p.assistant_off)
+            AND (i.project_id = g.project_id OR EXISTS(SELECT 1 FROM doc_task_links l WHERE l.doc_id = g.plan_doc_id AND l.item_id = i.id))
+            AND i.estimate_minutes - i.spent_minutes > coalesce((SELECT sum(extract(epoch FROM(b.end_at-b.start_at))/60) FROM time_blocks b WHERE b.item_id=i.id AND b.user_id=$1 AND b.start_at > $2 AND b.end_at <= ((g.target_date + 1)::timestamp AT TIME ZONE $5)),0)))
+      ORDER BY g.target_date,g.id LIMIT 20`,
+      [userId, now, today, addDays(today, 7), timezone],
+    )
+  ).rows;
+  result.push(
+    ...goals.map((goal): NudgeCandidate => ({
+      key: `goal:${goal.id}`,
+      category: "deadline",
+      entity_kind: "goal",
+      entity_id: goal.id,
+      text: `Your goal “${goal.title}” is due soon with work still to plan or too little time booked.`,
+      actions: ["done", "move", "skip"],
+    })),
+  );
+  const comments = (
+    await db.query<{ id: string; doc_id: string; title: string }>(
+      `SELECT c.id,c.doc_id,d.title FROM doc_comments c JOIN docs d ON d.id=c.doc_id
+      WHERE c.resolved_at IS NULL AND c.created_at < $2::timestamptz - interval '1 day'
+        AND ${visibleDocs("d", { user: "$1", ai: true })}
+        AND EXISTS(SELECT 1 FROM doc_comment_mentions m WHERE m.comment_id=c.id AND m.user_id=$1)
+        AND NOT EXISTS(SELECT 1 FROM doc_comments reply WHERE reply.parent_id=c.id AND reply.user_id=$1)
+        AND NOT EXISTS(SELECT 1 FROM doc_comments parent WHERE parent.id=c.parent_id AND parent.resolved_at IS NOT NULL)
+      ORDER BY c.created_at,c.id LIMIT 20`,
+      [userId, now],
+    )
+  ).rows;
+  result.push(
+    ...comments.map((comment): NudgeCandidate => ({
+      key: `comment:${comment.id}`,
+      category: "promise",
+      entity_kind: "comment",
+      entity_id: comment.id,
+      source_id: comment.doc_id,
+      text: `A comment mentioning you on “${comment.title}” is still waiting for your reply.`,
+      actions: ["done", "skip"],
+    })),
+  );
+  const exams = (
+    await db.query<{ id: string; exam_key: string; title: string }>(
+      `SELECT e.id,e.exam_key,e.title FROM study_exams e WHERE e.user_id=$1 AND e.starts_at>$2 AND e.starts_at<=$2::timestamptz+interval '7 days'
+      AND NOT EXISTS(SELECT 1 FROM docs d WHERE d.id=ANY(e.doc_ids) AND NOT ${visibleDocs("d", { user: "$1", ai: true })})
+      AND coalesce((SELECT sum(extract(epoch FROM(b.end_at-b.start_at))/60) FROM time_blocks b JOIN items i ON i.id=b.item_id WHERE b.user_id=$1 AND i.user_id=$1 AND i.status NOT IN ('done','cancelled') AND i.title='Revise for '||e.title AND b.start_at>$2 AND b.end_at<=e.starts_at),0) < greatest(30,(SELECT count(*)*2 FROM study_cards card WHERE card.user_id=$1 AND card.doc_id=ANY(e.doc_ids) AND (card.reps=0 OR card.lapses>0)))
+      ORDER BY e.starts_at,e.id LIMIT 20`,
+      [userId, now],
+    )
+  ).rows;
+  result.push(
+    ...exams.map((exam): NudgeCandidate => ({
+      key: `exam:${exam.id}`,
+      category: "deadline",
+      entity_kind: "exam",
+      entity_id: exam.id,
+      exam_key: exam.exam_key,
+      text: `Your exam “${exam.title}” is coming up with little or no revision time booked before it.`,
+      actions: ["skip", "book"],
+    })),
+  );
+  const habits = (
+    await db.query<{ id: string; name: string; block_id: string }>(
+      `SELECT DISTINCT ON(h.id) h.id,h.name,b.id AS block_id FROM habits h JOIN habit_blocks b ON b.habit_id=h.id AND b.user_id=h.user_id
+      WHERE h.user_id=$1 AND h.active AND b.outcome IS NULL AND b.end_at<$2 AND b.end_at>=$3
+      ORDER BY h.id,b.end_at DESC LIMIT 20`,
+      [userId, now, dayStart],
+    )
+  ).rows;
+  result.push(
+    ...habits.map((habit): NudgeCandidate => ({
+      key: `habit:${habit.id}`,
+      category: "habit",
+      entity_kind: "habit",
+      entity_id: habit.id,
+      source_id: habit.block_id,
+      text: `Your planned “${habit.name}” habit session ended without a check-in. Did you do it?`,
+      actions: ["done", "skip"],
     })),
   );
   return result;

@@ -2305,3 +2305,12 @@ export const captureInput = z
 
 /** A link whose title and site to look up. */
 export const linkPreviewInput = z.object({ url: sharedUrl }).strict();
+
+/** A habit session's explicit check-in, or a version-checked Undo. */
+export const habitCheckInInput = z
+  .object({
+    outcome: z.enum(["done", "skipped"]).nullable(),
+    version: z.number().int().positive(),
+  })
+  .strict();
+export type HabitCheckInInput = z.output<typeof habitCheckInInput>;

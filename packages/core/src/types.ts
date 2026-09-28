@@ -1107,6 +1107,9 @@ export type Habit = {
 
 /** One placed session of a habit, shown on the calendar. */
 export type HabitBlock = {
+  outcome?: "done" | "skipped" | null;
+  outcome_at?: string | null;
+  version?: number;
   id: string;
   habit_id: string;
   name: string;

@@ -100,8 +100,11 @@ export async function habitBlocksIn(
       start_at: Date;
       end_at: Date;
       source: "manual" | "planner";
+      outcome: "done" | "skipped" | null;
+      outcome_at: Date | null;
+      version: number;
     }>(
-      `SELECT b.id, b.habit_id, h.name, b.start_at, b.end_at, b.source
+      `SELECT b.id, b.habit_id, h.name, b.start_at, b.end_at, b.source, b.outcome, b.outcome_at, b.version
          FROM habit_blocks b JOIN habits h ON h.id = b.habit_id
          WHERE b.user_id = $1 AND b.end_at > $2 AND b.start_at < $3
          ORDER BY b.start_at`,
@@ -115,6 +118,9 @@ export async function habitBlocksIn(
     start_at: r.start_at.toISOString(),
     end_at: r.end_at.toISOString(),
     source: r.source,
+    outcome: r.outcome,
+    outcome_at: r.outcome_at?.toISOString() ?? null,
+    version: r.version,
   }));
 }
 
