@@ -10,6 +10,10 @@ import {
   type AgentRuleInput,
   type AgentContextSettings,
   type PersonalAgentSettings,
+  type Goal,
+  type GoalCheckin,
+  type GoalInput,
+  type GoalUpdate,
   type AssistantIdea,
   type AgentIdentityInput,
   type NewAgentWake,
@@ -1166,6 +1170,26 @@ export class OrbynClient {
   }
   deleteProjectChat(id: string) {
     return this.request<void>(`/ai/chats/${id}`, { method: "DELETE" });
+  }
+  listGoals() {
+    return this.request<Goal[]>("/me/goals");
+  }
+  createGoal(input: GoalInput) {
+    return this.request<Goal>("/me/goals", { method: "POST", body: input });
+  }
+  updateGoal(id: string, input: GoalUpdate) {
+    return this.request<Goal>(`/me/goals/${id}`, {
+      method: "PUT",
+      body: input,
+    });
+  }
+  deleteGoal(id: string) {
+    return this.request<{ deleted: boolean }>(`/me/goals/${id}`, {
+      method: "DELETE",
+    });
+  }
+  goalCheckins(id: string) {
+    return this.request<GoalCheckin[]>(`/me/goals/${id}/checkins`);
   }
   assistantIdeas() {
     return this.request<AssistantIdea[]>("/me/assistant/ideas");

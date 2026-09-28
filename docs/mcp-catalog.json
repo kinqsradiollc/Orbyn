@@ -8820,6 +8820,160 @@
           "app_url"
         ]
       }
+    },
+    {
+      "name": "manage_goals",
+      "title": "Manage goals",
+      "description": "List, read, create, update or complete your private goals. Each goal can have a target, its own Agent plan note, an optional project, and weekly check-ins. Use a visible Orbyn project and a private Agent note for its plan.",
+      "kind": "destructive",
+      "access": "write",
+      "toolset": "core",
+      "mode": "write",
+      "tier": "W2",
+      "annotations": {
+        "title": "Manage goals",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["list", "read", "create", "update", "delete", "checkin"]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "goal": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "target": { "default": "", "type": "string", "maxLength": 2000 },
+              "target_date": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "plan_doc_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "project_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "status": {
+                "default": "active",
+                "type": "string",
+                "enum": ["active", "paused", "done"]
+              }
+            },
+            "required": ["title"],
+            "additionalProperties": false
+          },
+          "changes": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "target": { "default": "", "type": "string", "maxLength": 2000 },
+              "target_date": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "plan_doc_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "project_id": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "status": {
+                "default": "active",
+                "type": "string",
+                "enum": ["active", "paused", "done"]
+              }
+            },
+            "additionalProperties": false
+          },
+          "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "progress": {
+            "type": "object",
+            "propertyNames": { "type": "string" },
+            "additionalProperties": {}
+          },
+          "week_of": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          },
+          "client_ref": {
+            "description": "Idempotency key: sent again within 24 h, the first answer comes back.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[\\w.:@-]+$"
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "done"] },
+          "goals": { "type": "array", "items": {} },
+          "goal": { "anyOf": [{}, { "type": "null" }] },
+          "checkins": { "type": "array", "items": {} }
+        },
+        "required": ["status", "goals", "goal", "checkins"]
+      }
     }
   ],
   "resources": [
@@ -9042,7 +9196,8 @@
         "get_inbox",
         "ack_inbox",
         "ask_person",
-        "apply_plan"
+        "apply_plan",
+        "manage_goals"
       ]
     },
     {
@@ -9146,6 +9301,7 @@
       "date": "2026-09-28",
       "changes": [
         "Ideas (Muse M7): the Assistant can suggest up to three small daily changes from planner context. Ideas wait in Review for the person's approval; the planner remains a planner. 63 tools, 31 core.",
+        "Goals (Muse M8): manage_goals is a core tool for private dated goals, weekly check-ins and replanning. The registry has no global tool-count cap; this snapshot has 64 tools, 32 core. Planner capabilities stay in the planner toolset.",
         "Built-in Assistant parity (Muse M6): lead and specialist loops use the shared MCP capability registry and executor; get_context includes a private Memory topic index for Personal. 63 tools, 31 core; no global ceiling.",
         "Chat history (Muse M3): get_chats (core) lists the person's private conversations with Orbyn's built-in assistant and reads an unswept chat's full turns and content-free steps by chat_id. Projects kept out of AI and chats the connection cannot reach stay hidden. The planner remains available as a planner. 63 tools, 31 core."
       ]
@@ -9193,5 +9349,5 @@
       ]
     }
   ],
-  "routes": { "covered": 259, "excluded": 209, "pending": 0 }
+  "routes": { "covered": 264, "excluded": 209, "pending": 0 }
 }

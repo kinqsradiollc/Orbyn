@@ -15,20 +15,18 @@
 | M4 — Lead and specialists | Server, desktop run controls, and polling client committed; mobile screen still in the working tree | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces. Fake-provider tests cover exam revision and stop/approval races. |
 | M5 — Sweep old history | Done, committed | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes; pinned chats stay. Tests cover retries, invalid summaries, privacy and retention limits. |
 | M6 — One set of tools | Done; focused verification passed | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. The M6 catalog snapshot is exactly 63 tools, 31 core; later M8/M9 additions bring the full tree to 65/33. |
-| M7 — Ideas feed | Implemented; focused checks passed; database integration blocked | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. The feed filters existing ideas that reference assistant-off work. |
-| M8 — Goals | Implemented; integration verification blocked | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. |
-| M9 — Routines and Upcoming | Implemented; integration verification blocked | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
-| M10 — Morning brief | Implemented; integration verification blocked | 172 | Daily private Agent brief covers Today, clashes, slipping work, goals, ideas and pending questions. Digest email links to the brief; email is mocked in tests. |
+| M7 — Ideas feed | Implemented; focused checks passed; final full-suite run pending | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. The feed filters existing ideas that reference assistant-off work. |
+| M8 — Goals | Implemented; focused integration checks passed; final full-suite run pending | 168 | Private dated goals, optional project/plan note, weekly check-ins and replanning. Agent reads and writes exclude goals linked to assistant-off projects or docs. The weekly scanner uses the person's local Monday and does not run kept-out goals. |
+| M9 — Routines and Upcoming | In progress; not yet committed or fully verified | 169 | Worker-managed recurring Assistant routines, pause/resume, approval scopes and Upcoming on web and phone. |
+| M10 — Morning brief | In progress; not yet committed or fully verified | 172 | Daily private Agent brief covers Today, clashes, slipping work, goals, ideas and pending questions. Digest email links to the brief; email is mocked in tests. |
 
 ## Verification
 
-- `npm run build:packages`, `npm run typecheck`, and `npm run format:check`: passed on the current full worktree.
-- Focused registry, protocol, structured-provider and catalog tests: 28/28 passed against the M7 snapshot.
-- `npm run mcp:catalog -w backend`: passed for M7; catalog reports 63 tools, 31 core, with 259 routes covered, 209 excluded and 0 pending.
-- Latest full `npm test`: 340 passed, 124 failed out of 464. All 124 failing test files stopped at `ECONNREFUSED 127.0.0.1:55434`; no other test failure remained. The full suite is still unverified until the database is reachable.
-- Desktop preview: `http://localhost:5175/app` serves HTTP 200 and remains open in the in-app browser. The page shows a cached signed-in session, but `/health` returns 503 and `GET /lists` returns 500 while PostgreSQL is unavailable. Exact 1440 px and 390 px visual checks are still unverified.
+- `npm run build:packages`, `npm run typecheck`, and the focused M8 checks passed. The focused checks cover goal API privacy/validation, local-week dates, the weekly worker with a fake provider, route inventory, and catalog parity.
+- `npm run mcp:catalog -w backend`: passed for M8; the snapshot has 64 listable tools, 32 core tools, and no global tool-count cap. It reports 264 routes covered, 209 excluded and 0 pending.
+- The disposable test Postgres was recreated from Compose's `test` profile and is healthy at `127.0.0.1:55434`. Its tmpfs data reset, so the former preview account no longer exists. The full suite has not yet been rerun against this fresh database.
+- Desktop preview: `http://localhost:5175/app` serves HTTP 200; the worktree API at `http://localhost:8011/health` returns `200` with `status: ok`. Responsive visual checks at 1440 px and 390 px remain pending.
 - Expo Metro is listening on port 8085. Native interactions were not rechecked in this run.
-- Docker CLI reports the `desktop-linux` context, but `docker ps` does not return and port 55434 refuses connections. The disposable database uses tmpfs, so the prior test account may need to be recreated after the database returns.
 
 ## Decisions and owner notes
 
@@ -36,6 +34,8 @@
 - Assistant-off privacy is applied to every new agent path, including linked goals, plan docs, events, sessions, ideas and saved briefs.
 - Assistant and privacy/retention wording was updated; `DEFAULT_LEGAL_VERSION` was not changed. Owner review of the revised copy is still needed.
 
-## Blocked
+## Remaining end-to-end verification
 
-- The full database suite, live API behavior and current test-account validity depend on the disposable PostgreSQL service at `127.0.0.1:55434`. The port still refuses connections and the Docker CLI hangs on its active context. The web shell stays available at `http://localhost:5175/app`; API-backed features will work again once that test database is reachable.
+- Run the full suite after M10 against the restored disposable database, then refresh the M7–M10 integration results.
+- Confirm the website at desktop and narrow mobile widths and recreate a disposable preview account for the user.
+- Recheck native Expo interactions without using the M2 simulator.

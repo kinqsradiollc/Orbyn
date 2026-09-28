@@ -69,6 +69,7 @@ const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 const { scanAssistantIdeas } = await import("../src/worker/assistant-ideas.js");
+const { scanAssistantGoals } = await import("../src/worker/assistant-goals.js");
 const app = await buildApp();
 const users: string[] = [];
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -637,6 +638,90 @@ test("the idea scanner claims and finishes up to three daily slots", async () =>
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
   assert.equal(finished, 3, "all three daily idea slots are completed");
+});
+
+test("the weekly goal scanner claims one local week and excludes kept-out work", async () => {
+  requests.length = 0;
+  respond = () => ({ content: "The weekly goal review is complete." });
+  const user = await register();
+  const person = (
+    await pool.query<{ name: string; role: "member" }>(
+      "SELECT name, role FROM users WHERE id = $1",
+      [user.id],
+    )
+  ).rows[0];
+  await assistantPrincipal({ ...person, id: user.id });
+  await pool.query(
+    `INSERT INTO planner_prefs (user_id, timezone) VALUES ($1, 'Australia/Melbourne')
+     ON CONFLICT (user_id) DO UPDATE SET timezone = EXCLUDED.timezone`,
+    [user.id],
+  );
+  const hiddenProject = await app.inject({
+    method: "POST",
+    url: "/projects",
+    headers: auth(user.token),
+    payload: { name: "Weekly review private project" },
+  });
+  assert.equal(hiddenProject.statusCode, 201, hiddenProject.body);
+  await pool.query("UPDATE projects SET assistant_off = true WHERE id = $1", [
+    hiddenProject.json().id,
+  ]);
+  const visibleGoal = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO goals (user_id, title, target)
+       VALUES ($1, 'Visible weekly goal', 'Complete its target') RETURNING id`,
+      [user.id],
+    )
+  ).rows[0].id;
+  const hiddenGoal = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO goals (user_id, title, project_id)
+       VALUES ($1, 'PRIVATE_WEEKLY_GOAL', $2) RETURNING id`,
+      [user.id, hiddenProject.json().id],
+    )
+  ).rows[0].id;
+
+  const now = new Date("2026-09-27T14:30:00.000Z");
+  assert.equal(await scanAssistantGoals(now, { only: [user.id] }), 1);
+  assert.equal(await scanAssistantGoals(now, { only: [user.id] }), 0);
+  const checkin = (
+    await pool.query<{
+      job_id: string | null;
+      status: string;
+      week_of: string;
+    }>(
+      `SELECT job_id, status, week_of::text FROM goals_checkins WHERE goal_id = $1`,
+      [visibleGoal],
+    )
+  ).rows[0];
+  assert.equal(checkin.week_of, "2026-09-28");
+  assert.ok(checkin.job_id);
+  const result = await poll(user.token, checkin.job_id!, ["done", "failed"]);
+  assert.equal(result.state, "done", JSON.stringify(result));
+  const completed = (
+    await pool.query<{ status: string; summary: string }>(
+      "SELECT status, summary FROM goals_checkins WHERE goal_id = $1",
+      [visibleGoal],
+    )
+  ).rows[0];
+  assert.equal(completed.status, "done");
+  assert.match(completed.summary, /weekly goal review/i);
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM goals_checkins WHERE goal_id = $1", [
+        hiddenGoal,
+      ])
+    ).rowCount,
+    0,
+  );
+  assert.ok(
+    requests.every((request) =>
+      request.messages.every(
+        (message) => !message.content?.includes("PRIVATE_WEEKLY_GOAL"),
+      ),
+    ),
+    "kept-out goal content never reaches the assistant provider",
+  );
 });
 
 test("the Assistant ideas feed hides proposals that reference kept-out work", async () => {

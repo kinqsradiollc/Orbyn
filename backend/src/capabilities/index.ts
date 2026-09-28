@@ -63,6 +63,7 @@ import { createDocCapability, editDoc } from "./write-docs.js";
 import { appendDoc } from "./long-docs.js";
 import { saveSource } from "./citations.js";
 import { addFile } from "./agent-files.js";
+import { manageGoals } from "./goals.js";
 import {
   createProjectCapability,
   link,
@@ -163,6 +164,8 @@ export const registry = new Registry([
   importTasks,
   // Agent 2 (H2): files the agent sends.
   addFile,
+  // Muse M8: personal goals and weekly check-ins.
+  manageGoals,
 ]);
 
 export { Registry };

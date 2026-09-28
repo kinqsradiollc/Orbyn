@@ -51,6 +51,7 @@ export * from "./agent-inbox.js";
 export * from "./agent-context.js";
 export * from "./agent-settings.js";
 export * from "./assistant-ideas.js";
+export * from "./goals.js";
 export * from "./memory.js";
 export * from "./page-tags.js";
 export * from "./page-templates.js";

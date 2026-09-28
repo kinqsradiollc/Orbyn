@@ -92,6 +92,11 @@ export const COVERED: Record<string, string[]> = {
   "GET /planner/next": ["get_today"],
   "GET /teams": ["get_context"],
   "GET /me": ["get_context"],
+  "GET /me/goals": ["manage_goals"],
+  "POST /me/goals": ["manage_goals"],
+  "PUT /me/goals/:id": ["manage_goals"],
+  "DELETE /me/goals/:id": ["manage_goals"],
+  "GET /me/goals/:id/checkins": ["manage_goals"],
   "GET /planner/prefs": ["get_context"],
   "GET /today": ["get_today"],
   // Merged in the M1–M4 integration and classified in A1-late.
