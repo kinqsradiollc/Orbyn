@@ -801,7 +801,7 @@ export function CommandBar({
     setAsk({ question: text, proposal: null, state: "info", error: "" });
     setBusy(true);
     try {
-      const proposal = await client.chat(text, deviceTimeZone(), []);
+      const { proposal } = await client.chat(text, deviceTimeZone(), []);
       setAsk({
         question: text,
         proposal,

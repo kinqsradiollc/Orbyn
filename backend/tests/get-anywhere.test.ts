@@ -378,6 +378,11 @@ test("web links to add or search open a filled-in bar, and survive sign-in", () 
   // The Review inbox, with or without a change named.
   assert.deepEqual(deepLinkOf("/app/review"), { kind: "review", id: null });
   assert.deepEqual(deepLinkOf("/app/review/"), { kind: "review", id: null });
+  assert.deepEqual(deepLinkOf("/app/assistant"), { kind: "assistant" });
+  assert.equal(deepLinkPath({ kind: "assistant" }), "/app/assistant");
+  assert.deepEqual(safeNext("?next=%2Fapp%2Fassistant"), {
+    kind: "assistant",
+  });
   assert.equal(deepLinkPath({ kind: "review", id: null }), "/app/review");
   assert.deepEqual(safeNext("?next=%2Fapp%2Freview"), {
     kind: "review",
@@ -402,6 +407,7 @@ test("the desktop app opens orbyn:// links as the web app does", () => {
   assert.deepEqual(open(`orbyn://doc/${id}`), { kind: "doc", id, block: null });
   assert.deepEqual(open(`orbyn://project/${id}`), { kind: "project", id });
   assert.deepEqual(open("orbyn://today"), { kind: "today" });
+  assert.deepEqual(open("orbyn://assistant"), { kind: "assistant" });
   assert.deepEqual(open(`orbyn://review/${id}`), { kind: "review", id });
   assert.deepEqual(open("orbyn://review"), { kind: "review", id: null });
   // A link to a line opens the page there.

@@ -279,6 +279,9 @@ test("links into the app open one thing each", () => {
   assert.deepEqual(parseAppLink("orbyn://agenda"), { kind: "agenda" });
   assert.deepEqual(parseAppLink("orbyn://scan"), { kind: "scan" });
   assert.deepEqual(parseAppLink("orbyn://assistant"), { kind: "assistant" });
+  assert.deepEqual(parseAppLink("https://orbyn.dev/app/assistant"), {
+    kind: "assistant",
+  });
   assert.deepEqual(parseAppLink("orbyn://today"), { kind: "today" });
   assert.deepEqual(parseAppLink(`orbyn://doc/${ID.toUpperCase()}`), {
     kind: "doc",
@@ -379,6 +382,7 @@ test("the web app opens a shared page, task or project link", () => {
     assert.equal(deepLinkOf(path), null, path);
   // /app/add opens Quick add to confirm (D2a), with or without words.
   assert.deepEqual(deepLinkOf("/app/add"), { kind: "add", text: "" });
+  assert.deepEqual(deepLinkOf("/app/assistant"), { kind: "assistant" });
 });
 
 // ------------------------------------------------ app icon quick actions ---

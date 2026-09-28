@@ -3,7 +3,7 @@
 ## Scope and branch
 
 - Branch: `muse/m3-m10`, based on `origin/main` at `6e7d3ae` (M1/M2 merged by PR #132; Claude reviewed them per the user).
-- The M3, M4 and M5 base commits are `b3a47933`, `ab49b5f0` and `0bcff46c`. This M3 follow-up registers `get_chats`; M6–M10 are implemented in the working tree and are being committed in order.
+- The M3, M4 and M5 base commits are `b3a47933`, `ab49b5f0` and `0bcff46c`; the `get_chats` registry follow-up is committed as `9e1947c`. This snapshot includes the M3 desktop history UI and M4 desktop run controls; the mobile history/run screen remains in the working tree for final client integration.
 - The planner remains a planner. The full working tree has 65 listable tools, 33 core; the M3 follow-up snapshot has 63 tools, 31 core. There is no global 60-tool ceiling.
 - The M2 worktree and its preview processes remain untouched. No PR or merge is planned.
 
@@ -11,8 +11,8 @@
 
 | Chunk | Status | Migrations | Implementation and tests |
 | --- | --- | --- | --- |
-| M3 — Chat history | Base committed; `get_chats` registry follow-up in this commit | 165 | Durable private chats, migration from project chats, list/read/search/update/delete/save-as-note APIs, private `get_chats`, and content-free traces. New turns queue only their own memory content. |
-| M4 — Lead and specialists | Done, committed | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces. Fake-provider tests cover exam revision and stop/approval races. |
+| M3 — Chat history | Server, APIs, MCP registry, and desktop history UI committed; mobile screen still in the working tree | 165 | Durable private chats, migration from project chats, list/read/search/update/delete/save-as-note APIs, private `get_chats`, and content-free traces. New turns queue only their own memory content. |
+| M4 — Lead and specialists | Server, desktop run controls, and polling client committed; mobile screen still in the working tree | 167 | Lead plus six specialists; bounded delegation, staged plans, questions, approvals, stop/report/apply/undo, and persistent traces. Fake-provider tests cover exam revision and stop/approval races. |
 | M5 — Sweep old history | Done, committed | 170 | Daily worker compacts unpinned chats after seven days into private Agent notes; pinned chats stay. Tests cover retries, invalid summaries, privacy and retention limits. |
 | M6 — One set of tools | Implemented; integration verification blocked | 166 | Internal Assistant and Connected agents share the MCP capability registry and executor. Assistant grants cannot raise trust. Parity test checks the shared list; 65/33 count remains exact. |
 | M7 — Ideas feed | Implemented; integration verification blocked | 171, 173 | Worker creates up to three daily Review ideas from planner context. Today and Review surfaces support undo. Slot keys keep same-day ideas distinct. Privacy filters exclude assistant-off data. |
@@ -30,7 +30,7 @@
 - Latest full `npm test` attempt: 339 passed, 125 failed. 124 database-backed test files could not connect to `127.0.0.1:55434`; the remaining failure was a structured-provider test still importing the removed graph prompt. That test now uses the shared assistant prompt and passes in the focused suite. The full suite has not passed because the database is unavailable.
 - Desktop preview: `http://localhost:5175/app` serves HTTP 200 and remains open in the in-app browser. The page shows a cached signed-in session, but `/health` returns 503 and `GET /lists` returns 500 while PostgreSQL is unavailable. Exact 1440 px and 390 px visual checks are still unverified.
 - Expo Metro is listening on port 8085. Native interactions were not rechecked in this run.
-- Disk has about 19 GB free. Docker Desktop displays “Engine running,” but its local socket does not answer `/_ping`; `postgres-test` is stopped and the Compose start command stalled. Port 55434 refuses connections. Its database is tmpfs, so the prior test account may need to be recreated after the database returns.
+- Disk has about 19 GB free. Docker Desktop processes are running, but the Docker API socket still times out on `/_ping`, `docker ps` does not return, and `postgres-test` cannot be inspected or started. Port 55434 refuses connections. Its database is tmpfs, so the prior test account may need to be recreated after the database returns.
 
 ## Decisions and owner notes
 
@@ -40,4 +40,4 @@
 
 ## Blocked
 
-- The full database suite, live API behavior and current test-account validity depend on the disposable PostgreSQL service at `127.0.0.1:55434`. Docker Desktop’s UI reports the engine running, but the daemon socket times out and `postgres-test` remains stopped. The web shell stays available at `http://localhost:5175/app`; API-backed features will work again once that test database is reachable.
+- The full database suite, live API behavior and current test-account validity depend on the disposable PostgreSQL service at `127.0.0.1:55434`. Docker Desktop is running, but its daemon socket times out and the database port refuses connections. The web shell stays available at `http://localhost:5175/app`; API-backed features will work again once that test database is reachable.

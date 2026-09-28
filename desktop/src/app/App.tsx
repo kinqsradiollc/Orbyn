@@ -390,6 +390,7 @@ export function App() {
     } else if (link.kind === "view") openSavedView(link.id);
     // Settings → Connected agents: what agents did, to undo (H7).
     else if (link.kind === "agents") openSetting("agents");
+    else if (link.kind === "assistant") setView("AI assistant");
     else setView("Overview");
   };
   // How many proposals wait, for the sidebar: read when signed in and again

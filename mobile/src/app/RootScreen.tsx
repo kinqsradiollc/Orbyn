@@ -932,6 +932,8 @@ export function RootScreen() {
       case "scan":
         return runScan();
       case "assistant":
+        setSheet(null);
+        back.current = [];
         return runCreate("ask");
       case "focus":
         return startFocus();

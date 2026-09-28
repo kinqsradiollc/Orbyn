@@ -5,5 +5,7 @@ export type {
   TokenSource,
   LiveNews,
   DocNews,
+  AssistantWaiting,
+  AssistantRunProgress,
 } from "./client.js";
 export { HttpError } from "@orbyn/core";

@@ -118,6 +118,7 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   if (id) return null;
   if (head === "today") return { kind: "today" };
   if (head === "agents") return { kind: "agents" };
+  if (head === "assistant" && !id) return { kind: "assistant" };
   if (head === "search")
     return { kind: "search", q: (text("q") ?? "").slice(0, 200) };
   // These three are the phone's own; the web has no such pages.
