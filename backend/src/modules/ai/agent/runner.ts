@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
+import { withAssistantLease } from "./lease.js";
 import { pool } from "../../../db/pool.js";
 import type { UserRow } from "../../../lib/auth.js";
-import { assistantRunStateFor, runAssistantJob } from "./run.js";
+import {
+  assistantRunStateFor,
+  failStaleAssistantJobs,
+  runAssistantJob,
+  requestAssistantJobShutdown,
+} from "./run.js";
 
 /** One claim is atomic across AI replicas; provider calls never hold the DB lock. */
 export async function claimAssistantJob(claimedBy: string) {
@@ -25,15 +31,26 @@ export async function claimAssistantJob(claimedBy: string) {
 }
 
 /** A bounded runner shared by the AI service and optional worker fallback. */
-export function startAssistantRunner(log: FastifyBaseLogger) {
+export function startAssistantRunner(
+  log: FastifyBaseLogger,
+  options: { shutdownMs?: number } = {},
+) {
   const claimedBy = `${process.pid}-${randomUUID()}`;
   const active = new Set<Promise<void>>();
+  const jobs = new Map<Promise<void>, string>();
   let stopping = false;
   let claiming: Promise<void> | null = null;
+  let lastRecovery = 0;
   const tick = async () => {
     try {
+      if (Date.now() - lastRecovery >= 1000) {
+        await failStaleAssistantJobs();
+        lastRecovery = Date.now();
+      }
       while (!stopping && active.size < 8) {
-        const job = await claimAssistantJob(claimedBy);
+        // Each attempt gets a new token, even when this process recovers its own job.
+        const owner = `${claimedBy}-${randomUUID()}`;
+        const job = await claimAssistantJob(owner);
         if (!job) break;
         const work = (async () => {
           const checkpoint = assistantRunStateFor(job.run_state);
@@ -48,17 +65,19 @@ export function startAssistantRunner(log: FastifyBaseLogger) {
               `UPDATE ai_jobs SET state = 'failed', error_status = 409,
                error_message = 'This request can no longer be continued.'
                WHERE id = $1 AND claimed_by = $2`,
-              [job.id, claimedBy],
+              [job.id, owner],
             );
             return;
           }
-          await runAssistantJob(
-            job.id,
-            user,
-            checkpoint.request,
-            undefined,
-            checkpoint,
-            log,
+          await withAssistantLease(job.id, owner, () =>
+            runAssistantJob(
+              job.id,
+              user,
+              checkpoint.request,
+              undefined,
+              checkpoint,
+              log,
+            ),
           );
         })().catch((error) => {
           log.error(
@@ -67,8 +86,10 @@ export function startAssistantRunner(log: FastifyBaseLogger) {
           );
         });
         active.add(work);
+        jobs.set(work, job.id);
         void work.finally(() => {
           active.delete(work);
+          jobs.delete(work);
           schedule();
         });
       }
@@ -85,10 +106,22 @@ export function startAssistantRunner(log: FastifyBaseLogger) {
   const timer = setInterval(schedule, 200);
   timer.unref();
   schedule();
-  return async () => {
-    stopping = true;
-    clearInterval(timer);
-    await claiming;
-    await Promise.allSettled([...active]);
-  };
+  let stop: Promise<void> | null = null;
+  return () =>
+    (stop ??= (async () => {
+      stopping = true;
+      clearInterval(timer);
+      await claiming;
+      for (const id of jobs.values()) requestAssistantJobShutdown(id);
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        Promise.allSettled([...active]),
+        new Promise<void>((resolve) => {
+          timeout = setTimeout(resolve, options.shutdownMs ?? 20_000);
+        }),
+      ]);
+      clearTimeout(timeout);
+      for (const id of jobs.values()) requestAssistantJobShutdown(id, true);
+      await Promise.allSettled([...active]);
+    })());
 }

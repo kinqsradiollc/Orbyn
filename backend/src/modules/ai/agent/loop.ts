@@ -72,8 +72,22 @@ export type LoopToolResult = {
   stop?: boolean;
 };
 
+/** Only the bounded lead conversation and its counters are checkpointed. */
+export type AgentLoopCheckpoint = {
+  messages: AgentMessage[];
+  mode: Mode;
+  guards: number;
+  tools_ran: number;
+  last_text: string;
+  seen: [string, number][];
+  charged: number;
+  over_budget: boolean;
+};
+
 /** Optional controls for the shared internal and specialist loop. */
 export type AgentLoopOptions = {
+  resume?: AgentLoopCheckpoint;
+  checkpoint?: (state: AgentLoopCheckpoint) => Promise<void>;
   /** A focused instruction set instead of the built-in planner prompt. */
   systemPrompt?: string;
   /** Narrowed MCP tool descriptions for a specialist or the lead. */
@@ -167,7 +181,7 @@ export async function runAgent(
           200,
       )
     : overview;
-  const messages: AgentMessage[] = [
+  const messages: AgentMessage[] = options.resume?.messages ?? [
     {
       role: "system",
       content:
@@ -183,19 +197,40 @@ export async function runAgent(
     })),
     { role: "user", content: message },
   ];
-  let mode: Mode = startingMode(ai);
+  let mode: Mode = options.resume?.mode ?? startingMode(ai);
   const deadline = AbortSignal.timeout(DEADLINE_MS);
   const attemptMs = attemptMsFor(ai);
   const maxSteps = options.maxSteps ?? MAX_STEPS;
   const maxCallsPerStep = options.maxToolCallsPerStep ?? MAX_CALLS_PER_STEP;
-  let guards = GUARD_BUDGET;
-  let toolsRan = 0;
-  let lastText = "";
-  const seen = new Map<string, number>();
+  let guards = options.resume?.guards ?? GUARD_BUDGET;
+  let toolsRan = options.resume?.tools_ran ?? 0;
+  let lastText = options.resume?.last_text ?? "";
+  const seen = new Map<string, number>(options.resume?.seen ?? []);
   // Messages already counted against the shared token budget.
-  let charged = 0;
+  let charged = options.resume?.charged ?? 0;
   // Set once the budget ran out, for the one last answer without tools.
-  let overBudget = false;
+  let overBudget = options.resume?.over_budget ?? false;
+  const checkpoint = () =>
+    options.checkpoint?.({
+      messages: messages.map((entry) => ({
+        ...entry,
+        content: entry.content.slice(
+          0,
+          entry.role === "system"
+            ? 16_000
+            : entry.role === "tool"
+              ? 3000
+              : 4000,
+        ),
+      })),
+      mode,
+      guards,
+      tools_ran: toolsRan,
+      last_text: lastText,
+      seen: [...seen],
+      charged,
+      over_budget: overBudget,
+    });
 
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
     for (let attempt = 1; ; attempt++) {
@@ -335,6 +370,85 @@ export async function runAgent(
     };
   };
 
+  const consume = async (
+    calls: ToolCall[],
+    n: number,
+  ): Promise<AgentResult | null> => {
+    for (const c of calls) {
+      trace?.({
+        step: n,
+        kind: "tool",
+        label: `Using ${c.name}`,
+        tool: c.name,
+      });
+      const key = `${c.name}|${c.arguments}`;
+      const count = (seen.get(key) ?? 0) + 1;
+      seen.set(key, count);
+      const limited = count >= 3;
+      const output: LoopToolResult = limited
+        ? {
+            content: JSON.stringify({
+              error:
+                "You already ran this exact call twice. Use those results and move on.",
+            }),
+            isError: true,
+          }
+        : options.executeTool
+          ? await options.executeTool(c, ctx)
+          : {
+              content: JSON.stringify({
+                error: "This run does not have a tool executor.",
+              }),
+              isError: true,
+            };
+      messages.push({
+        role: "tool",
+        tool_call_id: c.id,
+        name: c.name,
+        content: output.content,
+      });
+      trace?.({
+        step: n,
+        kind: "result",
+        label: `Finished ${c.name}`,
+        tool: c.name,
+      });
+      toolsRan++;
+      await checkpoint();
+      if (output.stop) return finish(output.content, n, false);
+      if (ctx.clarification) return finish("", n, false);
+    }
+    return null;
+  };
+
+  // A kill can happen after storing a tool call but before storing its result.
+  // Reuse its exact id and arguments; completed calls already have tool replies.
+  let lastAssistant = -1;
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const entry = messages[index];
+    if (entry.role === "assistant" && entry.tool_calls?.length) {
+      lastAssistant = index;
+      break;
+    }
+  }
+  if (options.resume && lastAssistant >= 0) {
+    const entry = messages[lastAssistant];
+    if (entry.role === "assistant") {
+      const completed = new Set(
+        messages
+          .slice(lastAssistant + 1)
+          .flatMap((m) => (m.role === "tool" ? [m.tool_call_id] : [])),
+      );
+      const pending = (entry.tool_calls ?? []).filter(
+        (c) => !completed.has(c.id),
+      );
+      if (pending.length) {
+        const resumed = await consume(pending, 0);
+        if (resumed) return resumed;
+      }
+    }
+  }
+
   for (let n = 1; n <= maxSteps; n++) {
     const last = n === maxSteps;
     if (last) messages.push({ role: "user", content: FINAL_STEP_NOTE });
@@ -364,49 +478,9 @@ export async function runAgent(
         content: result.text,
         tool_calls: calls,
       });
-      for (const c of calls) {
-        trace?.({
-          step: n,
-          kind: "tool",
-          label: `Using ${c.name}`,
-          tool: c.name,
-        });
-        const key = `${c.name}|${c.arguments}`;
-        const count = (seen.get(key) ?? 0) + 1;
-        seen.set(key, count);
-        const limited = count >= 3;
-        const output: LoopToolResult = limited
-          ? {
-              content: JSON.stringify({
-                error:
-                  "You already ran this exact call twice. Use those results and move on.",
-              }),
-              isError: true,
-            }
-          : options.executeTool
-            ? await options.executeTool(c, ctx)
-            : {
-                content: JSON.stringify({
-                  error: "This run does not have a tool executor.",
-                }),
-                isError: true,
-              };
-        messages.push({
-          role: "tool",
-          tool_call_id: c.id,
-          name: c.name,
-          content: output.content,
-        });
-        trace?.({
-          step: n,
-          kind: "result",
-          label: `Finished ${c.name}`,
-          tool: c.name,
-        });
-        toolsRan++;
-        if (output.stop) return finish(output.content, n, false);
-        if (ctx.clarification) return finish("", n, false);
-      }
+      await checkpoint();
+      const completed = await consume(calls, n);
+      if (completed) return completed;
       continue;
     }
 
@@ -416,6 +490,7 @@ export async function runAgent(
     // gets one nudge, whether or not tools ran first.
     if (!text && guards-- > 0 && !last) {
       messages.push({ role: "user", content: EMPTY_ANSWER_NOTE });
+      await checkpoint();
       continue;
     }
     if (
@@ -428,8 +503,10 @@ export async function runAgent(
     ) {
       messages.push({ role: "assistant", content: text });
       messages.push({ role: "user", content: PROMISED_TOOLS_NOTE });
+      await checkpoint();
       continue;
     }
+    await checkpoint();
     return finish(text, n, false);
   }
   return finish("", maxSteps, true);

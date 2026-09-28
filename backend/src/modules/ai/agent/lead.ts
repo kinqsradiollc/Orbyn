@@ -9,7 +9,12 @@ import { pool } from "../../../db/pool.js";
 import type { FastifyBaseLogger } from "fastify";
 import type { ChatTurn, SystemRole } from "@orbyn/core";
 import type { ResolvedAi } from "../providers/adapters.js";
-import { runAgent, type AgentTrace, type LoopToolResult } from "./loop.js";
+import {
+  runAgent,
+  type AgentTrace,
+  type LoopToolResult,
+  type AgentLoopCheckpoint,
+} from "./loop.js";
 import type { AgentContext } from "./tools.js";
 import {
   SHARED_ASSISTANT_READS,
@@ -90,6 +95,8 @@ export type LeadState = {
   token_estimate: number;
   token_budget: number;
   answer_to_person?: string;
+  loop?: AgentLoopCheckpoint;
+  pending_delegate?: { tasks: SpecialistTask[]; reports: SpecialistReport[] };
 };
 
 export type LeadProgress = (
@@ -199,6 +206,7 @@ export async function runLead(input: {
   trace?: AgentTrace;
   progress?: LeadProgress;
   signal?: AbortSignal;
+  checkpoint?: () => Promise<void>;
 }): Promise<{ state: LeadState; partial: boolean }> {
   const { state } = input;
 
@@ -224,8 +232,9 @@ export async function runLead(input: {
     .join("\n\n");
 
   if (
-    state.lead_steps >= LEAD_MAX_STEPS ||
-    state.token_estimate >= state.token_budget
+    !state.loop &&
+    (state.lead_steps >= LEAD_MAX_STEPS ||
+      state.token_estimate >= state.token_budget)
   ) {
     // Out of steps or tokens before this turn began: one last answer
     // without tools, as the loop gives when it runs out mid-way.
@@ -258,28 +267,37 @@ export async function runLead(input: {
         return err(
           parsed.error.issues[0]?.message ?? "Check the delegate tasks.",
         );
-      if (state.stagnant_rounds >= MAX_STAGNANT_DELEGATE_ROUNDS)
+      if (
+        !state.pending_delegate &&
+        state.stagnant_rounds >= MAX_STAGNANT_DELEGATE_ROUNDS
+      )
         return err(
           "Two delegation rounds made no progress. Use the results already gathered and finish or ask the person.",
         );
       if (
-        state.specialist_runs + parsed.data.tasks.length >
-        SPECIALIST_MAX_RUNS
+        !state.pending_delegate &&
+        state.specialist_runs + parsed.data.tasks.length > SPECIALIST_MAX_RUNS
       )
         return err(
           `This run allows at most ${SPECIALIST_MAX_RUNS} specialist runs. Finish with the reports already gathered.`,
         );
 
-      state.delegate_rounds++;
-      state.specialist_runs += parsed.data.tasks.length;
-      const tasks: SpecialistTask[] = parsed.data.tasks.map((task, index) => ({
-        ...task,
-        id: `r${state.delegate_rounds}t${index + 1}`,
-        brief: briefFor(state, {
+      if (!state.pending_delegate) {
+        state.delegate_rounds++;
+        state.specialist_runs += parsed.data.tasks.length;
+      }
+      const tasks: SpecialistTask[] =
+        state.pending_delegate?.tasks ??
+        parsed.data.tasks.map((task, index) => ({
           ...task,
           id: `r${state.delegate_rounds}t${index + 1}`,
-        }),
-      }));
+          brief: briefFor(state, {
+            ...task,
+            id: `r${state.delegate_rounds}t${index + 1}`,
+          }),
+        }));
+      state.pending_delegate ??= { tasks, reports: [] };
+      await input.checkpoint?.();
       for (const task of tasks)
         input.progress?.(`Delegating to ${SPECIALISTS[task.specialist].name}`, {
           step: state.lead_steps,
@@ -288,8 +306,12 @@ export async function runLead(input: {
           tool: "delegate",
         });
 
-      const run = (task: SpecialistTask) =>
-        runSpecialist({
+      const run = async (task: SpecialistTask) => {
+        const saved = state.pending_delegate?.reports.find(
+          (report) => report.task_id === task.id,
+        );
+        if (saved) return saved;
+        const report = await runSpecialist({
           ai: input.ai,
           principal: input.principal,
           task,
@@ -312,6 +334,10 @@ export async function runLead(input: {
           trace: input.trace,
           progress: (label, event) => input.progress?.(label, event),
         });
+        state.pending_delegate!.reports.push(report);
+        await input.checkpoint?.();
+        return report;
+      };
       const reports = input.ai.structuredOutput
         ? await (async () => {
             const out: SpecialistReport[] = [];
@@ -347,6 +373,8 @@ export async function runLead(input: {
       const madeProgress = changed(state, reports, added);
       state.stagnant_rounds = madeProgress ? 0 : state.stagnant_rounds + 1;
       state.reports.push(...reports);
+      delete state.pending_delegate;
+      await input.checkpoint?.();
       const answer = reports.map((report) => ({
         specialist: report.specialist,
         status: report.status,
@@ -374,6 +402,7 @@ export async function runLead(input: {
         question: parsed.data.question,
         choices: parsed.data.choices,
       };
+      await input.checkpoint?.();
       return {
         content: JSON.stringify({ waiting_for_person: true, ...state.waiting }),
         isError: false,
@@ -410,6 +439,7 @@ export async function runLead(input: {
       state.selected_steps = steps;
       state.answer = parsed.data.answer;
       state.waiting = null;
+      await input.checkpoint?.();
       input.progress?.("Answer ready", {
         step: state.lead_steps,
         kind: "result",
@@ -459,6 +489,10 @@ export async function runLead(input: {
   };
 
   const startingStep = state.lead_steps;
+  // Refresh the system facts on resume; trimmed raw tool replies are backed by
+  // the persisted reports and exact staged plan in this prompt.
+  if (state.loop?.messages[0]?.role === "system")
+    state.loop.messages[0] = { role: "system", content: systemPrompt };
   const result = await runAgent(
     input.ai,
     input.context,
@@ -480,6 +514,11 @@ export async function runLead(input: {
       maxToolCallsPerStep: 1,
       forceToolLoop: true,
       signal: input.signal,
+      resume: state.loop,
+      checkpoint: async (loop) => {
+        state.loop = loop;
+        await input.checkpoint?.();
+      },
       tokenBudget: {
         get used() {
           return state.token_estimate;
@@ -494,5 +533,7 @@ export async function runLead(input: {
   if (!state.answer && !state.waiting) state.answer = result.summary;
   if (result.partial)
     state.answer = `${state.answer || "I couldn't finish the request."}\n\n${LIMIT_NOTE}`;
+  delete state.loop;
+  await input.checkpoint?.();
   return { state, partial: result.partial || !state.answer };
 }

@@ -456,12 +456,12 @@ export const SWEEP_RULES: SweepRule[] = [
     key: "ai_jobs",
     label: "Assistant jobs",
     detail:
-      "Assistant turns a day after they finished or stopped responding, and turns left waiting for an answer after 14 days.",
+      "Finished assistant turns after a day, non-resumable legacy turns that stopped responding, and unanswered cards after 14 days.",
     table: "ai_jobs",
-    // Running and waiting jobs hold the conversation in run_state, so a job
-    // that died or was never answered doesn't keep it forever.
+    // Durable queued/running checkpoints must survive an outage until a runner
+    // recovers them; only non-resumable legacy jobs can be swept as stale.
     where: `(created_at < now() - interval '1 day' AND state IN ('done', 'failed'))
-      OR (state = 'running' AND heartbeat_at < now() - interval '1 day')
+      OR (state = 'running' AND run_state IS NULL AND heartbeat_at < now() - interval '1 day')
       OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days')`,
     days: 0,
     configurable: false,

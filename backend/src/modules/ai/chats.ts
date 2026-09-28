@@ -300,8 +300,9 @@ export async function finishChatTurn(
     trace: ChatTraceEntry[];
     failed?: boolean;
   },
+  sharedDb?: Queryable,
 ) {
-  await transaction(async (db) => {
+  const finish = async (db: Queryable) => {
     const row = (
       await db.query<{
         turns: unknown;
@@ -369,7 +370,9 @@ export async function finishChatTurn(
         [chatId, userId, JSON.stringify(memoryTurns), row.project_id],
       );
     }
-  });
+  };
+  if (sharedDb) await finish(sharedDb);
+  else await transaction(finish);
 }
 
 /** Persist one safe, content-free trace event as the assistant makes progress. */
@@ -377,8 +380,9 @@ export async function appendChatTrace(
   userId: string,
   chatId: string,
   entry: ChatTraceEntry,
+  sharedDb?: Queryable,
 ) {
-  await transaction(async (db) => {
+  const append = async (db: Queryable) => {
     const row = (
       await db.query<{ trace: unknown }>(
         "SELECT trace FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE",
@@ -393,7 +397,9 @@ export async function appendChatTrace(
       "UPDATE ai_chats SET trace = $3::jsonb, last_used_at = now() WHERE id = $1 AND user_id = $2",
       [chatId, userId, JSON.stringify(trace)],
     );
-  });
+  };
+  if (sharedDb) await append(sharedDb);
+  else await transaction(append);
 }
 
 export async function listAiChats(

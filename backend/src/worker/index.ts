@@ -106,6 +106,12 @@ export async function runWorker() {
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => {
       stopping = true;
+      void stopRunner?.().catch((error) => {
+        console.error(
+          "Assistant runner shutdown failed",
+          error instanceof Error ? error.message : "unknown",
+        );
+      });
     });
   // Timed on the monotonic clock: when the wall clock is set right (by
   // hours, say), the loop's own rhythm doesn't stall or rush with it.

@@ -222,3 +222,46 @@ test("old chats compact into private notes while pinned and kept-out chats stay 
   );
   assert.ok(retried.rows[0].swept_at);
 });
+
+test("queued, running and waiting jobs keep an old chat available for reattachment", async () => {
+  await pool.query(
+    "UPDATE ai_chats SET last_used_at = now() WHERE user_id = $1",
+    [userId],
+  );
+  const chatId = randomUUID();
+  await pool.query(
+    'INSERT INTO ai_chats(id, user_id, title, turns, last_used_at) VALUES($1, $2, \'Active old chat\', \'[{"role":"user","text":"Keep my run"}]\', now() - interval \'8 days\')',
+    [chatId, userId],
+  );
+  const jobId = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id, chat_id, state, run_state) VALUES($1, $2, 'queued', '{}'::jsonb) RETURNING id",
+      [userId, chatId],
+    )
+  ).rows[0].id;
+  let summaries = 0;
+  for (const state of ["queued", "running", "waiting"]) {
+    await pool.query("UPDATE ai_jobs SET state = $2 WHERE id = $1", [
+      jobId,
+      state,
+    ]);
+    assert.equal(
+      await sweepOldChats({
+        ai: {} as ResolvedAi,
+        compact: async () => {
+          summaries++;
+          return JSON.stringify({ asked: [], decided: [], changed: [] });
+        },
+      }),
+      0,
+    );
+    const chat = (
+      await pool.query("SELECT turns, swept_at FROM ai_chats WHERE id = $1", [
+        chatId,
+      ])
+    ).rows[0];
+    assert.equal(chat.swept_at, null);
+    assert.equal(chat.turns.length, 1);
+  }
+  assert.equal(summaries, 0);
+});

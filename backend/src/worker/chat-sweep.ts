@@ -173,6 +173,8 @@ async function claimChats(limit: number, now: Date, skip: string[]) {
            LEFT JOIN items i ON c.scope_kind = 'task' AND i.id = c.scope_id
            LEFT JOIN projects tp ON tp.id = i.project_id
           WHERE c.pinned = false AND c.swept_at IS NULL
+            AND NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.chat_id = c.id
+              AND j.state IN ('queued', 'running', 'waiting'))
             AND c.sweep_attempts < $3
             AND c.last_used_at < $1::timestamptz - make_interval(days => $4)
             AND (c.sweep_claimed_at IS NULL OR c.sweep_claimed_at < $1::timestamptz - make_interval(mins => $5))
@@ -252,6 +254,8 @@ async function sweepChat(
         `UPDATE ai_chats SET swept_at = $2, turns = '[]'::jsonb, trace = '[]'::jsonb,
            sweep_claimed_at = NULL, sweep_last_error = NULL
          WHERE id = $1 AND user_id = $3 AND pinned = false AND swept_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.chat_id = ai_chats.id
+             AND j.state IN ('queued', 'running', 'waiting'))
            AND last_used_at < $2::timestamptz - make_interval(days => $4)`,
         [chat.id, now, chat.user_id, CHAT_RETENTION_DAYS],
       );
@@ -286,6 +290,8 @@ async function sweepChat(
       const current = (
         await db.query<{ id: string }>(
           `SELECT id FROM ai_chats WHERE id = $1 AND user_id = $2
+            AND NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.chat_id = ai_chats.id
+              AND j.state IN ('queued', 'running', 'waiting'))
             AND pinned = false AND swept_at IS NULL AND sweep_claimed_at IS NOT NULL
             AND last_used_at < $3::timestamptz - make_interval(days => $4) FOR UPDATE`,
           [chat.id, chat.user_id, now, CHAT_RETENTION_DAYS],

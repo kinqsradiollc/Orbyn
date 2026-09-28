@@ -93,3 +93,245 @@ test("Stop discards a queued run before a worker can claim it", async () => {
   assert.equal(job.result.assistant_run.outcome, "discarded");
   assert.equal(await claimAssistantJob("runner-a"), null);
 });
+
+test("an expired lease requeues its checkpoint three times, then fails plainly", async () => {
+  const id = await enqueue();
+  const { failStaleAssistantJobs } =
+    await import("../src/modules/ai/agent/run.js");
+  const before = (
+    await pool.query("SELECT run_state FROM ai_jobs WHERE id = $1", [id])
+  ).rows[0].run_state;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    assert.equal((await claimAssistantJob(`runner-${attempt}`))?.id, id);
+    await pool.query(
+      "UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = $1",
+      [id],
+    );
+    assert.ok(!(await failStaleAssistantJobs()).includes(id));
+    const job = (
+      await pool.query(
+        "SELECT state, run_state, resume_count FROM ai_jobs WHERE id = $1",
+        [id],
+      )
+    ).rows[0];
+    assert.equal(job.state, "queued");
+    assert.equal(job.resume_count, attempt);
+    assert.deepEqual(job.run_state, before);
+  }
+  assert.equal((await claimAssistantJob("runner-last"))?.id, id);
+  await pool.query(
+    "UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = $1",
+    [id],
+  );
+  assert.ok((await failStaleAssistantJobs()).includes(id));
+  const job = (
+    await pool.query(
+      "SELECT state, error_message, resume_count FROM ai_jobs WHERE id = $1",
+      [id],
+    )
+  ).rows[0];
+  assert.equal(job.state, "failed");
+  assert.equal(job.resume_count, 3);
+  assert.equal(
+    job.error_message,
+    "This request was interrupted too many times. Please ask again.",
+  );
+  const chat = (
+    await pool.query(
+      "SELECT trace FROM ai_chats c JOIN ai_jobs j ON j.chat_id = c.id WHERE j.id = $1",
+      [id],
+    )
+  ).rows[0];
+  assert.ok(
+    chat.trace.some(
+      (entry: { label: string }) =>
+        entry.label === "Picking up where I left off",
+    ),
+  );
+});
+
+test("a worker that lost its lease cannot checkpoint or apply under the old claim", async () => {
+  const id = await enqueue();
+  await claimAssistantJob("old-runner");
+  const { assertAssistantLease, withAssistantLease, AssistantLeaseLost } =
+    await import("../src/modules/ai/agent/lease.js");
+  await withAssistantLease(id, "old-runner", () => assertAssistantLease(id));
+  await pool.query(
+    "UPDATE ai_jobs SET claimed_by = 'new-runner' WHERE id = $1",
+    [id],
+  );
+  await assert.rejects(
+    withAssistantLease(id, "old-runner", () => assertAssistantLease(id)),
+    AssistantLeaseLost,
+  );
+  await withAssistantLease(id, "new-runner", () => assertAssistantLease(id));
+});
+
+test("shutdown checkpoints a blocked provider call and a second runner resumes it", async () => {
+  const { createServer } = await import("node:http");
+  const { startAssistantRunner } =
+    await import("../src/modules/ai/agent/runner.js");
+  await pool.query(
+    "UPDATE ai_jobs SET state = 'failed' WHERE user_id = $1 AND state IN ('queued', 'running')",
+    [userId],
+  );
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let called!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    called = resolve;
+  });
+  let calls = 0;
+  const provider = createServer(async (request, response) => {
+    for await (const _chunk of request) {
+      /* Consume the provider request. */
+    }
+    calls++;
+    if (calls === 1) {
+      called();
+      await gate;
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: "tool_calls",
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: `finish-${calls}`,
+                  type: "function",
+                  function: {
+                    name: "finish",
+                    arguments: JSON.stringify({
+                      answer: "The resumed run is ready.",
+                      steps: [],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) =>
+    provider.listen(0, "127.0.0.1", resolve),
+  );
+  const settings = (
+    await pool.query("SELECT provider_id, model FROM ai_settings WHERE id")
+  ).rows[0];
+  const providerId = (
+    await pool.query(
+      "INSERT INTO ai_providers(kind, name, base_url) VALUES('openai-compatible', 'Runner shutdown test', $1) RETURNING id",
+      [`http://127.0.0.1:${(provider.address() as { port: number }).port}/v1`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE ai_settings SET provider_id = $1, model = 'runner-test' WHERE id",
+    [providerId],
+  );
+  const logger = {
+    warn: () => {},
+    error: () => {},
+  } as unknown as import("fastify").FastifyBaseLogger;
+  let stopAgain: (() => Promise<void>) | undefined;
+  const id = await enqueue();
+  const stop = startAssistantRunner(logger, { shutdownMs: 50 });
+  try {
+    await Promise.race([
+      entered,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("Runner never called the provider")),
+          3000,
+        ),
+      ),
+    ]);
+    const started = Date.now();
+    await stop();
+    assert.ok(
+      Date.now() - started < 2000,
+      "the configured shutdown grace is bounded",
+    );
+    const parked = (
+      await pool.query(
+        "SELECT state, run_state, lease_until <= now() AS released FROM ai_jobs WHERE id = $1",
+        [id],
+      )
+    ).rows[0];
+    assert.equal(parked.state, "running");
+    assert.equal(parked.released, true);
+    assert.ok(parked.run_state.checkpoint_step > 0);
+    release();
+    stopAgain = startAssistantRunner(logger);
+    let finished: any;
+    for (let attempt = 0; attempt < 150; attempt++) {
+      finished = (
+        await pool.query(
+          "SELECT state, result, resume_count FROM ai_jobs WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+      if (finished.state === "done" || finished.state === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(finished.state, "done", JSON.stringify(finished));
+    assert.equal(finished.result.answer, "The resumed run is ready.");
+    assert.equal(finished.resume_count, 1);
+    assert.equal(calls, 2);
+    assert.ok(
+      finished.result.trace.some(
+        (entry: { label: string }) =>
+          entry.label === "Picking up where I left off",
+      ),
+    );
+  } finally {
+    release();
+    await stop();
+    await stopAgain?.();
+    await pool.query(
+      "UPDATE ai_settings SET provider_id = $1, model = $2 WHERE id",
+      [settings.provider_id, settings.model],
+    );
+    await pool.query("DELETE FROM ai_providers WHERE id = $1", [providerId]);
+    provider.closeAllConnections();
+    await new Promise<void>((resolve) => provider.close(() => resolve()));
+  }
+});
+
+test("the sweeper retains durable checkpoints through a multi-day outage", async () => {
+  const queued = await enqueue();
+  const running = await enqueue();
+  const legacy = await enqueue();
+  const finished = await enqueue();
+  await pool.query(
+    "UPDATE ai_jobs SET created_at = now() - interval '2 days', heartbeat_at = now() - interval '2 days' WHERE id = ANY($1::uuid[])",
+    [[queued, running, legacy, finished]],
+  );
+  await pool.query(
+    "UPDATE ai_jobs SET state = 'running' WHERE id = ANY($1::uuid[])",
+    [[running, legacy]],
+  );
+  await pool.query("UPDATE ai_jobs SET run_state = NULL WHERE id = $1", [
+    legacy,
+  ]);
+  await pool.query("UPDATE ai_jobs SET state = 'done' WHERE id = $1", [
+    finished,
+  ]);
+  const { runSweep } = await import("../src/lib/sweep.js");
+  await runSweep();
+  const remaining = (
+    await pool.query("SELECT id FROM ai_jobs WHERE id = ANY($1::uuid[])", [
+      [queued, running, legacy, finished],
+    ])
+  ).rows
+    .map((row) => row.id)
+    .sort();
+  assert.deepEqual(remaining, [queued, running].sort());
+});

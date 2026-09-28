@@ -280,6 +280,69 @@ test("the lead delegates, stages specialist work, and applies one checked plan",
     [user.id],
   );
   assert.equal(made.rowCount, 1, "the checked plan was applied once");
+  const saved = await app.inject({
+    url: `/ai/chats/${job.chat_id}`,
+    headers: auth(user.token),
+  });
+  assert.equal(
+    saved
+      .json()
+      .turns.find(
+        (turn: { role: string; turn_id: string }) =>
+          turn.role === "assistant" && turn.turn_id === job.turn_id,
+      ).changes_job,
+    result.assistant_run.plan_job,
+  );
+  const receipt = (
+    await pool.query("SELECT apply_result FROM ai_jobs WHERE id = $1", [job.id])
+  ).rows[0].apply_result;
+  assert.equal(receipt.applied, true);
+  // A committed apply can outlive the general client_ref cache during an outage.
+  await pool.query(
+    "UPDATE mcp_request_state SET expires_at = now() - interval '2 days' WHERE kind = 'client_ref' AND grant_id IN (SELECT id FROM agent_grants WHERE user_id = $1)",
+    [user.id],
+  );
+  const { initialAssistantRun } =
+    await import("../src/modules/ai/agent/run.js");
+  const checkpoint = initialAssistantRun({
+    message: "Add a launch checklist task.",
+    history: [],
+    timezone: "UTC",
+    chat_id: job.chat_id,
+    turn_id: job.turn_id,
+    scope: null,
+  });
+  checkpoint.state.answer = "I added the launch checklist task.";
+  checkpoint.state.selected_steps = [
+    {
+      id: "s1",
+      tool: "create_tasks",
+      args: { tasks: [{ title: "Prepare launch checklist", kind: "task" }] },
+    },
+  ];
+  checkpoint.state.plan = checkpoint.state.selected_steps;
+  const providerCalls = requests.length;
+  await pool.query(
+    "UPDATE ai_jobs SET state = 'queued', run_state = $2::jsonb, claimed_by = NULL, lease_until = NULL WHERE id = $1",
+    [job.id, JSON.stringify(checkpoint)],
+  );
+  const resumed = await poll(user.token, job.id, ["done", "failed"]);
+  assert.equal(resumed.state, "done", JSON.stringify(resumed));
+  assert.equal(resumed.assistant_run.plan_job, result.assistant_run.plan_job);
+  assert.equal(
+    requests.length,
+    providerCalls,
+    "the completed lead was not rerun",
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM items WHERE user_id = $1 AND title = 'Prepare launch checklist'",
+        [user.id],
+      )
+    ).rowCount,
+    1,
+  );
 });
 
 test("a lead question pauses the run and the person's answer resumes it", async () => {
@@ -2675,6 +2738,144 @@ test("a dropped client reattaches to the same run and saves its reply once", asy
           job.chat_id,
         ])
       ).rowCount,
+      1,
+    );
+  } finally {
+    release();
+  }
+});
+
+test("an expired specialist run resumes completed reports without rerunning or duplicating changes", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let projectsRuns = 0;
+  let writerRuns = 0;
+  respond = async (request) => {
+    const names = toolNames(request);
+    const previousTool = [...request.messages]
+      .reverse()
+      .find((message) => message.role === "tool");
+    if (names.includes("delegate")) {
+      if (!previousTool)
+        return {
+          name: "delegate",
+          arguments: {
+            tasks: [
+              {
+                specialist: "projects",
+                brief: "Create a task titled Durable checklist",
+                want_options: false,
+              },
+              {
+                specialist: "writer",
+                brief: "Investigate a useful brief",
+                want_options: false,
+              },
+            ],
+          },
+        };
+      return {
+        name: "finish",
+        arguments: {
+          answer: "The checklist is ready.",
+          steps: stepIds(previousTool.content),
+        },
+      };
+    }
+    if (names.includes("create_tasks")) {
+      if (!previousTool) {
+        projectsRuns++;
+        return {
+          name: "create_tasks",
+          arguments: { tasks: [{ title: "Durable checklist", kind: "task" }] },
+        };
+      }
+      const staged = JSON.parse(previousTool.content ?? "{}");
+      return {
+        name: "report",
+        arguments: {
+          status: "done",
+          summary: "Checklist staged",
+          findings: [],
+          steps: [staged.step_id],
+          open_questions: [],
+        },
+      };
+    }
+    writerRuns++;
+    if (writerRuns === 1) await gate;
+    return {
+      name: "report",
+      arguments: {
+        status: "done",
+        summary: "Brief checked",
+        findings: [],
+        steps: [],
+        open_questions: [],
+      },
+    };
+  };
+  const user = await register();
+  const job = await start(
+    user.token,
+    "Add a durable checklist task and investigate its brief.",
+  );
+  try {
+    let checkpoint: any;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      checkpoint = (
+        await pool.query("SELECT run_state FROM ai_jobs WHERE id = $1", [
+          job.id,
+        ])
+      ).rows[0]?.run_state;
+      if (
+        checkpoint?.state.pending_delegate?.reports.some(
+          (report: { specialist: string }) => report.specialist === "projects",
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(checkpoint?.state.pending_delegate?.reports.length, 1);
+    assert.equal(checkpoint.state.specialist_runs, 2);
+    assert.ok(checkpoint.checkpoint_step > 0);
+    assert.ok(Buffer.byteLength(JSON.stringify(checkpoint)) < 200_000);
+    await pool.query(
+      "UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = $1",
+      [job.id],
+    );
+    const result = await poll(user.token, job.id, ["done", "failed"], 300);
+    assert.equal(result.state, "done", JSON.stringify(result));
+    assert.equal(result.assistant_run.outcome, "applied");
+    assert.equal(projectsRuns, 1, "the completed specialist report was reused");
+    assert.equal(
+      writerRuns,
+      2,
+      "only the interrupted specialist was run again",
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT id FROM items WHERE user_id = $1 AND title = 'Durable checklist'",
+          [user.id],
+        )
+      ).rowCount,
+      1,
+    );
+    assert.ok(
+      result.trace.some(
+        (entry: { label: string }) =>
+          entry.label === "Picking up where I left off",
+      ),
+    );
+    assert.equal(
+      (
+        await pool.query("SELECT resume_count FROM ai_jobs WHERE id = $1", [
+          job.id,
+        ])
+      ).rows[0].resume_count,
       1,
     );
   } finally {
