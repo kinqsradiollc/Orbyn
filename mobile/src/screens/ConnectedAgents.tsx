@@ -51,10 +51,11 @@ import { shared } from "../styles";
 import { AgentRulesCard, InboxPanel } from "./AgentInbox";
 import { AgentWarmStartCards } from "./AgentContext";
 
+/** What a connection can do, in a word or two, for its badge. */
 const ACCESS_TAG: Record<AgentAccess, string> = {
-  read: "See",
-  suggest: "Suggest",
-  write: "Change",
+  read: "Can see",
+  suggest: "Can suggest",
+  write: "Can make changes",
 };
 const EXPIRY_CHOICES = [7, 30, 90, 365];
 
@@ -677,16 +678,9 @@ export function ConnectedAgentsCard({
                   ) : null}
                 </Text>
                 <View style={s.tags}>
-                  <Pill label="See" tone="accent" />
-                  {g.access !== "read" && (
-                    <Pill
-                      label={
-                        g.access === "write"
-                          ? TRUST_TAG[g.trust]
-                          : ACCESS_TAG[g.access]
-                      }
-                      tone="accent"
-                    />
+                  <Pill label={ACCESS_TAG[g.access]} tone="accent" />
+                  {g.access === "write" && (
+                    <Pill label={TRUST_TAG[g.trust]} tone="accent" />
                   )}
                   {g.access === "write" &&
                     Object.keys(g.space_trust).length > 0 && (

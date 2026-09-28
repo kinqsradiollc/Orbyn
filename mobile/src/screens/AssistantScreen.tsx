@@ -1,10 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Animated,
+  ActivityIndicator,
   Alert,
-  Easing,
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,7 +16,9 @@ import {
   type ChatTraceEntry,
   type AiChatSummary,
 } from "@orbyn/core";
+import { BottomSheet } from "../components/BottomSheet";
 import { Button } from "../components/Button";
+import { EmptyState } from "../components/EmptyState";
 import { Icon } from "../components/Icon";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
@@ -30,10 +29,15 @@ import { ProposalReview } from "../components/ProposalReview";
 import { Field } from "../components/Field";
 import { client } from "../lib/api";
 import { errorText } from "../lib/errors";
-import { changeKindWords, stepLabel, toolLabel } from "../lib/assistant-labels";
+import {
+  changeKindWords,
+  progressText,
+  stepLabel,
+  traceLines,
+} from "../lib/assistant-labels";
 import type { Assistant } from "../hooks/useAssistant";
-import { FadeIn, PressableScale, useReducedMotion, Pressable } from "../motion";
-import { colors, fonts, radii, themed, tint } from "../theme";
+import { FadeIn, PressableScale, Pressable } from "../motion";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 /** Same starter prompts as the desktop assistant. */
@@ -101,6 +105,7 @@ export function AssistantScreen({
   const [renameTarget, setRenameTarget] = useState<AiChatSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
+  const renameNext = useRef<AiChatSummary | null>(null);
   const [personAnswer, setPersonAnswer] = useState("");
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
@@ -145,8 +150,10 @@ export function AssistantScreen({
     {
       label: "Rename",
       onPress: () => {
-        setRenameTarget(chat);
+        // The rename sheet opens once Chats has gone (iOS shows one at a time).
+        renameNext.current = chat;
         setRenameDraft(chat.title);
+        setHistoryOpen(false);
       },
     },
     {
@@ -201,193 +208,192 @@ export function AssistantScreen({
 
   return (
     <>
-      <Modal
+      <BottomSheet
         visible={!!identity && !identity.named_at}
-        transparent
-        animationType="fade"
-        onRequestClose={() => void saveIdentity(true)}
-      >
-        <View style={s.identityBackdrop}>
-          <View style={s.identitySheet}>
-            <Text style={shared.title}>Give your assistant a name</Text>
-            <Text style={[shared.subtitle, s.identityIntro]}>
-              Choose a name and an optional persona. You can change both later
-              in Settings.
-            </Text>
-            <Field label="Name">
-              <TextInput
-                autoFocus
-                maxLength={40}
-                value={identityName}
-                onChangeText={setIdentityName}
-                style={shared.input}
-              />
-            </Field>
-            <Field label="Persona">
-              <TextInput
-                multiline
-                maxLength={1000}
-                value={identityPersona}
-                onChangeText={setIdentityPersona}
-                placeholder="Warm, direct, and concise"
-                style={[shared.input, s.identityPersona]}
-              />
-            </Field>
-            <View style={s.identityActions}>
-              <Button
-                title="Save"
-                onPress={() => void saveIdentity()}
-                disabled={identitySaving}
-              />
-              <Button
-                title="Skip"
-                secondary
-                onPress={() => void saveIdentity(true)}
-                disabled={identitySaving}
-              />
-            </View>
+        title="Give your assistant a name"
+        onClose={() => void saveIdentity(true)}
+        footer={
+          <View style={s.sheetActions}>
+            <Button
+              title={identitySaving ? "Saving…" : "Save"}
+              onPress={() => void saveIdentity()}
+              disabled={identitySaving}
+              style={s.sheetAction}
+            />
+            <Button
+              title="Skip"
+              secondary
+              onPress={() => void saveIdentity(true)}
+              disabled={identitySaving}
+              style={s.sheetAction}
+            />
           </View>
-        </View>
-      </Modal>
-      <Modal
+        }
+      >
+        <Text style={[shared.small, s.sheetIntro]}>
+          Choose a name and an optional persona. You can change both later in
+          Settings.
+        </Text>
+        <Field label="Name">
+          <TextInput
+            autoFocus
+            maxLength={40}
+            value={identityName}
+            onChangeText={setIdentityName}
+            placeholder="Orbyn"
+            placeholderTextColor={colors.faint}
+            style={shared.input}
+          />
+        </Field>
+        <Field label="Persona (optional)">
+          <TextInput
+            multiline
+            maxLength={1000}
+            value={identityPersona}
+            onChangeText={setIdentityPersona}
+            placeholder="Warm, direct, and concise"
+            placeholderTextColor={colors.faint}
+            style={[shared.input, s.multiline]}
+          />
+        </Field>
+      </BottomSheet>
+      <BottomSheet
         visible={historyOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setHistoryOpen(false)}
+        title="Chats"
+        onClose={() => setHistoryOpen(false)}
+        afterClose={() => {
+          if (renameNext.current) setRenameTarget(renameNext.current);
+          renameNext.current = null;
+        }}
       >
-        <View style={s.historyBackdrop}>
-          <View style={s.historySheet}>
-            <View style={s.historyHead}>
-              <Text style={shared.title}>Chats</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close chat history"
-                hitSlop={8}
-                onPress={() => setHistoryOpen(false)}
-              >
-                <Icon name="x" size={20} color={colors.textSoft} />
-              </Pressable>
-            </View>
-            <TextInput
-              style={[shared.input, s.historySearch]}
-              value={chatSearch}
-              onChangeText={searchChats}
-              placeholder="Search chats"
-              placeholderTextColor={colors.faint}
-              accessibilityLabel="Search chats"
-            />
-            <ScrollView
-              style={s.historyList}
-              keyboardShouldPersistTaps="handled"
+        <TextInput
+          style={[shared.input, s.historySearch]}
+          value={chatSearch}
+          onChangeText={searchChats}
+          placeholder="Search chats"
+          placeholderTextColor={colors.faint}
+          accessibilityLabel="Search chats"
+        />
+        {savedChats?.map((chat) => (
+          <View
+            key={chat.id}
+            style={[
+              s.historyRow,
+              chat.id === activeChatId && s.historyRowActive,
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open the chat “${chat.title}”`}
+              onPress={() => {
+                setHistoryOpen(false);
+                void openChat(chat.id).catch(() =>
+                  Alert.alert("Couldn't open chat", "Try again."),
+                );
+              }}
+              style={s.historyOpen}
             >
-              {savedChats?.map((chat) => (
-                <View
-                  key={chat.id}
-                  style={[
-                    s.historyRow,
-                    chat.id === activeChatId && s.historyRowActive,
-                  ]}
-                >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open the chat “${chat.title}”`}
-                    onPress={() => {
-                      setHistoryOpen(false);
-                      void openChat(chat.id).catch(() =>
-                        Alert.alert("Couldn't open chat", "Try again."),
-                      );
-                    }}
-                    style={s.historyOpen}
-                  >
-                    <Text style={s.historyTitle} numberOfLines={1}>
-                      {chat.pinned ? "Pinned · " : ""}
-                      {chat.title}
-                    </Text>
-                    <Text style={shared.small} numberOfLines={1}>
-                      {chat.swept_at
-                        ? "Summary saved"
-                        : (chat.project_name ??
-                          new Date(chat.last_used_at).toLocaleDateString([], {
-                            day: "numeric",
-                            month: "short",
-                          }))}
-                    </Text>
-                  </Pressable>
-                  <MoreMenu
-                    label={`Options for ${chat.title}`}
-                    title={chat.title}
-                    disabled={locked}
-                    actions={chatActions(chat)}
-                  />
-                </View>
-              ))}
-              {savedChats?.length === 0 && (
-                <Text style={[shared.small, s.historyEmpty]}>
-                  No matching chats.
-                </Text>
-              )}
-              {savedChats === null && (
-                <Text style={[shared.small, s.historyEmpty]}>
-                  Loading chats…
-                </Text>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-      <Modal
-        visible={!!renameTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRenameTarget(null)}
-      >
-        <View style={s.identityBackdrop}>
-          <View style={s.identitySheet}>
-            <Text style={shared.title}>Rename chat</Text>
-            <TextInput
-              autoFocus
-              maxLength={120}
-              value={renameDraft}
-              onChangeText={setRenameDraft}
-              style={shared.input}
-              accessibilityLabel="Chat title"
+              <Text style={s.historyTitle} numberOfLines={1}>
+                {chat.title}
+              </Text>
+              <Text style={shared.small} numberOfLines={1}>
+                {chat.pinned ? "Pinned · " : ""}
+                {chat.swept_at
+                  ? "Summary saved"
+                  : (chat.project_name ??
+                    new Date(chat.last_used_at).toLocaleDateString([], {
+                      day: "numeric",
+                      month: "short",
+                    }))}
+              </Text>
+            </Pressable>
+            <MoreMenu
+              label={`Options for ${chat.title}`}
+              title={chat.title}
+              disabled={locked}
+              actions={chatActions(chat)}
             />
-            <View style={s.identityActions}>
-              <Button
-                title="Save"
-                disabled={renameBusy || !renameDraft.trim()}
-                onPress={() => {
-                  if (!renameTarget || !renameDraft.trim()) return;
-                  setRenameBusy(true);
-                  void renameChat(renameTarget.id, renameDraft.trim())
-                    .then(() => setRenameTarget(null))
-                    .catch(() =>
-                      Alert.alert("Couldn't rename chat", "Try again."),
-                    )
-                    .finally(() => setRenameBusy(false));
-                }}
-              />
-              <Button
-                title="Cancel"
-                secondary
-                disabled={renameBusy}
-                onPress={() => setRenameTarget(null)}
-              />
-            </View>
           </View>
+        ))}
+        {savedChats?.length === 0 &&
+          (chatSearch.trim() ? (
+            <EmptyState
+              icon="search"
+              title="No chats match"
+              body="Try other words, or clear the search."
+            />
+          ) : (
+            <EmptyState
+              icon="comment"
+              title="No chats yet"
+              body={`Chats with ${agentName} are kept here.`}
+            />
+          ))}
+        {savedChats === null && (
+          <Text style={[shared.small, s.historyEmpty]}>Loading chats…</Text>
+        )}
+      </BottomSheet>
+      <BottomSheet
+        visible={!!renameTarget}
+        title="Rename chat"
+        onClose={() => setRenameTarget(null)}
+        footer={
+          <View style={s.sheetActions}>
+            <Button
+              title="Save"
+              disabled={renameBusy || !renameDraft.trim()}
+              style={s.sheetAction}
+              onPress={() => {
+                if (!renameTarget || !renameDraft.trim()) return;
+                setRenameBusy(true);
+                void renameChat(renameTarget.id, renameDraft.trim())
+                  .then(() => setRenameTarget(null))
+                  .catch(() =>
+                    Alert.alert("Couldn't rename chat", "Try again."),
+                  )
+                  .finally(() => setRenameBusy(false));
+              }}
+            />
+            <Button
+              title="Cancel"
+              secondary
+              disabled={renameBusy}
+              style={s.sheetAction}
+              onPress={() => setRenameTarget(null)}
+            />
+          </View>
+        }
+      >
+        <Field label="Title">
+          <TextInput
+            autoFocus
+            maxLength={120}
+            value={renameDraft}
+            onChangeText={setRenameDraft}
+            style={shared.input}
+            accessibilityLabel="Chat title"
+          />
+        </Field>
+      </BottomSheet>
+      <View style={s.threadHead}>
+        <Text style={[shared.eyebrow, s.threadEyebrow]}>
+          {turns.length ? "CONVERSATION" : ""}
+        </Text>
+        <View style={s.headActions}>
+          <SmallAction
+            label="Chats"
+            disabled={locked}
+            onPress={() => setHistoryOpen(true)}
+          />
+          <SmallAction
+            label="Upcoming"
+            disabled={locked}
+            onPress={() => setUpcomingOpen(true)}
+          />
+          {turns.length > 0 && (
+            <SmallAction label="New chat" disabled={locked} onPress={reset} />
+          )}
         </View>
-      </Modal>
-      <View style={s.historyTrigger}>
-        <SmallAction
-          label="Chat history"
-          disabled={locked}
-          onPress={() => setHistoryOpen(true)}
-        />
-        <SmallAction
-          label="Upcoming"
-          disabled={locked}
-          onPress={() => setUpcomingOpen(true)}
-        />
       </View>
       <AssistantUpcoming
         agentName={agentName}
@@ -410,7 +416,7 @@ export function AssistantScreen({
           )}
         </View>
       )}
-      {turns.length === 0 ? (
+      {turns.length === 0 && (
         <FadeIn style={[s.welcome, { minHeight: Math.max(400, height - 480) }]}>
           <View style={s.badge}>
             <Icon name="sparkles" size={18} color={colors.accent} />
@@ -453,30 +459,6 @@ export function AssistantScreen({
             ))}
           </View>
         </FadeIn>
-      ) : (
-        <View style={s.threadHead}>
-          <Text style={shared.eyebrow}>CONVERSATION</Text>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Start a new conversation"
-            accessibilityState={{ disabled: locked }}
-            disabled={locked}
-            onPress={reset}
-            style={({ pressed }) => [
-              s.newChat,
-              pressed && s.chipPressed,
-              locked && { opacity: 0.5 },
-            ]}
-          >
-            <Icon
-              name="plus"
-              size={14}
-              color={colors.accent}
-              strokeWidth={2.2}
-            />
-            <Text style={s.newChatText}>New chat</Text>
-          </PressableScale>
-        </View>
       )}
 
       <View style={s.thread}>
@@ -542,7 +524,10 @@ export function AssistantScreen({
           ),
         )}
         {waiting && (
-          <View style={s.runCard} accessibilityLiveRegion="polite">
+          <View
+            style={[shared.card, s.runCard]}
+            accessibilityLiveRegion="polite"
+          >
             {waiting.kind === "person" ? (
               <>
                 <Text style={s.runTitle}>One quick question</Text>
@@ -561,23 +546,25 @@ export function AssistantScreen({
                     ))}
                   </View>
                 )}
-                <TextInput
-                  style={s.runInput}
-                  maxLength={4000}
-                  value={personAnswer}
-                  onChangeText={setPersonAnswer}
-                  placeholder="Or type your answer…"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Your answer"
-                  returnKeyType="send"
-                  onSubmitEditing={() => {
-                    const answer = personAnswer.trim();
-                    if (!busy && answer) {
-                      setPersonAnswer("");
-                      void answerWaiting(answer);
-                    }
-                  }}
-                />
+                <Field label="Your answer" style={s.runField}>
+                  <TextInput
+                    style={shared.input}
+                    maxLength={4000}
+                    value={personAnswer}
+                    onChangeText={setPersonAnswer}
+                    placeholder="Or type your answer…"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Your answer"
+                    returnKeyType="send"
+                    onSubmitEditing={() => {
+                      const answer = personAnswer.trim();
+                      if (!busy && answer) {
+                        setPersonAnswer("");
+                        void answerWaiting(answer);
+                      }
+                    }}
+                  />
+                </Field>
                 <Button
                   title="Answer"
                   disabled={busy || !personAnswer.trim()}
@@ -612,7 +599,7 @@ export function AssistantScreen({
                       const label = stepLabel(step);
                       return (
                         <Text key={`${label}-${index}`} style={s.runStep}>
-                          • {label}
+                          {label}
                         </Text>
                       );
                     })}
@@ -662,27 +649,26 @@ export function AssistantScreen({
             )}
           </View>
         )}
-        {runProgress?.state === "running" && (
-          <View style={s.runProgress} accessibilityLiveRegion="polite">
-            <Text style={s.runBody}>
-              {runProgress.label ?? "Working through your request…"}
+        {(thinking || runProgress?.state === "running") && !waiting && (
+          <View
+            style={s.working}
+            accessibilityRole="progressbar"
+            accessibilityLiveRegion="polite"
+          >
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={s.workingText} numberOfLines={2}>
+              {progressText(runProgress?.label) || `${agentName} is thinking…`}
             </Text>
-            <Button
-              title="Stop"
-              secondary
-              disabled={busy}
-              style={s.runStop}
-              onPress={() => void stopRun()}
-            />
+            {runProgress?.state === "running" && (
+              <Button
+                title="Stop"
+                secondary
+                disabled={busy}
+                style={s.runStop}
+                onPress={() => void stopRun()}
+              />
+            )}
           </View>
-        )}
-        {thinking && (
-          <FadeIn from="left" style={s.botRow}>
-            <View style={s.avatar}>
-              <Icon name="sparkles" size={13} color={colors.accent} />
-            </View>
-            <TypingIndicator label={`${agentName} is thinking`} />
-          </FadeIn>
         )}
       </View>
 
@@ -826,82 +812,33 @@ function PlanCard({
   );
 }
 
-/** Three softly bouncing dots while the assistant is working (still under reduced motion). */
-function TypingIndicator({ label }: { label: string }) {
-  const reduced = useReducedMotion();
-  const progress = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (reduced) {
-      progress.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.timing(progress, {
-        toValue: 1,
-        duration: 1200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [progress, reduced]);
-  return (
-    <View
-      style={[s.botBubble, s.typing]}
-      accessibilityRole="progressbar"
-      accessibilityLabel={label}
-    >
-      {[0, 1, 2].map((n) => {
-        const start = n * 0.15;
-        const translateY = progress.interpolate({
-          inputRange: [0, start, start + 0.2, start + 0.4, 1],
-          outputRange: [0, 0, -4, 0, 0],
-        });
-        const opacity = progress.interpolate({
-          inputRange: [0, start, start + 0.2, start + 0.4, 1],
-          outputRange: [0.45, 0.45, 1, 0.45, 0.45],
-        });
-        return (
-          <Animated.View
-            key={n}
-            style={[s.dot, { opacity, transform: [{ translateY }] }]}
-          />
-        );
-      })}
-    </View>
-  );
-}
-
 /** A short, content-free account of the steps behind an assistant reply. */
 function ChatTrace({ trace }: { trace: ChatTraceEntry[] }) {
   const [open, setOpen] = useState(false);
-  if (!trace.length) return null;
+  const lines = traceLines(trace);
+  if (!lines.length) return null;
   return (
     <View style={s.trace}>
-      <PressableScale
+      <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
-        accessibilityLabel={`${open ? "Hide" : "Show"} assistant steps`}
+        accessibilityLabel={`${open ? "Hide" : "Show"} steps`}
         onPress={() => setOpen((shown) => !shown)}
-        style={({ pressed }) => [s.traceToggle, pressed && { opacity: 0.7 }]}
+        style={({ pressed }) => [s.traceToggle, pressed && { opacity: 0.65 }]}
       >
-        <Text style={s.traceToggleText}>
-          {open ? "Hide steps" : `Steps (${trace.length})`}
-        </Text>
-      </PressableScale>
+        <Text style={s.traceToggleText}>Steps ({lines.length})</Text>
+        <Icon
+          name={open ? "chevronDown" : "chevronRight"}
+          size={16}
+          color={colors.muted}
+        />
+      </Pressable>
       {open && (
         <View style={s.traceList}>
-          {trace.map((entry, index) => (
-            <View
-              key={`${entry.turn_id}-${entry.step}-${index}`}
-              style={s.traceRow}
-            >
-              <Text style={s.traceLabel}>{entry.label}</Text>
-              {entry.tool && (
-                <Text style={s.traceTool}>{toolLabel(entry.tool)}</Text>
-              )}
-            </View>
+          {lines.map((line, index) => (
+            <Text key={`${index}-${line}`} style={s.traceLabel}>
+              {line}
+            </Text>
           ))}
         </View>
       )}
@@ -914,41 +851,11 @@ const LINE = 21;
 
 const s = themed(() =>
   StyleSheet.create({
-    identityBackdrop: {
-      flex: 1,
-      justifyContent: "center",
-      padding: 24,
-      backgroundColor: "rgba(10, 15, 25, 0.55)",
-    },
-    identitySheet: {
-      padding: 22,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
-      gap: 14,
-    },
-    identityIntro: { marginBottom: 2 },
-    identityPersona: { minHeight: 78, textAlignVertical: "top" },
-    identityActions: { flexDirection: "row", gap: 8, alignItems: "center" },
-    historyBackdrop: {
-      flex: 1,
-      justifyContent: "center",
-      padding: 16,
-      backgroundColor: tint(colors.shadow, 0.35),
-    },
-    historySheet: {
-      maxHeight: "80%",
-      padding: 16,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
-      gap: 12,
-    },
-    historyHead: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    historySearch: { marginBottom: 0 },
-    historyList: { flexGrow: 0, maxHeight: 520 },
+    sheetIntro: { marginBottom: 14 },
+    multiline: { minHeight: 78, textAlignVertical: "top" },
+    sheetActions: { flexDirection: "row", gap: 8 },
+    sheetAction: { flex: 1 },
+    historySearch: { marginBottom: 8 },
     historyRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -966,11 +873,10 @@ const s = themed(() =>
     },
     historyTitle: {
       fontFamily: fonts.medium,
-      fontSize: 13,
+      fontSize: 15,
       color: colors.text,
     },
     historyEmpty: { marginVertical: 8, textAlign: "center" },
-    historyTrigger: { flexDirection: "row", justifyContent: "flex-end" },
     sweptNote: {
       alignSelf: "stretch",
       padding: 14,
@@ -1036,24 +942,15 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginBottom: 6,
+      gap: 8,
+      marginBottom: 10,
     },
-    newChat: {
+    threadEyebrow: { marginBottom: 0 },
+    headActions: {
       flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      minHeight: 44,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      borderRadius: radii.pill,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-    },
-    newChatText: {
-      fontFamily: fonts.semibold,
-      fontSize: 13,
-      color: colors.accent,
+      flexWrap: "wrap",
+      justifyContent: "flex-end",
+      gap: 8,
     },
     thread: { gap: 12, marginBottom: 14 },
     userRow: { flexDirection: "row", justifyContent: "flex-end" },
@@ -1099,35 +996,24 @@ const s = themed(() =>
     },
     traceToggle: {
       alignSelf: "flex-start",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
       minHeight: 36,
-      justifyContent: "center",
     },
     traceToggleText: {
       fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.textSoft,
     },
-    traceList: { gap: 8, paddingBottom: 4 },
-    traceRow: { gap: 2 },
+    traceList: { gap: 6, paddingBottom: 4 },
     traceLabel: {
       fontFamily: fonts.regular,
       fontSize: 13,
       lineHeight: 18,
       color: colors.textSoft,
     },
-    traceTool: {
-      fontFamily: fonts.regular,
-      fontSize: 11,
-      color: colors.muted,
-    },
-    runCard: {
-      gap: 9,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
-    },
+    runCard: { gap: 9, marginBottom: 0 },
     runTitle: {
       fontFamily: fonts.semibold,
       fontSize: 15,
@@ -1142,17 +1028,7 @@ const s = themed(() =>
     },
     runChoices: { gap: 4 },
     runChoice: { marginBottom: 0, minHeight: 44 },
-    runInput: {
-      minHeight: 48,
-      paddingHorizontal: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.input,
-      backgroundColor: colors.surface,
-      fontFamily: fonts.regular,
-      fontSize: 15,
-      color: colors.text,
-    },
+    runField: { marginBottom: 0 },
     runSteps: {
       gap: 4,
       padding: 10,
@@ -1166,28 +1042,20 @@ const s = themed(() =>
       color: colors.textSoft,
     },
     runButton: { alignSelf: "flex-start", marginBottom: 0, minHeight: 44 },
-    runProgress: {
+    working: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      paddingHorizontal: 8,
+      gap: 10,
+      paddingHorizontal: 4,
     },
-    runStop: { marginBottom: 0, minHeight: 44 },
-    typing: {
-      width: "auto",
-      alignSelf: "flex-start",
-      flexDirection: "row",
-      gap: 5,
-      paddingVertical: 16,
-      paddingHorizontal: 16,
+    workingText: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSoft,
     },
-    dot: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: colors.dot,
-    },
+    runStop: { marginBottom: 0 },
     composer: {
       flexDirection: "row",
       alignItems: "center",

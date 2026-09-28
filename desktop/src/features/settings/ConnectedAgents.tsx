@@ -61,11 +61,11 @@ type Props = {
   onOpenReview?: (proposalId: string) => void;
 };
 
-/** Short names for the access levels, as tags. */
+/** What each access level lets a connection do, as tags. */
 const ACCESS_TAG: Record<AgentAccess, string> = {
-  read: "See",
-  suggest: "Suggest",
-  write: "Change",
+  read: "Can see",
+  suggest: "Can suggest",
+  write: "Can make changes",
 };
 
 const EXPIRY_CHOICES = [7, 30, 90, 365];
@@ -656,13 +656,16 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     )}
                   </strong>
                   <div className="agents-tags">
-                    <span className="agents-tag is-read">See</span>
-                    {g.access !== "read" && (
-                      <span className="agents-tag is-write">
-                        {g.access === "write"
-                          ? TRUST_TAG[g.trust]
-                          : ACCESS_TAG[g.access]}
-                      </span>
+                    <span
+                      className={
+                        "agents-tag " +
+                        (g.access === "read" ? "is-read" : "is-write")
+                      }
+                    >
+                      {ACCESS_TAG[g.access]}
+                    </span>
+                    {g.access === "write" && (
+                      <span className="agents-tag">{TRUST_TAG[g.trust]}</span>
                     )}
                     {g.access === "write" &&
                       Object.keys(g.space_trust).length > 0 && (

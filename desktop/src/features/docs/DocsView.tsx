@@ -854,15 +854,7 @@ export function DocsView({
             <PanelLeftClose size={16} />
           </button>
         </div>
-        {fixedKind ? (
-          <button
-            aria-current={!open ? "page" : undefined}
-            onClick={() => select(null, fixedKind)}
-          >
-            <FileText size={16} />
-            <span>{fixedKind === "memory" ? "Memory" : "Agent notes"}</span>
-          </button>
-        ) : (
+        {!fixedKind && (
           <>
             {(
               [
@@ -1090,7 +1082,12 @@ export function DocsView({
           </>
         )}
         {fixedKind && (
-          <div className="docs-nav-children">{(docs ?? []).map(pageLink)}</div>
+          <div className="docs-nav-children is-flat">
+            {(docs ?? []).map(pageLink)}
+            {docs?.length === 0 && (
+              <p className="muted docs-nav-empty">No notes yet</p>
+            )}
+          </div>
         )}
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
@@ -1377,7 +1374,7 @@ export function DocsView({
                   query || tagFilter
                     ? "Try another word or tag."
                     : fixedKind === "memory"
-                      ? "Facts your agent learns appear here with their sources. Add or edit a topic any time."
+                      ? "What your assistant learns about you is kept here, with where it came from. You can add or change a note any time."
                       : fixedKind === "agent"
                         ? "Briefs and other notes your agent makes are kept here."
                         : "Keep notes, briefs and working out next to your tasks."

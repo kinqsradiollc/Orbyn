@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { AgentActivity } from "@orbyn/core";
 import { openAppUrl } from "../hooks/useAppLinks";
+import { changeLine, visibleChanges } from "../lib/assistant-labels";
 import { errorText } from "../lib/errors";
 import { PressableScale } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
@@ -38,6 +39,7 @@ export function TurnChanges({
     };
   }, [job]);
   if (!changes?.length) return null;
+  const shown = visibleChanges(changes);
   const wasUndone = undone || changes.every((c) => c.undone_at);
   const canUndo = !wasUndone && changes.some((c) => c.undoable);
   const run = async () => {
@@ -70,9 +72,9 @@ export function TurnChanges({
           )
         )}
       </View>
-      {changes.slice(0, SHOWN).map((change) => (
+      {shown.slice(0, SHOWN).map((change) => (
         <View key={change.id} style={s.row}>
-          <Text style={s.text}>• {change.summary}</Text>
+          <Text style={s.text}>{changeLine(change)}</Text>
           {!!change.links?.length && (
             <View style={s.links}>
               {change.links.map((l) => (
@@ -98,8 +100,8 @@ export function TurnChanges({
           )}
         </View>
       ))}
-      {changes.length > SHOWN && (
-        <Text style={s.text}>and {changes.length - SHOWN} more</Text>
+      {shown.length > SHOWN && (
+        <Text style={s.text}>and {shown.length - SHOWN} more</Text>
       )}
       {!!error && (
         <Text accessibilityRole="alert" style={s.error}>

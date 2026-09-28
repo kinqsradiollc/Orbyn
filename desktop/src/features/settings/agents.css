@@ -463,6 +463,12 @@
   align-items: center;
   gap: 6px;
 }
+.agents-identity-form {
+  max-width: 520px;
+}
+.agents-identity-form .button-row {
+  margin-top: 0;
+}
 .agents-instructions-form {
   display: grid;
   gap: 8px;

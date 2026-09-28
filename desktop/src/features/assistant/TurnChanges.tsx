@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Undo2 } from "lucide-react";
 import type { AgentActivity } from "@orbyn/core";
 import { errorText } from "../../lib/errors";
+import { changeLine, visibleChanges } from "../../lib/assistant-labels";
 import { openObject } from "../docs/DocLinks";
 
 const SHOWN = 8;
@@ -33,6 +35,7 @@ export function TurnChanges({
     };
   }, [job]);
   if (!changes?.length) return null;
+  const shown = visibleChanges(changes);
   const wasUndone = undone || changes.every((c) => c.undone_at);
   const canUndo = !wasUndone && changes.some((c) => c.undoable);
   const run = async () => {
@@ -50,26 +53,23 @@ export function TurnChanges({
   return (
     <section className="ai-changes" aria-label="What this reply changed">
       <div className="ai-changes-head">
-        <strong>Changed</strong>
-        {wasUndone ? (
-          <span role="status">Undone</span>
-        ) : (
-          canUndo && (
-            <button
-              type="button"
-              className="ai-ghost"
-              disabled={undoing}
-              onClick={() => void run()}
-            >
-              {undoing ? "Undoing…" : "Undo"}
-            </button>
-          )
+        <strong>{wasUndone ? "Undone" : "Changed"}</strong>
+        {!wasUndone && canUndo && (
+          <button
+            type="button"
+            className="secondary"
+            disabled={undoing}
+            onClick={() => void run()}
+          >
+            <Undo2 size={14} aria-hidden="true" />
+            {undoing ? "Undoing…" : "Undo"}
+          </button>
         )}
       </div>
       <ul>
-        {changes.slice(0, SHOWN).map((change) => (
+        {shown.slice(0, SHOWN).map((change) => (
           <li key={change.id}>
-            {change.summary}
+            <span>{changeLine(change)}</span>
             {!!change.links?.length && (
               <span className="ai-changes-links">
                 {change.links.map((l) => (
@@ -87,9 +87,13 @@ export function TurnChanges({
             )}
           </li>
         ))}
-        {changes.length > SHOWN && <li>and {changes.length - SHOWN} more</li>}
+        {shown.length > SHOWN && <li>And {shown.length - SHOWN} more</li>}
       </ul>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
     </section>
   );
 }

@@ -3,12 +3,15 @@ import { StyleSheet, Text, View } from "react-native";
 import type { AssistantIdea } from "@orbyn/core";
 import { client } from "../lib/api";
 import { openReview } from "../lib/review";
-import { FadeIn, PressableScale } from "../motion";
-import { colors, fonts, themed } from "../theme";
+import { FadeIn } from "../motion";
+import { fonts, colors, themed } from "../theme";
 import { shared } from "../styles";
-import { Icon } from "./Icon";
+import { SmallAction } from "./SmallAction";
 
-/** Ready-to-review ideas surfaced on Today. */
+/**
+ * Ready-to-review ideas surfaced on Today, laid out like "Needs a look": a
+ * heading, then one row per idea (title, then its summary) with Review.
+ */
 export function AssistantIdeasCard() {
   const [ideas, setIdeas] = useState<AssistantIdea[]>([]);
   const [agentName, setAgentName] = useState("Orbyn");
@@ -37,52 +40,48 @@ export function AssistantIdeasCard() {
   if (!ideas.length) return null;
   return (
     <FadeIn style={shared.card}>
-      <View style={s.heading}>
-        <Icon name="sparkles" size={16} color={colors.accent} />
-        <View style={s.flex}>
-          <Text style={shared.sectionTitle}>For today</Text>
-          <Text style={shared.small}>
-            Ideas from {agentName}, ready for Review.
-          </Text>
-        </View>
-      </View>
-      {ideas.map((idea) => (
-        <PressableScale
-          key={idea.id}
-          accessibilityRole="button"
-          accessibilityLabel={`Review idea: ${idea.title}`}
-          onPress={() => idea.proposal_id && openReview(idea.proposal_id)}
-          style={s.idea}
-        >
-          <View style={s.flex}>
-            <Text style={s.title}>{idea.title}</Text>
-            <Text style={shared.small}>{idea.summary}</Text>
+      <Text style={shared.sectionTitle} accessibilityRole="header">
+        For today
+      </Text>
+      <Text style={[shared.small, s.hint]}>
+        Ideas from {agentName}, ready to review.
+      </Text>
+      {ideas.map((idea) => {
+        const detail = idea.summary?.trim() ?? "";
+        return (
+          <View key={idea.id} style={s.row}>
+            <View style={s.flex}>
+              <Text style={s.title} numberOfLines={1}>
+                {idea.title}
+              </Text>
+              {!!detail && detail !== idea.title.trim() && (
+                <Text style={shared.small} numberOfLines={2}>
+                  {detail}
+                </Text>
+              )}
+            </View>
+            <SmallAction
+              label="Review"
+              disabled={!idea.proposal_id}
+              onPress={() => idea.proposal_id && openReview(idea.proposal_id)}
+            />
           </View>
-          <Text style={s.action}>Review</Text>
-        </PressableScale>
-      ))}
+        );
+      })}
     </FadeIn>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    heading: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 10,
-      marginBottom: 8,
-    },
-    flex: { flex: 1, minWidth: 0, gap: 3 },
-    idea: {
+    hint: { marginTop: 2, marginBottom: 12 },
+    flex: { flex: 1, minWidth: 0 },
+    row: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingVertical: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      gap: 10,
+      paddingVertical: 6,
     },
-    title: { fontFamily: fonts.semibold, color: colors.text, fontSize: 15 },
-    action: { fontFamily: fonts.semibold, color: colors.accent, fontSize: 13 },
+    title: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
   }),
 );

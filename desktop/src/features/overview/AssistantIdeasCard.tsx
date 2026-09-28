@@ -50,17 +50,22 @@ export function AssistantIdeasCard({ onReview }: { onReview: () => void }) {
         </button>
       </div>
       <ul className="assistant-ideas-list">
-        {ideas.map((idea) => (
-          <li key={idea.id}>
-            <div>
-              <strong>{idea.title}</strong>
-              <p>{idea.summary}</p>
-            </div>
-            <button type="button" className="text-button" onClick={onReview}>
-              Review
-            </button>
-          </li>
-        ))}
+        {ideas.map((idea) => {
+          const detail = idea.summary.trim();
+          return (
+            <li key={idea.id} className="item-row">
+              <div className="item-main">
+                <strong>{idea.title}</strong>
+                {detail && detail !== idea.title.trim() && (
+                  <span className="item-meta">{detail}</span>
+                )}
+              </div>
+              <button type="button" className="text-button" onClick={onReview}>
+                Review
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

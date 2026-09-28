@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowUp,
+  CalendarClock,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   Flag,
   History,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -22,6 +26,7 @@ import {
   type Item,
   type Plan,
   type AiChatSummary,
+  type ChatTraceEntry,
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
 import { useConfirm } from "../../components/Confirm";
@@ -29,8 +34,9 @@ import { useToast } from "../../components/Toast";
 import { errorText } from "../../lib/errors";
 import {
   changeKindWords,
+  progressText,
   stepLabel,
-  toolLabel,
+  traceLines,
 } from "../../lib/assistant-labels";
 import { TurnChanges } from "./TurnChanges";
 import { ProposalReview } from "../../components/ProposalReview";
@@ -150,6 +156,7 @@ export function AssistantView({
   const [identityError, setIdentityError] = useState("");
   const [personAnswer, setPersonAnswer] = useState("");
   const [upcomingOpen, setUpcomingOpen] = useState(false);
+  const [approveMenu, setApproveMenu] = useState<DOMRect | null>(null);
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   useEffect(() => {
     if (!identity) return;
@@ -278,7 +285,7 @@ export function AssistantView({
             <h2>Chats</h2>
             <button
               type="button"
-              className="ai-history-new"
+              className="icon-button"
               aria-label="New chat"
               title="New chat"
               disabled={locked}
@@ -320,7 +327,7 @@ export function AssistantView({
               >
                 <span className="ai-history-chat-title">
                   {chat.pinned && <Pin size={12} aria-label="Pinned" />}
-                  {chat.title}
+                  <span>{chat.title}</span>
                 </span>
                 <small>
                   {chat.swept_at
@@ -334,7 +341,7 @@ export function AssistantView({
               </button>
               <button
                 type="button"
-                className="ai-history-options"
+                className="icon-button ai-history-options"
                 aria-label={`Options for ${chat.title}`}
                 title="Chat options"
                 disabled={locked}
@@ -350,7 +357,9 @@ export function AssistantView({
             </div>
           ))}
           {savedChats?.length === 0 && (
-            <p className="ai-history-empty">No matching chats.</p>
+            <p className="ai-history-empty">
+              {chatSearch.trim() ? "No chats match" : "No chats yet"}
+            </p>
           )}
           {savedChats === null && (
             <p className="ai-history-empty">Loading chats…</p>
@@ -359,73 +368,84 @@ export function AssistantView({
       </aside>
       <div className="ai-main">
         {identity && !identity.named_at && (
-          <div className="ai-name-overlay">
-            <form
-              className="ai-name-sheet"
+          <div className="modal-backdrop">
+            <section
+              className="modal modal-small scale-in"
               role="dialog"
               aria-modal="true"
               aria-labelledby="ai-name-title"
-              onSubmit={saveIdentity}
             >
-              <h2 id="ai-name-title">Give your assistant a name</h2>
-              <p>
-                Choose a name and an optional persona. You can change both later
-                in Settings.
-              </p>
-              <label>
-                Name
-                <input
-                  autoFocus
-                  maxLength={40}
-                  value={identityName}
-                  onChange={(e) => setIdentityName(e.target.value)}
-                />
-              </label>
-              <label>
-                Persona
-                <textarea
-                  maxLength={1000}
-                  rows={3}
-                  placeholder="Warm, direct, and concise"
-                  value={identityPersona}
-                  onChange={(e) => setIdentityPersona(e.target.value)}
-                />
-              </label>
-              {identityError && <p role="alert">{identityError}</p>}
-              <div>
-                <button
-                  type="submit"
-                  className="ai-primary"
-                  disabled={identitySaving}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  className="ai-ghost"
-                  disabled={identitySaving}
-                  onClick={() => void skipIdentity()}
-                >
-                  Skip
-                </button>
+              <div className="section-heading">
+                <h2 id="ai-name-title">Give your assistant a name</h2>
               </div>
-            </form>
+              <form onSubmit={saveIdentity}>
+                <p className="muted modal-lead">
+                  Choose a name and, if you like, how it should come across. You
+                  can change both later in Settings.
+                </p>
+                <label>
+                  Name
+                  <input
+                    autoFocus
+                    required
+                    maxLength={40}
+                    value={identityName}
+                    onChange={(e) => setIdentityName(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Persona
+                  <textarea
+                    maxLength={1000}
+                    rows={3}
+                    placeholder="Warm, direct, and concise"
+                    value={identityPersona}
+                    onChange={(e) => setIdentityPersona(e.target.value)}
+                  />
+                  <span className="field-hint">Optional.</span>
+                </label>
+                {identityError && (
+                  <p className="error" role="alert">
+                    {identityError}
+                  </p>
+                )}
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={identitySaving}
+                    onClick={() => void skipIdentity()}
+                  >
+                    Keep “Orbyn”
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary"
+                    disabled={identitySaving}
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
         )}
         <div className="ai-chat-head">
+          {/* History and New chat live in the Chats panel; on a phone the
+              panel is hidden, so these two open it or start afresh. */}
           <button
             type="button"
-            className="ai-ghost ai-icon ai-history-toggle"
+            className="icon-button ai-narrow-only"
             aria-label={historyOpen ? "Close chat history" : "Chat history"}
             aria-expanded={historyOpen}
             title={historyOpen ? "Close chat history" : "Chat history"}
             onClick={() => setHistoryOpen((open) => !open)}
           >
-            <History size={16} aria-hidden="true" />
+            <History size={18} aria-hidden="true" />
           </button>
           <button
             type="button"
-            className="ai-ghost ai-icon"
+            className="icon-button ai-narrow-only"
             onClick={() => {
               setHistoryOpen(false);
               reset();
@@ -434,20 +454,12 @@ export function AssistantView({
             aria-label="New chat"
             title="New chat"
           >
-            <SquarePen size={16} />
-          </button>
-          <button
-            type="button"
-            className="ai-ghost ai-upcoming-trigger"
-            aria-expanded={upcomingOpen}
-            onClick={() => setUpcomingOpen((open) => !open)}
-          >
-            {upcomingOpen ? "Close Upcoming" : "Upcoming"}
+            <SquarePen size={18} aria-hidden="true" />
           </button>
           {scope && (
             <button
               type="button"
-              className="ai-ghost ai-scope"
+              className="secondary ai-scope"
               disabled={locked}
               onClick={() => setScope(null)}
               title="Remove assistant scope"
@@ -455,9 +467,17 @@ export function AssistantView({
               In: {scope.name} <X size={14} aria-hidden="true" />
             </button>
           )}
+          <button
+            type="button"
+            className="secondary ai-upcoming-trigger"
+            aria-expanded={upcomingOpen}
+            aria-controls="ai-upcoming"
+            onClick={() => setUpcomingOpen((open) => !open)}
+          >
+            <CalendarClock size={15} aria-hidden="true" />
+            Upcoming
+          </button>
         </div>
-
-        {upcomingOpen && <AssistantUpcoming agentName={agentName} />}
 
         <div className="ai-thread" aria-live="polite" ref={threadRef}>
           {empty && <h2 className="ai-greeting">What’s on your mind today?</h2>}
@@ -468,7 +488,7 @@ export function AssistantView({
               {activeChat.summary_doc_id && (
                 <button
                   type="button"
-                  className="ai-ghost"
+                  className="secondary"
                   onClick={() => onKeptNote?.(activeChat.summary_doc_id!)}
                 >
                   Open summary
@@ -513,21 +533,7 @@ export function AssistantView({
                       undo={undoTurnChanges}
                     />
                   )}
-                  {!!turn.trace.length && (
-                    <details className="ai-trace">
-                      <summary>Steps ({turn.trace.length})</summary>
-                      <ol>
-                        {turn.trace.map((entry, index) => (
-                          <li key={`${entry.turn_id}-${entry.step}-${index}`}>
-                            <span>{entry.label}</span>
-                            {entry.tool && (
-                              <small>{toolLabel(entry.tool)}</small>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    </details>
-                  )}
+                  <TurnSteps entries={turn.trace} />
                 </div>
               </div>
             ),
@@ -538,7 +544,7 @@ export function AssistantView({
               <section className="ai-run-card" aria-live="polite">
                 {waiting.kind === "person" ? (
                   <>
-                    <strong>One quick question</strong>
+                    <strong>{agentName} has a question</strong>
                     <p>{waiting.question}</p>
                     {!!waiting.choices.length && (
                       <div className="ai-run-choices">
@@ -546,7 +552,7 @@ export function AssistantView({
                           <button
                             key={choice}
                             type="button"
-                            className="ai-ghost"
+                            className="secondary"
                             disabled={busy}
                             onClick={() => void answerWaiting(choice)}
                           >
@@ -566,80 +572,90 @@ export function AssistantView({
                         }
                       }}
                     >
-                      <input
-                        aria-label="Your answer"
-                        maxLength={4000}
-                        value={personAnswer}
-                        onChange={(event) =>
-                          setPersonAnswer(event.target.value)
-                        }
-                        placeholder="Or type your answer…"
-                      />
-                      <button
-                        type="submit"
-                        className="ai-primary"
-                        disabled={busy || !personAnswer.trim()}
-                      >
-                        Answer
-                      </button>
-                      <button
-                        type="button"
-                        className="ai-ghost"
-                        disabled={busy}
-                        onClick={() => void stopRun()}
-                      >
-                        Stop
-                      </button>
+                      <label className="settings-field">
+                        <span className="settings-label">
+                          {waiting.choices.length
+                            ? "Or write your own answer"
+                            : "Your answer"}
+                        </span>
+                        <input
+                          maxLength={4000}
+                          value={personAnswer}
+                          onChange={(event) =>
+                            setPersonAnswer(event.target.value)
+                          }
+                        />
+                      </label>
+                      <div className="button-row">
+                        <button
+                          type="button"
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => void stopRun()}
+                        >
+                          Stop
+                        </button>
+                        <button
+                          type="submit"
+                          className="primary"
+                          disabled={busy || !personAnswer.trim()}
+                        >
+                          Answer
+                        </button>
+                      </div>
                     </form>
                   </>
                 ) : (
                   <>
-                    <strong>Review the staged changes</strong>
+                    <strong>Check these changes before they’re made</strong>
                     <p>{waiting.question}</p>
-                    <p>{waiting.summary}</p>
-                    {waiting.detail && <p>{waiting.detail}</p>}
+                    {waiting.summary && (
+                      <p className="muted">{waiting.summary}</p>
+                    )}
+                    {waiting.detail && (
+                      <p className="muted">{waiting.detail}</p>
+                    )}
                     {!!waiting.steps.length && (
-                      <ul>
+                      <ul className="ai-run-steps">
                         {waiting.steps.slice(0, 20).map((step, index) => {
                           const label = stepLabel(step);
                           return <li key={`${label}-${index}`}>{label}</li>;
                         })}
                       </ul>
                     )}
-                    <div className="ai-run-actions">
+                    <div className="button-row">
                       <button
                         type="button"
-                        className="ai-primary"
+                        className="text-button"
                         disabled={busy}
-                        onClick={() => void approveWaiting(true, "once")}
+                        onClick={() => void stopRun()}
                       >
-                        Apply this plan
+                        Stop
                       </button>
-                      {waiting.automation_kind && (
+                      {(!!waiting.automation_kind ||
+                        !!waiting.change_kinds?.length) && (
                         <button
                           type="button"
-                          className="ai-ghost"
+                          className="icon-button"
+                          aria-label="More ways to approve"
+                          title="More ways to approve"
+                          aria-haspopup="dialog"
+                          aria-expanded={!!approveMenu}
                           disabled={busy}
-                          onClick={() =>
-                            void approveWaiting(true, waiting.automation_kind)
+                          onClick={(event) =>
+                            setApproveMenu(
+                              approveMenu
+                                ? null
+                                : event.currentTarget.getBoundingClientRect(),
+                            )
                           }
                         >
-                          Apply and remember for this {waiting.automation_kind}
-                        </button>
-                      )}
-                      {!!waiting.change_kinds?.length && (
-                        <button
-                          type="button"
-                          className="ai-ghost"
-                          disabled={busy}
-                          onClick={() => void approveWaiting(true, "always")}
-                        >
-                          Always allow {changeKindWords(waiting.change_kinds)}
+                          <MoreHorizontal size={18} aria-hidden="true" />
                         </button>
                       )}
                       <button
                         type="button"
-                        className="ai-ghost"
+                        className="secondary"
                         disabled={busy}
                         onClick={() => void approveWaiting(false)}
                       >
@@ -647,46 +663,73 @@ export function AssistantView({
                       </button>
                       <button
                         type="button"
-                        className="ai-ghost"
+                        className="primary"
                         disabled={busy}
-                        onClick={() => void stopRun()}
+                        onClick={() => void approveWaiting(true, "once")}
                       >
-                        Stop
+                        Apply changes
                       </button>
                     </div>
+                    {approveMenu && (
+                      <Popover
+                        anchor={approveMenu}
+                        label="More ways to approve"
+                        onClose={() => setApproveMenu(null)}
+                      >
+                        <div className="popover-actions">
+                          {waiting.automation_kind && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setApproveMenu(null);
+                                void approveWaiting(
+                                  true,
+                                  waiting.automation_kind,
+                                );
+                              }}
+                            >
+                              Apply and don’t ask again for this{" "}
+                              {waiting.automation_kind}
+                            </button>
+                          )}
+                          {!!waiting.change_kinds?.length && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setApproveMenu(null);
+                                void approveWaiting(true, "always");
+                              }}
+                            >
+                              Apply and always allow{" "}
+                              {changeKindWords(waiting.change_kinds)}
+                            </button>
+                          )}
+                        </div>
+                      </Popover>
+                    )}
                   </>
                 )}
               </section>
             </div>
           )}
 
-          {runProgress?.state === "running" && (
-            <div className="ai-run-progress" role="status">
-              <span>
-                {runProgress.label ?? "Working through your request…"}
-              </span>
-              <button
-                type="button"
-                className="ai-ghost"
-                disabled={busy}
-                onClick={() => void stopRun()}
-              >
-                Stop
-              </button>
-            </div>
-          )}
-
           {thinking && (
-            <div className="ai-row">
-              <div
-                className="ai-bubble ai-bubble-bot ai-typing"
-                role="status"
-                aria-label={`${agentName} is thinking`}
-              >
-                <span />
-                <span />
-                <span />
-              </div>
+            <div className="ai-run-status" role="status">
+              <Loader2 size={15} className="spin" aria-hidden="true" />
+              <span>
+                {progressText(runProgress?.label) ||
+                  `${agentName} is thinking…`}
+              </span>
+              {runProgress?.state === "running" && (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => void stopRun()}
+                >
+                  Stop
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -799,24 +842,35 @@ export function AssistantView({
                   );
                 }}
               >
-                <label htmlFor="ai-rename-chat">Rename chat</label>
-                <input
-                  id="ai-rename-chat"
-                  maxLength={120}
-                  value={renameDraft}
-                  onChange={(event) =>
-                    setRename({
-                      id: chatMenu.chat.id,
-                      draft: event.target.value,
-                    })
-                  }
-                />
-                <div>
-                  <button type="submit" disabled={!renameDraft.trim()}>
-                    Save
-                  </button>
-                  <button type="button" onClick={() => setRename(null)}>
+                <div className="settings-field">
+                  <label htmlFor="ai-rename-chat">Chat name</label>
+                  <input
+                    id="ai-rename-chat"
+                    autoFocus
+                    maxLength={120}
+                    value={renameDraft}
+                    onChange={(event) =>
+                      setRename({
+                        id: chatMenu.chat.id,
+                        draft: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setRename(null)}
+                  >
                     Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary"
+                    disabled={!renameDraft.trim()}
+                  >
+                    Save
                   </button>
                 </div>
               </form>
@@ -928,6 +982,43 @@ export function AssistantView({
           </Popover>
         )}
       </div>
+      {upcomingOpen && (
+        <AssistantUpcoming
+          agentName={agentName}
+          onClose={() => setUpcomingOpen(false)}
+        />
+      )}
     </section>
+  );
+}
+
+/** A reply's steps, folded away under one line until asked for. */
+function TurnSteps({ entries }: { entries: ChatTraceEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const lines = traceLines(entries);
+  if (!lines.length) return null;
+  return (
+    <div className="ai-trace">
+      <button
+        type="button"
+        className="text-button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? (
+          <ChevronDown size={14} aria-hidden="true" />
+        ) : (
+          <ChevronRight size={14} aria-hidden="true" />
+        )}
+        Steps ({lines.length})
+      </button>
+      {open && (
+        <ol>
+          {lines.map((line, index) => (
+            <li key={`${index}-${line}`}>{line}</li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }

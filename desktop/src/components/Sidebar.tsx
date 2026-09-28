@@ -15,7 +15,7 @@ import {
   type StarredItem,
   type User,
 } from "@orbyn/core";
-import { NAV_GROUPS, type View } from "../app/views";
+import { NAV_GROUPS, navName, type View } from "../app/views";
 import { commandById, keysFor } from "../app/commands";
 import { usePrefs } from "../app/prefs";
 import { CONCEPT_ICON } from "../app/concept-icons";
@@ -52,6 +52,8 @@ type Props = {
   starred?: StarredItem[];
   onOpenStarred?: (item: StarredItem) => void;
   onSignOut: () => void;
+  /** The assistant's chosen name, shown on its entry. */
+  agentName?: string;
 };
 
 /**
@@ -75,6 +77,7 @@ export function Sidebar({
   starred = [],
   onOpenStarred,
   onSignOut,
+  agentName,
 }: Props) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const { prefs } = usePrefs();
@@ -112,12 +115,12 @@ export function Sidebar({
                   key={label}
                   className={view === label ? "active" : ""}
                   aria-current={view === label ? "page" : undefined}
-                  aria-label={railed ? label : undefined}
-                  title={railed ? label : undefined}
+                  aria-label={railed ? navName(label, agentName) : undefined}
+                  title={railed ? navName(label, agentName) : undefined}
                   onClick={() => onNavigate(label)}
                 >
                   <Icon size={17} />
-                  <span>{label}</span>
+                  <span>{navName(label, agentName)}</span>
                   {label === "Notifications" && hasUnread && <i />}
                   {label === "Review" && reviewPending > 0 && (
                     <i aria-label={`${reviewPending} waiting`} />

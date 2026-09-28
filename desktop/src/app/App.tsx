@@ -1231,6 +1231,7 @@ export function App() {
             starred={starred}
             onOpenStarred={openStarred}
             onSignOut={() => void planner.logout()}
+            agentName={assistant.agentName}
           />
           <div className="shell">
             <AnnouncementBanner />

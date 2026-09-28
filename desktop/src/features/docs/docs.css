@@ -1827,6 +1827,16 @@ h4.doc-heading {
   border-left: 1px solid var(--color-border);
   margin-left: 13px;
 }
+/* Memory and Agent notes list their notes straight under the title. */
+.docs-nav-children.is-flat {
+  padding-left: 0;
+  border-left: 0;
+  margin-left: 0;
+}
+.docs-nav-empty {
+  margin: 4px 10px;
+  font-size: 13px;
+}
 .docs-nav-folder summary {
   list-style: none;
 }

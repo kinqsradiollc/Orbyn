@@ -262,23 +262,3 @@ button.today-title:hover {
   margin: 0;
   padding: 0;
 }
-
-.assistant-ideas-list li {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  justify-content: space-between;
-  border-top: 1px solid var(--color-divider);
-  padding: 12px 0;
-}
-
-.assistant-ideas-list strong {
-  color: var(--color-text);
-  font-size: 13px;
-}
-
-.assistant-ideas-list p {
-  color: var(--color-muted);
-  font-size: 13px;
-  margin: 4px 0 0;
-}

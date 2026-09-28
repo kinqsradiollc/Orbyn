@@ -2763,7 +2763,7 @@ export function DocEditor({
       flushOnClose.current = () => {};
       gone.current = true;
       onDeleted(doc.id);
-      toast({ text: "Memory topic forgotten" });
+      toast({ text: `“${title || "Untitled"}” was forgotten.` });
       return;
     }
     if (timer.current) clearTimeout(timer.current);
@@ -3040,7 +3040,7 @@ export function DocEditor({
                           void remove();
                         }}
                       >
-                        Forget Memory topic
+                        Forget this Memory note…
                       </button>
                     </li>
                   )}

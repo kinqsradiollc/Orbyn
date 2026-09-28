@@ -1,12 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   addDays,
   dayTime,
@@ -24,9 +17,10 @@ import {
 } from "@orbyn/core";
 import { Button } from "./Button";
 import { Chip, ChipRow } from "./Chip";
+import { ErrorBanner } from "./ErrorBanner";
 import { DateField, Field, TimeField } from "./Field";
 import { MoreMenu, type MoreAction } from "./MoreMenu";
-import { PressableScale, Pressable } from "../motion";
+import { Sheet, sheetStyles } from "./Sheet";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
 import {
@@ -34,13 +28,18 @@ import {
   checkinStatusLabel,
   dayLabel,
 } from "../lib/assistant-labels";
-import { colors, fonts, radii, themed } from "../theme";
+import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
 const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-type Picker = "project" | "note" | null;
+type Repeat = "daily" | "weekdays" | "weekly";
+/** Which form is open: a new goal or routine, or one being edited. */
+type Form =
+  | { kind: "goal"; id: string | null }
+  | { kind: "routine"; id: string | null }
+  | null;
 
-function nextRun(day: string, time: Date, repeat: string, timezone: string) {
+function nextRun(day: string, time: Date, repeat: Repeat, timezone: string) {
   const rule =
     repeat === "daily"
       ? "FREQ=DAILY"
@@ -61,9 +60,22 @@ function nextRun(day: string, time: Date, repeat: string, timezone: string) {
   };
 }
 
+/** The Repeat choice a saved rule came from. */
+function repeatOf(rrule: string): Repeat {
+  if (/FREQ=DAILY/.test(rrule)) return "daily";
+  if (/BYDAY=MO,TU,WE,TH,FR$/.test(rrule)) return "weekdays";
+  return "weekly";
+}
+
 function summaryOf(goal: Goal) {
   return typeof goal.progress.summary === "string" ? goal.progress.summary : "";
 }
+
+const inAnHour = () => {
+  const date = new Date();
+  date.setHours(date.getHours() + 1, 0, 0, 0);
+  return date;
+};
 
 /** Goals, weekly check-ins and scheduled assistant runs on the phone. */
 export function AssistantUpcoming({
@@ -91,8 +103,7 @@ export function AssistantUpcoming({
   const [projects, setProjects] = useState<Project[]>([]);
   const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
   const [timezone, setTimezone] = useState("UTC");
-  const [goalForm, setGoalForm] = useState(false);
-  const [routineForm, setRoutineForm] = useState(false);
+  const [form, setForm] = useState<Form>(null);
   const [goalTitle, setGoalTitle] = useState("");
   const [goalTarget, setGoalTarget] = useState("");
   const [goalDate, setGoalDate] = useState<string | null>(null);
@@ -100,13 +111,8 @@ export function AssistantUpcoming({
   const [goalDoc, setGoalDoc] = useState("");
   const [routineText, setRoutineText] = useState("");
   const [routineDay, setRoutineDay] = useState(localDateKey(new Date(), "UTC"));
-  const [routineTime, setRoutineTime] = useState(() => {
-    const date = new Date();
-    date.setHours(date.getHours() + 1, 0, 0, 0);
-    return date;
-  });
-  const [repeat, setRepeat] = useState("daily");
-  const [picker, setPicker] = useState<Picker>(null);
+  const [routineTime, setRoutineTime] = useState(inAnHour);
+  const [repeat, setRepeat] = useState<Repeat>("daily");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -128,7 +134,6 @@ export function AssistantUpcoming({
     setProjects(nextProjects);
     setAgentDocs(nextDocs);
     setTimezone(zone);
-    setRoutineDay(localDateKey(new Date(), zone));
     // One goal's check-ins failing leaves the others (and the goal) shown.
     const results = await Promise.all(
       nextGoals
@@ -184,24 +189,54 @@ export function AssistantUpcoming({
         ? `For the goal “${goals.find((g) => g.id === rule.id)?.title ?? "a goal"}”`
         : `For the routine “${routines.find((r) => r.id === rule?.id)?.instruction ?? "a routine"}”`;
 
-  const createGoal = async () => {
-    if (!goalTitle.trim() || saving) return;
+  const openGoalForm = (goal: Goal | null) => {
+    setGoalTitle(goal?.title ?? "");
+    setGoalTarget(goal?.target ?? "");
+    setGoalDate(goal?.target_date ?? null);
+    setGoalProject(goal?.project_id ?? "");
+    setGoalDoc(goal?.plan_doc_id ?? "");
+    setError("");
+    setForm({ kind: "goal", id: goal?.id ?? null });
+  };
+
+  const openRoutineForm = (routine: AgentRoutine | null) => {
+    if (routine) {
+      const next = new Date(routine.next_run_at);
+      const day = localDateKey(next, routine.timezone);
+      const minutes = Math.round(
+        (next.getTime() - dayTime(day, 0, routine.timezone).getTime()) / 60000,
+      );
+      const time = new Date();
+      time.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+      setRoutineText(routine.instruction);
+      setRoutineDay(day);
+      setRoutineTime(time);
+      setRepeat(repeatOf(routine.rrule));
+    } else {
+      setRoutineText("");
+      setRoutineDay(localDateKey(new Date(), timezone));
+      setRoutineTime(inAnHour());
+      setRepeat("daily");
+    }
+    setError("");
+    setForm({ kind: "routine", id: routine?.id ?? null });
+  };
+
+  const saveGoal = async () => {
+    if (!goalTitle.trim() || saving || form?.kind !== "goal") return;
     setSaving(true);
     setError("");
     try {
-      await client.createGoal({
-        title: goalTitle,
+      const input = {
+        title: goalTitle.trim(),
         target: goalTarget,
         target_date: goalDate,
         project_id: goalProject || null,
         plan_doc_id: goalDoc || null,
-      });
-      setGoalTitle("");
-      setGoalTarget("");
-      setGoalDate(null);
-      setGoalProject("");
-      setGoalDoc("");
-      setGoalForm(false);
+      };
+      if (form.id) await client.updateGoal(form.id, input);
+      else await client.createGoal(input);
+      setForm(null);
       await load();
     } catch {
       setError(
@@ -212,21 +247,30 @@ export function AssistantUpcoming({
     }
   };
 
-  const createRoutine = async () => {
-    if (!routineText.trim() || saving) return;
+  const saveRoutine = async () => {
+    if (!routineText.trim() || saving || form?.kind !== "routine") return;
     setSaving(true);
     setError("");
     try {
-      const { rule, next } = nextRun(routineDay, routineTime, repeat, timezone);
+      const zone = form.id
+        ? (routines.find((r) => r.id === form.id)?.timezone ?? timezone)
+        : timezone;
+      const { rule, next } = nextRun(routineDay, routineTime, repeat, zone);
       if (!next) throw new Error("No future run is available.");
-      await client.createAgentRoutine({
-        instruction: routineText,
-        rrule: rule,
-        timezone,
-        next_run_at: next.toISOString(),
-      });
-      setRoutineText("");
-      setRoutineForm(false);
+      if (form.id)
+        await client.updateAgentRoutine(form.id, {
+          instruction: routineText.trim(),
+          rrule: rule,
+          next_run_at: next.toISOString(),
+        });
+      else
+        await client.createAgentRoutine({
+          instruction: routineText.trim(),
+          rrule: rule,
+          timezone,
+          next_run_at: next.toISOString(),
+        });
+      setForm(null);
       await load();
     } catch {
       setError(
@@ -313,16 +357,17 @@ export function AssistantUpcoming({
   const goalPlanDocs = goalProject
     ? agentDocs.filter((doc) => doc.project_id === goalProject)
     : agentDocs;
-  const selectedProject =
-    projects.find((project) => project.id === goalProject)?.name ??
-    "No project";
-  const selectedDoc =
-    agentDocs.find((doc) => doc.id === goalDoc)?.title ?? "No plan note";
 
   const goalActions = (goal: Goal): MoreAction[] => [
     {
+      label: "Edit",
+      icon: "fileText",
+      onPress: () => openGoalForm(goal),
+      disabled: saving,
+    },
+    {
       label: goal.status === "paused" ? "Resume" : "Pause",
-      icon: "pause",
+      icon: goal.status === "paused" ? "play" : "pause",
       onPress: () =>
         void setGoalStatus(
           goal,
@@ -336,9 +381,20 @@ export function AssistantUpcoming({
       onPress: () => void setGoalStatus(goal, "done"),
       disabled: saving || goal.status === "done",
     },
-    { label: "Delete", destructive: true, onPress: () => deleteGoal(goal) },
+    {
+      label: "Delete",
+      icon: "trash",
+      destructive: true,
+      onPress: () => deleteGoal(goal),
+    },
   ];
   const routineActions = (routine: AgentRoutine): MoreAction[] => [
+    {
+      label: "Edit",
+      icon: "fileText",
+      onPress: () => openRoutineForm(routine),
+      disabled: saving,
+    },
     {
       label: routine.paused ? "Resume" : "Pause",
       icon: routine.paused ? "play" : "pause",
@@ -347,68 +403,38 @@ export function AssistantUpcoming({
     },
     {
       label: "Delete",
+      icon: "trash",
       destructive: true,
       onPress: () => deleteRoutine(routine),
     },
   ];
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={s.screen}>
-        <View style={s.header}>
-          <View style={s.flex}>
-            <Text style={shared.eyebrow}>UPCOMING</Text>
-            <Text style={shared.title}>Goals and routines</Text>
-            <Text style={shared.small}>
-              Your planner time zone · {timezone}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close Upcoming"
-            hitSlop={8}
-            onPress={onClose}
-          >
-            <Text style={s.close}>Done</Text>
-          </Pressable>
-        </View>
-        <View style={s.addRow}>
-          <Button
-            title="New goal"
-            icon="plus"
-            secondary
-            onPress={() => {
-              setGoalForm((open) => !open);
-              setRoutineForm(false);
-            }}
-          />
-          <Button
-            title="New routine"
-            icon="plus"
-            secondary
-            onPress={() => {
-              setRoutineForm((open) => !open);
-              setGoalForm(false);
-            }}
-          />
-        </View>
-        <ScrollView
-          contentContainerStyle={s.content}
-          keyboardShouldPersistTaps="handled"
-        >
-          {goalForm && (
-            <View style={s.form}>
-              <Text style={shared.sectionTitle}>New goal</Text>
+    <Sheet visible={visible} title="Goals and routines" onClose={onClose}>
+      <ScrollView
+        contentContainerStyle={sheetStyles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
+        <View style={sheetStyles.column}>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
+          <Text style={[shared.small, s.intro]}>
+            {agentName} checks in on your goals each week and runs routines at
+            the times you set. Times are in {timezone}.
+          </Text>
+          {form?.kind === "goal" ? (
+            <View style={shared.card}>
+              <Text style={[shared.sectionTitle, s.formTitle]}>
+                {form.id ? "Edit goal" : "New goal"}
+              </Text>
               <Field label="Goal">
                 <TextInput
                   value={goalTitle}
                   onChangeText={setGoalTitle}
                   maxLength={120}
+                  placeholder="Finish the thesis draft"
+                  placeholderTextColor={colors.faint}
                   style={shared.input}
                 />
               </Field>
@@ -421,74 +447,116 @@ export function AssistantUpcoming({
                   style={[shared.input, s.multiline]}
                 />
               </Field>
-              <DateField
-                label="Target date"
-                value={goalDate}
-                onChange={setGoalDate}
-                clearable
-              />
-              <Field label="Project (optional)">
-                <PressableScale
-                  accessibilityRole="button"
-                  onPress={() => setPicker("project")}
-                  style={s.select}
-                >
-                  <Text style={s.selectText}>{selectedProject}</Text>
-                </PressableScale>
+              <Field label="Target date">
+                <DateField
+                  label="Target date"
+                  placeholder="No target date"
+                  value={goalDate}
+                  onChange={setGoalDate}
+                  clearable
+                />
               </Field>
-              <Field label="Agent plan note (optional)">
-                <PressableScale
-                  accessibilityRole="button"
-                  onPress={() => setPicker("note")}
-                  style={s.select}
-                >
-                  <Text style={s.selectText}>{selectedDoc}</Text>
-                </PressableScale>
+              <Field label="Project">
+                <ChipRow label="Project">
+                  <Chip
+                    label="No project"
+                    selected={!goalProject}
+                    onPress={() => setGoalProject("")}
+                  />
+                  {projects.map((project) => (
+                    <Chip
+                      key={project.id}
+                      label={project.name}
+                      selected={goalProject === project.id}
+                      onPress={() => {
+                        setGoalProject(project.id);
+                        if (
+                          goalDoc &&
+                          !agentDocs.some(
+                            (doc) =>
+                              doc.id === goalDoc &&
+                              doc.project_id === project.id,
+                          )
+                        )
+                          setGoalDoc("");
+                      }}
+                    />
+                  ))}
+                </ChipRow>
+              </Field>
+              <Field label="Plan (an Agent note)">
+                <ChipRow label="Plan note">
+                  <Chip
+                    label="No plan note"
+                    selected={!goalDoc}
+                    onPress={() => setGoalDoc("")}
+                  />
+                  {goalPlanDocs.map((doc) => (
+                    <Chip
+                      key={doc.id}
+                      label={doc.title || "Untitled"}
+                      selected={goalDoc === doc.id}
+                      onPress={() => setGoalDoc(doc.id)}
+                    />
+                  ))}
+                </ChipRow>
               </Field>
               <View style={s.formActions}>
                 <Button
-                  title="Save goal"
+                  title={saving ? "Saving…" : "Save goal"}
                   disabled={saving || !goalTitle.trim()}
-                  onPress={() => void createGoal()}
+                  style={s.formAction}
+                  onPress={() => void saveGoal()}
                 />
                 <Button
                   title="Cancel"
                   secondary
-                  onPress={() => setGoalForm(false)}
+                  disabled={saving}
+                  style={s.formAction}
+                  onPress={() => setForm(null)}
                 />
               </View>
             </View>
-          )}
-          {routineForm && (
-            <View style={s.form}>
-              <Text style={shared.sectionTitle}>New routine</Text>
+          ) : form?.kind === "routine" ? (
+            <View style={shared.card}>
+              <Text style={[shared.sectionTitle, s.formTitle]}>
+                {form.id ? "Edit routine" : "New routine"}
+              </Text>
               <Field label={`What should ${agentName} do?`}>
                 <TextInput
                   value={routineText}
                   onChangeText={setRoutineText}
                   maxLength={4000}
                   multiline
+                  placeholder="Summarise what's due this week"
+                  placeholderTextColor={colors.faint}
                   style={[shared.input, s.multiline]}
                 />
               </Field>
-              <DateField
-                label="First run"
-                value={routineDay}
-                onChange={(day) => day && setRoutineDay(day)}
-                minimumDate={new Date()}
-              />
-              <TimeField
-                label="Time"
-                value={routineTime}
-                onChange={setRoutineTime}
-              />
+              <Field label={form.id ? "Next run" : "First run"}>
+                <DateField
+                  label={form.id ? "Next run" : "First run"}
+                  value={routineDay}
+                  onChange={(day) => day && setRoutineDay(day)}
+                  minimumDate={new Date()}
+                />
+              </Field>
+              <Field label="Time">
+                <TimeField
+                  label="Time"
+                  value={routineTime}
+                  onChange={setRoutineTime}
+                />
+              </Field>
               <Field label="Repeat">
-                <ChipRow label="Repeat routine">
-                  {[
-                    ["daily", "Daily"],
-                    ["weekdays", "Weekdays"],
-                    ["weekly", "Weekly"],
-                  ].map(([value, label]) => (
+                <ChipRow label="Repeat">
+                  {(
+                    [
+                      ["daily", "Daily"],
+                      ["weekdays", "Weekdays"],
+                      ["weekly", "Weekly"],
+                    ] as const
+                  ).map(([value, label]) => (
                     <Chip
                       key={value}
                       label={label}
@@ -500,26 +568,42 @@ export function AssistantUpcoming({
               </Field>
               <View style={s.formActions}>
                 <Button
-                  title="Save routine"
+                  title={saving ? "Saving…" : "Save routine"}
                   disabled={saving || !routineText.trim()}
-                  onPress={() => void createRoutine()}
+                  style={s.formAction}
+                  onPress={() => void saveRoutine()}
                 />
                 <Button
                   title="Cancel"
                   secondary
-                  onPress={() => setRoutineForm(false)}
+                  disabled={saving}
+                  style={s.formAction}
+                  onPress={() => setForm(null)}
                 />
               </View>
             </View>
+          ) : (
+            <View style={s.formActions}>
+              <Button
+                title="New goal"
+                icon="plus"
+                secondary
+                style={s.formAction}
+                onPress={() => openGoalForm(null)}
+              />
+              <Button
+                title="New routine"
+                icon="plus"
+                secondary
+                style={s.formAction}
+                onPress={() => openRoutineForm(null)}
+              />
+            </View>
           )}
-          {!!error && (
-            <Text accessibilityRole="alert" style={s.error}>
-              {error}
-            </Text>
-          )}
-          <Text style={shared.sectionTitle}>Goals</Text>
+
+          <Text style={[shared.sectionTitle, s.section]}>Goals</Text>
           {loading ? (
-            <Text style={shared.small}>Loading goals…</Text>
+            <Text style={shared.small}>Loading…</Text>
           ) : activeGoals.length ? (
             activeGoals.map((goal) => {
               const history = checkins[goal.id] ?? [];
@@ -529,24 +613,26 @@ export function AssistantUpcoming({
                 ["done", "running"].includes(latest.status)
                   ? addDays(currentMonday, 7)
                   : currentMonday;
+              const summary = summaryOf(goal);
               return (
                 <View key={goal.id} style={s.row}>
                   <View style={s.flex}>
-                    <Text style={s.rowTitle}>{goal.title}</Text>
-                    <Text style={shared.small}>
-                      Weekly check-in · {dayLabel(checkinDay)}
+                    <Text style={s.rowTitle} numberOfLines={1}>
+                      {goal.title}
+                    </Text>
+                    <Text style={shared.small} numberOfLines={2}>
+                      {goal.status === "paused"
+                        ? "Paused"
+                        : `Check-in ${dayLabel(checkinDay)}`}
                       {goal.target_date
-                        ? ` · target ${dayLabel(goal.target_date)}`
+                        ? ` · Target ${dayLabel(goal.target_date)}`
                         : ""}
                       {goal.project_name ? ` · ${goal.project_name}` : ""}
                     </Text>
-                    {!!summaryOf(goal) && (
-                      <Text style={shared.small}>{summaryOf(goal)}</Text>
-                    )}
-                    {latest && (
-                      <Text style={shared.small}>
-                        Last check-in · {checkinStatusLabel(latest.status)}
-                        {latest.summary ? ` · ${latest.summary}` : ""}
+                    {(!!summary || latest) && (
+                      <Text style={shared.small} numberOfLines={2}>
+                        {summary ||
+                          `Last check-in: ${checkinStatusLabel(latest!.status)}${latest!.summary ? ` · ${latest!.summary}` : ""}`}
                       </Text>
                     )}
                   </View>
@@ -560,24 +646,34 @@ export function AssistantUpcoming({
               );
             })
           ) : (
-            <Text style={shared.small}>No active goals yet.</Text>
+            <Text style={shared.small}>No goals yet.</Text>
           )}
-          <Text style={[shared.sectionTitle, s.sectionGap]}>Routines</Text>
+
+          <Text style={[shared.sectionTitle, s.section]}>Routines</Text>
           {loading ? (
-            <Text style={shared.small}>Loading routines…</Text>
+            <Text style={shared.small}>Loading…</Text>
           ) : routines.length ? (
             routines.map((routine) => (
               <View key={routine.id} style={s.row}>
                 <View style={s.flex}>
-                  <Text style={s.rowTitle}>{routine.instruction}</Text>
-                  <Text style={shared.small}>
+                  <Text style={s.rowTitle} numberOfLines={1}>
+                    {routine.instruction}
+                  </Text>
+                  <Text style={shared.small} numberOfLines={2}>
                     {routine.paused
                       ? "Paused"
-                      : `Next · ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
+                      : `Next ${new Date(routine.next_run_at).toLocaleString(
+                          [],
+                          {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                            timeZone: routine.timezone,
+                          },
+                        )}`}{" "}
                     · {describeRrule(routine.rrule)}
                   </Text>
                   {typeof routine.last_result?.summary === "string" && (
-                    <Text style={shared.small}>
+                    <Text style={shared.small} numberOfLines={2}>
                       {routine.last_result.summary}
                     </Text>
                   )}
@@ -591,20 +687,23 @@ export function AssistantUpcoming({
               </View>
             ))
           ) : (
-            <Text style={shared.small}>No scheduled routines yet.</Text>
+            <Text style={shared.small}>No routines yet.</Text>
           )}
+
           {allowedRows.length > 0 && (
             <>
-              <Text style={[shared.sectionTitle, s.sectionGap]}>
+              <Text style={[shared.sectionTitle, s.section]}>
                 Allowed without asking
               </Text>
               {allowedRows.map(([kind, rule]) => (
                 <View key={kind} style={s.row}>
                   <View style={s.flex}>
-                    <Text style={s.rowTitle}>
+                    <Text style={s.rowTitle} numberOfLines={1}>
                       {CHANGE_KIND_LABELS[kind] ?? kind}
                     </Text>
-                    <Text style={shared.small}>{ruleLabel(rule)}</Text>
+                    <Text style={shared.small} numberOfLines={2}>
+                      {ruleLabel(rule)}
+                    </Text>
                   </View>
                   <MoreMenu
                     label={`Options for ${CHANGE_KIND_LABELS[kind] ?? kind}`}
@@ -612,7 +711,8 @@ export function AssistantUpcoming({
                     disabled={saving}
                     actions={[
                       {
-                        label: "Remove",
+                        label: "Ask me first again",
+                        icon: "trash",
                         destructive: true,
                         onPress: () => void removeAllowed(kind),
                       },
@@ -622,155 +722,27 @@ export function AssistantUpcoming({
               ))}
             </>
           )}
-        </ScrollView>
-        {picker && (
-          <View style={s.pickerBackdrop}>
-            <View style={s.pickerPanel}>
-              <Text style={shared.sectionTitle}>
-                {picker === "project"
-                  ? "Choose a project"
-                  : "Choose an Agent note"}
-              </Text>
-              <ScrollView>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    picker === "project" ? setGoalProject("") : setGoalDoc("");
-                    setPicker(null);
-                  }}
-                  style={s.pickerRow}
-                >
-                  <Text style={s.pickerText}>
-                    {picker === "project" ? "No project" : "No plan note"}
-                  </Text>
-                </Pressable>
-                {(picker === "project" ? projects : goalPlanDocs).map(
-                  (entry) => (
-                    <Pressable
-                      key={entry.id}
-                      accessibilityRole="button"
-                      onPress={() => {
-                        if (picker === "project") {
-                          setGoalProject(entry.id);
-                          if (
-                            goalDoc &&
-                            !agentDocs.some(
-                              (doc) =>
-                                doc.id === goalDoc &&
-                                doc.project_id === entry.id,
-                            )
-                          )
-                            setGoalDoc("");
-                        } else setGoalDoc(entry.id);
-                        setPicker(null);
-                      }}
-                      style={s.pickerRow}
-                    >
-                      <Text style={s.pickerText}>
-                        {picker === "project"
-                          ? (entry as Project).name
-                          : (entry as DocSummary).title}
-                      </Text>
-                    </Pressable>
-                  ),
-                )}
-              </ScrollView>
-              <Button
-                title="Cancel"
-                secondary
-                onPress={() => setPicker(null)}
-              />
-            </View>
-          </View>
-        )}
-      </View>
-    </Modal>
+        </View>
+      </ScrollView>
+    </Sheet>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    screen: { flex: 1, backgroundColor: colors.background, paddingTop: 14 },
-    header: {
-      flexDirection: "row",
-      gap: 12,
-      alignItems: "flex-start",
-      paddingHorizontal: 18,
-      paddingBottom: 12,
-    },
-    flex: { flex: 1, minWidth: 0, gap: 4 },
-    close: {
-      fontFamily: fonts.semibold,
-      color: colors.accent,
-      fontSize: 15,
-      padding: 8,
-    },
-    addRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      paddingHorizontal: 18,
-      paddingBottom: 8,
-    },
-    content: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 32 },
-    form: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      padding: 16,
-      marginBottom: 18,
-    },
-    multiline: { minHeight: 76, textAlignVertical: "top", paddingTop: 12 },
-    formActions: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginTop: 6,
-    },
+    intro: { marginBottom: 14 },
+    formTitle: { marginBottom: 14 },
+    flex: { flex: 1, minWidth: 0, gap: 2 },
+    multiline: { minHeight: 78, textAlignVertical: "top" },
+    formActions: { flexDirection: "row", gap: 8 },
+    formAction: { flex: 1 },
+    section: { marginTop: 18, marginBottom: 4 },
     row: {
       flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-      paddingVertical: 14,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 10,
     },
-    rowTitle: { fontFamily: fonts.semibold, color: colors.text, fontSize: 15 },
-    sectionGap: { marginTop: 22, marginBottom: 4 },
-    error: {
-      color: colors.danger,
-      fontFamily: fonts.medium,
-      marginVertical: 8,
-    },
-    select: {
-      minHeight: 50,
-      justifyContent: "center",
-      paddingHorizontal: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.input,
-      backgroundColor: colors.surface,
-    },
-    selectText: { color: colors.text, fontFamily: fonts.regular, fontSize: 15 },
-    pickerBackdrop: {
-      position: "absolute",
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      zIndex: 10,
-      backgroundColor: colors.background,
-      padding: 22,
-      paddingTop: 50,
-    },
-    pickerPanel: { flex: 1, gap: 12 },
-    pickerRow: {
-      minHeight: 50,
-      justifyContent: "center",
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    pickerText: { color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
+    rowTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
   }),
 );

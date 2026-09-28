@@ -137,34 +137,42 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
     <div className="agents-rules">
       <h3>Your assistant</h3>
       <p className="muted">
-        Give your Orbyn assistant a name and describe how it should come across.
+        The name your built-in assistant goes by across Orbyn, and how it should
+        come across.
       </p>
-      <form className="agents-instructions-form" onSubmit={saveIdentity}>
-        <label>
-          Name
+      <form className="agents-identity-form" onSubmit={saveIdentity}>
+        <div className="settings-field">
+          <label htmlFor="agent-identity-name">Name</label>
           <input
+            id="agent-identity-name"
             required
             maxLength={40}
             value={identityName}
             onChange={(e) => setIdentityName(e.target.value)}
           />
-        </label>
-        <label>
-          Persona
+        </div>
+        <div className="settings-field">
+          <label htmlFor="agent-identity-persona">Persona</label>
           <textarea
+            id="agent-identity-persona"
             maxLength={1000}
             rows={3}
             value={identityPersona}
             onChange={(e) => setIdentityPersona(e.target.value)}
             placeholder="Warm, direct, and concise"
           />
-        </label>
-        <button
-          className="primary"
-          disabled={action.pending || identity === null}
-        >
-          Save
-        </button>
+          <small className="field-hint">
+            How it should come across. Optional.
+          </small>
+        </div>
+        <div className="button-row start">
+          <button
+            className="primary"
+            disabled={action.pending || identity === null}
+          >
+            Save
+          </button>
+        </div>
       </form>
 
       <h3>About me for agents</h3>

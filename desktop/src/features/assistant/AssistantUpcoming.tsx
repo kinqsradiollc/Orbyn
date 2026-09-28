@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { MoreHorizontal, Plus, Sparkles } from "lucide-react";
+import {
+  Check,
+  MoreHorizontal,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   addDays,
   dayTime,
@@ -52,7 +61,13 @@ function summaryOf(goal: Goal) {
 }
 
 /** Personal goals, their weekly check-ins, and scheduled assistant routines. */
-export function AssistantUpcoming({ agentName }: { agentName: string }) {
+export function AssistantUpcoming({
+  agentName,
+  onClose,
+}: {
+  agentName: string;
+  onClose: () => void;
+}) {
   const { ask } = useConfirm();
   const live = useRef(true);
   useEffect(
@@ -69,8 +84,9 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [agentDocs, setAgentDocs] = useState<DocSummary[]>([]);
   const [timezone, setTimezone] = useState("UTC");
-  const [goalForm, setGoalForm] = useState(false);
-  const [routineForm, setRoutineForm] = useState(false);
+  // A form is open for a new goal or routine ("new") or for one by id.
+  const [goalForm, setGoalForm] = useState<string | null>(null);
+  const [routineForm, setRoutineForm] = useState<string | null>(null);
   const [goalTitle, setGoalTitle] = useState("");
   const [goalTarget, setGoalTarget] = useState("");
   const [goalDate, setGoalDate] = useState("");
@@ -89,6 +105,19 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
     id: string;
     anchor: DOMRect;
   } | null>(null);
+
+  // Escape closes the panel, unless a menu or dialog above it is open.
+  const latestClose = useRef(onClose);
+  latestClose.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (document.querySelector(".modal-backdrop, .popover")) return;
+      latestClose.current();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   const load = async () => {
     const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs, scopes] =
@@ -179,25 +208,63 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
       setGoalDoc("");
   };
 
-  const createGoal = async (event: FormEvent) => {
+  const openGoalForm = (goal?: Goal) => {
+    setMenu(null);
+    setRoutineForm(null);
+    setGoalTitle(goal?.title ?? "");
+    setGoalTarget(goal?.target ?? "");
+    setGoalDate(goal?.target_date ?? "");
+    setGoalProject(goal?.project_id ?? "");
+    setGoalDoc(goal?.plan_doc_id ?? "");
+    setGoalForm(goal?.id ?? "new");
+  };
+
+  const openRoutineForm = (routine?: AgentRoutine) => {
+    setMenu(null);
+    setGoalForm(null);
+    setRoutineText(routine?.instruction ?? "");
+    if (routine) {
+      const at = new Date(routine.next_run_at);
+      setRoutineDay(localDateKey(at, routine.timezone));
+      setRoutineTime(
+        at.toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: routine.timezone,
+        }),
+      );
+      setRepeat(
+        routine.rrule === "FREQ=DAILY"
+          ? "daily"
+          : routine.rrule === "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+            ? "weekdays"
+            : "weekly",
+      );
+    } else {
+      setRoutineDay(localDateKey(new Date(), timezone));
+      setRoutineTime("09:00");
+      setRepeat("daily");
+    }
+    setRoutineForm(routine?.id ?? "new");
+  };
+
+  const saveGoal = async (event: FormEvent) => {
     event.preventDefault();
-    if (!goalTitle.trim() || saving) return;
+    if (!goalTitle.trim() || saving || !goalForm) return;
     setSaving(true);
     setError("");
+    const input = {
+      title: goalTitle,
+      target: goalTarget,
+      target_date: goalDate || null,
+      project_id: goalProject || null,
+      plan_doc_id: goalDoc || null,
+    };
     try {
-      await client.createGoal({
-        title: goalTitle,
-        target: goalTarget,
-        target_date: goalDate || null,
-        project_id: goalProject || null,
-        plan_doc_id: goalDoc || null,
-      });
-      setGoalTitle("");
-      setGoalTarget("");
-      setGoalDate("");
-      setGoalProject("");
-      setGoalDoc("");
-      setGoalForm(false);
+      if (goalForm === "new") await client.createGoal(input);
+      else await client.updateGoal(goalForm, input);
+      setGoalForm(null);
       await load();
     } catch {
       setError(
@@ -208,23 +275,24 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
     }
   };
 
-  const createRoutine = async (event: FormEvent) => {
+  const saveRoutine = async (event: FormEvent) => {
     event.preventDefault();
-    if (!routineText.trim() || saving) return;
+    if (!routineText.trim() || saving || !routineForm) return;
     setSaving(true);
     setError("");
     try {
       const { rule, next } = nextRun(routineDay, routineTime, repeat, timezone);
       if (!next)
         throw new Error("No future run is available for this schedule.");
-      await client.createAgentRoutine({
+      const input = {
         instruction: routineText,
         rrule: rule,
         timezone,
         next_run_at: next.toISOString(),
-      });
-      setRoutineText("");
-      setRoutineForm(false);
+      };
+      if (routineForm === "new") await client.createAgentRoutine(input);
+      else await client.updateAgentRoutine(routineForm, input);
+      setRoutineForm(null);
       await load();
     } catch {
       setError(
@@ -236,6 +304,7 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
   };
 
   const setGoalStatus = async (goal: Goal, status: Goal["status"]) => {
+    setMenu(null);
     setSaving(true);
     try {
       await client.updateGoal(goal.id, { status });
@@ -248,6 +317,7 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
   };
 
   const toggleRoutine = async (routine: AgentRoutine) => {
+    setMenu(null);
     setSaving(true);
     try {
       let next = new Date(routine.next_run_at);
@@ -299,189 +369,221 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
   const today = localDateKey(new Date(), timezone);
   const currentMonday = addDays(today, -((weekdayOf(today) + 6) % 7));
 
-  return (
-    <section className="ai-upcoming" aria-labelledby="ai-upcoming-title">
-      <header className="ai-upcoming-head">
-        <div>
-          <span className="eyebrow">
-            <Sparkles size={14} /> UPCOMING
+  const goalFields = (
+    <form
+      className="settings-subform ai-upcoming-form"
+      aria-label={goalForm === "new" ? "New goal" : "Edit goal"}
+      onSubmit={(event) => void saveGoal(event)}
+    >
+      <div className="settings-field">
+        <label htmlFor="ai-goal-title">Goal</label>
+        <input
+          id="ai-goal-title"
+          required
+          autoFocus
+          maxLength={120}
+          placeholder="e.g. Pass COMP90089"
+          value={goalTitle}
+          onChange={(event) => setGoalTitle(event.target.value)}
+        />
+      </div>
+      <div className="settings-field">
+        <label htmlFor="ai-goal-target">What does done look like?</label>
+        <textarea
+          id="ai-goal-target"
+          maxLength={2000}
+          rows={2}
+          value={goalTarget}
+          onChange={(event) => setGoalTarget(event.target.value)}
+        />
+      </div>
+      <label className="settings-field">
+        <span className="settings-label">Target date</span>
+        <DateField
+          value={goalDate}
+          onChange={(event) => setGoalDate(event.target.value)}
+        />
+      </label>
+      <label className="settings-field">
+        <span className="settings-label">Project</span>
+        <Select
+          value={goalProject}
+          onChange={(event) => chooseGoalProject(event.target.value)}
+        >
+          <option value="">No project</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="settings-field">
+        <span className="settings-label">Plan (an Agent note)</span>
+        <Select
+          value={goalDoc}
+          onChange={(event) => setGoalDoc(event.target.value)}
+        >
+          <option value="">No plan note</option>
+          {goalPlanDocs.map((doc) => (
+            <option key={doc.id} value={doc.id}>
+              {doc.title}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setGoalForm(null)}
+        >
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={saving}>
+          {goalForm === "new" ? "Add goal" : "Save goal"}
+        </button>
+      </div>
+    </form>
+  );
+
+  const routineFields = (
+    <form
+      className="settings-subform ai-upcoming-form"
+      aria-label={routineForm === "new" ? "New routine" : "Edit routine"}
+      onSubmit={(event) => void saveRoutine(event)}
+    >
+      <div className="settings-field">
+        <label htmlFor="ai-routine-text">What should {agentName} do?</label>
+        <textarea
+          id="ai-routine-text"
+          required
+          autoFocus
+          maxLength={4000}
+          rows={3}
+          placeholder="e.g. Check my week and flag anything at risk"
+          value={routineText}
+          onChange={(event) => setRoutineText(event.target.value)}
+        />
+      </div>
+      <div className="ai-upcoming-pair">
+        <label className="settings-field">
+          <span className="settings-label">
+            {routineForm === "new" ? "First run" : "Next run"}
           </span>
-          <h2 id="ai-upcoming-title">Goals and routines</h2>
-          <p>
-            Weekly goal check-ins and {agentName}’s scheduled runs use your
-            planner time zone ({timezone}).
-          </p>
-        </div>
-        <div className="ai-upcoming-add">
-          <button
-            type="button"
-            className="ai-ghost"
-            onClick={() => {
-              setGoalForm((open) => !open);
-              setRoutineForm(false);
-            }}
-          >
-            <Plus size={14} /> Goal
-          </button>
-          <button
-            type="button"
-            className="ai-ghost"
-            onClick={() => {
-              setRoutineForm((open) => !open);
-              setGoalForm(false);
-            }}
-          >
-            <Plus size={14} /> Routine
-          </button>
-        </div>
-      </header>
-      {goalForm && (
-        <form
-          className="ai-upcoming-form"
-          onSubmit={(event) => void createGoal(event)}
+          <DateField
+            type="date"
+            value={routineDay}
+            onChange={(event) => setRoutineDay(event.target.value)}
+          />
+        </label>
+        <label className="settings-field">
+          <span className="settings-label">Time</span>
+          <DateField
+            type="time"
+            value={routineTime}
+            onChange={(event) => setRoutineTime(event.target.value)}
+          />
+        </label>
+      </div>
+      <label className="settings-field">
+        <span className="settings-label">Repeat</span>
+        <Select
+          value={repeat}
+          onChange={(event) => setRepeat(event.target.value)}
         >
-          <h3>New goal</h3>
-          <label>
-            Goal
-            <input
-              required
-              maxLength={120}
-              value={goalTitle}
-              onChange={(event) => setGoalTitle(event.target.value)}
-            />
-          </label>
-          <label>
-            What does done look like?
-            <textarea
-              maxLength={2000}
-              rows={2}
-              value={goalTarget}
-              onChange={(event) => setGoalTarget(event.target.value)}
-            />
-          </label>
-          <div className="ai-upcoming-form-grid">
-            <label>
-              Target date{" "}
-              <DateField
-                value={goalDate}
-                onChange={(event) => setGoalDate(event.target.value)}
-              />
-            </label>
-            <label>
-              Project{" "}
-              <Select
-                value={goalProject}
-                onChange={(event) => chooseGoalProject(event.target.value)}
-              >
-                <option value="">No project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label>
-              Agent plan note{" "}
-              <Select
-                value={goalDoc}
-                onChange={(event) => setGoalDoc(event.target.value)}
-              >
-                <option value="">No plan note</option>
-                {goalPlanDocs.map((doc) => (
-                  <option key={doc.id} value={doc.id}>
-                    {doc.title}
-                  </option>
-                ))}
-              </Select>
-            </label>
-          </div>
-          <div className="ai-upcoming-actions">
-            <button type="submit" className="ai-primary" disabled={saving}>
-              Save goal
-            </button>
-            <button
-              type="button"
-              className="ai-ghost"
-              onClick={() => setGoalForm(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-      {routineForm && (
-        <form
-          className="ai-upcoming-form"
-          onSubmit={(event) => void createRoutine(event)}
+          <option value="daily">Every day</option>
+          <option value="weekdays">Every weekday</option>
+          <option value="weekly">Every week</option>
+        </Select>
+      </label>
+      <div className="button-row">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setRoutineForm(null)}
         >
-          <h3>New routine</h3>
-          <label>
-            What should {agentName} do?
-            <textarea
-              required
-              maxLength={4000}
-              rows={3}
-              value={routineText}
-              onChange={(event) => setRoutineText(event.target.value)}
-            />
-          </label>
-          <div className="ai-upcoming-form-grid">
-            <label>
-              First run{" "}
-              <DateField
-                type="date"
-                value={routineDay}
-                onChange={(event) => setRoutineDay(event.target.value)}
-              />
-            </label>
-            <label>
-              Time{" "}
-              <DateField
-                type="time"
-                value={routineTime}
-                onChange={(event) => setRoutineTime(event.target.value)}
-              />
-            </label>
-            <label>
-              Repeat{" "}
-              <Select
-                value={repeat}
-                onChange={(event) => setRepeat(event.target.value)}
-              >
-                <option value="daily">Every day</option>
-                <option value="weekdays">Every weekday</option>
-                <option value="weekly">Every week</option>
-              </Select>
-            </label>
-          </div>
-          <div className="ai-upcoming-actions">
-            <button type="submit" className="ai-primary" disabled={saving}>
-              Save routine
-            </button>
-            <button
-              type="button"
-              className="ai-ghost"
-              onClick={() => setRoutineForm(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-      {error && (
-        <p className="ai-upcoming-error" role="alert">
-          {error}
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={saving}>
+          {routineForm === "new" ? "Add routine" : "Save routine"}
+        </button>
+      </div>
+    </form>
+  );
+
+  const menuGoal =
+    menu?.kind === "goal" ? goals.find((g) => g.id === menu.id) : undefined;
+  const menuRoutine =
+    menu?.kind === "routine"
+      ? routines.find((r) => r.id === menu.id)
+      : undefined;
+  const openMenu = (
+    kind: "goal" | "routine",
+    id: string,
+    target: HTMLElement,
+  ) =>
+    setMenu(
+      menu?.id === id
+        ? null
+        : { kind, id, anchor: target.getBoundingClientRect() },
+    );
+
+  return (
+    <aside
+      id="ai-upcoming"
+      className="ai-upcoming"
+      aria-labelledby="ai-upcoming-title"
+    >
+      <div className="ai-upcoming-head">
+        <h2 id="ai-upcoming-title">Upcoming</h2>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Close Upcoming"
+          title="Close"
+          onClick={onClose}
+        >
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="ai-upcoming-body">
+        <p className="muted ai-upcoming-lead">
+          Weekly goal check-ins and {agentName}’s scheduled runs, in your
+          planner time zone ({timezone}).
         </p>
-      )}
-      <div className="ai-upcoming-grid">
-        <section>
-          <h3>Goals</h3>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <section aria-labelledby="ai-goals-title">
+          <div className="ai-upcoming-section-head">
+            <h3 id="ai-goals-title" className="settings-subtitle">
+              Goals
+            </h3>
+            <button
+              type="button"
+              className="text-button"
+              disabled={loading}
+              onClick={() => openGoalForm()}
+            >
+              <Plus size={14} aria-hidden="true" /> New goal
+            </button>
+          </div>
+          {goalForm === "new" && goalFields}
           {loading ? (
-            <p className="ai-upcoming-empty">Loading goals…</p>
+            <p className="muted">Loading…</p>
           ) : activeGoals.length ? (
-            <ul className="ai-upcoming-list">
+            <ul className="settings-list">
               {activeGoals.map((goal) => {
+                if (goalForm === goal.id)
+                  return (
+                    <li key={goal.id} className="is-editing">
+                      {goalFields}
+                    </li>
+                  );
                 const history = checkins[goal.id] ?? [];
                 const latest = history[0];
                 const checkinDay =
@@ -491,193 +593,210 @@ export function AssistantUpcoming({ agentName }: { agentName: string }) {
                     : currentMonday;
                 return (
                   <li key={goal.id}>
-                    <div className="ai-upcoming-row-main">
+                    <div className="settings-list-main">
                       <strong>{goal.title}</strong>
                       <small>
-                        Weekly check-in {dayLabel(checkinDay)}
+                        {goal.status === "paused"
+                          ? "Paused"
+                          : `Check-in ${dayLabel(checkinDay)}`}
                         {goal.target_date
-                          ? ` · target ${dayLabel(goal.target_date)}`
+                          ? ` · Target ${dayLabel(goal.target_date)}`
                           : ""}
                         {goal.project_name ? ` · ${goal.project_name}` : ""}
                       </small>
-                      {summaryOf(goal) && <p>{summaryOf(goal)}</p>}
+                      {summaryOf(goal) && <small>{summaryOf(goal)}</small>}
                       {latest && (
                         <small>
-                          Last check-in · {checkinStatusLabel(latest.status)}
+                          Last check-in: {checkinStatusLabel(latest.status)}
                           {latest.summary ? ` · ${latest.summary}` : ""}
                         </small>
                       )}
                     </div>
-                    <div className="ai-upcoming-row-actions">
-                      <button
-                        type="button"
-                        className="ai-ghost"
-                        disabled={saving}
-                        onClick={() =>
-                          void setGoalStatus(
-                            goal,
-                            goal.status === "paused" ? "active" : "paused",
-                          )
-                        }
-                      >
-                        {goal.status === "paused" ? "Resume" : "Pause"}
-                      </button>
-                      <button
-                        type="button"
-                        className="ai-menu-trigger"
-                        aria-label={`Options for ${goal.title}`}
-                        aria-haspopup="dialog"
-                        aria-expanded={menu?.id === goal.id}
-                        onClick={(event) =>
-                          setMenu(
-                            menu?.id === goal.id
-                              ? null
-                              : {
-                                  kind: "goal",
-                                  id: goal.id,
-                                  anchor:
-                                    event.currentTarget.getBoundingClientRect(),
-                                },
-                          )
-                        }
-                      >
-                        <MoreHorizontal size={16} />
-                      </button>
-                      {menu?.id === goal.id && (
-                        <Popover
-                          anchor={menu.anchor}
-                          label={`Options for ${goal.title}`}
-                          onClose={() => setMenu(null)}
-                        >
-                          <div className="popover-actions">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenu(null);
-                                void setGoalStatus(goal, "done");
-                              }}
-                            >
-                              Mark done
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deleteSelected()}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </Popover>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Options for ${goal.title}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={menu?.id === goal.id}
+                      disabled={saving}
+                      onClick={(event) =>
+                        openMenu("goal", goal.id, event.currentTarget)
+                      }
+                    >
+                      <MoreHorizontal size={18} aria-hidden="true" />
+                    </button>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <p className="ai-upcoming-empty">No active goals yet.</p>
+            goalForm !== "new" && <p className="muted">No goals yet.</p>
           )}
         </section>
-        <section>
-          <h3>Routines</h3>
+
+        <section aria-labelledby="ai-routines-title">
+          <div className="ai-upcoming-section-head">
+            <h3 id="ai-routines-title" className="settings-subtitle">
+              Routines
+            </h3>
+            <button
+              type="button"
+              className="text-button"
+              disabled={loading}
+              onClick={() => openRoutineForm()}
+            >
+              <Plus size={14} aria-hidden="true" /> New routine
+            </button>
+          </div>
+          {routineForm === "new" && routineFields}
           {loading ? (
-            <p className="ai-upcoming-empty">Loading routines…</p>
+            <p className="muted">Loading…</p>
           ) : routines.length ? (
-            <ul className="ai-upcoming-list">
-              {routines.map((routine) => (
-                <li key={routine.id}>
-                  <div className="ai-upcoming-row-main">
-                    <strong>{routine.instruction}</strong>
-                    <small>
-                      {routine.paused
-                        ? "Paused"
-                        : `Next · ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
-                      · {describeRrule(routine.rrule)}
-                    </small>
-                    {typeof routine.last_result?.summary === "string" && (
-                      <p>{routine.last_result.summary}</p>
-                    )}
-                  </div>
-                  <div className="ai-upcoming-row-actions">
+            <ul className="settings-list">
+              {routines.map((routine) =>
+                routineForm === routine.id ? (
+                  <li key={routine.id} className="is-editing">
+                    {routineFields}
+                  </li>
+                ) : (
+                  <li key={routine.id}>
+                    <div className="settings-list-main">
+                      <strong>{routine.instruction}</strong>
+                      <small>
+                        {routine.paused
+                          ? "Paused"
+                          : `Next ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
+                        · {describeRrule(routine.rrule)}
+                      </small>
+                      {typeof routine.last_result?.summary === "string" && (
+                        <small>Last run: {routine.last_result.summary}</small>
+                      )}
+                    </div>
                     <button
                       type="button"
-                      className="ai-ghost"
-                      disabled={saving}
-                      onClick={() => void toggleRoutine(routine)}
-                    >
-                      {routine.paused ? "Resume" : "Pause"}
-                    </button>
-                    <button
-                      type="button"
-                      className="ai-menu-trigger"
+                      className="icon-button"
                       aria-label={`Options for ${routine.instruction}`}
                       aria-haspopup="dialog"
                       aria-expanded={menu?.id === routine.id}
+                      disabled={saving}
                       onClick={(event) =>
-                        setMenu(
-                          menu?.id === routine.id
-                            ? null
-                            : {
-                                kind: "routine",
-                                id: routine.id,
-                                anchor:
-                                  event.currentTarget.getBoundingClientRect(),
-                              },
-                        )
+                        openMenu("routine", routine.id, event.currentTarget)
                       }
                     >
-                      <MoreHorizontal size={16} />
+                      <MoreHorizontal size={18} aria-hidden="true" />
                     </button>
-                    {menu?.id === routine.id && (
-                      <Popover
-                        anchor={menu.anchor}
-                        label={`Options for ${routine.instruction}`}
-                        onClose={() => setMenu(null)}
-                      >
-                        <div className="popover-actions">
-                          <button
-                            type="button"
-                            onClick={() => void deleteSelected()}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </Popover>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  </li>
+                ),
+              )}
             </ul>
           ) : (
-            <p className="ai-upcoming-empty">No scheduled routines yet.</p>
+            routineForm !== "new" && <p className="muted">No routines yet.</p>
           )}
         </section>
+
         {allowedRows.length > 0 && (
-          <section>
-            <h3>Allowed without asking</h3>
-            <ul className="ai-upcoming-list">
-              {allowedRows.map(([kind, rule]) => (
-                <li key={kind}>
-                  <div className="ai-upcoming-row-main">
-                    <strong>{CHANGE_KIND_LABELS[kind] ?? kind}</strong>
-                    <small>{ruleLabel(rule)}</small>
-                  </div>
-                  <div className="ai-upcoming-row-actions">
+          <section aria-labelledby="ai-allowed-title">
+            <h3 id="ai-allowed-title" className="settings-subtitle">
+              Allowed without asking
+            </h3>
+            <ul className="settings-list">
+              {allowedRows.map(([kind, rule]) => {
+                const label = CHANGE_KIND_LABELS[kind] ?? kind;
+                return (
+                  <li key={kind}>
+                    <div className="settings-list-main">
+                      <strong>{label}</strong>
+                      <small>{ruleLabel(rule)}</small>
+                    </div>
                     <button
                       type="button"
-                      className="ai-ghost"
+                      className="icon-button"
                       disabled={saving}
-                      aria-label={`Ask again before changing ${(CHANGE_KIND_LABELS[kind] ?? kind).toLowerCase()}`}
+                      aria-label={`Ask again before changing ${label.toLowerCase()}`}
+                      title="Ask me first again"
                       onClick={() => void removeAllowed(kind)}
                     >
-                      Remove
+                      <X size={16} aria-hidden="true" />
                     </button>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
       </div>
-    </section>
+
+      {menu && (menuGoal || menuRoutine) && (
+        <Popover
+          anchor={menu.anchor}
+          label={`Options for ${menuGoal?.title ?? menuRoutine?.instruction}`}
+          onClose={() => setMenu(null)}
+        >
+          <div className="popover-actions">
+            {menuGoal && (
+              <>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void setGoalStatus(
+                      menuGoal,
+                      menuGoal.status === "paused" ? "active" : "paused",
+                    )
+                  }
+                >
+                  {menuGoal.status === "paused" ? (
+                    <Play size={15} aria-hidden="true" />
+                  ) : (
+                    <Pause size={15} aria-hidden="true" />
+                  )}
+                  {menuGoal.status === "paused" ? "Resume" : "Pause"}
+                </button>
+                <button type="button" onClick={() => openGoalForm(menuGoal)}>
+                  <Pencil size={15} aria-hidden="true" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void setGoalStatus(menuGoal, "done")}
+                >
+                  <Check size={15} aria-hidden="true" />
+                  Mark done
+                </button>
+              </>
+            )}
+            {menuRoutine && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void toggleRoutine(menuRoutine)}
+                >
+                  {menuRoutine.paused ? (
+                    <Play size={15} aria-hidden="true" />
+                  ) : (
+                    <Pause size={15} aria-hidden="true" />
+                  )}
+                  {menuRoutine.paused ? "Resume" : "Pause"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openRoutineForm(menuRoutine)}
+                >
+                  <Pencil size={15} aria-hidden="true" />
+                  Edit
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="is-danger"
+              onClick={() => void deleteSelected()}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+              Delete
+            </button>
+          </div>
+        </Popover>
+      )}
+    </aside>
   );
 }
