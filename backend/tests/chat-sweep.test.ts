@@ -167,16 +167,15 @@ test("old chats compact into private notes while pinned and kept-out chats stay 
   assert.match(noteText, /focused 50-minute sessions/);
   assert.match(noteText, new RegExp(sourceId));
 
-  const queued = (
-    await pool.query<{ chat_id: string; turns: { content: string }[] }>(
-      "SELECT chat_id, turns FROM memory_queue WHERE chat_id = $1",
-      [chatIds.old],
-    )
-  ).rows[0];
-  assert.equal(queued.chat_id, chatIds.old);
-  assert.equal(queued.turns.length, 12);
-  assert.doesNotMatch(queued.turns[0].content, /An old question/);
-  assert.match(queued.turns.at(-1)!.content, /Conversation turn 15/);
+  // Memory learned from each turn as it finished; the sweep queues nothing.
+  assert.equal(
+    (
+      await pool.query("SELECT 1 FROM memory_queue WHERE chat_id = $1", [
+        chatIds.old,
+      ])
+    ).rowCount,
+    0,
+  );
 
   const retry = (
     await pool.query<{

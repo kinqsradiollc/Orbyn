@@ -39,8 +39,6 @@ const NOTICES_MS = 15 * 60_000;
 const CYCLE_MS = 10000;
 /** Deliveries per lane before the loop checks for new work again. */
 const LANE_BATCH = 100;
-/** Retry a failed chat compaction pass without waiting a full day. */
-const CHAT_SWEEP_RETRY_MS = 15 * 60_000;
 
 /** Liveness for the status page: the reminder service has no HTTP port. */
 async function heartbeat() {
@@ -57,14 +55,38 @@ async function heartbeat() {
  */
 /** How often the sweeper clears expired and outdated records (lib/sweep.ts). */
 const SWEEP_MS = 3_600_000;
-/** Compact stale chats once a day; the ordinary record sweeper remains hourly. */
-const CHAT_SWEEP_MS = 86_400_000;
+/** Compact chats unused for a week, hourly, in a lane of its own. */
+const CHAT_SWEEP_MS = 3_600_000;
 /** Daily Assistant ideas are queued away from request paths. */
 const ASSISTANT_IDEAS_MS = 60_000;
 /** Weekly goal check-ins are queued off the request path. */
 const ASSISTANT_GOALS_MS = 60_000;
 /** Scheduled Assistant routines are claimed off the request path. */
 const ASSISTANT_ROUTINES_MS = 60_000;
+
+/** The chat sweep in flight, if any: it runs beside the loop, never twice at once. */
+let chatSweep: Promise<void> | null = null;
+
+/**
+ * Start the chat sweep without waiting for it: it may take minutes (one
+ * provider call per chat, within its time budget) and must not hold up
+ * reminders. Does nothing while a sweep is still running.
+ */
+function startChatSweep() {
+  if (chatSweep) return;
+  chatSweep = sweepOldChats()
+    .then(() => undefined)
+    .catch((error) => {
+      // Chats that failed are tried again next hour.
+      console.error(
+        "Chat sweep failed",
+        error instanceof Error ? error.message : "unknown",
+      );
+    })
+    .finally(() => {
+      chatSweep = null;
+    });
+}
 
 export async function runWorker() {
   let stopping = false;
@@ -132,17 +154,13 @@ export async function runWorker() {
           }
           lastSwept = tick();
         }
-        if (tick() - lastChatSwept >= CHAT_SWEEP_MS) {
-          let failed = false;
-          try {
-            await sweepOldChats();
-          } catch {
-            // Retry the pass soon; individual chats also have claim timeouts.
-            failed = true;
-          }
-          lastChatSwept =
-            tick() - (failed ? CHAT_SWEEP_MS - CHAT_SWEEP_RETRY_MS : 0);
+        if (!chatSweep && tick() - lastChatSwept >= CHAT_SWEEP_MS) {
+          startChatSweep();
+          lastChatSwept = tick();
         }
+        // TODO(engine): once run.ts exports failStaleAssistantJobs(now), call it
+        // here at most once a minute to fail stale running jobs and clear their
+        // automation links. The scans already treat such jobs as released.
         if (tick() - lastAssistantIdeas >= ASSISTANT_IDEAS_MS) {
           try {
             await scanAssistantIdeas();
@@ -222,6 +240,8 @@ export async function runWorker() {
     if (!stopping && !backlog)
       await new Promise((resolve) => setTimeout(resolve, CYCLE_MS));
   }
+  // A chat sweep still in flight is abandoned: its claims expire and the
+  // next run takes those chats again.
   await closeDatabase();
   closeEmail();
 }

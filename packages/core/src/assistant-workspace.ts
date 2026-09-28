@@ -28,7 +28,17 @@ export type ApprovalScopes = z.output<typeof approvalScopesInput>;
 export const agentRoutineInput = z
   .object({
     instruction: z.string().trim().min(1).max(4000),
-    rrule: z.string().trim().min(1).max(200).refine(isValidRrule),
+    rrule: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .refine(isValidRrule)
+      // A routine's schedule moves forward from its next run, so a run count
+      // would never be reached; an end date (UNTIL) still works.
+      .refine((rule) => !/(^|;)\s*COUNT=/i.test(rule), {
+        message: "Routines can end on a date, but not after a number of runs.",
+      }),
     timezone: z.string().trim().min(1).max(64).default("UTC"),
     next_run_at: z.iso.datetime(),
     paused: z.boolean().default(false),

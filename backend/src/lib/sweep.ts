@@ -235,9 +235,9 @@ export const SWEEP_RULES: SweepRule[] = [
     key: "agent_activity",
     label: "Agent activity",
     detail:
-      "What each connected AI agent did (Settings → Connected agents → Activity). Active undo records stay until they expire.",
+      "What each connected AI agent did (Settings → Connected agents → Activity). A change that could be undone is kept this long after its undo window closes.",
     table: "agent_activity",
-    where: `${olderThan("at")} AND (undo_until IS NULL OR undo_until < now())`,
+    where: `${olderThan("at")} AND (undo_until IS NULL OR ${olderThan("undo_until")})`,
     days: 90,
     configurable: true,
     min: 90,
@@ -446,10 +446,14 @@ export const SWEEP_RULES: SweepRule[] = [
   {
     key: "ai_jobs",
     label: "Assistant jobs",
-    detail: "Finished assistant turns, once their answer was read.",
+    detail:
+      "Assistant turns a day after they finished or stopped responding, and turns left waiting for an answer after 14 days.",
     table: "ai_jobs",
-    where:
-      "created_at < now() - interval '1 day' AND state IN ('done', 'failed')",
+    // Running and waiting jobs hold the conversation in run_state, so a job
+    // that died or was never answered doesn't keep it forever.
+    where: `(created_at < now() - interval '1 day' AND state IN ('done', 'failed'))
+      OR (state = 'running' AND heartbeat_at < now() - interval '1 day')
+      OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days')`,
     days: 0,
     configurable: false,
   },
@@ -491,17 +495,6 @@ export const SWEEP_RULES: SweepRule[] = [
     table: "assistant_briefs",
     where: "local_day < current_date - $1::int",
     days: 400,
-    configurable: true,
-    min: 30,
-  },
-  {
-    key: "assistant_chat_shells",
-    label: "Compacted assistant chats",
-    detail:
-      "Old chat-history entries after their turns were saved as private Agent notes.",
-    table: "ai_chats",
-    where: `swept_at IS NOT NULL AND pinned = false AND ${olderThan("last_used_at")}`,
-    days: 365,
     configurable: true,
     min: 30,
   },
@@ -562,7 +555,12 @@ export async function retention(): Promise<Retention> {
   return Object.fromEntries(
     SWEEP_RULES.filter((r) => r.configurable).map((r) => [
       r.key,
-      typeof saved?.[r.key] === "number" ? saved[r.key] : r.days,
+      typeof saved?.[r.key] === "number"
+        ? // 0 keeps forever; anything shorter than the rule's minimum is raised to it.
+          saved[r.key] > 0
+          ? Math.max(saved[r.key], r.min ?? 1)
+          : saved[r.key]
+        : r.days,
     ]),
   );
 }
