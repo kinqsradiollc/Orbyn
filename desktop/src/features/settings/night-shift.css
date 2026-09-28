@@ -1,0 +1,31 @@
+.night-shift form {
+  display: grid;
+  gap: 16px;
+  max-width: 600px;
+}
+.night-shift .settings-field {
+  margin: 0;
+}
+.night-shift label.settings-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 13px;
+}
+.night-shift fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.night-shift legend {
+  padding: 0 4px;
+}
+.night-shift .muted {
+  margin: 0;
+}

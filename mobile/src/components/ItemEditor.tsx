@@ -36,6 +36,7 @@ import {
 } from "@orbyn/core";
 import { AttentionWarning } from "./followthrough/Attention";
 import { Button } from "./Button";
+import { TaskAgent } from "./TaskAgent";
 import { Chip, ChipRow } from "./Chip";
 import { AlertsField, ColorField, InviteesField } from "./EventFields";
 import { DateField, NumberInput } from "./Field";
@@ -78,6 +79,7 @@ type Props = {
   onClose: () => void;
   /** iOS: called after the sheet has finished animating away. */
   onDismissed?: () => void;
+  onAgentChanged?: () => void;
 };
 
 const PERSONAL = "personal";
@@ -124,6 +126,7 @@ function Form({
   onSave,
   onDelete,
   onClose,
+  onAgentChanged,
 }: Omit<Props, "editing"> & { editing: Editing }) {
   const [picker, setPicker] = useState<Picker | null>(null);
   // iOS's page sheet is pulled down by the system; elsewhere the header is.
@@ -469,6 +472,13 @@ function Form({
               onChange={(kind) => onChange({ kind })}
             />
           </Section>
+          {"id" in editing && editing.kind === "task" && (
+            <TaskAgent
+              item={editing}
+              disabled={busy || readOnly}
+              onChanged={onAgentChanged}
+            />
+          )}
           <Section label="Priority">
             <Segmented
               disabled={readOnly}

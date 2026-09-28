@@ -113,6 +113,8 @@ export type Item = ItemInput & {
   agent_grant_id?: string | null;
   /** How the agent's work on it stands (see AGENT_TASK_STATES). */
   agent_state?: AgentTaskState | null;
+  /** Handed tasks run now or wait for the person's next night shift. */
+  agent_when?: "now" | "tonight";
   /** The run working on it, or the last one that did. */
   agent_job_id?: string | null;
   /** What the agent said it did, in one line. */

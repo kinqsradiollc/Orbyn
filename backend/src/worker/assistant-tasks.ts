@@ -139,6 +139,7 @@ export async function scanAssistantTasks(
            LEFT JOIN teams t ON t.id = i.team_id
            LEFT JOIN projects p ON p.id = i.project_id
           WHERE i.agent_state IN ('queued', 'working')
+            AND i.agent_when = 'now'
             AND ${assistantActive("g.user_id")}
             AND NOT ${keptOut("i")}
             AND ${taskClaimable("i", "$1")}

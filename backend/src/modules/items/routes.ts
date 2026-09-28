@@ -574,7 +574,11 @@ export async function itemRoutes(app: FastifyInstance) {
   app.post("/items/:id/agent", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    return transaction((db) => handTaskToAgent(db, u, id));
+    const input = z
+      .object({ when: z.enum(["now", "tonight"]).default("now") })
+      .strict()
+      .parse(r.body ?? {});
+    return transaction((db) => handTaskToAgent(db, u, id, input.when));
   });
 
   app.delete("/items/:id/agent", async (r) => {

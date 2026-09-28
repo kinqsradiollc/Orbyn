@@ -15,6 +15,7 @@ import { timeAgo } from "../lib/progress";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { NightShift } from "./NightShift";
 
 type Run = (fn: () => Promise<void>) => Promise<unknown>;
 
@@ -107,6 +108,7 @@ export function AgentWarmStartCards({
 
   return (
     <>
+      <NightShift busy={busy} run={run} />
       <View style={shared.card}>
         <Text style={shared.label}>Your assistant</Text>
         <Text style={[shared.small, s.gap]}>

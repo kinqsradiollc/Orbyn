@@ -488,3 +488,31 @@ test("connected agents' recent work names their board lanes", async () => {
   const none = await inject(other, "GET", "/me/agent-work");
   assert.deepEqual(none.json(), [], "nobody else sees them");
 });
+
+test("Tonight tasks stay out of the daytime queue and can be moved back to Now", async () => {
+  const me = await register();
+  const id = await task(me, "Work on this tonight");
+  const handed = await inject(me, "POST", `/items/${id}/agent`, {
+    when: "tonight",
+  });
+  assert.equal(handed.statusCode, 200, handed.body);
+  assert.equal(handed.json().agent_when, "tonight");
+  const calls: Parameters<Start>[0][] = [];
+  const options = { only: [me.id], startAutomation: fakeStart(calls) };
+  assert.equal(await scanAssistantTasks(new Date(), options), 0);
+  assert.equal(calls.length, 0);
+  assert.equal((await itemRow(id)).agent_attempts, 0);
+  const now = await inject(me, "POST", `/items/${id}/agent`, { when: "now" });
+  assert.equal(now.statusCode, 200, now.body);
+  assert.equal(now.json().agent_when, "now");
+  assert.equal(await scanAssistantTasks(new Date(), options), 1);
+  assert.equal(calls.length, 1);
+  const busy = await inject(me, "POST", `/items/${id}/agent`, {
+    when: "tonight",
+  });
+  assert.equal(busy.statusCode, 409, busy.body);
+  const invalid = await inject(me, "POST", `/items/${id}/agent`, {
+    when: "tomorrow",
+  });
+  assert.equal(invalid.statusCode, 422, invalid.body);
+});

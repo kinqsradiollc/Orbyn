@@ -36,6 +36,7 @@ export async function handTaskToAgent(
   db: Db,
   u: UserRow,
   id: string,
+  when: "now" | "tonight" = "now",
 ): Promise<Item> {
   const item = await lockItem(db, id);
   await requireItemAccess(u, item, "items:write", db);
@@ -67,7 +68,23 @@ export async function handTaskToAgent(
       );
     throw error;
   }
-  if (item.agent_grant_id === grantId) return loadItem(db, id);
+  if (item.agent_grant_id === grantId) {
+    if (item.agent_when !== when) {
+      if (item.agent_state !== "queued")
+        fail(409, "Take this task back before changing when it runs.");
+      await db.query(
+        "UPDATE items SET agent_when = $2, updated_at = now() WHERE id = $1",
+        [id, when],
+      );
+      await announceTo(
+        db as never,
+        { user_id: item.user_id, team_id: item.team_id },
+        "changed",
+        { entity_type: "task", entity_id: id },
+      );
+    }
+    return loadItem(db, id);
+  }
   if (item.agent_grant_id)
     fail(409, "Someone else's agent has this task. They can take it back.");
   // One hand-over at a time per person, so the limit holds under a race.
@@ -88,9 +105,9 @@ export async function handTaskToAgent(
   await db.query(
     `UPDATE items SET agent_grant_id = $2, agent_state = 'queued',
        agent_job_id = NULL, agent_result = NULL, agent_claimed_at = NULL,
-       agent_attempts = 0, updated_at = now()
+       agent_attempts = 0, agent_when = $3, updated_at = now()
      WHERE id = $1`,
-    [id, grantId],
+    [id, grantId, when],
   );
   await announceTo(
     db as never,

@@ -10,6 +10,7 @@ import { client } from "../../lib/api";
 import { timeAgo } from "../../lib/tasks";
 import { openObject } from "../docs/DocLinks";
 import { OutcomeNote, useAction } from "../../components/Outcome";
+import { NightShift } from "./NightShift";
 
 /**
  * Connected agents → "About me for agents" and "Instructions" (H8): the
@@ -175,6 +176,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
         </div>
       </form>
 
+      <NightShift report={report} />
       <h3>About me for agents</h3>
       <p className="muted">
         One page your agents read before they help: your courses and exams, how

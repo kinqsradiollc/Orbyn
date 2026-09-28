@@ -135,6 +135,9 @@ export function ItemEditor({
   );
   // Handing the task to your own agent (W3) happens at once, not on Save.
   const [withAgent, setWithAgent] = useState(!!existing?.agent_grant_id);
+  const [agentWhen, setAgentWhen] = useState<"now" | "tonight">(
+    existing?.agent_when ?? "now",
+  );
   const [agentName, setAgentName] = useState("Orbyn");
   const [agentNote, setAgentNote] = useState("");
   const [agentBusy, setAgentBusy] = useState(false);
@@ -155,15 +158,19 @@ export function ItemEditor({
       setAssigneeId(value || null);
       return;
     }
-    if (value === AGENT || withAgent) {
+    if (value === AGENT || value === "~tonight" || withAgent) {
       setAgentBusy(true);
       setAgentNote("");
       try {
-        if (value === AGENT) {
-          await client.handTaskToAgent(existing.id);
+        if (value === AGENT || value === "~tonight") {
+          const when = value === "~tonight" ? "tonight" : "now";
+          await client.handTaskToAgent(existing.id, when);
+          setAgentWhen(when);
           setWithAgent(true);
           setAgentNote(
-            `Handed to ${agentName}. It works on this in the background and gives it back with a note.`,
+            when === "tonight"
+              ? `Handed to ${agentName} for tonight. Enable night shift in Assistant settings to run it.`
+              : `Handed to ${agentName}. It works on this in the background and gives it back with a note.`,
           );
           return;
         }
@@ -778,7 +785,15 @@ export function ItemEditor({
                 <label>
                   Assignee
                   <Select
-                    value={withAgent ? AGENT : teamId ? (assigneeId ?? "") : ""}
+                    value={
+                      withAgent
+                        ? agentWhen === "tonight"
+                          ? "~tonight"
+                          : AGENT
+                        : teamId
+                          ? (assigneeId ?? "")
+                          : ""
+                    }
                     disabled={agentBusy}
                     onChange={(e) => void pickAssignee(e.target.value)}
                   >
@@ -797,7 +812,10 @@ export function ItemEditor({
                         </option>
                       )}
                     {existing && kind === "task" && (
-                      <option value={AGENT}>{agentName}</option>
+                      <>
+                        <option value={AGENT}>{agentName} — now</option>
+                        <option value="~tonight">{agentName} — tonight</option>
+                      </>
                     )}
                   </Select>
                   {agentNote && (

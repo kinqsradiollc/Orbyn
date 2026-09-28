@@ -1706,6 +1706,7 @@ export function RootScreen() {
           }}
         />
         <ItemEditor
+          onAgentChanged={() => void refresh({ animate: true }).catch(() => {})}
           editing={editing}
           teams={teams}
           items={items}
