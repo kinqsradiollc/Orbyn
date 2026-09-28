@@ -1509,3 +1509,103 @@ kbd {
     margin-block: -12px;
   }
 }
+
+/* ---- Who's on it (W2): lanes that fold to a strip, chips and badges ---- */
+.board.is-lanes {
+  --lane-open: minmax(240px, 1fr);
+  --lane-strip: 44px;
+  /* Keeps the cards' screen-reader labels inside the scrolling board. */
+  position: relative;
+}
+.board-column.is-strip {
+  align-items: center;
+  padding: 12px 4px;
+}
+.board-column.is-strip .board-column-head {
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin: 0;
+  writing-mode: vertical-rl;
+}
+.board-column.is-strip .board-fold {
+  flex: none;
+  padding: 4px 2px;
+}
+.board-column.is-strip .board-column-count {
+  flex: none;
+  padding: 0;
+}
+.board-column.is-strip .board-add {
+  display: none;
+}
+.board-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.board-chip,
+.agent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surfaceMuted);
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+.board-chip.is-overdue {
+  background: var(--status-blocked-bg);
+  color: var(--status-blocked-fg);
+}
+.agent-badge {
+  background: var(--color-accentSoft);
+  color: var(--color-accent);
+}
+.owner-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--color-accentSoft);
+  color: var(--color-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.agent-line {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+.agent-line.is-needs {
+  color: var(--color-warn);
+  font-weight: 600;
+}
+.board-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 0 23px 18px;
+}
+.board-tools .filter-chips {
+  padding: 0;
+}
+.board-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.board-range-days {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

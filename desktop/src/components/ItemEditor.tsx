@@ -133,6 +133,52 @@ export function ItemEditor({
   const [assigneeId, setAssigneeId] = useState<string | null>(
     base.assignee_id ?? null,
   );
+  // Handing the task to your own agent (W3) happens at once, not on Save.
+  const [withAgent, setWithAgent] = useState(!!existing?.agent_grant_id);
+  const [agentName, setAgentName] = useState("Orbyn");
+  const [agentNote, setAgentNote] = useState("");
+  const [agentBusy, setAgentBusy] = useState(false);
+  useEffect(() => {
+    if (!existing || existing.kind !== "task") return;
+    let live = true;
+    client
+      .agentSettings()
+      .then((a) => live && setAgentName(a.name || "Orbyn"))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [existing?.id, existing?.kind]); // eslint-disable-line react-hooks/exhaustive-deps
+  const AGENT = "~agent";
+  const pickAssignee = async (value: string) => {
+    if (!existing) {
+      setAssigneeId(value || null);
+      return;
+    }
+    if (value === AGENT || withAgent) {
+      setAgentBusy(true);
+      setAgentNote("");
+      try {
+        if (value === AGENT) {
+          await client.handTaskToAgent(existing.id);
+          setWithAgent(true);
+          setAgentNote(
+            `Handed to ${agentName}. It works on this in the background and gives it back with a note.`,
+          );
+          return;
+        }
+        await client.takeTaskBack(existing.id);
+        setWithAgent(false);
+        setAgentNote(`Taken back from ${agentName}.`);
+      } catch (e) {
+        setAgentNote(e instanceof Error ? e.message : String(e));
+        return;
+      } finally {
+        setAgentBusy(false);
+      }
+    }
+    setAssigneeId(value || null);
+  };
   const [location, setLocation] = useState(base.location ?? "");
   const [meetingUrl, setMeetingUrl] = useState(base.meeting_url ?? "");
   const [repeat, setRepeat] = useState(() =>
@@ -728,27 +774,37 @@ export function ItemEditor({
                   </small>
                 )}
               </label>
-              {teamId && (
+              {(teamId || (existing && kind === "task")) && (
                 <label>
                   Assignee
                   <Select
-                    value={assigneeId ?? ""}
-                    onChange={(e) => setAssigneeId(e.target.value || null)}
+                    value={withAgent ? AGENT : teamId ? (assigneeId ?? "") : ""}
+                    disabled={agentBusy}
+                    onChange={(e) => void pickAssignee(e.target.value)}
                   >
-                    <option value="">Nobody yet</option>
+                    <option value="">{teamId ? "Nobody yet" : "You"}</option>
                     {members.map((m) => (
                       <option key={m.user_id} value={m.user_id}>
                         {m.name}
                       </option>
                     ))}
                     {assigneeId &&
+                      teamId &&
                       !members.some((m) => m.user_id === assigneeId) && (
                         <option value={assigneeId}>
                           {(existing as Item | null)?.assignee_name ??
                             "Current assignee"}
                         </option>
                       )}
+                    {existing && kind === "task" && (
+                      <option value={AGENT}>{agentName}</option>
+                    )}
                   </Select>
+                  {agentNote && (
+                    <small className="field-hint" role="status">
+                      {agentNote}
+                    </small>
+                  )}
                 </label>
               )}
             </div>

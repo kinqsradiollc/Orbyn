@@ -1,6 +1,7 @@
 import {
   actionSchema,
   fail,
+  isClosed,
   itemData,
   MAX_PROPOSAL_CHANGES,
   parseDoc,
@@ -23,6 +24,7 @@ import { actAs } from "../../lib/actor.js";
 import { audit } from "../../lib/audit.js";
 import type { UserRow } from "../../lib/auth.js";
 import { visibleItems } from "../../lib/visibility.js";
+import { agentNameOf, handTaskToAgent } from "../items/agent.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { addSession } from "../planner/blocks.js";
 import { emitInbox } from "../agent-inbox/emit.js";
@@ -223,6 +225,8 @@ type Names = {
   people: Map<string, string>;
   projects: Map<string, string>;
   lists: Map<string, string>;
+  /** The person's agent's chosen name, for tasks handed to it. */
+  agentName: string;
 };
 
 /** Names for the ids a set of changes mentions, read once. */
@@ -238,7 +242,7 @@ async function namesFor(db: Queryable, userId: string, rows: Row[]) {
     walk(r.actions);
   }
   const all = [...ids];
-  const [prefs, teams, people, projects, lists] = await Promise.all([
+  const [prefs, teams, people, projects, lists, agentName] = await Promise.all([
     loadPrefs(db, userId),
     db.query<{ id: string; name: string }>(
       "SELECT id, name FROM teams WHERE id = ANY($1::uuid[])",
@@ -256,6 +260,7 @@ async function namesFor(db: Queryable, userId: string, rows: Row[]) {
       "SELECT id, name FROM lists WHERE id = ANY($1::uuid[])",
       [all],
     ),
+    agentNameOf(db, userId),
   ]);
   const map = (q: { rows: { id: string; name: string }[] }) =>
     new Map(q.rows.map((r) => [r.id, r.name]));
@@ -265,6 +270,7 @@ async function namesFor(db: Queryable, userId: string, rows: Row[]) {
     people: map(people),
     projects: map(projects),
     lists: map(lists),
+    agentName,
   } satisfies Names;
 }
 
@@ -406,6 +412,18 @@ export async function staleness(
         now.paused === was.paused
         ? null
         : "That routine changed since this was suggested.";
+    }
+    case "task.hand": {
+      const row = (
+        await db.query<{ status: string; agent_grant_id: string | null }>(
+          `SELECT i.status, i.agent_grant_id FROM items i
+            WHERE i.id = $2 AND ${visibleItems()}`,
+          [userId, c.item_id],
+        )
+      ).rows[0];
+      if (!row) return "That task is gone.";
+      if (isClosed(row.status)) return "That task is finished.";
+      return row.agent_grant_id ? "Your agent has that task already." : null;
     }
     case "goal.save": {
       if (!c.goal_id || !c.before) return null;
@@ -599,6 +617,18 @@ function diffOf(c: ReviewChange, index: number, n: Names): ReviewDiff {
         ].filter((r) => r.before !== r.after),
       };
     }
+    case "task.hand":
+      return {
+        ...base,
+        headline: `Hand ${quote(c.title)} to ${n.agentName}`,
+        rows: [
+          {
+            label: "Who's on it",
+            before: "You",
+            after: `${n.agentName}, working on its own`,
+          },
+        ],
+      };
     case "goal.save": {
       const was = c.before as Record<string, unknown> | null;
       const now = c.goal as Record<string, unknown>;
@@ -1106,6 +1136,9 @@ export async function applyChange(
       await saveAgentRoutine(db, u.id, c.routine_id, c.routine, {
         advance: true,
       });
+      return {};
+    case "task.hand":
+      await handTaskToAgent(db, u, c.item_id);
       return {};
     case "goal.save":
       await saveGoal(db, u.id, c.goal_id, c.goal, true);

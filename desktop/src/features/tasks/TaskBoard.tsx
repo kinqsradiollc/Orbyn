@@ -1,21 +1,29 @@
 import { useRef, useState } from "react";
 import { Select } from "../../components/Select";
 import {
+  Bot,
   CalendarClock,
   ChevronDown,
   ChevronRight,
+  Inbox,
   ListChecks,
   MessageSquare,
   Plus,
   Users,
 } from "lucide-react";
 import {
+  agentStateText,
   dateLabel,
   durationText,
+  isAgentLane,
+  OWNER_AGENT,
+  OWNER_REVIEW,
   type BoardGroupBy,
   type Item,
+  type ReviewItem,
   type TaskGroup,
 } from "@orbyn/core";
+import { StatusPill } from "../../components/StatusPill";
 import { ProgressBar } from "../../components/ProgressBar";
 import { ItemFacts } from "../../components/ItemFacts";
 import { stagger } from "../../lib/motion";
@@ -41,7 +49,18 @@ type Props = {
   onToggleFold: (column: string) => void;
   /** A subtask's parent title, shown above it. */
   parentOf?: (item: Item) => string | undefined;
+  /** "Who's on it": the proposals waiting in Review, as cards in their lane. */
+  reviewCards?: ReviewItem[];
+  onOpenReview?: (id: string) => void;
+  /** Your agent's chosen name, for its badge. */
+  agentName?: string;
+  /** Which connected agent a task's lane is, for its badge. */
+  agentOf?: (item: Item) => string | undefined;
 };
+
+/** The first letter of a name, for a small avatar. */
+const initial = (name?: string | null) =>
+  (name?.trim()[0] ?? "?").toUpperCase();
 
 /**
  * One column per status, list, priority, assignee or tag. Cards drag
@@ -62,13 +81,18 @@ export function TaskBoard({
   folded,
   onToggleFold,
   parentOf,
+  reviewCards = [],
+  onOpenReview,
+  agentName = "Orbyn",
+  agentOf,
 }: Props) {
+  const owners = by === "owner";
   const boardRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<{ id: string; from: string } | null>(
     null,
   );
   const [over, setOver] = useState<string | null>(null);
-  const scrolls = columns.length > 5;
+  const scrolls = columns.length > 5 || owners;
   const byId = new Map(columns.flatMap((c) => c.items.map((i) => [i.id, i])));
 
   const drop = (to: string, raw: string) => {
@@ -86,14 +110,28 @@ export function TaskBoard({
   return (
     <div
       ref={boardRef}
-      className={"board" + (scrolls ? " is-scroll" : "")}
-      style={{ "--cols": columns.length } as never}
+      className={
+        "board" + (scrolls ? " is-scroll" : "") + (owners ? " is-lanes" : "")
+      }
+      style={
+        (owners
+          ? {
+              gridTemplateColumns: columns
+                .map((c) =>
+                  folded.has(c.key) ? "var(--lane-strip)" : "var(--lane-open)",
+                )
+                .join(" "),
+            }
+          : { "--cols": columns.length }) as never
+      }
       onDragOver={(e) => {
         if (carries(e, CARD_MIME)) edgeScroll(boardRef.current, e.clientX);
       }}
     >
       {columns.map((column) => {
         const isFolded = folded.has(column.key);
+        const isReview = owners && column.key === OWNER_REVIEW;
+        const count = isReview ? reviewCards.length : column.items.length;
         const titleId = `board-${by}-${column.key}`;
         return (
           <section
@@ -102,6 +140,7 @@ export function TaskBoard({
               "board-column" +
               (by === "status" ? ` tone-${column.key}` : "") +
               (isFolded ? " is-folded" : "") +
+              (isFolded && owners ? " is-strip" : "") +
               (over === column.key && dragging?.from !== column.key
                 ? " is-drop"
                 : "")
@@ -140,6 +179,11 @@ export function TaskBoard({
                 )}
                 {by === "status" ? (
                   <i aria-hidden="true" />
+                ) : owners &&
+                  (column.key === OWNER_AGENT || isAgentLane(column.key)) ? (
+                  <Bot size={14} aria-hidden="true" />
+                ) : isReview ? (
+                  <Inbox size={14} aria-hidden="true" />
                 ) : (
                   column.color && (
                     <i
@@ -159,7 +203,7 @@ export function TaskBoard({
                     : undefined
                 }
               >
-                {column.items.length}
+                {count}
                 {column.minutes > 0 && (
                   <small> · {durationText(column.minutes)}</small>
                 )}
@@ -176,11 +220,45 @@ export function TaskBoard({
                 </button>
               )}
             </h3>
-            {!isFolded && column.items.length === 0 && (
+            {!isFolded && count === 0 && (
               <p className="board-empty">
-                {dragging ? "Drop here" : "Nothing here yet."}
+                {isReview
+                  ? "Nothing waits for your review."
+                  : dragging
+                    ? "Drop here"
+                    : column.key === OWNER_AGENT && owners
+                      ? `Drag a task here to hand it to ${agentName}.`
+                      : "Nothing here yet."}
               </p>
             )}
+            {!isFolded &&
+              isReview &&
+              reviewCards.map((p, n) => (
+                <article
+                  key={p.id}
+                  className="board-card fade-up stagger"
+                  style={stagger(n)}
+                >
+                  <button
+                    className="board-card-main"
+                    onClick={() => onOpenReview?.(p.id)}
+                    aria-label={`Review ${p.summary}`}
+                  >
+                    <strong>{p.summary}</strong>
+                    <span className="board-card-chips">
+                      <span className="agent-badge">
+                        <Bot size={12} aria-hidden="true" />
+                        {p.source === "assistant" ? agentName : p.proposer}
+                      </span>
+                      <span className="board-chip">
+                        {p.changes.length === 1
+                          ? "1 change"
+                          : `${p.changes.length} changes`}
+                      </span>
+                    </span>
+                  </button>
+                </article>
+              ))}
             {!isFolded &&
               column.items.map((i, n) => {
                 const steps = stepsLabel(i);
@@ -218,7 +296,7 @@ export function TaskBoard({
                       )}
                       <strong>{i.title}</strong>
                       <span className="board-card-meta">
-                        {i.due_at && (
+                        {i.due_at && !owners && (
                           <span
                             className={isOverdue(i) ? "is-overdue" : undefined}
                           >
@@ -234,6 +312,58 @@ export function TaskBoard({
                           </span>
                         )}
                       </span>
+                      {owners && (
+                        <span className="board-card-chips">
+                          {i.due_at && (
+                            <span className="board-chip">
+                              <CalendarClock size={12} aria-hidden="true" />
+                              {dateLabel(i.due_at)}
+                            </span>
+                          )}
+                          <StatusPill status={i.status} />
+                          {isOverdue(i) && (
+                            <span className="board-chip is-overdue">
+                              Overdue
+                            </span>
+                          )}
+                          {i.agent_grant_id ? (
+                            <span
+                              className="agent-badge"
+                              title={agentStateText(i.agent_state, agentName)}
+                            >
+                              <Bot size={12} aria-hidden="true" />
+                              {agentName}
+                            </span>
+                          ) : agentOf?.(i) ? (
+                            <span className="agent-badge">
+                              <Bot size={12} aria-hidden="true" />
+                              {agentOf(i)}
+                            </span>
+                          ) : i.assignee_name ? (
+                            <span
+                              className="owner-avatar"
+                              title={i.assignee_name}
+                              aria-label={`Assigned to ${i.assignee_name}`}
+                            >
+                              {initial(i.assignee_name)}
+                            </span>
+                          ) : null}
+                        </span>
+                      )}
+                      {owners && i.agent_state && (
+                        <span
+                          className={
+                            "agent-line" +
+                            (i.agent_state === "needs_you" ? " is-needs" : "")
+                          }
+                          role="status"
+                        >
+                          {i.agent_grant_id && i.agent_progress
+                            ? i.agent_progress
+                            : i.agent_result ||
+                              agentStateText(i.agent_state, agentName)}
+                        </span>
+                      )}
                       <ItemFacts item={i} />
                       <ProgressBar
                         value={progressOf(i)}
@@ -271,6 +401,9 @@ export function TaskBoard({
                             onMove(i, column.key, e.target.value)
                           }
                         >
+                          {!targets.some((c) => c.key === column.key) && (
+                            <option value={column.key}>{column.title}</option>
+                          )}
                           {targets.map((c) => (
                             <option key={c.key} value={c.key}>
                               {c.key === column.key

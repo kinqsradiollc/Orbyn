@@ -2,6 +2,7 @@ import type { ProjectDecomposition } from "./projectDraft.js";
 import type { AssistantSource, DraftNote } from "./docs.js";
 import type { SessionChange } from "./schemas.js";
 import type { DeadlineFit } from "./fit.js";
+import type { AgentTaskState } from "./agent-tasks.js";
 
 import type { z } from "zod";
 import type {
@@ -105,6 +106,19 @@ export type Item = ItemInput & {
   spent_minutes?: number;
   /** The assignee's name, on list and detail responses. */
   assignee_name?: string | null;
+  /**
+   * Handed to the person's own agent (W3): its assistant grant while the
+   * agent has it; cleared when the run ends and the task comes back.
+   */
+  agent_grant_id?: string | null;
+  /** How the agent's work on it stands (see AGENT_TASK_STATES). */
+  agent_state?: AgentTaskState | null;
+  /** The run working on it, or the last one that did. */
+  agent_job_id?: string | null;
+  /** What the agent said it did, in one line. */
+  agent_result?: string | null;
+  /** The run's progress line while the agent has it ("Planning the steps"). */
+  agent_progress?: string | null;
   /** First occurrence of a repeating item; `due_at` is the current one. */
   series_start?: string | null;
   /** Occurrences removed from a repeating item. */

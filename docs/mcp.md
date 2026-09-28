@@ -378,7 +378,7 @@ Adds up to 25 tasks or events, from fields or a quick-add line ("Essay fri 3pm !
 
 ### `update_tasks`
 
-Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first. Undo keeps the old values.
+Changes up to 25 tasks or events. Only named fields change and the version is checked (VERSION_CONFLICT otherwise). A repeating item changes as a series, or with scope one occurrence or it and later ones. Moving between spaces, emailing invitees or notifying a teammate may ask first; handing it to their agent always asks. Undo keeps the old values.
 
 | Argument             | Type           | Notes                                                                 |
 | -------------------- | -------------- | --------------------------------------------------------------------- |
@@ -1101,6 +1101,7 @@ Catalog version: `2026-09-28`.
 
 ### 2026-09-28
 
+- Hand a task to Orbyn (W3): update_tasks takes agent "assistant" to hand a task to the person's own agent to work on. It runs Orbyn's hosted assistant, so an outside agent's hand-over always waits for the person in Review (a task.hand proposal); the built-in assistant can't hand a task to itself. Still 65 tools.
 - Orbyn's built-in assistant (Muse) now uses the shared capability registry and executor, so its lead and specialist runs call the same tools agents do; get_context includes a private Memory topic index for Personal.
 - get_chats (core): lists the person's private conversations with the built-in assistant and reads an unswept chat's turns and content-free steps by chat_id; a compacted chat gives its summary note's title, link and words (up to 4,000 characters). Projects kept out of AI stay hidden.
 - manage_goals (core): private dated goals with weekly check-ins. Personal only; a connection that asks first or only suggests sends creates and updates to Review, because an active goal's weekly check-in runs Orbyn's own assistant.
@@ -1149,4 +1150,4 @@ Catalog version: `2026-09-28`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 268 of the app's signed-in routes are covered by tools, 211 are never for agents, and 0 are still to come.
+Routes: 269 of the app's signed-in routes are covered by tools, 213 are never for agents, and 0 are still to come.

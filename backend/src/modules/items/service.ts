@@ -78,7 +78,9 @@ export const ITEM_COLUMNS = `i.*, t.name AS team_name, a.name AS assignee_name,
        ELSE greatest(0, i.estimate_minutes - i.spent_minutes) END AS remaining_minutes,
   (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status <> 'cancelled') AS child_count,
   (SELECT count(*)::int FROM items c WHERE c.parent_id = i.id AND c.status = 'done') AS children_done,
-  (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline`;
+  (SELECT p.deadline FROM projects p WHERE p.id = i.project_id) AS project_deadline,
+  CASE WHEN i.agent_grant_id IS NULL THEN NULL
+       ELSE (SELECT j.progress->>'label' FROM ai_jobs j WHERE j.id = i.agent_job_id) END AS agent_progress`;
 
 /** Subtasks go this many levels deep at most (a task, its subtask, and theirs). */
 export const MAX_SUBTASK_DEPTH = 3;
