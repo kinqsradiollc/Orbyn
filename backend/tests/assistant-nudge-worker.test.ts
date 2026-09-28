@@ -260,7 +260,7 @@ test("goal, exam, mentioned comment and missed habit candidates are personal and
   );
   const habit = (
     await pool.query(
-      "INSERT INTO habits(user_id,name,cadence,duration_minutes) VALUES($1,'Read',1,30) RETURNING id",
+      "INSERT INTO habits(user_id,name,cadence,duration_minutes,created_at) VALUES($1,'Read',1,30,'2050-01-02T00:00:00Z') RETURNING id",
       [me.id],
     )
   ).rows[0].id;
@@ -326,5 +326,115 @@ test("kept-out exam decks and goal plans never become reminder candidates", asyn
     (await reminderNudgeCandidates(me.id, "UTC", now)).every(
       (c) => ![goal, exam].includes(c.entity_id),
     ),
+  );
+});
+
+test("missed habit periods include unbooked targets and old check-ins, without nudging new or completed habits", async () => {
+  const me = await person();
+  const other = await person();
+  const at = new Date("2026-09-28T15:00:00Z"); // Monday after a completed weekly period.
+  const habit = async (
+    name: string,
+    period: string,
+    cadence = 1,
+    created = "2026-09-01T00:00:00Z",
+    user = me.id,
+  ) =>
+    (
+      await pool.query(
+        `INSERT INTO habits(user_id,name,period,cadence,duration_minutes,days,created_at)
+      VALUES($1,$2,$3,$4,30,ARRAY[1,2,3,4,5]::smallint[],$5) RETURNING id`,
+        [user, name, period, cadence, created],
+      )
+    ).rows[0].id;
+  const daily = await habit("Unbooked weekdays", "day");
+  const weekly = await habit("Two weekly sessions", "week", 2);
+  const checked = await habit("Completed week", "week", 2);
+  const fresh = await habit("Just started", "day", 1, "2026-09-28T00:00:00Z");
+  const foreign = await habit(
+    "Someone else",
+    "week",
+    1,
+    "2026-09-01T00:00:00Z",
+    other.id,
+  );
+  const paused = await habit("Paused habit", "day");
+  await pool.query("UPDATE habits SET active=false WHERE id=$1", [paused]);
+  const block = (
+    await pool.query(
+      `INSERT INTO habit_blocks(user_id,habit_id,start_at,end_at)
+    VALUES($1,$2,'2026-09-24T09:00:00Z','2026-09-24T09:30:00Z') RETURNING id`,
+      [me.id, weekly],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO habit_blocks(user_id,habit_id,start_at,end_at,outcome)
+    SELECT $1,$2,day,day+interval '30 minutes','done'
+    FROM unnest(ARRAY['2026-09-21T09:00:00Z'::timestamptz,'2026-09-22T09:00:00Z'::timestamptz]) day`,
+    [me.id, checked],
+  );
+  const cards = await reminderNudgeCandidates(me.id, "UTC", at);
+  assert.deepEqual(cards.find((c) => c.entity_id === daily)?.actions, ["skip"]);
+  assert.match(
+    cards.find((c) => c.entity_id === daily)!.text,
+    /0 of 1.*last scheduled day/,
+  );
+  assert.equal(cards.find((c) => c.entity_id === weekly)?.source_id, block);
+  assert.deepEqual(cards.find((c) => c.entity_id === weekly)?.actions, [
+    "done",
+    "skip",
+  ]);
+  assert.ok(
+    cards.every(
+      (c) => ![checked, fresh, foreign, paused].includes(c.entity_id),
+    ),
+  );
+  await pool.query("UPDATE habit_blocks SET outcome='done' WHERE id=$1", [
+    block,
+  ]);
+  assert.match(
+    (await reminderNudgeCandidates(me.id, "UTC", at)).find(
+      (c) => c.entity_id === weekly,
+    )!.text,
+    /1 of 2/,
+  );
+  await pool.query(
+    `INSERT INTO habit_blocks(user_id,habit_id,start_at,end_at,outcome)
+    VALUES($1,$2,'2026-09-25T09:00:00Z','2026-09-25T09:30:00Z','done')`,
+    [me.id, weekly],
+  );
+  assert.ok(
+    (await reminderNudgeCandidates(me.id, "UTC", at)).every(
+      (c) => c.entity_id !== weekly,
+    ),
+  );
+});
+
+test("missed weekly habits use the local period boundary across Melbourne DST", async () => {
+  const me = await person();
+  const habit = (
+    await pool.query(
+      `INSERT INTO habits(user_id,name,cadence,period,duration_minutes,created_at)
+    VALUES($1,'DST weekly target',1,'week',30,'2026-09-01T00:00:00Z') RETURNING id`,
+      [me.id],
+    )
+  ).rows[0].id;
+  // Monday at 00:30 after the spring transition belongs to the new local week.
+  await pool.query(
+    `INSERT INTO habit_blocks(user_id,habit_id,start_at,end_at,outcome)
+    VALUES($1,$2,'2026-10-04T13:30:00Z','2026-10-04T14:00:00Z','done')`,
+    [me.id, habit],
+  );
+  const at = new Date("2026-10-05T12:00:00Z");
+  assert.ok(
+    (await reminderNudgeCandidates(me.id, "UTC", at)).every(
+      (c) => c.entity_id !== habit,
+    ),
+  );
+  assert.match(
+    (await reminderNudgeCandidates(me.id, "Australia/Melbourne", at)).find(
+      (c) => c.entity_id === habit,
+    )!.text,
+    /0 of 1.*last week/,
   );
 });

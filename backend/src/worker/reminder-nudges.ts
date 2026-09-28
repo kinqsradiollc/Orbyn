@@ -7,6 +7,7 @@ import {
   dayTime,
   addDays,
   zonedParts,
+  weekdayOf,
   type ReminderNudgeCard,
   type ReminderNudgeSettings,
 } from "@orbyn/core";
@@ -358,6 +359,53 @@ export async function reminderNudgeCandidates(
       text: `Your planned “${habit.name}” habit session ended without a check-in. Did you do it?`,
       actions: ["done", "skip"],
     })),
+  );
+  const previousWeek = addDays(today, -((weekdayOf(today) + 6) % 7) - 7);
+  const missed = (
+    await db.query<{
+      id: string;
+      name: string;
+      period: "day" | "week";
+      cadence: number;
+      completed: number;
+      block_id: string | null;
+    }>(
+      `WITH periods AS (
+       SELECT h.*, CASE WHEN h.period = 'week' THEN $4::date ELSE (
+         SELECT max(day::date) FROM generate_series($3::date - 7, $3::date - 1, interval '1 day') day
+         WHERE extract(dow FROM day)::int = ANY(h.days)
+       ) END AS period_day FROM habits h WHERE h.user_id = $1 AND h.active
+     ), windows AS (
+       SELECT p.*, p.period_day::timestamp AT TIME ZONE $5 AS period_start,
+         (p.period_day + CASE WHEN p.period = 'week' THEN 7 ELSE 1 END)::timestamp AT TIME ZONE $5 AS period_end
+       FROM periods p
+     )
+     SELECT w.id, w.name, w.period, w.cadence,
+       (SELECT count(*)::int FROM habit_blocks b WHERE b.habit_id = w.id AND b.user_id = $1
+         AND b.start_at >= w.period_start AND b.end_at <= w.period_end AND b.outcome = 'done') AS completed,
+       (SELECT b.id FROM habit_blocks b WHERE b.habit_id = w.id AND b.user_id = $1
+         AND b.start_at >= w.period_start AND b.end_at <= w.period_end AND b.outcome IS NULL
+         ORDER BY b.end_at DESC, b.id LIMIT 1) AS block_id
+     FROM windows w WHERE w.created_at <= w.period_start AND w.period_end <= $2::timestamptz
+       AND (SELECT count(*) FROM habit_blocks b WHERE b.habit_id = w.id AND b.user_id = $1
+         AND b.start_at >= w.period_start AND b.end_at <= w.period_end AND b.outcome = 'done') < w.cadence
+     ORDER BY w.id LIMIT 20`,
+      [userId, now, today, previousWeek, timezone],
+    )
+  ).rows;
+  const alreadyReminded = new Set(habits.map((h) => h.id));
+  result.push(
+    ...missed
+      .filter((h) => !alreadyReminded.has(h.id))
+      .map((habit): NudgeCandidate => ({
+        key: `habit:${habit.id}`,
+        category: "habit",
+        entity_kind: "habit",
+        entity_id: habit.id,
+        ...(habit.block_id ? { source_id: habit.block_id } : {}),
+        text: `Your “${habit.name}” habit has ${habit.completed} of ${habit.cadence} sessions checked in for the last ${habit.period === "week" ? "week" : "scheduled day"}.`,
+        actions: habit.block_id ? ["done", "skip"] : ["skip"],
+      })),
   );
   return result;
 }
