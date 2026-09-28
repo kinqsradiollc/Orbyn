@@ -121,6 +121,8 @@ export type UndoOp =
       version: number;
       folder_id?: string | null;
       project_id?: string | null;
+      /** The page it sat inside (W5; null: the top level). */
+      parent_id?: string | null;
     }
   /** A page it made: move it to Trash. */
   | { op: "doc.trash"; doc_id: string; version: number }
@@ -517,6 +519,7 @@ export async function runUndo(
           version: doc.version,
           ...(op.folder_id !== undefined ? { folder_id: op.folder_id } : {}),
           ...(op.project_id !== undefined ? { project_id: op.project_id } : {}),
+          ...(op.parent_id !== undefined ? { parent_id: op.parent_id } : {}),
         });
         carry.set(`doc:${op.doc_id}`, saved.version);
         after.push(() =>

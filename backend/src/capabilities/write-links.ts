@@ -79,9 +79,10 @@ export async function visibleDoc(ctx: CapabilityContext, input: string) {
       project_id: string | null;
       content: DocBlock[];
       user_id: string;
+      parent_id: string | null;
     }>(
       `SELECT d.id, d.title, d.team_id, d.version, d.folder_id, d.project_id, d.content,
-              d.user_id
+              d.user_id, d.parent_id
          FROM docs d WHERE d.id = ${params.add(docId(input))}
           AND ${visibleDocs("d", scope)} FOR UPDATE`,
       params.values,
@@ -216,6 +217,8 @@ export const link = defineCapability({
         doc_id: doc.id,
         version: saved.version,
         [field]: doc[field],
+        // Filing it elsewhere may take it out of the page it was in (W5).
+        ...(a.kind === "doc_folder" ? { parent_id: doc.parent_id } : {}),
       });
       done.push(docEntry(saved, on ? "Filed" : "Taken out"));
       return finishWrite(ctx, "Linking", {

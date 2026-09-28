@@ -52,7 +52,7 @@ import {
   indentBlocks,
   keepStart,
   listLayout,
-  pageFooter,
+  pageStatus,
   isOfflineError,
   pastedLines,
   recordUndo,
@@ -198,11 +198,14 @@ export function DocEditor({
   toolbarSlot,
   onShowHistory,
   onShowInLibrary,
+  onMoveTo,
   report,
 }: {
   doc: Doc;
   /** Close the page and show where it is in the library (ORG-03). */
   onShowInLibrary?: () => void;
+  /** "Move to…": a folder, or inside another page (W5). */
+  onMoveTo?: () => void;
   /** A line to bring into view when the page opens (a source, a link). */
   initialBlockId?: string | null;
   /** Where that line sits, for the sheet to scroll to. */
@@ -793,6 +796,30 @@ export function DocEditor({
    */
   /** Bumped when someone else sets a field, so Info reads the values afresh. */
   const [fieldsStamp, setFieldsStamp] = useState(0);
+  /** How many of the page's fields are filled in, for the status line. */
+  const [propertyCount, setPropertyCount] = useState(0);
+  useEffect(() => {
+    let live = true;
+    client.targetFields("page", doc.id).then(
+      (f) =>
+        live &&
+        setPropertyCount(
+          f.fields.filter((field) => {
+            const v = f.values[field.id];
+            return (
+              v !== null &&
+              v !== undefined &&
+              v !== "" &&
+              !(Array.isArray(v) && !v.length)
+            );
+          }).length,
+        ),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [doc.id, fieldsStamp]);
   const onEvent = useRef<(version: number, news: DocNews) => void>(() => {});
   onEvent.current = (
     remote: number,
@@ -2305,6 +2332,7 @@ export function DocEditor({
     ...(onShowInLibrary
       ? [{ label: "Show in library", onPress: () => onShowInLibrary() }]
       : []),
+    ...(onMoveTo ? [{ label: "Move to…", onPress: () => onMoveTo() }] : []),
     // A page with headings has its contents a tap away (NAV-03).
     ...(docOutline(blocks).length
       ? [{ label: "Contents", onPress: () => setContentsOpen(true) }]
@@ -2404,18 +2432,21 @@ export function DocEditor({
     if (bodyOffset.current === null || y === undefined) return;
     onTargetOffset?.(bodyOffset.current + y);
   };
-  const facts = keptOffline
-    ? "Offline, saved on this phone. It's sent when you're back online."
-    : pageFooter({
-        ...docStats(blocks),
-        savedAt,
-        saving,
-        now,
-        linked: linkedCount,
-      }) +
-      // The words were last written by a connected agent (an agenda it
-      // wrote, say); gone once a person edits the page.
-      (doc.via_agent ? ` · written via ${doc.via_agent}` : "");
+  // The status line (W5): words, reading time, links here, fields filled
+  // in, and whether it's saved (or kept on this phone until back online).
+  const statusParts = pageStatus({
+    ...docStats(blocks),
+    savedAt,
+    saving,
+    offline: keptOffline,
+    now,
+    linked: linkedCount,
+    properties: propertyCount,
+  });
+  // The words were last written by a connected agent (an agenda it wrote,
+  // say); gone once a person edits the page.
+  const writtenVia = doc.via_agent ? ` · written via ${doc.via_agent}` : "";
+  const facts = statusParts.map((p) => p.text).join(" · ") + writtenVia;
 
   /** Footnote numbers and words; a marker's words show when tapped. */
   const footnotes = useMemo(
@@ -2699,9 +2730,24 @@ export function DocEditor({
           </Text>
         )}
 
-        {/* One quiet line at the end of the page. */}
-        <Text style={styles.footer} onPress={() => setInfoOpen(true)}>
-          {facts}
+        {/* One quiet line at the end of the page: "3 linked here" goes to
+          the links, the rest opens Info. */}
+        <Text style={styles.footer}>
+          {statusParts.map((part, n) => (
+            <Text
+              key={part.key}
+              accessibilityRole="button"
+              onPress={() => {
+                if (part.key === "linked" && linkedY.current !== null)
+                  onTargetOffset?.(linkedY.current);
+                else setInfoOpen(true);
+              }}
+            >
+              {n > 0 ? " · " : ""}
+              {part.text}
+            </Text>
+          ))}
+          {writtenVia}
         </Text>
         <View
           onLayout={(event) => {

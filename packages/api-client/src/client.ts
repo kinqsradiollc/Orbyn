@@ -2017,6 +2017,8 @@ export class OrbynClient {
     project_id?: string | null;
     tags?: string[];
     content?: DocBlock[];
+    /** Made inside this page (W5): its space's, it takes that page's folder. */
+    parent_id?: string | null;
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
@@ -2034,6 +2036,10 @@ export class OrbynClient {
       folder_id?: string | null;
       project_id?: string | null;
       tags?: string[];
+      /** The page it sits inside (W5), or null for its folder's top level. */
+      parent_id?: string | null;
+      /** Its place among the pages beside it after the move, 0 first. */
+      position?: number;
       version: number;
     },
     options: { ticksFrom?: number } = {},
@@ -2045,6 +2051,23 @@ export class OrbynClient {
         ? { headers: { "X-Orbyn-Ticks-From": String(options.ticksFrom) } }
         : {}),
     });
+  }
+  /**
+   * Move a page in the library's tree (W5): inside another page
+   * (`parent_id`), to a folder's top level (`folder_id`, with `parent_id`
+   * null), and/or to `position` among the pages there. Reads the page's
+   * version first, so a list that is a moment old can still move it.
+   */
+  async moveDoc(
+    id: string,
+    to: {
+      parent_id?: string | null;
+      folder_id?: string | null;
+      position?: number;
+    },
+  ) {
+    const { version } = await this.getDoc(id);
+    return this.updateDoc(id, { ...to, version });
   }
   /** Move a page to Trash. It can be restored for `TRASH_DAYS` days. */
   deleteDoc(id: string) {

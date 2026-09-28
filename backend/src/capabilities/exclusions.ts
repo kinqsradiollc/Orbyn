@@ -275,7 +275,7 @@ export const COVERED: Record<string, string[]> = {
   "POST /planner/plans/:id/apply": ["schedule_sessions"],
   "GET /planner/plans/:id/stale": ["schedule_sessions"],
   "POST /docs": ["create_doc"],
-  "PUT /docs/:id": ["edit_doc", "link"],
+  "PUT /docs/:id": ["edit_doc", "link", "organize"],
   "POST /docs/:id/suggestions": ["edit_doc"],
   "DELETE /docs/:id": ["propose_changes"],
   "POST /docs/:id/versions/:version/restore": ["propose_changes"],
