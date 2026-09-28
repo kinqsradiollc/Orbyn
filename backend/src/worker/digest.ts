@@ -275,6 +275,7 @@ export async function buildOvernightSection(userId: string, day: string) {
       );
   }
   if (!markdown.length) return null;
+  markdown.unshift(linked("Review Overnight", "/app/overnight"));
   return {
     firstLine: `Overnight: ${completed} ${completed === 1 ? "run" : "runs"} finished, ${review} to review, ${questions} ${questions === 1 ? "question" : "questions"}, ${leftovers.length} not done tonight.`,
     markdown,

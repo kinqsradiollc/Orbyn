@@ -62,7 +62,7 @@ before(async () => {
   await call("POST", "/items", {
     title: "File the report",
     kind: "task",
-    due_at: new Date(Date.now() + 3 * 3_600_000).toISOString(),
+    due_at: `${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`,
   });
 });
 after(async () => {
@@ -86,7 +86,7 @@ test("a test digest previews the day and needs a mail server", async () => {
   const hiddenTask = await call("POST", "/items", {
     title: "SECRET_HIDDEN_BRIEF_TASK",
     kind: "task",
-    due_at: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+    due_at: `${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`,
   });
   assert.equal(hiddenTask.statusCode, 201, hiddenTask.body);
   await call("PUT", `/items/${hiddenTask.json().id}/project`, {

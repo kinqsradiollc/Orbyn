@@ -547,6 +547,10 @@ test("saved night results lead the morning email and private brief with review, 
     /2 runs finished, 1 to review, 1 question, 1 not done/,
   );
   const text = section.markdown.join("\n");
+  assert.match(
+    section.markdown[0],
+    /\[Review Overnight\]\(.*\/app\/overnight\)/,
+  );
   assert.match(text, new RegExp(`/app/review/${proposal}`));
   assert.match(text, new RegExp(`/app/task/${task}`));
   assert.match(text, /Changes and Undo/);
@@ -556,6 +560,7 @@ test("saved night results lead the morning email and private brief with review, 
   assert.equal(await buildOvernightSection(userId, "2050-02-04"), null);
   const digest = await buildMorning(userId, "Worker tester", now, "UTC");
   assert.equal(digest.lines[0], section.firstLine);
+  assert.match(digest.lines[1], /Review Overnight: .*\/app\/overnight/);
   const brief = (
     await pool.query(
       "SELECT d.content FROM assistant_briefs b JOIN docs d ON d.id = b.doc_id WHERE b.user_id = $1 AND b.local_day = '2050-02-02'",
@@ -565,6 +570,7 @@ test("saved night results lead the morning email and private brief with review, 
   assert.ok(brief);
   const blocks = brief.content as { text?: string }[];
   assert.equal(blocks[0].text, "Overnight");
+  assert.match(JSON.stringify(blocks), /\/app\/overnight/);
   assert.match(JSON.stringify(blocks), /Prepared flashcards/);
   const hiddenProject = (
     await pool.query(
