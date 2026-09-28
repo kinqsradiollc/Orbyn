@@ -7,11 +7,14 @@ import {
   fail,
   type AgentContextSettings,
   type PersonalAgentSettings,
+  DEFAULT_REMINDER_NUDGES,
+  reminderNudgeSettingsInput,
+  type ReminderNudgeSettings,
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate, isApiKeyRequest } from "../../lib/auth.js";
 import { audit } from "../../lib/audit.js";
-import { idParam } from "../../lib/params.js";
+import { idParam, writeRateLimit } from "../../lib/params.js";
 import { contextSettings, ensureProfile, setInstructions } from "./service.js";
 
 /**
@@ -27,6 +30,47 @@ async function firstParty(r: FastifyRequest) {
 }
 
 export async function agentContextRoutes(app: FastifyInstance) {
+  app.get(
+    "/me/assistant/reminder-nudges",
+    async (r): Promise<ReminderNudgeSettings> => {
+      const user = await firstParty(r);
+      const row = (
+        await reader(r.headers).query<{ reminder_nudges: unknown }>(
+          "SELECT reminder_nudges FROM agent_settings WHERE user_id = $1",
+          [user.id],
+        )
+      ).rows[0];
+      const parsed = reminderNudgeSettingsInput.safeParse(row?.reminder_nudges);
+      return parsed.success ? parsed.data : { ...DEFAULT_REMINDER_NUDGES };
+    },
+  );
+  app.put(
+    "/me/assistant/reminder-nudges",
+    writeRateLimit,
+    async (r): Promise<ReminderNudgeSettings> => {
+      const user = await firstParty(r);
+      const input = reminderNudgeSettingsInput.parse(r.body);
+      await transaction(async (db) => {
+        await db.query(
+          `INSERT INTO agent_settings(user_id, reminder_nudges) VALUES($1, $2::jsonb)
+       ON CONFLICT(user_id) DO UPDATE SET reminder_nudges = EXCLUDED.reminder_nudges, updated_at = now()`,
+          [user.id, JSON.stringify(input)],
+        );
+        await audit(
+          {
+            actorId: user.id,
+            action: "assistant_reminder_nudges.set",
+            targetType: "user",
+            targetId: user.id,
+            details: input,
+            requestId: r.id,
+          },
+          db,
+        );
+      });
+      return input;
+    },
+  );
   app.get(
     "/me/assistant/night-shift",
     async (r): Promise<NightShiftSettings> => {

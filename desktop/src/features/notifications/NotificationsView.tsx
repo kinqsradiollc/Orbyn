@@ -315,7 +315,7 @@ export function NotificationsView({
                   <LayoutTemplate size={14} /> Review
                 </button>
               )}
-              {n.kind === "assistant" &&
+              {(n.kind === "assistant" || n.kind === "reminder_nudge") &&
                 n.ref?.startsWith("chat:") &&
                 onOpenChat && (
                   <button

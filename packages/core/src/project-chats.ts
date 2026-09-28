@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { reminderNudgeCard } from "./reminder-nudges.js";
 import type { AssistantSource } from "./docs.js";
 import type { ChatScope } from "./schemas.js";
 
@@ -31,6 +32,8 @@ export const savedChatTurn = z
     changes_job: z.string().min(1).max(64).optional(),
     outcome: z.enum(["pending", "applied", "discarded", "info"]).optional(),
     sources: z.array(chatSource).max(20).optional(),
+    /** Templated Reminders cards use ordinary mutations, never a model call. */
+    nudge: reminderNudgeCard.optional(),
   })
   .strict();
 export type SavedChatTurn = z.output<typeof savedChatTurn>;

@@ -387,6 +387,7 @@ export type Notice = {
     | "agent"
     /** A saved assistant chat finished or needs you (`ref` = "chat:<id>:…"). */
     | "assistant"
+    | "reminder_nudge"
     /** Someone named you in a page or a remark (`ref` = "doc:<page id>:…"). */
     | "mention"
     /** One of your sessions starts soon (`ref` = "<session id>:<start>"). */

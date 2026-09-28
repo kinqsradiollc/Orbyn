@@ -86,7 +86,7 @@ export async function deliverOne(): Promise<boolean> {
                 ).rowCount
               : n.kind === "invite"
                 ? await inviteStale(db, n)
-                : n.kind === "assistant"
+                : n.kind === "assistant" || n.kind === "reminder_nudge"
                   ? !(
                       await db.query(
                         `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id

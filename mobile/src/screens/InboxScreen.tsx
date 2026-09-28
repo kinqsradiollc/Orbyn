@@ -262,7 +262,9 @@ export function InboxScreen({
         const grant =
           n.kind === "agent" && !!n.ref?.startsWith("grant:") && !!onOpenAgents;
         const action =
-          n.kind === "assistant" && n.ref?.startsWith("chat:") && onOpenChat
+          (n.kind === "assistant" || n.kind === "reminder_nudge") &&
+          n.ref?.startsWith("chat:") &&
+          onOpenChat
             ? {
                 label: "Open chat",
                 run: (x: Notice) => onOpenChat(x, x.ref!.split(":")[1]),

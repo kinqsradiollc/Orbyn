@@ -981,7 +981,10 @@ export function RootScreen() {
       typeof data[key] === "string" ? (data[key] as string) : "";
     const kind = text("kind");
     const itemId = text("itemId");
-    if (kind === "assistant" && text("ref").startsWith("chat:")) {
+    if (
+      (kind === "assistant" || kind === "reminder_nudge") &&
+      text("ref").startsWith("chat:")
+    ) {
       setTab("AI");
       void assistant
         .openChat(text("ref").split(":")[1])

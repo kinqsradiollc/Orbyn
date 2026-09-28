@@ -13,6 +13,7 @@ import {
   type NightShiftSettings,
   type OvernightNight,
   type OvernightRun,
+  type ReminderNudgeSettings,
   type Goal,
   type GoalCheckin,
   type GoalInput,
@@ -3069,6 +3070,16 @@ export class OrbynClient {
   /** Latest night with its current Review and Undo states. */
   latestAssistantNight() {
     return this.request<OvernightNight | null>("/me/assistant/nights/latest");
+  }
+  /** The person's channels and local quiet window for templated reminders. */
+  reminderNudgeSettings() {
+    return this.request<ReminderNudgeSettings>("/me/assistant/reminder-nudges");
+  }
+  updateReminderNudgeSettings(input: ReminderNudgeSettings) {
+    return this.request<ReminderNudgeSettings>(
+      "/me/assistant/reminder-nudges",
+      { method: "PUT", body: input },
+    );
   }
   /** Keep a finished run, applying all or selected held changes. */
   keepAssistantNightRun(

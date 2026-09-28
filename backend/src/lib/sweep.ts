@@ -481,6 +481,31 @@ export const SWEEP_RULES: SweepRule[] = [
     min: 3,
   },
   {
+    key: "assistant_nudges",
+    label: "Assistant nudges",
+    table: "assistant_nudges",
+    detail:
+      "Reminder deduplication and daily-limit history, kept for 60 days. Stopped keys remain while their source exists.",
+    where: `NOT stopped AND sent_at < now() - make_interval(days => $1)`,
+    days: 60,
+    configurable: false,
+  },
+  {
+    key: "assistant_nudge_stops",
+    label: "Stopped reminder keys",
+    table: "assistant_nudges",
+    detail: "Stopped reminders whose source has been removed.",
+    where: `stopped AND NOT (
+      entity_kind = 'task' AND EXISTS(SELECT 1 FROM items WHERE id = entity_id)
+      OR entity_kind = 'record' AND EXISTS(SELECT 1 FROM work_records WHERE id = entity_id)
+      OR entity_kind = 'routine' AND EXISTS(SELECT 1 FROM agent_routines WHERE id = entity_id)
+      OR entity_kind = 'habit' AND EXISTS(SELECT 1 FROM habits WHERE id = entity_id)
+      OR entity_kind = 'job' AND EXISTS(SELECT 1 FROM ai_jobs WHERE id = entity_id)
+      OR entity_kind = 'goal' AND EXISTS(SELECT 1 FROM goals WHERE id = entity_id))`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "assistant_ideas",
     label: "Assistant ideas",
     detail: "Ideas the assistant suggested for your daily review.",
