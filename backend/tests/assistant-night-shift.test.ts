@@ -415,3 +415,63 @@ test("Friday weekly review remains eligible with no unfinished records, includin
   await complete(job.id);
   assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
 });
+
+test("calendar-only exams and subscribed meetings select overnight kinds before Study discovery", async () => {
+  const me = await person();
+  const now = new Date("2050-01-05T23:00:00Z");
+  await pool.query("DELETE FROM items WHERE id=$1", [me.task]);
+  const sub = (
+    await pool.query(
+      "INSERT INTO calendar_subscriptions(user_id,url,name,kind,busy,last_fetched_at) VALUES($1,$2,'Night calendar','exams',true,now()) RETURNING id",
+      [me.id, `https://example.test/${randomUUID()}.ics`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO external_events(subscription_id,uid,title,starts_at,ends_at,timezone) VALUES($1,'exam','Final exam',$2::timestamptz+interval '1 day',$2::timestamptz+interval '1 day 2 hours','UTC')",
+    [sub, now],
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM study_exams WHERE user_id=$1",
+        [me.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  const kinds: string[] = [];
+  while (await scanNightShift(now, { only: [me.id], ai })) {
+    const job = await queuedJob(me.id);
+    kinds.push(job.run_state.request.automation.night_kind);
+    await complete(job.id);
+  }
+  assert.deepEqual(kinds, ["deadlines", "study", "meetings"]);
+});
+
+test("calendar exam discovery does not awaken work kept out of the assistant", async () => {
+  const me = await person();
+  const now = new Date("2050-01-05T23:00:00Z");
+  await pool.query("DELETE FROM items WHERE id=$1", [me.task]);
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Private study',true) RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,project_id,title) VALUES($1,$2,'Private notes') RETURNING id",
+      [me.id, project],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO items(user_id,project_id,title,kind,due_at,end_at) VALUES($1,$2,'Private final exam','event',$3::timestamptz+interval '1 day',$3::timestamptz+interval '1 day 2 hours')",
+    [me.id, project, now],
+  );
+  await pool.query(
+    "INSERT INTO study_exams(user_id,exam_key,title,starts_at,own,doc_ids) VALUES($1,'own:private','Private study exam',$2::timestamptz+interval '1 day',true,$3)",
+    [me.id, now, [doc]],
+  );
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
+  assert.equal(await queuedJob(me.id), undefined);
+});

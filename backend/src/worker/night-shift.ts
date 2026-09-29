@@ -6,13 +6,16 @@ import {
   weekdayOf,
   type NightShiftSettings,
 } from "@orbyn/core";
-import { pool, transaction, type Queryable } from "../db/pool.js";
+import { pool, transaction, type Queryable, type Db } from "../db/pool.js";
 import { resolveAi } from "../modules/ai/providers/resolve.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
 import { assistantPrincipal } from "../modules/agents/assistant.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
 import { assistantNightWindow } from "./night-window.js";
 import { LEAD_TOKEN_BUDGET } from "../modules/ai/agent/lead.js";
+import { agendaEntries } from "../modules/planner/calendar.js";
+import { upcomingExams } from "../modules/study/service.js";
+import { visibleDocs, visibleItems } from "../lib/visibility.js";
 import { queueOvernightNotices } from "./overnight-notices.js";
 
 type Candidate = {
@@ -95,7 +98,7 @@ async function available(
 }
 
 async function candidates(
-  db: Queryable,
+  db: Db,
   userId: string,
   prefs: NightShiftSettings,
   now: Date,
@@ -231,6 +234,52 @@ async function candidates(
       [userId, now],
     )
   ).rows[0];
+  // Calendar-only exams and subscribed meetings are work even before Study
+  // or the reminder scanner has materialized an exam row.
+  const [calendarExams, meetings] = await Promise.all([
+    upcomingExams(db, userId, now, { horizonDays: 14, limit: null }),
+    agendaEntries(db, userId, now, new Date(now.getTime() + 2 * 86_400_000)),
+  ]);
+  const itemIds = [
+    ...new Set([
+      ...calendarExams.flatMap((exam) =>
+        exam.key.startsWith("item:") ? [exam.key.slice(5).split("|")[0]] : [],
+      ),
+      ...meetings.flatMap((entry) => (entry.item_id ? [entry.item_id] : [])),
+    ]),
+  ];
+  const visible = new Set(
+    (
+      await db.query<{ id: string }>(
+        `SELECT i.id FROM items i WHERE i.id = ANY($2::uuid[]) AND ${visibleItems("i", { user: "$1", ai: true })}`,
+        [userId, itemIds],
+      )
+    ).rows.map((row) => row.id),
+  );
+  const blockedExamKeys = new Set(
+    (
+      await db.query<{ exam_key: string }>(
+        `SELECT e.exam_key FROM study_exams e WHERE e.user_id=$1
+     AND EXISTS(SELECT 1 FROM docs d WHERE d.id=ANY(e.doc_ids) AND NOT ${visibleDocs("d", { user: "$1", ai: true })})`,
+        [userId],
+      )
+    ).rows.map((row) => row.exam_key),
+  );
+  const hasCalendarExam = calendarExams
+    .filter((exam) => !blockedExamKeys.has(exam.key))
+    .some(
+      (exam) =>
+        !exam.key.startsWith("item:") ||
+        visible.has(exam.key.slice(5).split("|")[0]),
+    );
+  hasWork.deadlines ||= hasCalendarExam;
+  hasWork.study ||= hasCalendarExam;
+  hasWork.meetings ||= meetings.some(
+    (entry) =>
+      entry.calendar_kind !== "holidays" &&
+      Date.parse(entry.start_at) > now.getTime() &&
+      (!entry.item_id || visible.has(entry.item_id)),
+  );
   const fridayReview =
     weekdayOf(assistantNightWindow(now, prefs)!.localDay) === 5;
   for (const kind of NIGHT_SHIFT_KINDS) {
