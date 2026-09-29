@@ -97,14 +97,17 @@ export function OvernightView(props: Props) {
         <div className="overnight-actions">
           <button
             className="secondary"
-            disabled={busy || !night.runs.length}
+            disabled={busy || !night.runs.some((run) => run.state === "done")}
             onClick={() => void bulk("keep")}
           >
             Keep all
           </button>
           <button
             className="secondary"
-            disabled={busy || !night.runs.length}
+            disabled={
+              busy ||
+              !night.runs.some((run) => ["done", "failed"].includes(run.state))
+            }
             onClick={() => void bulk("undo")}
           >
             Undo all

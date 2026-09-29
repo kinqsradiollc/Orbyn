@@ -117,13 +117,20 @@ export function OvernightSheet(props: Props) {
             >
               <Button
                 title="Keep all"
-                disabled={busy || !night.runs.length}
+                disabled={
+                  busy || !night.runs.some((run) => run.state === "done")
+                }
                 onPress={() => bulk("keep")}
               />
               <Button
                 title="Undo all"
                 secondary
-                disabled={busy || !night.runs.length}
+                disabled={
+                  busy ||
+                  !night.runs.some((run) =>
+                    ["done", "failed"].includes(run.state),
+                  )
+                }
                 onPress={() => bulk("undo")}
               />
             </View>
