@@ -1,3 +1,4 @@
+import type { FastifyRequest } from "fastify";
 import {
   actionSchema,
   fail,
@@ -22,7 +23,7 @@ import type { Db, Queryable } from "../../db/pool.js";
 import { env } from "../../config/env.js";
 import { actAs } from "../../lib/actor.js";
 import { audit } from "../../lib/audit.js";
-import type { UserRow } from "../../lib/auth.js";
+import { authenticate, isApiKeyRequest, type UserRow } from "../../lib/auth.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { agentNameOf, handTaskToAgent } from "../items/agent.js";
 import { loadPrefs } from "../planner/calendar.js";
@@ -53,6 +54,17 @@ import {
   saveAgentRoutine,
 } from "../assistant-workspace/routines.js";
 import { readGoal, saveGoal } from "../assistant-workspace/goals.js";
+
+/** A signed-in person using one of Orbyn's own apps, or 401/403. */
+export async function firstParty(r: FastifyRequest) {
+  const u = await authenticate(r);
+  if (isApiKeyRequest(r))
+    fail(
+      403,
+      "Only you, signed in to Orbyn, can approve, decline or undo changes. Keys can't.",
+    );
+  return u;
+}
 
 /**
  * Proposals: changes waiting for a person's approval (the Review inbox).

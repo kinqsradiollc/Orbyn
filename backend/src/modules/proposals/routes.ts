@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   fail,
@@ -9,12 +9,12 @@ import {
   type ReviewItem,
 } from "@orbyn/core";
 import { reader, transaction } from "../../db/pool.js";
-import { authenticate, isApiKeyRequest } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { undoActivity, undoJob } from "../../capabilities/undo.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import {
+  firstParty,
   applyProposal,
   declineProposal,
   proposalOutcome,
@@ -34,17 +34,6 @@ import {
  * 403 (KEY_BLOCKED, and again below), so nothing an agent holds can approve
  * its own proposal.
  */
-
-/** A signed-in person using one of Orbyn's own apps, or 401/403. */
-export async function firstParty(r: FastifyRequest) {
-  const u = await authenticate(r);
-  if (isApiKeyRequest(r))
-    fail(
-      403,
-      "Only you, signed in to Orbyn, can approve, decline or undo changes. Keys can't.",
-    );
-  return u;
-}
 
 export async function proposalRoutes(app: FastifyInstance) {
   app.get("/proposals", async (r): Promise<ReviewInbox> => {

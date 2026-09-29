@@ -379,6 +379,19 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "POST /me/assistant/reminder-nudges/:id/stop": "assistant_control",
+  "GET /me/assistant/reminder-nudges": "assistant_control",
+  "PUT /me/assistant/reminder-nudges": "assistant_control",
+  "GET /me/assistant/night-shift": "assistant_control",
+  "PUT /me/assistant/night-shift": "assistant_control",
+  "GET /me/assistant/nights/latest": "people_only",
+  "POST /me/assistant/nights/runs/:id/keep": "people_only",
+  "POST /me/assistant/nights/runs/:id/undo": "people_only",
+  "POST /me/assistant/nights/:id/keep-all": "people_only",
+  "POST /me/assistant/nights/:id/undo-all": "people_only",
+  "GET /planner/habits/blocks/:id": "device",
+  "POST /planner/habits/blocks/:id/check-in": "device",
+  "GET /ai/jobs/active": "assistant_control",
   "POST /recents": "device",
   "GET /admin/agents": "admin",
   "PUT /admin/agents": "admin",

@@ -116,11 +116,17 @@ async function session(
   from: number,
   to: number,
 ) {
+  const now = Date.now();
   return (
     await pool.query<{ id: string }>(
       `INSERT INTO time_blocks (item_id, user_id, start_at, end_at)
        VALUES ($1, $2, $3, $4) RETURNING id`,
-      [itemId, userId, at(from), at(to)],
+      [
+        itemId,
+        userId,
+        new Date(now + from * 60_000),
+        new Date(now + to * 60_000),
+      ],
     )
   ).rows[0].id;
 }

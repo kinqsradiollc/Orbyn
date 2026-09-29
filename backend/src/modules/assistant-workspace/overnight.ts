@@ -9,7 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { transaction, type Db, type Queryable } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
 import { idParam, writeRateLimit } from "../../lib/params.js";
-import { firstParty } from "../proposals/routes.js";
+import { firstParty } from "../proposals/service.js";
 import {
   applyProposal,
   declineProposal,
