@@ -58,7 +58,7 @@ before(async () => {
   await migrate();
   user = (
     await pool.query(
-      "INSERT INTO users(email, password_hash, name) VALUES($1, 'test', 'Process recovery tester') RETURNING *",
+      "INSERT INTO users(email, password_hash, name, email_verified) VALUES($1, 'test', 'Process recovery tester', true) RETURNING *",
       [`process-${randomUUID()}@example.test`],
     )
   ).rows[0];
@@ -515,6 +515,159 @@ test("night work waits in Review by default and ordinary private work applies wh
         "pending",
       );
     }
+    await end(runner, "SIGTERM");
+  }
+});
+
+test("a parked question survives runner replacement, accepts an answer and can be stopped from another server", async () => {
+  let asked = 0;
+  respond = (request) => {
+    const answered = request.messages.some((entry) =>
+      entry.content?.includes("The person answered your last question"),
+    );
+    if (!answered) {
+      asked++;
+      return {
+        name: "ask_person",
+        arguments: {
+          question: "Which saved notes?",
+          choices: ["Lecture 1", "Lecture 2"],
+        },
+      };
+    }
+    return {
+      name: "finish",
+      arguments: { answer: "Using your saved answer.", steps: [] },
+    };
+  };
+  const run = await enqueue("Prepare my notes, and ask which ones.");
+  const first = await start();
+  const parked = await until(
+    () => job(run.id),
+    (row) => row.state === "waiting",
+  );
+  assert.equal(parked.run_state.state.waiting.question, "Which saved notes?");
+  await end(first, "SIGKILL");
+  const second = await start();
+  const { buildApp } = await import("../src/app.js");
+  const { issueSession } = await import("../src/lib/auth.js");
+  const api = await buildApp();
+  const session = await issueSession(user);
+  const headers = { authorization: `Bearer ${session.token}` };
+  try {
+    const saved = await api.inject({
+      method: "GET",
+      url: `/ai/chat/${run.id}`,
+      headers,
+    });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.equal(saved.json().state, "waiting");
+    assert.deepEqual(saved.json().waiting.choices, ["Lecture 1", "Lecture 2"]);
+    assert.equal(
+      asked,
+      1,
+      "replacement runners do not repeat a parked question",
+    );
+    const answer = await api.inject({
+      method: "POST",
+      url: `/ai/chat/${run.id}/answer`,
+      headers,
+      payload: { answer: "Lecture 2" },
+    });
+    assert.equal(answer.statusCode, 202, answer.body);
+    const finished = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(finished.state, "done", JSON.stringify(finished));
+    const turns = (
+      await pool.query("SELECT turns FROM ai_chats WHERE id=$1", [run.chatId])
+    ).rows[0].turns;
+    assert.equal(
+      turns.filter(
+        (turn: { role: string; text: string }) =>
+          turn.role === "user" && turn.text === "Lecture 2",
+      ).length,
+      1,
+    );
+    const stoppedRun = await enqueue("Ask which notes again.");
+    await until(
+      () => job(stoppedRun.id),
+      (row) => row.state === "waiting",
+    );
+    const stopped = await api.inject({
+      method: "POST",
+      url: `/ai/chat/${stoppedRun.id}/stop`,
+      headers,
+    });
+    assert.equal(stopped.statusCode, 200, stopped.body);
+    const stoppedJob = await job(stoppedRun.id);
+    assert.equal(stoppedJob.state, "done");
+    assert.equal(stoppedJob.result.assistant_run.outcome, "discarded");
+    const lateAnswer = await api.inject({
+      method: "POST",
+      url: `/ai/chat/${stoppedRun.id}/answer`,
+      headers,
+      payload: { answer: "Lecture 1" },
+    });
+    assert.equal(lateAnswer.statusCode, 409, lateAnswer.body);
+  } finally {
+    await api.close();
+    await end(second, "SIGTERM");
+  }
+});
+
+test("Stop from a separate API process interrupts the runner's blocked provider request", async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const called = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  respond = async () => {
+    entered();
+    await blocked;
+    return {
+      name: "finish",
+      arguments: { answer: "This late answer must not win.", steps: [] },
+    };
+  };
+  const run = await enqueue("Wait for my stop request.");
+  const runner = await start();
+  await Promise.race([
+    called,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(Error("Provider was not called")), 8000),
+    ),
+  ]);
+  assert.ok(
+    String((await job(run.id)).claimed_by).startsWith(`${runner.pid}-`),
+  );
+  const { buildApp } = await import("../src/app.js");
+  const { issueSession } = await import("../src/lib/auth.js");
+  const api = await buildApp();
+  const session = await issueSession(user);
+  try {
+    const stopped = await api.inject({
+      method: "POST",
+      url: `/ai/chat/${run.id}/stop`,
+      headers: { authorization: `Bearer ${session.token}` },
+    });
+    assert.equal(stopped.statusCode, 200, stopped.body);
+    const done = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(done.state, "done", JSON.stringify(done));
+    assert.equal(done.result.assistant_run.outcome, "discarded");
+    assert.ok(!String(done.result.answer).includes("late answer"));
+    release();
+    assert.equal((await job(run.id)).result.assistant_run.outcome, "discarded");
+  } finally {
+    release();
+    await api.close();
     await end(runner, "SIGTERM");
   }
 });
