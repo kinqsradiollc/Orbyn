@@ -12,6 +12,7 @@ export type OvernightRun = {
   status: "kept" | "undone" | "partly" | "pending";
   state: "queued" | "running" | "waiting" | "done" | "failed";
   question: { text: string; choices: string[] } | null;
+  approval: { text: string; summary: string; detail: string } | null;
   proposal: ReviewItem | null;
   steps: { id: string; title: string }[];
   changes: AgentActivity[];

@@ -211,6 +211,32 @@ function RunCard({
       <Text style={[shared.body, { marginVertical: 12 }]}>
         {run.summary || "Open the chat to see its progress."}
       </Text>
+      {run.approval && (
+        <View style={{ gap: 8, marginBottom: 12 }}>
+          <Text style={shared.body}>{run.approval.text}</Text>
+          {!!run.approval.summary && (
+            <Text style={shared.body}>{run.approval.summary}</Text>
+          )}
+          {!!run.approval.detail && (
+            <Text style={shared.small}>{run.approval.detail}</Text>
+          )}
+          <Button
+            title="Approve"
+            disabled={busy}
+            onPress={() =>
+              void act(() => client.approveAssistantRun(run.job_id, true))
+            }
+          />
+          <Button
+            title="Decline"
+            secondary
+            disabled={busy}
+            onPress={() =>
+              void act(() => client.approveAssistantRun(run.job_id, false))
+            }
+          />
+        </View>
+      )}
       {run.question && (
         <View style={{ gap: 8, marginBottom: 12 }}>
           <Text style={shared.body}>{run.question.text}</Text>

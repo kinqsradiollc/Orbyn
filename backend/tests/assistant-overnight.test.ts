@@ -377,3 +377,39 @@ test("Overnight exposes saved person questions only while the owned run is waiti
   const done = await h.call(user.token, "GET", "/me/assistant/nights/latest");
   assert.equal(done.json().runs[0].question, null);
 });
+
+test("Overnight exposes live approval summaries and clears them after the decision", async () => {
+  const user = await person();
+  const fixture = await held(user);
+  await pool.query(
+    "UPDATE ai_jobs SET state='waiting',run_state=$2 WHERE id=(SELECT job_id FROM assistant_night_runs WHERE id=$1)",
+    [
+      fixture.run,
+      JSON.stringify({
+        state: {
+          waiting: {
+            kind: "approval",
+            question: "Apply this plan?",
+            summary: "Two sessions",
+            detail: "Your approval is needed",
+            steps: [],
+          },
+        },
+      }),
+    ],
+  );
+  const read = await h.call(user.token, "GET", "/me/assistant/nights/latest");
+  assert.equal(read.statusCode, 200);
+  assert.deepEqual(read.json().runs[0].approval, {
+    text: "Apply this plan?",
+    summary: "Two sessions",
+    detail: "Your approval is needed",
+  });
+  assert.equal(read.json().runs[0].question, null);
+  await pool.query(
+    "UPDATE ai_jobs SET state='done' WHERE id=(SELECT job_id FROM assistant_night_runs WHERE id=$1)",
+    [fixture.run],
+  );
+  const done = await h.call(user.token, "GET", "/me/assistant/nights/latest");
+  assert.equal(done.json().runs[0].approval, null);
+});

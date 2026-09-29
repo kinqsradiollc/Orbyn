@@ -157,7 +157,18 @@ async function card(
             : [],
         }
       : null;
+  const approval =
+    row.state === "waiting" &&
+    waiting.kind === "approval" &&
+    typeof waiting.question === "string"
+      ? {
+          text: waiting.question,
+          summary: typeof waiting.summary === "string" ? waiting.summary : "",
+          detail: typeof waiting.detail === "string" ? waiting.detail : "",
+        }
+      : null;
   return {
+    approval,
     question,
     id: row.id,
     job_id: row.job_id,

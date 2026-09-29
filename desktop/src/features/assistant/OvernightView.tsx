@@ -202,6 +202,35 @@ function RunCard({
       <p className="overnight-summary">
         {run.summary || "Open the chat to see its progress."}
       </p>
+      {run.approval && (
+        <section aria-label="Approval from your assistant">
+          <p>{run.approval.text}</p>
+          {!!run.approval.summary && <p>{run.approval.summary}</p>}
+          {!!run.approval.detail && (
+            <p className="muted">{run.approval.detail}</p>
+          )}
+          <div className="overnight-actions">
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() =>
+                void act(() => client.approveAssistantRun(run.job_id, true))
+              }
+            >
+              Approve
+            </button>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() =>
+                void act(() => client.approveAssistantRun(run.job_id, false))
+              }
+            >
+              Decline
+            </button>
+          </div>
+        </section>
+      )}
       {run.question && (
         <section aria-label="Question from your assistant">
           <p>{run.question.text}</p>
