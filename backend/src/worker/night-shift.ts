@@ -4,6 +4,7 @@ import {
   parseRrule,
   NIGHT_SHIFT_KINDS,
   weekdayOf,
+  dayTime,
   type NightShiftSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Queryable, type Db } from "../db/pool.js";
@@ -50,7 +51,7 @@ const work: Record<
   study: {
     title: "Study preparation",
     instruction:
-      "Prepare revision for upcoming exams and deadlines. Read the relevant notes, propose useful flashcards in those notes, and plan time for due cards. Link every proposed card and session to its source.",
+      "Prepare revision for upcoming exams and deadlines. Read relevant lecture and study notes added today, propose useful flashcards in their source pages even when there is no exam yet, and line up tomorrow's due cards within study time. Link every proposed card and session to its source.",
   },
   meetings: {
     title: "Meeting preparation",
@@ -274,6 +275,18 @@ async function candidates(
     );
   hasWork.deadlines ||= hasCalendarExam;
   hasWork.study ||= hasCalendarExam;
+  hasWork.study ||= !!(
+    await db.query(
+      `SELECT 1 FROM docs d WHERE d.user_id=$1 AND d.kind='doc'
+     AND d.updated_at >= $2 AND d.updated_at <= $3
+     AND d.content <> '[]'::jsonb AND ${visibleDocs("d", { user: "$1", ai: true })} LIMIT 1`,
+      [
+        userId,
+        dayTime(assistantNightWindow(now, prefs)!.localDay, 0, prefs.timezone),
+        now,
+      ],
+    )
+  ).rowCount;
   hasWork.meetings ||= meetings.some(
     (entry) =>
       entry.calendar_kind !== "holidays" &&

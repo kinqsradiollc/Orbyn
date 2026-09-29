@@ -475,3 +475,28 @@ test("calendar exam discovery does not awaken work kept out of the assistant", a
   assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
   assert.equal(await queuedJob(me.id), undefined);
 });
+
+test("new notes awaken Study even before exams or cards exist", async () => {
+  const me = await person();
+  const now = new Date("2050-01-05T23:00:00Z");
+  await pool.query("DELETE FROM items WHERE id=$1", [me.task]);
+  await pool.query(
+    "INSERT INTO docs(user_id,title,content,created_at,updated_at) VALUES($1,'Lecture notes',$2,$3,$3)",
+    [
+      me.id,
+      JSON.stringify([
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Useful lecture material" }],
+        },
+      ]),
+      now,
+    ],
+  );
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 1);
+  const job = await queuedJob(me.id);
+  assert.equal(job.run_state.request.automation.night_kind, "study");
+  assert.match(job.run_state.request.message, /notes added today/);
+  await complete(job.id);
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
+});
