@@ -12,7 +12,11 @@ import {
   type ReminderNudgeSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../db/pool.js";
-import { visibleDocs, visibleItems } from "../lib/visibility.js";
+import {
+  visibleDocs,
+  visibleItems,
+  visibleProjects,
+} from "../lib/visibility.js";
 import { upcomingExams } from "../modules/study/service.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 import { announceTo } from "../modules/presence/live.js";
@@ -260,6 +264,9 @@ export async function reminderNudgeCandidates(
       `SELECT j.id, coalesce(c.title, 'Assistant request') AS title FROM ai_jobs j
    LEFT JOIN ai_chats c ON c.id = j.chat_id AND c.user_id = j.user_id
    WHERE j.user_id = $1 AND j.state = 'waiting' AND j.heartbeat_at < $2::timestamptz - interval '3 hours'
+   AND (j.chat_id IS NULL OR c.id IS NOT NULL)
+   AND (c.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id = c.project_id AND ${visibleProjects("p", { user: "$1", ai: true })}))
+   AND (c.scope_kind IS DISTINCT FROM 'task' OR EXISTS(SELECT 1 FROM items i WHERE i.id = c.scope_id AND ${visibleItems("i", { user: "$1", ai: true })}))
    ORDER BY j.heartbeat_at, j.id LIMIT 20`,
       [userId, now],
     )

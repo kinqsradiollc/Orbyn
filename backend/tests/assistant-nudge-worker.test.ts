@@ -557,3 +557,57 @@ test("calendar exams get stable Study identities, respect kept-out projects and 
     true,
   );
 });
+
+test("waiting reminders stop exposing chats when their project is kept out or no longer visible", async () => {
+  const me = await person();
+  const other = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Waiting project') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const chat = (
+    await pool.query(
+      "INSERT INTO ai_chats(user_id,project_id,id,title,turns) VALUES($1,$2,$3,'Private waiting request','[]') RETURNING id",
+      [me.id, project, randomUUID()],
+    )
+  ).rows[0].id;
+  const job = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,state,heartbeat_at) VALUES($1,$2,'waiting',$3) RETURNING id",
+      [me.id, chat, new Date(now.getTime() - 4 * 60 * 60_000)],
+    )
+  ).rows[0].id;
+  const candidate = (await reminderNudgeCandidates(me.id, "UTC", now)).find(
+    (c) => c.entity_id === job,
+  );
+  assert.ok(candidate);
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  assert.ok(
+    !(await reminderNudgeCandidates(me.id, "UTC", now)).some(
+      (c) => c.entity_id === job,
+    ),
+  );
+  assert.equal(await postReminderNudge(me.id, "UTC", candidate, now), false);
+  await pool.query(
+    "UPDATE projects SET assistant_off=false,user_id=$2 WHERE id=$1",
+    [project, other.id],
+  );
+  assert.ok(
+    !(await reminderNudgeCandidates(me.id, "UTC", now)).some(
+      (c) => c.entity_id === job,
+    ),
+  );
+  await pool.query("UPDATE projects SET user_id=$2 WHERE id=$1", [
+    project,
+    me.id,
+  ]);
+  assert.ok(
+    (await reminderNudgeCandidates(me.id, "UTC", now)).some(
+      (c) => c.entity_id === job,
+    ),
+  );
+});
