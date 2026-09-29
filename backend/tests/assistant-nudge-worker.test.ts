@@ -1,6 +1,7 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import "./setup.js";
 import { DEFAULT_REMINDER_NUDGES } from "@orbyn/core";
 const { pool, transaction } = await import("../src/db/pool.js");
@@ -458,6 +459,20 @@ test("calendar exams get stable Study identities, respect kept-out projects and 
     VALUES($1,'exam','Algorithms final exam','2050-01-04T09:00:00Z','2050-01-04T12:00:00Z','UTC')`,
     [sub],
   );
+  const legacyKey = "sub:Exam feed|2050-01-04T09:00:00.000Z";
+  await pool.query(
+    "INSERT INTO study_exams(user_id,exam_key,title,starts_at) VALUES($1,$2,'Algorithms final exam','2050-01-04T09:00:00Z')",
+    [me.id, legacyKey],
+  );
+  await pool.query(
+    await readFile(
+      new URL(
+        "../migrations/191_calendar_exam_source_identity.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
   const project = (
     await pool.query(
       "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Private exam project',true) RETURNING id",
@@ -516,11 +531,16 @@ test("calendar exams get stable Study identities, respect kept-out projects and 
     "UPDATE external_events SET title='Renamed algorithms exam' WHERE subscription_id=$1 AND uid='exam'",
     [sub],
   );
+  await pool.query(
+    "UPDATE calendar_subscriptions SET name='Renamed exam feed' WHERE id=$1",
+    [sub],
+  );
   const renamed = (await reminderNudgeCandidates(me.id, "UTC", now)).find(
     (c) => c.entity_id === exam.entity_id,
   )!;
   assert.match(renamed.text, /Renamed algorithms exam/);
   assert.equal(renamed.exam_key, exam.exam_key);
+  assert.equal(renamed.exam_key, legacyKey);
   const row = (
     await pool.query("SELECT doc_ids,target FROM study_exams WHERE id=$1", [
       exam.entity_id,
@@ -613,5 +633,44 @@ test("waiting reminders stop exposing chats when their project is kept out or no
     (await reminderNudgeCandidates(me.id, "UTC", now)).some(
       (c) => c.entity_id === job,
     ),
+  );
+});
+
+test("two subscribed exams at the same time retain distinct reminder identities after a feed rename", async () => {
+  const me = await person(false);
+  const sub = (
+    await pool.query(
+      "INSERT INTO calendar_subscriptions(user_id,url,name,kind,last_fetched_at) VALUES($1,$2,'Same time exams','exams',now()) RETURNING id",
+      [me.id, `https://example.test/${randomUUID()}.ics`],
+    )
+  ).rows[0].id;
+  for (const [uid, title] of [
+    ["algorithms", "Algorithms final exam"],
+    ["physics", "Physics final exam"],
+  ])
+    await pool.query(
+      "INSERT INTO external_events(subscription_id,uid,title,starts_at,ends_at,timezone) VALUES($1,$2,$3,'2050-01-04T09:00:00Z','2050-01-04T12:00:00Z','UTC')",
+      [sub, uid, title],
+    );
+  const before = (await reminderNudgeCandidates(me.id, "UTC", now)).filter(
+    (c) => c.entity_kind === "exam",
+  );
+  assert.equal(before.length, 2);
+  assert.equal(new Set(before.map((c) => c.exam_key)).size, 2);
+  assert.equal(new Set(before.map((c) => c.entity_id)).size, 2);
+  await pool.query(
+    "UPDATE calendar_subscriptions SET name='New calendar name' WHERE id=$1",
+    [sub],
+  );
+  const after = (await reminderNudgeCandidates(me.id, "UTC", now)).filter(
+    (c) => c.entity_kind === "exam",
+  );
+  assert.deepEqual(
+    after.map((c) => c.entity_id).sort(),
+    before.map((c) => c.entity_id).sort(),
+  );
+  assert.deepEqual(
+    after.map((c) => c.exam_key).sort(),
+    before.map((c) => c.exam_key).sort(),
   );
 });

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { z } from "zod";
 import {
   actionSchema,
@@ -32,9 +33,11 @@ import {
 } from "../../db/pool.js";
 import {
   agendaEntries,
+  calendarEntries,
   busyIntervals,
   loadPrefs,
 } from "../planner/calendar.js";
+import { externalOccurrences } from "../planner/subscriptions.js";
 import { freeSpans, workingSpans } from "../planner/plans.js";
 import { readableDocs, visibleDocs } from "../../lib/visibility.js";
 import { mutate } from "../items/service.js";
@@ -288,8 +291,9 @@ export async function upcomingExams(
   const to = new Date(
     now.getTime() + (options.horizonDays ?? EXAM_HORIZON_DAYS) * 86_400_000,
   );
-  const [entries, own] = await Promise.all([
-    agendaEntries(db, userId, now, to, { hidden: true }),
+  const [calendar, subscribed, own] = await Promise.all([
+    calendarEntries(db, userId, now, to),
+    externalOccurrences(db, userId, now, to),
     // Exams named in Study itself (H4), not on the calendar.
     db.query<{
       exam_key: string;
@@ -305,20 +309,49 @@ export async function upcomingExams(
   ]);
   const daysLeft = (at: string) =>
     Math.max(0, Math.ceil((Date.parse(at) - now.getTime()) / 86_400_000));
-  return [
-    ...entries
-      .filter(
-        (e) => e.calendar_kind === "exams" || EXAM_WORDS.test(e.title ?? ""),
-      )
-      .filter((e) => e.calendar_kind !== "holidays")
+  const entries = [
+    ...calendar
+      .filter((e) => e.kind === "event")
       .map((e) => ({
-        key: `${e.source === "subscription" ? `sub:${e.calendar}` : `item:${e.item_id}`}|${e.start_at}`,
+        key: `item:${e.item_id}|${e.start_at}`,
         title: e.title,
         starts_at: e.start_at,
-        all_day: e.all_day,
-        source: e.calendar ?? "yours",
-        days_left: daysLeft(e.start_at),
+        all_day: !!e.all_day,
+        source: "yours",
+        calendar_kind: null,
       })),
+    ...subscribed.map((e) => ({
+      key: `sub:${e.subscription_id}:${createHash("md5").update(e.uid).digest("hex")}|${e.start_at}`,
+      title: e.title,
+      starts_at: e.start_at,
+      all_day: e.all_day,
+      source: e.name,
+      calendar_kind: e.calendar_kind,
+    })),
+  ].filter(
+    (e) =>
+      (e.calendar_kind === "exams" || EXAM_WORDS.test(e.title ?? "")) &&
+      e.calendar_kind !== "holidays",
+  );
+  // Older calendar exams retain their key, notes, target and reminder ledger.
+  const legacy = subscribed.length
+    ? (
+        await db.query<{ exam_key: string; source_ref: string }>(
+          "SELECT exam_key,source_ref FROM study_exams WHERE user_id=$1 AND source_ref=ANY($2::text[])",
+          [userId, entries.map((e) => e.key)],
+        )
+      ).rows
+    : [];
+  const legacyKeys = new Map(legacy.map((e) => [e.source_ref, e.exam_key]));
+  return [
+    ...entries.map((e) => ({
+      key: legacyKeys.get(e.key) ?? e.key,
+      title: e.title,
+      starts_at: e.starts_at,
+      all_day: e.all_day,
+      source: e.source,
+      days_left: daysLeft(e.starts_at),
+    })),
     ...own.rows.map((e) => ({
       key: e.exam_key,
       title: e.title,
