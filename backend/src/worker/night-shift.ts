@@ -5,6 +5,7 @@ import {
   NIGHT_SHIFT_KINDS,
   weekdayOf,
   dayTime,
+  addDays,
   type NightShiftSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Queryable, type Db } from "../db/pool.js";
@@ -16,7 +17,11 @@ import { assistantNightWindow } from "./night-window.js";
 import { LEAD_TOKEN_BUDGET } from "../modules/ai/agent/lead.js";
 import { agendaEntries } from "../modules/planner/calendar.js";
 import { upcomingExams } from "../modules/study/service.js";
-import { visibleDocs, visibleItems } from "../lib/visibility.js";
+import {
+  visibleDocs,
+  visibleItems,
+  visibleRecords,
+} from "../lib/visibility.js";
 import { queueOvernightNotices } from "./overnight-notices.js";
 
 type Candidate = {
@@ -295,7 +300,65 @@ async function candidates(
   );
   const fridayReview =
     weekdayOf(assistantNightWindow(now, prefs)!.localDay) === 5;
-  for (const kind of NIGHT_SHIFT_KINDS) {
+  const due = (
+    await db.query<{
+      deadline: Date | null;
+      exam: Date | null;
+      study: Date | null;
+      follow_through: Date | null;
+    }>(
+      `SELECT
+    (SELECT min(i.due_at) FROM items i WHERE i.user_id=$1 AND i.kind='task' AND i.status NOT IN ('done','cancelled') AND ${visibleItems("i", { user: "$1", ai: true })}) AS deadline,
+    (SELECT min(e.starts_at) FROM study_exams e WHERE e.user_id=$1 AND e.starts_at>$2 AND e.starts_at <= $2::timestamptz+interval '14 days'
+      AND NOT EXISTS(SELECT 1 FROM docs d WHERE d.id=ANY(e.doc_ids) AND NOT ${visibleDocs("d", { user: "$1", ai: true })})) AS exam,
+    (SELECT min(c.due_at) FROM study_cards c JOIN docs d ON d.id=c.doc_id WHERE c.user_id=$1 AND c.due_at <= $2::timestamptz+interval '1 day' AND ${visibleDocs("d", { user: "$1", ai: true })}) AS study,
+    (SELECT min(r.due_at) FROM work_records r WHERE (r.owner_id=$1 OR (r.created_by=$1 AND r.team_id IS NULL)) AND r.status IN ('open','proposed') AND ${visibleRecords("r", { user: "$1", ai: true })}) AS follow_through`,
+      [userId, now],
+    )
+  ).rows[0];
+  const instant = (value: Date | string | null) =>
+    value ? new Date(value).getTime() : Infinity;
+  const examDue = Math.min(
+    instant(due.exam),
+    ...calendarExams
+      .filter(
+        (exam) =>
+          !blockedExamKeys.has(exam.key) &&
+          (!exam.key.startsWith("item:") ||
+            visible.has(exam.key.slice(5).split("|")[0])),
+      )
+      .map((exam) => instant(exam.starts_at)),
+  );
+  const tomorrow = dayTime(
+    addDays(assistantNightWindow(now, prefs)!.localDay, 1),
+    0,
+    prefs.timezone,
+  ).getTime();
+  const priority: Record<string, number> = {
+    plan: tomorrow,
+    deadlines: Math.min(instant(due.deadline), examDue),
+    study: Math.min(instant(due.study), examDue),
+    meetings: Math.min(
+      ...meetings
+        .filter(
+          (entry) =>
+            entry.calendar_kind !== "holidays" &&
+            Date.parse(entry.start_at) > now.getTime() &&
+            (!entry.item_id || visible.has(entry.item_id)),
+        )
+        .map((entry) => instant(entry.start_at)),
+    ),
+    follow_through: instant(due.follow_through),
+    tidy: Infinity,
+  };
+  if (hasWork.study && priority.study === Infinity) priority.study = tomorrow;
+  // Only the enabled-kind portion is sorted: handed tasks and due personal
+  // check-ins/routines retain their higher priority. Equal due times retain
+  // the documented kind order.
+  const orderedKinds = [...NIGHT_SHIFT_KINDS].sort((a, b) =>
+    priority[a] < priority[b] ? -1 : priority[a] > priority[b] ? 1 : 0,
+  );
+  for (const kind of orderedKinds) {
     if (!prefs.kinds[kind] || kind === "handed") continue;
     if (
       kind === "deadlines"

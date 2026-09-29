@@ -500,3 +500,37 @@ test("new notes awaken Study even before exams or cards exist", async () => {
   await complete(job.id);
   assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
 });
+
+test("enabled kinds run by earliest due work after handed tasks", async () => {
+  const me = await person();
+  const now = new Date("2050-01-05T23:00:00Z");
+  const sub = (
+    await pool.query(
+      "INSERT INTO calendar_subscriptions(user_id,url,name,kind,busy,last_fetched_at) VALUES($1,$2,'Work calendar','work',true,now()) RETURNING id",
+      [me.id, `https://example.test/${randomUUID()}.ics`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO external_events(subscription_id,uid,title,starts_at,ends_at,timezone) VALUES($1,'meeting','Tomorrow meeting',$2::timestamptz+interval '2 hours',$2::timestamptz+interval '3 hours','UTC')",
+    [sub, now],
+  );
+  await pool.query(
+    "INSERT INTO study_exams(user_id,exam_key,title,starts_at,own) VALUES($1,'own:later','Later exam',$2::timestamptz+interval '5 days',true)",
+    [me.id, now],
+  );
+  const kinds: string[] = [];
+  while (await scanNightShift(now, { only: [me.id], ai })) {
+    const job = await queuedJob(me.id);
+    kinds.push(job.run_state.request.automation.night_kind);
+    await complete(job.id);
+  }
+  assert.equal(kinds[0], "handed");
+  assert.ok(
+    kinds.indexOf("meetings") < kinds.indexOf("deadlines"),
+    JSON.stringify(kinds),
+  );
+  assert.ok(
+    kinds.indexOf("meetings") < kinds.indexOf("study"),
+    JSON.stringify(kinds),
+  );
+});

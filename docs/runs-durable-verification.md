@@ -49,4 +49,4 @@ settings/ledger; 188 reminder sources; 189 morning notification receipt;
 Web: `http://localhost:5188/`; API: port 8018; Expo Go: Metro port 8083.
 Preview data uses a separate marked test database. Never commit `.env` or
 `mobile/app.json`. Stop work if free disk space falls below 3 GB, as required
-by the artifact. Last measured free space: 3.2 GiB.
+by the artifact. Last measured free space: 3.6 GiB.
