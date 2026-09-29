@@ -31,12 +31,13 @@ type RunRow = {
   state: OvernightRun["state"];
   result: unknown;
   apply_result: unknown;
+  waiting: unknown;
 };
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-const RUN_SELECT = `SELECT nr.*, j.chat_id, j.state, j.result, j.apply_result, coalesce(c.title, 'Night work') AS title
+const RUN_SELECT = `SELECT nr.*, j.chat_id, j.state, j.result, j.apply_result, j.run_state->'state'->'waiting' AS waiting, coalesce(c.title, 'Night work') AS title
  FROM assistant_night_runs nr JOIN assistant_nights n ON n.id = nr.night_id
  JOIN ai_jobs j ON j.id = nr.job_id AND j.user_id = n.user_id
  LEFT JOIN ai_chats c ON c.id = j.chat_id AND c.user_id = n.user_id`;
@@ -142,7 +143,22 @@ async function card(
     ? await reviewItem(db, userId, context.proposal.id)
     : null;
   if (proposal?.status === "expired" && status === "pending") status = "undone";
+  const waiting = object(row.waiting);
+  const question =
+    row.state === "waiting" &&
+    waiting.kind === "person" &&
+    typeof waiting.question === "string"
+      ? {
+          text: waiting.question,
+          choices: Array.isArray(waiting.choices)
+            ? waiting.choices.filter(
+                (value): value is string => typeof value === "string",
+              )
+            : [],
+        }
+      : null;
   return {
+    question,
     id: row.id,
     job_id: row.job_id,
     chat_id: row.chat_id,

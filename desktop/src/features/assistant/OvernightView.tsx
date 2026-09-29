@@ -149,6 +149,8 @@ function RunCard({
   busy: boolean;
   act: (operation: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [answer, setAnswer] = useState("");
+  useEffect(() => setAnswer(""), [run.question?.text]);
   const choices = run.steps.length
     ? run.steps.map((step) => ({ key: step.id, title: step.title }))
     : (run.proposal?.changes ?? []).map((change) => ({
@@ -197,6 +199,53 @@ function RunCard({
       <p className="overnight-summary">
         {run.summary || "Open the chat to see its progress."}
       </p>
+      {run.question && (
+        <section aria-label="Question from your assistant">
+          <p>{run.question.text}</p>
+          <div className="overnight-actions">
+            {run.question.choices.map((choice) => (
+              <button
+                type="button"
+                className="secondary"
+                key={choice}
+                disabled={busy}
+                onClick={() =>
+                  void act(() => client.answerAssistantRun(run.job_id, choice))
+                }
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!busy && answer.trim())
+                void act(async () => {
+                  await client.answerAssistantRun(run.job_id, answer.trim());
+                  setAnswer("");
+                });
+            }}
+          >
+            <label className="settings-field">
+              <span className="settings-label">Your answer</span>
+              <input
+                maxLength={4000}
+                disabled={busy}
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+              />
+            </label>
+            <button
+              type="submit"
+              className="primary"
+              disabled={busy || !answer.trim()}
+            >
+              Answer
+            </button>
+          </form>
+        </section>
+      )}
       <div className="overnight-actions">
         {run.chat_id && (
           <button

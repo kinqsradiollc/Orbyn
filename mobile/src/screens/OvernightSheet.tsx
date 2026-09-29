@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ScrollView, Text, View, Switch } from "react-native";
+import { ScrollView, Text, View, Switch, TextInput } from "react-native";
 import type { OvernightNight, OvernightRun } from "@orbyn/core";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { Button } from "../components/Button";
@@ -168,6 +168,8 @@ function RunCard({
   act: (operation: () => Promise<unknown>) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [answer, setAnswer] = useState("");
+  useEffect(() => setAnswer(""), [run.question?.text]);
   const choices = run.steps.length
     ? run.steps.map((step) => ({ key: step.id, title: step.title }))
     : (run.proposal?.changes ?? []).map((change) => ({
@@ -202,6 +204,42 @@ function RunCard({
       <Text style={[shared.body, { marginVertical: 12 }]}>
         {run.summary || "Open the chat to see its progress."}
       </Text>
+      {run.question && (
+        <View style={{ gap: 8, marginBottom: 12 }}>
+          <Text style={shared.body}>{run.question.text}</Text>
+          {run.question.choices.map((choice) => (
+            <Button
+              key={choice}
+              title={choice}
+              secondary
+              disabled={busy}
+              onPress={() =>
+                void act(() => client.answerAssistantRun(run.job_id, choice))
+              }
+            />
+          ))}
+          <TextInput
+            style={shared.input}
+            accessibilityLabel="Your answer"
+            placeholder="Your answer"
+            placeholderTextColor={colors.faint}
+            maxLength={4000}
+            editable={!busy}
+            value={answer}
+            onChangeText={setAnswer}
+          />
+          <Button
+            title="Answer"
+            disabled={busy || !answer.trim()}
+            onPress={() =>
+              void act(async () => {
+                await client.answerAssistantRun(run.job_id, answer.trim());
+                setAnswer("");
+              })
+            }
+          />
+        </View>
+      )}
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {run.chat_id && (
           <Button

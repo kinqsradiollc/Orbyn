@@ -345,3 +345,35 @@ test("choosing a dependent plan step alone is refused without applying anything"
     "pending",
   );
 });
+
+test("Overnight exposes saved person questions only while the owned run is waiting", async () => {
+  const user = await person();
+  const fixture = await held(user);
+  await pool.query(
+    "UPDATE ai_jobs SET state='waiting',run_state=$2 WHERE id=(SELECT job_id FROM assistant_night_runs WHERE id=$1)",
+    [
+      fixture.run,
+      JSON.stringify({
+        state: {
+          waiting: {
+            kind: "person",
+            question: "Which notes should I use?",
+            choices: ["Lecture 1", "Lecture 2"],
+          },
+        },
+      }),
+    ],
+  );
+  const read = await h.call(user.token, "GET", "/me/assistant/nights/latest");
+  assert.equal(read.statusCode, 200);
+  assert.deepEqual(read.json().runs[0].question, {
+    text: "Which notes should I use?",
+    choices: ["Lecture 1", "Lecture 2"],
+  });
+  await pool.query(
+    "UPDATE ai_jobs SET state='done' WHERE id=(SELECT job_id FROM assistant_night_runs WHERE id=$1)",
+    [fixture.run],
+  );
+  const done = await h.call(user.token, "GET", "/me/assistant/nights/latest");
+  assert.equal(done.json().runs[0].question, null);
+});
