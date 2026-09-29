@@ -3471,7 +3471,23 @@ export class OrbynClient {
     while (Date.now() < deadline) {
       await pause(delay, signal);
       delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
-      const job = await this.request<ChatJob>(`/ai/chat/${id}`);
+      let job: ChatJob;
+      try {
+        job = await this.request<ChatJob>(`/ai/chat/${id}`);
+      } catch (error) {
+        if (signal?.aborted) throw abortError();
+        const transient =
+          error instanceof HttpError
+            ? error.statusCode === 429 || error.statusCode >= 500
+            : error instanceof Error &&
+              ["TypeError", "TimeoutError", "AbortError"].includes(error.name);
+        if (!transient) throw error;
+        // Keep the same run attached across rate limits and network outages.
+        // The existing deadline bounds retries; the pause remains abortable.
+        if (error instanceof HttpError && error.statusCode === 429)
+          await pause(10000, signal);
+        continue;
+      }
       if (signal?.aborted) throw abortError();
       if (job.state === "running" || job.state === "waiting") {
         const progress = {

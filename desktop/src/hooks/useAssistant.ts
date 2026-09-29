@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  HttpError,
   newId,
   proposalNote,
   savedReply,
@@ -510,7 +511,7 @@ export function useAssistant({
 
   /** Pick up any saved assistant chat where it was left. */
   const openChat = async (id: string) => {
-    clearConversation();
+    clearConversation(false);
     const request = generation.current;
     const chat = await client.aiChat(id);
     if (request !== generation.current) return;
@@ -591,11 +592,35 @@ export function useAssistant({
 
   useEffect(() => {
     if (!token) return;
-    const request = generation.current;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let request = generation.current;
+    const restore = async (id: string) => {
+      if (disposed || request !== generation.current) return;
+      const opening = openChat(id);
+      request = generation.current;
+      try {
+        await opening;
+      } catch (error) {
+        if (disposed || request !== generation.current) return;
+        if (
+          error instanceof HttpError &&
+          [403, 404].includes(error.statusCode)
+        ) {
+          void saveAssistantChat(null);
+          return;
+        }
+        // A temporary outage must not forget the person's running chat.
+        timer = setTimeout(() => void restore(id), 10000);
+      }
+    };
     void loadAssistantChat().then((id) => {
-      if (id && request === generation.current)
-        void openChat(id).catch(() => saveAssistantChat(null));
+      if (id) void restore(id);
     });
+    return () => {
+      disposed = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [token]);
 
   const deleteChat = async (id: string) => {

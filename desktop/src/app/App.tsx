@@ -241,7 +241,26 @@ export function App() {
     };
   }, [token]);
   usePresence(token, () => void refresh({ silent: true }));
-  const [view, setView] = useState<View>("Overview");
+  const [view, setView] = useState<View>(() => {
+    try {
+      return location.pathname === "/app" &&
+        localStorage.getItem("orbyn-assistant-view-open") === "true"
+        ? "AI assistant"
+        : "Overview";
+    } catch {
+      return "Overview";
+    }
+  });
+  // Compact layouts have no workspace tabs to restore their current screen.
+  useEffect(() => {
+    try {
+      if (view === "AI assistant")
+        localStorage.setItem("orbyn-assistant-view-open", "true");
+      else localStorage.removeItem("orbyn-assistant-view-open");
+    } catch {
+      /* Storage can be disabled; the current session still works. */
+    }
+  }, [view]);
   /** The screen showing, for listeners that outlive a render. */
   const viewRef = useRef(view);
   viewRef.current = view;
