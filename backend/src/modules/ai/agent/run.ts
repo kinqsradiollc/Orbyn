@@ -2022,12 +2022,15 @@ export async function failStaleAssistantJobs(
               : interrupted;
         await db.query(
           `UPDATE ai_jobs SET state = 'failed', error_status = $2, error_message = $3,
+           result = jsonb_build_object('assistant_run', jsonb_build_object('token_estimate',
+             coalesce((run_state->'state'->>'token_estimate')::int, (result->'assistant_run'->>'token_estimate')::int, 0))),
            run_state = NULL, lease_until = NULL, claimed_by = NULL,
            progress = jsonb_build_object('label', $3::text), heartbeat_at = $4 WHERE id = $1`,
           [row.id, row.was === "waiting" ? 410 : 503, message, now],
         );
         ended.push(row);
         await notifyAssistantAway(db, row.id, "failed");
+        await recordNightRun(db, row.id, message, "pending");
       }
     }
     const ids = ended.map((row) => row.id);

@@ -96,6 +96,20 @@ test("Stop discards a queued run before a worker can claim it", async () => {
 
 test("an expired lease requeues its checkpoint three times, then fails plainly", async () => {
   const id = await enqueue();
+  await pool.query(
+    "UPDATE ai_jobs SET run_state=jsonb_set(run_state,'{state,token_estimate}','321') WHERE id=$1",
+    [id],
+  );
+  const night = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2050-01-01') RETURNING id",
+      [userId],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'tidy')",
+    [night, id],
+  );
   const { failStaleAssistantJobs } =
     await import("../src/modules/ai/agent/run.js");
   const before = (
@@ -132,6 +146,14 @@ test("an expired lease requeues its checkpoint three times, then fails plainly",
   ).rows[0];
   assert.equal(job.state, "failed");
   assert.equal(job.resume_count, 3);
+  const savedNight = (
+    await pool.query(
+      "SELECT n.budget_used,r.summary FROM assistant_nights n JOIN assistant_night_runs r ON r.night_id=n.id WHERE n.id=$1",
+      [night],
+    )
+  ).rows[0];
+  assert.equal(savedNight.budget_used, 321);
+  assert.equal(savedNight.summary, job.error_message);
   assert.equal(
     job.error_message,
     "This request was interrupted too many times. Please ask again.",
