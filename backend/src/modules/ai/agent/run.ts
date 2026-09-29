@@ -31,7 +31,7 @@ import {
   type LeadState,
   type LeadWaiting,
 } from "./lead.js";
-import { checkMergedPlan } from "./checker.js";
+import { checkMergedPlan, nightPlanNeedsReview } from "./checker.js";
 import { appendChatTrace, beginChatTurn, finishChatTurn } from "../chats.js";
 import {
   AssistantPausedError,
@@ -1028,21 +1028,17 @@ async function approvePlan(
     (request.automation.wait_for_ok !== false ||
       principal.trust.level !== "full" ||
       Object.values(principal.trust.spaces).some((level) => level !== "full") ||
-      checked.steps.some((step) => {
-        const capability = registry.get(step.tool);
-        return (
-          capability?.annotations.destructiveHint ||
-          capability?.effects?.some((effect) =>
-            ["email_outside", "notify_member", "publish"].includes(effect),
-          )
-        );
-      }));
+      nightPlanNeedsReview(checked.steps));
+  const nightPrincipal = {
+    ...principal,
+    unattended: !!request.automation?.night_id,
+  };
   const applyingPrincipal = nightReview
     ? {
-        ...principal,
+        ...nightPrincipal,
         trust: { level: "suggest" as const, spaces: {}, acts_alone: [] },
       }
-    : principal;
+    : nightPrincipal;
   const result = await execute(
     registry,
     applyingPrincipal,

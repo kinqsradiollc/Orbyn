@@ -570,7 +570,11 @@ export async function runPlan(
         },
       ];
     }
-  if ((waits.length && !outer?.reviewed) || (inner.reasons.length && !outer)) {
+  if (
+    (p.unattended && changes > AGENT_BULK_LIMIT) ||
+    (waits.length && !outer?.reviewed) ||
+    (inner.reasons.length && !outer)
+  ) {
     // Nothing is made now: the whole plan waits for one yes.
     await db.query("ROLLBACK TO SAVEPOINT apply_plan");
     if (outer?.mode === "collect") outer.reasons.length = 0;

@@ -144,6 +144,19 @@ export function destination(
         : "This connection can only read your Personal space.",
       "Ask the person to allow changes, or make the change in Orbyn.",
     );
+  // Some effects are known only after resolving the arguments (event invites,
+  // subscriptions and assignees). Night work must hold these even at full trust.
+  if (
+    p.unattended &&
+    (tier === "W3" ||
+      !!options.asks ||
+      (options.count ?? 0) > AGENT_BULK_LIMIT ||
+      teammatesWork(p, teamId, options.owner) ||
+      effects.some((effect) =>
+        ["email_outside", "notify_member", "publish"].includes(effect),
+      ))
+  )
+    return "review";
   const trust = policy.trustIn(p, teamId);
   if ((level === "suggest" || trust === "suggest") && !ctx.asking?.reviewed)
     return "review";

@@ -671,3 +671,218 @@ test("Stop from a separate API process interrupts the runner's blocked provider 
     await end(runner, "SIGTERM");
   }
 });
+
+test("a full-trust night event with dynamic outside invites is staged in Review", async () => {
+  const { assistantPrincipal } =
+    await import("../src/modules/agents/assistant.js");
+  const principal = await assistantPrincipal(user);
+  await pool.query(
+    "UPDATE agent_grants SET trust='full', acts_alone=ARRAY['people','publishing','teammates','bulk']::text[] WHERE id=$1",
+    [principal.grant_id],
+  );
+  const title = `Night invite ${randomUUID()}`;
+  const run = await enqueue(`Prepare ${title}`);
+  const nightId = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, '2099-01-04') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  run.checkpoint.request.automation = {
+    kind: "night",
+    night_id: nightId,
+    night_kind: "meetings",
+    wait_for_ok: false,
+  };
+  const step = {
+    id: "s1",
+    tool: "create_tasks" as const,
+    args: {
+      tasks: [
+        {
+          title,
+          kind: "event",
+          due_at: "2099-01-05T10:00:00Z",
+          end_at: "2099-01-05T11:00:00Z",
+          invite: ["disposable-invite@example.test"],
+        },
+      ],
+    },
+  };
+  run.checkpoint.state.answer = "The event is prepared.";
+  run.checkpoint.state.plan = [step];
+  run.checkpoint.state.selected_steps = [step];
+  await pool.query("UPDATE ai_jobs SET run_state=$2::jsonb WHERE id=$1", [
+    run.id,
+    JSON.stringify(run.checkpoint),
+  ]);
+  await pool.query(
+    "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'meetings')",
+    [nightId, run.id],
+  );
+  const runner = await start();
+  try {
+    const completed = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(completed.state, "done", completed.error_message);
+    assert.equal(completed.result.assistant_run.outcome, "pending");
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM items WHERE user_id=$1 AND title=$2",
+          [user.id, title],
+        )
+      ).rows[0].n,
+      0,
+    );
+    const proposal = String(completed.result.assistant_run.proposal_id).replace(
+      /^proposal:/,
+      "",
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT status FROM proposals WHERE id=$1 AND user_id=$2",
+          [proposal, user.id],
+        )
+      ).rows[0].status,
+      "pending",
+    );
+  } finally {
+    await end(runner, "SIGTERM");
+  }
+});
+
+test("night planning moves a session at full trust when morning hold is off", async () => {
+  const task = (
+    await pool.query(
+      "INSERT INTO items(user_id,title) VALUES($1,'Night session task') RETURNING id",
+      [user.id],
+    )
+  ).rows[0];
+  const block = (
+    await pool.query(
+      "INSERT INTO time_blocks(user_id,item_id,start_at,end_at,source) VALUES($1,$2,'2099-01-06T09:00:00Z','2099-01-06T10:00:00Z','manual') RETURNING id",
+      [user.id, task.id],
+    )
+  ).rows[0];
+  const run = await enqueue(
+    "Move my unfinished session into tomorrow's free time.",
+  );
+  const nightId = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-05') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  run.checkpoint.request.automation = {
+    kind: "night",
+    night_id: nightId,
+    night_kind: "plan",
+    wait_for_ok: false,
+  };
+  const step = {
+    id: "s1",
+    tool: "reschedule_sessions" as const,
+    args: {
+      changes: [
+        {
+          session: block.id,
+          action: "move",
+          start_at: "2099-01-07T09:00:00Z",
+          end_at: "2099-01-07T10:00:00Z",
+        },
+      ],
+    },
+  };
+  run.checkpoint.state.answer = "The session is moved.";
+  run.checkpoint.state.plan = [step];
+  run.checkpoint.state.selected_steps = [step];
+  await pool.query("UPDATE ai_jobs SET run_state=$2::jsonb WHERE id=$1", [
+    run.id,
+    JSON.stringify(run.checkpoint),
+  ]);
+  await pool.query(
+    "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'plan')",
+    [nightId, run.id],
+  );
+  const runner = await start();
+  try {
+    const completed = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(completed.state, "done", completed.error_message);
+    assert.equal(completed.result.assistant_run.outcome, "applied");
+    assert.equal(
+      (
+        await pool.query("SELECT start_at FROM time_blocks WHERE id=$1", [
+          block.id,
+        ])
+      ).rows[0].start_at.toISOString(),
+      "2099-01-07T09:00:00.000Z",
+    );
+  } finally {
+    await end(runner, "SIGTERM");
+  }
+});
+
+test("a night plan with more than fifty private additions waits in Review even when bulk is allowed", async () => {
+  const prefix = `Night bulk ${randomUUID()}`;
+  const run = await enqueue("Prepare seventy-five private tasks.");
+  const nightId = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-06') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  run.checkpoint.request.automation = {
+    kind: "night",
+    night_id: nightId,
+    night_kind: "tidy",
+    wait_for_ok: false,
+  };
+  const steps = Array.from({ length: 3 }, (_, batch) => ({
+    id: `s${batch}`,
+    tool: "create_tasks" as const,
+    args: {
+      tasks: Array.from({ length: 25 }, (_, n) => ({
+        title: `${prefix} ${batch * 25 + n}`,
+        kind: "task",
+      })),
+    },
+  }));
+  run.checkpoint.state.answer = "The tasks are prepared.";
+  run.checkpoint.state.plan = steps;
+  run.checkpoint.state.selected_steps = steps;
+  await pool.query("UPDATE ai_jobs SET run_state=$2::jsonb WHERE id=$1", [
+    run.id,
+    JSON.stringify(run.checkpoint),
+  ]);
+  await pool.query(
+    "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'tidy')",
+    [nightId, run.id],
+  );
+  const runner = await start();
+  try {
+    const completed = await until(
+      () => job(run.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(completed.state, "done", completed.error_message);
+    assert.equal(completed.result.assistant_run.outcome, "pending");
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM items WHERE user_id=$1 AND title LIKE $2",
+          [user.id, `${prefix}%`],
+        )
+      ).rows[0].n,
+      0,
+    );
+  } finally {
+    await end(runner, "SIGTERM");
+  }
+});

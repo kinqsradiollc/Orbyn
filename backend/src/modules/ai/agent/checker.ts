@@ -125,3 +125,36 @@ export async function checkMergedPlan(
   }
   return { steps, approvals: [...approvals] };
 }
+
+/** Changes that require a morning Review regardless of the night trust level. */
+export function nightPlanNeedsReview(steps: PlanStep[]): boolean {
+  return steps.some((step) => {
+    const cap = registry.get(step.tool);
+    if (
+      cap?.effects?.some((effect) =>
+        ["email_outside", "notify_member", "publish"].includes(effect),
+      )
+    )
+      return true;
+    // EDITS marks all editing tools as destructive for MCP clients. These
+    // mutations do not delete an object; dynamic contact effects are guarded
+    // again by destination() when the arguments have been resolved.
+    if (
+      ["update_tasks", "complete_tasks", "edit_checklist"].includes(step.tool)
+    )
+      return false;
+    if (step.tool === "reschedule_sessions") {
+      const changes = step.args.changes;
+      return (
+        !Array.isArray(changes) ||
+        changes.some(
+          (change) =>
+            !change ||
+            typeof change !== "object" ||
+            (change as { action?: string }).action === "remove",
+        )
+      );
+    }
+    return !!cap?.annotations.destructiveHint;
+  });
+}

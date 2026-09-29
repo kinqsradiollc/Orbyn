@@ -48,6 +48,8 @@ export type PrincipalFlags = {
 };
 
 export type Principal = {
+  /** Server-only night execution guard; never loaded from grant preferences. */
+  unattended?: boolean;
   user: { id: string; name: string; role: SystemRole };
   via: Via;
   /** The connection (agent_grants.id); null for the person's own session. */
