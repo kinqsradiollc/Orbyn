@@ -52,6 +52,8 @@ const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { enqueue } = await import("../src/worker/scheduler.js");
+const { failStaleAssistantJobs } =
+  await import("../src/modules/ai/agent/run.js");
 const app = await buildApp();
 let alice = "";
 let bob = "";
@@ -269,9 +271,10 @@ test("an assistant turn can be started, then polled for its answer", async () =>
     404,
   );
   await pool.query(
-    "UPDATE ai_jobs SET state='running', heartbeat_at=now() - interval '2 minutes' WHERE id=$1",
+    "UPDATE ai_jobs SET state='running', heartbeat_at=now() - interval '2 minutes', lease_until=now() - interval '2 minutes' WHERE id=$1",
     [id],
   );
+  await failStaleAssistantJobs();
   const stale = (
     await app.inject({ url: `/ai/chat/${id}`, headers: headers(alice) })
   ).json();
