@@ -513,8 +513,22 @@ export function useAssistant({
   const openChat = async (id: string) => {
     clearConversation(false);
     const request = generation.current;
-    const chat = await client.aiChat(id);
-    if (request !== generation.current) return;
+    let chat: Awaited<ReturnType<typeof client.aiChat>> | undefined;
+    while (request === generation.current) {
+      try {
+        chat = await client.aiChat(id);
+        break;
+      } catch (error) {
+        const transient =
+          error instanceof HttpError
+            ? error.statusCode === 429 || error.statusCode >= 500
+            : error instanceof Error &&
+              ["TypeError", "TimeoutError", "AbortError"].includes(error.name);
+        if (!transient) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 10000));
+      }
+    }
+    if (!chat || request !== generation.current) return;
     chatId.current = chat.id;
     setActiveChatId(chat.id);
     void saveAssistantChat(chat.id);
