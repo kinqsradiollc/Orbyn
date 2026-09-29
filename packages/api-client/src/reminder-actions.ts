@@ -233,6 +233,41 @@ export async function performReminderAction(
       },
     };
   }
+  if (card.entity_kind === "habit" && action === "book") {
+    const plan = await client.planHabits({
+      start_date: options.day!,
+      days: 1,
+      habit_ids: [card.entity_id],
+    });
+    const proposed = plan.blocks.find(
+      (block) => block.habit_id === card.entity_id,
+    );
+    if (!proposed)
+      throw new HttpError(
+        409,
+        plan.summary.find((habit) => habit.habit_id === card.entity_id)
+          ?.reason ||
+          "This habit cannot be booked on that day. Choose another day or review its schedule.",
+      );
+    const [saved] = await client.applyHabitPlan([
+      {
+        habit_id: proposed.habit_id,
+        start_at: proposed.start_at,
+        end_at: proposed.end_at,
+      },
+    ]);
+    if (!saved)
+      throw new HttpError(
+        409,
+        "That time is no longer free. Choose another day.",
+      );
+    return {
+      message: "Booked a habit session.",
+      undo: async () => {
+        await client.deleteHabitBlock(saved.id, saved.version ?? 1);
+      },
+    };
+  }
   if (card.entity_kind === "habit" && action === "done" && card.source_id) {
     const before = await client.getHabitBlock(card.source_id);
     const after = await client.checkInHabitBlock(before.id, {

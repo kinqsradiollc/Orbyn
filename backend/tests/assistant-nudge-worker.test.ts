@@ -374,7 +374,10 @@ test("missed habit periods include unbooked targets and old check-ins, without n
     [me.id, checked],
   );
   const cards = await reminderNudgeCandidates(me.id, "UTC", at);
-  assert.deepEqual(cards.find((c) => c.entity_id === daily)?.actions, ["skip"]);
+  assert.deepEqual(cards.find((c) => c.entity_id === daily)?.actions, [
+    "skip",
+    "book",
+  ]);
   assert.match(
     cards.find((c) => c.entity_id === daily)!.text,
     /0 of 1.*last scheduled day/,
@@ -383,6 +386,7 @@ test("missed habit periods include unbooked targets and old check-ins, without n
   assert.deepEqual(cards.find((c) => c.entity_id === weekly)?.actions, [
     "done",
     "skip",
+    "book",
   ]);
   assert.ok(
     cards.every(

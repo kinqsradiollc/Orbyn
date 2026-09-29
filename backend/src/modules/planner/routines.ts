@@ -293,12 +293,25 @@ export async function deleteHabitBlock(
   db: Queryable,
   userId: string,
   id: string,
+  version?: number,
 ) {
   const deleted = await db.query(
-    "DELETE FROM habit_blocks WHERE id = $1 AND user_id = $2",
-    [id, userId],
+    "DELETE FROM habit_blocks WHERE id = $1 AND user_id = $2 AND ($3::int IS NULL OR (version=$3 AND outcome IS NULL))",
+    [id, userId, version ?? null],
   );
-  if (!deleted.rowCount) fail(404, "Habit session not found");
+  if (!deleted.rowCount) {
+    if (
+      version !== undefined &&
+      (
+        await db.query(
+          "SELECT 1 FROM habit_blocks WHERE id=$1 AND user_id=$2",
+          [id, userId],
+        )
+      ).rowCount
+    )
+      fail(409, "This habit session changed. Open it to review.");
+    fail(404, "Habit session not found");
+  }
 }
 
 /** Change a habit. */
@@ -355,7 +368,12 @@ export async function habitPlan(
   const days = Array.from({ length: d.days }, (_, i) => addDays(start, i));
   const from = dayTime(days[0], 0, prefs.timezone);
   const to = dayTime(addDays(days.at(-1)!, 1), 0, prefs.timezone);
-  const habits = await loadHabits(db, userId, true);
+  const owned = await loadHabits(db, userId);
+  if (d.habit_ids?.some((id) => !owned.some((habit) => habit.id === id)))
+    fail(404, "Habit not found");
+  const habits = owned.filter(
+    (habit) => habit.active && (!d.habit_ids || d.habit_ids.includes(habit.id)),
+  );
   if (!habits.length) return { blocks: [], summary: [] };
   const [busy, existing] = await Promise.all([
     busyIntervals(db, userId, from, to),

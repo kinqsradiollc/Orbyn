@@ -1677,6 +1677,7 @@ export const digestTestInput = z
 /** Planning habits over a window of days. */
 export const habitPlanInput = z
   .object({
+    habit_ids: z.array(z.uuid()).min(1).max(50).optional(),
     start_date: dayKey.optional(),
     days: z.number().int().min(1).max(14).default(7),
   })

@@ -431,7 +431,11 @@ export async function plannerRoutes(app: FastifyInstance) {
 
   app.delete("/planner/habits/blocks/:id", async (r, reply) => {
     const u = await authenticate(r);
-    await deleteHabitBlock(pool, u.id, idParam(r));
+    const query = z
+      .object({ version: z.coerce.number().int().positive().optional() })
+      .strict()
+      .parse(r.query);
+    await deleteHabitBlock(pool, u.id, idParam(r), query.version);
     return reply.code(204).send();
   });
 

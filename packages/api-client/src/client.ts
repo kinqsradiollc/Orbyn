@@ -2445,8 +2445,9 @@ export class OrbynClient {
       body: input,
     });
   }
-  deleteHabitBlock(id: string) {
-    return this.request<void>(`/planner/habits/blocks/${id}`, {
+  deleteHabitBlock(id: string, version?: number) {
+    const query = version === undefined ? "" : `?version=${version}`;
+    return this.request<void>(`/planner/habits/blocks/${id}${query}`, {
       method: "DELETE",
     });
   }

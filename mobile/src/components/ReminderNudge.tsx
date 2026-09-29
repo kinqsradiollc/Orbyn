@@ -144,7 +144,7 @@ export function ReminderNudge({
               }}
             />
           )}
-          {choosing === "book" && (
+          {choosing === "book" && card.entity_kind !== "habit" && (
             <Field label="Minutes">
               <TextInput
                 accessibilityLabel="Minutes to book"

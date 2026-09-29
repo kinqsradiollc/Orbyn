@@ -549,3 +549,72 @@ test("partial goal and routine updates contain only the fields the person sent",
     { next_run_at: "2050-01-08T06:00:00Z" },
   );
 });
+
+test("habit Book follows its saved schedule and guarded Undo refuses an answered session", async () => {
+  const { me, client, card } = await fixture();
+  const habit = (
+    await pool.query(
+      "INSERT INTO habits(user_id,name,cadence,duration_minutes,days,window_start,window_end) VALUES($1,'Book habit',1,45,ARRAY[0,1,2,3,4,5,6],'08:00','17:00') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO habits(user_id,name,cadence,duration_minutes,days,window_start,window_end,position) VALUES($1,'Other habit',1,45,ARRAY[0,1,2,3,4,5,6],'08:00','17:00',-1)",
+    [me.id],
+  );
+  const targeted = await client.planHabits({
+    start_date: "2050-01-11",
+    days: 1,
+    habit_ids: [habit],
+  });
+  assert.ok(targeted.blocks.length > 0);
+  assert.ok(targeted.blocks.every((block) => block.habit_id === habit));
+  await assert.rejects(
+    () => client.planHabits({ days: 1, habit_ids: [randomUUID()] }),
+    (error: any) => error.status === 404,
+  );
+  const habitCard = {
+    ...card,
+    entity_kind: "habit" as const,
+    entity_id: habit,
+    actions: ["book"] as ReminderNudgeCard["actions"],
+  };
+  const receipt = await performReminderAction(client, habitCard, "book", {
+    day: "2050-01-11",
+  });
+  const session = (
+    await pool.query("SELECT * FROM habit_blocks WHERE habit_id=$1", [habit])
+  ).rows[0];
+  assert.equal(
+    (session.end_at.getTime() - session.start_at.getTime()) / 60_000,
+    45,
+  );
+  await receipt.undo();
+  assert.equal(
+    (await pool.query("SELECT 1 FROM habit_blocks WHERE habit_id=$1", [habit]))
+      .rowCount,
+    0,
+  );
+  const again = await performReminderAction(client, habitCard, "book", {
+    day: "2050-01-11",
+  });
+  const current = (
+    await pool.query("SELECT * FROM habit_blocks WHERE habit_id=$1", [habit])
+  ).rows[0];
+  await client.checkInHabitBlock(current.id, {
+    outcome: "done",
+    version: current.version,
+  });
+  await assert.rejects(
+    () => again.undo(),
+    (error: any) => error.status === 409,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT outcome FROM habit_blocks WHERE id=$1", [
+        current.id,
+      ])
+    ).rows[0].outcome,
+    "done",
+  );
+});

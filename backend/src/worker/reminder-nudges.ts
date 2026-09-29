@@ -397,7 +397,7 @@ export async function reminderNudgeCandidates(
       entity_id: habit.id,
       source_id: habit.block_id,
       text: `Your planned “${habit.name}” habit session ended without a check-in. Did you do it?`,
-      actions: ["done", "skip"],
+      actions: ["done", "skip", "book"],
     })),
   );
   const previousWeek = addDays(today, -((weekdayOf(today) + 6) % 7) - 7);
@@ -444,7 +444,7 @@ export async function reminderNudgeCandidates(
         entity_id: habit.id,
         ...(habit.block_id ? { source_id: habit.block_id } : {}),
         text: `Your “${habit.name}” habit has ${habit.completed} of ${habit.cadence} sessions checked in for the last ${habit.period === "week" ? "week" : "scheduled day"}.`,
-        actions: habit.block_id ? ["done", "skip"] : ["skip"],
+        actions: habit.block_id ? ["done", "skip", "book"] : ["skip", "book"],
       })),
   );
   return result;

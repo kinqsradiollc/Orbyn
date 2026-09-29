@@ -127,7 +127,7 @@ export function ReminderNudge({
             value={day}
             onChange={(event) => setDay(event.target.value)}
           />
-          {choosing === "book" && (
+          {choosing === "book" && card.entity_kind !== "habit" && (
             <label>
               Minutes
               <input
