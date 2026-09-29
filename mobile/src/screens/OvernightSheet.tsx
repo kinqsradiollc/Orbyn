@@ -145,8 +145,10 @@ export function OvernightSheet(props: Props) {
                 secondary
                 disabled={
                   busy ||
-                  !night.runs.some((run) =>
-                    ["done", "failed"].includes(run.state),
+                  !night.runs.some(
+                    (run) =>
+                      ["done", "failed"].includes(run.state) &&
+                      run.status !== "undone",
                   )
                 }
                 onPress={() => bulk("undo")}
