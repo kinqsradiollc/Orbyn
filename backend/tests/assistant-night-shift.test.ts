@@ -395,3 +395,23 @@ test("a full night queues exactly ten jobs and retains unstarted Tonight tasks",
     2,
   );
 });
+
+test("Friday weekly review remains eligible with no unfinished records, including after midnight", async () => {
+  const me = await person();
+  await pool.query("DELETE FROM items WHERE id=$1", [me.task]);
+  const now = new Date("2026-10-03T02:00:00Z"); // Still Friday's 22:00–08:00 window.
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 1);
+  const job = await queuedJob(me.id);
+  assert.equal(job.run_state.request.automation.night_kind, "follow_through");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT local_day::text AS day FROM assistant_nights WHERE user_id=$1",
+        [me.id],
+      )
+    ).rows[0].day,
+    "2026-10-02",
+  );
+  await complete(job.id);
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
+});

@@ -3,6 +3,7 @@ import {
   nextOccurrence,
   parseRrule,
   NIGHT_SHIFT_KINDS,
+  weekdayOf,
   type NightShiftSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Queryable } from "../db/pool.js";
@@ -230,13 +231,15 @@ async function candidates(
       [userId, now],
     )
   ).rows[0];
+  const fridayReview =
+    weekdayOf(assistantNightWindow(now, prefs)!.localDay) === 5;
   for (const kind of NIGHT_SHIFT_KINDS) {
     if (!prefs.kinds[kind] || kind === "handed") continue;
     if (
       kind === "deadlines"
         ? !hasWork.deadlines
         : kind === "follow_through"
-          ? !hasWork.follow_through
+          ? !hasWork.follow_through && !fridayReview
           : kind === "study"
             ? !hasWork.study
             : kind === "meetings"
