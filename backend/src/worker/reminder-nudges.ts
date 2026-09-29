@@ -303,7 +303,7 @@ export async function reminderNudgeCandidates(
       entity_kind: "goal",
       entity_id: goal.id,
       text: `Your goal “${goal.title}” is due soon with work still to plan or too little time booked.`,
-      actions: ["done", "move", "skip"],
+      actions: ["done", "move", "skip", "book"],
     })),
   );
   const comments = (

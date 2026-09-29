@@ -382,6 +382,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/assistant/reminder-nudges/:id/stop": "assistant_control",
   "GET /me/assistant/reminder-nudges": "assistant_control",
   "PUT /me/assistant/reminder-nudges": "assistant_control",
+  "GET /me/goals/:id/work": "assistant_control",
   "GET /me/assistant/night-shift": "assistant_control",
   "PUT /me/assistant/night-shift": "assistant_control",
   "GET /me/assistant/nights/latest": "people_only",

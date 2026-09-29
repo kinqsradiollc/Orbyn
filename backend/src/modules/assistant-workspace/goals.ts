@@ -1,6 +1,7 @@
 import {
   addDays,
   fail,
+  dayTime,
   goalInput,
   goalUpdate,
   localDateKey,
@@ -11,8 +12,13 @@ import {
 import type { FastifyInstance } from "fastify";
 import { pool, transaction, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
+import { loadPrefs } from "../planner/calendar.js";
 import { idParam } from "../../lib/params.js";
-import { visibleDocs, visibleProjects } from "../../lib/visibility.js";
+import {
+  visibleDocs,
+  visibleItems,
+  visibleProjects,
+} from "../../lib/visibility.js";
 
 type GoalRow = Omit<
   Goal,
@@ -313,6 +319,31 @@ export async function assistantGoalRoutes(app: FastifyInstance) {
     const user = await authenticate(r);
     await transaction((db) => deleteGoal(db, user.id, idParam(r)));
     return { deleted: true };
+  });
+  // Reminder booking reads current owned work; ordinary planner writes create the session.
+  app.get("/me/goals/:id/work", async (r) => {
+    const user = await authenticate(r);
+    const goal = await readGoal(pool, user.id, idParam(r), true);
+    if (!goal) fail(404, "Goal not found.");
+    if (goal.status !== "active") return [];
+    const prefs = await loadPrefs(pool, user.id);
+    const deadline = goal.target_date
+      ? dayTime(addDays(goal.target_date, 1), 0, prefs.timezone).toISOString()
+      : null;
+    return (
+      await pool.query<{ id: string; remaining_minutes: number }>(
+        `SELECT i.id, greatest(coalesce(i.estimate_minutes,30) - i.spent_minutes -
+        coalesce((SELECT sum(extract(epoch FROM (b.end_at-b.start_at))/60)
+          FROM time_blocks b WHERE b.user_id=$1 AND b.item_id=i.id
+            AND b.end_at > now() AND b.outcome IS NULL AND ($4::timestamptz IS NULL OR b.end_at <= $4)),0),0)::float AS remaining_minutes
+       FROM items i WHERE i.user_id=$1 AND i.kind='task' AND i.status NOT IN ('done','cancelled')
+         AND ${visibleItems("i", { user: "$1", ai: true })}
+         AND (i.project_id=$2 OR EXISTS(SELECT 1 FROM doc_task_links l JOIN docs d ON d.id=l.doc_id
+           WHERE l.item_id=i.id AND l.doc_id=$3 AND ${visibleDocs("d", { user: "$1", ai: true })}))
+       ORDER BY i.due_at NULLS LAST,i.created_at,i.id`,
+        [user.id, goal.project_id, goal.plan_doc_id, deadline],
+      )
+    ).rows.filter((task) => task.remaining_minutes > 0);
   });
   app.get("/me/goals/:id/checkins", async (r) => {
     const user = await authenticate(r);

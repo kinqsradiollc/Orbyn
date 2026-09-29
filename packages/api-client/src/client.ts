@@ -1232,6 +1232,12 @@ export class OrbynClient {
       method: "DELETE",
     });
   }
+  /** Current unfinished owned tasks linked to this goal, with unbooked effort. */
+  goalWork(id: string) {
+    return this.request<{ id: string; remaining_minutes: number }[]>(
+      `/me/goals/${id}/work`,
+    );
+  }
   goalCheckins(id: string) {
     return this.request<GoalCheckin[]>(`/me/goals/${id}/checkins`);
   }

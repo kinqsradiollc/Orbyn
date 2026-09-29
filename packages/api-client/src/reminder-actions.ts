@@ -192,6 +192,32 @@ export async function performReminderAction(
       },
     };
   }
+  if (card.entity_kind === "goal" && action === "book") {
+    const [task] = await client.goalWork(card.entity_id);
+    if (!task)
+      throw new HttpError(
+        409,
+        "Link unfinished tasks to this goal before booking more time.",
+      );
+    const receipt = await performReminderAction(
+      client,
+      {
+        ...card,
+        entity_kind: "task",
+        entity_id: task.id,
+        actions: ["book"],
+      },
+      "book",
+      {
+        ...options,
+        minutes: Math.max(
+          1,
+          Math.min(options.minutes ?? 30, Math.ceil(task.remaining_minutes)),
+        ),
+      },
+    );
+    return { ...receipt, message: "Booked time for the goal's next task." };
+  }
   if (card.entity_kind === "goal" && (action === "done" || action === "move")) {
     const before = (await client.listGoals()).find(
       (row) => row.id === card.entity_id,

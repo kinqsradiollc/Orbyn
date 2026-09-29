@@ -618,3 +618,71 @@ test("habit Book follows its saved schedule and guarded Undo refuses an answered
     "done",
   );
 });
+
+test("goal Book selects current linked unfinished work and Undo removes only its session", async () => {
+  const { me, client, item, card } = await fixture();
+  const project = await client.createProject({ name: "Goal booking project" });
+  await pool.query(
+    "UPDATE items SET project_id=$2,estimate_minutes=45 WHERE id=$1",
+    [item.id, project.id],
+  );
+  const goal = await client.createGoal({
+    title: "Book goal work",
+    project_id: project.id,
+    target_date: "2050-01-12",
+  });
+  const goalCard: ReminderNudgeCard = {
+    ...card,
+    entity_kind: "goal",
+    entity_id: goal.id,
+    actions: ["book"],
+  };
+  const unauthenticated = await app.inject({
+    method: "GET",
+    url: `/me/goals/${goal.id}/work`,
+  });
+  assert.equal(unauthenticated.statusCode, 401);
+  const stranger = await h.register("goal-book-stranger");
+  users.push(stranger.id);
+  assert.equal(
+    (await h.call(stranger.token, "GET", `/me/goals/${goal.id}/work`))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (await h.call(me.token, "GET", "/me/goals/invalid/work")).statusCode,
+    422,
+  );
+  const work = await client.goalWork(goal.id);
+  assert.deepEqual(
+    work.map((task) => task.id),
+    [item.id],
+  );
+  const receipt = await performReminderAction(client, goalCard, "book", {
+    day: "2050-01-11",
+    minutes: 30,
+  });
+  const sessions = (await client.itemSessions(item.id)).sessions;
+  assert.equal(sessions.length, 1);
+  assert.equal(
+    (Date.parse(sessions[0].end_at) - Date.parse(sessions[0].start_at)) / 60000,
+    30,
+  );
+  assert.equal((await client.goalWork(goal.id))[0].remaining_minutes, 15);
+  await receipt.undo();
+  assert.equal((await client.itemSessions(item.id)).sessions.length, 0);
+  await pool.query("UPDATE items SET status='done' WHERE id=$1", [item.id]);
+  assert.deepEqual(await client.goalWork(goal.id), []);
+  await assert.rejects(
+    () =>
+      performReminderAction(client, goalCard, "book", { day: "2050-01-11" }),
+    (error: any) => error.status === 409,
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project.id,
+  ]);
+  await assert.rejects(
+    () => client.goalWork(goal.id),
+    (error: any) => error.status === 404,
+  );
+});
