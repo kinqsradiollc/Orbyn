@@ -60,6 +60,7 @@ export async function saveSession(token: string) {
 export async function clearSession() {
   await store.remove(SESSION_KEY);
   await store.remove(ASSISTANT_CHAT_KEY).catch(() => undefined);
+  await store.remove("orbyn-assistant-view-open").catch(() => undefined);
   session.token = "";
 }
 

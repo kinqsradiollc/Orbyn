@@ -239,10 +239,15 @@ export function RootScreen() {
     };
   }, [token]);
   const [tab, setTab] = useState<Tab>(() => {
+    if (readLocal("orbyn-assistant-view-open") === "true") return "AI";
     // What opens at start on this phone (NAV-12).
     const start = startScreen();
     return start === "tasks" ? "Tasks" : "Today";
   });
+  useEffect(() => {
+    if (token)
+      saveLocal("orbyn-assistant-view-open", tab === "AI" ? "true" : "false");
+  }, [token, tab]);
   /** Choices that follow the account, and what's starred (D5). */
   const accountPrefs = useAccountPrefs(token);
   // A widget can be set to one list: it needs the lists' names.
@@ -422,6 +427,7 @@ export function RootScreen() {
   useEffect(() => {
     if (!inApp || started.current) return;
     started.current = true;
+    if (tab === "AI") return;
     const start = startScreen();
     if (start === "agenda") presentRef.current?.({ sheet: "agenda" });
     else if (start === "last-page") {
