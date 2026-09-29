@@ -7,6 +7,8 @@ import { OrbynClient, performReminderAction } from "@orbyn/api-client";
 import type { ReminderNudgeCard } from "@orbyn/core";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
+const { reminderNudgeCandidates } =
+  await import("../src/worker/reminder-nudges.js");
 const { buildApp } = await import("../src/app.js");
 const app = await buildApp();
 const h = helpers(app);
@@ -493,6 +495,25 @@ test("exam Book uses the non-AI revision planner and Undo removes its untouched 
   assert.equal(
     (
       await pool.query(
+        "SELECT study_exam_id FROM items WHERE user_id=$1 AND title='Revise for Exam action'",
+        [me.id],
+      )
+    ).rows[0].study_exam_id,
+    exam,
+  );
+  await pool.query(
+    "UPDATE study_exams SET title='Renamed exam action' WHERE id=$1",
+    [exam],
+  );
+  assert.ok(
+    (await reminderNudgeCandidates(me.id, "UTC")).every(
+      (c) => c.entity_id !== exam,
+    ),
+    "renaming the exam preserves its booked revision time",
+  );
+  assert.equal(
+    (
+      await pool.query(
         "SELECT count(*)::int AS n FROM items WHERE user_id=$1 AND title='Revise for Exam action'",
         [me.id],
       )
@@ -500,6 +521,12 @@ test("exam Book uses the non-AI revision planner and Undo removes its untouched 
     1,
   );
   await receipt.undo();
+  assert.ok(
+    (await reminderNudgeCandidates(me.id, "UTC")).some(
+      (c) => c.entity_id === exam,
+    ),
+    "undoing the booking makes the unbooked exam eligible again",
+  );
   assert.equal(
     (
       await pool.query(

@@ -12,7 +12,8 @@ import {
   type ReminderNudgeSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../db/pool.js";
-import { visibleDocs } from "../lib/visibility.js";
+import { visibleDocs, visibleItems } from "../lib/visibility.js";
+import { upcomingExams } from "../modules/study/service.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 import { announceTo } from "../modules/presence/live.js";
 
@@ -321,13 +322,45 @@ export async function reminderNudgeCandidates(
       actions: ["done", "skip"],
     })),
   );
+  const upcoming = await upcomingExams(db, userId, now, {
+    horizonDays: 7,
+    limit: null,
+  });
+  const itemIds = upcoming.flatMap((e) => {
+    const match = /^item:([0-9a-f-]{36})\|/i.exec(e.key);
+    return match ? [match[1]] : [];
+  });
+  const allowedItems = new Set(
+    (
+      await db.query<{ id: string }>(
+        `SELECT i.id FROM items i WHERE i.id = ANY($2::uuid[]) AND ${visibleItems("i", { user: "$1", ai: true })}`,
+        [userId, itemIds],
+      )
+    ).rows.map((row) => row.id),
+  );
+  const currentExams = upcoming.filter((e) => {
+    const match = /^item:([0-9a-f-]{36})\|/i.exec(e.key);
+    return !match || allowedItems.has(match[1]);
+  });
+  // A calendar exam gets the same saved identity Study uses. Never replace its notes or target.
+  for (const exam of currentExams) {
+    await db.query(
+      `INSERT INTO study_exams(user_id,exam_key,title,starts_at,all_day)
+       VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id,exam_key) DO UPDATE
+       SET title=EXCLUDED.title, starts_at=EXCLUDED.starts_at, all_day=EXCLUDED.all_day, updated_at=now()
+       WHERE NOT study_exams.own AND (study_exams.title,study_exams.starts_at,study_exams.all_day)
+         IS DISTINCT FROM (EXCLUDED.title,EXCLUDED.starts_at,EXCLUDED.all_day)`,
+      [userId, exam.key, exam.title, exam.starts_at, exam.all_day],
+    );
+  }
   const exams = (
     await db.query<{ id: string; exam_key: string; title: string }>(
       `SELECT e.id,e.exam_key,e.title FROM study_exams e WHERE e.user_id=$1 AND e.starts_at>$2 AND e.starts_at<=$2::timestamptz+interval '7 days'
+      AND (e.own OR e.exam_key=ANY($3::text[]))
       AND NOT EXISTS(SELECT 1 FROM docs d WHERE d.id=ANY(e.doc_ids) AND NOT ${visibleDocs("d", { user: "$1", ai: true })})
-      AND coalesce((SELECT sum(extract(epoch FROM(b.end_at-b.start_at))/60) FROM time_blocks b JOIN items i ON i.id=b.item_id WHERE b.user_id=$1 AND i.user_id=$1 AND i.status NOT IN ('done','cancelled') AND i.title='Revise for '||e.title AND b.start_at>$2 AND b.end_at<=e.starts_at),0) < greatest(30,(SELECT count(*)*2 FROM study_cards card WHERE card.user_id=$1 AND card.doc_id=ANY(e.doc_ids) AND (card.reps=0 OR card.lapses>0)))
+      AND coalesce((SELECT sum(extract(epoch FROM(b.end_at-b.start_at))/60) FROM time_blocks b JOIN items i ON i.id=b.item_id WHERE b.user_id=$1 AND i.user_id=$1 AND i.status NOT IN ('done','cancelled') AND (i.study_exam_id=e.id OR (i.study_exam_id IS NULL AND i.title='Revise for '||e.title)) AND b.start_at>$2 AND b.end_at<=e.starts_at),0) < greatest(30,(SELECT count(*)*2 FROM study_cards card WHERE card.user_id=$1 AND card.doc_id=ANY(e.doc_ids) AND (card.reps=0 OR card.lapses>0)))
       ORDER BY e.starts_at,e.id LIMIT 20`,
-      [userId, now],
+      [userId, now, currentExams.map((e) => e.key)],
     )
   ).rows;
   result.push(

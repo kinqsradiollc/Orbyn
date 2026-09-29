@@ -282,8 +282,12 @@ export async function upcomingExams(
   db: Db,
   userId: string,
   now = new Date(),
+  options: { horizonDays?: number; limit?: number | null } = {},
 ): Promise<Omit<StudyExam, "doc_ids" | "readiness">[]> {
-  const to = new Date(now.getTime() + EXAM_HORIZON_DAYS * 86_400_000);
+  const limit = options.limit === undefined ? 30 : options.limit;
+  const to = new Date(
+    now.getTime() + (options.horizonDays ?? EXAM_HORIZON_DAYS) * 86_400_000,
+  );
   const [entries, own] = await Promise.all([
     agendaEntries(db, userId, now, to, { hidden: true }),
     // Exams named in Study itself (H4), not on the calendar.
@@ -295,8 +299,8 @@ export async function upcomingExams(
     }>(
       `SELECT exam_key, title, starts_at, all_day FROM study_exams
         WHERE user_id = $1 AND own AND starts_at > $2 AND starts_at <= $3
-        ORDER BY starts_at LIMIT 30`,
-      [userId, now, to],
+        ORDER BY starts_at LIMIT $4::int`,
+      [userId, now, to, limit],
     ),
   ]);
   const daysLeft = (at: string) =>
@@ -325,7 +329,7 @@ export async function upcomingExams(
     })),
   ]
     .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
-    .slice(0, 30);
+    .slice(0, limit ?? undefined);
 }
 
 /** Start of tomorrow in the person's zone. */
@@ -763,6 +767,16 @@ export async function applyRevision(
           "Planned by Study. Review your cards in each session; the sessions are on your calendar.",
       },
     }),
+  );
+  await db.query(
+    `INSERT INTO study_exams(user_id,exam_key,title,starts_at,all_day)
+     VALUES($1,$2,$3,$4,$5) ON CONFLICT(user_id,exam_key) DO NOTHING`,
+    [u.id, exam.key, exam.title, exam.starts_at, exam.all_day],
+  );
+  await db.query(
+    `UPDATE items SET study_exam_id = (SELECT id FROM study_exams WHERE user_id=$2 AND exam_key=$3)
+     WHERE id=$1 AND user_id=$2`,
+    [task!.id, u.id, exam.key],
   );
   const blocks: string[] = [];
   for (const s of d.sessions)

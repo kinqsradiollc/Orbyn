@@ -438,3 +438,122 @@ test("missed weekly habits use the local period boundary across Melbourne DST", 
     /0 of 1.*last week/,
   );
 });
+
+test("calendar exams get stable Study identities, respect kept-out projects and disappear with their source", async () => {
+  const me = await person(false);
+  const other = await person();
+  const sub = (
+    await pool.query(
+      `INSERT INTO calendar_subscriptions(user_id,url,name,kind,busy,last_fetched_at)
+    VALUES($1,$2,'Exam feed','exams',true,now()) RETURNING id`,
+      [me.id, `https://example.test/${randomUUID()}.ics`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    `INSERT INTO external_events(subscription_id,uid,title,starts_at,ends_at,timezone)
+    VALUES($1,'exam','Algorithms final exam','2050-01-04T09:00:00Z','2050-01-04T12:00:00Z','UTC')`,
+    [sub],
+  );
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Private exam project',true) RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const hidden = (
+    await pool.query(
+      `INSERT INTO items(user_id,title,kind,due_at,end_at,project_id)
+    VALUES($1,'Private final exam','event','2050-01-05T09:00:00Z','2050-01-05T10:00:00Z',$2) RETURNING id`,
+      [me.id, project],
+    )
+  ).rows[0].id;
+  const visible = (
+    await pool.query(
+      `INSERT INTO items(user_id,title,kind,due_at,end_at)
+    VALUES($1,'Physics final exam','event','2050-01-05T09:00:00Z','2050-01-05T10:00:00Z') RETURNING id`,
+      [me.id],
+    )
+  ).rows[0].id;
+  const candidates = await reminderNudgeCandidates(me.id, "UTC", now);
+  const exam = candidates.find((c) =>
+    c.text.includes("Algorithms final exam"),
+  )!;
+  assert.ok(exam);
+  assert.ok(candidates.some((c) => c.exam_key?.startsWith(`item:${visible}|`)));
+  assert.ok(
+    candidates.every((c) => !c.exam_key?.startsWith(`item:${hidden}|`)),
+  );
+  assert.ok(
+    (await reminderNudgeCandidates(other.id, "UTC", now)).every(
+      (c) => c.entity_id !== exam.entity_id,
+    ),
+  );
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title,content) VALUES($1,'Exam notes','[]'::jsonb) RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE study_exams SET doc_ids=ARRAY[$2::uuid],target='Pass comfortably' WHERE id=$1",
+    [exam.entity_id, doc],
+  );
+  assert.equal(await postReminderNudge(me.id, "UTC", exam, now), true);
+  const ledger = (
+    await pool.query(
+      "SELECT id FROM assistant_nudges WHERE user_id=$1 AND entity_id=$2",
+      [me.id, exam.entity_id],
+    )
+  ).rows[0];
+  await pool.query("UPDATE assistant_nudges SET stopped=true WHERE id=$1", [
+    ledger.id,
+  ]);
+  await pool.query(
+    "UPDATE external_events SET title='Renamed algorithms exam' WHERE subscription_id=$1 AND uid='exam'",
+    [sub],
+  );
+  const renamed = (await reminderNudgeCandidates(me.id, "UTC", now)).find(
+    (c) => c.entity_id === exam.entity_id,
+  )!;
+  assert.match(renamed.text, /Renamed algorithms exam/);
+  assert.equal(renamed.exam_key, exam.exam_key);
+  const row = (
+    await pool.query("SELECT doc_ids,target FROM study_exams WHERE id=$1", [
+      exam.entity_id,
+    ])
+  ).rows[0];
+  assert.deepEqual(row.doc_ids, [doc]);
+  assert.equal(row.target, "Pass comfortably");
+  assert.equal(
+    await postReminderNudge(
+      me.id,
+      "UTC",
+      renamed,
+      new Date(now.getTime() + 86400000),
+    ),
+    false,
+  );
+  await pool.query(
+    "DELETE FROM external_events WHERE subscription_id=$1 AND uid='exam'",
+    [sub],
+  );
+  assert.ok(
+    (await reminderNudgeCandidates(me.id, "UTC", now)).every(
+      (c) => c.entity_id !== exam.entity_id,
+    ),
+  );
+  // Even an unstopped queued notice is stale after its source disappears.
+  await pool.query("UPDATE assistant_nudges SET stopped=false WHERE id=$1", [
+    ledger.id,
+  ]);
+  assert.equal(
+    await transaction((db) =>
+      reminderNudgeStale(
+        db,
+        { user_id: me.id, ref: `nudge:${ledger.id}`, channel: "email" },
+        now,
+      ),
+    ),
+    true,
+  );
+});
