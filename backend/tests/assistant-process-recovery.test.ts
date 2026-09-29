@@ -4,11 +4,14 @@ import { fork, type ChildProcess } from "node:child_process";
 import { createServer, type IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
 import "./setup.js";
+import { defaultNightShift } from "@orbyn/core";
+import type { ResolvedAi } from "../src/modules/ai/providers/adapters.js";
 
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { initialAssistantRun } = await import("../src/modules/ai/agent/run.js");
 const { beginChatTurn } = await import("../src/modules/ai/chats.js");
+const { scanNightShift } = await import("../src/worker/night-shift.js");
 const children = new Set<ChildProcess>();
 let user: import("../src/lib/auth.js").UserRow;
 let providerId: string;
@@ -190,7 +193,7 @@ async function enqueue(text: string) {
 const job = async (id: string) =>
   (await pool.query("SELECT * FROM ai_jobs WHERE id = $1", [id])).rows[0];
 
-test("SIGKILL during a specialist resumes on a second process without rerunning a completed report", async () => {
+test("SIGKILL mid-night resumes its specialist and continues the saved night list", async () => {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -265,6 +268,60 @@ test("SIGKILL during a specialist resumes on a second process without rerunning 
   const run = await enqueue(
     "Add a task called Process survives and check its brief.",
   );
+  await pool.query(
+    "INSERT INTO agent_settings(user_id, night_shift) VALUES($1, $2::jsonb)",
+    [
+      user.id,
+      JSON.stringify({
+        ...defaultNightShift(),
+        enabled: true,
+        timezone: "UTC",
+        start: "22:00",
+        end: "08:00",
+        wait_for_ok: false,
+      }),
+    ],
+  );
+  const nightId = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day,runs,summary) VALUES($1,'2050-01-02',1,$2::jsonb) RETURNING id",
+      [
+        user.id,
+        JSON.stringify({
+          candidates: [
+            {
+              kind: "tidy",
+              title: "First night task",
+              message: "Create Process survives",
+            },
+            {
+              kind: "tidy",
+              title: "Second night task",
+              message: "Finish the second night task",
+            },
+          ],
+          cursor: 1,
+          end_at: "2050-01-03T08:00:00Z",
+          not_done: [],
+        }),
+      ],
+    )
+  ).rows[0].id;
+  run.checkpoint.request.automation = {
+    kind: "night",
+    night_id: nightId,
+    night_kind: "tidy",
+    wait_for_ok: false,
+    end_at: "2050-01-03T08:00:00Z",
+  };
+  await pool.query("UPDATE ai_jobs SET run_state=$2::jsonb WHERE id=$1", [
+    run.id,
+    JSON.stringify(run.checkpoint),
+  ]);
+  await pool.query(
+    "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'tidy')",
+    [nightId, run.id],
+  );
   const first = await start();
   try {
     await until(
@@ -301,6 +358,35 @@ test("SIGKILL during a specialist resumes on a second process without rerunning 
           entry.label === "Picking up where I left off",
       ),
     );
+    respond = () => ({
+      name: "finish",
+      arguments: { answer: "Second night task complete.", steps: [] },
+    });
+    const now = new Date("2050-01-02T23:00:00Z");
+    const options = { only: [user.id], ai: {} as ResolvedAi };
+    assert.equal(await scanNightShift(now, options), 1);
+    const nextJob = (
+      await pool.query(
+        "SELECT job_id FROM assistant_night_runs WHERE night_id=$1 AND job_id<>$2",
+        [nightId, run.id],
+      )
+    ).rows[0].job_id;
+    const next = await until(
+      () => job(nextJob),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(next.state, "done", JSON.stringify(next));
+    assert.equal(await scanNightShift(now, options), 0);
+    const night = (
+      await pool.query(
+        "SELECT status,runs,summary FROM assistant_nights WHERE id=$1",
+        [nightId],
+      )
+    ).rows[0];
+    assert.equal(night.status, "done");
+    assert.equal(night.runs, 2);
+    assert.equal(night.summary.cursor, 2);
+    assert.equal(projects, 1);
     await end(second, "SIGTERM");
   } finally {
     release();

@@ -63,3 +63,44 @@ test("Stop aborts the rate-limit recovery wait", async () => {
     { name: "AbortError" },
   );
 });
+
+test("restored polling bypasses a cached running response to expose the saved question", async () => {
+  let reads = 0;
+  const waiting = {
+    kind: "person",
+    question: "Which notes?",
+    choices: ["Lecture 1"],
+  };
+  const controller = new AbortController();
+  const client = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    fetch: async (_input, options) => {
+      reads++;
+      if (reads === 1)
+        return Response.json(
+          { state: "running" },
+          { headers: { ETag: "running" } },
+        );
+      assert.equal(options?.cache, "no-store");
+      const headers = new Headers(options?.headers);
+      assert.equal(headers.has("If-None-Match"), false);
+      assert.equal(headers.get("Cache-Control"), "no-cache");
+      return Response.json({ state: "waiting", waiting });
+    },
+  });
+  await client.request("/ai/chat/run");
+  let question: unknown;
+  await assert.rejects(
+    client.pollAssistantRun(
+      "run",
+      { chatId: "chat", turnId: "turn" },
+      (progress) => {
+        question = progress.waiting;
+        controller.abort();
+      },
+      controller.signal,
+    ),
+    { name: "AbortError" },
+  );
+  assert.deepEqual(question, waiting);
+});

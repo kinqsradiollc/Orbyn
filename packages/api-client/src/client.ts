@@ -506,6 +506,8 @@ export type RequestOptions = {
   idempotencyKey?: string;
   /** Extra request headers. */
   headers?: Record<string, string>;
+  /** Fetch live state without conditional or platform response caching. */
+  fresh?: boolean;
 };
 
 /**
@@ -585,7 +587,8 @@ export class OrbynClient {
     const method = options.method ?? "GET";
     const token = options.anonymous ? null : await this.getToken();
     const key = `${token ?? ""} ${path}`;
-    const cached = method === "GET" ? this.cache.get(key) : undefined;
+    const cached =
+      method === "GET" && !options.fresh ? this.cache.get(key) : undefined;
     // Read-your-writes: right after this client writes, its reads go to the
     // primary database rather than a replica that may lag a moment behind.
     const fresh =
@@ -594,6 +597,7 @@ export class OrbynClient {
     const send = () =>
       this.fetchImpl(this.baseUrl + path, {
         method,
+        ...(options.fresh ? { cache: "no-store" as const } : {}),
         // Only declare a JSON body when there is one: the API rejects an empty
         // body labelled application/json (this broke logout and other bodyless calls).
         headers: {
@@ -602,6 +606,7 @@ export class OrbynClient {
             : { "Content-Type": "application/json" }),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(cached ? { "If-None-Match": cached.etag } : {}),
+          ...(options.fresh ? { "Cache-Control": "no-cache" } : {}),
           ...(fresh ? { "X-Orbyn-Consistency": "primary" } : {}),
           ...(idempotencyKey && method !== "GET"
             ? { "Idempotency-Key": idempotencyKey }
@@ -3473,7 +3478,7 @@ export class OrbynClient {
       delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
       let job: ChatJob;
       try {
-        job = await this.request<ChatJob>(`/ai/chat/${id}`);
+        job = await this.request<ChatJob>(`/ai/chat/${id}`, { fresh: true });
       } catch (error) {
         if (signal?.aborted) throw abortError();
         const transient =
