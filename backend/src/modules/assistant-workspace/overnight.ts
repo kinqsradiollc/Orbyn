@@ -140,7 +140,10 @@ async function card(
   row: RunRow,
 ): Promise<OvernightRun> {
   const context = await runContext(db, userId, row);
-  let status = row.status;
+  let status =
+    object(object(row.result).assistant_run).outcome === "discarded"
+      ? ("undone" as const)
+      : row.status;
   const writes = context.changes.filter(
     (change) => change.undo_until || change.undone_at,
   );

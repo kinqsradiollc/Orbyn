@@ -626,7 +626,11 @@ async function finishJob(
       db,
       jobId,
       summary,
-      outcome === "pending" ? "pending" : "kept",
+      outcome === "discarded"
+        ? "undone"
+        : outcome === "pending"
+          ? "pending"
+          : "kept",
     );
     if (
       isAutomation(request, "goal") &&

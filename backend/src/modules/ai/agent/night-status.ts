@@ -5,7 +5,7 @@ export async function recordNightRun(
   db: Queryable,
   jobId: string,
   summary: string,
-  status: "kept" | "pending",
+  status: "kept" | "pending" | "undone",
 ) {
   const row = (
     await db.query<{ night_id: string }>(

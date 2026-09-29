@@ -422,3 +422,20 @@ test("Overnight exposes live approval summaries and clears them after the decisi
   const done = await h.call(user.token, "GET", "/me/assistant/nights/latest");
   assert.equal(done.json().runs[0].approval, null);
 });
+
+test("a declined approval is shown as undone even for older kept night rows", async () => {
+  const me = await person();
+  const fixture = await held(me);
+  await pool.query(
+    "UPDATE ai_jobs SET result=$2::jsonb, apply_result=NULL WHERE id=(SELECT job_id FROM assistant_night_runs WHERE id=$1)",
+    [fixture.run, JSON.stringify({ assistant_run: { outcome: "discarded" } })],
+  );
+  await pool.query(
+    "UPDATE assistant_night_runs SET status='kept' WHERE id=$1",
+    [fixture.run],
+  );
+  const response = await h.call(me.token, "GET", "/me/assistant/nights/latest");
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().runs[0].status, "undone");
+  assert.equal(response.json().runs[0].approval, null);
+});
