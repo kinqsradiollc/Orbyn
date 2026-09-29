@@ -1,4 +1,4 @@
-import { test, before } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { itemBody } from "@orbyn/core";
@@ -7,8 +7,13 @@ import "./setup.js";
 
 const { buildApp } = await import("../src/app.js");
 const { migrate } = await import("../src/db/migrate.js");
+const { pool } = await import("../src/db/pool.js");
 
 const app = await buildApp();
+after(async () => {
+  await app.close();
+  await pool.end();
+});
 let token = "";
 let strangerToken = "";
 
