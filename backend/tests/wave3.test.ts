@@ -847,6 +847,10 @@ test("bookers get reminders before their meeting, once per value", async () => {
       const mail = await bookerReminder(db, queued[0].ref);
       assert.equal(mail?.title, "Reminder: Planning session");
       assert.match(mail!.body, /\/book\/manage\//);
+      // Scheduling needs a configured transport; cancelling here must not
+      // contact smtp.invalid. This test only checks reminder eligibility.
+      await pool.query("DELETE FROM system_settings WHERE key = 'smtp'");
+      invalidateSettings();
       // A cancelled booking's reminder doesn't go.
       await call(host.token, "POST", `/bookings/${booked.body.id}/cancel`, {});
       assert.equal(await bookerReminder(db, queued[0].ref), null);
