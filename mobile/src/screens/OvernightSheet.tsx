@@ -32,25 +32,40 @@ export function OvernightSheet(props: Props) {
   useEffect(() => {
     if (!props.visible) return;
     let alive = true;
-    const refresh = () =>
-      client.latestAssistantNight().then(
-        (value) => {
-          if (alive) {
-            setNight(value);
-            setLoading(false);
-          }
-        },
-        (e) => {
-          if (alive) setError(errorText(e));
-        },
-      );
+    let pending: Promise<void> | null = null;
+    let scheduled: ReturnType<typeof setTimeout>;
+    const refresh = () => {
+      if (pending) return pending;
+      pending = client
+        .latestAssistantNight()
+        .then(
+          (value) => {
+            if (alive) {
+              setNight(value);
+              setLoading(false);
+              setError("");
+            }
+          },
+          (e) => {
+            if (alive) setError(errorText(e));
+          },
+        )
+        .finally(() => {
+          pending = null;
+        });
+      return pending;
+    };
     void refresh();
     const stop = onLive((event) => {
-      if (event.kind === "changed") void refresh();
+      if (event.kind === "changed") {
+        clearTimeout(scheduled);
+        scheduled = setTimeout(() => void refresh(), 250);
+      }
     });
     const timer = setInterval(refresh, 15000);
     return () => {
       alive = false;
+      clearTimeout(scheduled);
       stop();
       clearInterval(timer);
     };
@@ -190,6 +205,24 @@ function RunCard({
     setChosen(new Set(choices.map((choice) => choice.key)));
   }, [run.proposal?.id]);
   const pending = run.proposal?.status === "pending";
+  const keepChange = (key: string) => {
+    const apply = () =>
+      void act(() =>
+        client.keepAssistantNightRun(
+          run.id,
+          run.steps.length ? { steps: [key] } : { only: [Number(key)] },
+        ),
+      );
+    if (choices.length > 1)
+      confirmAction(
+        "Keep this change?",
+        "This approves only this change. The other held changes in this run will be left out.",
+        "Keep change",
+        apply,
+        false,
+      );
+    else apply();
+  };
   return (
     <View style={[shared.card, { marginBottom: 12 }]}>
       <Text style={shared.sectionTitle}>{run.title}</Text>
@@ -339,12 +372,13 @@ function RunCard({
                   alignItems: "center",
                   gap: 10,
                   minHeight: 44,
+                  flexWrap: "wrap",
                   marginTop: 8,
                 }}
               >
                 <Text style={[shared.body, { flex: 1 }]}>{choice.title}</Text>
                 <Switch
-                  accessibilityLabel={`Keep ${choice.title}`}
+                  accessibilityLabel={`Select ${choice.title} to keep`}
                   value={chosen.has(choice.key)}
                   disabled={busy}
                   trackColor={{ true: colors.accent }}
@@ -356,6 +390,12 @@ function RunCard({
                       return next;
                     })
                   }
+                />
+                <Button
+                  title="Keep change"
+                  secondary
+                  disabled={busy || run.state !== "done"}
+                  onPress={() => keepChange(choice.key)}
                 />
               </View>
             ))}

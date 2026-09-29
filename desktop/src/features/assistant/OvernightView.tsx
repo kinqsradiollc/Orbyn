@@ -23,20 +23,34 @@ export function OvernightView(props: Props) {
   };
   useEffect(() => {
     let alive = true;
-    const refresh = () =>
-      client.latestAssistantNight().then((next) => {
-        if (alive) {
-          setNight(next);
-          setLoaded(true);
-        }
-      }, props.report);
+    let pending: Promise<void> | null = null;
+    let scheduled: ReturnType<typeof setTimeout>;
+    const refresh = () => {
+      if (pending) return pending;
+      pending = client
+        .latestAssistantNight()
+        .then((next) => {
+          if (alive) {
+            setNight(next);
+            setLoaded(true);
+          }
+        }, props.report)
+        .finally(() => {
+          pending = null;
+        });
+      return pending;
+    };
     void refresh();
     const stop = onLive((event) => {
-      if (event.kind === "changed") void refresh();
+      if (event.kind === "changed") {
+        clearTimeout(scheduled);
+        scheduled = setTimeout(() => void refresh(), 250);
+      }
     });
     const timer = window.setInterval(refresh, 15000);
     return () => {
       alive = false;
+      clearTimeout(scheduled);
       stop();
       window.clearInterval(timer);
     };
@@ -152,6 +166,7 @@ function RunCard({
   busy: boolean;
   act: (operation: () => Promise<unknown>) => Promise<void>;
 }) {
+  const { ask } = useConfirm();
   const [answer, setAnswer] = useState("");
   useEffect(() => setAnswer(""), [run.question?.text]);
   const choices = run.steps.length
@@ -168,6 +183,23 @@ function RunCard({
   }, [run.proposal?.id]);
   const pending = run.proposal?.status === "pending";
   const done = run.state === "done";
+  const keepChange = async (key: string) => {
+    if (
+      choices.length > 1 &&
+      !(await ask({
+        title: "Keep this change?",
+        body: "This approves only this change. The other held changes in this run will be left out.",
+        confirmLabel: "Keep change",
+      }))
+    )
+      return;
+    await act(() =>
+      client.keepAssistantNightRun(
+        run.id,
+        run.steps.length ? { steps: [key] } : { only: [Number(key)] },
+      ),
+    );
+  };
   const keep = () =>
     act(() =>
       client.keepAssistantNightRun(
@@ -330,22 +362,31 @@ function RunCard({
           </summary>
           {pending &&
             choices.map((choice) => (
-              <label className="overnight-choice" key={choice.key}>
-                <input
-                  type="checkbox"
-                  checked={chosen.has(choice.key)}
-                  disabled={busy}
-                  onChange={() =>
-                    setChosen((current) => {
-                      const next = new Set(current);
-                      if (next.has(choice.key)) next.delete(choice.key);
-                      else next.add(choice.key);
-                      return next;
-                    })
-                  }
-                />
-                {choice.title}
-              </label>
+              <div className="overnight-choice" key={choice.key}>
+                <label className="overnight-choice-label">
+                  <input
+                    type="checkbox"
+                    checked={chosen.has(choice.key)}
+                    disabled={busy}
+                    onChange={() =>
+                      setChosen((current) => {
+                        const next = new Set(current);
+                        if (next.has(choice.key)) next.delete(choice.key);
+                        else next.add(choice.key);
+                        return next;
+                      })
+                    }
+                  />
+                  {choice.title}
+                </label>
+                <button
+                  className="secondary"
+                  disabled={busy || !done}
+                  onClick={() => void keepChange(choice.key)}
+                >
+                  Keep change
+                </button>
+              </div>
             ))}
           {run.changes
             .filter((change) => change.undo_until || change.links?.length)

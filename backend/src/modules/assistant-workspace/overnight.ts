@@ -57,6 +57,24 @@ async function requireRun(
   if (!row) fail(404, "That night run is not here.");
   return row;
 }
+/** Distinguish held steps using names already present in their reviewed inputs. */
+function stepTitle(step: Record<string, unknown>): string {
+  const label = registry.get(String(step.tool))?.title ?? "Proposed change";
+  const args = object(step.args);
+  const names = [
+    args.title,
+    args.name,
+    ...(Array.isArray(args.tasks)
+      ? args.tasks.map((task) => object(task).title)
+      : []),
+  ]
+    .filter(
+      (value): value is string => typeof value === "string" && !!value.trim(),
+    )
+    .slice(0, 3)
+    .map((value) => value.trim());
+  return (names.length ? label + ": " + names.join("; ") : label).slice(0, 240);
+}
 async function runContext(db: Queryable, userId: string, row: RunRow) {
   const result = object(object(row.result).assistant_run);
   const receipt = object(object(row.apply_result).structured);
@@ -102,11 +120,7 @@ async function runContext(db: Queryable, userId: string, row: RunRow) {
           ? [
               {
                 id: step.id,
-                title:
-                  typeof step.summary === "string"
-                    ? step.summary
-                    : (registry.get(String(step.tool))?.title ??
-                      "Proposed change"),
+                title: stepTitle(step),
               },
             ]
           : [];

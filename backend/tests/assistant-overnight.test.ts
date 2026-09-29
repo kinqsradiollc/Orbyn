@@ -178,6 +178,15 @@ test("only the signed-in owner can read or decide night work; malformed choices 
 test("selected held plan steps apply once and can be undone through the run after a fresh read", async () => {
   const me = await person();
   const fixture = await held(me);
+  const before = await h.call(me.token, "GET", "/me/assistant/nights/latest");
+  assert.match(
+    before.json().runs[0].steps[0].title,
+    new RegExp(`${fixture.job} first`),
+  );
+  assert.match(
+    before.json().runs[0].steps[1].title,
+    new RegExp(`${fixture.job} second`),
+  );
   const kept = await h.call(
     me.token,
     "POST",
