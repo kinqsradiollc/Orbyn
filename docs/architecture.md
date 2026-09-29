@@ -308,6 +308,45 @@ reach, or whose block is gone.
 
 ### AI assistant
 
+#### Durable runs and unattended work
+
+`POST /ai/chat/start` writes a queued `ai_jobs` row linked to its chat and
+person turn, then returns immediately. The AI service claims jobs with
+`FOR UPDATE SKIP LOCKED`, runs at most eight concurrently and renews a
+sixty-second lease. `AI_RUNNER_IN_WORKER=true` enables the optional notifier
+consumer. Chats and all assistant automations use this same queue.
+
+The lead delegates to the existing specialists, checks their combined plan
+and applies it once. Versioned checkpoints retain messages, completed reports,
+staged steps, questions, budgets and trace position. Expired leases resume the
+checkpoint up to three times; a stable apply receipt prevents duplicate writes.
+Waiting questions remain waiting across restarts, Stop works from another API
+process, and graceful shutdown allows twenty seconds to save and release work.
+Clients restore their own saved chat and fetch live progress without platform
+response caching. Unpolled completion, failure and questions produce notices
+that open the owning chat.
+
+Night shift is opt-in in `agent_settings`. The notifier persists its local-day
+window and ordered candidate list in `assistant_nights`, with ordinary jobs
+linked by `assistant_night_runs`. Handed Tonight tasks precede due goals and
+routines, followed by enabled work kinds in due order. Windows respect local
+time and DST, recent activity, pause, a ten-run limit and the administrator's
+token budget. The default morning hold files changes in Review for three days.
+Even at full trust, unattended deletion, outside email, teammate notifications
+and publishing require Review; runtime effects and total bulk size are checked
+when the capabilities execute. Both clients expose Overnight summaries,
+questions, approvals, individual and partial Keep/Undo, and confirmed bulk
+decisions.
+
+Reminder nudges run every fifteen minutes using database rules and templates,
+without AI calls. `assistant_nudges` reserves per-person delivery with quiet
+hours, a three-per-day cap, twenty-four-hour deduplication and persistent Stop.
+The pinned private Reminders chat offers guarded Done, Move, Skip and Book
+actions with Undo. Stable subscribed-exam source identities preserve Stop,
+Study metadata and linked notes across calendar renames.
+
+#### Legacy proposal path
+
 The assistant is deliberately a **propose-then-approve** agent, built like BrainRouter's agent
 loop (`backend/src/modules/ai/agent/`):
 
