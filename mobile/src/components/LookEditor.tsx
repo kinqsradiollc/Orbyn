@@ -256,7 +256,7 @@ const s = themed(() =>
     heading: {
       color: colors.text,
       fontFamily: fonts.semibold,
-      fontSize: 16,
+      fontSize: 15,
       marginTop: 16,
       marginBottom: 10,
     },
@@ -293,6 +293,6 @@ const s = themed(() =>
       borderColor: colors.border,
       borderRadius: radii.card,
     },
-    note: { color: colors.textSoft, fontFamily: fonts.regular, fontSize: 14 },
+    note: { color: colors.textSoft, fontFamily: fonts.regular, fontSize: 13 },
   }),
 );
