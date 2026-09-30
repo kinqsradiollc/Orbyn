@@ -52,14 +52,50 @@ ${REAL_IP}
   # Per-client limits. Addresses in GATEWAY_RATE_LIMIT_EXEMPT (by default
   # loopback and Docker Desktop's host network, for local load tests) are not
   # limited. In production leave it empty and set GATEWAY_TRUSTED_PROXIES.
+  #
+  # Shared-memory zones are process-wide, and the web port (8081) re-enters
+  # the API port (8080) for /api, so a request passing both would be counted
+  # once per zone at each hop — and a stream, which holds its connection
+  # open, would eat three slots for its whole 15-minute cycle (web server
+  # level, API server level, and the API location). To count every request
+  # exactly once, where the visit starts, the web port marks what it forwards
+  # (X-Orbyn-Via: web) and the zone keys below go empty for marked requests;
+  # nginx never accounts a request whose key is empty. The API port answers
+  # direct clients (the loopback API_BIND) unmarked and is counted there.
+  # Tests keep this honest (see backend/tests/gateway-config.test.ts): every
+  # limit in the API server must sit on a zone keyed through the marker, or
+  # browser requests get counted twice.
   geo $limit_key {
     default $binary_remote_addr;
 ${LIMIT_EXEMPT}
   }
-  limit_req_zone $limit_key zone=per_client:20m rate=50r/s;
+  # The visitor's address, unless the request was forwarded by our own web
+  # port (already counted there): the key is then empty and nothing counts.
+  map $http_x_orbyn_via $req_key {
+    default $limit_key;
+    "web" "";
+  }
+  map $http_x_orbyn_via $sse_key {
+    default $limit_key;
+    "web" "";
+  }
+  limit_req_zone $req_key zone=per_client:20m rate=50r/s;
   limit_conn_zone $limit_key zone=conn_per_client:10m;
+  # Event streams hold their connection open, so the ceiling is generous on
+  # purpose: several devices and tabs behind one address (a household) each
+  # hold one or a few streams for the full 15-minute cycle, and a deploy
+  # reconnects them all at once.
+  limit_conn_zone $sse_key zone=sse_per_client:10m;
   limit_req_status 429;
   limit_conn_status 429;
+
+  # A limited request says when to come back, in the shape every Orbyn
+  # client reads: a 429's Retry-After drives their backoff, and the JSON
+  # body carries the same plain message every other error does. Without
+  # this, nginx's stock HTML page has no Retry-After, and the apps fall
+  # back to their slowest retry path. The @limited location and its
+  # error_page are declared in each server that serves people (see the
+  # @unavailable pattern there). Content-Type comes from default_type.
 
   # Outside agents (MCP) are limited per credential, never per address: the
   # key is the Authorization header itself (nginx keeps keys in shared
@@ -137,10 +173,15 @@ ${UPSTREAM_MCP}
     "" $scheme;
   }
 
+  # The API server: reached directly by API clients (the loopback API_BIND)
+  # and, with /api stripped, by the web port above. Every limit here sits on
+  # a zone whose key goes empty for requests the web port forwarded, so a
+  # browser request is counted once (there) and a direct request once (here).
+  # No server-level limit_conn: it would apply to every location including
+  # the forwarded pass-through, which the web port has already counted.
   server {
     listen 8080;
     client_max_body_size 64k;
-    limit_conn conn_per_client 200;
 
     proxy_http_version 1.1;
     proxy_set_header Connection "";
@@ -165,7 +206,8 @@ ${UPSTREAM_MCP}
       return 200 '{"status":"ok","service":"gateway"}';
     }
 
-    # AI assistant service.
+    # AI assistant service (direct API clients only; the app's /api/ai
+    # arrives through the web port below).
     location /ai/ {
       limit_req zone=per_client burst=40 nodelay;
       proxy_pass http://ai;
@@ -173,16 +215,27 @@ ${UPSTREAM_MCP}
 
     # Realtime service: the apps' event stream and live documents. Streams
     # stay open (the service closes each after 15 minutes, and the apps
-    # reconnect), so nothing is buffered and the read timeout is long.
+    # reconnect), so nothing is buffered and the read timeout is long. For
+    # direct clients these connections are counted here (sse_per_client);
+    # requests forwarded by the web port have an empty key and skip it —
+    # the web port counted them already.
+
+    # Realtime service: the apps' event stream and live documents. Streams
+    # stay open (the service closes each after 15 minutes, and the apps
+    # reconnect), so nothing is buffered and the read timeout is long. The
+    # connection ceiling is per address and generous on purpose: several
+    # devices and tabs behind one address (a household) each hold one or a
+    # few streams for the full 15-minute cycle, and a deploy reconnects
+    # them all at once.
     location /events {
-      limit_conn conn_per_client 20;
+      limit_conn sse_per_client 100;
       proxy_buffering off;
       proxy_cache off;
       proxy_read_timeout 1h;
       proxy_pass http://realtime;
     }
     location ~ ^/docs/[^/]+/live$ {
-      limit_conn conn_per_client 40;
+      limit_conn sse_per_client 100;
       proxy_buffering off;
       proxy_cache off;
       proxy_read_timeout 1h;
@@ -273,7 +326,7 @@ ${UPSTREAM_MCP}
       error_page 429 = @mcp_limited;
     }
 
-    # Everything else: the planner API.
+    # Everything else: the planner API (direct API clients only).
     location / {
       limit_req zone=per_client burst=100 nodelay;
       proxy_pass http://api;
@@ -283,10 +336,19 @@ ${UPSTREAM_MCP}
     location @unavailable {
       return 503 '{"message":"Orbyn is briefly unavailable. Please try again."}';
     }
+    # Limited by the burst budget above (or a direct client's own limit): a
+    # machine-readable 429, so the apps' backoff works as designed.
+    error_page 429 = @limited;
+    location @limited {
+      add_header Retry-After 5 always;
+      return 429 '{"message":"That\'s a lot at once. Wait a moment and try again."}';
+    }
   }
 
-  # The web port: the app's pages from the web copies, and /api through this
-  # gateway's own API entry point above (so routing and limits are shared).
+  # The web port: the app's pages from the web copies, and /api through the
+  # API server on 8080. Every limit a browser request meets is counted here,
+  # exactly once: the pass-through to 8080 adds none (the zones go empty for
+  # what this server marks X-Orbyn-Via: web).
   server {
     listen 8081;
     client_max_body_size 64k;
@@ -318,7 +380,49 @@ ${UPSTREAM_MCP}
       proxy_set_header X-Request-Id $request_id;
       # Links the API builds (the calendar feed) need the /api it sits under.
       proxy_set_header X-Forwarded-Prefix /api;
+      # Mark this as already counted: the API server's zones go empty for
+      # this header, so the burst budget below applies exactly once. (The
+      # exact /api/imports/pages and /api/files/* locations below keep the
+      # old behaviour — counted at the API server, as before.)
+      proxy_set_header X-Orbyn-Via web;
+      # Same burst budget as the API server's own catch-all, so direct and
+      # browser clients are treated alike (counted once, here).
+      limit_req zone=per_client burst=100 nodelay;
       proxy_pass http://127.0.0.1:8080/;
+    }
+
+    # Event streams the browser reaches at /api/events and
+    # /api/events/docs/<id>: one per-address ceiling (see sse_per_client),
+    # counted here and nowhere else. These must be regex locations ahead of
+    # /api/ — but a regex location's proxy_pass may not carry a URI, so the
+    # /api prefix is rewritten off instead. (The doc-live stream is counted
+    # on the API server: it needs the X-Forwarded-Prefix /api header, and
+    # its per-address budget is measured with the request streams'.)
+    location ~ ^/api/events(?:/docs/[^/]+)?$ {
+      limit_conn sse_per_client 100;
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_set_header X-Orbyn-Via web;
+      proxy_buffering off;
+      proxy_read_timeout 1h;
+      rewrite ^/api(/events.*)$ $1 break;
+      proxy_pass http://127.0.0.1:8080;
+    }
+    location ~ ^/api/docs/[^/]+/live$ {
+      limit_conn sse_per_client 100;
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_set_header X-Orbyn-Via web;
+      proxy_buffering off;
+      proxy_read_timeout 1h;
+      rewrite ^/api(/docs/[^/]+/live)$ $1 break;
+      proxy_pass http://127.0.0.1:8080;
     }
 
     location = /api/imports/pages {
@@ -451,6 +555,13 @@ ${UPSTREAM_MCP}
     error_page 502 503 504 = @unavailable;
     location @unavailable {
       return 503 '{"message":"Orbyn is briefly unavailable. Please try again."}';
+    }
+    # Limited by the /api/ burst budget above: a machine-readable 429, so
+    # the apps' backoff works as designed.
+    error_page 429 = @limited;
+    location @limited {
+      add_header Retry-After 5 always;
+      return 429 '{"message":"That\'s a lot at once. Wait a moment and try again."}';
     }
   }
 
