@@ -38,3 +38,7 @@ Runtime used web preview 5174, mobile web 8083, iOS Expo Go 57.0.9 on iPhone 17 
 ## Limits
 
 No production deployment/load result, OS push arrival, Android native interaction or installed-app universal-link launch is asserted. The in-app browser timed out on the mobile web JavaScript confirmation; desktop and native confirmation behavior were verified. Exports do not substitute for installation or device interaction. Original static findings remain preserved in `docs/reviews/archive/r1-r10-original-review-2026-09-30.md` and the review artifact.
+
+## Git integration and post-merge checks
+
+Repair commit `dfe91af` was fast-forward merged into local `main`. From the primary checkout, 61/61 assistant-run, receipt and Overnight regressions passed; typechecks, backend/desktop production builds and iOS/Android exports passed. The post-merge poll fixture measured one row revision for 60 simultaneous polls (447 ms) and 35 ms for a fresh poll under a held runner lock. Unrelated existing changes were preserved. No remote push or production deployment occurred.
