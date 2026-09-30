@@ -56,8 +56,10 @@ export function usePlanner() {
     () =>
       onSessionChange((next) => {
         if (next === tokenRef.current) return;
-        if (next) setToken(next);
-        else clearSession();
+        if (next) {
+          setUser(null);
+          setToken(next);
+        } else clearSession();
       }),
     [clearSession],
   );
@@ -110,6 +112,31 @@ export function usePlanner() {
   );
 
   const lastData = useRef("");
+  // Account identity must not wait for planner pagination or other boot reads.
+  useEffect(() => {
+    if (!token) return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const loadProfile = async (initial = false) => {
+      if (!initial && document.visibilityState !== "visible") {
+        if (alive) timer = setTimeout(loadProfile, 30000);
+        return;
+      }
+      try {
+        const profile = await client.me();
+        if (alive && tokenRef.current === token) setUser(profile);
+      } catch (e) {
+        if (alive && tokenRef.current === token) report(e);
+      }
+      if (alive) timer = setTimeout(loadProfile, 30000);
+    };
+    void loadProfile(true);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [token, report]);
+
   /**
    * Reload planner data. Background refreshes pass `silent`: no loading
    * indicator, and nothing re-renders when the data is unchanged.
@@ -125,16 +152,11 @@ export function usePlanner() {
           client.listNotifications(),
           client.listTeams(),
         ]);
-        // The profile loads on its own: one boot request meeting a rate
-        // limit no longer keeps the account chip on "Loading…" until the
-        // next cycle — the last known user simply stays until this reads.
-        const u = await client.me().catch(() => null);
         if (tokenRef.current !== token || seq !== refreshSeq.current) return;
-        const snapshot = JSON.stringify([all, u, n, t]);
+        const snapshot = JSON.stringify([all, n, t]);
         if (options?.silent && snapshot === lastData.current) return;
         lastData.current = snapshot;
         setItems(all);
-        if (u) setUser(u);
         setNotices(n);
         setTeams(t);
         setRevision((r) => r + 1);

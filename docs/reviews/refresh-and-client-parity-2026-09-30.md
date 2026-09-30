@@ -115,3 +115,38 @@ initial upload failed with 503 because the disposable preview had file storage
 disabled; enabling isolated local file storage allowed the UI retry to succeed.
 Native layout showed the long title wrapping and the Save footer remaining
 available. Native Android interaction and Home hub editing remain open.
+
+## Profile refresh and gateway trust checkpoint — 1 October 2026
+
+The production screenshot showed the sidebar account remaining on Loading after
+a reload. Source inspection found `/me` still sequenced after all item pages,
+notifications and teams; failure of any preceding read prevented the profile
+request entirely. The web/desktop hook now starts profile loading independently
+on sign-in, retries every 30 seconds while visible, reports failures, and guards
+late responses by session and component lifetime. Account changes clear the
+previous identity. Planner reads no longer perform a second profile request.
+
+Four tests execute the actual transpiled hook with controlled React effects:
+profile success despite planner failure, expired-session clearing, failed-read
+retry, and delayed responses after account switches/unmount. A fresh local
+desktop tab displayed the fixture account after a reload; screenshot evidence
+is `/tmp/orbyn-profile-refresh.png`. Production latency and deployment remain
+unverified.
+
+Integration of main's gateway correction also exposed a client-spoofable
+`X-Orbyn-Via: web` exemption. The exemption now requires the API listener on
+8080 and an original loopback peer. Remote requests and the external web
+listener remain counted even with that header. Six gateway tests passed, the
+rendered configuration passed `nginx -t`, and a live nginx probe counted direct
+and spoofed requests while exempting the genuine internal web hop.
+
+All workspace typechecks and the production build passed. Mobile editor font
+sizes were corrected to the shared scale; all 16 gateway/neatness checks passed.
+The first full suite failed the font-scale check and a sweeper fixture; the
+sweeper passed a focused rerun without a code change. The complete rerun passed
+all 1,768 tests with no failures or skips, including the four profile regressions.
+
+GitHub CI and Deploy for main `69a00a8` did not start. Check-run annotations
+report failed account payments or the need to increase the spending limit.
+This is an external release blocker, not a successful deployment; local proof
+does not establish the revision running on production.
