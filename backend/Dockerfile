@@ -20,16 +20,17 @@ COPY backend/package.json backend/package.json
 COPY desktop/package.json desktop/package.json
 COPY mobile/package.json mobile/package.json
 
-# Compile @orbyn/core and the backend with dev dependencies available.
+# Compile shared packages and the backend with dev dependencies available.
 FROM manifests AS build
-RUN npm ci --workspace=@orbyn/core --workspace=@orbyn/backend --include-workspace-root=false
+RUN npm ci --workspace=@orbyn/core --workspace=@orbyn/api-client --workspace=@orbyn/backend --include-workspace-root=false
 COPY packages/core packages/core
+COPY packages/api-client packages/api-client
 COPY backend backend
-RUN npm run build -w @orbyn/core && npm run build -w @orbyn/backend
+RUN npm run build -w @orbyn/core && npm run build -w @orbyn/api-client && npm run build -w @orbyn/backend
 
 # Production dependencies only.
 FROM manifests AS prod-deps
-RUN npm ci --omit=dev --workspace=@orbyn/core --workspace=@orbyn/backend --include-workspace-root=false
+RUN npm ci --omit=dev --workspace=@orbyn/core --workspace=@orbyn/api-client --workspace=@orbyn/backend --include-workspace-root=false
 
 FROM node:22-bookworm-slim
 # Reading scanned pages and photos (the converter): Tesseract with English and
@@ -52,6 +53,8 @@ WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/packages/core/package.json ./packages/core/package.json
 COPY --from=build --chown=node:node /app/packages/core/dist ./packages/core/dist
+COPY --from=build --chown=node:node /app/packages/api-client/package.json ./packages/api-client/package.json
+COPY --from=build --chown=node:node /app/packages/api-client/dist ./packages/api-client/dist
 COPY --from=build --chown=node:node /app/backend/package.json ./backend/package.json
 COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
 COPY --from=build --chown=node:node /app/backend/migrations ./backend/migrations

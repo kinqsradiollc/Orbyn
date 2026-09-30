@@ -1,4 +1,5 @@
 .git
+.codex-cleanup-backups
 **/node_modules
 **/dist
 **/release

@@ -46,3 +46,7 @@ Repair commit `dfe91af` was fast-forward merged into local `main`. From the prim
 ## Authorized publication preflight
 
 On 30 September 2026, after explicit authorization to push `main`, the full backend suite was rerun from the primary checkout: **1,726 passed, zero failures, zero skips**, in 457.2 seconds. Root typechecks, backend/desktop production builds, iOS/Android exports, changed-file Prettier checks and `git diff --check` also passed. Tests used the healthy separate PostgreSQL test container and enforced the test database name and server marker; real SMTP was disabled. Existing UI proof and its device/delivery limits remain as documented above. Unrelated local work is excluded from publication.
+
+## Clean Docker packaging follow-up
+
+A server build exposed a missing API-client package in the backend Docker image that prior local builds did not detect. See [Docker build repair](../../docker-build-repair-2026-09-30.md) for the fix, no-cache image builds, production import/health checks, empty-database migration and fresh-database full-suite result (1,726 passed).
