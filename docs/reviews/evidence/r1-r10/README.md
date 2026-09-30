@@ -42,3 +42,7 @@ No production deployment/load result, OS push arrival, Android native interactio
 ## Git integration and post-merge checks
 
 Repair commit `dfe91af` was fast-forward merged into local `main`. From the primary checkout, 61/61 assistant-run, receipt and Overnight regressions passed; typechecks, backend/desktop production builds and iOS/Android exports passed. The post-merge poll fixture measured one row revision for 60 simultaneous polls (447 ms) and 35 ms for a fresh poll under a held runner lock. Unrelated existing changes were preserved. No remote push or production deployment occurred.
+
+## Authorized publication preflight
+
+On 30 September 2026, after explicit authorization to push `main`, the full backend suite was rerun from the primary checkout: **1,726 passed, zero failures, zero skips**, in 457.2 seconds. Root typechecks, backend/desktop production builds, iOS/Android exports, changed-file Prettier checks and `git diff --check` also passed. Tests used the healthy separate PostgreSQL test container and enforced the test database name and server marker; real SMTP was disabled. Existing UI proof and its device/delivery limits remain as documented above. Unrelated local work is excluded from publication.
