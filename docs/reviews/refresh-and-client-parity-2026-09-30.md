@@ -49,7 +49,7 @@ feature: multiline calls and equivalent flows must be inspected.
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Folder archive/restore        | Web supports whole-folder archive/restore. Mobile has page archive but no folder controls, and active folder lists include archived folders. | Delivered controls, active-list filtering and folder refresh; web/mobile web/iOS interaction and cross-client propagation passed. |
 | Page/project appearance       | Mobile Look.tsx explicitly renders covers/icons read-only; DocEditor has no appearance mutation. Web has icon/cover selection.               | Confirmed open gap; implement shared behavior and mobile controls.                                                                |
-| Save project as template      | Web ProjectDetail calls templateFromProject; mobile ProjectsSheet only consumes existing templates.                                          | Confirmed open gap; add mobile creation and permission/error feedback.                                                            |
+| Save project as template      | Web ProjectDetail calls templateFromProject; mobile ProjectsSheet only consumes existing templates.                                          | Implemented: owner/admin menu action creates the template and opens it for review; mobile web and native iOS passed.              |
 | Clipper connection management | Web settings list/create/delete Clipper keys; mobile has no corresponding settings calls.                                                    | Open candidate: inspect expected phone setup flow and connection UI.                                                              |
 | Passkeys                      | Web registers and authenticates with passkeys. Mobile uses ordinary auth and has no native passkey calls.                                    | Open delivery gap; native platform configuration and real callbacks are required.                                                 |
 | Mermaid                       | Web uses Mermaid; mobile RichBlocks has a custom flowchart parser and source fallback for other diagram families.                            | Confirmed D1 gap; cover all retained families with strict rendering and native proof.                                             |
@@ -80,3 +80,15 @@ An earlier suite shared a database with the preview assistant runner, which
 claimed test jobs and caused six failures. Separating the preview database removed
 those failures. The remaining DST failure was fixed and the complete suite rerun.
 No production account, provider request or production database was used.
+
+## Mobile project-template checkpoint — 1 October 2026
+
+The project menu now saves a template and opens that exact saved template in
+Templates. Team controls require owner/admin membership; ordinary writes do not
+make this action available. Existing server permission checks remain authoritative.
+Errors use the existing run/error banner flow; success shows a toast.
+
+Evidence: mobile typecheck passed, the seven template API tests passed, and
+web/iOS/Android exports passed. A disposable project with a 30-minute task was
+saved through both mobile web and native iOS; each showed the exact template,
+task and estimate in the review screen. Native Android interaction remains open.

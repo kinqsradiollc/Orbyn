@@ -207,10 +207,12 @@ export function ProjectsSheet({
   const [summaryDraft, setSummaryDraft] = useState<string | null>(null);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(!!openTemplate);
+  const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
   useEffect(() => {
     if (openTemplate && visible) {
       setOpen(null);
       setAiDraftOpen(false);
+      setSavedTemplateId(null);
       setTemplatesOpen(true);
     }
   }, [openTemplate, visible]);
@@ -951,7 +953,7 @@ export function ProjectsSheet({
             <TemplatesPanel
               teams={teams}
               items={items}
-              initialId={openTemplate}
+              initialId={savedTemplateId ?? openTemplate}
               busy={busy}
               run={run}
               onStarted={() => {
@@ -1079,6 +1081,27 @@ export function ProjectsSheet({
                               label: "Archive",
                               onPress: () => save({ status: "archived" }),
                             },
+                            ...(canManageAi(open)
+                              ? [
+                                  {
+                                    label: "Save as template",
+                                    onPress: () =>
+                                      void run(async () => {
+                                        const template =
+                                          await client.templateFromProject(
+                                            open.id,
+                                          );
+                                        setSavedTemplateId(template.id);
+                                        setOpen(null);
+                                        setAiDraftOpen(false);
+                                        setTemplatesOpen(true);
+                                        showToast({
+                                          text: `Saved “${template.name}” as a template`,
+                                        });
+                                      }),
+                                  },
+                                ]
+                              : []),
                             {
                               label: "Delete project",
                               destructive: true,
