@@ -151,6 +151,69 @@ contract/transport foundation: OAuth, secure token storage, persisted preference
 backend identity verification, tool execution and `/models` UI remain open under C1/C2.
 No real account inference or provider credentials were used for this checkpoint.
 
+Follow-up contract review (1 October, local main checkpoint `1c44b40`): the plan transport now binds
+credentials to the issued OAuth client ID as well as the account/workspace.
+It rejects `dynamic_agent_client` as a saved registration and refuses a different
+registration before making a provider request. All 17 transport tests passed;
+these use fixtures, not a real OAuth or inference session. Identity verification,
+protected token storage, model/default persistence and `/models` UI remain open.
+
+Model-picker state foundation (local main checkpoint `1c44b40`): shared validated binding/preferences
+and a credential-free controller now coordinate catalog/default loading for one
+verified user, connection, issuer, subject and issued client ID. Settings and
+composer can subscribe to one state. Versioned storage receipts are checked;
+concurrent saves are rejected, failed loads disable stale choices, removed
+defaults remain unavailable, and closing a connection fences late loads/saves.
+Eight focused controller tests passed. Backend authenticated persistence/CAS,
+OAuth verification, runtime storage, actual `/models` routing and both client
+UIs remain open. No provider tokens or real account requests were used.
+
+The contract checkpoint and cleanup-test checkpoint `2d35df6` were applied to
+local main; all main workspace typechecks and 38 focused tests passed. The full
+main suite passed all 1,778 tests with no failures or skips. The Mermaid implementation is still
+outside main. None of these local commits establishes a production deployment.
+Both checkpoints were pushed to origin main at `2d35df6`; the main production
+build passed. Production rollout remains unverified.
+
+Backend identity-verifier foundation: signature verification uses the
+fixed OpenAI JWKS endpoint, issuer, issued-client audience, nonce, required
+claims, a five-second clock tolerance and a ten-minute token age limit. Multiple
+audiences require a matching authorized party. It returns only issuer/subject/
+client ID and exposes generic errors rather than token/provider details. Four
+tests using real RSA signatures cover valid identity and claim/signature/input
+failures; backend typecheck passed. No real account or credential was used.
+The worktree now also has ten-minute, exact-session challenges, atomic nonce
+consumption and registration linking, owner-only listing/disconnect, challenge
+invalidation on disconnect, and account/session rechecks after verification.
+First-party `/ai/connections/chatgpt` endpoints reject API keys and connector
+credentials; shared schemas/client methods reject plan tokens. Provider proof is
+never stored, logs redact token fields, expired challenges have an hourly sweep
+rule, and shipped Privacy text explains retained identity metadata. Connection
+operations bypass the 24-hour idempotency cache, so expired/revoked sessions cannot
+replay a cached connection result. OAuth callback/PKCE/device storage, provider
+eligibility proof, actual eligible plan usage, executor integration and
+authenticated `/models` remain open. This foundation is not a completed sign-in
+flow. Focused route, identity, lifecycle, cleanup and capability-inventory tests
+passed 26 checks; a subsequent regression run passed 35 checks, including the
+final account-restriction race test and legal publication. The first broad run
+failed three checks: the existing intermittent assistant sweeper assertion,
+legal publication with a shipped date ahead of the server's UTC date, and stale
+generated route counts. Legal versions now advance even when the clock moves
+back; generated catalogs were refreshed. The sweeper's failure did not reproduce
+in the focused rerun, so its cause remains unproven.
+
+A new, independently marked disposable database applied the migrations and
+passed the complete 1,805-test worktree suite with no failures or skips. All
+workspace typechecks and the production build passed on the final source.
+The connection checkpoint is committed as `c7824fb` in the implementation
+worktree and integrated into main as `ed379a1`. That exact main checkout passed
+all 1,796 tests with no failures or skips, all workspace typechecks and the
+production build. This checkpoint is ready for push with this updated evidence.
+Production rollout is not verified; the preceding GitHub CI could not start
+because of account billing/spending limits, and Deploy was skipped.
+Mermaid implementation files were excluded from that
+checkpoint and remain unmerged pending actual rendering/native verification.
+
 Evidence: 16 focused tests passed; full backend suite 1,742 passed with no failures or
 skips; all workspace typechecks and production builds passed; iOS/Android exports
 passed; a fresh backend Docker build successfully imported both shared exports.
@@ -160,3 +223,42 @@ Release priority update: after C1a integration, investigate refresh-triggered HT
 and audit missing desktop/web/mobile feature parity. Deliver tested fixes and main
 checkpoints before resuming the remaining DevDay implementation sequence. Preserve
 all retained ADR scope; record any external or native verification limits explicitly.
+
+### D1 implementation progress — 2026-10-01 (unmerged)
+
+The mobile flowchart-only preview has been replaced in the implementation worktree
+by a full, locally bundled Mermaid 11.17.2 renderer. Native uses Expo-compatible
+WebView 13.16.1; mobile web uses an opaque sandboxed iframe. Both receive bounded
+source and theme messages, reject stale results, retain source on failures, and
+offer zoom and SVG export. Configuration directives are rejected; the renderer
+uses strict policy, blocks network resources through CSP, and removes executable
+or external references from exported SVG. Existing authorized Orbyn node links
+remain host actions. Generated renderer assets have a reproducible build command.
+
+Evidence so far: nine source/protocol/security tests, ten neatness tests, all workspace
+typechecks, and web/iOS/Android exports passed. Ten diagram-family fixtures are
+prepared, but actual rendering and native layout/touch/export remain unverified.
+Browser access to the local acceptance page was explicitly declined, so that
+verification path was stopped. This change is not merged or production-ready.
+Desktop renderer synchronization and the rest of the D1 acceptance table remain
+open; source checks and bundle exports are not evidence of visual parity.
+
+The protocol tests execute the actual message handler with a controlled Mermaid
+engine and DOM boundary; they prove message fencing, strict pinned configuration,
+size/directive/theme rejection, and rejection of escaped external CSS, imports
+and image functions. SVG animation elements are excluded from export. A source
+digest check rejects a stale generated renderer asset. The native surface keeps
+its HTML source object stable to avoid reloads when rendered height changes.
+These tests do not execute real layout or prove the ten-family render matrix.
+
+The latest full suite completed with 1,776 passes and one sweeper fixture failure.
+The fixture now asserts a completed sweep (with a bounded retry when the cleanup
+lease is occupied) and checks the assistant-job rule's error result. A separate
+test proves an occupied lease returns null. All 13 assistant-worker tests passed
+in the focused rerun. A fresh complete suite is required before integration;
+the occupied-lease test does not establish the cause of the earlier failure.
+
+The complete rerun subsequently passed all 1,779 tests with no failures or skips.
+The newly added model-picker file was outside that run's initial file list; its
+eight tests passed separately. All workspace typechecks passed. Visual/native
+renderer checks and the remaining application integrations are still open.
