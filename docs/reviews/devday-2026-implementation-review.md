@@ -208,7 +208,8 @@ workspace typechecks and the production build passed on the final source.
 The connection checkpoint is committed as `c7824fb` in the implementation
 worktree and integrated into main as `ed379a1`. That exact main checkout passed
 all 1,796 tests with no failures or skips, all workspace typechecks and the
-production build. This checkpoint is ready for push with this updated evidence.
+production build. The checkpoint and its evidence were pushed to origin main
+at `a31071b`.
 Production rollout is not verified; the preceding GitHub CI could not start
 because of account billing/spending limits, and Deploy was skipped.
 Mermaid implementation files were excluded from that
@@ -262,3 +263,113 @@ The complete rerun subsequently passed all 1,779 tests with no failures or skips
 The newly added model-picker file was outside that run's initial file list; its
 eight tests passed separately. All workspace typechecks passed. Visual/native
 renderer checks and the remaining application integrations are still open.
+
+### C2 desktop OAuth/storage progress — 2026-10-01 (unmerged)
+
+Private main-process helpers now implement bounded loopback OAuth callbacks,
+fresh state/nonce/S256 PKCE, issued-registration validation, fixed-endpoint code
+exchange and an encrypted account/server-bound credential vault. Callback scopes
+cannot enable plan usage; token-response scopes are authoritative. Storage uses
+atomic encrypted replacements, version checks and immediate disconnect fencing.
+Reads use one descriptor, reject symlinks and bound allocation/read size even
+when the path or file changes. These helpers are not wired into IPC or packaged
+into the released app and do not constitute a usable sign-in flow.
+
+Twenty focused OAuth/vault regressions passed, including a signed fixture ID
+token through callback/exchange/verification/storage. Actual Electron 44.3 on
+macOS encrypted synthetic credentials, restored them in a separate fresh process
+and erased them. No real provider credentials or account calls were used. This
+development executable proof does not cover signed releases, updates, native UI,
+Windows or Linux. The prior combined regression set passed 48 tests and all
+workspace typechecks; the added descriptor regression passed subsequently.
+
+Registration metadata now has a private, account/server-bound store with a stable
+host ID, atomic issued-client retention and optimistic revision checks. Four tests
+prove restart persistence, an expired-code retry retaining its registration,
+account/server isolation, corrupt/symlink rejection and concurrent-write fencing.
+All 24 OAuth/registration/vault regressions passed. Metadata contains no codes or
+tokens. Callers must use one main-process store per account/server and retain the
+issued ID before exchange; orchestration is not wired yet.
+
+Private sign-in orchestration now retains callback registration before exchange,
+uses the exact server challenge nonce for local verification, compares local and
+server identity metadata, and installs credentials only after both agree.
+Cancellation fences every awaited phase and revokes a newly installing slot;
+an already installed slot requires disconnect before replacement so cancellation
+cannot erase older credentials. Five controlled orchestration tests cover ordering,
+identity/account/backend mismatches, phase cancellation and replacement protection.
+Concurrent attempts for one account/vault are rejected before any asynchronous
+work. The attempt lock remains held after cancellation until pending adapters
+have stopped, preventing a cancelled loser from revoking a later winner. A
+controlled non-cooperative adapter regression proves both lock retention and
+release after termination. The combined desktop-helper regression set passed
+30 tests. Trusted adapters are
+injected; production IPC, local verifier packaging and real-provider flow are absent.
+Seamless reauthentication of existing credentials remains a separate open protocol.
+
+Still required: trusted
+main/preload entrypoints, account/session cancellation, local signature verification,
+refresh rotation, real eligible provider proof, executor enrollment, catalog/default
+persistence, `/models` and client integration. Repository metadata is private with
+no recognized license; eligibility for the documented OSS flow remains unproven.
+Do not infer website or mobile entitlement from the desktop helper.
+
+GitHub's code-scanning API returned 403 because Advanced Security is disabled.
+This is not evidence of Codex Security access or a completed security scan. Main
+CI run `36769753341` could not start due to account billing/spending limits and
+Deploy was skipped. Those external gates do not prevent continuing local work.
+
+The complete worktree suite subsequently passed 1,835 tests with no failures or
+skips, covering the thirty desktop-helper tests and the unmerged Mermaid checks.
+Identity verification has now moved unchanged into the explicit
+`@orbyn/api-client/openai-identity` entrypoint with its declared `jose` dependency;
+backend reexports it and desktop orchestration uses it by default. The ordinary
+client entrypoint does not import it. Added RSA/EC/shared-entrypoint regressions
+and renderer digest checks passed in a forty-test focused run; all workspace
+typechecks passed. No real OpenAI session or inference request was used.
+
+The shared-verifier checkpoint `83a9074` is integrated into local main as
+`6be8a81`. Exact-main typechecks, production build and all 1,798 tests passed
+with no failures or skips, and the checkpoint was pushed to origin main.
+Production deployment remains unverified. The private OAuth/store/orchestration files
+and Mermaid implementation remain excluded from this checkpoint.
+
+The private desktop IPC guard now binds credential operations to the designated
+main window, its top-level frame and the exact local entry file, checking both
+the invoking frame and the owning page's current URL. Destroyed windows, child
+frames, sibling windows, remote/network-file URLs and navigated pages are denied
+with generic errors. Three controlled guard tests and the combined 33-test
+desktop-helper set passed. A separate Electron 44.3 macOS fixture invoked actual
+IPC from two sandboxed/context-isolated windows: the designated main window was
+allowed and the sibling was denied. This is fixture evidence, not a packaged
+release or complete authentication UI check. The guard is not wired into app
+handlers yet. The completed main validation is recorded above.
+
+The private OAuth transport now supports the documented refresh grant at the
+fixed token endpoint, using the saved issued client ID, refresh token and API
+resource without sending a new scope. Omitted replacement refresh/ID tokens and
+scope retain their saved values; explicitly reduced scopes remove plan permission.
+Invalid grants have a distinct generic recovery error, malformed replacements
+are rejected, and cancellation fences late responses. Five controlled refresh
+tests and the combined 38-test desktop-helper set passed. This is transport only:
+per-registration refresh serialization, replacement identity verification,
+atomic vault rotation, session recovery and real-provider proof remain open.
+The registration store now supports distinct validated registration slots under
+one Orbyn account/server, preserving the existing primary slot's path and legacy
+metadata. Issued clients remain separate across slots and copied records fail
+the slot-binding check. Five registration tests and the combined 39-test desktop
+helper set passed. Persisted slot listing/selection and
+the actual account picker still remain open; this storage change is not UI proof.
+[Refresh contract](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions).
+
+Shared host identity is now implemented for new registrations: one private
+installation file is atomically published without replacing an existing ID.
+Four separate Node processes converged on the same host ID; concurrent readers,
+permissions and corrupt/symlink rejection also passed. Existing registration
+records retain their original host IDs for returning sign-in compatibility.
+All 42 desktop-helper tests and workspace typechecks passed. Listing/selection, picker UI, refresh
+orchestration and production entrypoint wiring remain open and unmerged.
+
+After pushing `6be8a81`, CI run `36793519501` could not start because of the
+same GitHub account billing/spending limit; Deploy `36793529950` was skipped.
+This confirms the external release gate persists, not a production rollout.
