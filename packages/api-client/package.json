@@ -10,9 +10,15 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./openai-identity": {
+      "types": "./dist/openai-identity.d.ts",
+      "default": "./dist/openai-identity.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
@@ -20,7 +26,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@orbyn/core": "1.0.0"
+    "@orbyn/core": "1.0.0",
+    "jose": "^6.2.12"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

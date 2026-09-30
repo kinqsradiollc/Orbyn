@@ -3,6 +3,45 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { SignJWT } from "jose";
 import { createOpenAiIdentityVerifier } from "../src/modules/auth/openai-identity.js";
+import { createOpenAiIdentityVerifier as sharedVerifier } from "@orbyn/api-client/openai-identity";
+
+test("backend and desktop package entrypoint use the same verifier", () => {
+  assert.equal(createOpenAiIdentityVerifier, sharedVerifier);
+});
+
+test("shared verifier validates ES256 identity signatures without backend imports", async () => {
+  const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const now = Math.floor(Date.now() / 1000);
+  const proof = await new SignJWT({
+    iss: "https://auth.openai.com",
+    aud: "oaiapp_ec_fixture",
+    sub: "ec-subject",
+    iat: now,
+    exp: now + 60,
+    nonce: "ec-nonce-fixture-0123456789",
+  })
+    .setProtectedHeader({ alg: "ES256" })
+    .sign(keys.privateKey);
+  const verifier = sharedVerifier(async () => keys.publicKey);
+  assert.deepEqual(
+    await verifier(proof, {
+      clientId: "oaiapp_ec_fixture",
+      nonce: "ec-nonce-fixture-0123456789",
+    }),
+    {
+      issuer: "https://auth.openai.com",
+      subject: "ec-subject",
+      clientId: "oaiapp_ec_fixture",
+    },
+  );
+  await assert.rejects(
+    verifier(proof, {
+      clientId: "oaiapp_ec_fixture",
+      nonce: "different-nonce-fixture",
+    }),
+    /could not be verified/,
+  );
+});
 
 const signing = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const stranger = generateKeyPairSync("rsa", { modulusLength: 2048 });
