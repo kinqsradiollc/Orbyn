@@ -6,8 +6,8 @@ import { colors } from "../theme";
 import { Icon, type IconName } from "./Icon";
 
 /**
- * Covers and icons (W6) on the phone, read-only: what a project, a page or
- * a Home hub wears. Setting them is the web's.
+ * Covers and icons (W6) shared across devices. LookEditor changes the
+ * appearance; these views draw its current values.
  */
 
 /** Emoji take a size from the type scale, as all type does. */

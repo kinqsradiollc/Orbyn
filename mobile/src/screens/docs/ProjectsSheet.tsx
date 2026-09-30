@@ -65,6 +65,7 @@ import { LinkedHere } from "./links";
 import { ConnectionsMap } from "./ConnectionsMap";
 import { FieldsSection } from "../views/FieldsSection";
 import { AliasesField } from "./AliasesField";
+import { LookEditor } from "../../components/LookEditor";
 import { CoverImage, LookIconView } from "../../components/Look";
 import { deviceTimeZone } from "../../lib/planning";
 
@@ -206,6 +207,10 @@ export function ProjectsSheet({
   const [claiming, setClaiming] = useState<string[]>([]);
   const [summaryDraft, setSummaryDraft] = useState<string | null>(null);
   const [aiDraftOpen, setAiDraftOpen] = useState(false);
+  const appearanceProjectId = useRef(open?.id);
+  appearanceProjectId.current = open?.id;
+  const [lookOpen, setLookOpen] = useState(false);
+  useEffect(() => setLookOpen(false), [open?.id]);
   const [templatesOpen, setTemplatesOpen] = useState(!!openTemplate);
   const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
   useEffect(() => {
@@ -1018,7 +1023,7 @@ export function ProjectsSheet({
             </View>
           ) : open ? (
             <View style={styles.page}>
-              {/* Its cover and icon (W6), set on the web. */}
+              {/* Its cover and icon (W6), shared across devices. */}
               <CoverImage
                 fileId={open.cover_file_id}
                 height={120}
@@ -1061,6 +1066,10 @@ export function ProjectsSheet({
                         : []),
                       ...(canWriteIn(open.team_id)
                         ? [
+                            {
+                              label: "Cover and icon",
+                              onPress: () => setLookOpen(true),
+                            },
                             {
                               label: "Rename",
                               onPress: () => setDraft(open.name),
@@ -2204,6 +2213,25 @@ export function ProjectsSheet({
         }
         onClose={() => setHeldProject(null)}
       />
+      {lookOpen && open && (
+        <LookEditor
+          key={open.id}
+          title={open.name}
+          look={{
+            icon: open.icon ?? null,
+            cover_file_id: open.cover_file_id ?? null,
+          }}
+          uploadTo={open.doc_id}
+          onClose={() => {
+            if (appearanceProjectId.current === open.id) setLookOpen(false);
+          }}
+          onSave={async (look) => {
+            const saved = await client.updateProject(open.id, look);
+            setOpen((current) => (current?.id === saved.id ? saved : current));
+            await reload();
+          }}
+        />
+      )}
     </Sheet>
   );
 }

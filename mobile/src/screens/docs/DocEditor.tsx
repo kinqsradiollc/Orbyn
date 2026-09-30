@@ -145,6 +145,7 @@ import { announceStars, rememberLastPage } from "../../lib/accountPrefs";
 import { RecordSheet, RecordingSummarySheet } from "./RecordSheet";
 import { LinkCardSheet } from "./LinkCardSheet";
 import { EmbedSheet, MergeSheet, TemplateSheet } from "./PageActions";
+import { LookEditor } from "../../components/LookEditor";
 import { CoverImage, LookIconView } from "../../components/Look";
 import { colors, fonts, radii, themed } from "../../theme";
 
@@ -429,6 +430,22 @@ export function DocEditor({
   /** Archived (SRCH-03): out of the library and search until brought back. */
   const [archived, setArchived] = useState(!!doc.archived);
   /** The page's Info, its ⋯ menu, and the two menus ⋯ leads to. */
+  const appearanceDocId = useRef(doc.id);
+  appearanceDocId.current = doc.id;
+  const [appearance, setAppearance] = useState({
+    icon: doc.icon ?? null,
+    cover_file_id: doc.cover_file_id ?? null,
+  });
+  useEffect(
+    () =>
+      setAppearance({
+        icon: doc.icon ?? null,
+        cover_file_id: doc.cover_file_id ?? null,
+      }),
+    [doc.id, doc.icon, doc.cover_file_id],
+  );
+  const [lookOpen, setLookOpen] = useState(false);
+  useEffect(() => setLookOpen(false), [doc.id]);
   const [infoOpen, setInfoOpen] = useState(false);
   const [menu, setMenu] = useState<"page" | "share" | "export" | null>(null);
   /** People who can open the page, for "@" (loaded the first time). */
@@ -2318,6 +2335,10 @@ export function DocEditor({
     ...(canWrite && !suggesting
       ? [
           {
+            label: "Cover and icon",
+            onPress: () => setLookOpen(true),
+          },
+          {
             label: reading ? "Edit this page" : "Read",
             onPress: () => chooseMode(reading ? "edit" : "read"),
           },
@@ -2484,15 +2505,15 @@ export function DocEditor({
             />
           </SlotFill>
         )}
-        {/* Its cover and icon (W6), set on the web; read-only here. */}
+        {/* Its cover and icon (W6), shared across devices. */}
         <CoverImage
-          fileId={doc.cover_file_id}
+          fileId={appearance.cover_file_id}
           height={140}
           style={{ borderRadius: radii.input, marginBottom: 12 }}
         />
-        {!!doc.icon && (
+        {!!appearance.icon && (
           <View style={{ marginBottom: 6 }}>
-            <LookIconView icon={doc.icon} size={36} />
+            <LookIconView icon={appearance.icon} size={36} />
           </View>
         )}
         {reading ? (
@@ -2947,6 +2968,21 @@ export function DocEditor({
           actions={shareActions}
           onClose={() => setMenu((m) => (m === "share" ? null : m))}
         />
+        {lookOpen && (
+          <LookEditor
+            key={doc.id}
+            title={title || "Untitled"}
+            look={appearance}
+            uploadTo={doc.id}
+            onClose={() => {
+              if (appearanceDocId.current === doc.id) setLookOpen(false);
+            }}
+            onSave={async (look) => {
+              const saved = await client.setDocLook(doc.id, look);
+              if (appearanceDocId.current === doc.id) setAppearance(saved);
+            }}
+          />
+        )}
         <ActionSheet
           visible={menu === "export"}
           label="Export this page"

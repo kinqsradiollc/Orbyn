@@ -48,7 +48,7 @@ feature: multiline calls and equivalent flows must be inspected.
 | Area                          | Current evidence                                                                                                                             | Delivery status                                                                                                                   |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Folder archive/restore        | Web supports whole-folder archive/restore. Mobile has page archive but no folder controls, and active folder lists include archived folders. | Delivered controls, active-list filtering and folder refresh; web/mobile web/iOS interaction and cross-client propagation passed. |
-| Page/project appearance       | Mobile Look.tsx explicitly renders covers/icons read-only; DocEditor has no appearance mutation. Web has icon/cover selection.               | Confirmed open gap; implement shared behavior and mobile controls.                                                                |
+| Page/project appearance       | Mobile Look.tsx explicitly renders covers/icons read-only; DocEditor has no appearance mutation. Web has icon/cover selection.               | Page/project controls implemented and verified on mobile web/iOS; Home hub appearance still needs audit.                          |
 | Save project as template      | Web ProjectDetail calls templateFromProject; mobile ProjectsSheet only consumes existing templates.                                          | Implemented: owner/admin menu action creates the template and opens it for review; mobile web and native iOS passed.              |
 | Clipper connection management | Web settings list/create/delete Clipper keys; mobile has no corresponding settings calls.                                                    | Open candidate: inspect expected phone setup flow and connection UI.                                                              |
 | Passkeys                      | Web registers and authenticates with passkeys. Mobile uses ordinary auth and has no native passkey calls.                                    | Open delivery gap; native platform configuration and real callbacks are required.                                                 |
@@ -92,3 +92,26 @@ Evidence: mobile typecheck passed, the seven template API tests passed, and
 web/iOS/Android exports passed. A disposable project with a 30-minute task was
 saved through both mobile web and native iOS; each showed the exact template,
 task and estimate in the review screen. Native Android interaction remains open.
+
+## Mobile appearance checkpoint — 1 October 2026
+
+Pages and projects now expose Cover and icon through their existing menus. The
+shared editor offers the core emoji/icon catalog, custom emoji validation,
+authorized account-owned cover selection, removal, and page-backed upload.
+Project uploads use its backing page when available, matching the web behavior.
+Read-only and suggestion-only page modes cannot mutate appearance.
+
+Page appearance updates stay separate from dirty content and do not replace a
+newer document revision. Page/project switches guard stale responses. Existing
+menu dismissal runs before opening the next native sheet. Load/save/upload
+errors stay visible and failed picture loads have a retry.
+
+Evidence: seven cover/icon API tests passed; all workspace typechecks and
+web/iOS/Android exports passed. Mobile web saved project/page icons, uploaded a
+disposable PNG, and saved the page cover. Native iOS selected and saved that
+account-owned picture as the project cover and saved a catalog icon. API reads
+confirmed the page remained revision 1 with its original empty content. An
+initial upload failed with 503 because the disposable preview had file storage
+disabled; enabling isolated local file storage allowed the UI retry to succeed.
+Native layout showed the long title wrapping and the Save footer remaining
+available. Native Android interaction and Home hub editing remain open.
