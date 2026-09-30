@@ -612,6 +612,10 @@ function calendarLine(
 ) {
   const start = new Date(e.start_at);
   return {
+    ...(e.item_id ? { source_ref: `event:${e.item_id}` } : {}),
+    ...(e.subscription_id
+      ? { calendar_ref: `calendar:${e.subscription_id}` }
+      : {}),
     when: e.all_day
       ? `${new Intl.DateTimeFormat("en-GB", {
           timeZone: timezone,
@@ -680,6 +684,7 @@ export async function calendarGlance(ctx: AgentContext, days = 3) {
       .sort((a, b) => a.start_at.localeCompare(b.start_at))
       .slice(0, 12)
       .map((b) => ({
+        source_ref: `task:${b.item_id}`,
         when: whenLabel(new Date(b.start_at), new Date(b.end_at), ctx.timezone),
         title: clean(b.title, 120),
       })),

@@ -51,8 +51,17 @@ after(async () => {
   await pool.end();
 });
 
+async function memorySourceChat() {
+  const id = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin,turns) VALUES($1,$2,'Memory source','person','[]')",
+    [id, owner.id],
+  );
+  return id;
+}
+
 test("Memory stays private, searchable only in its own library, and forget removes its source queue", async () => {
-  const sourceChat = randomUUID();
+  const sourceChat = await memorySourceChat();
   const topic = "Planning preferences";
   const learned = await transaction(async (db) => {
     const result = await rememberMemory(
@@ -320,7 +329,7 @@ test("the worker learns off-request with a fake provider and skips a kept-out pr
     await recallMemory(pool, owner.id, "PROJECTKEY", 4000, [projectId]),
     /PROJECTKEY/,
   );
-  const chatId = randomUUID();
+  const chatId = await memorySourceChat();
   await enqueueMemory(pool, {
     userId: owner.id,
     chatId,
@@ -382,13 +391,14 @@ test("the worker learns off-request with a fake provider and skips a kept-out pr
 });
 
 test("recall matches any word of a long request, and a note whose topic it names", async () => {
+  const chatId = await memorySourceChat();
   await transaction((db) =>
     rememberMemory(
       db,
       owner.id,
       "Revision habits",
       ["Revises best in short evening sessions"],
-      [{ type: "chat", id: randomUUID(), label: "A study chat", quote: null }],
+      [{ type: "chat", id: chatId, label: "A study chat", quote: null }],
     ),
   );
   const long = await recallMemory(

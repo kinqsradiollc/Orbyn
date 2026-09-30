@@ -163,7 +163,10 @@ type SheetName =
   | "changes"
   | "whatsnew";
 /** What to present next: a sheet, the item editor, or "Save to Orbyn". */
-type Next = { sheet: SheetName } | { edit: Editing } | { share: SharedContent };
+type Next =
+  | { sheet: SheetName; nightId?: string }
+  | { edit: Editing }
+  | { share: SharedContent };
 
 /** Where the + sheet's arrangement is kept, on this device. */
 const ARRANGE_KEY = "orbyn-plus-arrangement";
@@ -258,6 +261,7 @@ export function RootScreen() {
   }, [token, tab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [overnightId, setOvernightId] = useState<string | undefined>();
   const [sheet, setSheet] = useState<SheetName | null>(null);
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
@@ -555,12 +559,13 @@ export function RootScreen() {
       />
     );
 
-  const show = (next: Next) =>
-    "sheet" in next
-      ? setSheet(next.sheet)
-      : "share" in next
-        ? setSharedIn(next.share)
-        : setEditing(next.edit);
+  const show = (next: Next) => {
+    if ("sheet" in next) {
+      if (next.sheet === "overnight") setOvernightId(next.nightId);
+      setSheet(next.sheet);
+    } else if ("share" in next) setSharedIn(next.share);
+    else setEditing(next.edit);
+  };
   /** Present a sheet or the editor; an open sheet closes first and returns later. */
   const present = (next: Next) => {
     if (sheet) {
@@ -931,11 +936,6 @@ export function RootScreen() {
           return;
         }
         return runCreate("task");
-      case "review":
-        // Waiting approvals are in the Inbox until the Review inbox lands.
-        setSheet(null);
-        setTab("Inbox");
-        return;
       case "search":
         setSearchStart(link.q);
         return present({ sheet: "search" });
@@ -951,7 +951,7 @@ export function RootScreen() {
         back.current = [];
         return runCreate("ask");
       case "overnight":
-        return present({ sheet: "overnight" });
+        return present({ sheet: "overnight", nightId: link.id });
       case "focus":
         return startFocus();
       case "share":
@@ -988,7 +988,10 @@ export function RootScreen() {
     const kind = text("kind");
     const itemId = text("itemId");
     if (kind === "assistant" && text("ref").startsWith("overnight:")) {
-      present({ sheet: "overnight" });
+      present({
+        sheet: "overnight",
+        nightId: text("ref").slice("overnight:".length),
+      });
     } else if (
       (kind === "assistant" || kind === "reminder_nudge") &&
       text("ref").startsWith("chat:")
@@ -1551,7 +1554,10 @@ export function RootScreen() {
                     <InboxScreen
                       onOpenOvernight={(n) => {
                         void markRead(n);
-                        present({ sheet: "overnight" });
+                        present({
+                          sheet: "overnight",
+                          nightId: n.ref?.slice("overnight:".length),
+                        });
                       }}
                       onOpenChat={(n, id) =>
                         void noticeAction(n, async () => {
@@ -2101,6 +2107,8 @@ export function RootScreen() {
           onDismiss={onSheetDismissed}
         />
         <OvernightSheet
+          key={overnightId ?? "latest"}
+          nightId={overnightId}
           visible={sheet === "overnight"}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}

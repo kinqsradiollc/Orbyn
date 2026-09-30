@@ -492,6 +492,15 @@ test("connected agents' recent work names their board lanes", async () => {
 test("Tonight tasks stay out of the daytime queue and can be moved back to Now", async () => {
   const me = await register();
   const id = await task(me, "Work on this tonight");
+  const disabled = await inject(me, "POST", `/items/${id}/agent`, {
+    when: "tonight",
+  });
+  assert.equal(disabled.statusCode, 409);
+  assert.match(disabled.body, /Enable Night shift/);
+  await pool.query(
+    "INSERT INTO agent_settings(user_id,night_shift) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET night_shift=EXCLUDED.night_shift",
+    [me.id, JSON.stringify({ enabled: true, kinds: { handed: true } })],
+  );
   const handed = await inject(me, "POST", `/items/${id}/agent`, {
     when: "tonight",
   });

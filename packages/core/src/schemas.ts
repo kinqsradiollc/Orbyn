@@ -750,7 +750,12 @@ export const eventNotesQuery = z
   })
   .strict();
 
-export const docCommentUpdate = z.object({ resolved: z.boolean() }).strict();
+export const docCommentUpdate = z
+  .object({
+    resolved: z.boolean(),
+    expected_revision: z.number().int().positive().optional(),
+  })
+  .strict();
 
 /** Changes proposed to a page, sent together as one edit produced them. */
 export const docSuggestionInput = z

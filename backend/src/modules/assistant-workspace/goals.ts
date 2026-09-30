@@ -31,7 +31,7 @@ type GoalRow = Omit<
 };
 const GOAL_SELECT = `g.id, g.user_id, g.title, g.target, g.target_date::text AS target_date, g.plan_doc_id,
   d.title AS plan_title, g.project_id, p.name AS project_name, g.status,
-  g.progress, g.created_at, g.updated_at`;
+  g.progress, g.created_at, g.updated_at, g.revision`;
 const ASSISTANT_VISIBLE_GOAL = `NOT EXISTS (
   SELECT 1 FROM projects hidden
    WHERE hidden.assistant_off AND (
@@ -160,6 +160,14 @@ export async function saveGoal(
       ).rows[0]
     : undefined;
   if (id && !current) fail(404, "Goal not found.");
+  const { expected_revision, ...patch } = id
+    ? goalUpdate.parse(raw)
+    : { expected_revision: undefined };
+  if (
+    expected_revision !== undefined &&
+    current?.revision !== expected_revision
+  )
+    fail(409, "This goal changed. Open it to review.");
   const parsed = id
     ? goalInput.parse({
         title: current!.title,
@@ -168,7 +176,7 @@ export async function saveGoal(
         plan_doc_id: current!.plan_doc_id,
         project_id: current!.project_id,
         status: current!.status,
-        ...goalUpdate.parse(raw),
+        ...patch,
       })
     : goalInput.parse(raw);
   if (parsed.project_id)
@@ -300,6 +308,31 @@ export async function saveGoalCheckin(
   if (!row) fail(404, "Goal not found.");
 }
 
+/** Current unfinished work linked to a visible goal, shared by explicit reminder actions. */
+export async function goalWork(db: Queryable, userId: string, id: string) {
+  const goal = await readGoal(db, userId, id, true);
+  if (!goal) fail(404, "Goal not found.");
+  if (goal.status !== "active") return [];
+  const prefs = await loadPrefs(db, userId);
+  const deadline = goal.target_date
+    ? dayTime(addDays(goal.target_date, 1), 0, prefs.timezone).toISOString()
+    : null;
+  return (
+    await db.query<{ id: string; remaining_minutes: number }>(
+      `SELECT i.id, greatest(coalesce(i.estimate_minutes,30) - i.spent_minutes -
+        coalesce((SELECT sum(extract(epoch FROM (b.end_at-b.start_at))/60)
+          FROM time_blocks b WHERE b.user_id=$1 AND b.item_id=i.id
+            AND b.end_at > now() AND b.outcome IS NULL AND ($4::timestamptz IS NULL OR b.end_at <= $4)),0),0)::float AS remaining_minutes
+       FROM items i WHERE i.user_id=$1 AND i.kind='task' AND i.status NOT IN ('done','cancelled')
+         AND ${visibleItems("i", { user: "$1", ai: true })}
+         AND (i.project_id=$2 OR EXISTS(SELECT 1 FROM doc_task_links l JOIN docs d ON d.id=l.doc_id
+           WHERE l.item_id=i.id AND l.doc_id=$3 AND ${visibleDocs("d", { user: "$1", ai: true })}))
+       ORDER BY i.due_at NULLS LAST,i.created_at,i.id`,
+      [userId, goal.project_id, goal.plan_doc_id, deadline],
+    )
+  ).rows.filter((task) => task.remaining_minutes > 0);
+}
+
 export async function assistantGoalRoutes(app: FastifyInstance) {
   app.get("/me/goals", async (r) => {
     const user = await authenticate(r);
@@ -320,30 +353,9 @@ export async function assistantGoalRoutes(app: FastifyInstance) {
     await transaction((db) => deleteGoal(db, user.id, idParam(r)));
     return { deleted: true };
   });
-  // Reminder booking reads current owned work; ordinary planner writes create the session.
   app.get("/me/goals/:id/work", async (r) => {
     const user = await authenticate(r);
-    const goal = await readGoal(pool, user.id, idParam(r), true);
-    if (!goal) fail(404, "Goal not found.");
-    if (goal.status !== "active") return [];
-    const prefs = await loadPrefs(pool, user.id);
-    const deadline = goal.target_date
-      ? dayTime(addDays(goal.target_date, 1), 0, prefs.timezone).toISOString()
-      : null;
-    return (
-      await pool.query<{ id: string; remaining_minutes: number }>(
-        `SELECT i.id, greatest(coalesce(i.estimate_minutes,30) - i.spent_minutes -
-        coalesce((SELECT sum(extract(epoch FROM (b.end_at-b.start_at))/60)
-          FROM time_blocks b WHERE b.user_id=$1 AND b.item_id=i.id
-            AND b.end_at > now() AND b.outcome IS NULL AND ($4::timestamptz IS NULL OR b.end_at <= $4)),0),0)::float AS remaining_minutes
-       FROM items i WHERE i.user_id=$1 AND i.kind='task' AND i.status NOT IN ('done','cancelled')
-         AND ${visibleItems("i", { user: "$1", ai: true })}
-         AND (i.project_id=$2 OR EXISTS(SELECT 1 FROM doc_task_links l JOIN docs d ON d.id=l.doc_id
-           WHERE l.item_id=i.id AND l.doc_id=$3 AND ${visibleDocs("d", { user: "$1", ai: true })}))
-       ORDER BY i.due_at NULLS LAST,i.created_at,i.id`,
-        [user.id, goal.project_id, goal.plan_doc_id, deadline],
-      )
-    ).rows.filter((task) => task.remaining_minutes > 0);
+    return goalWork(pool, user.id, idParam(r));
   });
   app.get("/me/goals/:id/checkins", async (r) => {
     const user = await authenticate(r);

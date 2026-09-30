@@ -104,3 +104,31 @@ test("restored polling bypasses a cached running response to expose the saved qu
   );
   assert.deepEqual(question, waiting);
 });
+
+test("run polling honors Retry-After without adding its normal delay", async () => {
+  let reads = 0;
+  const client = new OrbynClient({
+    baseUrl: "http://orbyn.test",
+    getToken: () => null,
+    fetch: async () => {
+      reads++;
+      return reads === 1
+        ? Response.json(
+            { message: "Slow down" },
+            { status: 429, headers: { "Retry-After": "0" } },
+          )
+        : Response.json({ state: "done", answer: "Resumed" });
+    },
+  });
+  const started = Date.now();
+  const result = await client.pollAssistantRun("run", {
+    chatId: "chat",
+    turnId: "turn",
+  });
+  assert.equal(result.answer, "Resumed");
+  assert.equal(reads, 2);
+  assert.ok(
+    Date.now() - started < 3000,
+    "Retry-After zero must avoid the old ten-second recovery pause",
+  );
+});

@@ -24,6 +24,7 @@ import {
 import {
   runSpecialist,
   type SpecialistReport,
+  type SpecialistCheckpoint,
   type SpecialistTask,
 } from "./specialist.js";
 import { checkMergedPlan } from "./checker.js";
@@ -96,7 +97,12 @@ export type LeadState = {
   token_budget: number;
   answer_to_person?: string;
   loop?: AgentLoopCheckpoint;
-  pending_delegate?: { tasks: SpecialistTask[]; reports: SpecialistReport[] };
+  completed_delegate?: { call_id: string; content: string };
+  pending_delegate?: {
+    tasks: SpecialistTask[];
+    reports: SpecialistReport[];
+    specialists?: Record<string, SpecialistCheckpoint>;
+  };
 };
 
 export type LeadProgress = (
@@ -207,6 +213,7 @@ export async function runLead(input: {
   progress?: LeadProgress;
   signal?: AbortSignal;
   checkpoint?: () => Promise<void>;
+  recordSources?: (value: unknown, targets?: string[]) => Promise<void>;
 }): Promise<{ state: LeadState; partial: boolean }> {
   const { state } = input;
 
@@ -262,6 +269,8 @@ export async function runLead(input: {
   const executeTool = async (call: ToolCall): Promise<LoopToolResult> => {
     const args = jsonArgs(call.arguments);
     if (call.name === "delegate") {
+      if (state.completed_delegate?.call_id === call.id)
+        return { content: state.completed_delegate.content, isError: false };
       const parsed = delegateInput.safeParse(args);
       if (!parsed.success)
         return err(
@@ -315,6 +324,13 @@ export async function runLead(input: {
           ai: input.ai,
           principal: input.principal,
           task,
+          resume: state.pending_delegate!.specialists?.[task.id],
+          checkpoint: async (checkpoint) => {
+            state.pending_delegate!.specialists ??= {};
+            state.pending_delegate!.specialists[task.id] = checkpoint;
+            await input.checkpoint?.();
+          },
+          recordSources: input.recordSources,
           timezone: input.timezone,
           identity: input.identity,
           memory: state.memory,
@@ -373,8 +389,6 @@ export async function runLead(input: {
       const madeProgress = changed(state, reports, added);
       state.stagnant_rounds = madeProgress ? 0 : state.stagnant_rounds + 1;
       state.reports.push(...reports);
-      delete state.pending_delegate;
-      await input.checkpoint?.();
       const answer = reports.map((report) => ({
         specialist: report.specialist,
         status: report.status,
@@ -384,6 +398,12 @@ export async function runLead(input: {
         options: report.options,
         open_questions: report.open_questions,
       }));
+      state.completed_delegate = {
+        call_id: call.id,
+        content: JSON.stringify(answer),
+      };
+      delete state.pending_delegate;
+      await input.checkpoint?.();
       input.progress?.("Specialist reports ready", {
         step: state.lead_steps,
         kind: "result",
@@ -471,6 +491,10 @@ export async function runLead(input: {
         log: (error) =>
           input.log?.error({ err: error }, "Assistant read failed"),
       });
+      await input.recordSources?.(
+        result.result.structuredContent,
+        result.targets,
+      );
       return {
         content: result.result.structuredContent
           ? JSON.stringify(result.result.structuredContent)
@@ -515,8 +539,21 @@ export async function runLead(input: {
       forceToolLoop: true,
       signal: input.signal,
       resume: state.loop,
+      completedTool: (call) =>
+        state.completed_delegate?.call_id === call.id
+          ? { content: state.completed_delegate.content, isError: false }
+          : undefined,
       checkpoint: async (loop) => {
         state.loop = loop;
+        if (
+          state.completed_delegate &&
+          loop.messages.some(
+            (message) =>
+              message.role === "tool" &&
+              message.tool_call_id === state.completed_delegate!.call_id,
+          )
+        )
+          delete state.completed_delegate;
         await input.checkpoint?.();
       },
       tokenBudget: {

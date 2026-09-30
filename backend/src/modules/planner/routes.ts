@@ -98,6 +98,7 @@ import { loadLearning } from "./learning.js";
 import { upNext } from "./next.js";
 import {
   applyHabitPlan,
+  checkInHabitBlock,
   createFrame,
   createPlace,
   deleteFrame,
@@ -400,33 +401,7 @@ export async function plannerRoutes(app: FastifyInstance) {
     if (isApiKeyRequest(r))
       fail(403, "Only you can check in your habit sessions.");
     const input = habitCheckInInput.parse(r.body);
-    return transaction(async (db) => {
-      const block = (
-        await db.query<{
-          id: string;
-          outcome: string | null;
-          outcome_at: Date | null;
-          version: number;
-        }>(
-          `UPDATE habit_blocks SET outcome=$3, outcome_at=CASE WHEN $3::text IS NULL THEN NULL ELSE now() END, version=version+1
-         WHERE id=$1 AND user_id=$2 AND version=$4 RETURNING id,outcome,outcome_at,version`,
-          [id, user.id, input.outcome, input.version],
-        )
-      ).rows[0];
-      if (!block) {
-        if (
-          !(
-            await db.query(
-              "SELECT 1 FROM habit_blocks WHERE id=$1 AND user_id=$2",
-              [id, user.id],
-            )
-          ).rowCount
-        )
-          fail(404, "Habit session not found.");
-        fail(409, "This habit session changed. Refresh it before checking in.");
-      }
-      return { ...block, outcome_at: block.outcome_at?.toISOString() ?? null };
-    });
+    return transaction((db) => checkInHabitBlock(db, user.id, id, input));
   });
 
   app.delete("/planner/habits/blocks/:id", async (r, reply) => {
@@ -658,7 +633,13 @@ export async function plannerRoutes(app: FastifyInstance) {
 
   app.delete("/blocks/:id", async (r, reply) => {
     const u = await authenticate(r);
-    await transaction((db) => removeSession(db, u.id, idParam(r)));
+    const input = z
+      .object({ expected_revision: z.number().int().positive().optional() })
+      .strict()
+      .parse(r.body ?? {});
+    await transaction((db) =>
+      removeSession(db, u.id, idParam(r), input.expected_revision),
+    );
     return reply.code(204).send();
   });
 

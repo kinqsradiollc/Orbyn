@@ -12,6 +12,7 @@ import { shared } from "../styles";
 import { colors } from "../theme";
 
 type Props = {
+  nightId?: string;
   visible: boolean;
   onClose: () => void;
   onDismiss?: () => void;
@@ -25,8 +26,9 @@ export function OvernightSheet(props: Props) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const load = async () => {
-    setNight(await client.latestAssistantNight());
+    setNight(await client.latestAssistantNight(props.nightId));
     setLoading(false);
   };
   useEffect(() => {
@@ -37,17 +39,17 @@ export function OvernightSheet(props: Props) {
     const refresh = () => {
       if (pending) return pending;
       pending = client
-        .latestAssistantNight()
+        .latestAssistantNight(props.nightId)
         .then(
           (value) => {
             if (alive) {
               setNight(value);
               setLoading(false);
-              setError("");
+              setLoadError("");
             }
           },
           (e) => {
-            if (alive) setError(errorText(e));
+            if (alive) setLoadError(errorText(e));
           },
         )
         .finally(() => {
@@ -69,7 +71,7 @@ export function OvernightSheet(props: Props) {
       stop();
       clearInterval(timer);
     };
-  }, [props.visible]);
+  }, [props.visible, props.nightId]);
   const act = async (operation: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
@@ -91,7 +93,22 @@ export function OvernightSheet(props: Props) {
         ? "Held changes will be applied. Runs still working or waiting for your answer stay open."
         : "Held work will be declined and applied changes will be undone where they can still be restored. Active runs stay open.",
       action === "keep" ? "Keep all" : "Undo all",
-      () => void act(() => client.reviewAssistantNight(night.id, action)),
+      () =>
+        void act(() =>
+          client.reviewAssistantNight(
+            night.id,
+            action,
+            night.runs
+              .filter(
+                (run) =>
+                  !run.restricted &&
+                  (action === "undo"
+                    ? run.state === "done" || run.state === "failed"
+                    : run.state === "done" && run.status !== "undone"),
+              )
+              .map((run) => ({ id: run.id, token: run.decision_token })),
+          ),
+        ),
       action === "undo",
     );
   };
@@ -103,7 +120,13 @@ export function OvernightSheet(props: Props) {
       onDismiss={props.onDismiss}
     >
       <ScrollView contentContainerStyle={sheetStyles.body}>
-        <ErrorBanner error={error} onDismiss={() => setError("")} />
+        <ErrorBanner
+          error={error || loadError}
+          onDismiss={() => {
+            setError("");
+            setLoadError("");
+          }}
+        />
         {loading ? (
           <Text style={shared.small}>Loading your night…</Text>
         ) : !night ? (
@@ -135,7 +158,10 @@ export function OvernightSheet(props: Props) {
                 disabled={
                   busy ||
                   !night.runs.some(
-                    (run) => run.state === "done" && run.status !== "undone",
+                    (run) =>
+                      !run.restricted &&
+                      run.state === "done" &&
+                      run.status !== "undone",
                   )
                 }
                 onPress={() => bulk("keep")}
@@ -147,6 +173,7 @@ export function OvernightSheet(props: Props) {
                   busy ||
                   !night.runs.some(
                     (run) =>
+                      !run.restricted &&
                       ["done", "failed"].includes(run.state) &&
                       run.status !== "undone",
                   )
@@ -262,7 +289,9 @@ function RunCard({
             title="Approve"
             disabled={busy}
             onPress={() =>
-              void act(() => client.approveAssistantRun(run.job_id, true))
+              void act(() =>
+                client.approveAssistantRun(run.job_id, true, run.approval!.id),
+              )
             }
           />
           <Button
@@ -270,7 +299,9 @@ function RunCard({
             secondary
             disabled={busy}
             onPress={() =>
-              void act(() => client.approveAssistantRun(run.job_id, false))
+              void act(() =>
+                client.approveAssistantRun(run.job_id, false, run.approval!.id),
+              )
             }
           />
         </View>
@@ -285,7 +316,13 @@ function RunCard({
               secondary
               disabled={busy}
               onPress={() =>
-                void act(() => client.answerAssistantRun(run.job_id, choice))
+                void act(() =>
+                  client.answerAssistantRun(
+                    run.job_id,
+                    choice,
+                    run.question!.id,
+                  ),
+                )
               }
             />
           ))}
@@ -304,7 +341,11 @@ function RunCard({
             disabled={busy || !answer.trim()}
             onPress={() =>
               void act(async () => {
-                await client.answerAssistantRun(run.job_id, answer.trim());
+                await client.answerAssistantRun(
+                  run.job_id,
+                  answer.trim(),
+                  run.question!.id,
+                );
                 setAnswer("");
               })
             }
@@ -333,6 +374,7 @@ function RunCard({
           disabled={
             busy ||
             run.state !== "done" ||
+            run.restricted ||
             run.status === "undone" ||
             (pending && !chosen.size)
           }
@@ -355,6 +397,7 @@ function RunCard({
           disabled={
             busy ||
             !["done", "failed"].includes(run.state) ||
+            run.restricted ||
             run.status === "undone"
           }
           onPress={() => void act(() => client.undoAssistantNightRun(run.id))}

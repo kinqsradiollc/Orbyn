@@ -523,6 +523,8 @@ export type DocImportSource = {
 };
 
 export type DocComment = {
+  /** Monotonic server revision for conditional Undo. */
+  revision?: number;
   id: string;
   doc_id: string;
   user_id: string;

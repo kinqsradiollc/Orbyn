@@ -1,3 +1,4 @@
+import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -23,13 +24,14 @@ import { idParam } from "../../lib/params.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { createDoc } from "../docs/service.js";
 
+import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+
 const PER_PROJECT = 50;
 const MAX_TRACE = 4_000;
 const projectSeen = visibleProjects("p");
 // Assistant history is itself AI data: a project kept out of AI, and the
 // chats scoped to it, must stay invisible here as well.
-const PROJECT_VISIBLE =
-  "(c.project_id IS NULL OR (" + projectSeen + " AND NOT p.assistant_off))";
+const PROJECT_VISIBLE = assistantChatVisible();
 const SUMMARY = `c.id, c.project_id, p.name AS project_name, c.title, c.pinned,
   jsonb_array_length(c.turns)::int AS turn_count, c.created_at, c.last_used_at,
   c.summary_doc_id, c.swept_at,
@@ -441,6 +443,26 @@ export async function readAiChat(
     )
   ).rows[0];
   if (!row) fail(404, "Chat not found");
+  const rawTurns = turnsOf(row.turns);
+  const nudgeIds = rawTurns.flatMap((turn) =>
+    turn.role === "assistant" && turn.nudge ? [turn.nudge.id] : [],
+  );
+  const visibleNudges = new Set(
+    nudgeIds.length
+      ? (
+          await db.query<{ id: string }>(
+            `SELECT n.id FROM assistant_nudges n WHERE n.user_id=$1 AND n.id=ANY($2::uuid[]) AND ${assistantSourceVisible("n.entity_kind", "n.entity_id")}`,
+            [userId, nudgeIds],
+          )
+        ).rows.map((nudge) => nudge.id)
+      : [],
+  );
+  const visibleTurns = rawTurns.filter(
+    (turn) =>
+      turn.role !== "assistant" ||
+      !turn.nudge ||
+      visibleNudges.has(turn.nudge.id),
+  );
   const activeJob =
     (
       await db.query<NonNullable<AiChat["active_job"]>>(
@@ -457,7 +479,7 @@ export async function readAiChat(
     project_name: row.project_name,
     title: row.title,
     pinned: row.pinned,
-    turn_count: turnsOf(row.turns).length,
+    turn_count: visibleTurns.length,
     created_at: row.created_at.toISOString(),
     last_used_at: row.last_used_at.toISOString(),
     summary_doc_id: row.summary_doc_id,
@@ -469,7 +491,7 @@ export async function readAiChat(
         : "working"
       : null,
     active_job: activeJob,
-    turns: row.swept_at ? [] : turnsOf(row.turns),
+    turns: row.swept_at ? [] : visibleTurns,
     trace: row.swept_at ? [] : traceOf(row.trace),
   };
 }
@@ -479,70 +501,76 @@ async function updateChat(
   id: string,
   patch: z.output<typeof updateAiChatInput>,
 ) {
-  await transaction(async (db) => {
-    const row = (
-      await db.query<{ turns: unknown; project_id: string | null }>(
-        `SELECT turns, project_id FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE`,
-        [id, userId],
-      )
-    ).rows[0];
-    if (!row) fail(404, "Chat not found");
-    // A chat in a project the person can no longer see (or that is kept
-    // out of the assistant) is not theirs to change here.
-    if (row.project_id) {
-      const project = await db.query(
-        `SELECT 1 FROM projects p WHERE p.id = $2 AND ${projectSeen} AND NOT p.assistant_off`,
-        [userId, row.project_id],
-      );
-      if (!project.rowCount) fail(404, "Chat not found");
-    }
-    let turns = turnsOf(row.turns);
-    if (patch.turn_id && patch.outcome) {
-      let changed = false;
-      turns = turns.map((turn) => {
-        if (turn.role !== "assistant" || turn.turn_id !== patch.turn_id)
-          return turn;
-        changed = true;
-        return {
-          ...turn,
-          outcome: patch.outcome,
-          history_text:
-            turn.text +
-            (turn.nudge
-              ? patch.outcome === "discarded"
-                ? "\n\n(Reminder skipped.)"
-                : ""
-              : patch.outcome === "applied"
-                ? "\n\n(Proposed changes were approved and saved.)"
-                : patch.outcome === "discarded"
-                  ? "\n\n(Proposed changes were discarded; nothing changed.)"
-                  : ""),
-        };
-      });
-      if (!changed) fail(404, "Chat turn not found");
-    }
-    // Renaming, pinning or recording an outcome is not using the chat, so
-    // it leaves last_used_at (the seven-day compaction clock) alone.
-    const assignments: string[] = [];
-    const values: unknown[] = [id, userId];
-    if (patch.title !== undefined) {
-      values.push(patch.title);
-      assignments.push(`title = $${values.length}`);
-    }
-    if (patch.pinned !== undefined) {
-      values.push(patch.pinned);
-      assignments.push(`pinned = $${values.length}`);
-    }
-    if (patch.turn_id) {
-      values.push(JSON.stringify(turns));
-      assignments.push(`turns = $${values.length}::jsonb`);
-    }
-    if (!assignments.length) return;
-    await db.query(
-      `UPDATE ai_chats SET ${assignments.join(", ")} WHERE id = $1 AND user_id = $2`,
-      values,
+  return transaction((db) => updateChatInTransaction(db, userId, id, patch));
+}
+export async function updateChatInTransaction(
+  db: import("../../db/pool.js").Db,
+  userId: string,
+  id: string,
+  patch: z.output<typeof updateAiChatInput>,
+) {
+  const row = (
+    await db.query<{ turns: unknown; project_id: string | null }>(
+      `SELECT turns, project_id FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [id, userId],
+    )
+  ).rows[0];
+  if (!row) fail(404, "Chat not found");
+  // A chat in a project the person can no longer see (or that is kept
+  // out of the assistant) is not theirs to change here.
+  if (row.project_id) {
+    const project = await db.query(
+      `SELECT 1 FROM projects p WHERE p.id = $2 AND ${projectSeen} AND NOT p.assistant_off`,
+      [userId, row.project_id],
     );
-  });
+    if (!project.rowCount) fail(404, "Chat not found");
+  }
+  let turns = turnsOf(row.turns);
+  if (patch.turn_id && patch.outcome) {
+    let changed = false;
+    turns = turns.map((turn) => {
+      if (turn.role !== "assistant" || turn.turn_id !== patch.turn_id)
+        return turn;
+      changed = true;
+      return {
+        ...turn,
+        outcome: patch.outcome,
+        history_text:
+          turn.text +
+          (turn.nudge
+            ? patch.outcome === "discarded"
+              ? "\n\n(Reminder skipped.)"
+              : ""
+            : patch.outcome === "applied"
+              ? "\n\n(Proposed changes were approved and saved.)"
+              : patch.outcome === "discarded"
+                ? "\n\n(Proposed changes were discarded; nothing changed.)"
+                : ""),
+      };
+    });
+    if (!changed) fail(404, "Chat turn not found");
+  }
+  // Renaming, pinning or recording an outcome is not using the chat, so
+  // it leaves last_used_at (the seven-day compaction clock) alone.
+  const assignments: string[] = [];
+  const values: unknown[] = [id, userId];
+  if (patch.title !== undefined) {
+    values.push(patch.title);
+    assignments.push(`title = $${values.length}`);
+  }
+  if (patch.pinned !== undefined) {
+    values.push(patch.pinned);
+    assignments.push(`pinned = $${values.length}`);
+  }
+  if (patch.turn_id) {
+    values.push(JSON.stringify(turns));
+    assignments.push(`turns = $${values.length}::jsonb`);
+  }
+  if (!assignments.length) return;
+  await db.query(
+    `UPDATE ai_chats SET ${assignments.join(", ")} WHERE id = $1 AND user_id = $2`,
+    values,
+  );
 }
 
 async function saveChatAsNote(user: UserRow, id: string) {

@@ -674,3 +674,90 @@ test("two subscribed exams at the same time retain distinct reminder identities 
     before.map((c) => c.exam_key).sort(),
   );
 });
+
+test("targeted task revalidation performs one source query and ignores other categories", async () => {
+  const me = await person();
+  const queries: string[] = [];
+  const db = {
+    query: async (sql: string, values: unknown[]) => {
+      queries.push(sql);
+      return pool.query(sql, values);
+    },
+  } as unknown as Pick<import("../src/db/pool.js").Db, "query">;
+  const candidates = await reminderNudgeCandidates(me.id, "UTC", now, db, {
+    entity_kind: "task",
+    entity_id: me.tasks[2],
+  });
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].entity_id, me.tasks[2]);
+  assert.equal(queries.length, 1);
+  assert.equal(
+    queries.some((sql) =>
+      /FROM (goals|habits|study_exams|agent_routines|work_records)/.test(sql),
+    ),
+    false,
+  );
+});
+
+test("saved reminder cards and inbox text disappear when their project is kept out", async () => {
+  const me = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Private reminder source') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  await pool.query("UPDATE items SET project_id=$2 WHERE id=$1", [
+    me.tasks[0],
+    project,
+  ]);
+  const candidate = (
+    await reminderNudgeCandidates(me.id, "UTC", now, pool, {
+      entity_kind: "task",
+      entity_id: me.tasks[0],
+    })
+  )[0];
+  assert.equal(await postReminderNudge(me.id, "UTC", candidate, now), true);
+  const chat = (
+    await pool.query(
+      "SELECT id FROM ai_chats WHERE user_id=$1 AND origin='reminders'",
+      [me.id],
+    )
+  ).rows[0].id;
+  const { readAiChat } = await import("../src/modules/ai/chats.js");
+  const { listNotifications } =
+    await import("../src/modules/notifications/service.js");
+  assert.equal((await readAiChat(pool, me.id, chat)).turns.length, 1);
+  assert.equal((await listNotifications(pool, me.id)).length, 1);
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  assert.equal((await readAiChat(pool, me.id, chat)).turns.length, 0);
+  assert.equal((await listNotifications(pool, me.id)).length, 0);
+});
+
+test("selected revalidation stays one query with a thousand unrelated due tasks", async (t) => {
+  const me = await person();
+  await pool.query(
+    "INSERT INTO items(user_id,title,due_at) SELECT $1,'Load fixture '||n,'2049-12-30T12:00:00Z'::timestamptz FROM generate_series(1,1000)n",
+    [me.id],
+  );
+  let queries = 0;
+  const db = {
+    query: async (sql: string, values: unknown[]) => {
+      queries++;
+      return pool.query(sql, values);
+    },
+  } as unknown as Pick<import("../src/db/pool.js").Db, "query">;
+  const started = Date.now();
+  const selected = await reminderNudgeCandidates(me.id, "UTC", now, db, {
+    entity_kind: "task",
+    entity_id: me.tasks[0],
+  });
+  assert.equal(queries, 1);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].entity_id, me.tasks[0]);
+  t.diagnostic(
+    `1004-task fixture: selected revalidation ${Date.now() - started} ms; source SQL count ${queries}. Local test PostgreSQL, not a production latency estimate.`,
+  );
+});

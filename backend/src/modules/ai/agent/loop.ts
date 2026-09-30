@@ -82,11 +82,15 @@ export type AgentLoopCheckpoint = {
   seen: [string, number][];
   charged: number;
   over_budget: boolean;
+  iterations?: number;
+  final_call_used?: boolean;
 };
 
 /** Optional controls for the shared internal and specialist loop. */
 export type AgentLoopOptions = {
   resume?: AgentLoopCheckpoint;
+  /** Replay an already completed tool before retry/budget guards. */
+  completedTool?: (call: ToolCall) => LoopToolResult | undefined;
   checkpoint?: (state: AgentLoopCheckpoint) => Promise<void>;
   /** A focused instruction set instead of the built-in planner prompt. */
   systemPrompt?: string;
@@ -210,6 +214,8 @@ export async function runAgent(
   let charged = options.resume?.charged ?? 0;
   // Set once the budget ran out, for the one last answer without tools.
   let overBudget = options.resume?.over_budget ?? false;
+  let iterations = options.resume?.iterations ?? 0;
+  let finalCallUsed = options.resume?.final_call_used ?? false;
   const checkpoint = () =>
     options.checkpoint?.({
       messages: messages.map((entry) => ({
@@ -230,8 +236,11 @@ export async function runAgent(
       seen: [...seen],
       charged,
       over_budget: overBudget,
+      iterations,
+      final_call_used: finalCallUsed,
     });
 
+  const replyReserve = 8192; // At most 32 KiB of serialized output is accepted.
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -250,6 +259,7 @@ export async function runAgent(
           ...(options.signal ? [options.signal] : []),
         ]);
         const fittedMessages = fit(messages, ai);
+        let inputCharge = 0;
         if (options.tokenBudget && charged < messages.length) {
           // Only what is new since the last call counts: the prompt once,
           // then each tool result and note. The model's own replies are
@@ -266,12 +276,24 @@ export async function runAgent(
             64;
           if (
             !overBudget &&
-            options.tokenBudget.used + estimated > options.tokenBudget.limit
+            options.tokenBudget.used + estimated + replyReserve >
+              options.tokenBudget.limit
           )
             throw new AgentTokenBudgetExhausted();
-          options.tokenBudget.used += estimated;
+          inputCharge = estimated;
           charged = messages.length;
         }
+        if (options.tokenBudget) {
+          if (
+            !overBudget &&
+            options.tokenBudget.used + inputCharge + replyReserve >
+              options.tokenBudget.limit
+          )
+            throw new AgentTokenBudgetExhausted();
+          options.tokenBudget.used += inputCharge + replyReserve;
+        }
+        // Debit and persist before the provider call: a lost reply retains its reserve.
+        await checkpoint();
         const result =
           forceToolLoop && ai.structuredOutput
             ? await runGraphToolStep(ai, fittedMessages, tools, {
@@ -283,11 +305,16 @@ export async function runAgent(
                 toolsAllowed,
                 signal,
               });
-        if (options.tokenBudget)
-          options.tokenBudget.used += Math.ceil(
-            Buffer.byteLength(result.text + JSON.stringify(result.toolCalls)) /
-              4,
+        const replyBytes = Buffer.byteLength(
+          result.text + JSON.stringify(result.toolCalls),
+        );
+        if (replyBytes > replyReserve * 4)
+          throw new Error(
+            "The provider reply exceeded the bounded reply size.",
           );
+        if (options.tokenBudget)
+          options.tokenBudget.used += Math.ceil(replyBytes / 4) - replyReserve;
+        await checkpoint();
         return result;
       } catch (error) {
         if (options.signal?.aborted) throw error;
@@ -382,25 +409,28 @@ export async function runAgent(
         tool: c.name,
       });
       const key = `${c.name}|${c.arguments}`;
-      const count = (seen.get(key) ?? 0) + 1;
+      const completed = options.completedTool?.(c);
+      const count = (seen.get(key) ?? 0) + (completed ? 0 : 1);
       seen.set(key, count);
       const limited = count >= 3;
-      const output: LoopToolResult = limited
-        ? {
-            content: JSON.stringify({
-              error:
-                "You already ran this exact call twice. Use those results and move on.",
-            }),
-            isError: true,
-          }
-        : options.executeTool
-          ? await options.executeTool(c, ctx)
-          : {
+      const output: LoopToolResult =
+        completed ??
+        (limited
+          ? {
               content: JSON.stringify({
-                error: "This run does not have a tool executor.",
+                error:
+                  "You already ran this exact call twice. Use those results and move on.",
               }),
               isError: true,
-            };
+            }
+          : options.executeTool
+            ? await options.executeTool(c, ctx)
+            : {
+                content: JSON.stringify({
+                  error: "This run does not have a tool executor.",
+                }),
+                isError: true,
+              });
       messages.push({
         role: "tool",
         tool_call_id: c.id,
@@ -449,7 +479,9 @@ export async function runAgent(
     }
   }
 
+  if (overBudget && finalCallUsed) return finish(lastText, 0, true);
   for (let n = 1; n <= maxSteps; n++) {
+    iterations++;
     const last = n === maxSteps;
     if (last) messages.push({ role: "user", content: FINAL_STEP_NOTE });
     trace?.({ step: n, kind: "thinking", label: "Considering the request" });
@@ -461,6 +493,8 @@ export async function runAgent(
       // Out of budget: one last call without tools for the answer, as the
       // step limit does, instead of ending on nothing.
       overBudget = true;
+      if (finalCallUsed) return finish(lastText, n - 1, true);
+      finalCallUsed = true;
       if (!last) messages.push({ role: "user", content: FINAL_STEP_NOTE });
       try {
         const text = (await call(false)).text.trim();

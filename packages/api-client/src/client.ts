@@ -418,9 +418,10 @@ function pause(ms: number, signal?: AbortSignal) {
 }
 
 export type AssistantWaiting =
-  | { kind: "person"; question: string; choices: string[] }
+  | { kind: "person"; id: string; question: string; choices: string[] }
   | {
       kind: "approval";
+      id: string;
       question: string;
       detail: string;
       steps: unknown[];
@@ -496,6 +497,7 @@ export type OrbynClientOptions = {
 };
 
 export type RequestOptions = {
+  signal?: AbortSignal;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   /** Send without the Authorization header even if a token exists. */
@@ -616,7 +618,12 @@ export class OrbynClient {
         },
         body:
           options.body === undefined ? undefined : JSON.stringify(options.body),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: options.signal
+          ? AbortSignal.any([
+              options.signal,
+              AbortSignal.timeout(this.timeoutMs),
+            ])
+          : AbortSignal.timeout(this.timeoutMs),
       });
     // A read that meets a copy being replaced during a deploy (502/503/504
     // or a dropped connection) is tried once more; reads never change data.
@@ -627,12 +634,17 @@ export class OrbynClient {
     try {
       response = await send();
       if (retryable && [502, 503, 504].includes(response.status)) {
-        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        await pause(RETRY_DELAY_MS, options.signal);
         response = await send();
       }
     } catch (error) {
-      if (!retryable || (error as Error).name === "TimeoutError") throw error;
-      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      if (
+        !retryable ||
+        options.signal?.aborted ||
+        (error as Error).name === "TimeoutError"
+      )
+        throw error;
+      await pause(RETRY_DELAY_MS, options.signal);
       response = await send();
     }
     // Nothing changed since last time: reuse the body we already have. It is
@@ -649,6 +661,16 @@ export class OrbynClient {
         detail?: string;
         request_id?: string;
       };
+      const retryAfter = response.headers.get("Retry-After");
+      const seconds = retryAfter === null ? NaN : Number(retryAfter);
+      const retryAfterMs =
+        retryAfter === null
+          ? undefined
+          : Number.isFinite(seconds)
+            ? Math.max(0, seconds * 1000)
+            : Number.isFinite(Date.parse(retryAfter))
+              ? Math.max(0, Date.parse(retryAfter) - Date.now())
+              : undefined;
       throw new HttpError(
         response.status,
         error.message ||
@@ -657,6 +679,7 @@ export class OrbynClient {
             : "That didn't work. Try again."),
         {
           detail: error.detail,
+          retryAfterMs,
           request: {
             method,
             path: path.split("?")[0],
@@ -675,6 +698,53 @@ export class OrbynClient {
         this.cache.delete(this.cache.keys().next().value as string);
     }
     return (options.raw ? text : JSON.parse(text)) as T;
+  }
+
+  /** Durable explicit reminder decision; replaying the same choice returns its original receipt. */
+  performReminderAction(
+    card: import("@orbyn/core").ReminderNudgeCard,
+    action: import("@orbyn/core").ReminderNudgeCard["actions"][number],
+    options: {
+      day?: string;
+      minutes?: number;
+      chatId?: string;
+      turnId?: string;
+    } = {},
+  ) {
+    return this.reminderActionReceipt(card.id).then((previous) =>
+      this.request<{
+        id: string;
+        message: string;
+        undone: boolean;
+        generation: number;
+      }>("/me/assistant/reminder-actions", {
+        method: "POST",
+        body: {
+          card,
+          action,
+          options,
+          generation: previous
+            ? previous.generation + (previous.undone ? 1 : 0)
+            : 0,
+        },
+      }),
+    );
+  }
+  reminderActionReceipt(nudgeId: string) {
+    return this.request<{
+      id: string;
+      message: string;
+      undone: boolean;
+      generation: number;
+    } | null>(`/me/assistant/reminder-actions/nudges/${nudgeId}`, {
+      fresh: true,
+    });
+  }
+  undoReminderAction(id: string) {
+    return this.request<void>(`/me/assistant/reminder-actions/${id}/undo`, {
+      method: "POST",
+      body: {},
+    });
   }
 
   // ---- health ----
@@ -1195,8 +1265,8 @@ export class OrbynClient {
   projectChat(id: string) {
     return this.request<AiChat>(`/ai/chats/${id}`);
   }
-  aiChat(id: string) {
-    return this.request<AiChat>(`/ai/chats/${id}`);
+  aiChat(id: string, signal?: AbortSignal) {
+    return this.request<AiChat>(`/ai/chats/${id}`, { signal, fresh: true });
   }
   /** Save a project chat after a reply; the same id updates the same chat. */
   saveProjectChat(id: string, input: ProjectChatInput) {
@@ -1497,10 +1567,20 @@ export class OrbynClient {
       `/docs/${docId}/people`,
     );
   }
-  resolveDocComment(docId: string, commentId: string, resolved: boolean) {
+  resolveDocComment(
+    docId: string,
+    commentId: string,
+    resolved: boolean,
+    expectedRevision?: number,
+  ) {
     return this.request<DocComment>(`/docs/${docId}/comments/${commentId}`, {
       method: "PUT",
-      body: { resolved },
+      body: {
+        resolved,
+        ...(expectedRevision === undefined
+          ? {}
+          : { expected_revision: expectedRevision }),
+      },
     });
   }
   deleteDocComment(docId: string, commentId: string) {
@@ -2287,8 +2367,13 @@ export class OrbynClient {
       body: input,
     });
   }
-  deleteBlock(id: string) {
-    return this.request<void>(`/blocks/${id}`, { method: "DELETE" });
+  deleteBlock(id: string, expectedRevision?: number) {
+    return this.request<void>(`/blocks/${id}`, {
+      method: "DELETE",
+      ...(expectedRevision === undefined
+        ? {}
+        : { body: { expected_revision: expectedRevision } }),
+    });
   }
   /** Sessions that ended in the last few days and wait for "how did it go?". */
   sessionCheckIns() {
@@ -3102,8 +3187,11 @@ export class OrbynClient {
     return this.request<ReviewInbox>("/proposals");
   }
   /** Latest night with its current Review and Undo states. */
-  latestAssistantNight() {
-    return this.request<OvernightNight | null>("/me/assistant/nights/latest");
+  latestAssistantNight(id?: string) {
+    return this.request<OvernightNight | null>(
+      id ? `/me/assistant/nights/${id}` : "/me/assistant/nights/latest",
+      { fresh: true },
+    );
   }
   /** The person's channels and local quiet window for templated reminders. */
   reminderNudgeSettings() {
@@ -3142,10 +3230,14 @@ export class OrbynClient {
     });
   }
   /** Review a whole night in one transaction after the person's confirmation. */
-  reviewAssistantNight(id: string, action: "keep" | "undo") {
+  reviewAssistantNight(
+    id: string,
+    action: "keep" | "undo",
+    runs: { id: string; token: string }[],
+  ) {
     return this.request<OvernightNight | null>(
       `/me/assistant/nights/${id}/${action}-all`,
-      { method: "POST", body: {} },
+      { method: "POST", body: { runs } },
     );
   }
   /** How many proposals wait, for the badge. */
@@ -3313,11 +3405,18 @@ export class OrbynClient {
   deleteItem(
     id: string,
     version: number,
-    options: { scope?: EditScope; occurrence?: string } = {},
+    options: {
+      scope?: EditScope;
+      occurrence?: string;
+      expectedBlocks?: { id: string; revision: number }[];
+    } = {},
   ) {
     const scope = scopeQuery(options).replace(/^\?/, "&");
     return this.request<void>(`/items/${id}?version=${version}${scope}`, {
       method: "DELETE",
+      ...(options.expectedBlocks
+        ? { body: { expected_blocks: options.expectedBlocks } }
+        : {}),
     });
   }
 
@@ -3478,7 +3577,10 @@ export class OrbynClient {
       delay = Math.min(delay * 1.5, CHAT_POLL_MAX_MS);
       let job: ChatJob;
       try {
-        job = await this.request<ChatJob>(`/ai/chat/${id}`, { fresh: true });
+        job = await this.request<ChatJob>(`/ai/chat/${id}`, {
+          fresh: true,
+          signal,
+        });
       } catch (error) {
         if (signal?.aborted) throw abortError();
         const transient =
@@ -3490,7 +3592,10 @@ export class OrbynClient {
         // Keep the same run attached across rate limits and network outages.
         // The existing deadline bounds retries; the pause remains abortable.
         if (error instanceof HttpError && error.statusCode === 429)
-          await pause(10000, signal);
+          delay = Math.min(
+            error.retryAfterMs ?? 10000,
+            Math.max(0, deadline - Date.now()),
+          );
         continue;
       }
       if (signal?.aborted) throw abortError();
@@ -3545,20 +3650,21 @@ export class OrbynClient {
       "That took too long to answer. Try again, or ask for less at once.",
     );
   }
-  answerAssistantRun(id: string, answer: string) {
+  answerAssistantRun(id: string, answer: string, waitingId: string) {
     return this.request<{ accepted: boolean; job_id: string }>(
       `/ai/chat/${id}/answer`,
-      { method: "POST", body: { answer } },
+      { method: "POST", body: { answer, waiting_id: waitingId } },
     );
   }
   approveAssistantRun(
     id: string,
     approved: boolean,
+    waitingId: string,
     scope: "once" | "goal" | "routine" | "always" = "once",
   ) {
     return this.request<{ accepted: boolean; job_id: string }>(
       `/ai/chat/${id}/approve`,
-      { method: "POST", body: { approved, scope } },
+      { method: "POST", body: { approved, scope, waiting_id: waitingId } },
     );
   }
   stopAssistantRun(id: string) {
@@ -3760,6 +3866,8 @@ export class OrbynClient {
   }) {
     return this.request<{
       item_id: string;
+      item_version: number;
+      block_versions: { id: string; revision: number }[];
       block_ids: string[];
       minutes: number;
     }>("/study/revision/apply", { method: "POST", body: input });

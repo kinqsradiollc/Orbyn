@@ -88,7 +88,7 @@ export const JOINS = `LEFT JOIN teams t ON t.id = d.team_id
  * A comment as the clients read it: its anchor, its thread, and the people
  * named in it gathered into one array so a card needs no second request.
  */
-export const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, u.name AS author, c.body,
+export const COMMENT_SELECT = `SELECT c.id, c.doc_id, c.user_id, c.revision, u.name AS author, c.body,
          c.block_id, c.quote, c.range_start, c.range_end, c.parent_id,
          c.detached, c.resolved_at, c.created_at, ${viaAgentColumn("c")},
          coalesce((SELECT json_agg(json_build_object('user_id', mu.id, 'name', mu.name)

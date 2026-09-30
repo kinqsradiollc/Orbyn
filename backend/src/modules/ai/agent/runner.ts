@@ -1,7 +1,8 @@
+import { flushAssistantAwayNotices } from "./notices.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import { withAssistantLease } from "./lease.js";
-import { pool } from "../../../db/pool.js";
+import { pool, transaction } from "../../../db/pool.js";
 import type { UserRow } from "../../../lib/auth.js";
 import {
   assistantRunStateFor,
@@ -12,9 +13,21 @@ import {
 
 /** One claim is atomic across AI replicas; provider calls never hold the DB lock. */
 export async function claimAssistantJob(claimedBy: string) {
-  const row = (
-    await pool.query<{ id: string; user_id: string; run_state: unknown }>(
-      `WITH candidate AS (
+  return transaction(async (db) => {
+    // Serialize the short claim only, enforcing the same eight-slot limit across
+    // every AI replica and worker fallback without locking during provider calls.
+    await db.query(
+      "SELECT pg_advisory_xact_lock(hashtext('assistant-global-slots'))",
+    );
+    const occupied = (
+      await db.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM ai_jobs WHERE state='running' AND run_state->>'version'='1' AND lease_until > now()",
+      )
+    ).rows[0].count;
+    if (occupied >= 8) return null;
+    const row = (
+      await db.query<{ id: string; user_id: string; run_state: unknown }>(
+        `WITH candidate AS (
          SELECT id FROM ai_jobs
          WHERE state = 'queued' AND run_state->>'version' = '1'
            AND run_state->'request' IS NOT NULL
@@ -24,10 +37,11 @@ export async function claimAssistantJob(claimedBy: string) {
          lease_until = now() + interval '60 seconds', heartbeat_at = now()
        FROM candidate WHERE j.id = candidate.id
        RETURNING j.id, j.user_id, j.run_state`,
-      [claimedBy],
-    )
-  ).rows[0];
-  return row ?? null;
+        [claimedBy],
+      )
+    ).rows[0];
+    return row ?? null;
+  });
 }
 
 /** A bounded runner shared by the AI service and optional worker fallback. */
@@ -45,6 +59,7 @@ export function startAssistantRunner(
     try {
       if (Date.now() - lastRecovery >= 1000) {
         await failStaleAssistantJobs();
+        await flushAssistantAwayNotices();
         lastRecovery = Date.now();
       }
       while (!stopping && active.size < 8) {

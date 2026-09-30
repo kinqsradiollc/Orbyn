@@ -152,6 +152,7 @@ type Row = {
 function brief(row: Row, timezone: string) {
   return {
     id: row.id,
+    source_ref: `${row.kind === "event" ? "event" : "task"}:${row.id}`,
     title: clean(row.title, 200),
     kind: row.kind,
     status: row.status,
@@ -321,6 +322,7 @@ export async function overview(ctx: AgentContext) {
     // The top of the app's own order, so even a provider without tools can
     // answer "what should I do first?" from the data it is given.
     suggested_order: (await rankTasks(ctx, { limit: 5 })).tasks.map((t) => ({
+      id: `task:${t.id}`,
       title: t.title,
       when: t.when,
       why: t.why,

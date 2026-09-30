@@ -63,7 +63,7 @@ type Props = {
   onOpenSetting?: (id: string) => void;
   /** Reopens a saved assistant chat, including its active run. */
   onOpenChat?: (id: string) => void;
-  onOpenOvernight?: () => void;
+  onOpenOvernight?: (id: string) => void;
 };
 
 const ICONS: Partial<Record<NonNullable<Notice["kind"]>, LucideIcon>> = {
@@ -324,7 +324,7 @@ export function NotificationsView({
                     className="secondary notice-action"
                     onClick={() => {
                       if (!n.read) onRead(n);
-                      onOpenOvernight();
+                      onOpenOvernight(n.ref!.slice("overnight:".length));
                     }}
                   >
                     <Bot size={14} /> Review Overnight

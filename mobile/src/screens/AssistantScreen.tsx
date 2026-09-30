@@ -144,6 +144,7 @@ export function AssistantScreen({
   const {
     turns,
     thinking,
+    restoringChat,
     runProgress,
     answerWaiting,
     approveWaiting,
@@ -472,6 +473,15 @@ export function AssistantScreen({
         </FadeIn>
       )}
 
+      {restoringChat && (
+        <Text
+          accessibilityRole="text"
+          accessibilityLiveRegion="polite"
+          style={s.welcomeLine}
+        >
+          {restoringChat}
+        </Text>
+      )}
       <View style={s.thread}>
         {turns.map((turn) =>
           turn.role === "user" ? (
@@ -718,6 +728,7 @@ export function AssistantComposer({
     message,
     setMessage,
     thinking,
+    restoringChat,
     runProgress,
     ask,
     stopRun,

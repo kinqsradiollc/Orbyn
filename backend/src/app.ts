@@ -1,3 +1,4 @@
+import { reminderActionRoutes } from "./modules/assistant-workspace/reminder-actions.js";
 import { systemRoutes } from "./modules/system/routes.js";
 import type { FastifyPluginAsync } from "fastify";
 import { createService } from "./services/http.js";
@@ -108,6 +109,7 @@ export const serviceModules: Record<
     // Scheduled routines and approval scopes for the built-in assistant (Muse M9).
     assistantRoutineRoutes,
     overnightRoutes,
+    reminderActionRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents
     // propose, and undoing what agents changed.

@@ -6,6 +6,7 @@ import {
   frameInput,
   frameUpdate,
   habitApplyInput,
+  habitCheckInInput,
   habitPlanInput,
   habitUpdate,
   localDateKey,
@@ -431,12 +432,14 @@ export async function applyHabitPlan(
     created.push(id);
     busy.push({ start_at: b.start_at, end_at: b.end_at });
   }
-  return habitBlocksIn(
-    db,
-    userId,
-    new Date(Math.min(...starts)),
-    new Date(Math.max(...ends) + 1),
-  );
+  return (
+    await habitBlocksIn(
+      db,
+      userId,
+      new Date(Math.min(...starts)),
+      new Date(Math.max(...ends) + 1),
+    )
+  ).filter((block) => created.includes(block.id));
 }
 
 /** A place, with the travel time to it. */
@@ -534,4 +537,38 @@ export async function plannerAnalytics(
     })),
     by_tag: byTag.rows.map((x) => ({ name: x.name, minutes: x.minutes })),
   };
+}
+
+/** Check in a habit session under its version, shared by first-party action transactions. */
+export async function checkInHabitBlock(
+  db: import("../../db/pool.js").Db,
+  userId: string,
+  id: string,
+  input: import("zod").z.output<typeof habitCheckInInput>,
+) {
+  const block = (
+    await db.query<{
+      id: string;
+      outcome: "done" | "skipped" | null;
+      outcome_at: Date | null;
+      version: number;
+    }>(
+      `UPDATE habit_blocks SET outcome=$3, outcome_at=CASE WHEN $3::text IS NULL THEN NULL ELSE now() END, version=version+1
+         WHERE id=$1 AND user_id=$2 AND version=$4 RETURNING id,outcome,outcome_at,version`,
+      [id, userId, input.outcome, input.version],
+    )
+  ).rows[0];
+  if (!block) {
+    if (
+      !(
+        await db.query(
+          "SELECT 1 FROM habit_blocks WHERE id=$1 AND user_id=$2",
+          [id, userId],
+        )
+      ).rowCount
+    )
+      fail(404, "Habit session not found.");
+    fail(409, "This habit session changed. Refresh it before checking in.");
+  }
+  return { ...block, outcome_at: block.outcome_at?.toISOString() ?? null };
 }

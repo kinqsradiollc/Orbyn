@@ -74,7 +74,7 @@ async function held(user: Person, nightId?: string) {
     ).rows[0].id;
   const queued = (
     await pool.query(
-      "INSERT INTO ai_jobs(user_id, state, result) VALUES($1, 'done', $2::jsonb) RETURNING id",
+      "INSERT INTO ai_jobs(user_id, state, result, sources_checked) VALUES($1, 'done', $2::jsonb, true) RETURNING id",
       [
         user.id,
         JSON.stringify({
@@ -273,6 +273,15 @@ test("bulk Keep rolls back earlier applications if another run expired; bulk Und
   const me = await person();
   const first = await held(me);
   const second = await held(me, first.night);
+  const snapshot = (
+    await h.call(me.token, "GET", "/me/assistant/nights/latest")
+  ).json();
+  const confirmed = {
+    runs: snapshot.runs.map((run: { id: string; decision_token: string }) => ({
+      id: run.id,
+      token: run.decision_token,
+    })),
+  };
   await pool.query(
     "UPDATE proposals SET expires_at = now() - interval '1 second' WHERE id = $1",
     [first.proposal],
@@ -281,7 +290,7 @@ test("bulk Keep rolls back earlier applications if another run expired; bulk Und
     me.token,
     "POST",
     `/me/assistant/nights/${first.night}/keep-all`,
-    {},
+    confirmed,
   );
   assert.equal(keep.statusCode, 409, keep.body);
   assert.equal(
@@ -297,11 +306,21 @@ test("bulk Keep rolls back earlier applications if another run expired; bulk Und
     ).rows[0].status,
     "pending",
   );
+  const refreshed = (
+    await h.call(me.token, "GET", "/me/assistant/nights/latest")
+  ).json();
   const undo = await h.call(
     me.token,
     "POST",
     `/me/assistant/nights/${first.night}/undo-all`,
-    {},
+    {
+      runs: refreshed.runs.map(
+        (run: { id: string; decision_token: string }) => ({
+          id: run.id,
+          token: run.decision_token,
+        }),
+      ),
+    },
   );
   assert.equal(undo.statusCode, 200, undo.body);
   assert.ok(
@@ -366,6 +385,7 @@ test("Overnight exposes saved person questions only while the owned run is waiti
         state: {
           waiting: {
             kind: "person",
+            id: "00000000-0000-4000-8000-000000000001",
             question: "Which notes should I use?",
             choices: ["Lecture 1", "Lecture 2"],
           },
@@ -376,6 +396,7 @@ test("Overnight exposes saved person questions only while the owned run is waiti
   const read = await h.call(user.token, "GET", "/me/assistant/nights/latest");
   assert.equal(read.statusCode, 200);
   assert.deepEqual(read.json().runs[0].question, {
+    id: "00000000-0000-4000-8000-000000000001",
     text: "Which notes should I use?",
     choices: ["Lecture 1", "Lecture 2"],
   });
@@ -398,6 +419,7 @@ test("Overnight exposes live approval summaries and clears them after the decisi
         state: {
           waiting: {
             kind: "approval",
+            id: "00000000-0000-4000-8000-000000000002",
             question: "Apply this plan?",
             summary: "Two sessions",
             detail: "Your approval is needed",
@@ -410,6 +432,7 @@ test("Overnight exposes live approval summaries and clears them after the decisi
   const read = await h.call(user.token, "GET", "/me/assistant/nights/latest");
   assert.equal(read.statusCode, 200);
   assert.deepEqual(read.json().runs[0].approval, {
+    id: "00000000-0000-4000-8000-000000000002",
     text: "Apply this plan?",
     summary: "Two sessions",
     detail: "Your approval is needed",
@@ -438,4 +461,254 @@ test("a declined approval is shown as undone even for older kept night rows", as
   assert.equal(response.statusCode, 200);
   assert.equal(response.json().runs[0].status, "undone");
   assert.equal(response.json().runs[0].approval, null);
+});
+
+test("bulk consent refuses newly finished runs and stale decision tokens without applying anything", async () => {
+  const me = await person();
+  const first = await held(me);
+  const snapshot = (
+    await h.call(me.token, "GET", "/me/assistant/nights/latest")
+  ).json();
+  const reviewed = {
+    runs: snapshot.runs.map((run: { id: string; decision_token: string }) => ({
+      id: run.id,
+      token: run.decision_token,
+    })),
+  };
+  const second = await held(me, first.night);
+  const expanded = await h.call(
+    me.token,
+    "POST",
+    `/me/assistant/nights/${first.night}/keep-all`,
+    reviewed,
+  );
+  assert.equal(expanded.statusCode, 409, expanded.body);
+  assert.equal(
+    (await pool.query("SELECT 1 FROM items WHERE user_id=$1", [me.id]))
+      .rowCount,
+    0,
+  );
+  const current = (
+    await h.call(me.token, "GET", "/me/assistant/nights/latest")
+  ).json();
+  const confirmed = {
+    runs: current.runs.map((run: { id: string; decision_token: string }) => ({
+      id: run.id,
+      token: run.decision_token,
+    })),
+  };
+  await pool.query(
+    "UPDATE assistant_night_runs SET summary='Changed reviewed work' WHERE id=$1",
+    [second.run],
+  );
+  const stale = await h.call(
+    me.token,
+    "POST",
+    `/me/assistant/nights/${first.night}/keep-all`,
+    confirmed,
+  );
+  assert.equal(stale.statusCode, 409, stale.body);
+  assert.equal(
+    (await pool.query("SELECT 1 FROM items WHERE user_id=$1", [me.id]))
+      .rowCount,
+    0,
+  );
+  const fresh = (
+    await h.call(me.token, "GET", "/me/assistant/nights/latest")
+  ).json();
+  const applied = await h.call(
+    me.token,
+    "POST",
+    `/me/assistant/nights/${first.night}/keep-all`,
+    {
+      runs: fresh.runs.map((run: { id: string; decision_token: string }) => ({
+        id: run.id,
+        token: run.decision_token,
+      })),
+    },
+  );
+  assert.equal(applied.statusCode, 200, applied.body);
+  assert.equal(
+    (await pool.query("SELECT 1 FROM items WHERE user_id=$1", [me.id]))
+      .rowCount,
+    4,
+  );
+});
+
+test("historical night reads preserve the selected night and deny other owners", async () => {
+  const me = await person();
+  const other = await person();
+  const older = await held(me);
+  const newer = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day,status) VALUES($1,'2050-01-02','done') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  assert.equal(
+    (await h.call(me.token, "GET", "/me/assistant/nights/latest")).json().id,
+    newer,
+  );
+  const historical = await h.call(
+    me.token,
+    "GET",
+    `/me/assistant/nights/${older.night}`,
+  );
+  assert.equal(historical.statusCode, 200);
+  assert.equal(historical.json().id, older.night);
+  assert.equal(historical.json().runs[0].id, older.run);
+  assert.equal(
+    (await h.call(other.token, "GET", `/me/assistant/nights/${older.night}`))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (await h.call(null, "GET", `/me/assistant/nights/${older.night}`))
+      .statusCode,
+    401,
+  );
+  assert.equal(
+    (await h.call(me.token, "GET", `/me/assistant/nights/${randomUUID()}`))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (await h.call(me.token, "GET", "/me/assistant/nights/not-a-uuid"))
+      .statusCode,
+    422,
+  );
+});
+
+test("historical cards and unfinished labels recheck saved sources without hiding unrelated work", async () => {
+  const me = await person();
+  const projectResponse = await h.call(me.token, "POST", "/projects", {
+    name: "Private source",
+  });
+  assert.equal(projectResponse.statusCode, 201, projectResponse.body);
+  const project = projectResponse.json();
+  const first = await held(me);
+  const second = await held(me, first.night);
+  const jobId = (
+    await pool.query("SELECT job_id FROM assistant_night_runs WHERE id=$1", [
+      first.run,
+    ])
+  ).rows[0].job_id;
+  const { recordAssistantSources } =
+    await import("../src/lib/assistant-job-sources.js");
+  await recordAssistantSources(jobId, me.id, {
+    source_ref: `project:${project.id}`,
+    prose: `Unrelated UUID ${randomUUID()}`,
+  });
+  await pool.query(
+    "UPDATE assistant_nights SET summary=$2::jsonb WHERE id=$1",
+    [
+      first.night,
+      JSON.stringify({
+        not_done: [
+          {
+            title: "Secret unfinished title",
+            reason: "Secret reason",
+            source_kind: "project",
+            source_id: project.id,
+            kind: "handed",
+          },
+          { title: "Legacy secret title", reason: "Legacy secret reason" },
+        ],
+      }),
+    ],
+  );
+  const visible = await h.call(
+    me.token,
+    "GET",
+    `/me/assistant/nights/${first.night}`,
+  );
+  assert.equal(
+    visible.json().runs.find((row: { id: string }) => row.id === first.run)
+      .restricted,
+    undefined,
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project.id,
+  ]);
+  const hidden = await h.call(
+    me.token,
+    "GET",
+    `/me/assistant/nights/${first.night}`,
+  );
+  assert.equal(hidden.statusCode, 200, hidden.body);
+  const card = hidden
+    .json()
+    .runs.find((row: { id: string }) => row.id === first.run);
+  assert.equal(card.restricted, true);
+  assert.equal(card.chat_id, null);
+  assert.equal(card.proposal, null);
+  assert.equal(
+    hidden.json().runs.find((row: { id: string }) => row.id === second.run)
+      .restricted,
+    undefined,
+  );
+  assert.equal(hidden.body.includes("Secret unfinished title"), false);
+  assert.equal(hidden.body.includes("Legacy secret"), false);
+  assert.equal(
+    (
+      await h.call(
+        me.token,
+        "POST",
+        `/me/assistant/nights/runs/${first.run}/keep`,
+        {},
+      )
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await h.call(
+        me.token,
+        "POST",
+        `/me/assistant/nights/runs/${first.run}/undo`,
+        {},
+      )
+    ).statusCode,
+    404,
+  );
+});
+
+test("persistent chat source gates survive execution job retention and typed deleted sources", async () => {
+  const me = await person();
+  const chat = randomUUID(),
+    turn = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin,turns) VALUES($1,$2,'Saved secret','person','[]')",
+    [chat, me.id],
+  );
+  const job = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state) VALUES($1,$2,$3,'done') RETURNING id",
+      [me.id, chat, turn],
+    )
+  ).rows[0].id;
+  const { recordAssistantSources } =
+    await import("../src/lib/assistant-job-sources.js");
+  const missingProject = randomUUID();
+  await recordAssistantSources(job, me.id, {
+    source_ref: `project:${missingProject}`,
+  });
+  assert.equal(
+    (await h.call(me.token, "GET", `/ai/chats/${chat}`)).statusCode,
+    404,
+  );
+  await pool.query("DELETE FROM ai_jobs WHERE id=$1", [job]);
+  assert.equal(
+    (await h.call(me.token, "GET", `/ai/chats/${chat}`)).statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT source_id FROM assistant_chat_sources WHERE chat_id=$1",
+        [chat],
+      )
+    ).rows[0].source_id,
+    missingProject,
+  );
 });

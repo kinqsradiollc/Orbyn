@@ -10,8 +10,12 @@ export type {
   ChatResult,
 } from "./client.js";
 export { HttpError } from "@orbyn/core";
-export { performReminderAction } from "./reminder-actions.js";
+export {
+  performReminderAction,
+  performLocalReminderAction,
+} from "./reminder-actions.js";
 export type {
   ReminderActionReceipt,
+  ReminderActionClient,
   ReminderActionOptions,
 } from "./reminder-actions.js";

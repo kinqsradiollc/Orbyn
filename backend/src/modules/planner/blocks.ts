@@ -75,8 +75,11 @@ export async function ownBlock(db: Db, id: string, userId: string) {
       start_at: Date;
       end_at: Date;
       item_id: string;
+      revision: number;
+      started_at: Date | null;
+      outcome: string | null;
     }>(
-      "SELECT id, start_at, end_at, item_id FROM time_blocks WHERE id = $1 AND user_id = $2 FOR UPDATE",
+      "SELECT id, start_at, end_at, item_id, revision, started_at, outcome FROM time_blocks WHERE id = $1 AND user_id = $2 FOR UPDATE",
       [id, userId],
     )
   ).rows[0];
@@ -93,7 +96,7 @@ export async function plainBlockById(
   const b = (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
-              b.started_at, b.outcome,
+              b.started_at, b.outcome, b.revision,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id WHERE b.id = $1 AND b.user_id = $2`,
       [id, userId],
@@ -231,7 +234,17 @@ export async function removeSession(
   db: Db,
   userId: string,
   blockId: string,
+  expectedRevision?: number,
 ): Promise<void> {
+  if (expectedRevision !== undefined) {
+    const current = await ownBlock(db, blockId, userId);
+    if (
+      current.revision !== expectedRevision ||
+      current.started_at ||
+      current.outcome
+    )
+      fail(409, "This session changed since you booked it. Open it to review.");
+  }
   const gone = (
     await db.query<{
       id: string;

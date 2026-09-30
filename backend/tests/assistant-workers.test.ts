@@ -466,6 +466,7 @@ test("saved night results lead the morning email and private brief with review, 
           not_done: [
             {
               title: "Revision plan",
+              kind: "study",
               reason: "Not done tonight: the token budget was reached",
             },
           ],
@@ -525,7 +526,7 @@ test("saved night results lead the morning email and private brief with review, 
   ]) {
     const job = (
       await pool.query(
-        "INSERT INTO ai_jobs(user_id, state, result, run_state, apply_result) VALUES($1, $2, $3::jsonb, $4::jsonb, $5::jsonb) RETURNING id",
+        "INSERT INTO ai_jobs(user_id, state, result, run_state, apply_result, sources_checked) VALUES($1, $2, $3::jsonb, $4::jsonb, $5::jsonb, true) RETURNING id",
         [
           userId,
           run.state,
@@ -549,7 +550,7 @@ test("saved night results lead the morning email and private brief with review, 
   const text = section.markdown.join("\n");
   assert.match(
     section.markdown[0],
-    /\[Review Overnight\]\(.*\/app\/overnight\)/,
+    /\[Review Overnight\]\(.*\/app\/overnight\/[0-9a-f-]+\)/,
   );
   assert.match(text, new RegExp(`/app/review/${proposal}`));
   assert.match(text, new RegExp(`/app/task/${task}`));
@@ -775,4 +776,37 @@ test("the sweeper clears dead and abandoned assistant jobs and clamps retention"
   } finally {
     await pool.query("DELETE FROM system_settings WHERE key = 'retention'");
   }
+});
+
+test("night settings with Follow through disabled leave ordinary goals and routines scheduled", async () => {
+  const userId = await register();
+  const { defaultNightShift } = await import("@orbyn/core");
+  const prefs = defaultNightShift();
+  prefs.enabled = true;
+  prefs.kinds.follow_through = false;
+  await pool.query(
+    "INSERT INTO agent_settings(user_id,night_shift) VALUES($1,$2::jsonb) ON CONFLICT(user_id) DO UPDATE SET night_shift=EXCLUDED.night_shift",
+    [userId, JSON.stringify(prefs)],
+  );
+  await pool.query(
+    "INSERT INTO goals(user_id,title) VALUES($1,'Daytime goal')",
+    [userId],
+  );
+  const now = new Date();
+  await pool.query(
+    "INSERT INTO agent_routines(user_id,instruction,rrule,next_run_at) VALUES($1,'Daytime routine','FREQ=DAILY',$2)",
+    [userId, now],
+  );
+  const calls: StartInput[] = [];
+  const options = {
+    only: [userId],
+    ai: {} as import("../src/modules/ai/providers/adapters.js").ResolvedAi,
+    startAutomation: fakeStart(calls),
+  };
+  assert.equal(await scanAssistantGoals(now, options), 1);
+  assert.equal(await scanAssistantRoutines(now, options), 1);
+  assert.deepEqual(
+    calls.map((input) => input.automation.kind),
+    ["goal", "routine"],
+  );
 });

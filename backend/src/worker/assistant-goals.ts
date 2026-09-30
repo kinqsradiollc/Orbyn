@@ -1,3 +1,4 @@
+import { assistantSourceVisible } from "../lib/assistant-source-visibility.js";
 import type { SystemRole } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
@@ -34,7 +35,7 @@ type GoalDue = {
  * never is. A failed one waits a few hours; a running one only when its job
  * failed or died, or it never queued one. Each week allows a few tries.
  */
-const checkinClaimable = (c: string, now: string) => `(
+export const checkinClaimable = (c: string, now: string) => `(
   ${c}.status <> 'done' AND ${c}.attempts < ${MAX_AUTOMATION_ATTEMPTS} AND (
     (${c}.status = 'failed'
       AND ${c}.claimed_at < ${now}::timestamptz - make_interval(hours => ${FAILED_RETRY_HOURS}))
@@ -71,7 +72,7 @@ export async function scanAssistantGoals(
              $3::timestamptz AT TIME ZONE coalesce(p.timezone, 'UTC'))::date AS week_of
          ) wk
          LEFT JOIN goals_checkins c ON c.goal_id = g.id AND c.week_of = wk.week_of
-        WHERE g.status = 'active'
+        WHERE g.status = 'active' AND ${assistantSourceVisible("'goal'", "g.id", "g.user_id")}
           AND ${assistantActive("g.user_id")}
           AND NOT ${nightShiftOwns("g.user_id")}
           AND NOT EXISTS (
@@ -95,7 +96,7 @@ export async function scanAssistantGoals(
     const claimed = await pool.query(
       `INSERT INTO goals_checkins
          (goal_id, user_id, week_of, summary, progress, status, claimed_at, attempts)
-       VALUES ($1, $2, $3::date, 'Weekly review in progress', '{}'::jsonb, 'running', $4, 1)
+       SELECT $1, $2, $3::date, 'Weekly review in progress', '{}'::jsonb, 'running', $4, 1 FROM goals g WHERE g.id=$1 AND g.user_id=$2 AND ${assistantSourceVisible("'goal'", "g.id", "$2")} AND NOT ${nightShiftOwns("g.user_id")}
        ON CONFLICT (goal_id, week_of) DO UPDATE
          SET summary = 'Weekly review in progress', status = 'running',
              job_id = NULL, claimed_at = EXCLUDED.claimed_at,

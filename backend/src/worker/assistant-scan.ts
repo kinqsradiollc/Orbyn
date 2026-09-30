@@ -24,7 +24,8 @@ export const assistantActive = (userColumn: string) =>
 /** Night-shift users run due goals and routines through their serialized night queue. */
 export const nightShiftOwns = (userColumn: string) =>
   `EXISTS (SELECT 1 FROM agent_settings ns WHERE ns.user_id = ${userColumn}
-    AND ns.night_shift->>'enabled' = 'true')`;
+    AND ns.night_shift->>'enabled' = 'true'
+    AND ns.night_shift->'kinds'->>'follow_through' = 'true')`;
 
 /**
  * SQL true when the person used Orbyn recently: a signed-in session was seen

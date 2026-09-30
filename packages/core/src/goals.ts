@@ -15,6 +15,7 @@ export const goalInput = z
 
 export const goalUpdate = z
   .object({
+    expected_revision: z.number().int().positive().optional(),
     title: goalInput.shape.title.optional(),
     target: goalInput.shape.target.removeDefault().optional(),
     target_date: goalInput.shape.target_date.removeDefault().optional(),
@@ -27,6 +28,8 @@ export type GoalInput = z.input<typeof goalInput>;
 export type GoalUpdate = z.input<typeof goalUpdate>;
 
 export type Goal = {
+  /** Monotonic server revision for conditional Undo. */
+  revision?: number;
   id: string;
   user_id: string;
   title: string;

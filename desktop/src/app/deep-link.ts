@@ -31,14 +31,14 @@ export type DeepLink =
   | { kind: "view"; id: string }
   | { kind: "review"; id: string | null }
   | { kind: "assistant" }
-  | { kind: "overnight" }
+  | { kind: "overnight"; id?: string }
   | { kind: "add"; text: string }
   | { kind: "search"; q: string }
   | { kind: "agents" };
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const WITH_ID = new RegExp(
-  `^/app/(task|doc|project|view|review)/(${UUID})/?$`,
+  `^/app/(task|doc|project|view|review|overnight)/(${UUID})/?$`,
   "i",
 );
 const BLOCK = /^#([A-Za-z0-9_-]{1,64})$/;
@@ -66,7 +66,7 @@ export function deepLinkOf(
   const m = WITH_ID.exec(path);
   if (!m) return null;
   const kind = m[1].toLowerCase() as
-    "task" | "doc" | "project" | "view" | "review";
+    "task" | "doc" | "project" | "view" | "review" | "overnight";
   const id = m[2].toLowerCase();
   if (kind === "doc") return { kind, id, block: BLOCK.exec(hash)?.[1] ?? null };
   return { kind, id };
@@ -77,7 +77,8 @@ export function deepLinkPath(link: DeepLink): string {
   if (link.kind === "today") return "/app/today";
   if (link.kind === "agents") return "/app/agents";
   if (link.kind === "assistant") return "/app/assistant";
-  if (link.kind === "overnight") return "/app/overnight";
+  if (link.kind === "overnight")
+    return link.id ? `/app/overnight/${link.id}` : "/app/overnight";
   if (link.kind === "add")
     return link.text
       ? `/app/add?${new URLSearchParams({ text: link.text })}`
@@ -188,6 +189,10 @@ export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
       return { kind: "agents" };
     case "assistant":
       return { kind: "assistant" };
+    case "overnight":
+      return link.id
+        ? { kind: "overnight", id: link.id }
+        : { kind: "overnight" };
     case "share":
       return {
         kind: "add",

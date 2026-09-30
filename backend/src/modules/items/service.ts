@@ -614,6 +614,7 @@ function alertsFor(
 }
 
 export type MutateOptions = {
+  expectedBlocks?: { id: string; revision: number }[];
   /**
    * The page whose checklist tick this change is: that page's own save
    * deals with its line, so only the other pages showing the task are told.
@@ -653,6 +654,32 @@ export async function mutate(
     if (item.version !== version)
       fail(409, "This item changed. Refresh and try again.");
     if (operation === "delete") {
+      if (options.expectedBlocks) {
+        const blocks = (
+          await db.query<{
+            id: string;
+            revision: number;
+            started_at: Date | null;
+            outcome: string | null;
+          }>(
+            "SELECT id,revision,started_at,outcome FROM time_blocks WHERE item_id=$1 ORDER BY id FOR UPDATE",
+            [item.id],
+          )
+        ).rows;
+        const expected = new Map(
+          options.expectedBlocks.map((block) => [block.id, block.revision]),
+        );
+        if (
+          blocks.length !== expected.size ||
+          blocks.some(
+            (block) =>
+              expected.get(block.id) !== block.revision ||
+              block.started_at ||
+              block.outcome,
+          )
+        )
+          fail(409, "This revision work changed. Open it to review.");
+      }
       const invited = await inviteSnapshot(db, item.id);
       // Its subtasks go with it; sync hears about every one.
       const gone = await recordDeletions(db, [item.id]);

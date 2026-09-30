@@ -534,3 +534,198 @@ test("enabled kinds run by earliest due work after handed tasks", async () => {
     JSON.stringify(kinds),
   );
 });
+
+test("moving a persisted routine into the future skips it without blocking later night work", async () => {
+  const me = await person();
+  const now = new Date("2050-01-15T23:00:00Z");
+  const routine = (
+    await pool.query(
+      "INSERT INTO agent_routines(user_id,instruction,rrule,next_run_at) VALUES($1,'Old routine','FREQ=DAILY',$2) RETURNING id",
+      [me.id, now],
+    )
+  ).rows[0].id;
+  const options = { only: [me.id], ai };
+  assert.equal(await scanNightShift(now, options), 1);
+  const first = await queuedJob(me.id);
+  assert.equal(first.run_state.request.automation.source_kind, "task");
+  const moved = new Date("2050-01-17T10:00:00Z");
+  await pool.query(
+    "UPDATE agent_routines SET next_run_at=$2,updated_at=now() WHERE id=$1",
+    [routine, moved],
+  );
+  await complete(first.id);
+  assert.equal(await scanNightShift(now, options), 1);
+  assert.notEqual(
+    (await queuedJob(me.id)).run_state.request.automation.id,
+    routine,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT next_run_at FROM agent_routines WHERE id=$1", [
+        routine,
+      ])
+    ).rows[0].next_run_at.toISOString(),
+    moved.toISOString(),
+  );
+  // Candidates are ordered by their due work; advance through the remaining
+  // work before asserting that the saved routine was encountered and skipped.
+  await complete((await queuedJob(me.id)).id);
+  while (await scanNightShift(now, options))
+    await complete((await queuedJob(me.id)).id);
+  assert.ok(
+    (await night(me.id)).summary.not_done.some(
+      (entry: { title: string }) => entry.title === "Scheduled routine",
+    ),
+  );
+});
+
+test("persisted routine claims use the current instruction and recurrence", async () => {
+  const me = await person();
+  const now = new Date("2050-01-16T23:00:00Z");
+  const routine = (
+    await pool.query(
+      "INSERT INTO agent_routines(user_id,instruction,rrule,next_run_at) VALUES($1,'Original instruction','FREQ=DAILY',$2) RETURNING id",
+      [me.id, now],
+    )
+  ).rows[0].id;
+  const options = { only: [me.id], ai };
+  assert.equal(await scanNightShift(now, options), 1);
+  const first = await queuedJob(me.id);
+  await pool.query(
+    "UPDATE agent_routines SET instruction='Updated instruction',rrule='FREQ=WEEKLY',updated_at=now() WHERE id=$1",
+    [routine],
+  );
+  await complete(first.id);
+  assert.equal(await scanNightShift(now, options), 1);
+  const second = await queuedJob(me.id);
+  assert.equal(second.run_state.request.automation.id, routine);
+  assert.match(second.run_state.request.message, /Updated instruction/);
+  assert.doesNotMatch(second.run_state.request.message, /Original instruction/);
+  const { nextOccurrence } = await import("@orbyn/core");
+  const saved = (
+    await pool.query("SELECT next_run_at FROM agent_routines WHERE id=$1", [
+      routine,
+    ])
+  ).rows[0];
+  assert.equal(
+    saved.next_run_at.toISOString(),
+    nextOccurrence(now, "FREQ=WEEKLY", "UTC", now)!.toISOString(),
+  );
+});
+
+test("a provisional morning card refreshes after a late run without another push", async () => {
+  const me = await person();
+  const now = new Date("2050-02-01T23:00:00Z");
+  await pool.query("INSERT INTO devices(user_id,token) VALUES($1,$2)", [
+    me.id,
+    `ExpoPushToken[${randomUUID()}]`,
+  ]);
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 1);
+  const job = await queuedJob(me.id);
+  const morning = new Date("2050-02-02T08:00:00Z");
+  assert.equal(await queueOvernightNotices(morning, [me.id]), 1);
+  const nightId = (await night(me.id)).id;
+  const before = (
+    await pool.query(
+      "SELECT * FROM notifications WHERE ref=$1 ORDER BY channel",
+      [`overnight:${nightId}`],
+    )
+  ).rows;
+  assert.equal(before.length, 2);
+  assert.match(
+    before.find((notice) => notice.channel === "push").body,
+    /still settling/,
+  );
+  await complete(job.id);
+  assert.equal(await queueOvernightNotices(morning, [me.id]), 0);
+  const after = (
+    await pool.query(
+      "SELECT * FROM notifications WHERE ref=$1 ORDER BY channel",
+      [`overnight:${nightId}`],
+    )
+  ).rows;
+  assert.deepEqual(
+    after.map((notice) => notice.id),
+    before.map((notice) => notice.id),
+  );
+  assert.match(
+    after.find((notice) => notice.channel === "inapp").body,
+    /1 run finished/,
+  );
+  assert.equal(
+    after.find((notice) => notice.channel === "push").body,
+    before.find((notice) => notice.channel === "push").body,
+  );
+});
+
+test("morning refreshes do not starve unsent nights beyond the twenty-night batch", async () => {
+  const selected: string[] = [];
+  for (let n = 0; n < 25; n++) {
+    const me = await person();
+    selected.push(me.id);
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day,status,summary) VALUES($1,'2050-02-01','done',$2)",
+      [
+        me.id,
+        JSON.stringify({
+          end_at: "2050-02-02T08:00:00Z",
+          not_done: [{ title: "Unfinished work", reason: "The window ended" }],
+        }),
+      ],
+    );
+  }
+  const now = new Date("2050-02-02T08:00:00Z");
+  assert.equal(await queueOvernightNotices(now, selected), 20);
+  assert.equal(await queueOvernightNotices(now, selected), 5);
+  assert.equal(await queueOvernightNotices(now, selected), 0);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS count FROM assistant_nights WHERE user_id=ANY($1::uuid[]) AND notified_at IS NOT NULL",
+        [selected],
+      )
+    ).rows[0].count,
+    25,
+  );
+});
+
+test("a parked personal question does not starve new night work", async () => {
+  const me = await person();
+  await pool.query(
+    "INSERT INTO ai_jobs(user_id,state,run_state,heartbeat_at) VALUES($1,'waiting','{}',now())",
+    [me.id],
+  );
+  const now = new Date("2050-01-02T23:00:00Z");
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 1);
+  assert.ok(await queuedJob(me.id));
+});
+
+test("night goal selection respects weekly attempt limits and retry backoff", async () => {
+  const me = await person();
+  await pool.query("UPDATE items SET agent_state='done' WHERE id=$1", [
+    me.task,
+  ]);
+  const goal = (
+    await pool.query(
+      "INSERT INTO goals(user_id,title,target) VALUES($1,'Capped goal','Finish') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const now = new Date("2050-01-02T23:00:00Z");
+  const week = (
+    await pool.query(
+      "SELECT date_trunc('week',$1::timestamptz AT TIME ZONE 'UTC')::date::text AS week",
+      [now],
+    )
+  ).rows[0].week;
+  await pool.query(
+    "INSERT INTO goals_checkins(goal_id,user_id,week_of,status,summary,attempts,claimed_at) VALUES($1,$2,$3,'failed','Retry later',3,$4)",
+    [goal, me.id, week, now],
+  );
+  await scanNightShift(now, { only: [me.id], ai });
+  const entries = (await night(me.id)).summary.candidates;
+  assert.equal(
+    entries.some((entry: { id?: string }) => entry.id === goal),
+    false,
+  );
+});

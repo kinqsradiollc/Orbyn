@@ -357,3 +357,69 @@ test("the sweeper retains durable checkpoints through a multi-day outage", async
     .sort();
   assert.deepEqual(remaining, [queued, running].sort());
 });
+
+test("concurrent replicas share eight live lease slots and recover an expired slot", async () => {
+  const ids: string[] = [];
+  try {
+    const before = (
+      await pool.query(
+        "SELECT count(*)::int AS count FROM ai_jobs WHERE state='running' AND run_state->>'version'='1' AND lease_until > now()",
+      )
+    ).rows[0].count;
+    for (let n = 0; n < 12; n++) ids.push(await enqueue());
+    const claims = await Promise.all(
+      ids.map((_, n) => claimAssistantJob(`replica-${n}`)),
+    );
+    const occupied = claims.filter((claim) => claim !== null);
+    assert.equal(occupied.length, Math.max(0, 8 - before));
+    assert.equal(await claimAssistantJob("ninth-replica"), null);
+    assert.ok(occupied.length);
+    await pool.query(
+      "UPDATE ai_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",
+      [occupied[0]!.id],
+    );
+    assert.ok(await claimAssistantJob("replacement-replica"));
+    assert.equal(await claimAssistantJob("still-bounded"), null);
+  } finally {
+    await pool.query("DELETE FROM ai_jobs WHERE id=ANY($1::uuid[])", [ids]);
+  }
+});
+
+test("legacy chat serialization requests cancellation without erasing either run", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const sql = await readFile(
+    new URL(
+      "../migrations/196_assistant_legacy_chat_serialization.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const first = await enqueue();
+  const second = await enqueue();
+  const chat = (
+    await pool.query("SELECT chat_id FROM ai_jobs WHERE id=$1", [first])
+  ).rows[0].chat_id;
+  await pool.query(
+    "UPDATE ai_jobs SET chat_id=$2::uuid,run_state=jsonb_set(run_state,'{request,chat_id}',to_jsonb($2::uuid::text)),state='waiting' WHERE id=$1",
+    [second, chat],
+  );
+  try {
+    await pool.query(sql);
+    await pool.query(sql);
+    const rows = (
+      await pool.query(
+        "SELECT id,state,cancel_requested,run_state FROM ai_jobs WHERE id=ANY($1::uuid[]) ORDER BY created_at,id",
+        [[first, second]],
+      )
+    ).rows;
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].cancel_requested, false);
+    assert.equal(rows[1].cancel_requested, true);
+    assert.equal(rows[1].state, "queued");
+    assert.ok(rows.every((row) => row.run_state));
+  } finally {
+    await pool.query("DELETE FROM ai_jobs WHERE id=ANY($1::uuid[])", [
+      [first, second],
+    ]);
+  }
+});

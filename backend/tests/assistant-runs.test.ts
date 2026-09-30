@@ -381,7 +381,16 @@ test("a lead question pauses the run and the person's answer resumes it", async 
     method: "POST",
     url: `/ai/chat/${job.id}/answer`,
     headers: auth(user.token),
-    payload: { answer: "Product" },
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [job.id],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      answer: "Product",
+    },
   });
   assert.equal(response.statusCode, 202, response.body);
   const done = await poll(user.token, job.id, ["done", "failed"]);
@@ -545,7 +554,17 @@ test("lowered assistant trust asks before applying the checked plan", async () =
     method: "POST",
     url: `/ai/chat/${job.id}/approve`,
     headers: auth(user.token),
-    payload: { approved: true, scope: "once" },
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [job.id],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      approved: true,
+      scope: "once",
+    },
   });
   assert.equal(approved.statusCode, 202, approved.body);
   const done = await poll(user.token, job.id, ["done", "failed"]);
@@ -1323,7 +1342,16 @@ test("exam revision checks Study and the calendar, asks about session length, th
     url: `/ai/chat/${job.id}/answer`,
     remoteAddress: nextAddress(),
     headers: auth(user.token),
-    payload: { answer: "50-minute blocks" },
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [job.id],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      answer: "50-minute blocks",
+    },
   });
   assert.equal(answer.statusCode, 202, answer.body);
   const result = await poll(user.token, job.id, ["done", "failed"]);
@@ -1899,7 +1927,17 @@ test("stopping at a person question discards the staged work", async () => {
     url: `/ai/chat/${job.id}/approve`,
     remoteAddress: nextAddress(),
     headers: auth(user.token),
-    payload: { approved: true, scope: "once" },
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [job.id],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      approved: true,
+      scope: "once",
+    },
   });
   assert.equal(again.statusCode, 409, again.body);
 });
@@ -2047,7 +2085,17 @@ async function answerCard(token: string, jobId: string, approved: boolean) {
     url: `/ai/chat/${jobId}/approve`,
     remoteAddress: nextAddress(),
     headers: auth(token),
-    payload: { approved, scope: "once" },
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [jobId],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      approved,
+      scope: "once",
+    },
   });
 }
 
@@ -2336,7 +2384,7 @@ test("the token budget counts new input and output, and ends with one answer wit
     }
     return { name: "search", arguments: { query: `budget-${calls}` } };
   };
-  const budget = { used: 0, limit: 6000 };
+  const budget = { used: 0, limit: 14000 };
   const result = await runAgent(
     ai,
     {
@@ -2371,8 +2419,8 @@ test("the token budget counts new input and output, and ends with one answer wit
       tokenBudget: budget,
     },
   );
-  // Each 8,000-character result is ~2,000 tokens: three calls fit in 6,000
-  // when only new input counts (re-counting whole prompts fit two).
+  // Each 8,000-character result is ~2,000 new input tokens. Admission also
+  // reserves 8,192 reply tokens; small completed replies refund that reserve.
   assert.equal(calls, 4);
   assert.equal(finalChoice, "none");
   assert.equal(result.partial, true);
@@ -2542,7 +2590,16 @@ test("a specialist's options become the person's choice, and the answer resumes 
     url: `/ai/chat/${job.id}/answer`,
     remoteAddress: nextAddress(),
     headers: auth(user.token),
-    payload: { answer: "60 minutes" },
+    payload: {
+      waiting_id:
+        (
+          await pool.query(
+            "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+            [job.id],
+          )
+        ).rows[0]?.id ?? randomUUID(),
+      answer: "60 minutes",
+    },
   });
   assert.equal(answered.statusCode, 202, answered.body);
   const result = await poll(user.token, job.id, ["done", "failed", "waiting"]);
@@ -2573,12 +2630,17 @@ test("a paused assistant refuses to run, and new grants leave booking out", asyn
 
 test("stale running jobs and week-old cards fail and free their automations", async () => {
   const user = await register();
+  const legacyChat = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Legacy job')",
+    [legacyChat, user.id],
+  );
   const insertJob = async (state: string, age: string) =>
     (
       await pool.query<{ id: string }>(
-        `INSERT INTO ai_jobs (user_id, state, heartbeat_at)
-         VALUES ($1, $2, now() - $3::interval) RETURNING id`,
-        [user.id, state, age],
+        `INSERT INTO ai_jobs (user_id, state, heartbeat_at, chat_id)
+         VALUES ($1, $2, now() - $3::interval, $4) RETURNING id`,
+        [user.id, state, age, legacyChat],
       )
     ).rows[0].id;
   const crashed = await insertJob("running", "10 minutes");
@@ -2881,4 +2943,519 @@ test("an expired specialist run resumes completed reports without rerunning or d
   } finally {
     release();
   }
+});
+
+test("stale question and approval IDs cannot consume a newer card or save scopes", async () => {
+  const user = await register();
+  const { initialAssistantRun } =
+    await import("../src/modules/ai/agent/run.js");
+  const chatId = randomUUID();
+  const request = {
+    chat_id: chatId,
+    turn_id: randomUUID(),
+    message: "Review",
+    timezone: "UTC",
+    history: [],
+    scope: null,
+  };
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Review')",
+    [chatId, user.id],
+  );
+  const grant = await assistantPrincipal({
+    id: user.id,
+    name: "Tester",
+    role: "member",
+  });
+  for (const kind of ["person", "approval"] as const) {
+    const state = initialAssistantRun(request);
+    const currentId = randomUUID();
+    state.state.waiting =
+      kind === "person"
+        ? { kind, id: currentId, question: "New question", choices: ["Yes"] }
+        : {
+            kind,
+            id: currentId,
+            question: "New approval",
+            summary: "New plan",
+            detail: "New plan",
+            steps: [],
+          };
+    const jobId = (
+      await pool.query(
+        "INSERT INTO ai_jobs(user_id,chat_id,state,run_state) VALUES($1,$2,'waiting',$3) RETURNING id",
+        [user.id, chatId, JSON.stringify(state)],
+      )
+    ).rows[0].id;
+    const path = `/ai/chat/${jobId}/${kind === "person" ? "answer" : "approve"}`;
+    const before = (
+      await pool.query("SELECT approval_scopes FROM agent_grants WHERE id=$1", [
+        grant.grant_id,
+      ])
+    ).rows[0];
+    for (const waitingId of [undefined, randomUUID(), "invalid"]) {
+      const payload =
+        kind === "person"
+          ? { answer: "Yes", waiting_id: waitingId }
+          : { approved: true, scope: "always", waiting_id: waitingId };
+      const stale = await app.inject({
+        method: "POST",
+        url: path,
+        headers: auth(user.token),
+        remoteAddress: nextAddress(),
+        payload,
+      });
+      assert.equal(stale.statusCode, 409, stale.body);
+      const saved = (
+        await pool.query("SELECT state,run_state FROM ai_jobs WHERE id=$1", [
+          jobId,
+        ])
+      ).rows[0];
+      assert.equal(saved.state, "waiting");
+      assert.equal(saved.run_state.state.waiting.id, currentId);
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT approval_scopes FROM agent_grants WHERE id=$1",
+            [grant.grant_id],
+          )
+        ).rows[0],
+        before,
+      );
+    }
+    await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [jobId]);
+  }
+});
+
+test("simultaneous turn retries share one job and changed messages cannot reuse its identity", async () => {
+  respond = () => ({
+    name: "finish",
+    arguments: { answer: "Done", steps: [] },
+  });
+  const user = await register();
+  const chatId = randomUUID(),
+    turnId = randomUUID();
+  const payload = {
+    message: "Summarize the day",
+    timezone: "UTC",
+    chat_id: chatId,
+    turn_id: turnId,
+  };
+  const send = (body = payload) =>
+    app.inject({
+      method: "POST",
+      url: "/ai/chat/start",
+      headers: auth(user.token),
+      remoteAddress: nextAddress(),
+      payload: body,
+    });
+  const responses = await Promise.all([send(), send(), send()]);
+  for (const response of responses)
+    assert.equal(response.statusCode, 202, response.body);
+  assert.equal(new Set(responses.map((r) => r.json().id)).size, 1);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM ai_jobs WHERE user_id=$1 AND chat_id=$2 AND turn_id=$3",
+        [user.id, chatId, turnId],
+      )
+    ).rows[0].n,
+    1,
+  );
+  assert.equal(
+    (await send({ ...payload, message: "Different message" })).statusCode,
+    409,
+  );
+  await poll(user.token, responses[0].json().id, ["done", "failed"]);
+  const replay = await send();
+  assert.equal(replay.json().id, responses[0].json().id);
+});
+
+test("a queued-turn INSERT failure rolls back the saved conversation", async () => {
+  const user = await register();
+  const chatId = randomUUID();
+  // A database fault after beginChatTurn but before enqueue commits.
+  await pool.query(
+    `CREATE FUNCTION test_reject_assistant_submission() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.user_id='${user.id}'::uuid THEN RAISE EXCEPTION 'injected queue failure'; END IF; RETURN NEW; END $$`,
+  );
+  await pool.query(
+    "CREATE TRIGGER test_reject_assistant_submission BEFORE INSERT ON ai_jobs FOR EACH ROW EXECUTE FUNCTION test_reject_assistant_submission()",
+  );
+  try {
+    const result = await app.inject({
+      method: "POST",
+      url: "/ai/chat/start",
+      headers: auth(user.token),
+      remoteAddress: nextAddress(),
+      payload: {
+        message: "Atomic send",
+        timezone: "UTC",
+        chat_id: chatId,
+        turn_id: randomUUID(),
+      },
+    });
+    assert.equal(result.statusCode, 500, result.body);
+    assert.equal(
+      (await pool.query("SELECT 1 FROM ai_chats WHERE id=$1", [chatId]))
+        .rowCount,
+      0,
+    );
+    assert.equal(
+      (await pool.query("SELECT 1 FROM ai_jobs WHERE chat_id=$1", [chatId]))
+        .rowCount,
+      0,
+    );
+  } finally {
+    await pool.query(
+      "DROP TRIGGER test_reject_assistant_submission ON ai_jobs",
+    );
+    await pool.query("DROP FUNCTION test_reject_assistant_submission()");
+  }
+});
+
+test("a completed delegation receipt survives a kill before its tool reply checkpoint", async () => {
+  const user = await register();
+  const { runLead } = await import("../src/modules/ai/agent/lead.js");
+  const { initialAssistantRun } =
+    await import("../src/modules/ai/agent/run.js");
+  const { resolveAi } = await import("../src/modules/ai/providers/resolve.js");
+  const initial = initialAssistantRun({
+    chat_id: randomUUID(),
+    turn_id: randomUUID(),
+    message: "Gather a report",
+    timezone: "UTC",
+    history: [],
+    scope: null,
+  });
+  const principal = await assistantPrincipal({
+    id: user.id,
+    name: "Tester",
+    role: "member",
+  });
+  let specialists = 0;
+  respond = (request) => {
+    if (toolNames(request).includes("delegate")) {
+      if (!request.messages.some((m) => m.role === "tool"))
+        return {
+          name: "delegate",
+          arguments: {
+            tasks: [
+              {
+                specialist: "projects",
+                brief: "Gather findings",
+                want_options: false,
+              },
+            ],
+          },
+        };
+      return {
+        name: "finish",
+        arguments: { answer: "Gathered the report", steps: [] },
+      };
+    }
+    specialists++;
+    return {
+      name: "report",
+      arguments: {
+        status: "done",
+        summary: "Completed report",
+        findings: ["Reusable finding"],
+        steps: [],
+        open_questions: [],
+      },
+    };
+  };
+  const input = {
+    ai: (await resolveAi())!,
+    principal,
+    identity: { name: "Orbyn", persona: "" },
+    timezone: "UTC",
+    state: initial.state,
+    message: "Gather a report",
+    history: [],
+    context: {
+      user: { id: user.id, role: "member" as const },
+      timezone: "UTC",
+      intentText: "Gather a report",
+      actions: [],
+      clarification: null,
+    },
+    allowChanges: true,
+  };
+  let saved: typeof initial.state | undefined;
+  await assert.rejects(
+    runLead({
+      ...input,
+      checkpoint: async () => {
+        if (initial.state.completed_delegate) {
+          saved = structuredClone(initial.state);
+          throw new Error("simulated process loss after delegate commit");
+        }
+      },
+    }),
+    /simulated process loss/,
+  );
+  assert.ok(saved?.completed_delegate);
+  assert.equal(specialists, 1);
+  // Also exercise retry guards after repeated worker replacements.
+  saved.loop!.seen = saved.loop!.seen.map(([key]) => [key, 3]);
+  const resumed = await runLead({
+    ...input,
+    state: saved,
+    checkpoint: async () => {},
+  });
+  assert.equal(
+    specialists,
+    1,
+    "the completed specialist must not be called twice",
+  );
+  assert.equal(resumed.state.reports.length, 1);
+  assert.equal(resumed.state.specialist_runs, 1);
+  assert.equal(resumed.state.delegate_rounds, 1);
+  assert.equal(resumed.state.answer, "Gathered the report");
+});
+
+test("specialist staged-tool checkpoints resume with one step and their original tool reply", async () => {
+  const user = await register();
+  const { runSpecialist } =
+    await import("../src/modules/ai/agent/specialist.js");
+  const { resolveAi } = await import("../src/modules/ai/providers/resolve.js");
+  const principal = await assistantPrincipal({
+    id: user.id,
+    name: "Tester",
+    role: "member",
+  });
+  let stagedRequests = 0;
+  respond = (request) => {
+    const previous = [...request.messages]
+      .reverse()
+      .find((message) => message.role === "tool");
+    if (!previous) {
+      stagedRequests++;
+      return {
+        name: "create_tasks",
+        arguments: { tasks: [{ title: "Checkpointed task" }] },
+      };
+    }
+    const id = JSON.parse(previous.content!).step_id;
+    assert.ok(
+      id,
+      "the recovered specialist must receive its original staged step ID",
+    );
+    return {
+      name: "report",
+      arguments: {
+        status: "done",
+        summary: "Staged one task",
+        findings: [],
+        steps: [id],
+        open_questions: [],
+      },
+    };
+  };
+  const input = {
+    ai: (await resolveAi())!,
+    principal,
+    task: {
+      id: "r1t1",
+      specialist: "projects" as const,
+      brief: "Stage a task",
+      want_options: false,
+    },
+    timezone: "UTC",
+    identity: { name: "Orbyn", persona: "" },
+    memory: "",
+    priorSteps: [],
+    allowChanges: true,
+  };
+  let saved:
+    | import("../src/modules/ai/agent/specialist.js").SpecialistCheckpoint
+    | undefined;
+  await assert.rejects(
+    runSpecialist({
+      ...input,
+      checkpoint: async (state) => {
+        if (state.completed_tool && state.steps.length) {
+          saved = structuredClone(state);
+          throw new Error("process loss after staging checkpoint");
+        }
+      },
+    }),
+    /process loss after staging/,
+  );
+  assert.ok(saved);
+  const result = await runSpecialist({
+    ...input,
+    resume: saved,
+    checkpoint: async () => {},
+  });
+  assert.equal(stagedRequests, 1);
+  assert.equal(result.steps.length, 1);
+  assert.equal(result.steps[0].id, saved.steps[0].id);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM items WHERE user_id=$1 AND title='Checkpointed task'",
+        [user.id],
+      )
+    ).rowCount,
+    0,
+    "staging never writes the task before lead approval",
+  );
+});
+
+test("waiting projection failure rolls back every projection and resumes its saved card", async () => {
+  requests.length = 0;
+  const user = await register();
+  const functionName = `waiting_projection_${user.id.replaceAll("-", "")}`;
+  const triggerName = functionName;
+  respond = () => ({
+    name: "ask_person",
+    arguments: { question: "Saved recovery question?", choices: ["Yes", "No"] },
+  });
+  await pool.query(
+    `CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.user_id='${user.id}'::uuid AND jsonb_array_length(NEW.turns)>1 THEN RAISE EXCEPTION 'projection fault'; END IF; RETURN NEW; END $$`,
+  );
+  await pool.query(
+    `CREATE TRIGGER ${triggerName} BEFORE UPDATE ON ai_chats FOR EACH ROW EXECUTE FUNCTION ${functionName}()`,
+  );
+  let job: Awaited<ReturnType<typeof start>>;
+  try {
+    job = await start(user.token, "Ask one recovery question.");
+    let saved:
+      | {
+          state: string;
+          run_state: { state: { waiting?: { id: string } } };
+          progress: { label?: string };
+        }
+      | undefined;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      saved = (
+        await pool.query(
+          "SELECT state,run_state,progress FROM ai_jobs WHERE id=$1",
+          [job.id],
+        )
+      ).rows[0];
+      if (saved?.progress?.label === "Retrying the saved waiting card") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(saved?.progress.label, "Retrying the saved waiting card");
+    assert.ok(saved?.run_state.state.waiting?.id);
+    assert.notEqual(saved?.state, "waiting");
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT jsonb_array_length(turns) AS count FROM ai_chats WHERE id=$1",
+          [job.chat_id],
+        )
+      ).rows[0].count,
+      1,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS count FROM assistant_notice_events WHERE job_id=$1",
+          [job.id],
+        )
+      ).rows[0].count,
+      0,
+    );
+  } finally {
+    await pool.query(`DROP TRIGGER ${triggerName} ON ai_chats`);
+    await pool.query(`DROP FUNCTION ${functionName}()`);
+  }
+  const resumed = await poll(user.token, job!.id, ["waiting", "failed"]);
+  assert.equal(resumed.state, "waiting", JSON.stringify(resumed));
+  assert.equal(resumed.waiting.question, "Saved recovery question?");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT jsonb_array_length(turns) AS count FROM ai_chats WHERE id=$1",
+        [job!.chat_id],
+      )
+    ).rows[0].count,
+    2,
+  );
+  assert.equal(
+    requests.length,
+    1,
+    "recovery projects the saved question without asking the model again",
+  );
+});
+
+test("multiple pollers write presence once per grace interval and fresh reads bypass a runner row lock", async (t) => {
+  const me = await register();
+  const chatId = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Poll measurement')",
+    [chatId, me.id],
+  );
+  const jobId = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,state,run_origin,sources_checked,result) VALUES($1,$2,'done','person',true,'{\"answer\":\"Done\"}') RETURNING id",
+      [me.id, chatId],
+    )
+  ).rows[0].id;
+  const read = () =>
+    app.inject({
+      url: `/ai/chat/${jobId}`,
+      remoteAddress: nextAddress(),
+      headers: auth(me.token),
+    });
+  const timestamp = async () =>
+    (
+      await pool.query(
+        "SELECT last_polled_at,xmin::text AS revision FROM ai_jobs WHERE id=$1",
+        [jobId],
+      )
+    ).rows[0];
+  const before = await timestamp();
+  const first = await read();
+  assert.equal(first.statusCode, 200, first.body);
+  const fresh = await timestamp();
+  assert.notEqual(fresh.revision, before.revision);
+  const started = Date.now();
+  const responses = await Promise.all(Array.from({ length: 60 }, read));
+  responses.forEach((response) =>
+    assert.equal(response.statusCode, 200, response.body),
+  );
+  assert.equal(
+    (await timestamp()).revision,
+    fresh.revision,
+    "sixty polls must not rewrite the recently polled row",
+  );
+  const holder = await pool.connect();
+  let pending: ReturnType<typeof read> | undefined;
+  try {
+    await holder.query("BEGIN");
+    await holder.query("SELECT id FROM ai_jobs WHERE id=$1 FOR UPDATE", [
+      jobId,
+    ]);
+    const lockedAt = Date.now();
+    pending = read();
+    const result = await Promise.race([
+      pending,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+    ]);
+    assert.ok(
+      result,
+      "a fresh presence timestamp must not wait for the runner row lock",
+    );
+    assert.equal(result.statusCode, 200, result.body);
+    t.diagnostic(
+      `60 simultaneous polls: ${Date.now() - started} ms; fresh poll while row locked: ${Date.now() - lockedAt} ms; actual row revisions: 1.`,
+    );
+  } finally {
+    await holder.query("ROLLBACK");
+    holder.release();
+    await pending;
+  }
+  await pool.query(
+    "UPDATE ai_jobs SET last_polled_at=now()-interval '11 seconds' WHERE id=$1",
+    [jobId],
+  );
+  const expired = await timestamp();
+  await read();
+  assert.notEqual((await timestamp()).revision, expired.revision);
 });

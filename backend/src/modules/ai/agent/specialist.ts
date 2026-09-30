@@ -20,6 +20,7 @@ import type { AgentContext } from "./tools.js";
 import {
   runAgent,
   type AgentLoopOptions,
+  type AgentLoopCheckpoint,
   type AgentTrace,
   type AgentTraceEvent,
   type LoopToolResult,
@@ -54,6 +55,18 @@ export type SpecialistTask = {
   brief: string;
   want_options: boolean;
 };
+
+export type SpecialistCheckpoint = {
+  loop?: AgentLoopCheckpoint;
+  steps: PlanStep[];
+  report: SpecialistReport | null;
+  completed_tool?: { call_id: string; result: LoopToolResult };
+};
+class SpecialistCheckpointFailure extends Error {
+  constructor(readonly failure: unknown) {
+    super("The specialist checkpoint could not be saved.");
+  }
+}
 
 export type SpecialistProgress = (
   line: string,
@@ -137,10 +150,26 @@ export async function runSpecialist(input: {
   maxSteps?: number;
   tokenBudget?: AgentLoopOptions["tokenBudget"];
   signal?: AbortSignal;
+  resume?: SpecialistCheckpoint;
+  checkpoint?: (value: SpecialistCheckpoint) => Promise<void>;
+  recordSources?: (value: unknown, targets?: string[]) => Promise<void>;
 }): Promise<SpecialistReport> {
   const definition = SPECIALISTS[input.task.specialist];
-  const taskSteps: PlanStep[] = [];
-  let report: SpecialistReport | null = null;
+  const saved: SpecialistCheckpoint = input.resume ?? {
+    steps: [],
+    report: null,
+  };
+  if (saved.report) return saved.report;
+  const taskSteps = saved.steps;
+  let report: SpecialistReport | null = saved.report;
+  const persist = async () => {
+    saved.report = report;
+    try {
+      await input.checkpoint?.(saved);
+    } catch (error) {
+      throw new SpecialistCheckpointFailure(error);
+    }
+  };
   const ctx: AgentContext = {
     user: {
       id: input.principal.user.id,
@@ -209,6 +238,7 @@ export async function runSpecialist(input: {
               cap.run(capabilityContext, parsed.data as never),
             { primary: true },
           );
+          await input.recordSources?.(result.structured, result.targets);
           return { content: resultText(result), isError: false };
         }
         const result = await execute(
@@ -220,6 +250,10 @@ export async function runSpecialist(input: {
             primary: true,
             log: (error) => input.log?.error({ err: error }, "MCP read failed"),
           },
+        );
+        await input.recordSources?.(
+          result.result.structuredContent,
+          result.targets,
         );
         return {
           content: result.result.structuredContent
@@ -315,8 +349,34 @@ export async function runSpecialist(input: {
           ...specialistToolSpecs(input.task.specialist, input.allowChanges),
           reportTool,
         ],
-        executeTool: (call) => executeTool(call),
-        maxSteps: input.maxSteps ?? 12,
+        resume: saved.loop,
+        completedTool: (call) =>
+          saved.completed_tool?.call_id === call.id
+            ? saved.completed_tool.result
+            : undefined,
+        checkpoint: async (loop) => {
+          saved.loop = loop;
+          if (
+            saved.completed_tool &&
+            loop.messages.some(
+              (message) =>
+                message.role === "tool" &&
+                message.tool_call_id === saved.completed_tool!.call_id,
+            )
+          )
+            delete saved.completed_tool;
+          await persist();
+        },
+        executeTool: async (call) => {
+          const result = await executeTool(call);
+          saved.completed_tool = { call_id: call.id, result };
+          await persist();
+          return result;
+        },
+        maxSteps: Math.max(
+          0,
+          (input.maxSteps ?? 12) - (saved.loop?.iterations ?? 0),
+        ),
         maxToolCallsPerStep: 1,
         forceToolLoop: true,
         signal: input.signal,
@@ -324,6 +384,8 @@ export async function runSpecialist(input: {
       },
     );
   } catch (error) {
+    if (error instanceof SpecialistCheckpointFailure) throw error.failure;
+    if (input.signal?.aborted) throw error;
     input.log?.warn(
       { event: "ai_specialist_failed", specialist: input.task.specialist },
       "AI specialist could not complete",

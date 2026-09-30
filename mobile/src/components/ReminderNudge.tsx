@@ -29,19 +29,42 @@ export function ReminderNudge({
   const [pending, setPending] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [error, setError] = useState("");
-  const [receipt, setReceipt] = useState<ReminderActionReceipt | null>(
-    skipped && chatId
-      ? {
-          message: "Skipped this reminder.",
-          undo: async () => {
-            await client.updateAiChat(chatId, {
-              turn_id: turnId,
-              outcome: "info",
-            });
-          },
-        }
-      : null,
-  );
+  const [receipt, setReceipt] = useState<ReminderActionReceipt | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setReceiptLoading(true);
+    void client
+      .reminderActionReceipt(card.id)
+      .then(
+        (saved) => {
+          if (!cancelled)
+            setReceipt(
+              saved && !saved.undone
+                ? {
+                    id: saved.id,
+                    message: saved.message,
+                    undo: () => client.undoReminderAction(saved.id),
+                  }
+                : null,
+            );
+        },
+        (error) => {
+          if (!cancelled)
+            setError(
+              error instanceof Error
+                ? error.message
+                : "Could not restore this reminder action.",
+            );
+        },
+      )
+      .finally(() => {
+        if (!cancelled) setReceiptLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [card.id]);
   const [choosing, setChoosing] = useState<"move" | "book" | null>(null);
   const [day, setDay] = useState("");
   const [picking, setPicking] = useState(false);
@@ -89,7 +112,7 @@ export function ReminderNudge({
           </Text>
           <Button
             title="Undo"
-            disabled={busy || pending}
+            disabled={busy || pending || receiptLoading}
             onPress={() =>
               void run(async () => {
                 await receipt.undo();
@@ -108,7 +131,7 @@ export function ReminderNudge({
                   action
                 ]
               }
-              disabled={busy || pending}
+              disabled={busy || pending || receiptLoading}
               onPress={() =>
                 action === "move" || action === "book"
                   ? setChoosing(action)
@@ -127,7 +150,7 @@ export function ReminderNudge({
           >
             <Button
               title={day || "Choose a day"}
-              disabled={busy || pending}
+              disabled={busy || pending || receiptLoading}
               onPress={() => setPicking(true)}
             />
           </Field>
@@ -175,7 +198,7 @@ export function ReminderNudge({
       ) : (
         <MoreMenu
           label="Reminder options"
-          disabled={busy || pending}
+          disabled={busy || pending || receiptLoading}
           actions={[
             {
               label: "Stop reminders for this thing",

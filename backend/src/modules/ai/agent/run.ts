@@ -6,7 +6,14 @@ import {
   assistantLeaseOwner,
   assertAssistantLease,
 } from "./lease.js";
-import { type ChatScope, type ChatTurn, type SystemRole } from "@orbyn/core";
+import {
+  nightShiftInput,
+  AGENT_TOOLSETS,
+  fail,
+  type ChatScope,
+  type ChatTurn,
+  type SystemRole,
+} from "@orbyn/core";
 import type { FastifyBaseLogger } from "fastify";
 import { z } from "zod";
 import { execute } from "../../../capabilities/execute.js";
@@ -17,6 +24,13 @@ import { policy, type Principal } from "../../../capabilities/policy.js";
 import { pool, transaction } from "../../../db/pool.js";
 import type { Queryable } from "../../../db/pool.js";
 import { keptOutFor } from "../../../lib/assistant-off.js";
+import { recordAssistantSources } from "../../../lib/assistant-job-sources.js";
+import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
+import {
+  visibleItems,
+  visibleProjects,
+  visibleDocs,
+} from "../../../lib/visibility.js";
 import { announceTo } from "../../presence/live.js";
 import { recallMemory } from "../../memory/service.js";
 import type { UserRow } from "../../../lib/auth.js";
@@ -48,11 +62,12 @@ export const ASSISTANT_STALE_MS = 60_000;
 const WAITING_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
 const STOPPED_TEXT = "Stopped. Nothing was changed.";
 const pendingInput = z
-  .object({ answer: z.string().trim().min(1).max(4000) })
+  .object({ answer: z.string().trim().min(1).max(4000), waiting_id: z.uuid() })
   .strict();
 const approvalInput = z
   .object({
     approved: z.boolean(),
+    waiting_id: z.uuid(),
     scope: z.enum(["once", "goal", "routine", "always"]).default("once"),
   })
   .strict();
@@ -124,6 +139,11 @@ const shutdownControls = new Map<
   { request: () => void; force: () => void }
 >();
 class AssistantSuspended extends Error {}
+class WaitingProjectionFailure extends Error {
+  constructor(readonly failure: unknown) {
+    super("The saved waiting card could not be projected.");
+  }
+}
 
 /** Stop at the next persisted step boundary during service shutdown. */
 export function requestAssistantJobShutdown(jobId: string, force = false) {
@@ -291,26 +311,107 @@ async function approvalScopeCovers(
  * suggests; the override holds for every path of the job (the run, a stop,
  * the deadline and a later approval), never a fresh full-trust grant.
  */
+/** Revocation applies to queued work and again at the write transaction boundary. */
+async function currentNightConsent(
+  db: Queryable,
+  userId: string,
+  request: PersistedChatRequest,
+  lock = false,
+) {
+  if (!request.automation?.night_id) return null;
+  const row = (
+    await db.query<{ night_shift: unknown }>(
+      `SELECT night_shift FROM agent_settings WHERE user_id=$1${lock ? " FOR SHARE" : ""}`,
+      [userId],
+    )
+  ).rows[0];
+  const parsed = nightShiftInput.safeParse(row?.night_shift);
+  const key =
+    request.automation.source_kind === "goal" ||
+    request.automation.source_kind === "routine"
+      ? "follow_through"
+      : request.automation.night_kind;
+  if (
+    !parsed.success ||
+    !parsed.data.enabled ||
+    !key ||
+    !parsed.data.kinds[key as keyof typeof parsed.data.kinds]
+  )
+    fail(409, "Night shift permission changed. This work was held.");
+  return parsed.data;
+}
+
+async function currentWriteAuthority(
+  db: Queryable,
+  user: UserRow,
+  principal: Principal,
+  request: PersistedChatRequest,
+) {
+  await currentNightConsent(db, user.id, request, true);
+  const grant = (
+    await db.query<{
+      trust: string;
+      space_trust: unknown;
+      acts_alone: string[];
+      toolsets: string[] | null;
+      suspended_at: Date | null;
+      revoked_at: Date | null;
+    }>(
+      `SELECT trust,space_trust,acts_alone,toolsets,suspended_at,revoked_at FROM agent_grants WHERE id=$1 AND user_id=$2 FOR SHARE`,
+      [principal.grant_id, user.id],
+    )
+  ).rows[0];
+  if (!grant || grant.suspended_at || grant.revoked_at)
+    fail(409, "Assistant permission changed. This work was held.");
+  const fullTrust = isAutomation(request, "idea")
+    ? { level: "suggest", spaces: {}, acts_alone: [] }
+    : {
+        level: grant.trust,
+        spaces: grant.space_trust ?? {},
+        acts_alone: grant.acts_alone ?? [],
+      };
+  const equal = (
+    await db.query("SELECT $1::jsonb=$2::jsonb AS equal", [
+      JSON.stringify(fullTrust),
+      JSON.stringify(principal.trust),
+    ])
+  ).rows[0].equal;
+  const toolsets = AGENT_TOOLSETS.filter((toolset) =>
+    (
+      grant.toolsets ?? AGENT_TOOLSETS.filter((name) => name !== "booking")
+    ).includes(toolset),
+  );
+  if (!equal || JSON.stringify(toolsets) !== JSON.stringify(principal.toolsets))
+    fail(409, "Assistant trust changed. This work was held.");
+  const job = (
+    await db.query(
+      `SELECT 1 FROM ai_chats c WHERE c.id=$1 AND ${assistantChatVisible("c", "$2")}`,
+      [request.chat_id, user.id],
+    )
+  ).rowCount;
+  if (!job) fail(404, "The sources for this chat are no longer available.");
+}
+
 async function principalFor(user: UserRow, request: PersistedChatRequest) {
+  await currentNightConsent(pool, user.id, request);
   const principal = await assistantPrincipal(user, { refusePaused: true });
   if (isAutomation(request, "task") && request.automation.id) {
-    const hidden = await pool.query(
-      `SELECT 1 FROM items i JOIN projects p ON p.id = i.project_id
-      WHERE i.id = $1 AND p.assistant_off`,
-      [request.automation.id],
+    const visible = await pool.query(
+      `SELECT 1 FROM items i WHERE i.id=$1 AND ${visibleItems("i", { user: "$2", ai: true })}`,
+      [request.automation.id, user.id],
     );
-    if (hidden.rowCount)
-      throw new Error("This task's project is kept out of the assistant.");
+    if (!visible.rowCount)
+      throw new Error("This task is no longer available to the assistant.");
   }
   if (isAutomation(request, "goal") && request.automation.id) {
-    const hidden = await pool.query(
-      `SELECT 1 FROM goals g WHERE g.id = $1 AND EXISTS(
-       SELECT 1 FROM projects p WHERE p.assistant_off AND
-        (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))`,
-      [request.automation.id],
+    const visible = await pool.query(
+      `SELECT 1 FROM goals g WHERE g.id=$1 AND g.user_id=$2
+       AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=g.project_id AND ${visibleProjects("p", { user: "$2", ai: true })}))
+       AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs d WHERE d.id=g.plan_doc_id AND ${visibleDocs("d", { user: "$2", ai: true })}))`,
+      [request.automation.id, user.id],
     );
-    if (hidden.rowCount)
-      throw new Error("This goal's project is kept out of the assistant.");
+    if (!visible.rowCount)
+      throw new Error("This goal is no longer available to the assistant.");
   }
   if (isAutomation(request, "idea"))
     principal.trust = { level: "suggest", spaces: {}, acts_alone: [] };
@@ -434,7 +535,11 @@ function checkPlanStep(value: unknown): PlanStep {
     .parse(value) as PlanStep;
 }
 
-async function contextFor(user: UserRow, request: PersistedChatRequest) {
+async function contextFor(
+  user: UserRow,
+  request: PersistedChatRequest,
+  recordSources: (value: unknown, targets?: string[]) => Promise<void>,
+) {
   const identity = (
     await pool.query<{ name: string; persona: string }>(
       "SELECT name, persona FROM agent_settings WHERE user_id = $1",
@@ -454,7 +559,18 @@ async function contextFor(user: UserRow, request: PersistedChatRequest) {
     keptOut,
   };
   const [memory, snapshot] = await Promise.all([
-    recallMemory(pool, user.id, request.message, 4000, [...keptOut.projects]),
+    recallMemory(
+      pool,
+      user.id,
+      request.message,
+      4000,
+      [...keptOut.projects],
+      (ids) =>
+        recordSources(
+          null,
+          ids.map((id) => `doc:${id}`),
+        ),
+    ),
     overview(context),
   ]);
   return { identity, context, memory, snapshot };
@@ -810,16 +926,15 @@ async function markTask(
   request: PersistedChatRequest,
   state: "working" | "needs_you",
   result: string | null = null,
+  db: Queryable = pool,
 ) {
   if (!isAutomation(request, "task") || !request.automation.id) return;
-  await pool
-    .query(
-      `UPDATE items SET agent_state = $3, agent_result = $4, updated_at = now()
+  await db.query(
+    `UPDATE items SET agent_state = $3, agent_result = $4, updated_at = now()
         WHERE id = $1 AND agent_job_id = $2 AND agent_grant_id IS NOT NULL
           AND agent_state IS DISTINCT FROM $3`,
-      [request.automation.id, jobId, state, result?.slice(0, 300) ?? null],
-    )
-    .catch(() => undefined);
+    [request.automation.id, jobId, state, result?.slice(0, 300) ?? null],
+  );
 }
 
 /** Persist and start a background lead run for a worker-owned task. */
@@ -873,8 +988,8 @@ export async function startAssistantAutomation(input: {
   const enqueue = async (db: Queryable) => {
     const row = (
       await db.query<{ id: string }>(
-        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id, state)
-         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, 'queued') RETURNING id`,
+        `INSERT INTO ai_jobs (user_id, progress, run_state, chat_id, turn_id, state, run_origin)
+         VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, 'queued', $6) RETURNING id`,
         [
           user.id,
           JSON.stringify({ label: "Starting a scheduled run" }),
@@ -895,6 +1010,7 @@ export async function startAssistantAutomation(input: {
           }),
           chatId,
           turnId,
+          input.automation.kind,
         ],
       )
     ).rows[0];
@@ -929,26 +1045,28 @@ async function waitFor(
     waiting: envelope.state.waiting,
   };
   await settleSaves(jobId);
-  const parked = await pool.query(
-    `UPDATE ai_jobs SET state = 'waiting', run_state = $2::jsonb,
+  const waitingCommitted = await transaction(async (db) => {
+    const parked = await db.query(
+      `UPDATE ai_jobs SET state = 'waiting', run_state = $2::jsonb,
        progress = $3::jsonb, heartbeat_at = now(), lease_until = NULL, claimed_by = NULL
      WHERE id = $1 AND state = 'running' AND NOT cancel_requested
        AND ($4::text IS NULL OR (claimed_by = $4 AND lease_until > now()))`,
-    [
+      [
+        jobId,
+        JSON.stringify(envelope),
+        JSON.stringify(progress),
+        assistantLeaseOwner(jobId),
+      ],
+    );
+    if (!parked.rowCount) return false;
+    await markTask(
       jobId,
-      JSON.stringify(envelope),
-      JSON.stringify(progress),
-      assistantLeaseOwner(jobId),
-    ],
-  );
-  if (!parked.rowCount) return false;
-  await markTask(
-    jobId,
-    request,
-    "needs_you",
-    envelope.state.waiting?.question ?? null,
-  );
-  await transaction(async (db) => {
+      request,
+      "needs_you",
+      envelope.state.waiting?.question ?? null,
+      db,
+    );
+
     const row = (
       await db.query<{ turns: unknown }>(
         "SELECT turns FROM ai_chats WHERE id = $1 AND user_id = $2 FOR UPDATE",
@@ -956,9 +1074,9 @@ async function waitFor(
       )
     ).rows[0];
     const waiting = envelope.state.waiting;
-    if (!row || !waiting) return;
+    if (!row || !waiting)
+      throw new Error("The waiting conversation is unavailable.");
     const turns = Array.isArray(row.turns) ? row.turns : [];
-    if (turns.some((turn) => jsonObject(turn).turn_id === waiting.id)) return;
     const text =
       waiting.kind === "person"
         ? waiting.question
@@ -970,18 +1088,24 @@ async function waitFor(
           ]
             .filter(Boolean)
             .join("\n\n");
-    turns.push({
-      role: "assistant",
-      text: text.slice(0, 12_000),
-      turn_id: waiting.id,
-    });
-    await db.query(
-      "UPDATE ai_chats SET turns = $3::jsonb, last_used_at = now() WHERE id = $1 AND user_id = $2",
-      [request.chat_id, user.id, JSON.stringify(turns.slice(-200))],
-    );
+    if (!turns.some((turn) => jsonObject(turn).turn_id === waiting.id)) {
+      turns.push({
+        role: "assistant",
+        text: text.slice(0, 12_000),
+        turn_id: waiting.id,
+      });
+      await db.query(
+        "UPDATE ai_chats SET turns = $3::jsonb, last_used_at = now() WHERE id = $1 AND user_id = $2",
+        [request.chat_id, user.id, JSON.stringify(turns.slice(-200))],
+      );
+    }
     await notifyAssistantAway(db, jobId, "waiting", waiting.id);
     await recordNightRun(db, jobId, text, "pending");
+    return true;
+  }).catch((error) => {
+    throw new WaitingProjectionFailure(error);
   });
+  if (!waitingCommitted) return false;
   const event: AgentTraceEvent = {
     step: envelope.state.lead_steps,
     kind: "result",
@@ -1020,12 +1144,16 @@ async function approvePlan(
       })
       .parse(receipt);
   }
+  principal = await principalFor(user, request);
+  const nightPrefs = await currentNightConsent(pool, user.id, request);
+  const scopeSnapshot = await assistantApprovalScopes(user.id);
   const checked = await checkMergedPlan(pool, principal, state.selected_steps);
   if (!checked.steps.length)
     return { applied: false, structured: null, why: [] as string[] };
   const nightReview =
     !!request.automation?.night_id &&
     (request.automation.wait_for_ok !== false ||
+      nightPrefs?.wait_for_ok !== false ||
       principal.trust.level !== "full" ||
       Object.values(principal.trust.spaces).some((level) => level !== "full") ||
       nightPlanNeedsReview(checked.steps));
@@ -1064,6 +1192,18 @@ async function approvePlan(
       write: (run) =>
         transaction(async (db) => {
           await assertAssistantLease(jobId, db, true);
+          const prefs = await currentNightConsent(db, user.id, request, true);
+          if (prefs?.wait_for_ok && !nightReview)
+            fail(409, "Night review permission changed. This work was held.");
+          await currentWriteAuthority(db, user, principal, request);
+          const scopes = (
+            await db.query(
+              "SELECT approval_scopes=$2::jsonb AS equal FROM agent_grants WHERE id=$1",
+              [principal.grant_id, JSON.stringify(scopeSnapshot)],
+            )
+          ).rows[0];
+          if (!scopes?.equal)
+            fail(409, "Saved approval permission changed. This work was held.");
           const answer = (await run(db)) as CapabilityResult<unknown>;
           const structured = answer.structured;
           const pending =
@@ -1352,7 +1492,14 @@ export async function runAssistantJob(
     const ai = await resolveAi();
     if (!ai) throw new Error("The AI assistant is not set up yet.");
     principal = await principalFor(user, request);
-    const prepared = await contextFor(user, request);
+    const recordSources = (value: unknown, targets?: string[]) =>
+      recordAssistantSources(jobId, user.id, value, targets);
+    const prepared = await contextFor(user, request, recordSources);
+    await recordSources([
+      scoped ?? prepared.snapshot,
+      request.automation,
+      request.scope,
+    ]);
     envelope.state.memory = prepared.memory;
     envelope.state.context = scoped ?? prepared.snapshot;
     const currentMessage = envelope.state.answer_to_person || request.message;
@@ -1384,6 +1531,7 @@ export async function runAssistantJob(
               : currentMessage,
             history: request.history,
             context: prepared.context,
+            recordSources,
             allowChanges:
               isAutomation(request, "idea") ||
               mayChange(envelope.state.original_request),
@@ -1581,6 +1729,7 @@ export async function runAssistantJob(
     if (
       shutdownRequested ||
       error instanceof AssistantSuspended ||
+      error instanceof WaitingProjectionFailure ||
       stopReason === "shutdown"
     ) {
       controller.abort();
@@ -1590,7 +1739,10 @@ export async function runAssistantJob(
         (Date.now() - (envelope.started_at ?? Date.now()));
       delete envelope.started_at;
       await saveProgress(jobId, envelope, {
-        label: "Picking up where I left off",
+        label:
+          error instanceof WaitingProjectionFailure
+            ? "Retrying the saved waiting card"
+            : "Picking up where I left off",
         step: envelope.state.lead_steps,
       });
       await settleSaves(jobId);
@@ -1732,18 +1884,24 @@ export async function answerAssistantQuestion(
   value: unknown,
   log: FastifyBaseLogger,
 ) {
-  const { answer } = pendingInput.parse(value);
+  const { answer, waiting_id } = pendingInput.parse(value);
   await transaction(async (db) => {
     const row = (
       await db.query<{ run_state: unknown }>(
         `SELECT run_state FROM ai_jobs WHERE id = $1 AND user_id = $2
-          AND state = 'waiting' FOR UPDATE`,
+          AND state = 'waiting' AND EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=ai_jobs.chat_id AND ${assistantChatVisible("c", "$2")}) FOR UPDATE`,
         [jobId, user.id],
       )
     ).rows[0];
     const envelope = envelopeOf(row?.run_state);
-    if (!envelope || envelope.state.waiting?.kind !== "person")
-      throw new Error("This run is not waiting for an answer.");
+    if (
+      !envelope ||
+      envelope.state.waiting?.kind !== "person" ||
+      envelope.state.waiting.id !== waiting_id
+    )
+      throw new Error(
+        "This question changed or was answered. Refresh before answering.",
+      );
     const question = envelope.state.waiting;
     // Free text is allowed so the person can explain a different preference;
     // the lead is told when the answer is none of the offered choices.
@@ -1801,7 +1959,7 @@ export async function answerAssistantApproval(
   value: unknown,
   log: FastifyBaseLogger,
 ) {
-  const { approved, scope } = approvalInput.parse(value);
+  const { approved, scope, waiting_id } = approvalInput.parse(value);
   const row = (
     await pool.query<{ state: string; run_state: unknown }>(
       "SELECT state, run_state FROM ai_jobs WHERE id = $1 AND user_id = $2",
@@ -1810,8 +1968,14 @@ export async function answerAssistantApproval(
   ).rows[0];
   if (row && row.state !== "waiting") throw new Error("Already answered.");
   const seen = envelopeOf(row?.run_state);
-  if (!seen || seen.state.waiting?.kind !== "approval")
-    throw new Error("This run is not waiting for plan approval.");
+  if (
+    !seen ||
+    seen.state.waiting?.kind !== "approval" ||
+    seen.state.waiting.id !== waiting_id
+  )
+    throw new Error(
+      "This approval changed or was answered. Refresh before deciding.",
+    );
   const card = seen.state.waiting;
   // Checked before the claim, so a refusal leaves the card answerable.
   if (approved) await principalFor(user, seen.request);
@@ -1831,8 +1995,9 @@ export async function answerAssistantApproval(
     const row = (
       await db.query<{ run_state: unknown }>(
         `SELECT run_state FROM ai_jobs WHERE id = $1 AND user_id = $2
-       AND state = 'waiting' AND run_state->'state'->'waiting'->>'id' = $3 FOR UPDATE`,
-        [jobId, user.id, card.id],
+       AND state = 'waiting' AND run_state->'state'->'waiting'->>'id' = $3
+       AND EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=ai_jobs.chat_id AND ${assistantChatVisible("c", "$2")}) FOR UPDATE`,
+        [jobId, user.id, waiting_id],
       )
     ).rows[0];
     const envelope = envelopeOf(row?.run_state);

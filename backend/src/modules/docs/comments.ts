@@ -234,17 +234,24 @@ export async function resolveComment(
   id: string,
   commentId: string,
   resolved: boolean,
+  expectedRevision?: number,
 ) {
   await requireDoc(db, id, u, "items:read");
   const updated = (
     await db.query<DocComment>(
       `UPDATE doc_comments SET resolved_at = CASE WHEN $3 THEN now() ELSE NULL END
-        WHERE id = $1 AND doc_id = $2
-        RETURNING id, doc_id, user_id, body, resolved_at, created_at`,
-      [commentId, id, resolved],
+        WHERE id = $1 AND doc_id = $2 AND ($4::integer IS NULL OR revision=$4)
+        RETURNING id, doc_id, user_id, revision, body, resolved_at, created_at`,
+      [commentId, id, resolved, expectedRevision ?? null],
     )
   ).rows[0];
-  if (!updated) fail(404, "Comment not found");
+  if (!updated)
+    fail(
+      expectedRevision === undefined ? 404 : 409,
+      expectedRevision === undefined
+        ? "Comment not found"
+        : "This comment changed. Open it to review.",
+    );
   return updated;
 }
 

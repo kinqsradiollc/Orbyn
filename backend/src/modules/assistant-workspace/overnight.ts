@@ -1,6 +1,13 @@
+import { visibleNightLeftovers } from "../../lib/assistant-leftovers.js";
+import {
+  assistantJobSourcesVisible,
+  visibleAssistantJobs,
+} from "../../lib/assistant-job-sources.js";
+import { createHash } from "node:crypto";
 import {
   fail,
   overnightKeepInput,
+  overnightBulkInput,
   overnightUndoInput,
   type OvernightNight,
   type OvernightRun,
@@ -50,7 +57,7 @@ async function requireRun(
 ) {
   const row = (
     await db.query<RunRow>(
-      `${RUN_SELECT} WHERE nr.id = $1 AND n.user_id = $2${lock ? " FOR UPDATE OF n, nr" : ""}`,
+      `${RUN_SELECT} WHERE nr.id = $1 AND n.user_id = $2 AND ${assistantJobSourcesVisible("j", "$2", false)}${lock ? " FOR UPDATE OF n, nr" : ""}`,
       [id, userId],
     )
   ).rows[0];
@@ -139,6 +146,31 @@ async function card(
   userId: string,
   row: RunRow,
 ): Promise<OvernightRun> {
+  if (!(await visibleAssistantJobs(db, userId, [row.job_id])).has(row.job_id)) {
+    const restricted = {
+      id: row.id,
+      job_id: row.job_id,
+      chat_id: null,
+      kind: row.kind,
+      title: "Restricted night work",
+      summary:
+        "The sources for this result are no longer available. Earlier runs without source records also stay restricted.",
+      status: row.status,
+      state: row.state,
+      restricted: true,
+      question: null,
+      approval: null,
+      changes: [],
+      steps: [],
+      proposal: null,
+    };
+    return {
+      ...restricted,
+      decision_token: createHash("sha256")
+        .update(JSON.stringify(restricted))
+        .digest("hex"),
+    };
+  }
   const context = await runContext(db, userId, row);
   let status =
     object(object(row.result).assistant_run).outcome === "discarded"
@@ -164,8 +196,10 @@ async function card(
   const question =
     row.state === "waiting" &&
     waiting.kind === "person" &&
-    typeof waiting.question === "string"
+    typeof waiting.question === "string" &&
+    typeof waiting.id === "string"
       ? {
+          id: String(waiting.id),
           text: waiting.question,
           choices: Array.isArray(waiting.choices)
             ? waiting.choices.filter(
@@ -177,14 +211,16 @@ async function card(
   const approval =
     row.state === "waiting" &&
     waiting.kind === "approval" &&
-    typeof waiting.question === "string"
+    typeof waiting.question === "string" &&
+    typeof waiting.id === "string"
       ? {
+          id: String(waiting.id),
           text: waiting.question,
           summary: typeof waiting.summary === "string" ? waiting.summary : "",
           detail: typeof waiting.detail === "string" ? waiting.detail : "",
         }
       : null;
-  return {
+  const result = {
     approval,
     question,
     id: row.id,
@@ -198,6 +234,12 @@ async function card(
     changes: context.changes,
     steps: context.steps,
     proposal,
+  };
+  return {
+    ...result,
+    decision_token: createHash("sha256")
+      .update(JSON.stringify(result))
+      .digest("hex"),
   };
 }
 
@@ -233,15 +275,7 @@ export async function latestNight(
     status: night.status,
     budget_used: night.budget_used,
     runs: await Promise.all(rows.map((row) => card(db, userId, row))),
-    not_done: Array.isArray(leftovers)
-      ? leftovers.flatMap((value) => {
-          const entry = object(value);
-          return typeof entry.title === "string" &&
-            typeof entry.reason === "string"
-            ? [{ title: entry.title, reason: entry.reason }]
-            : [];
-        })
-      : [],
+    not_done: await visibleNightLeftovers(db, userId, leftovers),
   };
 }
 
@@ -323,6 +357,14 @@ export async function overnightRoutes(app: FastifyInstance) {
     const user = await firstParty(request);
     return transaction((db) => latestNight(db, user.id));
   });
+  app.get("/me/assistant/nights/:id", async (request) => {
+    const user = await firstParty(request);
+    const night = await transaction((db) =>
+      latestNight(db, user.id, idParam(request)),
+    );
+    if (!night) fail(404, "That night is no longer here.");
+    return night;
+  });
   app.post(
     "/me/assistant/nights/runs/:id/keep",
     writeRateLimit,
@@ -367,21 +409,36 @@ export async function overnightRoutes(app: FastifyInstance) {
       async (request) => {
         const user = await firstParty(request);
         const id = idParam(request);
+        const input = overnightBulkInput.parse(request.body);
         const after = await transaction(async (db) => {
           const owns = await db.query(
             "SELECT id FROM assistant_nights WHERE id = $1 AND user_id = $2 FOR UPDATE",
             [id, user.id],
           );
           if (!owns.rowCount) fail(404, "That night is not here.");
-          const rows = (
-            await db.query<{ id: string }>(
-              `SELECT nr.id FROM assistant_night_runs nr JOIN ai_jobs j ON j.id = nr.job_id
-             WHERE nr.night_id = $1 AND ($2 = 'undo' AND j.state IN ('done', 'failed')
-              OR $2 = 'keep' AND j.state = 'done' AND nr.status <> 'undone')
-             ORDER BY nr.created_at DESC, nr.id DESC`,
-              [id, action],
+          const snapshot = await latestNight(db, user.id, id);
+          const eligible = snapshot!.runs.filter(
+            (run) =>
+              !run.restricted &&
+              (action === "undo"
+                ? run.state === "done" || run.state === "failed"
+                : run.state === "done" && run.status !== "undone"),
+          );
+          if (
+            eligible.length !== input.runs.length ||
+            eligible.some(
+              (run) =>
+                !input.runs.some(
+                  (seen) =>
+                    seen.id === run.id && seen.token === run.decision_token,
+                ),
             )
-          ).rows;
+          )
+            fail(
+              409,
+              "Night work changed since you reviewed it. Refresh and confirm the current work.",
+            );
+          const rows = [...eligible].reverse();
           const callbacks: (() => Promise<void>)[] = [];
           for (const row of rows) {
             if (action === "keep") await keep(db, user, row.id, {});

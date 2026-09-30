@@ -702,6 +702,8 @@ export type Tag = {
 
 /** Time someone set aside to work on a task. */
 export type TimeBlock = {
+  /** Monotonic server revision for conditional Undo. */
+  revision?: number;
   id: string;
   item_id: string;
   user_id: string;
@@ -1352,6 +1354,7 @@ export type PlannerReview = {
  * shown to its owner.
  */
 export type AgendaEntry = {
+  subscription_id?: string;
   source: "event" | "subscription";
   /** Your event's item; null for a subscribed event. */
   item_id: string | null;

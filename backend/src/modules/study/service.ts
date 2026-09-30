@@ -285,15 +285,46 @@ export async function upcomingExams(
   db: Db,
   userId: string,
   now = new Date(),
-  options: { horizonDays?: number; limit?: number | null } = {},
+  options: { horizonDays?: number; limit?: number | null; key?: string } = {},
 ): Promise<Omit<StudyExam, "doc_ids" | "readiness">[]> {
   const limit = options.limit === undefined ? 30 : options.limit;
   const to = new Date(
     now.getTime() + (options.horizonDays ?? EXAM_HORIZON_DAYS) * 86_400_000,
   );
+  const selected = options.key
+    ? (
+        await db.query<{ source_ref: string | null; own: boolean }>(
+          "SELECT source_ref,own FROM study_exams WHERE user_id=$1 AND exam_key=$2",
+          [userId, options.key],
+        )
+      ).rows[0]
+    : undefined;
+  const reference = selected?.source_ref ?? options.key;
+  const itemMatch = reference
+    ? /^item:([0-9a-f-]{36})\|/i.exec(reference)
+    : null;
+  const subMatch = reference
+    ? /^sub:([0-9a-f-]{36}):([0-9a-f]{32})\|/i.exec(reference)
+    : null;
   const [calendar, subscribed, own] = await Promise.all([
-    calendarEntries(db, userId, now, to),
-    externalOccurrences(db, userId, now, to),
+    options.key && !itemMatch
+      ? []
+      : calendarEntries(
+          db,
+          userId,
+          now,
+          to,
+          itemMatch ? [itemMatch[1]] : undefined,
+        ),
+    options.key && !subMatch
+      ? []
+      : externalOccurrences(
+          db,
+          userId,
+          now,
+          to,
+          subMatch ? { subscriptionId: subMatch[1], uidHash: subMatch[2] } : {},
+        ),
     // Exams named in Study itself (H4), not on the calendar.
     db.query<{
       exam_key: string;
@@ -303,8 +334,8 @@ export async function upcomingExams(
     }>(
       `SELECT exam_key, title, starts_at, all_day FROM study_exams
         WHERE user_id = $1 AND own AND starts_at > $2 AND starts_at <= $3
-        ORDER BY starts_at LIMIT $4::int`,
-      [userId, now, to, limit],
+        AND ($5::text IS NULL OR exam_key=$5) ORDER BY starts_at LIMIT $4::int`,
+      [userId, now, to, limit, options.key ?? null],
     ),
   ]);
   const daysLeft = (at: string) =>
@@ -811,18 +842,29 @@ export async function applyRevision(
      WHERE id=$1 AND user_id=$2`,
     [task!.id, u.id, exam.key],
   );
-  const blocks: string[] = [];
+  const blockVersions: { id: string; revision: number }[] = [];
   for (const s of d.sessions)
-    blocks.push(
+    blockVersions.push(
       (
-        await db.query<{ id: string }>(
-          `INSERT INTO time_blocks (item_id, user_id, start_at, end_at)
-           VALUES ($1, $2, $3, $4) RETURNING id`,
+        await db.query<{ id: string; revision: number }>(
+          "INSERT INTO time_blocks(item_id,user_id,start_at,end_at) VALUES($1,$2,$3,$4) RETURNING id,revision",
           [task!.id, u.id, s.start_at, s.end_at],
         )
-      ).rows[0].id,
+      ).rows[0],
     );
-  return { item_id: task!.id, block_ids: blocks, minutes };
+  const itemVersion = (
+    await db.query<{ version: number }>(
+      "SELECT version FROM items WHERE id=$1",
+      [task!.id],
+    )
+  ).rows[0].version;
+  return {
+    item_id: task!.id,
+    item_version: itemVersion,
+    block_ids: blockVersions.map((block) => block.id),
+    block_versions: blockVersions,
+    minutes,
+  };
 }
 
 // ---- H4: practice first ---------------------------------------------------

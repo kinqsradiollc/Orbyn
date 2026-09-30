@@ -47,6 +47,7 @@ export const agentRoutineInput = z
 
 export const agentRoutineUpdate = z
   .object({
+    expected_revision: z.number().int().positive().optional(),
     instruction: agentRoutineInput.shape.instruction.optional(),
     rrule: agentRoutineInput.shape.rrule.optional(),
     timezone: agentRoutineInput.shape.timezone.removeDefault().optional(),
@@ -58,6 +59,8 @@ export type AgentRoutineInput = z.input<typeof agentRoutineInput>;
 export type AgentRoutineUpdate = z.input<typeof agentRoutineUpdate>;
 
 export type AgentRoutine = {
+  /** Monotonic server revision for conditional Undo. */
+  revision?: number;
   id: string;
   user_id: string;
   instruction: string;

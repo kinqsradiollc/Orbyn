@@ -108,7 +108,7 @@ export async function scanAssistantRoutines(
                next_run_at = coalesce($3, next_run_at),
                paused = CASE WHEN $3::timestamptz IS NULL THEN true ELSE paused END,
                claimed_at = now(), updated_at = now()
-              WHERE id = $1 AND claimed_at = $4`,
+              WHERE id = $1 AND claimed_at = $4 AND NOT paused AND NOT ${nightShiftOwns("agent_routines.user_id")}`,
               [routine.id, id, routine.next_run_at_after_claim, now],
             );
             if (!queued.rowCount)

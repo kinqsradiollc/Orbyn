@@ -14,11 +14,14 @@ import {
   quoteOf,
   type ChatTraceEntry,
 } from "@orbyn/core";
-import { pool, transaction } from "../../db/pool.js";
+import { pool, transaction, type Db } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { z } from "zod";
 import { assistantMayRead, docVisibleTo } from "../../lib/doc-visibility.js";
+
+import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
+import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -159,18 +162,22 @@ async function scopeOverview(
 }
 
 /** Resolve the persisted conversation before accepting a new assistant turn. */
-async function prepareChatTurn(u: UserRow, d: ChatRequest) {
+async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
   const chatId = d.chat_id ?? randomUUID();
   const turnId = d.turn_id ?? randomUUID();
-  const scope = await resolveChatScope(pool, u.id, chatId, d.scope);
+  const scope = await resolveChatScope(db, u.id, chatId, d.scope);
   const scoped = await scopeOverview(u, d.timezone, scope);
-  const history = await beginChatTurn(u, {
-    chatId,
-    turnId,
-    message: d.message,
-    scope,
-    legacyHistory: d.history,
-  });
+  const history = await beginChatTurn(
+    u,
+    {
+      chatId,
+      turnId,
+      message: d.message,
+      scope,
+      legacyHistory: d.history,
+    },
+    db,
+  );
   return {
     chatId,
     turnId,
@@ -197,8 +204,7 @@ export async function aiRoutes(app: FastifyInstance) {
          LEFT JOIN projects p ON p.id = c.project_id
          WHERE j.user_id = $1 AND c.user_id = $1
            AND j.state IN ('queued', 'running', 'waiting')
-           AND (c.project_id IS NULL OR
-             (NOT p.assistant_off AND ${visibleProjects("p")}))
+           AND ${assistantChatVisible()}
          ORDER BY j.created_at DESC, j.id DESC`,
         [u.id],
       )
@@ -305,20 +311,67 @@ export async function aiRoutes(app: FastifyInstance) {
         503,
         "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
       );
-    const prepared = await prepareChatTurn(u, d);
-    const job = (
-      await pool.query(
-        `INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id, state, run_state) VALUES($1, $2::jsonb, $3, $4, 'queued', $5::jsonb) RETURNING id`,
-        [
-          u.id,
-          JSON.stringify({ label: "Starting the lead assistant" }),
-          prepared.chatId,
-          prepared.turnId,
-          JSON.stringify(initialAssistantRun(prepared.request)),
-        ],
-      )
-    ).rows[0];
-    return { id: job.id, chat_id: prepared.chatId, turn_id: prepared.turnId };
+    const submission = {
+      ...d,
+      chat_id: d.chat_id ?? randomUUID(),
+      turn_id: d.turn_id ?? randomUUID(),
+    };
+    return transaction(async (db) => {
+      // Serialize a first send as well as existing-chat submissions across replicas.
+      await db.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        "assistant-submit:" + u.id + ":" + submission.chat_id,
+      ]);
+      const existing = (
+        await db.query(
+          "SELECT id FROM ai_jobs WHERE user_id=$1 AND chat_id=$2 AND submission_key=$3",
+          [u.id, submission.chat_id, submission.turn_id],
+        )
+      ).rows[0];
+      if (existing) {
+        await resolveChatScope(db, u.id, submission.chat_id, submission.scope);
+        const saved = (
+          await db.query(
+            `SELECT turns FROM ai_chats c WHERE c.id=$1 AND ${assistantChatVisible("c", "$2")}`,
+            [submission.chat_id, u.id],
+          )
+        ).rows[0];
+        if (!saved) fail(404, "That chat is not here.");
+        const turn = saved?.turns?.find(
+          (turn: { turn_id?: string; role: string }) =>
+            turn.role === "user" && turn.turn_id === submission.turn_id,
+        );
+        if (!turn || turn.text !== submission.message.slice(0, 12000))
+          fail(409, "This turn ID belongs to a different message.");
+        return {
+          id: existing.id,
+          chat_id: submission.chat_id,
+          turn_id: submission.turn_id,
+        };
+      }
+      const active = await db.query(
+        "SELECT 1 FROM ai_jobs WHERE user_id=$1 AND chat_id=$2 AND state IN ('queued','running','waiting') LIMIT 1",
+        [u.id, submission.chat_id],
+      );
+      if (active.rowCount)
+        fail(
+          409,
+          "This chat already has an active run. Answer or stop it before sending another message.",
+        );
+      const prepared = await prepareChatTurn(u, submission, db);
+      const job = (
+        await db.query(
+          "INSERT INTO ai_jobs(user_id, progress, chat_id, turn_id, submission_key, state, run_state) VALUES($1, $2::jsonb, $3, $4, $4, 'queued', $5::jsonb) RETURNING id",
+          [
+            u.id,
+            JSON.stringify({ label: "Starting the lead assistant" }),
+            prepared.chatId,
+            prepared.turnId,
+            JSON.stringify(initialAssistantRun(prepared.request)),
+          ],
+        )
+      ).rows[0];
+      return { id: job.id, chat_id: prepared.chatId, turn_id: prepared.turnId };
+    });
   };
 
   // Both paths now start the same persistent, multi-specialist assistant run.
@@ -342,14 +395,20 @@ export async function aiRoutes(app: FastifyInstance) {
   // The same job stays pollable while its worker lease is being recovered.
   app.get("/ai/chat/:id", async (r) => {
     const u = await authenticate(r);
+    const jobId = idParam(r);
+    const visible = `EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=j.chat_id AND ${assistantChatVisible("c", "$2")}) AND (j.state IN ('queued','running') OR ${assistantJobSourcesVisible("j", "$2")})`;
     const job = (
       await pool.query(
-        `UPDATE ai_jobs SET last_polled_at = now()
-         WHERE id=$1 AND user_id=$2
-         RETURNING state, result, error_status, error_message, progress, run_state`,
-        [idParam(r), u.id],
+        `SELECT state, result, error_status, error_message, progress, run_state, sources_checked FROM ai_jobs j WHERE j.id=$1 AND j.user_id=$2 AND ${visible}`,
+        [jobId, u.id],
       )
     ).rows[0];
+    if (job)
+      await pool.query(
+        `UPDATE ai_jobs j SET last_polled_at=now() WHERE j.id=$1 AND j.user_id=$2 AND ${visible}
+        AND (last_polled_at IS NULL OR last_polled_at < now() - interval '10 seconds')`,
+        [jobId, u.id],
+      );
     if (!job) fail(404, "Conversation not found");
     if (job.state === "waiting") {
       const run = assistantRunStateFor(job.run_state);
@@ -382,7 +441,10 @@ export async function aiRoutes(app: FastifyInstance) {
         status: job.error_status,
         message: job.error_message,
       };
-    return { state: "running", progress: job.progress };
+    return {
+      state: "running",
+      progress: job.sources_checked ? job.progress : null,
+    };
   });
 
   app.post("/ai/chat/:id/answer", strictRateLimit, async (r, reply) => {

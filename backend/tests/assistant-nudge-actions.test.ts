@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import "./setup.js";
 import { helpers } from "./mcp-helpers.js";
-import { OrbynClient, performReminderAction } from "@orbyn/api-client";
+import {
+  OrbynClient,
+  performLocalReminderAction as performReminderAction,
+} from "@orbyn/api-client";
 import type { ReminderNudgeCard } from "@orbyn/core";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -111,6 +114,10 @@ test("Book time creates a real free working session and Undo removes it", async 
 });
 test("Skip updates only the saved reminder turn and Undo restores it without editing work", async () => {
   const { item, card, client, me } = await fixture();
+  await pool.query(
+    "INSERT INTO assistant_nudges(id,user_id,nudge_key,entity_kind,entity_id,local_day) VALUES($1,$2,$3,'task',$4,'2050-01-02')",
+    [card.id, me.id, card.key, card.entity_id],
+  );
   const chatId = randomUUID();
   await pool.query(
     `INSERT INTO ai_chats(id, user_id, title, origin, turns) VALUES($1, $2, 'Reminders', 'reminders', $3)`,
@@ -684,5 +691,177 @@ test("goal Book selects current linked unfinished work and Undo removes only its
   await assert.rejects(
     () => client.goalWork(goal.id),
     (error: any) => error.status === 404,
+  );
+});
+
+test("session Undo rejects an edit inserted after its client precheck", async () => {
+  const { client, card, item } = await fixture();
+  const receipt = await performReminderAction(client, card, "book", {
+    day: "2050-01-03",
+  });
+  const block = (await client.itemSessions(item.id)).sessions[0];
+  const remove = client.deleteBlock.bind(client);
+  client.deleteBlock = async (id, revision) => {
+    await pool.query("UPDATE time_blocks SET outcome='done' WHERE id=$1", [id]);
+    return remove(id, revision);
+  };
+  await assert.rejects(receipt.undo(), { statusCode: 409 });
+  assert.equal(
+    (
+      await pool.query("SELECT outcome FROM time_blocks WHERE id=$1", [
+        block.id,
+      ])
+    ).rows[0].outcome,
+    "done",
+  );
+});
+
+test("routine and goal Undo reject edits inserted after their client prechecks", async () => {
+  const { client, card } = await fixture();
+  const routine = await client.createAgentRoutine({
+    instruction: "Original routine",
+    rrule: "FREQ=DAILY",
+    timezone: "UTC",
+    next_run_at: "2050-01-08T12:00:00Z",
+  });
+  const moved = await performReminderAction(
+    client,
+    {
+      ...card,
+      entity_kind: "routine",
+      entity_id: routine.id,
+      actions: ["move"],
+    },
+    "move",
+    { day: "2050-01-09" },
+  );
+  const saveRoutine = client.updateAgentRoutine.bind(client);
+  client.updateAgentRoutine = async (id, input) => {
+    // Leave updated_at unchanged to prove the server revision is the guard.
+    await pool.query(
+      "UPDATE agent_routines SET instruction='Concurrent routine edit' WHERE id=$1",
+      [id],
+    );
+    return saveRoutine(id, input);
+  };
+  await assert.rejects(moved.undo(), { statusCode: 409 });
+  const savedRoutine = (
+    await pool.query(
+      "SELECT instruction,next_run_at FROM agent_routines WHERE id=$1",
+      [routine.id],
+    )
+  ).rows[0];
+  assert.equal(savedRoutine.instruction, "Concurrent routine edit");
+  assert.equal(
+    savedRoutine.next_run_at.toISOString(),
+    "2050-01-09T12:00:00.000Z",
+  );
+  const goal = await client.createGoal({
+    title: "Original goal",
+    target_date: "2050-01-10",
+  });
+  const done = await performReminderAction(
+    client,
+    { ...card, entity_kind: "goal", entity_id: goal.id, actions: ["done"] },
+    "done",
+  );
+  const saveGoal = client.updateGoal.bind(client);
+  client.updateGoal = async (id, input) => {
+    await pool.query(
+      "UPDATE goals SET title='Concurrent goal edit' WHERE id=$1",
+      [id],
+    );
+    return saveGoal(id, input);
+  };
+  await assert.rejects(done.undo(), { statusCode: 409 });
+  const savedGoal = (
+    await pool.query("SELECT title,status FROM goals WHERE id=$1", [goal.id])
+  ).rows[0];
+  assert.equal(savedGoal.title, "Concurrent goal edit");
+  assert.equal(savedGoal.status, "done");
+});
+
+test("comment Undo rejects an intervening edit even when resolution is unchanged", async () => {
+  const { client, card, me } = await fixture();
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Atomic comment') RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const comment = (
+    await pool.query(
+      "INSERT INTO doc_comments(doc_id,user_id,body) VALUES($1,$2,'Original comment') RETURNING id",
+      [doc, me.id],
+    )
+  ).rows[0].id;
+  const receipt = await performReminderAction(
+    client,
+    {
+      ...card,
+      entity_kind: "comment",
+      entity_id: comment,
+      source_id: doc,
+      actions: ["done"],
+    },
+    "done",
+  );
+  await pool.query(
+    "UPDATE doc_comments SET body='Concurrent comment edit' WHERE id=$1",
+    [comment],
+  );
+  await assert.rejects(receipt.undo(), { statusCode: 409 });
+  const saved = (
+    await pool.query("SELECT body,resolved_at FROM doc_comments WHERE id=$1", [
+      comment,
+    ])
+  ).rows[0];
+  assert.equal(saved.body, "Concurrent comment edit");
+  assert.ok(saved.resolved_at);
+});
+
+test("guarded revision-task deletion preserves an intervening session edit or insertion", async () => {
+  const { client, item, me } = await fixture();
+  const block = await client.createBlockOnDay({
+    item_id: item.id,
+    day: "2050-01-03",
+    minutes: 30,
+  });
+  assert.ok(block.revision);
+  const version = (await client.getItem(item.id)).version;
+  await pool.query(
+    "UPDATE time_blocks SET start_at=start_at+interval '1 minute',end_at=end_at+interval '1 minute' WHERE id=$1",
+    [block.id],
+  );
+  await assert.rejects(
+    client.deleteItem(item.id, version, {
+      expectedBlocks: [{ id: block.id, revision: block.revision! }],
+    }),
+    { statusCode: 409 },
+  );
+  assert.ok(
+    (await pool.query("SELECT 1 FROM items WHERE id=$1", [item.id])).rowCount,
+  );
+  const latest = (
+    await pool.query("SELECT revision FROM time_blocks WHERE id=$1", [block.id])
+  ).rows[0].revision;
+  await pool.query(
+    "INSERT INTO time_blocks(item_id,user_id,start_at,end_at) VALUES($1,$2,'2050-01-04T10:00:00Z','2050-01-04T10:30:00Z')",
+    [item.id, me.id],
+  );
+  await assert.rejects(
+    client.deleteItem(item.id, version, {
+      expectedBlocks: [{ id: block.id, revision: latest }],
+    }),
+    { statusCode: 409 },
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS count FROM time_blocks WHERE item_id=$1",
+        [item.id],
+      )
+    ).rows[0].count,
+    2,
   );
 });

@@ -12,6 +12,8 @@ import { visibleItems } from "../lib/visibility.js";
 import { reminderNudgeCandidates } from "./reminder-nudges.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 
+import { assistantChatVisible } from "../lib/assistant-visibility.js";
+
 const MAX_ATTEMPTS = 8;
 const RECEIPT_DELAY = "15 minutes";
 /** Planner notices: sent by `planner_notices`, not `email_reminders`. */
@@ -196,7 +198,11 @@ export async function assistantNoticeStale(
     await db.query(
       `SELECT 1 FROM ai_chats c JOIN users u ON u.id = c.user_id
                        WHERE c.id::text = split_part($2, ':', 2)
-                         AND c.user_id = $1 AND NOT u.disabled AND split_part($2, ':', 1) = 'chat'
+                         AND ${assistantChatVisible()} AND NOT u.disabled AND split_part($2, ':', 1) = 'chat'
+                         AND EXISTS(SELECT 1 FROM ai_jobs j
+                           WHERE j.id::text=split_part($2, ':', 3) AND j.user_id=$1 AND j.chat_id=c.id
+                             AND j.run_origin='person' AND j.state=split_part($2, ':', 4)
+                             AND (j.state<>'waiting' OR j.run_state->'state'->'waiting'->>'id'=split_part($2, ':', 5)))
                        UNION ALL SELECT 1 FROM assistant_nights n JOIN users u ON u.id = n.user_id
                        WHERE n.id::text = split_part($2, ':', 2) AND n.user_id = $1 AND NOT u.disabled
                          AND split_part($2, ':', 1) = 'overnight'
@@ -235,7 +241,7 @@ export async function reminderNudgeStale(
     return true;
   const prefs = await loadPrefs(db, notice.user_id);
   const current = (
-    await reminderNudgeCandidates(notice.user_id, prefs.timezone, now, db)
+    await reminderNudgeCandidates(notice.user_id, prefs.timezone, now, db, row)
   ).find(
     (candidate) =>
       candidate.entity_kind === row.entity_kind &&

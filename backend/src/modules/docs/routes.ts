@@ -673,8 +673,10 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const commentId = String((r.params as { commentId: string }).commentId);
-    const { resolved } = docCommentUpdate.parse(r.body);
-    return transaction((db) => resolveComment(db, u, id, commentId, resolved));
+    const { resolved, expected_revision } = docCommentUpdate.parse(r.body);
+    return transaction((db) =>
+      resolveComment(db, u, id, commentId, resolved, expected_revision),
+    );
   });
 
   /** Only the person who wrote a remark can take it back. */

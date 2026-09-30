@@ -21,7 +21,7 @@ type RoutineRow = Omit<
   next_run_at: Date;
 };
 const ROUTINE_SELECT = `id, user_id, instruction, rrule, timezone, next_run_at,
-  last_result, paused, created_at, updated_at`;
+  last_result, paused, created_at, updated_at, revision`;
 const routineOf = (row: RoutineRow): AgentRoutine => ({
   ...row,
   next_run_at: row.next_run_at.toISOString(),
@@ -115,6 +115,14 @@ export async function saveAgentRoutine(
       ).rows[0]
     : undefined;
   if (id && !current) fail(404, "Assistant routine not found.");
+  const { expected_revision, ...patch } = id
+    ? agentRoutineUpdate.parse(raw)
+    : { expected_revision: undefined };
+  if (
+    expected_revision !== undefined &&
+    current?.revision !== expected_revision
+  )
+    fail(409, "This routine changed. Open it to review.");
   let parsed = id
     ? agentRoutineInput.parse({
         instruction: current!.instruction,
@@ -122,7 +130,7 @@ export async function saveAgentRoutine(
         timezone: current!.timezone,
         next_run_at: current!.next_run_at.toISOString(),
         paused: current!.paused,
-        ...agentRoutineUpdate.parse(raw),
+        ...patch,
       })
     : agentRoutineInput.parse(raw);
   try {

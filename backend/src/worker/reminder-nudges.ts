@@ -15,6 +15,7 @@ import { pool, transaction, type Db } from "../db/pool.js";
 import {
   visibleDocs,
   visibleItems,
+  visibleRecords,
   visibleProjects,
 } from "../lib/visibility.js";
 import { upcomingExams } from "../modules/study/service.js";
@@ -40,7 +41,7 @@ export type NudgeCandidate = {
   actions: ReminderNudgeCard["actions"];
 };
 async function settings(
-  db: Db,
+  db: Pick<Db, "query">,
   userId: string,
 ): Promise<ReminderNudgeSettings | null> {
   const row = (
@@ -72,16 +73,8 @@ export async function postReminderNudge(
     ).rows[0];
     if (!lock.locked) return false;
     const prefs = await settings(db, userId);
-    if (!prefs) return false;
-    const current = (
-      await reminderNudgeCandidates(userId, timezone, now, db)
-    ).find(
-      (row) =>
-        row.entity_kind === candidate.entity_kind &&
-        row.entity_id === candidate.entity_id,
-    );
-    if (!current) return false;
-    candidate = current;
+    if (!prefs?.enabled || !(prefs.chat || prefs.push || prefs.email))
+      return false;
     const day = localDateKey(now, timezone);
     const history = (
       await db.query<{
@@ -96,6 +89,16 @@ export async function postReminderNudge(
       )
     ).rows[0];
     if (!canSendReminderNudge(now, timezone, prefs, history)) return false;
+    const current = (
+      await reminderNudgeCandidates(userId, timezone, now, db, candidate)
+    ).find(
+      (row) =>
+        row.entity_kind === candidate.entity_kind &&
+        row.entity_id === candidate.entity_id,
+    );
+    if (!current || current.key !== candidate.key) return false;
+    candidate = current;
+
     const email =
       prefs.email && ["overdue", "deadline"].includes(candidate.category);
     if (!prefs.chat && !prefs.push && !email) return false;
@@ -179,34 +182,46 @@ export async function reminderNudgeCandidates(
   timezone: string,
   now = new Date(),
   db: Pick<Db, "query"> = pool,
+  source?: Pick<NudgeCandidate, "entity_kind" | "entity_id" | "exam_key">,
 ): Promise<NudgeCandidate[]> {
   const today = localDateKey(now, timezone);
   const dayStart = dayTime(today, 0, timezone);
   const dayEnd = dayTime(addDays(today, 1), 0, timezone);
   const afternoon = zonedParts(now, timezone).hour >= 14;
-  const tasks = (
-    await db.query<{
-      id: string;
-      title: string;
-      category: NudgeCandidate["category"];
-    }>(
-      `SELECT i.id, i.title, CASE
+  const tasks =
+    !source || source.entity_kind === "task"
+      ? (
+          await db.query<{
+            id: string;
+            title: string;
+            category: NudgeCandidate["category"];
+          }>(
+            `SELECT i.id, i.title, CASE
        WHEN i.due_at < $2::timestamptz - interval '1 day' THEN 'overdue'
        WHEN EXISTS(SELECT 1 FROM time_blocks b WHERE b.item_id = i.id AND b.user_id = $1
          AND b.end_at BETWEEN $3 AND $2 AND b.outcome IS NULL) THEN 'session'
        WHEN $5 AND i.due_at >= $3 AND i.due_at < $4 AND i.status = 'todo' AND i.spent_minutes = 0 AND NOT EXISTS(SELECT 1 FROM time_blocks started WHERE started.item_id = i.id AND started.user_id = $1 AND started.started_at IS NOT NULL) THEN 'due'
        ELSE 'deadline' END AS category
-     FROM items i WHERE i.user_id = $1 AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
+     FROM items i WHERE i.user_id = $1 AND ${visibleItems("i", { user: "$1", ai: true })} AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
        AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.id = i.project_id AND p.assistant_off)
        AND (i.due_at < $2::timestamptz - interval '1 day'
          OR EXISTS(SELECT 1 FROM time_blocks b WHERE b.item_id = i.id AND b.user_id = $1 AND b.end_at BETWEEN $3 AND $2 AND b.outcome IS NULL)
          OR $5 AND i.due_at >= $3 AND i.due_at < $4 AND i.status = 'todo' AND i.spent_minutes = 0 AND NOT EXISTS(SELECT 1 FROM time_blocks started WHERE started.item_id = i.id AND started.user_id = $1 AND started.started_at IS NOT NULL)
          OR i.due_at > $2 AND i.due_at <= $2::timestamptz + interval '7 days' AND i.estimate_minutes IS NOT NULL
           AND greatest(i.estimate_minutes - i.spent_minutes, 0) > coalesce((SELECT sum(extract(epoch FROM (b.end_at - b.start_at)) / 60) FROM time_blocks b WHERE b.item_id = i.id AND b.user_id = $1 AND b.start_at > $2 AND b.end_at <= i.due_at), 0))
+      AND ($6::uuid IS NULL OR i.id=$6)
      ORDER BY i.due_at NULLS LAST, i.id LIMIT 50`,
-      [userId, now, dayStart, dayEnd, afternoon],
-    )
-  ).rows;
+            [
+              userId,
+              now,
+              dayStart,
+              dayEnd,
+              afternoon,
+              source?.entity_id ?? null,
+            ],
+          )
+        ).rows
+      : [];
   const texts = {
     overdue: "is more than a day overdue.",
     session: "had a planned session end without a check-in.",
@@ -221,16 +236,21 @@ export async function reminderNudgeCandidates(
     text: `${task.title} ${texts[task.category as keyof typeof texts]} Done, move it, skip this reminder, or book time?`,
     actions: ["done", "move", "skip", "book"],
   }));
-  const promises = (
-    await db.query<{ id: string; title: string }>(
-      `SELECT r.id, r.title FROM work_records r
-   WHERE r.kind = 'promise' AND r.status IN ('open', 'proposed') AND r.due_at <= $2
+  const promises =
+    !source || source.entity_kind === "record"
+      ? (
+          await db.query<{ id: string; title: string }>(
+            `SELECT r.id, r.title FROM work_records r
+   WHERE ${visibleRecords("r", { user: "$1", ai: true })}
+     AND (r.source_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=r.source_doc_id AND ${visibleDocs("source_doc", { user: "$1", ai: true })})) AND r.kind = 'promise' AND r.status IN ('open', 'proposed') AND r.due_at <= $2
      AND (r.owner_id = $1 OR r.owner_id IS NULL AND r.created_by = $1 AND r.team_id IS NULL)
      AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = r.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = r.source_doc_id AND d.project_id = p.id)))
+      AND ($3::uuid IS NULL OR r.id=$3)
    ORDER BY r.due_at, r.id LIMIT 20`,
-      [userId, now],
-    )
-  ).rows;
+            [userId, now, source?.entity_id ?? null],
+          )
+        ).rows
+      : [];
   result.push(
     ...promises.map((record): NudgeCandidate => ({
       key: `record:${record.id}`,
@@ -241,14 +261,18 @@ export async function reminderNudgeCandidates(
       actions: ["done", "move", "skip"],
     })),
   );
-  const routines = (
-    await db.query<{ id: string; instruction: string }>(
-      `SELECT id, instruction FROM agent_routines
+  const routines =
+    !source || source.entity_kind === "routine"
+      ? (
+          await db.query<{ id: string; instruction: string }>(
+            `SELECT id, instruction FROM agent_routines
    WHERE user_id = $1 AND NOT paused AND next_run_at < $2::timestamptz - interval '1 day' AND current_job_id IS NULL
+      AND ($3::uuid IS NULL OR id=$3)
    ORDER BY next_run_at, id LIMIT 20`,
-      [userId, now],
-    )
-  ).rows;
+            [userId, now, source?.entity_id ?? null],
+          )
+        ).rows
+      : [];
   result.push(
     ...routines.map((routine): NudgeCandidate => ({
       key: `routine:${routine.id}`,
@@ -259,18 +283,22 @@ export async function reminderNudgeCandidates(
       actions: ["move", "skip"],
     })),
   );
-  const waiting = (
-    await db.query<{ id: string; title: string }>(
-      `SELECT j.id, coalesce(c.title, 'Assistant request') AS title FROM ai_jobs j
+  const waiting =
+    !source || source.entity_kind === "job"
+      ? (
+          await db.query<{ id: string; title: string }>(
+            `SELECT j.id, coalesce(c.title, 'Assistant request') AS title FROM ai_jobs j
    LEFT JOIN ai_chats c ON c.id = j.chat_id AND c.user_id = j.user_id
    WHERE j.user_id = $1 AND j.state = 'waiting' AND j.heartbeat_at < $2::timestamptz - interval '3 hours'
    AND (j.chat_id IS NULL OR c.id IS NOT NULL)
    AND (c.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id = c.project_id AND ${visibleProjects("p", { user: "$1", ai: true })}))
    AND (c.scope_kind IS DISTINCT FROM 'task' OR EXISTS(SELECT 1 FROM items i WHERE i.id = c.scope_id AND ${visibleItems("i", { user: "$1", ai: true })}))
+      AND ($3::uuid IS NULL OR j.id=$3)
    ORDER BY j.heartbeat_at, j.id LIMIT 20`,
-      [userId, now],
-    )
-  ).rows;
+            [userId, now, source?.entity_id ?? null],
+          )
+        ).rows
+      : [];
   result.push(
     ...waiting.map((job): NudgeCandidate => ({
       key: `job:${job.id}`,
@@ -282,20 +310,33 @@ export async function reminderNudgeCandidates(
     })),
   );
 
-  const goals = (
-    await db.query<{ id: string; title: string }>(
-      `SELECT g.id, g.title FROM goals g
-      WHERE g.user_id = $1 AND g.status = 'active' AND g.target_date >= $3::date AND g.target_date <= $4::date
+  const goals =
+    !source || source.entity_kind === "goal"
+      ? (
+          await db.query<{ id: string; title: string }>(
+            `SELECT g.id, g.title FROM goals g
+      WHERE g.user_id = $1
+        AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=g.project_id AND ${visibleProjects("source_project", { user: "$1", ai: true })}))
+        AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=g.plan_doc_id AND ${visibleDocs("source_doc", { user: "$1", ai: true })})) AND g.status = 'active' AND g.target_date >= $3::date AND g.target_date <= $4::date
         AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.assistant_off AND (p.id = g.project_id OR EXISTS(SELECT 1 FROM docs d WHERE d.id = g.plan_doc_id AND d.project_id = p.id)))
-        AND (NOT EXISTS(SELECT 1 FROM items i WHERE i.user_id = $1 AND i.kind = 'task' AND i.status NOT IN ('done','cancelled') AND (i.project_id = g.project_id OR EXISTS(SELECT 1 FROM doc_task_links l WHERE l.doc_id = g.plan_doc_id AND l.item_id = i.id)))
-          OR EXISTS(SELECT 1 FROM items i WHERE i.user_id = $1 AND i.kind = 'task' AND i.status NOT IN ('done','cancelled') AND i.estimate_minutes > i.spent_minutes
+        AND (NOT EXISTS(SELECT 1 FROM items i WHERE i.user_id = $1 AND ${visibleItems("i", { user: "$1", ai: true })} AND i.kind = 'task' AND i.status NOT IN ('done','cancelled') AND (i.project_id = g.project_id OR EXISTS(SELECT 1 FROM doc_task_links l WHERE l.doc_id = g.plan_doc_id AND l.item_id = i.id)))
+          OR EXISTS(SELECT 1 FROM items i WHERE i.user_id = $1 AND ${visibleItems("i", { user: "$1", ai: true })} AND i.kind = 'task' AND i.status NOT IN ('done','cancelled') AND i.estimate_minutes > i.spent_minutes
             AND NOT EXISTS(SELECT 1 FROM projects p WHERE p.id = i.project_id AND p.assistant_off)
             AND (i.project_id = g.project_id OR EXISTS(SELECT 1 FROM doc_task_links l WHERE l.doc_id = g.plan_doc_id AND l.item_id = i.id))
             AND i.estimate_minutes - i.spent_minutes > coalesce((SELECT sum(extract(epoch FROM(b.end_at-b.start_at))/60) FROM time_blocks b WHERE b.item_id=i.id AND b.user_id=$1 AND b.start_at > $2 AND b.end_at <= ((g.target_date + 1)::timestamp AT TIME ZONE $5)),0)))
+      AND ($6::uuid IS NULL OR g.id=$6)
       ORDER BY g.target_date,g.id LIMIT 20`,
-      [userId, now, today, addDays(today, 7), timezone],
-    )
-  ).rows;
+            [
+              userId,
+              now,
+              today,
+              addDays(today, 7),
+              timezone,
+              source?.entity_id ?? null,
+            ],
+          )
+        ).rows
+      : [];
   result.push(
     ...goals.map((goal): NudgeCandidate => ({
       key: `goal:${goal.id}`,
@@ -306,18 +347,22 @@ export async function reminderNudgeCandidates(
       actions: ["done", "move", "skip", "book"],
     })),
   );
-  const comments = (
-    await db.query<{ id: string; doc_id: string; title: string }>(
-      `SELECT c.id,c.doc_id,d.title FROM doc_comments c JOIN docs d ON d.id=c.doc_id
+  const comments =
+    !source || source.entity_kind === "comment"
+      ? (
+          await db.query<{ id: string; doc_id: string; title: string }>(
+            `SELECT c.id,c.doc_id,d.title FROM doc_comments c JOIN docs d ON d.id=c.doc_id
       WHERE c.resolved_at IS NULL AND c.created_at < $2::timestamptz - interval '1 day'
         AND ${visibleDocs("d", { user: "$1", ai: true })}
         AND EXISTS(SELECT 1 FROM doc_comment_mentions m WHERE m.comment_id=c.id AND m.user_id=$1)
         AND NOT EXISTS(SELECT 1 FROM doc_comments reply WHERE reply.parent_id=c.id AND reply.user_id=$1)
         AND NOT EXISTS(SELECT 1 FROM doc_comments parent WHERE parent.id=c.parent_id AND parent.resolved_at IS NOT NULL)
+      AND ($3::uuid IS NULL OR c.id=$3)
       ORDER BY c.created_at,c.id LIMIT 20`,
-      [userId, now],
-    )
-  ).rows;
+            [userId, now, source?.entity_id ?? null],
+          )
+        ).rows
+      : [];
   result.push(
     ...comments.map((comment): NudgeCandidate => ({
       key: `comment:${comment.id}`,
@@ -329,23 +374,40 @@ export async function reminderNudgeCandidates(
       actions: ["done", "skip"],
     })),
   );
-  const upcoming = await upcomingExams(db, userId, now, {
-    horizonDays: 7,
-    limit: null,
-  });
+  const examKey =
+    source?.entity_kind === "exam"
+      ? (source.exam_key ??
+        (
+          await db.query<{ exam_key: string }>(
+            "SELECT exam_key FROM study_exams WHERE id=$1 AND user_id=$2",
+            [source.entity_id, userId],
+          )
+        ).rows[0]?.exam_key)
+      : undefined;
+  const upcoming =
+    !source || source.entity_kind === "exam"
+      ? await upcomingExams(db, userId, now, {
+          horizonDays: 7,
+          limit: null,
+          ...(source ? { key: examKey } : {}),
+        })
+      : [];
   const itemIds = upcoming.flatMap((e) => {
     const match = /^item:([0-9a-f-]{36})\|/i.exec(e.key);
     return match ? [match[1]] : [];
   });
   const allowedItems = new Set(
-    (
-      await db.query<{ id: string }>(
-        `SELECT i.id FROM items i WHERE i.id = ANY($2::uuid[]) AND ${visibleItems("i", { user: "$1", ai: true })}`,
-        [userId, itemIds],
-      )
-    ).rows.map((row) => row.id),
+    itemIds.length
+      ? (
+          await db.query<{ id: string }>(
+            `SELECT i.id FROM items i WHERE i.id = ANY($2::uuid[]) AND ${visibleItems("i", { user: "$1", ai: true })}`,
+            [userId, itemIds],
+          )
+        ).rows.map((row) => row.id)
+      : [],
   );
   const currentExams = upcoming.filter((e) => {
+    if (source && e.key !== examKey) return false;
     const match = /^item:([0-9a-f-]{36})\|/i.exec(e.key);
     return !match || allowedItems.has(match[1]);
   });
@@ -360,16 +422,25 @@ export async function reminderNudgeCandidates(
       [userId, exam.key, exam.title, exam.starts_at, exam.all_day],
     );
   }
-  const exams = (
-    await db.query<{ id: string; exam_key: string; title: string }>(
-      `SELECT e.id,e.exam_key,e.title FROM study_exams e WHERE e.user_id=$1 AND e.starts_at>$2 AND e.starts_at<=$2::timestamptz+interval '7 days'
+  const exams =
+    !source || source.entity_kind === "exam"
+      ? (
+          await db.query<{ id: string; exam_key: string; title: string }>(
+            `SELECT e.id,e.exam_key,e.title FROM study_exams e WHERE e.user_id=$1 AND e.starts_at>$2 AND e.starts_at<=$2::timestamptz+interval '7 days'
       AND (e.own OR e.exam_key=ANY($3::text[]))
       AND NOT EXISTS(SELECT 1 FROM docs d WHERE d.id=ANY(e.doc_ids) AND NOT ${visibleDocs("d", { user: "$1", ai: true })})
       AND coalesce((SELECT sum(extract(epoch FROM(b.end_at-b.start_at))/60) FROM time_blocks b JOIN items i ON i.id=b.item_id WHERE b.user_id=$1 AND i.user_id=$1 AND i.status NOT IN ('done','cancelled') AND (i.study_exam_id=e.id OR (i.study_exam_id IS NULL AND i.title='Revise for '||e.title)) AND b.start_at>$2 AND b.end_at<=e.starts_at),0) < greatest(30,(SELECT count(*)*2 FROM study_cards card WHERE card.user_id=$1 AND card.doc_id=ANY(e.doc_ids) AND (card.reps=0 OR card.lapses>0)))
+      AND ($4::uuid IS NULL OR e.id=$4)
       ORDER BY e.starts_at,e.id LIMIT 20`,
-      [userId, now, currentExams.map((e) => e.key)],
-    )
-  ).rows;
+            [
+              userId,
+              now,
+              currentExams.map((e) => e.key),
+              source?.entity_id ?? null,
+            ],
+          )
+        ).rows
+      : [];
   result.push(
     ...exams.map((exam): NudgeCandidate => ({
       key: `exam:${exam.id}`,
@@ -381,14 +452,18 @@ export async function reminderNudgeCandidates(
       actions: ["skip", "book"],
     })),
   );
-  const habits = (
-    await db.query<{ id: string; name: string; block_id: string }>(
-      `SELECT DISTINCT ON(h.id) h.id,h.name,b.id AS block_id FROM habits h JOIN habit_blocks b ON b.habit_id=h.id AND b.user_id=h.user_id
+  const habits =
+    !source || source.entity_kind === "habit"
+      ? (
+          await db.query<{ id: string; name: string; block_id: string }>(
+            `SELECT DISTINCT ON(h.id) h.id,h.name,b.id AS block_id FROM habits h JOIN habit_blocks b ON b.habit_id=h.id AND b.user_id=h.user_id
       WHERE h.user_id=$1 AND h.active AND b.outcome IS NULL AND b.end_at<$2 AND b.end_at>=$3
+      AND ($4::uuid IS NULL OR h.id=$4)
       ORDER BY h.id,b.end_at DESC LIMIT 20`,
-      [userId, now, dayStart],
-    )
-  ).rows;
+            [userId, now, dayStart, source?.entity_id ?? null],
+          )
+        ).rows
+      : [];
   result.push(
     ...habits.map((habit): NudgeCandidate => ({
       key: `habit:${habit.id}`,
@@ -401,16 +476,18 @@ export async function reminderNudgeCandidates(
     })),
   );
   const previousWeek = addDays(today, -((weekdayOf(today) + 6) % 7) - 7);
-  const missed = (
-    await db.query<{
-      id: string;
-      name: string;
-      period: "day" | "week";
-      cadence: number;
-      completed: number;
-      block_id: string | null;
-    }>(
-      `WITH periods AS (
+  const missed =
+    !source || source.entity_kind === "habit"
+      ? (
+          await db.query<{
+            id: string;
+            name: string;
+            period: "day" | "week";
+            cadence: number;
+            completed: number;
+            block_id: string | null;
+          }>(
+            `WITH periods AS (
        SELECT h.*, CASE WHEN h.period = 'week' THEN $4::date ELSE (
          SELECT max(day::date) FROM generate_series($3::date - 7, $3::date - 1, interval '1 day') day
          WHERE extract(dow FROM day)::int = ANY(h.days)
@@ -429,10 +506,19 @@ export async function reminderNudgeCandidates(
      FROM windows w WHERE w.created_at <= w.period_start AND w.period_end <= $2::timestamptz
        AND (SELECT count(*) FROM habit_blocks b WHERE b.habit_id = w.id AND b.user_id = $1
          AND b.start_at >= w.period_start AND b.end_at <= w.period_end AND b.outcome = 'done') < w.cadence
+      AND ($6::uuid IS NULL OR w.id=$6)
      ORDER BY w.id LIMIT 20`,
-      [userId, now, today, previousWeek, timezone],
-    )
-  ).rows;
+            [
+              userId,
+              now,
+              today,
+              previousWeek,
+              timezone,
+              source?.entity_id ?? null,
+            ],
+          )
+        ).rows
+      : [];
   const alreadyReminded = new Set(habits.map((h) => h.id));
   result.push(
     ...missed
@@ -466,14 +552,40 @@ export async function scanReminderNudges(now = new Date(), only?: string[]) {
     ).rows;
     for (const person of people) {
       const prefs = await loadPrefs(pool, person.id);
+      const nudgePrefs = await settings(pool, person.id);
+      if (
+        !nudgePrefs?.enabled ||
+        !(nudgePrefs.chat || nudgePrefs.push || nudgePrefs.email)
+      )
+        continue;
+      const sentToday = (
+        await pool.query<{ count: number }>(
+          "SELECT count(*)::int AS count FROM assistant_nudges WHERE user_id=$1 AND local_day=$2::date",
+          [person.id, localDateKey(now, prefs.timezone)],
+        )
+      ).rows[0].count;
+      if (
+        !canSendReminderNudge(now, prefs.timezone, nudgePrefs, {
+          sent_today: sentToday,
+          last_sent_at: null,
+          stopped: false,
+        })
+      )
+        continue;
+      let remaining = 3 - sentToday;
       const candidates = await reminderNudgeCandidates(
         person.id,
         prefs.timezone,
         now,
       );
-      for (const candidate of candidates)
-        if (await postReminderNudge(person.id, prefs.timezone, candidate, now))
+      for (const candidate of candidates) {
+        if (
+          await postReminderNudge(person.id, prefs.timezone, candidate, now)
+        ) {
           sent++;
+          if (--remaining === 0) break;
+        }
+      }
     }
     if (people.length < 200) return sent;
     afterPerson = people.at(-1)!.id;

@@ -310,6 +310,8 @@ export type ExternalOptions = {
   visible?: boolean;
   /** Every word must appear in the title or location (search). */
   words?: string[];
+  subscriptionId?: string;
+  uidHash?: string;
 };
 
 /** An occurrence as the server keeps it: with the event's uid, for reminders. */
@@ -341,6 +343,7 @@ export async function externalOccurrences(
          AND ($6::boolean IS FALSE OR s.visible)
          AND NOT EXISTS (SELECT 1 FROM unnest($7::text[]) w
                          WHERE (e.title || ' ' || e.location) NOT ILIKE w)
+         AND ($8::uuid IS NULL OR s.id=$8) AND ($9::text IS NULL OR md5(e.uid)=$9)
        ORDER BY e.starts_at LIMIT ${MAX_EVENTS}`,
       [
         userId,
@@ -350,6 +353,8 @@ export async function externalOccurrences(
         options.audience === "others",
         !!options.visible,
         options.words ?? [],
+        options.subscriptionId ?? null,
+        options.uidHash ?? null,
       ],
     )
   ).rows;

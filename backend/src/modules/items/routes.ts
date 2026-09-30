@@ -500,14 +500,35 @@ export async function itemRoutes(app: FastifyInstance) {
       .object({ version: z.coerce.number().int().positive() })
       .and(editScopeQuery)
       .parse(r.query);
+    const guarded = z
+      .object({
+        expected_blocks: z
+          .array(
+            z
+              .object({ id: z.uuid(), revision: z.number().int().positive() })
+              .strict(),
+          )
+          .max(100)
+          .optional(),
+      })
+      .strict()
+      .parse(r.body ?? {});
+    if (guarded.expected_blocks && q.scope !== "all")
+      fail(422, "Session guards require the whole item.");
     const id = idParam(r);
     await transaction((db) =>
       q.scope === "all"
-        ? mutate(db, u, {
-            operation: "delete",
-            item_id: id,
-            version: q.version,
-          })
+        ? mutate(
+            db,
+            u,
+            {
+              operation: "delete",
+              item_id: id,
+              version: q.version,
+            },
+            undefined,
+            { expectedBlocks: guarded.expected_blocks },
+          )
         : deleteOccurrences(db, u, id, q.version, q.scope, q.occurrence!),
     );
     return reply.code(204).send();

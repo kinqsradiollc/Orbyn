@@ -1,6 +1,8 @@
 /** Error carrying an HTTP status. Thrown by the backend and by the API client. */
 export class HttpError extends Error {
   readonly statusCode: number;
+  /** Server retry hint for clients; milliseconds from receipt of the response. */
+  retryAfterMs?: number;
   /** The technical detail the server sent (only with DEBUG_ERRORS on there). */
   detail?: string;
   /** Which call failed, for the console: "POST /items", and its request id. */
@@ -9,6 +11,7 @@ export class HttpError extends Error {
     statusCode: number,
     message: string,
     extra: {
+      retryAfterMs?: number;
       detail?: string;
       request?: { method: string; path: string; id: string | null };
     } = {},
@@ -17,6 +20,7 @@ export class HttpError extends Error {
     this.name = "HttpError";
     this.statusCode = statusCode;
     this.detail = extra.detail;
+    this.retryAfterMs = extra.retryAfterMs;
     this.request = extra.request;
   }
   /** Alias kept for client code that reads `error.status`. */

@@ -10,7 +10,51 @@ import {
 } from "@orbyn/core";
 import type { OrbynClient } from "./client.js";
 
+export type ReminderActionClient = Pick<
+  OrbynClient,
+  | "getItem"
+  | "updateItem"
+  | "deleteItem"
+  | "getPlannerPrefs"
+  | "createBlockOnDay"
+  | "itemSessions"
+  | "deleteBlock"
+  | "getWorkRecord"
+  | "updateWorkRecord"
+  | "listAgentRoutines"
+  | "updateAgentRoutine"
+  | "goalWork"
+  | "listGoals"
+  | "updateGoal"
+  | "listDocComments"
+  | "resolveDocComment"
+  | "planHabits"
+  | "applyHabitPlan"
+  | "deleteHabitBlock"
+  | "getHabitBlock"
+  | "checkInHabitBlock"
+  | "planRevision"
+  | "applyRevision"
+  | "updateAiChat"
+>;
+
+/** Apply an explicit choice atomically with its durable receipt. */
+export async function performReminderAction(
+  client: OrbynClient,
+  card: ReminderNudgeCard,
+  action: ReminderNudgeCard["actions"][number],
+  options: ReminderActionOptions = {},
+): Promise<ReminderActionReceipt> {
+  const saved = await client.performReminderAction(card, action, options);
+  return {
+    id: saved.id,
+    message: saved.message,
+    undo: () => client.undoReminderAction(saved.id),
+  };
+}
+
 export type ReminderActionReceipt = {
+  id?: string;
   message: string;
   undo: () => Promise<void>;
 };
@@ -22,8 +66,8 @@ export type ReminderActionOptions = {
 };
 
 /** Run a card's explicit choice through the ordinary personal work endpoints, without AI. */
-export async function performReminderAction(
-  client: OrbynClient,
+export async function performLocalReminderAction(
+  client: ReminderActionClient,
   card: ReminderNudgeCard,
   action: ReminderNudgeCard["actions"][number],
   options: ReminderActionOptions = {},
@@ -90,7 +134,9 @@ export async function performReminderAction(
               409,
               "This session changed since you booked it. Open it to review.",
             );
-          await client.deleteBlock(block.id);
+          if (block.revision === undefined)
+            throw new HttpError(409, "Refresh this session before undoing it.");
+          await client.deleteBlock(block.id, block.revision);
         },
       };
     }
@@ -169,6 +215,7 @@ export async function performReminderAction(
     if (!before) throw new HttpError(404, "Routine not found.");
     const oldClock = zonedParts(new Date(before.next_run_at), before.timezone);
     const after = await client.updateAgentRoutine(before.id, {
+      expected_revision: before.revision,
       next_run_at: dayTime(
         options.day!,
         oldClock.hour * 60 + oldClock.minute,
@@ -186,8 +233,11 @@ export async function performReminderAction(
             409,
             "This routine has changed. Open it to review.",
           );
+        if (after.revision === undefined)
+          throw new HttpError(409, "Refresh this routine before undoing it.");
         await client.updateAgentRoutine(before.id, {
           next_run_at: before.next_run_at,
+          expected_revision: after.revision,
         });
       },
     };
@@ -199,7 +249,7 @@ export async function performReminderAction(
         409,
         "Link unfinished tasks to this goal before booking more time.",
       );
-    const receipt = await performReminderAction(
+    const receipt = await performLocalReminderAction(
       client,
       {
         ...card,
@@ -223,10 +273,12 @@ export async function performReminderAction(
       (row) => row.id === card.entity_id,
     );
     if (!before) throw new HttpError(404, "Goal not found.");
-    const after = await client.updateGoal(
-      before.id,
-      action === "done" ? { status: "done" } : { target_date: options.day! },
-    );
+    const after = await client.updateGoal(before.id, {
+      expected_revision: before.revision,
+      ...(action === "done"
+        ? { status: "done" }
+        : { target_date: options.day! }),
+    });
     return {
       message:
         action === "done" ? "Marked the goal done." : "Moved the goal date.",
@@ -236,12 +288,14 @@ export async function performReminderAction(
         );
         if (current?.updated_at !== after.updated_at)
           throw new HttpError(409, "This goal changed. Open it to review.");
-        await client.updateGoal(
-          before.id,
-          action === "done"
+        if (after.revision === undefined)
+          throw new HttpError(409, "Refresh this goal before undoing it.");
+        await client.updateGoal(before.id, {
+          expected_revision: after.revision,
+          ...(action === "done"
             ? { status: before.status }
-            : { target_date: before.target_date },
-        );
+            : { target_date: before.target_date }),
+        });
       },
     };
   }
@@ -251,11 +305,23 @@ export async function performReminderAction(
       (row) => row.id === card.entity_id,
     );
     if (!before) throw new HttpError(404, "Comment not found.");
-    await client.resolveDocComment(docId, before.id, true);
+    const after = await client.resolveDocComment(
+      docId,
+      before.id,
+      true,
+      before.revision,
+    );
     return {
       message: "Resolved the comment.",
       undo: async () => {
-        await client.resolveDocComment(docId, before.id, !!before.resolved_at);
+        if (after.revision === undefined)
+          throw new HttpError(409, "Refresh this comment before undoing it.");
+        await client.resolveDocComment(
+          docId,
+          before.id,
+          !!before.resolved_at,
+          after.revision,
+        );
       },
     };
   }
@@ -331,7 +397,7 @@ export async function performReminderAction(
       key: card.exam_key,
       sessions,
     });
-    const item = await client.getItem(applied.item_id);
+    const item = { id: applied.item_id, version: applied.item_version };
     return {
       message: "Booked revision time before the exam.",
       undo: async () => {
@@ -354,7 +420,14 @@ export async function performReminderAction(
             409,
             "This revision work changed. Open it to review.",
           );
-        await client.deleteItem(item.id, item.version);
+        if (!item.version || !applied.block_versions)
+          throw new HttpError(
+            409,
+            "Refresh this revision work before undoing it.",
+          );
+        await client.deleteItem(item.id, item.version, {
+          expectedBlocks: applied.block_versions,
+        });
       },
     };
   }

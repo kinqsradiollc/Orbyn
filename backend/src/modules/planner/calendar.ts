@@ -394,7 +394,7 @@ export async function timeBlocks(
   return (
     await db.query<TimeBlock>(
       `SELECT b.id, b.item_id, b.user_id, b.start_at, b.end_at, b.source, b.plan_id,
-              b.started_at, b.outcome,
+              b.started_at, b.outcome, b.revision,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
        WHERE b.user_id = $1 AND b.start_at < $3 AND b.end_at > $2 AND ${visibleItems()}
@@ -775,6 +775,7 @@ export async function agendaEntries(
       })),
     ...subscribed.map((e) => ({
       source: "subscription" as const,
+      subscription_id: e.subscription_id,
       item_id: null,
       title: e.title,
       start_at: e.start_at,

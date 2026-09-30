@@ -84,6 +84,7 @@ export function AssistantView({
     setMessage,
     turns,
     thinking,
+    restoringChat,
     runProgress,
     answerWaiting,
     approveWaiting,
@@ -493,7 +494,10 @@ export function AssistantView({
         </div>
 
         <div className="ai-thread" aria-live="polite" ref={threadRef}>
-          {empty && <h2 className="ai-greeting">What’s on your mind today?</h2>}
+          {restoringChat && <p role="status">{restoringChat}</p>}
+          {empty && !restoringChat && (
+            <h2 className="ai-greeting">What’s on your mind today?</h2>
+          )}
 
           {activeChat?.swept_at && (
             <div className="ai-swept-note">

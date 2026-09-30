@@ -1,3 +1,5 @@
+import { visibleNightLeftovers } from "../lib/assistant-leftovers.js";
+import { assistantJobSourcesVisible } from "../lib/assistant-job-sources.js";
 import { randomUUID } from "node:crypto";
 import {
   addDays,
@@ -158,25 +160,39 @@ export async function buildOvernightSection(
     await pool.query<{
       summary: string;
       status: string;
+      allowed: boolean;
       state: string;
       result: unknown;
       run_state: unknown;
       apply_result: unknown;
     }>(
-      `SELECT nr.summary, nr.status, j.state, j.result, j.run_state, j.apply_result
+      `SELECT nr.summary, nr.status, j.state, j.result, j.run_state, j.apply_result, ${assistantJobSourcesVisible("j", "$2", false)} AS allowed
      FROM assistant_night_runs nr JOIN ai_jobs j ON j.id = nr.job_id AND j.user_id = $2
      WHERE nr.night_id = $1 ORDER BY nr.created_at, nr.id`,
       [night.id, userId],
     )
-  ).rows.filter(
-    (run) =>
-      !mentionsKeptOut([
-        run.summary,
-        run.result,
-        run.run_state,
-        run.apply_result,
-      ]),
-  );
+  ).rows
+    .map((run) =>
+      run.allowed
+        ? run
+        : {
+            ...run,
+            summary:
+              "Night work: source access is unavailable or not recorded.",
+            result: null,
+            run_state: null,
+            apply_result: null,
+          },
+    )
+    .filter(
+      (run) =>
+        !mentionsKeptOut([
+          run.summary,
+          run.result,
+          run.run_state,
+          run.apply_result,
+        ]),
+    );
   const proposalOf = (result: unknown) => {
     const value = objectValue(objectValue(result).assistant_run).proposal_id;
     const id = typeof value === "string" ? value.replace(/^proposal:/, "") : "";
@@ -200,6 +216,7 @@ export async function buildOvernightSection(
   let review = 0;
   let questions = 0;
   let completed = 0;
+  let settling = 0;
   for (const run of runs) {
     const result = objectValue(run.result);
     const details = objectValue(result.assistant_run);
@@ -264,14 +281,13 @@ export async function buildOvernightSection(
       );
     }
     if (run.state === "done") completed++;
+    if (run.state === "queued" || run.state === "running") settling++;
     markdown.push(
       `- ${summary}${links.length ? ` — ${links.join(" · ")}` : ""}`,
     );
   }
   const notDone = objectValue(night.summary).not_done;
-  const leftovers = Array.isArray(notDone)
-    ? notDone.filter((entry) => !mentionsKeptOut(entry))
-    : [];
+  const leftovers = await visibleNightLeftovers(pool, userId, notDone);
   for (const entry of leftovers) {
     const row = objectValue(entry);
     if (typeof row.title === "string")
@@ -280,9 +296,9 @@ export async function buildOvernightSection(
       );
   }
   if (!markdown.length) return null;
-  markdown.unshift(linked("Review Overnight", "/app/overnight"));
+  markdown.unshift(linked("Review Overnight", `/app/overnight/${night.id}`));
   return {
-    firstLine: `Overnight: ${completed} ${completed === 1 ? "run" : "runs"} finished, ${review} to review, ${questions} ${questions === 1 ? "question" : "questions"}, ${leftovers.length} not done tonight.`,
+    firstLine: `Overnight: ${completed} ${completed === 1 ? "run" : "runs"} finished, ${review} to review, ${questions} ${questions === 1 ? "question" : "questions"}, ${leftovers.length} not done tonight.${settling ? ` ${settling} ${settling === 1 ? "run is" : "runs are"} still settling.` : ""}`,
     markdown,
   };
 }

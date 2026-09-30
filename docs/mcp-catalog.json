@@ -8955,6 +8955,11 @@
           "changes": {
             "type": "object",
             "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
               "title": { "type": "string", "minLength": 1, "maxLength": 120 },
               "target": { "type": "string", "maxLength": 2000 },
               "target_date": {
@@ -9103,6 +9108,11 @@
           "changes": {
             "type": "object",
             "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
               "instruction": {
                 "type": "string",
                 "minLength": 1,
@@ -9539,5 +9549,5 @@
       ]
     }
   ],
-  "routes": { "covered": 271, "excluded": 229, "pending": 0 }
+  "routes": { "covered": 271, "excluded": 233, "pending": 0 }
 }

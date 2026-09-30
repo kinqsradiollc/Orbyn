@@ -10,6 +10,17 @@ import {
 } from "@orbyn/core";
 import type { Db, Queryable } from "../../db/pool.js";
 
+import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
+import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+
+const memorySourcesVisible = (doc = "d", user = "$1") => `NOT EXISTS (
+  WITH RECURSIVE dependencies(kind,id) AS (
+    SELECT source_type,source_id FROM memory_sources WHERE doc_id=${doc}.id AND source_id IS NOT NULL AND source_type IN ('task','doc','project','chat')
+    UNION SELECT s.source_type,s.source_id FROM memory_sources s JOIN dependencies parent ON parent.kind='doc' AND s.doc_id=parent.id WHERE s.source_id IS NOT NULL AND s.source_type IN ('task','doc','project','chat')
+  ) SELECT 1 FROM dependencies source WHERE NOT (
+    CASE WHEN source.kind='chat' THEN EXISTS(SELECT 1 FROM ai_chats source_chat WHERE source_chat.id=source.id AND ${assistantChatVisible("source_chat", user)} AND (source_chat.origin='person' OR EXISTS(SELECT 1 FROM assistant_chat_sources recorded WHERE recorded.chat_id=source_chat.id)))
+    ELSE ${assistantSourceVisible("source.kind", "source.id", user, false)} END))`;
+
 const MAX_MEMORY_CHARS = 60_000;
 
 export type MemoryFact = { id: string; text: string; sources: string[] };
@@ -140,6 +151,7 @@ export async function listMemory(
          FROM docs d
         WHERE d.user_id = $1 AND d.team_id IS NULL AND d.kind = 'memory'
           AND d.deleted_at IS NULL
+          AND ($4::boolean=false OR ${memorySourcesVisible()})
           AND NOT EXISTS (
             SELECT 1 FROM memory_sources s
              WHERE s.doc_id = d.id AND s.source_type = 'project'
@@ -150,6 +162,7 @@ export async function listMemory(
         userId,
         options.keptOutProjects ?? [],
         Math.max(1, Math.min(options.limit ?? 50, 100)),
+        options.keptOutProjects !== undefined,
       ],
     )
   ).rows;
@@ -169,6 +182,7 @@ export async function readMemory(
          FROM docs d
         WHERE d.user_id = $1 AND d.team_id IS NULL AND d.kind = 'memory'
           AND d.deleted_at IS NULL AND (d.id::text = $2 OR lower(d.title) = lower($2))
+          AND ${memorySourcesVisible()}
           AND NOT EXISTS (
             SELECT 1 FROM memory_sources s
              WHERE s.doc_id = d.id AND s.source_type = 'project'
@@ -189,18 +203,20 @@ export async function recallMemory(
   words: string,
   maxChars = 4_000,
   keptOutProjects: string[] = [],
+  onRead?: (ids: string[]) => Promise<void>,
 ): Promise<string> {
   const query = words.trim().slice(0, 500);
   if (!query) return "";
   const rows = (
-    await db.query<{ title: string; content: DocBlock[] }>(
+    await db.query<{ id: string; title: string; content: DocBlock[] }>(
       // Any word of the request may match (a request is long; every word
       // together would almost never), and a note whose topic the request
       // names always does.
       `WITH q AS (SELECT replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')::tsquery AS tsq)
-       SELECT d.title, d.content FROM docs d CROSS JOIN q
+       SELECT d.id, d.title, d.content FROM docs d CROSS JOIN q
         WHERE d.user_id = $1 AND d.team_id IS NULL AND d.kind = 'memory'
           AND d.deleted_at IS NULL
+          AND ${memorySourcesVisible()}
           AND (d.search @@ q.tsq OR (length(d.title) > 2 AND strpos(lower($2), lower(d.title)) > 0))
           AND NOT EXISTS (
             SELECT 1 FROM memory_sources s
@@ -212,6 +228,7 @@ export async function recallMemory(
     )
   ).rows;
   let out = "";
+  const readIds: string[] = [];
   for (const row of rows) {
     const lines = (row.content ?? []).flatMap((block) =>
       "text" in block && block.text
@@ -221,9 +238,11 @@ export async function recallMemory(
     const section = `## ${row.title}\n${lines.join("\n")}`;
     if (!lines.length) continue;
     if (out && out.length + section.length + 2 > maxChars) break;
+    readIds.push(`doc:${row.id}`);
     out += `${out ? "\n\n" : ""}${section.slice(0, Math.max(0, maxChars - out.length - 2))}`;
     if (out.length >= maxChars) break;
   }
+  await onRead?.(readIds);
   return out;
 }
 

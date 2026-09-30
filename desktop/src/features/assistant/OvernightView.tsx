@@ -6,6 +6,7 @@ import { useConfirm } from "../../components/Confirm";
 import "./overnight.css";
 
 type Props = {
+  nightId?: string;
   report: (error: unknown) => void;
   onOpenChat: (id: string) => void;
   onOpenReview: (id: string) => void;
@@ -18,7 +19,7 @@ export function OvernightView(props: Props) {
   const [busy, setBusy] = useState(false);
   const { ask } = useConfirm();
   const load = async () => {
-    setNight(await client.latestAssistantNight());
+    setNight(await client.latestAssistantNight(props.nightId));
     setLoaded(true);
   };
   useEffect(() => {
@@ -28,7 +29,7 @@ export function OvernightView(props: Props) {
     const refresh = () => {
       if (pending) return pending;
       pending = client
-        .latestAssistantNight()
+        .latestAssistantNight(props.nightId)
         .then((next) => {
           if (alive) {
             setNight(next);
@@ -54,7 +55,7 @@ export function OvernightView(props: Props) {
       stop();
       window.clearInterval(timer);
     };
-  }, []);
+  }, [props.nightId]);
   const act = async (operation: () => Promise<unknown>) => {
     if (busy) return;
     setBusy(true);
@@ -84,7 +85,21 @@ export function OvernightView(props: Props) {
       }))
     )
       return;
-    await act(() => client.reviewAssistantNight(night.id, action));
+    await act(() =>
+      client.reviewAssistantNight(
+        night.id,
+        action,
+        night.runs
+          .filter(
+            (run) =>
+              !run.restricted &&
+              (action === "undo"
+                ? run.state === "done" || run.state === "failed"
+                : run.state === "done" && run.status !== "undone"),
+          )
+          .map((run) => ({ id: run.id, token: run.decision_token })),
+      ),
+    );
   };
   if (!loaded) return <p role="status">Loading your night…</p>;
   if (!night)
@@ -114,7 +129,10 @@ export function OvernightView(props: Props) {
             disabled={
               busy ||
               !night.runs.some(
-                (run) => run.state === "done" && run.status !== "undone",
+                (run) =>
+                  !run.restricted &&
+                  run.state === "done" &&
+                  run.status !== "undone",
               )
             }
             onClick={() => void bulk("keep")}
@@ -127,6 +145,7 @@ export function OvernightView(props: Props) {
               busy ||
               !night.runs.some(
                 (run) =>
+                  !run.restricted &&
                   ["done", "failed"].includes(run.state) &&
                   run.status !== "undone",
               )
@@ -191,7 +210,7 @@ function RunCard({
     setChosen(new Set(choices.map((choice) => choice.key)));
   }, [run.proposal?.id]);
   const pending = run.proposal?.status === "pending";
-  const done = run.state === "done";
+  const done = !run.restricted && run.state === "done";
   const keepChange = async (key: string) => {
     if (
       choices.length > 1 &&
@@ -255,7 +274,13 @@ function RunCard({
               className="primary"
               disabled={busy}
               onClick={() =>
-                void act(() => client.approveAssistantRun(run.job_id, true))
+                void act(() =>
+                  client.approveAssistantRun(
+                    run.job_id,
+                    true,
+                    run.approval!.id,
+                  ),
+                )
               }
             >
               Approve
@@ -264,7 +289,13 @@ function RunCard({
               className="secondary"
               disabled={busy}
               onClick={() =>
-                void act(() => client.approveAssistantRun(run.job_id, false))
+                void act(() =>
+                  client.approveAssistantRun(
+                    run.job_id,
+                    false,
+                    run.approval!.id,
+                  ),
+                )
               }
             >
               Decline
@@ -283,7 +314,13 @@ function RunCard({
                 key={choice}
                 disabled={busy}
                 onClick={() =>
-                  void act(() => client.answerAssistantRun(run.job_id, choice))
+                  void act(() =>
+                    client.answerAssistantRun(
+                      run.job_id,
+                      choice,
+                      run.question!.id,
+                    ),
+                  )
                 }
               >
                 {choice}
@@ -295,7 +332,11 @@ function RunCard({
               event.preventDefault();
               if (!busy && answer.trim())
                 void act(async () => {
-                  await client.answerAssistantRun(run.job_id, answer.trim());
+                  await client.answerAssistantRun(
+                    run.job_id,
+                    answer.trim(),
+                    run.question!.id,
+                  );
                   setAnswer("");
                 });
             }}
@@ -341,6 +382,7 @@ function RunCard({
           disabled={
             busy ||
             !done ||
+            run.restricted ||
             run.status === "undone" ||
             (pending && !chosen.size)
           }
@@ -353,6 +395,7 @@ function RunCard({
           disabled={
             busy ||
             !["done", "failed"].includes(run.state) ||
+            run.restricted ||
             run.status === "undone"
           }
           onClick={() => void act(() => client.undoAssistantNightRun(run.id))}

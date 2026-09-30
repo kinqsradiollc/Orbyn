@@ -85,6 +85,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const [message, setMessage] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [restoringChat, setRestoringChat] = useState<string | null>(null);
   const [runProgress, setRunProgress] = useState<AssistantRunProgress | null>(
     null,
   );
@@ -187,6 +188,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   }, [chatSearch, token]);
 
   const stopPolling = () => {
+    setRestoringChat(null);
     poll.current?.abort();
     poll.current = null;
   };
@@ -294,7 +296,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     const trimmed = text.trim();
     if (!trimmed || sending.current) return Promise.resolve();
     sending.current = true;
-    const request = generation.current;
+    const request = ++generation.current;
     const prior = history();
     chatId.current ??= newId();
     const requestedChatId = chatId.current;
@@ -353,8 +355,16 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     const run = runProgress;
     if (!run || run.state !== "waiting" || run.waiting?.kind !== "person")
       return Promise.resolve();
+    const request = generation.current;
+    const waitingId = run.waiting.id;
     return act(async () => {
-      await client.answerAssistantRun(run.job_id, answer);
+      try {
+        await client.answerAssistantRun(run.job_id, answer, waitingId);
+      } catch (error) {
+        if (request === generation.current) throw error;
+        return;
+      }
+      if (request !== generation.current) return;
       setTurns((current) => [
         ...current,
         { id: nextId(), role: "user", text: answer },
@@ -375,8 +385,21 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     const run = runProgress;
     if (!run || run.state !== "waiting" || run.waiting?.kind !== "approval")
       return Promise.resolve();
+    const request = generation.current;
+    const waitingId = run.waiting.id;
     return act(async () => {
-      await client.approveAssistantRun(run.job_id, approved, scope);
+      try {
+        await client.approveAssistantRun(
+          run.job_id,
+          approved,
+          waitingId,
+          scope,
+        );
+      } catch (error) {
+        if (request === generation.current) throw error;
+        return;
+      }
+      if (request !== generation.current) return;
       setRunProgress({
         ...run,
         state: "running",
@@ -393,8 +416,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const stopRun = () => {
     const run = runProgress;
     if (!run || run.state === "done") return Promise.resolve();
+    const request = generation.current;
     return act(async () => {
-      await client.stopAssistantRun(run.job_id);
+      try {
+        await client.stopAssistantRun(run.job_id);
+      } catch (error) {
+        if (request === generation.current) throw error;
+        return;
+      }
+      if (request !== generation.current) return;
       setRunProgress({ ...run, state: "running", label: "Stopping the run" });
       setThinking(true);
     });
@@ -486,22 +516,40 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const openChat = async (id: string) => {
     clearConversation(false);
     const request = generation.current;
+    const restoring = new AbortController();
+    poll.current = restoring;
+    setRestoringChat("Opening your saved chat…");
     let chat: Awaited<ReturnType<typeof client.aiChat>> | undefined;
     while (request === generation.current) {
       try {
-        chat = await client.aiChat(id);
+        chat = await client.aiChat(id, restoring.signal);
         break;
       } catch (error) {
+        if (restoring.signal.aborted || request !== generation.current) return;
         const transient =
           error instanceof HttpError
             ? error.statusCode === 429 || error.statusCode >= 500
             : error instanceof Error &&
               ["TypeError", "TimeoutError", "AbortError"].includes(error.name);
-        if (!transient) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 10000));
+        if (!transient) {
+          setRestoringChat(null);
+          throw error;
+        }
+        setRestoringChat("Your chat could not be loaded. Retrying…");
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            clearTimeout(timer);
+            restoring.signal.removeEventListener("abort", finish);
+            resolve();
+          };
+          const timer = setTimeout(finish, 10000);
+          restoring.signal.addEventListener("abort", finish, { once: true });
+          if (restoring.signal.aborted) finish();
+        });
       }
     }
     if (!chat || request !== generation.current) return;
+    setRestoringChat(null);
     chatId.current = chat.id;
     setActiveChatId(chat.id);
     void saveAssistantChat(chat.id);
@@ -516,7 +564,6 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       : null;
     scopeRef.current = nextScope;
     setScopeState(nextScope);
-    setMessage("");
     setTurns(
       chat.turns.map((t, n): Turn =>
         t.role === "user"
@@ -537,6 +584,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     );
     if (chat.active_job) {
       const job = chat.active_job;
+      stopPolling();
       const controller = new AbortController();
       poll.current = controller;
       sending.current = true;
@@ -575,6 +623,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           }
         });
     }
+    if (poll.current === restoring) poll.current = null;
     void loadChats();
   };
 
@@ -666,6 +715,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     setMessage,
     turns,
     thinking,
+    restoringChat,
     runProgress,
     answerWaiting,
     approveWaiting,

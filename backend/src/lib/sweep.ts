@@ -468,6 +468,48 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "assistant_notice_events",
+    label: "Assistant notice receipts",
+    detail:
+      "Resolved away-notice intents, kept for seven days to deduplicate transitions.",
+    table: "assistant_notice_events",
+    where: "resolved_at < now() - interval '7 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "assistant_job_sources",
+    label: "Assistant run source dependencies",
+    detail:
+      "Source permissions retained for the lifetime of their execution job; parent job retention removes them by cascade.",
+    table: "assistant_job_sources",
+    where:
+      "NOT EXISTS (SELECT 1 FROM ai_jobs j WHERE j.id=assistant_job_sources.job_id)",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "assistant_chat_sources",
+    label: "Assistant transcript source dependencies",
+    detail:
+      "Permission dependencies retained while a transcript is saved; deleting its chat removes them by cascade.",
+    table: "assistant_chat_sources",
+    where:
+      "NOT EXISTS (SELECT 1 FROM ai_chats c WHERE c.id=assistant_chat_sources.chat_id)",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "assistant_action_receipts",
+    label: "Reminder action receipts",
+    detail:
+      "Replay and Undo receipts kept for 60 days and while the reminder or a saved chat card still refers to them.",
+    table: "assistant_action_receipts",
+    where: `created_at < now() - interval '60 days' AND NOT EXISTS(SELECT 1 FROM assistant_nudges n WHERE n.id=assistant_action_receipts.nudge_id AND n.user_id=assistant_action_receipts.user_id) AND NOT EXISTS(SELECT 1 FROM ai_chats c WHERE c.user_id=assistant_action_receipts.user_id AND c.turns @> jsonb_build_array(jsonb_build_object('nudge',jsonb_build_object('id',assistant_action_receipts.nudge_id::text))))`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "assistant_nights",
     label: "Assistant nights",
     detail:

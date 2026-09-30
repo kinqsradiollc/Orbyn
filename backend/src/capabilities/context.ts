@@ -213,7 +213,11 @@ export const getContext = defineCapability({
           : (structured.teams.find((t) => t.id === id)?.name ?? "a team"),
       ),
     ].join("\n");
-    return { structured, markdown };
+    return {
+      structured,
+      markdown,
+      targets: memories.map((entry) => `doc:${entry.id}`),
+    };
   },
 });
 

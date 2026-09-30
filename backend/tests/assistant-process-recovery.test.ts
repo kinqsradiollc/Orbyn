@@ -125,16 +125,17 @@ function message(child: ChildProcess, kind: string) {
     child.on("exit", exited);
   });
 }
-async function start(pauseAfterApply = false) {
+async function start(pauseAfterApply = false, checkpointPause?: string) {
   const child = fork(
     new URL("./helpers/assistant-runner-process.ts", import.meta.url),
     [],
     {
       execArgv: ["--import", "tsx"],
-      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
       env: {
         ...process.env,
         RUNNER_TEST_PAUSE_AFTER_APPLY: pauseAfterApply ? "true" : "false",
+        RUNNER_TEST_PAUSE_CHECKPOINT: checkpointPause ?? "",
       },
     },
   );
@@ -658,7 +659,16 @@ test("a parked question survives runner replacement, accepts an answer and can b
       method: "POST",
       url: `/ai/chat/${run.id}/answer`,
       headers,
-      payload: { answer: "Lecture 2" },
+      payload: {
+        waiting_id:
+          (
+            await pool.query(
+              "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+              [run.id],
+            )
+          ).rows[0]?.id ?? randomUUID(),
+        answer: "Lecture 2",
+      },
     });
     assert.equal(answer.statusCode, 202, answer.body);
     const finished = await until(
@@ -694,7 +704,16 @@ test("a parked question survives runner replacement, accepts an answer and can b
       method: "POST",
       url: `/ai/chat/${stoppedRun.id}/answer`,
       headers,
-      payload: { answer: "Lecture 1" },
+      payload: {
+        waiting_id:
+          (
+            await pool.query(
+              "SELECT run_state->'state'->'waiting'->>'id' AS id FROM ai_jobs WHERE id=$1",
+              [stoppedRun.id],
+            )
+          ).rows[0]?.id ?? randomUUID(),
+        answer: "Lecture 1",
+      },
     });
     assert.equal(lateAnswer.statusCode, 409, lateAnswer.body);
   } finally {
@@ -971,4 +990,148 @@ test("a night plan with more than fifty private additions waits in Review even w
   } finally {
     await end(runner, "SIGTERM");
   }
+});
+
+for (const boundary of ["specialist", "delegate"])
+  test(`SIGKILL after the ${boundary} receipt reuses staged work without another delegate`, async () => {
+    const title = `Boundary ${boundary}-${randomUUID()}`;
+    let stages = 0,
+      reports = 0;
+    respond = (request) => {
+      const tools = request.tools?.map((tool) => tool.function?.name) ?? [];
+      const last = [...request.messages]
+        .reverse()
+        .find((entry) => entry.role === "tool");
+      if (tools.includes("delegate")) {
+        if (!last)
+          return {
+            name: "delegate",
+            arguments: {
+              tasks: [
+                {
+                  specialist: "projects",
+                  brief: `Create ${title}`,
+                  want_options: false,
+                },
+              ],
+            },
+          };
+        const results = JSON.parse(last.content ?? "[]");
+        return {
+          name: "finish",
+          arguments: {
+            answer: "Completed after recovery.",
+            steps: results.flatMap(
+              (row: { staged_step_ids?: string[] }) =>
+                row.staged_step_ids ?? [],
+            ),
+          },
+        };
+      }
+      if (!last) {
+        stages++;
+        return {
+          name: "create_tasks",
+          arguments: { tasks: [{ title, kind: "task" }] },
+        };
+      }
+      reports++;
+      return {
+        name: "report",
+        arguments: {
+          status: "done",
+          summary: "Prepared one task.",
+          findings: [],
+          steps: [JSON.parse(last.content ?? "{}").step_id],
+          open_questions: [],
+        },
+      };
+    };
+    const run = await enqueue(`Create ${title}.`);
+    const first = await start(false, boundary);
+    await message(first, "checkpoint-boundary");
+    const saved = await job(run.id);
+    assert.ok(
+      boundary === "delegate"
+        ? saved.run_state.state.completed_delegate
+        : Object.values(
+            saved.run_state.state.pending_delegate.specialists,
+          ).some(
+            (row: unknown) =>
+              !!(row as { completed_tool?: unknown }).completed_tool,
+          ),
+    );
+    await end(first, "SIGKILL");
+    await pool.query(
+      "UPDATE ai_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",
+      [run.id],
+    );
+    const replacement = await start();
+    const done = await until(
+      () => job(run.id),
+      (row) => ["done", "failed"].includes(row.state),
+    );
+    assert.equal(done.state, "done", done.error_message);
+    assert.equal(stages, 1);
+    assert.equal(reports, 1);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM items WHERE user_id=$1 AND title=$2",
+          [user.id, title],
+        )
+      ).rows[0].n,
+      1,
+    );
+    await end(replacement, "SIGTERM");
+  });
+
+test("disabling Night shift after queueing holds its prepared writes", async () => {
+  const title = `Revoked night ${randomUUID()}`;
+  const run = await enqueue(`Create ${title}`);
+  const nightId = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-09') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  run.checkpoint.request.automation = {
+    kind: "night",
+    night_id: nightId,
+    night_kind: "tidy",
+    wait_for_ok: false,
+  };
+  const step = {
+    id: "s1",
+    tool: "create_tasks" as const,
+    args: { tasks: [{ title, kind: "task" }] },
+  };
+  run.checkpoint.state.answer = "Prepared";
+  run.checkpoint.state.plan = [step];
+  run.checkpoint.state.selected_steps = [step];
+  await pool.query("UPDATE ai_jobs SET run_state=$2::jsonb WHERE id=$1", [
+    run.id,
+    JSON.stringify(run.checkpoint),
+  ]);
+  await pool.query(
+    "UPDATE agent_settings SET night_shift=jsonb_set(night_shift,'{enabled}','false') WHERE user_id=$1",
+    [user.id],
+  );
+  const runner = await start();
+  const done = await until(
+    () => job(run.id),
+    (row) => ["done", "failed"].includes(row.state),
+  );
+  assert.equal(done.state, "failed");
+  assert.match(done.error_message, /could not be completed|permission changed/);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM items WHERE user_id=$1 AND title=$2",
+        [user.id, title],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await end(runner, "SIGTERM");
 });

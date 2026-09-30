@@ -314,6 +314,7 @@ export function App() {
   const [reviewToOpen, setReviewToOpen] = useState<string | null>(null);
   const [reviewPending, setReviewPending] = useState(0);
   /** A saved view to open (from the sidebar or a link), and the one open. */
+  const [overnightId, setOvernightId] = useState<string | undefined>();
   const [viewToOpen, setViewToOpen] = useState<string | null>(null);
   /** Bumped by Home's goals and routines to open the assistant's Upcoming. */
   const [upcomingAsked, setUpcomingAsked] = useState(0);
@@ -454,8 +455,10 @@ export function App() {
     // Settings → Connected agents: what agents did, to undo (H7).
     else if (link.kind === "agents") openSetting("agents");
     else if (link.kind === "assistant") setView("AI assistant");
-    else if (link.kind === "overnight") setView("Overnight");
-    else setView("Overview");
+    else if (link.kind === "overnight") {
+      setOvernightId(link.id);
+      setView("Overnight");
+    } else setView("Overview");
   };
   // How many proposals wait, for the sidebar: read when signed in and again
   // whenever the inbox changes (an agent proposed, or another device decided).
@@ -965,6 +968,7 @@ export function App() {
   };
 
   const navigate = (v: View) => {
+    if (v === "Overnight") setOvernightId(undefined);
     // A failure belongs to the view it happened in.
     if (v !== view) planner.setError("");
     setView(v);
@@ -1963,7 +1967,10 @@ export function App() {
                 )}
                 {view === "Notifications" && (
                   <NotificationsView
-                    onOpenOvernight={() => navigate("Overnight")}
+                    onOpenOvernight={(id) => {
+                      navigate("Overnight");
+                      setOvernightId(id);
+                    }}
                     onOpenChat={(id) => {
                       navigate("AI assistant");
                       void assistant.openChat(id).catch(report);
@@ -2018,6 +2025,8 @@ export function App() {
                 )}
                 {view === "Overnight" && (
                   <OvernightView
+                    key={overnightId ?? "latest"}
+                    nightId={overnightId}
                     report={report}
                     onOpenChat={(id) => {
                       navigate("AI assistant");

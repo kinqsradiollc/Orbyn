@@ -57,6 +57,19 @@ export async function handTaskToAgent(
       409,
       `${keptOut.name} is kept out of ${name}, so its tasks can't be handed over.`,
     );
+  if (when === "tonight") {
+    const setting = (
+      await db.query(
+        "SELECT night_shift FROM agent_settings WHERE user_id=$1",
+        [u.id],
+      )
+    ).rows[0]?.night_shift;
+    if (!setting?.enabled || setting.kinds?.handed !== true)
+      fail(
+        409,
+        "Enable Night shift and Handed tasks in Assistant settings before choosing Tonight.",
+      );
+  }
   let grantId: string;
   try {
     grantId = (await assistantPrincipal(u, { refusePaused: true })).grant_id!;
