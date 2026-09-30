@@ -1,4 +1,7 @@
 import {
+  addDays,
+  dayTime,
+  localDateKey,
   isTimeZone,
   isValidRrule,
   occurrencesBetween,
@@ -259,9 +262,20 @@ export function parseIcs(
     const length = duration ? parseDuration(duration.value) : null;
     let endsAt: Date;
     if (end && end.at > start.at) endsAt = end.at;
-    else if (length && length > 0)
+    else if (
+      start.date &&
+      (!length ||
+        (duration && /^\+?P(?:\d+W|\d+D)$/i.test(duration.value.trim())))
+    ) {
+      // A DATE is a local calendar day, including 23/25-hour DST days.
+      const days = length && length > 0 ? length / 86_400_000 : 1;
+      endsAt = dayTime(
+        addDays(localDateKey(start.at, start.zone), days),
+        0,
+        start.zone,
+      );
+    } else if (length && length > 0)
       endsAt = new Date(start.at.getTime() + length);
-    else if (start.date) endsAt = new Date(start.at.getTime() + 86_400_000);
     else endsAt = start.at;
     const rid = get("RECURRENCE-ID");
     const recurrence = rid ? read(rid) : null;

@@ -50,6 +50,7 @@ export function usePresence(token: string, onChanged: () => void) {
     const stopBox = subscribeOutbox(() => beat());
 
     let pending: ReturnType<typeof setTimeout> | null = null;
+    let connected = false;
     const stop = client.watchEvents(
       (news) => {
         emitLive(news);
@@ -60,7 +61,19 @@ export function usePresence(token: string, onChanged: () => void) {
           if (AppState.currentState === "active") changed.current();
         }, 400);
       },
-      () => emitLive({ kind: "presence" }),
+      () => {
+        emitLive({ kind: "presence" });
+        // Initial data already loads on sign-in; only reconnects need catch-up.
+        if (connected) {
+          emitLive({ kind: "changed" });
+          if (pending) clearTimeout(pending);
+          pending = setTimeout(() => {
+            pending = null;
+            changed.current();
+          }, 400);
+        }
+        connected = true;
+      },
     );
     return () => {
       alive = false;

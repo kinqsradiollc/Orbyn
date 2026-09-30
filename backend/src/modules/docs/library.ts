@@ -7,7 +7,13 @@ import { idParam, writeRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { audit } from "../../lib/audit.js";
 import { announceDocChange } from "./live.js";
-import { TAG_IN_SPACE, checkLinks, readDoc, requireDoc } from "./service.js";
+import {
+  TAG_IN_SPACE,
+  announceDocs,
+  checkLinks,
+  readDoc,
+  requireDoc,
+} from "./service.js";
 import { followFolder, lockTree } from "./tree.js";
 import { actAs } from "../../lib/actor.js";
 
@@ -70,7 +76,7 @@ export async function libraryRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const { archived } = archiveInput.parse(r.body ?? {});
-    return transaction(async (db) => {
+    const result = await transaction(async (db) => {
       const row = (
         await db.query<{ user_id: string; team_id: string | null }>(
           "SELECT user_id, team_id FROM folders WHERE id = $1 FOR UPDATE",
@@ -89,10 +95,17 @@ export async function libraryRoutes(app: FastifyInstance) {
         )
       ).rows[0];
       return {
-        id: saved.id,
-        archived_at: saved.archived_at?.toISOString() ?? null,
+        owner: row,
+        saved: {
+          id: saved.id,
+          archived_at: saved.archived_at?.toISOString() ?? null,
+        },
       };
     });
+    await announceDocs(pool, result.owner.user_id, result.owner.team_id).catch(
+      () => {},
+    );
+    return result.saved;
   });
 
   /** Move, archive or tag several pages at once (ORG-03). */

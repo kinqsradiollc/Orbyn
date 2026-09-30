@@ -523,6 +523,12 @@ export class OrbynClient {
   private readonly fetchImpl: typeof fetch;
   private readonly streamFetch: typeof fetch;
   private lastWriteAt = 0;
+  private readEpoch = 0;
+  /** Concurrent ordinary reads share transport, but never mutable result objects. */
+  private readonly pendingReads = new Map<
+    string,
+    Promise<string | undefined>
+  >();
   /**
    * This client's own id, made fresh each time the app starts. Two tabs are
    * two editors, so the server can leave a tab out of the news about the
@@ -587,7 +593,50 @@ export class OrbynClient {
     const idempotencyKey = options.idempotencyKey ?? this.nextKey;
     this.nextKey = null;
     const method = options.method ?? "GET";
+    // A read begun after a mutation must not join an older in-flight read.
+    const epoch = method === "GET" ? this.readEpoch : ++this.readEpoch;
     const token = options.anonymous ? null : await this.getToken();
+    const share =
+      method === "GET" &&
+      !options.signal &&
+      !options.headers &&
+      !options.fresh &&
+      !options.raw &&
+      options.body === undefined;
+    if (!share)
+      return this.requestTransport<T>(path, options, token, idempotencyKey);
+    const key = `${epoch} ${token ?? ""} ${path}`;
+    const existing = this.pendingReads.get(key);
+    if (existing) {
+      const text = await existing;
+      return (text === undefined ? undefined : JSON.parse(text)) as T;
+    }
+    if (this.pendingReads.size >= MAX_CACHED)
+      return this.requestTransport<T>(path, options, token, idempotencyKey);
+    const pending = this.requestTransport<T>(
+      path,
+      options,
+      token,
+      idempotencyKey,
+    ).then((value) =>
+      value === undefined ? undefined : JSON.stringify(value),
+    );
+    this.pendingReads.set(key, pending);
+    try {
+      const text = await pending;
+      return (text === undefined ? undefined : JSON.parse(text)) as T;
+    } finally {
+      if (this.pendingReads.get(key) === pending) this.pendingReads.delete(key);
+    }
+  }
+
+  private async requestTransport<T>(
+    path: string,
+    options: RequestOptions,
+    token: string | null | undefined,
+    idempotencyKey: string | null | undefined,
+  ): Promise<T> {
+    const method = options.method ?? "GET";
     const key = `${token ?? ""} ${path}`;
     const cached =
       method === "GET" && !options.fresh ? this.cache.get(key) : undefined;
@@ -646,6 +695,28 @@ export class OrbynClient {
         throw error;
       await pause(RETRY_DELAY_MS, options.signal);
       response = await send();
+    }
+    // A refresh may meet the previous tab's allowance. Reads wait for the
+    // server's stated recovery time and try once; writes are never replayed
+    // for a 429. A missing or excessive delay stays an actionable error.
+    if (method === "GET" && response.status === 429) {
+      const header = response.headers.get("Retry-After");
+      const seconds = header === null || !header.trim() ? NaN : Number(header);
+      const delay = Number.isFinite(seconds)
+        ? seconds >= 0
+          ? seconds * 1000
+          : NaN
+        : header && Number.isFinite(Date.parse(header))
+          ? Math.max(0, Date.parse(header) - Date.now())
+          : NaN;
+      if (
+        Number.isFinite(delay) &&
+        delay <= Math.min(60_000, this.timeoutMs / 2)
+      ) {
+        await response.body?.cancel();
+        await pause(delay, options.signal);
+        response = await send();
+      }
     }
     // Nothing changed since last time: reuse the body we already have. It is
     // parsed afresh so callers can never mutate the remembered copy.

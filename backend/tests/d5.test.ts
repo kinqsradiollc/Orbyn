@@ -1271,3 +1271,100 @@ test("clips: 401, 422 bad input, 404 somewhere you can't put it, 403 a viewer's 
     429,
   );
 });
+
+test("folder archive announces its owning space and rejects unauthorized announcements", async () => {
+  const who = await register("Folder sync");
+  const personal = (
+    await call(who, "POST", "/folders", { name: "Personal sync" })
+  ).json().id;
+  const shared = (
+    await call(owner, "POST", "/folders", {
+      name: "Team sync",
+      team_id: teamId,
+    })
+  ).json().id;
+  const listener = await pool.connect();
+  const events: Record<string, unknown>[] = [];
+  listener.on("notification", (message) => {
+    if (message.channel === "orbyn_live" && message.payload)
+      events.push(JSON.parse(message.payload));
+  });
+  await listener.query("LISTEN orbyn_live");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+  try {
+    for (const archived of [true, false]) {
+      events.length = 0;
+      const response = await call(who, "PUT", `/folders/${personal}/archive`, {
+        archived,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      await settle();
+      assert.deepEqual(
+        events.filter((e) => e.area === "docs" && e.user === who.id),
+        [{ kind: "changed", user: who.id, area: "docs" }],
+      );
+      const saved = (
+        await pool.query("SELECT archived_at FROM folders WHERE id = $1", [
+          personal,
+        ])
+      ).rows[0];
+      assert.equal(Boolean(saved.archived_at), archived);
+    }
+    events.length = 0;
+    assert.equal(
+      (
+        await call(mate, "PUT", `/folders/${shared}/archive`, {
+          archived: true,
+        })
+      ).statusCode,
+      200,
+    );
+    await settle();
+    assert.deepEqual(
+      events.filter((e) => e.area === "docs" && e.team === teamId),
+      [{ kind: "changed", team: teamId, area: "docs" }],
+    );
+    events.length = 0;
+    assert.equal(
+      (
+        await call(stranger, "PUT", `/folders/${personal}/archive`, {
+          archived: true,
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await call(viewer, "PUT", `/folders/${shared}/archive`, {
+          archived: true,
+        })
+      ).statusCode,
+      403,
+    );
+    assert.equal(
+      (
+        await call(null, "PUT", `/folders/${personal}/archive`, {
+          archived: true,
+        })
+      ).statusCode,
+      401,
+    );
+    assert.equal(
+      (
+        await call(who, "PUT", `/folders/${personal}/archive`, {
+          archived: "yes",
+        })
+      ).statusCode,
+      422,
+    );
+    await settle();
+    assert.deepEqual(
+      events.filter((e) => e.area === "docs"),
+      [],
+    );
+  } finally {
+    await listener.query("UNLISTEN orbyn_live");
+    listener.removeAllListeners("notification");
+    listener.release();
+  }
+});

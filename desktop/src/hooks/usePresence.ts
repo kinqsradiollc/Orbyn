@@ -38,6 +38,7 @@ export function usePresence(token: string, onChanged: () => void) {
 
     // Many changes can land together (a plan applied): refresh once.
     let pending: ReturnType<typeof setTimeout> | null = null;
+    let connected = false;
     const stop = client.watchEvents(
       (news) => {
         emitLive(news);
@@ -49,7 +50,19 @@ export function usePresence(token: string, onChanged: () => void) {
         }, 400);
       },
       // Back after a gap: catch up on whatever was missed.
-      () => emitLive({ kind: "presence" }),
+      () => {
+        emitLive({ kind: "presence" });
+        // Initial data already loads on sign-in; only reconnects need catch-up.
+        if (connected) {
+          emitLive({ kind: "changed" });
+          if (pending) clearTimeout(pending);
+          pending = setTimeout(() => {
+            pending = null;
+            changed.current();
+          }, 400);
+        }
+        connected = true;
+      },
     );
     return () => {
       alive = false;

@@ -150,3 +150,37 @@ test("changing this and all following occurrences moves the rest of the series",
     ["2026-10-12T03:00:00.000Z", "Tutorial (new room)"],
   ]);
 });
+
+test("implicit all-day ends use next local midnight on both DST transitions", () => {
+  for (const [date, start, end] of [
+    ["20261004", "2026-10-03T14:00:00.000Z", "2026-10-04T13:00:00.000Z"],
+    ["20260405", "2026-04-04T13:00:00.000Z", "2026-04-05T14:00:00.000Z"],
+  ]) {
+    const [read] = parseIcs(
+      feed(event(["UID:dst", `DTSTART;VALUE=DATE:${date}`])),
+      "Australia/Melbourne",
+    );
+    assert.equal(read.starts_at, start);
+    assert.equal(read.ends_at, end);
+  }
+});
+
+test("all-day nominal DURATION days and weeks keep calendar boundaries across DST", () => {
+  for (const [duration, end] of [
+    ["P1D", "2026-10-04T13:00:00.000Z"],
+    ["P2D", "2026-10-05T13:00:00.000Z"],
+    ["P1W", "2026-10-10T13:00:00.000Z"],
+  ]) {
+    const [read] = parseIcs(
+      feed(
+        event([
+          "UID:duration",
+          "DTSTART;VALUE=DATE:20261004",
+          `DURATION:${duration}`,
+        ]),
+      ),
+      "Australia/Melbourne",
+    );
+    assert.equal(read.ends_at, end);
+  }
+});

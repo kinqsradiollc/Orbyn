@@ -354,7 +354,6 @@ export function DocsSheet({
     }
     // Folders and stars are small lists and only matter beside the pages,
     // so they are fetched with them rather than kept in the app's state.
-    client.listFolders().then(setFolders, () => setFolders([]));
     client.listFavourites().then(setStars, () => setStars([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, agenda, initialDoc, fixedKind]);
@@ -391,16 +390,28 @@ export function DocsSheet({
 
   /** No signal: the list is the pages kept on this phone (SHR-03). */
   const [offlineList, setOfflineList] = useState(false);
-  const loadList = () =>
-    client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
+  const collectionLoadSeq = useRef(0);
+  const loadList = () => {
+    const seq = ++collectionLoadSeq.current;
+    // Folder state follows edits made on the web, including archive/restore.
+    void client.listFolders().then(
+      (next) => {
+        if (seq === collectionLoadSeq.current) setFolders(next);
+      },
+      () => {},
+    );
+    return client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
       (list) => {
+        if (seq !== collectionLoadSeq.current) return;
         setDocs(list);
         setFailed(false);
         setOfflineList(false);
       },
       async (e: Error) => {
+        if (seq !== collectionLoadSeq.current) return;
         if (isOfflineError(e)) {
           const kept = await keptPages();
+          if (seq !== collectionLoadSeq.current) return;
           const categoryPages = kept.filter((doc) =>
             fixedKind
               ? doc.kind === fixedKind
@@ -423,6 +434,7 @@ export function DocsSheet({
         setError(errorText(e));
       },
     );
+  };
 
   // Pages changed elsewhere (another device, a teammate, a connected agent)
   // while the list is open: read it again, once for a burst of changes.
@@ -1041,6 +1053,26 @@ export function DocsSheet({
       else next.add(id);
       return next;
     });
+  /** Archive an entire folder, or restore it together with its pages. */
+  const archiveFolder = (folder: Folder, archived: boolean) =>
+    void run(async () => {
+      const saved = await client.archiveFolder(folder.id, archived);
+      setFolders((all) =>
+        all.map((f) =>
+          f.id === folder.id ? { ...f, archived_at: saved.archived_at } : f,
+        ),
+      );
+      if (archived)
+        selectCollection(null, null, false, null, false, false, true);
+      else setArchivedDocs(await client.listDocs({ archived: "only" }));
+      await loadList();
+      showToast({
+        text: archived
+          ? `Archived ${folder.name} and its pages`
+          : `${folder.name} is back`,
+      });
+    });
+
   /** Bring an archived page back into the library. */
   const unarchive = (doc: DocSummary) =>
     void run(async () => {
@@ -1377,6 +1409,7 @@ export function DocsSheet({
                 <Text style={styles.navHeading}>FOLDERS</Text>
                 {[
                   ...folders
+                    .filter((f) => !f.archived_at)
                     .map((f) => ({ id: f.id, name: f.name }))
                     .sort((a, b) => a.name.localeCompare(b.name)),
                   { id: "none", name: "Unfiled" },
@@ -1609,7 +1642,36 @@ export function DocsSheet({
                     }
                   />
                 </View>
-                <Text style={styles.collectionTitle}>{location}</Text>
+                <View style={styles.folderHeading}>
+                  <Text style={[styles.collectionTitle, { flex: 1 }]}>
+                    {location}
+                  </Text>
+                  {!archivedOnly &&
+                    !fixedKind &&
+                    !query.trim() &&
+                    folders
+                      .filter(
+                        (f) =>
+                          f.id === folderFilter &&
+                          !f.archived_at &&
+                          (!canWriteDoc || canWriteDoc(f.team_id)),
+                      )
+                      .map((folder) => (
+                        <MoreMenu
+                          key={folder.id}
+                          label="Folder options"
+                          title={folder.name}
+                          disabled={busy}
+                          actions={[
+                            {
+                              label: "Archive folder",
+                              icon: "archive",
+                              onPress: () => archiveFolder(folder, true),
+                            },
+                          ]}
+                        />
+                      ))}
+                </View>
                 {!fixedKind && (
                   <ScrollView
                     horizontal
@@ -1627,12 +1689,14 @@ export function DocsSheet({
                           : []),
                         ["Favorites", null, null, true],
                         ["Uploads", null, null, false, true],
-                        ...folders.map((folder) => [
-                          folder.name,
-                          folder.id,
-                          null,
-                          false,
-                        ]),
+                        ...folders
+                          .filter((folder) => !folder.archived_at)
+                          .map((folder) => [
+                            folder.name,
+                            folder.id,
+                            null,
+                            false,
+                          ]),
                         ["Unfiled", "none", null, false],
                         ["Trash", null, null, false, false, true],
                       ] as [
@@ -1653,6 +1717,7 @@ export function DocsSheet({
                         trashed = false,
                       ]) => {
                         const selected =
+                          !archivedOnly &&
                           trashOnly === trashed &&
                           uploadsOnly === uploads &&
                           favoritesOnly === favorites &&
@@ -1881,6 +1946,31 @@ export function DocsSheet({
                       They're left out of the library and search until you bring
                       them back.
                     </Text>
+                    {folders
+                      .filter((f) => f.archived_at)
+                      .map((folder) => (
+                        <View key={folder.id} style={styles.row}>
+                          <Text style={styles.filingTitle}>{folder.name}</Text>
+                          <Text style={styles.empty}>
+                            Folder · {folder.doc_count} page
+                            {folder.doc_count === 1 ? "" : "s"}
+                          </Text>
+                          {(!canWriteDoc || canWriteDoc(folder.team_id)) && (
+                            <MoreMenu
+                              label={`Options for ${folder.name}`}
+                              title={folder.name}
+                              disabled={busy}
+                              actions={[
+                                {
+                                  label: "Bring folder back",
+                                  icon: "archive",
+                                  onPress: () => archiveFolder(folder, false),
+                                },
+                              ]}
+                            />
+                          )}
+                        </View>
+                      ))}
                     {(archivedDocs ?? []).map((doc) => (
                       <View key={doc.id} style={styles.row}>
                         <Pressable
@@ -1906,9 +1996,10 @@ export function DocsSheet({
                         )}
                       </View>
                     ))}
-                    {archivedDocs?.length === 0 && (
-                      <Text style={styles.empty}>Nothing archived.</Text>
-                    )}
+                    {archivedDocs?.length === 0 &&
+                      !folders.some((f) => f.archived_at) && (
+                        <Text style={styles.empty}>Nothing archived.</Text>
+                      )}
                   </View>
                 )}
                 {trashOnly && !hits && (
@@ -2574,6 +2665,7 @@ const styles = themed(() =>
     },
     newActions: { gap: 8 },
     newRow: { flexDirection: "row", gap: 8 },
+    folderHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
     // The containers' gaps space these; the button's own margin would double it.
     newFull: { marginBottom: 0 },
     newHalf: { flex: 1, minWidth: 0, marginBottom: 0 },
