@@ -714,6 +714,17 @@ test("the chat sweep drains in batches, respects visibility and kept-out sources
   );
 });
 
+test("the sweeper skips an occupied cleanup lease without claiming a completed sweep", async () => {
+  const holder = await pool.connect();
+  try {
+    await holder.query("SELECT pg_advisory_lock($1)", [786_242]);
+    assert.equal(await runSweep(), null);
+  } finally {
+    await holder.query("SELECT pg_advisory_unlock($1)", [786_242]);
+    holder.release();
+  }
+});
+
 test("the sweeper clears dead and abandoned assistant jobs and clamps retention", async () => {
   const userId = await register();
   const job = async (state: string, created: string, heartbeat: string) =>
@@ -756,7 +767,16 @@ test("the sweeper clears dead and abandoned assistant jobs and clamps retention"
       ).rows[0].id;
     const recentUndo = await activity("30 days");
     const oldUndo = await activity("100 days");
-    await runSweep();
+    let swept = await runSweep();
+    // Other local workers may hold the global sweep lease. The product skips
+    // that cycle deliberately; this fixture needs a completed sweep to assert
+    // its retention behavior rather than treating a skipped cycle as a delete.
+    for (let attempt = 0; swept === null && attempt < 20; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      swept = await runSweep();
+    }
+    assert.ok(swept, "the sweep lease stayed occupied for five seconds");
+    assert.equal(swept.errors.ai_jobs, undefined, "assistant-job sweep failed");
     const left = new Set(
       (
         await pool.query<{ id: string }>(
