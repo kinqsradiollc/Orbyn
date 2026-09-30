@@ -4,7 +4,12 @@ import {
   type ChatgptModel,
 } from "@orbyn/core";
 
-export type ChatgptAccount = { accountId: string; workspaceId: string };
+export type ChatgptAccount = {
+  accountId: string;
+  workspaceId: string;
+  /** Issued OAuth registration bound to the verified account and workspace. */
+  clientId: string;
+};
 export type ChatgptCredential = ChatgptAccount & { accessToken: string };
 export type ChatgptPlanRequest = {
   model: string;
@@ -24,7 +29,9 @@ export class ChatgptPlanClient {
   ) {
     if (
       !options.account.accountId.trim() ||
-      !options.account.workspaceId.trim()
+      !options.account.workspaceId.trim() ||
+      !options.account.clientId.trim() ||
+      options.account.clientId === "dynamic_agent_client"
     )
       throw new Error(
         "Choose a ChatGPT account and workspace before continuing.",
@@ -40,7 +47,8 @@ export class ChatgptPlanClient {
     const credential = await this.options.credential();
     if (
       credential.accountId !== this.account.accountId ||
-      credential.workspaceId !== this.account.workspaceId
+      credential.workspaceId !== this.account.workspaceId ||
+      credential.clientId !== this.account.clientId
     )
       throw new Error("ChatGPT account changed. Reconnect before continuing.");
     if (!credential.accessToken.trim())

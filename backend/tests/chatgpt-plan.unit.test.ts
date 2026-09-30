@@ -16,7 +16,11 @@ const catalog = {
     { slug: "gpt-6.1-sol", display_name: "Duplicate", visibility: "list" },
   ],
 };
-const account = { accountId: "account-a", workspaceId: "personal" };
+const account = {
+  accountId: "account-a",
+  workspaceId: "personal",
+  clientId: "oaiapp_fixture_a",
+};
 const credential = async () => ({ ...account, accessToken: "fixture-token" });
 const request = {
   model: "gpt-6.1-sol",
@@ -113,6 +117,30 @@ test("account/workspace switches never send credentials to another binding", asy
   });
   await assert.rejects(c.models(), /account changed/);
   assert.equal(called, false);
+});
+test("another OAuth registration cannot reuse a selected account's plan client", async () => {
+  let calls = 0;
+  const c = new ChatgptPlanClient({
+    account,
+    credential: async () => ({
+      ...(await credential()),
+      clientId: "oaiapp_fixture_b",
+    }),
+    fetch: async () => {
+      calls++;
+      return Response.json(catalog);
+    },
+  });
+  await assert.rejects(c.models(), /account changed/);
+  assert.equal(calls, 0);
+  assert.throws(
+    () =>
+      new ChatgptPlanClient({
+        account: { ...account, clientId: "dynamic_agent_client" },
+        credential,
+      }),
+    /account/,
+  );
 });
 test("partial output, DONE without completion and incomplete events are not success", async () => {
   for (const stream of [

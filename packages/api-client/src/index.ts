@@ -20,6 +20,11 @@ export type {
   ReminderActionOptions,
 } from "./reminder-actions.js";
 export { ChatgptPlanClient } from "./chatgpt-plan.js";
+export { ChatgptModelPicker } from "./chatgpt-model-picker.js";
+export type {
+  ChatgptModelPickerState,
+  ChatgptModelPreferenceStore,
+} from "./chatgpt-model-picker.js";
 export type {
   ChatgptAccount,
   ChatgptCredential,

@@ -12,6 +12,33 @@ export const chatgptModel = z.object({
 });
 export type ChatgptModel = z.output<typeof chatgptModel>;
 
+/** Supplied only after identity verification; email is never an account key. */
+export const chatgptModelBinding = z
+  .object({
+    user_id: z.string().uuid(),
+    connection_id: z.string().uuid(),
+    issuer: z.literal("https://auth.openai.com"),
+    subject: z.string().min(1).max(512),
+    client_id: z
+      .string()
+      .min(1)
+      .max(512)
+      .regex(/^[^\s\x00-\x1f\x7f]+$/)
+      .refine((value) => value !== "dynamic_agent_client"),
+  })
+  .strict();
+export type ChatgptModelBinding = z.output<typeof chatgptModelBinding>;
+
+/** Optimistic version prevents one device silently replacing another's default. */
+export const chatgptModelPreference = z
+  .object({
+    binding: chatgptModelBinding,
+    model: chatgptModel.shape.slug.nullable(),
+    version: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ChatgptModelPreference = z.output<typeof chatgptModelPreference>;
+
 /** Only entitled, displayable entries are choices; upstream ordering is retained. */
 export function parseChatgptModels(value: unknown): ChatgptModel[] {
   const body = z
