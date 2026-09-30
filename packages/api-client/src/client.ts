@@ -2325,6 +2325,20 @@ export class OrbynClient {
           // A document that is gone, or that this reader may not see, is not
           // worth coming back to.
           if (response.status === 404 || response.status === 403) return;
+          // The gateway's stream limit: wait out its Retry-After rather
+          // than treating the address as unhealthy (see watchEvents).
+          if (response.status === 429) {
+            const header = response.headers.get("Retry-After");
+            const seconds = header === null ? NaN : Number(header);
+            const delay =
+              Number.isFinite(seconds) && seconds >= 0
+                ? Math.min(seconds * 1000, 60_000)
+                : 5_000;
+            await response.body?.cancel();
+            if (stopped) return;
+            await new Promise((r) => setTimeout(r, delay));
+            continue;
+          }
           // No body stream means this runtime cannot read one at all, which
           // retrying will never fix. Give up quietly rather than reconnecting
           // for as long as the page is open — on a phone that is the battery.
@@ -4252,6 +4266,21 @@ export class OrbynClient {
             signal: abort.signal,
           });
           if (response.status === 401 || response.status === 403) return;
+          // The gateway limits streams per address, and a home's devices
+          // share one: wait out its Retry-After instead of climbing the
+          // backoff, and try again on the next tick of the same gap.
+          if (response.status === 429) {
+            const header = response.headers.get("Retry-After");
+            const seconds = header === null ? NaN : Number(header);
+            const delay =
+              Number.isFinite(seconds) && seconds >= 0
+                ? Math.min(seconds * 1000, 60_000)
+                : 5_000;
+            await response.body?.cancel();
+            if (stopped) return;
+            await new Promise((r) => setTimeout(r, delay));
+            continue;
+          }
           if (!response.ok) throw new Error(`stream ${response.status}`);
           if (!response.body) return;
           wait = 1_000;

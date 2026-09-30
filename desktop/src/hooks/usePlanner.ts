@@ -121,17 +121,20 @@ export function usePlanner() {
       if (!options?.silent) setLoading(true);
       try {
         const all = await client.listAllItems(500);
-        const [u, n, t] = await Promise.all([
-          client.me(),
+        const [n, t] = await Promise.all([
           client.listNotifications(),
           client.listTeams(),
         ]);
+        // The profile loads on its own: one boot request meeting a rate
+        // limit no longer keeps the account chip on "Loading…" until the
+        // next cycle — the last known user simply stays until this reads.
+        const u = await client.me().catch(() => null);
         if (tokenRef.current !== token || seq !== refreshSeq.current) return;
         const snapshot = JSON.stringify([all, u, n, t]);
         if (options?.silent && snapshot === lastData.current) return;
         lastData.current = snapshot;
         setItems(all);
-        setUser(u);
+        if (u) setUser(u);
         setNotices(n);
         setTeams(t);
         setRevision((r) => r + 1);
