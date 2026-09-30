@@ -70,14 +70,17 @@ ${REAL_IP}
 ${LIMIT_EXEMPT}
   }
   # The visitor's address, unless the request was forwarded by our own web
-  # port (already counted there): the key is then empty and nothing counts.
-  map $http_x_orbyn_via $req_key {
+  # port on its loopback hop to 8080 (already counted there). Neither a
+  # client-supplied header on 8081 nor a remote request to 8080 can opt out.
+  map "$server_port:$realip_remote_addr:$http_x_orbyn_via" $req_key {
     default $limit_key;
-    "web" "";
+    "8080:127.0.0.1:web" "";
+    "8080:::1:web" "";
   }
-  map $http_x_orbyn_via $sse_key {
+  map "$server_port:$realip_remote_addr:$http_x_orbyn_via" $sse_key {
     default $limit_key;
-    "web" "";
+    "8080:127.0.0.1:web" "";
+    "8080:::1:web" "";
   }
   limit_req_zone $req_key zone=per_client:20m rate=50r/s;
   limit_conn_zone $limit_key zone=conn_per_client:10m;

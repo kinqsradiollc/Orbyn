@@ -68,8 +68,16 @@ test("the web port marks what it forwards, and the marker empties every zone key
   );
   // Every map from the marker to an empty key is present, and every zone
   // whose key could double-count is keyed through one of them.
-  assert.match(conf, /map \$http_x_orbyn_via \$req_key \{[\s\S]*?"web" "";/);
-  assert.match(conf, /map \$http_x_orbyn_via \$sse_key \{[\s\S]*?"web" "";/);
+  assert.ok(
+    conf.includes(
+      'map "$server_port:$realip_remote_addr:$http_x_orbyn_via" $req_key {',
+    ),
+  );
+  assert.ok(
+    conf.includes(
+      'map "$server_port:$realip_remote_addr:$http_x_orbyn_via" $sse_key {',
+    ),
+  );
   assert.match(conf, /limit_req_zone \$req_key zone=per_client/);
   assert.match(conf, /limit_conn_zone \$sse_key zone=sse_per_client/);
 });
@@ -154,4 +162,26 @@ test("the web port keeps its own per-address connection ceiling for browser requ
     /limit_conn conn_per_client \d+;/,
     "the web port still bounds concurrent browser connections",
   );
+});
+
+test("only the gateway loopback hop can skip duplicate counting", () => {
+  const conf = render();
+  for (const name of ["req_key", "sse_key"]) {
+    const map = conf
+      .slice(
+        conf.indexOf(
+          `map "$server_port:$realip_remote_addr:$http_x_orbyn_via" $${name}`,
+        ),
+      )
+      .split("}")[0];
+    assert.match(map, /default \$limit_key;/);
+    assert.match(map, /"8080:127\.0\.0\.1:web" "";/);
+    assert.match(map, /"8080:::1:web" "";/);
+    assert.equal(
+      [...map.matchAll(/"";/g)].length,
+      2,
+      "no web-port or remote-address exemption",
+    );
+    assert.doesNotMatch(map, /"web" "";/);
+  }
 });
