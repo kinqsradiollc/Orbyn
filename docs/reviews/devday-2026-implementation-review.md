@@ -141,3 +141,22 @@ Audit all affected current surfaces: Assistant/Overnight/reminder cards, Docs/ed
 ### Checkpoint policy
 
 C0: this ADR/artifact revision (documentation only). C1: model/provider/connection contracts. C2: SIWC/catalog/defaults and device execution. C3: typed rules/agent ownership/activity/budgets. C4: Docs parity and UI regressions. C5: bound pages/publication/channels. C6: separate plugin backend/UI and access-gated security controls. Dependencies can change order, but every retained ledger row must finish. Each production checkpoint receives a scoped commit, main integration, current test/build/runtime evidence and explicit external-access limitations. Preserve user changes in the primary checkout.
+
+### C1a foundation checkpoint — 2026-09-30
+
+Implemented shared account-bound ChatGPT catalog parsing, explicit unavailable defaults,
+and a separate device-side text Responses transport with fixed provider endpoints,
+request allowlists, stream completion validation and bounded responses. This is the
+contract/transport foundation: OAuth, secure token storage, persisted preferences,
+backend identity verification, tool execution and `/models` UI remain open under C1/C2.
+No real account inference or provider credentials were used for this checkpoint.
+
+Evidence: 16 focused tests passed; full backend suite 1,742 passed with no failures or
+skips; all workspace typechecks and production builds passed; iOS/Android exports
+passed; a fresh backend Docker build successfully imported both shared exports.
+No UI behavior changed in this slice.
+
+Release priority update: after C1a integration, investigate refresh-triggered HTTP 429
+and audit missing desktop/web/mobile feature parity. Deliver tested fixes and main
+checkpoints before resuming the remaining DevDay implementation sequence. Preserve
+all retained ADR scope; record any external or native verification limits explicitly.
