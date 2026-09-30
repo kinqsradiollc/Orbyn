@@ -26,6 +26,12 @@ const ownerOf = (r: FastifyRequest) => {
 export function idempotency(app: FastifyInstance) {
   app.addHook("preHandler", async (request, reply) => {
     if (!WRITES.has(request.method)) return;
+    // Identity challenges expire in minutes and every proof/disconnect must
+    // recheck its live session. A cached reply must not bypass those checks.
+    if (
+      /^\/ai\/connections\/chatgpt(?:\/|$)/.test(request.routeOptions.url ?? "")
+    )
+      return;
     const key = request.headers["idempotency-key"];
     if (typeof key !== "string") return;
     if (!KEY.test(key))

@@ -453,6 +453,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "chatgpt_identity_challenges",
+    label: "ChatGPT sign-in attempts",
+    detail:
+      "Expired identity challenges; provider credentials are never stored here.",
+    table: "chatgpt_identity_challenges",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "ai_jobs",
     label: "Assistant jobs",
     detail:

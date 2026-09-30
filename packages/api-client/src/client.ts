@@ -1,4 +1,11 @@
 import {
+  chatgptConnectionStart,
+  chatgptConnectionFinish,
+  chatgptConnectionChallenge,
+  chatgptConnection,
+  chatgptConnectionList,
+  type ChatgptConnectionStart,
+  type ChatgptConnectionFinish,
   HttpError,
   type AgentGrant,
   type AgentToolset,
@@ -1321,6 +1328,52 @@ export class OrbynClient {
   /** Your saved chats with the assistant about a project, newest first. */
   projectChats(projectId: string) {
     return this.request<AiChatSummary[]>(`/ai/projects/${projectId}/chats`);
+  }
+  /** Start a session-bound identity proof; plan credentials stay in the device runtime. */
+  async startChatgptConnection(
+    input: ChatgptConnectionStart = {},
+    signal?: AbortSignal,
+  ) {
+    const result = await this.request<unknown>(
+      "/ai/connections/chatgpt/challenges",
+      {
+        method: "POST",
+        body: chatgptConnectionStart.parse(input),
+        signal,
+      },
+    );
+    return chatgptConnectionChallenge.parse(result);
+  }
+  /** Submit only an ID token for verification, never plan access or refresh credentials. */
+  async finishChatgptConnection(
+    input: ChatgptConnectionFinish,
+    signal?: AbortSignal,
+  ) {
+    const result = await this.request<unknown>(
+      "/ai/connections/chatgpt/complete",
+      {
+        method: "POST",
+        body: chatgptConnectionFinish.parse(input),
+        signal,
+      },
+    );
+    return chatgptConnection.parse(result);
+  }
+  /** Verified identity metadata for the signed-in person; no cached account catalog. */
+  async chatgptConnections(signal?: AbortSignal) {
+    return chatgptConnectionList.parse(
+      await this.request<unknown>("/ai/connections/chatgpt", {
+        signal,
+        fresh: true,
+      }),
+    );
+  }
+  /** Disconnect a registration and invalidate pending sign-in attempts. */
+  revokeChatgptConnection(id: string) {
+    return this.request<void>(
+      `/ai/connections/chatgpt/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+    );
   }
   /** Your saved assistant chats, pinned first and then most recently used. */
   aiChats(

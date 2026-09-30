@@ -24,6 +24,32 @@ wrong technically: the raw validation issues, or a server error's own message.
 | 502    | AI provider returned an error or invalid plan                                 |
 | 503    | AI is not configured on the server                                            |
 
+## ChatGPT identity connections
+
+These first-party routes run in the AI service. They require an active, verified
+Orbyn app session; personal API keys and outside-agent/plugin credentials cannot
+use them. Identity verification is a backend foundation, not a complete OAuth or
+plan-inference flow. Clients must implement their eligible provider flow before
+offering a sign-in control.
+
+| Method | Path                                 | Body / result                                                                                                                                                      |
+| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/ai/connections/chatgpt/challenges` | `{client_id?: string}` → `{id, nonce, expires_at}`. Omit the issued client ID for initial dynamic registration. Never send the `dynamic_agent_client` placeholder. |
+| POST   | `/ai/connections/chatgpt/complete`   | `{challenge_id, client_id, id_token}` → `{id, issuer, subject, client_id}` after signature/issuer/audience/nonce verification.                                     |
+| GET    | `/ai/connections/chatgpt`            | Active connections with `{id, issuer, subject, client_id, verified_at}`.                                                                                           |
+| DELETE | `/ai/connections/chatgpt/:id`        | Owner-only disconnect, `204`. Also consumes that owner's pending challenges so an old callback cannot reconnect.                                                   |
+
+Challenge ownership includes the exact Orbyn session. Challenges expire after ten
+minutes and can be consumed once; at most five unconsumed, unexpired challenges
+may exist per user. Challenge start, completion and disconnect allow ten requests
+per minute per address. A verified registration cannot be silently linked to a
+second Orbyn account. These routes return `Cache-Control: no-store` and bypass the
+general 24-hour idempotency response cache so every operation checks its current
+session. Invalid proof is `400`; missing/foreign challenge or connection is `404`;
+expired, consumed, changed-registration or conflicting-owner proof is `409`;
+malformed fields and unexpected fields are `422`. No email-based linking occurs.
+Access and refresh tokens are rejected, and identity tokens are never stored.
+
 ## Rate limits
 
 Requests signed with a personal API key (`ok_…`) count against that key, wherever they come

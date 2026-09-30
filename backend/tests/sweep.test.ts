@@ -57,6 +57,20 @@ after(async () => {
 
 test("the sweeper clears outdated records and keeps recent ones", async () => {
   const marker = `sweep-${randomUUID()}`;
+  const liveSession = (
+    await pool.query<{ id: string }>(
+      "SELECT id FROM sessions WHERE user_id=$1 AND expires_at>now() LIMIT 1",
+      [adminId],
+    )
+  ).rows[0].id;
+  const challengeRows = (
+    await pool.query<{ id: string; nonce: string }>(
+      `INSERT INTO chatgpt_identity_challenges(user_id,session_id,nonce,expires_at)
+     VALUES($1,$2,$3,now()-interval '1 minute'),($1,$2,$4,now()+interval '10 minutes')
+     RETURNING id,nonce`,
+      [adminId, liveSession, `${marker}-expired`, `${marker}-live`],
+    )
+  ).rows;
   await pool.query(
     `INSERT INTO request_log (at, service, request_id, method, route, status, duration_ms)
      VALUES (now() - interval '30 days', 'api', $1, 'GET', '/old', 200, 5),
@@ -87,6 +101,16 @@ test("the sweeper clears outdated records and keeps recent ones", async () => {
   const body = res.json();
   assert.ok(body.last.removed.request_log >= 1);
   assert.ok(body.last.removed.sessions >= 1);
+  assert.ok(body.last.removed.chatgpt_identity_challenges >= 1);
+  assert.deepEqual(
+    (
+      await pool.query<{ nonce: string }>(
+        "SELECT nonce FROM chatgpt_identity_challenges WHERE id=ANY($1::uuid[])",
+        [challengeRows.map((row) => row.id)],
+      )
+    ).rows.map((row) => row.nonce),
+    [`${marker}-live`],
+  );
   const left = (
     await pool.query<{ route: string }>(
       "SELECT route FROM request_log WHERE request_id = $1",

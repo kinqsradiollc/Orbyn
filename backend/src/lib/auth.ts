@@ -106,6 +106,22 @@ const sessionUsers = new WeakSet<object>();
 /** Whether `actor` is a user signed in to the app, rather than a key or a copy. */
 export const isSessionPrincipal = (actor: object) => sessionUsers.has(actor);
 
+/** Resolve an exact app session for device connections; API/connector keys cannot act here. */
+export async function authenticateSessionBinding(r: FastifyRequest) {
+  const user = await authenticate(r);
+  if (!isSessionPrincipal(user)) fail(403, KEY_BLOCKED_MESSAGE);
+  const token = r.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+  if (!token) fail(401, "Please sign in");
+  const session = (
+    await pool.query<{ id: string }>(
+      "SELECT id FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>now()",
+      [digest(token), user.id],
+    )
+  ).rows[0];
+  if (!session) fail(401, "Session expired. Please sign in again.");
+  return { userId: user.id, sessionId: session.id };
+}
+
 /** Whether this request was signed with a personal API key. */
 export const isApiKeyRequest = (r: FastifyRequest) => viaApiKey.has(r);
 

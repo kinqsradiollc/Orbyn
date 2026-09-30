@@ -101,3 +101,4 @@ export * from "./native-capture.js";
 export * from "./workspace-tabs.js";
 export * from "./doc-tree.js";
 export * from "./chatgpt-models.js";
+export * from "./chatgpt-connections.js";
