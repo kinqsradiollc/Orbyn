@@ -223,6 +223,18 @@ Those contracts and their security evidence remain open before enabling the
 plugin recipient in production. The UI preview permission is still denied by
 Browser Use despite the user authorizing a retry; it has not been bypassed.
 
+### Full-suite follow-up: calendar fixture
+
+The first full execution-checkpoint run completed with 1,989 passing tests and
+one failure (1,990 total), not a green result. The agenda-days fixture advanced
+Melbourne calendar dates by fixed 24-hour durations; a three-day jump from late
+evening crossed the daylight-saving change and landed on the next local date.
+The fixture now constructs noon on its requested date via zonedInstant. An
+explicit late-night DST regression demonstrates the former mismatch; all 13
+agenda checks passed after the correction. Agenda production code is unchanged.
+Evidence: /tmp/orbyn-plugin-execute-main-full-tests.log and
+/tmp/orbyn-agenda-calendar-fixture-final-tests.log. Full-suite rerun is pending.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;
