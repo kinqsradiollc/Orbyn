@@ -373,3 +373,194 @@ orchestration and production entrypoint wiring remain open and unmerged.
 After pushing `6be8a81`, CI run `36793519501` could not start because of the
 same GitHub account billing/spending limit; Deploy `36793529950` was skipped.
 This confirms the external release gate persists, not a production rollout.
+
+Registration listing is now available privately for the account picker adapter.
+It scans at most 1,000 registration files, validates bounded file contents and
+slot/filename binding, filters by current Orbyn owner/server, and returns only
+slot ID, host ID, issued client ID, revision and an optional verified connection
+binding. The vault is never read. Listing
+does not create a registration; malformed or copied matching records fail with
+a generic error. Tests cover empty listing, multiple slots, another owner and
+copied-slot rejection. Persisted active selection, verified account labels,
+production IPC wiring and actual picker behavior remain open.
+
+Registration slots now retain the verified Orbyn connection binding after local
+signed identity and backend identity agreement, before credential installation.
+Owner/client mismatches, stale revisions and replacement with another identity
+are rejected. The metadata read/list path does not decrypt credentials; an
+identity record does not imply usable plan credentials. Seven registration tests
+cover restart persistence, identity substitution and concurrent writes across
+separate store instances. A shared per-file main-process queue serializes these
+writes; multi-process metadata mutation is not supported. The native app's
+single-runtime ownership must remain enforced at integration. Active selection,
+account labels, UI wiring and refresh orchestration remain open.
+
+Vault reads now perform a symlink/regular-file check before opening and compare
+the opened descriptor's device/inode identity, supplementing `O_NOFOLLOW` on
+platforms where that flag is absent. A regression replaces the path during an
+asynchronous keychain availability check: the current read stays on its already
+opened validated file, and a subsequent read rejects the tampered replacement.
+All ten vault tests passed. These filesystem tests ran on macOS; they do not
+establish native Windows/Linux storage behavior or complete the platform gate.
+
+Active registration selection now persists per Orbyn owner/server with an opaque
+revision. Selecting an unverified/missing slot fails, concurrent selections with
+the same revision have one winner, stale changes fail, and clearing selection is
+explicit. The shared main-process metadata queue now covers all slots for one
+owner/server so separate store instances cannot race selection. Eight registration
+tests cover persistence, competing choices and owner isolation. This is selection
+metadata only: it does not prove credentials, entitlement or a server session are
+live. Runtime account-switch cancellation, offline/revoked UI states and the native
+account picker remain open, as do refresh orchestration and `/models` integration.
+
+The private active-connection resolver distinguishes unselected, selected metadata
+and unavailable saved registrations. It retains a missing registration's saved
+ID/revision and never substitutes another slot. The expanded selection regression
+checks resolved identity metadata, explicit clearing and a deleted selected slot
+while another valid slot remains. The initial expanded test placed its stale-write
+assertion after deleting that slot and received the expected missing-slot rejection;
+the assertion was moved before deletion so both independent behaviors are tested.
+Runtime credential/server availability checks and actual UI remain unimplemented.
+
+The private registration store now persists a local model-preference cache bound
+to its verified user/connection/issuer/subject/client identity. Concurrent writes
+use an optimistic integer version; stale saves and different bindings fail, and
+clearing is explicit. Preferences survive restart and a separate registration
+starts unselected. Nine registration tests passed. This is local cache storage,
+not completion of M1: authenticated backend persistence/CAS and synchronization,
+fresh catalog entitlement validation, `/models` routing and both client UIs remain
+open. A trusted catalog/controller adapter must validate the selected model before
+calling this private cache writer; it must not be exposed as arbitrary IPC input.
+
+A private desktop model-runtime adapter now connects the shared picker, bound
+encrypted vault, live catalog transport and local preference cache. It checks
+the selected registration/revision and a trusted live Orbyn connection callback,
+rejects expired or non-sharing credentials, reloads the catalog before saving a
+non-null default, and cancels catalog requests when closed. The issued client ID
+is used only as the transport's registration/workspace consistency anchor, not
+as a separately discovered workspace identifier. Three controlled adapter tests
+cover live loading/default saves, removed models, changed selection, revoked
+connections and expired credentials. No real OpenAI request was used. Backend
+catalog/preference synchronization, IPC, model UI and full account-switch/save
+race verification remain open. This adapter remains unmerged.
+
+Runtime model saves now pass the captured selection revision and lifetime abort
+signal into the local store. The owner/server queue checks the selected slot and
+revision before mutation, and cancellation is checked before atomic publication.
+Regressions prove a pre-cancelled save and a save queued behind an account switch
+leave the prior preference intact. A controlled transport test also proves closing
+the runtime aborts an in-flight catalog and prevents late picker publication.
+This does not establish backend synchronization or the UI/platform switch matrix.
+
+An integration regression now runs the actual shared picker/runtime adapter with
+the real on-disk registration store. Switching selection while a default-save
+catalog request is pending rejects the save and leaves the preference unselected
+at version zero. A fresh runtime after reselecting the account saves the choice,
+which a restarted store restores at version one. Provider and vault callbacks are
+controlled fixtures; this proves local controller/storage composition, not a real
+provider session, OS encryption, backend persistence or user-facing interaction.
+
+Backend preference persistence has started with migration 200: one credential-free
+model/version row per verified connection, safe-integer version bounds, model
+syntax bounds and cascade deletion. The private read service rechecks the exact
+live Orbyn session/account and connection ownership/revocation under transactional
+locks, returns an explicitly unselected version-zero preference when absent, and
+derives the response binding from server identity metadata. Twelve connection
+tests passed on the marked disposable database, including two added preference
+cases covering owner isolation, revoked connections, disabled/expired sessions,
+database constraints and cascade cleanup. No HTTP preference route or write API
+is exposed yet; executor catalog validation, optimistic writes, synchronization
+and `/models` UI remain open. This migration/service slice remains unmerged.
+
+The private backend preference writer now requires a trusted catalog-validation
+callback, checks exact identity binding, and serializes compare-version writes
+through the connection row. Session/account/connection state is rechecked after
+the callback; revocation during validation prevents mutation. Concurrent writes
+from the same version have one winner, clearing is explicit, and returning OAuth
+to the same registration restores its persisted model/version. Fourteen connection
+tests passed on the marked disposable database. This callback is not exposed as
+HTTP input: the authenticated executor/catalog adapter and public preference API
+remain unimplemented. These tests use controlled validators, not live entitlement.
+
+Stale backend preference versions now fail before invoking catalog validation,
+while the transactional version check still handles concurrent changes afterward.
+An added regression disables the account, removes email verification or expires
+the exact session during the validator callback; each pending write is rejected
+and leaves no preference row. This extends the service-level race gate and does
+not prove the still-unimplemented HTTP/executor integration.
+
+Executor wire contracts have started in shared core: public Ed25519 SPKI
+enrollment input, an exact-registration challenge, signature completion and
+bounded catalog metadata with lease epoch and publication sequence. Strict
+schemas reject provider tokens, arbitrary endpoints, duplicate models and extra
+model fields. Two tests passed using real generated public keys/signatures and
+invalid catalog fixtures. These schemas validate syntax only: server-side key/
+signature validation, exact-session challenge consumption, replay/lease fencing,
+authenticated publication and all runtime/platform adapters remain open. The
+ongoing full-suite run started before these two tests existed; it cannot be used
+as their execution evidence. Their focused run is recorded separately.
+
+### Executor proof and preference checkpoint validation
+
+The private executor verifier now validates canonical Ed25519 SPKI bytes and
+signatures against the saved server challenge message. Three proof tests reject
+changed messages, foreign keys, private keys, a same-size X25519 public key and
+noncanonical public-key/signature encodings. Together with the two contract tests,
+all five focused tests passed; all workspace typechecks passed afterward. This
+does not establish enrollment authorization, challenge consumption or leases.
+
+The previously running worktree validation completed with 1,864 tests passed,
+zero failures/skips, and a successful production build. Its initial test list
+excluded the five executor tests added afterward. The credential-free backend
+preference migration/service and 15 connection tests were committed separately
+as `d0f8ae6`, then integrated into local main as `4c5c909`. Exact-main typecheck,
+build and full-suite validation is running before push. No preference HTTP route
+is exposed: authenticated executor/catalog validation and the user-facing models
+flow remain required. Other unmerged helpers and Mermaid work are outside this
+checkpoint.
+
+Private executor enrollment now persists five-minute exact-session challenges
+with canonical public keys, server-generated proof messages and one-time atomic
+consumption. Connection ownership and account/session state are rechecked under
+parent-first locks. Enrollment renewals compare both epoch and registration ID,
+so competing renewals or a deleted/recreated registration cannot accept an older
+proof. Disconnect consumes pending device challenges and removes enrolled keys;
+returning OAuth does not revive those proofs. Pending proofs are capped at five
+per owner and registrations at twenty per connection, including completion-time
+checks. The sweeper removes expired proofs and keeps live ones.
+
+All 21 connection/enrollment tests passed on the independently marked
+`orbyn_executor_enrollment_20261001_test` database. Four sweeper tests passed after
+correcting a parameter-count error in the new test fixture. Workspace typechecks
+passed for the service. Migration 201 and enrollment remain unmerged while their
+full worktree validation runs. No enrollment HTTP routes, executor leases,
+authenticated catalog publication or runtime enrollment adapters exist yet;
+enrollment alone authorizes no provider call.
+
+Catalog proof preparation now canonicalizes strict shared metadata, hashes it
+with SHA-256 and verifies an Ed25519 signature in a separate catalog domain.
+Seven focused contract/proof tests passed, including a thousand-model catalog,
+property-order normalization, model-order tampering and changes to the account,
+executor, lease or publication sequence. All workspace typechecks passed.
+Neither a valid signature nor an enrolled key proves provider entitlement; lease
+authorization and live catalog publication are still required.
+
+The enrollment full run ended with 1,820 passes and four failures. One was the
+existing assistant-worker retention assertion: both stale fixture jobs remained.
+The same assertion failed in exact-main validation, then all 13 focused worker
+tests passed without a source change. Its cause remains unverified; a complete
+exact-main rerun is active before any push. The other three enrollment-run
+failures were missing shared exports while new catalog helper source was edited
+and package outputs rebuilt during that run. That run cannot establish the
+current source state. Future full validation must use stable source/package
+outputs without overlapping edits or rebuilds. The retention assertion now
+records the actual sweep count and remaining-row eligibility to diagnose a
+recurrence without weakening its expected deletions. Enrollment remains unmerged.
+
+The exact-main rerun completed with all 1,803 tests passed, zero failures/skips.
+Together with the successful exact-main typecheck/build, this validates the
+private preference checkpoint `4c5c909`, now pushed to `origin/main`. The earlier
+retention failure and its unverified cause remain recorded above; the rerun is
+not evidence of a retention fix. Production deployment of this checkpoint is
+unverified. Enrollment/catalog proof work is starting a fresh stable-source full
+validation before integration.
