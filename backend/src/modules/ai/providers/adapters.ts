@@ -1,5 +1,9 @@
 import type { AiRequestFormat } from "@orbyn/core";
 import { assertProviderUrl, isPrivateUrl } from "./network.js";
+import {
+  embeddingVectors,
+  EmbeddingResponseError,
+} from "./embedding-vectors.js";
 
 /** Everything needed to call one provider with one model. */
 export type ResolvedAi = {
@@ -399,7 +403,11 @@ export async function listModels(ai: Connection): Promise<string[]> {
 export async function embed(
   ai: Connection & { model: string },
   passages: string[],
-  options: { model?: string; timeoutMs?: number } = {},
+  options: {
+    model?: string;
+    timeoutMs?: number;
+    expectedDimensions?: number;
+  } = {},
 ): Promise<number[][]> {
   const signal = AbortSignal.timeout(options.timeoutMs ?? 60_000);
   const response = await send(
@@ -415,14 +423,14 @@ export async function embed(
     signal,
     ai.apiKey,
   );
-  const body = await json<{ data?: { embedding?: number[] }[] }>(response);
-  const rows = body.data ?? [];
-  if (rows.length !== passages.length)
-    throw new ProviderError(
-      "embedding_count",
-      "The provider measured a different number of passages than it was given.",
-    );
-  return rows.map((r) => r.embedding ?? []);
+  const body = await json<unknown>(response);
+  try {
+    return embeddingVectors(body, passages.length, options.expectedDimensions);
+  } catch (error) {
+    if (error instanceof EmbeddingResponseError)
+      throw new ProviderError(error.reason, error.message);
+    throw error;
+  }
 }
 
 /**
