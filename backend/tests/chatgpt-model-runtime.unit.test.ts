@@ -197,6 +197,64 @@ test("runtime loads live catalog and saves only a currently available bound defa
   );
   runtime.close();
 });
+test("private inference uses the saved default and never forwards caller model overrides", async () => {
+  const f = fixture();
+  const catalog = f.options.fetch;
+  const posted: any[] = [];
+  f.options.fetch = async (url: string, init: RequestInit) => {
+    if (url.endsWith("/models")) return catalog(url, init);
+    assert.equal(url, "https://api.openai.com/v1/responses");
+    posted.push(JSON.parse(String(init.body)));
+    return new Response(
+      'data: {"type":"response.output_text.delta","delta":"completed text"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  };
+  const runtime = await create(f.options);
+  try {
+    await runtime.picker.load();
+    const request = {
+      model: "caller-override",
+      input: [{ role: "user", content: "hello" }],
+    };
+    await assert.rejects(runtime.completeDefault(request), /default model/);
+    assert.equal(posted.length, 0);
+    await runtime.picker.setDefault("fixture-model");
+    assert.equal(await runtime.completeDefault(request), "completed text");
+    assert.equal(posted[0].model, "fixture-model");
+    f.remove();
+    await assert.rejects(runtime.completeDefault(request), /unavailable/);
+    assert.equal(posted.length, 1);
+  } finally {
+    runtime.close();
+  }
+});
+test("revocation or account switch during inference cannot return completed output", async () => {
+  for (const change of ["switch", "revoke"] as const) {
+    const f = fixture();
+    const catalog = f.options.fetch;
+    f.options.fetch = async (url: string, init: RequestInit) => {
+      if (url.endsWith("/models")) return catalog(url, init);
+      f[change]();
+      return new Response(
+        'data: {"type":"response.output_text.delta","delta":"private text"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    };
+    const runtime = await create(f.options);
+    try {
+      await runtime.picker.load();
+      await runtime.picker.setDefault("fixture-model");
+      await assert.rejects(
+        runtime.completeDefault({
+          input: [{ role: "user", content: "hello" }],
+        }),
+      );
+    } finally {
+      runtime.close();
+    }
+  }
+});
 test("removed models and changed selection cannot persist a default", async () => {
   for (const change of ["remove", "switch", "revoke"] as const) {
     const f = fixture(),
