@@ -323,7 +323,12 @@ export function usePlanner() {
 
   const setEmailReminders = (checked: boolean) =>
     act(async () => {
-      setUser(await client.updatePreferences({ email_reminders: checked }));
+      const owner = tokenRef.current;
+      if (!owner) return;
+      const profile = await client.updatePreferences({
+        email_reminders: checked,
+      });
+      if (tokenRef.current === owner) setUser(profile);
     });
 
   return {

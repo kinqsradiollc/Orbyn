@@ -39,3 +39,11 @@ Evidence: `/tmp/orbyn-mutation-session-error-tests.log` and
 mutation setters, persisted-session storage races and nested caches remain open.
 This local checkpoint must not be conflated with the active main full-suite run,
 which predates these changes.
+
+The web email-reminder preference mutation now captures its session and discards
+late successful profile responses after logout or account switch. Four additional
+actual-callback checks cover current, changed and signed-out sessions. Combined
+session checks passed 27/27 and workspace typecheck passed. Evidence:
+`/tmp/orbyn-preference-session-tests.log` and
+`/tmp/orbyn-preference-session-types.log`. Other successful mutation setters and
+busy-state ownership remain open; these checks do not prove visual behavior.
