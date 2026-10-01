@@ -1,5 +1,16 @@
-import { randomBytes } from "node:crypto";
-import { chatgptModelBinding, chatgptModelPreference, fail } from "@orbyn/core";
+import { randomBytes, randomUUID } from "node:crypto";
+import {
+  chatgptModelBinding,
+  chatgptModelPreference,
+  chatgptExecutorStart,
+  chatgptExecutorChallenge,
+  chatgptExecutorFinish,
+  fail,
+} from "@orbyn/core";
+import {
+  parseChatgptExecutorKey,
+  verifyChatgptExecutorProof,
+} from "./chatgpt-executor-proof.js";
 import { pool, transaction, type Db } from "../../db/pool.js";
 import {
   createOpenAiIdentityVerifier,
@@ -16,6 +27,218 @@ type Challenge = {
 };
 const verifyIdentity = createOpenAiIdentityVerifier();
 
+/** Enroll a public device key only after an exact-session, one-time proof. */
+export async function beginChatgptExecutorEnrollment(
+  session: SessionBinding,
+  value: unknown,
+) {
+  const input = chatgptExecutorStart.parse(value);
+  let fingerprint: string;
+  try {
+    fingerprint = parseChatgptExecutorKey(input.public_key).fingerprint;
+  } catch {
+    fail(400, "The executor proof could not be verified.");
+  }
+  return transaction(async (db) => {
+    await db.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [
+      session.userId,
+    ]);
+    await requireLiveSession(db, session);
+    const connection = (
+      await db.query<{ issuer: string; subject: string; client_id: string }>(
+        "SELECT issuer,subject,client_id FROM chatgpt_identity_connections WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL FOR UPDATE",
+        [input.connection_id, session.userId],
+      )
+    ).rows[0];
+    if (!connection) fail(404, "That ChatGPT connection is not available.");
+    const pending = (
+      await db.query<{ count: string }>(
+        "SELECT count(*) FROM chatgpt_executor_challenges WHERE user_id=$1 AND consumed_at IS NULL AND expires_at>now()",
+        [session.userId],
+      )
+    ).rows[0];
+    if (Number(pending.count) >= 5)
+      fail(429, "Finish or wait for an existing executor enrollment.");
+    const current = (
+      await db.query<{ id: string; epoch: string }>(
+        "SELECT id,epoch FROM chatgpt_executor_enrollments WHERE connection_id=$1 AND host_id=$2",
+        [input.connection_id, input.host_id],
+      )
+    ).rows[0];
+    const epoch = current ? Number(current.epoch) : 0;
+    if (!Number.isSafeInteger(epoch + 1))
+      fail(409, "This executor registration cannot be renewed.");
+    if (!current) {
+      const hosts = (
+        await db.query<{ count: string }>(
+          "SELECT count(*) FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+          [input.connection_id],
+        )
+      ).rows[0];
+      if (Number(hosts.count) >= 20)
+        fail(
+          429,
+          "Remove an existing executor before enrolling another device.",
+        );
+    }
+    const binding = chatgptModelBinding.parse({
+      user_id: session.userId,
+      connection_id: input.connection_id,
+      ...connection,
+    });
+    const id = randomUUID();
+    const message = JSON.stringify([
+      "orbyn:executor:enroll:v1",
+      id,
+      session.sessionId,
+      binding,
+      input.host_id,
+      fingerprint,
+      epoch,
+      current?.id ?? null,
+      randomBytes(32).toString("base64url"),
+    ]);
+    await requireLiveSession(db, session);
+    const row = (
+      await db.query<{ expires_at: Date }>(
+        `INSERT INTO chatgpt_executor_challenges(id,user_id,session_id,connection_id,host_id,public_key,public_key_fingerprint,expected_epoch,proof_message,expected_enrollment_id)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING expires_at`,
+        [
+          id,
+          session.userId,
+          session.sessionId,
+          input.connection_id,
+          input.host_id,
+          input.public_key,
+          fingerprint,
+          epoch,
+          message,
+          current?.id ?? null,
+        ],
+      )
+    ).rows[0];
+    return chatgptExecutorChallenge.parse({
+      id,
+      binding,
+      host_id: input.host_id,
+      public_key_fingerprint: fingerprint,
+      proof_message: message,
+      expires_at: row.expires_at.toISOString(),
+    });
+  });
+}
+
+/** Persist proof completion and consume its challenge in the same transaction. */
+export async function finishChatgptExecutorEnrollment(
+  session: SessionBinding,
+  value: unknown,
+) {
+  const input = chatgptExecutorFinish.parse(value);
+  return transaction(async (db) => {
+    await requireLiveSession(db, session);
+    // Discover the parent, then lock it before the challenge to match disconnect ordering.
+    const parent = (
+      await db.query<{ connection_id: string }>(
+        "SELECT connection_id FROM chatgpt_executor_challenges WHERE id=$1 AND user_id=$2 AND session_id=$3",
+        [input.challenge_id, session.userId, session.sessionId],
+      )
+    ).rows[0];
+    if (!parent) fail(404, "That executor enrollment is not available.");
+    const connection = (
+      await db.query<{ issuer: string; subject: string; client_id: string }>(
+        "SELECT issuer,subject,client_id FROM chatgpt_identity_connections WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL FOR UPDATE",
+        [parent.connection_id, session.userId],
+      )
+    ).rows[0];
+    if (!connection) fail(404, "That ChatGPT connection is not available.");
+    const challenge = (
+      await db.query<{
+        host_id: string;
+        public_key: string;
+        public_key_fingerprint: string;
+        expected_epoch: string;
+        expected_enrollment_id: string | null;
+        proof_message: string;
+        consumed_at: Date | null;
+        expired: boolean;
+      }>(
+        "SELECT host_id,public_key,public_key_fingerprint,expected_epoch,expected_enrollment_id,proof_message,consumed_at,expires_at<=clock_timestamp() AS expired FROM chatgpt_executor_challenges WHERE id=$1 AND user_id=$2 AND session_id=$3 FOR UPDATE",
+        [input.challenge_id, session.userId, session.sessionId],
+      )
+    ).rows[0];
+    if (!challenge || challenge.consumed_at || challenge.expired)
+      fail(409, "Start a fresh executor enrollment.");
+    let fingerprint: string;
+    try {
+      fingerprint = verifyChatgptExecutorProof(
+        challenge.public_key,
+        challenge.proof_message,
+        input.signature,
+      );
+    } catch {
+      fail(400, "The executor proof could not be verified.");
+    }
+    if (fingerprint !== challenge.public_key_fingerprint)
+      fail(400, "The executor proof could not be verified.");
+    const current = (
+      await db.query<{ id: string; epoch: string }>(
+        "SELECT id,epoch FROM chatgpt_executor_enrollments WHERE connection_id=$1 AND host_id=$2",
+        [parent.connection_id, challenge.host_id],
+      )
+    ).rows[0];
+    const epoch = current ? Number(current.epoch) : 0;
+    if (
+      epoch !== Number(challenge.expected_epoch) ||
+      (current?.id ?? null) !== challenge.expected_enrollment_id ||
+      !Number.isSafeInteger(epoch + 1)
+    )
+      fail(409, "The executor registration changed. Start a fresh enrollment.");
+    if (!current) {
+      const hosts = (
+        await db.query<{ count: string }>(
+          "SELECT count(*) FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+          [parent.connection_id],
+        )
+      ).rows[0];
+      if (Number(hosts.count) >= 20)
+        fail(
+          429,
+          "Remove an existing executor before enrolling another device.",
+        );
+    }
+    await requireLiveSession(db, session);
+    const enrollment = (
+      await db.query<{ id: string }>(
+        `INSERT INTO chatgpt_executor_enrollments(connection_id,host_id,session_id,public_key,public_key_fingerprint,epoch) VALUES($1,$2,$3,$4,$5,$6)
+       ON CONFLICT(connection_id,host_id) DO UPDATE SET session_id=EXCLUDED.session_id,public_key=EXCLUDED.public_key,public_key_fingerprint=EXCLUDED.public_key_fingerprint,epoch=EXCLUDED.epoch,enrolled_at=now() RETURNING id`,
+        [
+          parent.connection_id,
+          challenge.host_id,
+          session.sessionId,
+          challenge.public_key,
+          fingerprint,
+          epoch + 1,
+        ],
+      )
+    ).rows[0];
+    await db.query(
+      "UPDATE chatgpt_executor_challenges SET consumed_at=now() WHERE id=$1",
+      [input.challenge_id],
+    );
+    return {
+      id: enrollment.id,
+      binding: chatgptModelBinding.parse({
+        user_id: session.userId,
+        connection_id: parent.connection_id,
+        ...connection,
+      }),
+      host_id: challenge.host_id,
+      public_key_fingerprint: fingerprint,
+      enrollment_epoch: epoch + 1,
+    };
+  });
+}
+
 async function requireLiveSession(db: Db, binding: SessionBinding) {
   // Account restrictions can change while a remote proof is being checked.
   // Lock the parent before its session, matching sign-out/admin lock ordering.
@@ -29,10 +252,18 @@ async function requireLiveSession(db: Db, binding: SessionBinding) {
   if (person.disabled || !person.email_verified)
     fail(403, "This Orbyn account cannot connect ChatGPT.");
   const live = await db.query(
-    "SELECT id FROM sessions WHERE id=$1 AND user_id=$2 AND expires_at>now() FOR SHARE",
+    "SELECT id FROM sessions WHERE id=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE",
     [binding.sessionId, binding.userId],
   );
   if (!live.rowCount) fail(401, "Sign in to Orbyn before connecting ChatGPT.");
+  // Recheck after lock acquisition: even clock_timestamp() may be evaluated
+  // before waiting on a session row that another transaction only locked.
+  const current = await db.query(
+    "SELECT id FROM sessions WHERE id=$1 AND user_id=$2 AND expires_at>clock_timestamp()",
+    [binding.sessionId, binding.userId],
+  );
+  if (!current.rowCount)
+    fail(401, "Sign in to Orbyn before connecting ChatGPT.");
 }
 
 /** Start an OAuth nonce owned by this exact Orbyn session, not just its user. */
@@ -289,6 +520,14 @@ export async function revokeChatgptConnection(
     );
     if (!result.rowCount)
       fail(404, "That ChatGPT connection is not available.");
+    await db.query(
+      "UPDATE chatgpt_executor_challenges SET consumed_at=now() WHERE connection_id=$1 AND consumed_at IS NULL",
+      [id],
+    );
+    await db.query(
+      "DELETE FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+      [id],
+    );
     await db.query(
       `UPDATE chatgpt_identity_challenges SET consumed_at=now()
        WHERE user_id=$1 AND consumed_at IS NULL`,

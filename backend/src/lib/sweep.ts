@@ -463,6 +463,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "chatgpt_executor_challenges",
+    label: "ChatGPT executor enrollments",
+    detail:
+      "Expired device enrollment proofs; no provider credentials are stored.",
+    table: "chatgpt_executor_challenges",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "ai_jobs",
     label: "Assistant jobs",
     detail:

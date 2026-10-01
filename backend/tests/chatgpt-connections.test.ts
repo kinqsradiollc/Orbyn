@@ -1,6 +1,6 @@
 import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomUUID, generateKeyPairSync, sign } from "node:crypto";
 import "./setup.js";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -11,6 +11,8 @@ const {
   revokeChatgptConnection,
   readChatgptModelPreference,
   saveChatgptModelPreference,
+  beginChatgptExecutorEnrollment,
+  finishChatgptExecutorEnrollment,
 } = await import("../src/modules/auth/chatgpt-connections.js");
 const people: { userId: string; sessionId: string }[] = [];
 const clientId = "oaiapp_connection_fixture";
@@ -23,6 +25,278 @@ const verified = async (
   issuer: "https://auth.openai.com" as const,
   subject: "disconnect-fixture",
   clientId: expected.clientId,
+});
+
+async function executorFixture() {
+  const attempt = await beginChatgptConnection(people[0]);
+  const connection = await finishChatgptConnection(
+    people[0],
+    { challengeId: attempt.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  const keys = generateKeyPairSync("ed25519");
+  const input = {
+    connection_id: connection.id,
+    host_id: randomUUID(),
+    public_key: keys.publicKey
+      .export({ type: "spki", format: "der" })
+      .toString("base64url"),
+  };
+  const start = () => beginChatgptExecutorEnrollment(people[0], input);
+  const finish = (
+    challenge: Awaited<ReturnType<typeof start>>,
+    person = people[0],
+  ) =>
+    finishChatgptExecutorEnrollment(person, {
+      challenge_id: challenge.id,
+      signature: sign(
+        null,
+        Buffer.from(challenge.proof_message),
+        keys.privateKey,
+      ).toString("base64url"),
+    });
+  return { connection, input, start, finish };
+}
+
+test("executor enrollment requires a valid one-time proof from the exact owning session", async () => {
+  const fixture = await executorFixture();
+  const challenge = await fixture.start();
+  await assert.rejects(fixture.finish(challenge, people[1]), status(404));
+  const otherSession = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO sessions(user_id,token_hash) VALUES($1,$2) RETURNING id",
+      [people[0].userId, randomUUID()],
+    )
+  ).rows[0];
+  await assert.rejects(
+    fixture.finish(challenge, {
+      userId: people[0].userId,
+      sessionId: otherSession.id,
+    }),
+    status(404),
+  );
+  await pool.query("DELETE FROM sessions WHERE id=$1", [otherSession.id]);
+  await assert.rejects(
+    finishChatgptExecutorEnrollment(people[0], {
+      challenge_id: challenge.id,
+      signature: "A".repeat(86),
+    }),
+    status(400),
+  );
+  const enrollment = await fixture.finish(challenge);
+  assert.equal(enrollment.enrollment_epoch, 1);
+  assert.equal(enrollment.binding.connection_id, fixture.connection.id);
+  assert.equal(
+    enrollment.public_key_fingerprint,
+    challenge.public_key_fingerprint,
+  );
+  await assert.rejects(fixture.finish(challenge), status(409));
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+        [fixture.connection.id],
+      )
+    ).rowCount,
+    1,
+  );
+});
+
+test("executor enrollment bounds pending attempts and rejects expired and wrong-algorithm proofs", async () => {
+  const fixture = await executorFixture();
+  const x25519 = generateKeyPairSync("x25519")
+    .publicKey.export({ type: "spki", format: "der" })
+    .toString("base64url");
+  await assert.rejects(
+    beginChatgptExecutorEnrollment(people[0], {
+      ...fixture.input,
+      public_key: x25519,
+    }),
+    status(400),
+  );
+  const challenges = await Promise.all(
+    Array.from({ length: 5 }, fixture.start),
+  );
+  await assert.rejects(fixture.start(), status(429));
+  await pool.query(
+    "UPDATE chatgpt_executor_challenges SET expires_at=now()-interval '1 second' WHERE id=$1",
+    [challenges[0].id],
+  );
+  await assert.rejects(fixture.finish(challenges[0]), status(409));
+  await fixture.start();
+});
+
+test("competing executor renewals have one winner and cannot replace a recreated registration", async () => {
+  const fixture = await executorFixture();
+  const first = await fixture.finish(await fixture.start());
+  const pending = await Promise.all([fixture.start(), fixture.start()]);
+  const results = await Promise.allSettled(
+    pending.map((c) => fixture.finish(c)),
+  );
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  const rejected = results.find(
+    (r) => r.status === "rejected",
+  ) as PromiseRejectedResult;
+  assert.equal(rejected.reason.statusCode, 409);
+  const stale = await fixture.start();
+  await pool.query("DELETE FROM chatgpt_executor_enrollments WHERE id=$1", [
+    first.id,
+  ]);
+  const replacement = await fixture.finish(await fixture.start());
+  await fixture.finish(await fixture.start());
+  assert.notEqual(replacement.id, first.id);
+  await assert.rejects(fixture.finish(stale), status(409));
+});
+
+test("disconnect removes executor registrations and fences proofs even after reauthentication", async () => {
+  const fixture = await executorFixture();
+  await fixture.finish(await fixture.start());
+  const pending = await fixture.start();
+  await revokeChatgptConnection(people[0], fixture.connection.id);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+        [fixture.connection.id],
+      )
+    ).rowCount,
+    0,
+  );
+  await assert.rejects(fixture.finish(pending), status(404));
+  const attempt = await beginChatgptConnection(people[0]);
+  await finishChatgptConnection(
+    people[0],
+    { challengeId: attempt.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  await assert.rejects(fixture.finish(pending), status(409));
+});
+
+test("executor completion rechecks account restrictions and exact-session expiry", async () => {
+  const fixture = await executorFixture();
+  const pending = await fixture.start();
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [
+    people[0].userId,
+  ]);
+  try {
+    await assert.rejects(fixture.finish(pending), status(403));
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [
+      people[0].userId,
+    ]);
+  }
+  await pool.query(
+    "UPDATE sessions SET expires_at=now()-interval '1 second' WHERE id=$1",
+    [people[0].sessionId],
+  );
+  try {
+    await assert.rejects(fixture.finish(pending), status(401));
+  } finally {
+    await pool.query(
+      "UPDATE sessions SET expires_at=now()+interval '30 days' WHERE id=$1",
+      [people[0].sessionId],
+    );
+  }
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+        [fixture.connection.id],
+      )
+    ).rowCount,
+    0,
+  );
+});
+
+test("executor device cap is rechecked at completion and concurrent replay has one winner", async () => {
+  const fixture = await executorFixture();
+  const pending = await fixture.start();
+  await pool.query(
+    `INSERT INTO chatgpt_executor_enrollments(connection_id,host_id,session_id,public_key,public_key_fingerprint,epoch)
+     SELECT $1,gen_random_uuid(),$2,$3,$4,1 FROM generate_series(1,20)`,
+    [
+      fixture.connection.id,
+      people[0].sessionId,
+      fixture.input.public_key,
+      pending.public_key_fingerprint,
+    ],
+  );
+  await assert.rejects(fixture.start(), status(429));
+  await assert.rejects(fixture.finish(pending), status(429));
+  await pool.query(
+    "DELETE FROM chatgpt_executor_enrollments WHERE connection_id=$1",
+    [fixture.connection.id],
+  );
+  const results = await Promise.allSettled([
+    fixture.finish(pending),
+    fixture.finish(pending),
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  const rejection = results.find(
+    (r) => r.status === "rejected",
+  ) as PromiseRejectedResult;
+  assert.equal(rejection.reason.statusCode, 409);
+  await assert.rejects(
+    beginChatgptExecutorEnrollment(people[1], fixture.input),
+    status(404),
+  );
+});
+
+test("executor completion rejects expiry while waiting on an account or session lock", async () => {
+  for (const table of ["users", "sessions"] as const) {
+    const fixture = await executorFixture();
+    const challenge = await fixture.start();
+    const holder = await pool.connect();
+    let released = false;
+    try {
+      await pool.query(
+        "UPDATE sessions SET expires_at=clock_timestamp()+interval '2 seconds' WHERE id=$1",
+        [people[0].sessionId],
+      );
+      await holder.query("BEGIN");
+      await holder.query(`SELECT id FROM ${table} WHERE id=$1 FOR UPDATE`, [
+        table === "users" ? people[0].userId : people[0].sessionId,
+      ]);
+      const completion = fixture.finish(challenge).then(
+        () => null,
+        (error) => error,
+      );
+      let blocked = false;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        await holder.query("SELECT pg_stat_clear_snapshot()");
+        const waiting = await holder.query(
+          "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE $1 LIMIT 1",
+          [
+            table === "users"
+              ? "%SELECT disabled,email_verified FROM users%"
+              : "%SELECT id FROM sessions%",
+          ],
+        );
+        if (waiting.rowCount) {
+          blocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.ok(blocked, "completion must begin before the session expires");
+      await holder.query("SELECT pg_sleep(2.1)");
+      await holder.query("COMMIT");
+      released = true;
+      const error = await completion;
+      assert.equal(
+        error?.statusCode,
+        401,
+        "transaction-start time must not revive an expired session",
+      );
+    } finally {
+      if (!released) await holder.query("ROLLBACK");
+      holder.release();
+      await pool.query(
+        "UPDATE sessions SET expires_at=now()+interval '30 days' WHERE id=$1",
+        [people[0].sessionId],
+      );
+    }
+  }
 });
 before(async () => {
   await migrate();

@@ -71,6 +71,29 @@ test("the sweeper clears outdated records and keeps recent ones", async () => {
       [adminId, liveSession, `${marker}-expired`, `${marker}-live`],
     )
   ).rows;
+  const executorConnection = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO chatgpt_identity_connections(user_id,issuer,subject,client_id) VALUES($1,'https://auth.openai.com',$2,'oaiapp_sweep_fixture') RETURNING id",
+      [adminId, marker],
+    )
+  ).rows[0].id;
+  const executorExpired = randomUUID();
+  const executorLive = randomUUID();
+  await pool.query(
+    `INSERT INTO chatgpt_executor_challenges(id,user_id,session_id,connection_id,host_id,public_key,public_key_fingerprint,expected_epoch,proof_message,expires_at)
+     VALUES($1,$3,$4,$5,$6,$7,$8,0,$9,now()-interval '1 minute'),($2,$3,$4,$5,$6,$7,$8,0,$9,now()+interval '5 minutes')`,
+    [
+      executorExpired,
+      executorLive,
+      adminId,
+      liveSession,
+      executorConnection,
+      randomUUID(),
+      "A".repeat(59),
+      "A".repeat(43),
+      "sweep-public-proof-fixture-".repeat(2),
+    ],
+  );
   await pool.query(
     `INSERT INTO request_log (at, service, request_id, method, route, status, duration_ms)
      VALUES (now() - interval '30 days', 'api', $1, 'GET', '/old', 200, 5),
@@ -102,6 +125,19 @@ test("the sweeper clears outdated records and keeps recent ones", async () => {
   assert.ok(body.last.removed.request_log >= 1);
   assert.ok(body.last.removed.sessions >= 1);
   assert.ok(body.last.removed.chatgpt_identity_challenges >= 1);
+  assert.ok(body.last.removed.chatgpt_executor_challenges >= 1);
+  assert.deepEqual(
+    (
+      await pool.query<{ id: string }>(
+        "SELECT id FROM chatgpt_executor_challenges WHERE id=ANY($1::uuid[])",
+        [[executorExpired, executorLive]],
+      )
+    ).rows.map((row) => row.id),
+    [executorLive],
+  );
+  await pool.query("DELETE FROM chatgpt_identity_connections WHERE id=$1", [
+    executorConnection,
+  ]);
   assert.deepEqual(
     (
       await pool.query<{ nonce: string }>(

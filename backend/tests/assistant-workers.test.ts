@@ -18,7 +18,8 @@ const { scanAssistantRoutines } =
 const { sweepOldChats } = await import("../src/worker/chat-sweep.js");
 const { buildMorning, buildOvernightSection } =
   await import("../src/worker/digest.js");
-const { retention, runSweep } = await import("../src/lib/sweep.js");
+const { retention, runSweep, SWEEP_RULES } =
+  await import("../src/lib/sweep.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
 
@@ -777,15 +778,21 @@ test("the sweeper clears dead and abandoned assistant jobs and clamps retention"
     }
     assert.ok(swept, "the sweep lease stayed occupied for five seconds");
     assert.equal(swept.errors.ai_jobs, undefined, "assistant-job sweep failed");
-    const left = new Set(
-      (
-        await pool.query<{ id: string }>(
-          "SELECT id FROM ai_jobs WHERE id = ANY($1::uuid[])",
-          [[deadRun, liveRun, oldWait, recentWait]],
-        )
-      ).rows.map((row) => row.id),
-    );
-    assert.deepEqual(left, new Set([liveRun, recentWait]));
+    const rule = SWEEP_RULES.find((r) => r.key === "ai_jobs")!;
+    const remaining = (
+      await pool.query<{ id: string }>(
+        `SELECT id,state,heartbeat_at,run_state IS NULL AS legacy,(${rule.where}) AS eligible FROM ai_jobs WHERE id = ANY($1::uuid[])`,
+        [[deadRun, liveRun, oldWait, recentWait]],
+      )
+    ).rows;
+    const diagnostic = JSON.stringify({
+      removed: swept.removed.ai_jobs,
+      errors: swept.errors,
+      remaining,
+    });
+    assert.equal(typeof swept.removed.ai_jobs, "number", diagnostic);
+    const left = new Set(remaining.map((row) => row.id));
+    assert.deepEqual(left, new Set([liveRun, recentWait]), diagnostic);
     const kept = (
       await pool.query<{ id: string }>(
         "SELECT id::text FROM agent_activity WHERE id = ANY($1::bigint[])",

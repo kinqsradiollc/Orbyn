@@ -80,6 +80,7 @@ export * from "./fields.js";
 export * from "./page-files.js";
 export * from "./code-colour.js";
 export * from "./diagrams.js";
+export * from "./chatgpt-executors.js";
 export * from "./commands.js";
 export * from "./math-layout.js";
 export * from "./offline-pages.js";
