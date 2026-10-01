@@ -4,6 +4,7 @@ async function createChatgptExecutorRuntime({
   client,
   signer,
   models,
+  complete,
   requireLiveConnection,
 }) {
   const {
@@ -167,6 +168,29 @@ async function createChatgptExecutorRuntime({
     },
     refreshCatalog(signal) {
       return ordered(() => publish(signals(signal)));
+    },
+    /** Private inference stays outside the heartbeat queue and under a live lease. */
+    async completeDefault(request, signal) {
+      await live();
+      if (typeof complete !== "function" || !lease)
+        throw new Error("The ChatGPT inference executor is not ready.");
+      const captured = validateLease(lease);
+      const combined = AbortSignal.any([
+        lifetime.signal,
+        AbortSignal.timeout(120_000),
+        ...(signal ? [signal] : []),
+      ]);
+      combined.throwIfAborted();
+      const text = await complete(request, { signal: combined });
+      await live();
+      combined.throwIfAborted();
+      const current = validateLease(lease);
+      if (
+        current.lease_epoch !== captured.lease_epoch ||
+        current.enrollment_epoch !== captured.enrollment_epoch
+      )
+        throw new Error("The ChatGPT executor lease changed during inference.");
+      return text;
     },
     close() {
       closed = true;

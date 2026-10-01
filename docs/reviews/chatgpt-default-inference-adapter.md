@@ -25,3 +25,18 @@ keeps its captured model when the saved default is cleared mid-response and that
 closing the runtime aborts inference before any output returns. Evidence:
 `/tmp/orbyn-chatgpt-default-lifetime-tests.log`. These checks use controlled
 upstream responses and do not replace real-account or composer acceptance.
+
+The manager now injects the private model adapter into its executor runtime.
+Inference requires an established lease, captures enrollment/lease epochs and
+rechecks them and expiry before returning. It runs outside the ordered control
+queue, allowing heartbeats while inference waits. The caller's cancellation and
+executor lifetime signals are combined with a bounded inference timeout.
+Runtime/manager/model checks passed 25/25, including heartbeat progress during
+inference, replacement fencing and expiry; workspace typecheck and diff checks
+passed. Evidence: `/tmp/orbyn-chatgpt-leased-inference-final-tests.log` and
+`/tmp/orbyn-chatgpt-leased-inference-types.log`.
+
+This remains a private adapter method. No new IPC command exposes conversation
+input or provider credentials. Signed job assignment, result receipts, server
+visibility/rule checks, composer routing and real-account acceptance are still
+required before claiming delivered assistant inference.
