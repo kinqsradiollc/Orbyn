@@ -44,6 +44,18 @@ its full-suite result does not validate these new changes.
   existing implementation deliberately consumes codes on failed exchanges;
   the corrected test obtains fresh consent and preserves that security behavior.
 
+## Issued credential service acceptance
+
+The expanded OAuth suite passes 29/29 after testing the issued credentials on
+the actual dedicated plugin service. Plugin tokens resolve to the authorizing
+account; a second account receives a distinct grant and principal. MCP tokens
+and browser sessions receive 401 on the plugin service, and plugin tokens receive
+401 on MCP. Revoking the plugin grant blocks both plugin access and refresh while
+the independent MCP refresh remains usable. Evidence:
+`/tmp/orbyn-plugin-issued-service-final-tests.log` and
+`/tmp/orbyn-plugin-issued-service-final-types.log` (backend typecheck passed).
+These injected service checks do not prove a host's browser/account-switch UX.
+
 Remaining acceptance includes browser consent review, plugin metadata/host
-launch, account switch and revocation flows across services, events/resources,
+launch, host account-switch UX, events/resources,
 provider credential boundaries, full-suite validation and deployment wiring.
