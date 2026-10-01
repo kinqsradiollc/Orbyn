@@ -4,7 +4,7 @@ import {
   principalFor,
   type GrantRow,
 } from "../../capabilities/connector-principal.js";
-import { pool } from "../../db/pool.js";
+import { pool, type Queryable } from "../../db/pool.js";
 import { digest } from "../../lib/auth.js";
 import type { LiveSettings } from "../../lib/settings.js";
 import { disallowedHost } from "../oauth/clients.js";
@@ -28,6 +28,7 @@ export async function resolvePluginCaller(
   headers: Record<string, string | string[] | undefined>,
   settings: LiveSettings,
   resources: ConnectorResources,
+  db: Queryable = pool,
 ): Promise<{ principal: Principal; expiresAt: Date }> {
   const recipient = connectorResources(resources).find(
     (item) => item.kind === "plugin",
@@ -42,7 +43,7 @@ export async function resolvePluginCaller(
   if (!token)
     throw new PluginAuthError(401, "A plugin access token is required.");
   const row = (
-    await pool.query<GrantRow>(
+    await db.query<GrantRow>(
       `${GRANT_SELECT} WHERE t.token_hash = $1 AND t.kind = 'access'`,
       [digest(token)],
     )
@@ -76,7 +77,7 @@ export async function resolvePluginCaller(
   )
     throw new PluginAuthError(403, "This plugin connection is not permitted.");
   // Host-supplied MCP headers cannot expand or select plugin permissions.
-  const principal = await principalFor(row, "plugin", {});
+  const principal = await principalFor(row, "plugin", {}, db);
   const expiresAt =
     row.expires_at && row.expires_at < row.token_expires_at
       ? row.expires_at

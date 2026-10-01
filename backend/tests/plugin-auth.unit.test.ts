@@ -31,7 +31,7 @@ const grant = (): GrantRow => ({
   personal: false,
   toolsets: ["core"],
   flags: {},
-  trust: "ask_first",
+  trust: "ask",
   space_trust: null,
   acts_alone: null,
   client_blocked: false,
@@ -144,7 +144,7 @@ test("plugin principal uses current grant and reachable team policy without sess
       result.principal.teams.map((t) => t.id),
       ["allowed"],
     );
-    assert.equal(result.principal.trust.level, "ask_first");
+    assert.equal(result.principal.trust.level, "ask");
   });
 });
 

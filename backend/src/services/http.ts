@@ -47,7 +47,7 @@ const OPEN_DURING_MAINTENANCE = [
  * Paths that answer maintenance mode themselves: MCP lets reads through and
  * turns writes into a JSON-RPC error its clients understand.
  */
-const OWN_MAINTENANCE = new Set(["/mcp"]);
+const OWN_MAINTENANCE = new Set(["/mcp", "/plugin/tools/call"]);
 /** Paths anyone with a link can open: booking pages, invites, profiles, RSVPs. */
 const PUBLIC_PAGES = /^\/(book|invite|u|rsvp)(\/|$)/;
 

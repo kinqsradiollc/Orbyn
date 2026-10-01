@@ -179,6 +179,41 @@ contexts or resumable events. OAuth consent remains MCP-only, and plugin
 provider execution and deployment/gateway wiring remain unfinished. Do not
 configure a production plugin recipient as a delivered integration yet.
 
+## Shared capability execution (local)
+
+POST /plugin/tools/call accepts a strict bounded name/arguments envelope and
+calls the shared domain executor with an independently authenticated plugin
+principal. It cannot accept host claims of approval or replace the principal.
+Reads use the primary and the existing read-only transaction. Writes set the
+actor/connector identity, use the shared trust/proposal services and retain
+existing client_ref receipts. Connection/token/user/client and membership/team
+rows are locked and live permissions compared again before entering the write;
+a changed snapshot or revoked connection cannot enter the callback. Concurrent
+writes serialize on the grant to avoid lock-upgrade deadlocks and duplicate
+receipt effects. Tool calls use per-connection limits and the shared activity
+and usage recorder. Maintenance and the outside-agent write switch block writes.
+
+Seventy-four focused plugin/resource/grant/OAuth/MCP/service/path checks passed,
+zero failed or skipped. New database checks prove shared get_context reads,
+strict input, inaccessible tools, two concurrent requests creating one task and
+one durable receipt, stale/revoked write prevention, ask-first review without
+creating a task, and read/write maintenance behavior. An initial fixture used
+unsupported trust value ask_first and failed its database constraint; the
+fixture now uses the real ask value and all checks were rerun. Backend typecheck
+and build passed. Evidence: /tmp/orbyn-plugin-execute-regressions.log,
+/tmp/orbyn-plugin-execute-final-types.log, /tmp/orbyn-plugin-execute-build.log.
+
+Main integration repeated all 74 checks successfully, and workspace typecheck
+and build passed. Evidence: `/tmp/orbyn-plugin-execute-main-regressions.log`,
+`/tmp/orbyn-plugin-execute-main-types.log`, and
+`/tmp/orbyn-plugin-execute-main-build.log`. Full-suite validation is pending.
+
+OAuth issuance remains MCP-only. This does not deliver plugin launch/resource
+UI, asynchronous events/reconnect cursors, host approval or provider inference.
+Those contracts and their security evidence remain open before enabling the
+plugin recipient in production. The UI preview permission is still denied by
+Browser Use despite the user authorizing a retry; it has not been bypassed.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;

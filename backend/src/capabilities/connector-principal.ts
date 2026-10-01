@@ -7,7 +7,7 @@ import {
   type AgentToolset,
   type AgentTrust,
 } from "@orbyn/core";
-import { pool } from "../db/pool.js";
+import { pool, type Queryable } from "../db/pool.js";
 import { reachableTeams, type Principal, type Via } from "./policy.js";
 
 /** Live connector grant data shared by protocol-specific authentication boundaries. */
@@ -66,6 +66,7 @@ export async function principalFor(
   row: GrantRow,
   via: Via,
   headers: Record<string, string | string[] | undefined>,
+  db: Queryable = pool,
 ): Promise<Principal> {
   const n = narrowed(
     headers,
@@ -92,7 +93,7 @@ export async function principalFor(
       spaces: row.space_trust ?? {},
       acts_alone: row.acts_alone ?? [],
     },
-    teams: await reachableTeams(pool, row.user_id, row.team_ids, via),
+    teams: await reachableTeams(db, row.user_id, row.team_ids, via),
   };
 }
 
