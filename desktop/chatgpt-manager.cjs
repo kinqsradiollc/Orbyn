@@ -295,6 +295,7 @@ async function createChatgptManager({
         client: ctx.client,
         signer,
         models: models.models,
+        complete: models.completeDefault,
         requireLiveConnection: live,
       });
       const active = {
