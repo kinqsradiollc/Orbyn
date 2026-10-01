@@ -86,3 +86,13 @@ name error; that failed run was interrupted, corrected and superseded by the
 clean run. The prior 1,993-test result predates discovery and is not a full-suite
 result for this source. Gateway routing, host acceptance, browser layout and
 production enablement remain pending.
+
+The discovery full suite completed with 1,993 passed and one failure in the
+published-page password fixture (`/tmp/orbyn-plugin-discovery-full-tests.log`).
+Its private-content check searched for `42` anywhere in HTML, including the
+public form action; this run generated slug `answers-f342cd`. The corrected
+fixture uses a distinctive content marker and an explicit public slug containing
+`42`, proving the form URL is public while the document content stays hidden.
+All 18 publication checks passed after correction
+(`/tmp/orbyn-published-password-fixture-tests.log`). Publication production code
+is unchanged. A new frozen full-suite run is still required.
