@@ -62,6 +62,22 @@ enable plugin authorization until all API replicas use the new discriminator;
 old consent code cannot safely select among newly created grants for both
 services. No plugin host behavior is proven by these database/route checks.
 
+## Code and refresh recipient guards (local)
+
+Token minting now receives the resolved code/refresh recipient and checks it
+against the grant's resource kind before inserting a pair. Refresh reads its
+stored recipient even when the request omits `resource`; a foreign stored
+recipient cannot be silently replaced by the MCP default. Legacy unbound
+refresh tokens remain MCP-only. Normalized comparisons retain the configured
+MCP recipient string used by existing metadata and authentication.
+
+The combined suite passed **52 tests**, zero failed or skipped. New adversarial
+checks prove that foreign-bound refreshes and plugin grants paired with MCP-bound
+credentials create no tokens and leave the original refresh unused; a mismatched
+authorization code also creates no pair. Plugin authorization remains disabled
+because only the configured MCP resource is accepted by the live token path.
+This is backend isolation/hardening evidence, not delivery of a plugin service.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;

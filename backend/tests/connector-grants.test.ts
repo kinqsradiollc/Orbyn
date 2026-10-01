@@ -8,6 +8,9 @@ const { migrate } = await import("../src/db/migrate.js");
 const { digest } = await import("../src/lib/auth.js");
 const { env } = await import("../src/config/env.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
+const { settings } = await import("../src/lib/settings.js");
+const { refreshTokens, issueCode, exchangeCode, s256 } =
+  await import("../src/modules/oauth/tokens.js");
 const app = await buildApp();
 let userId: string;
 const clientId = `connector-fixture-${randomUUID()}`;
@@ -109,4 +112,96 @@ test("resource-aware MCP calls retain per-connection rate limiting", async () =>
     response = await post(mcpToken, { jsonrpc: "2.0", id: at, method: "ping" });
   assert.equal(response!.statusCode, 429);
   assert.ok(Number(response!.headers["retry-after"]) > 0);
+});
+
+test("refresh cannot replace a foreign recipient or promote a plugin grant into MCP", async () => {
+  const live = await settings();
+  const grants = (
+    await pool.query(
+      "SELECT id,resource_kind FROM agent_grants WHERE user_id=$1",
+      [userId],
+    )
+  ).rows;
+  for (const kind of ["mcp", "plugin"]) {
+    const grant = grants.find((row) => row.resource_kind === kind);
+    const token = `ort_${randomUUID()}`;
+    const family = randomUUID();
+    await pool.query(
+      "INSERT INTO agent_tokens(token_hash,grant_id,kind,family,resource,expires_at,family_expires_at) VALUES ($1,$2,'refresh',$3,$4,now()+interval '1 day',now()+interval '2 days')",
+      [
+        digest(token),
+        grant.id,
+        family,
+        kind === "mcp"
+          ? "https://other.example.test/plugin"
+          : env.MCP_PUBLIC_URL,
+      ],
+    );
+    await assert.rejects(
+      refreshTokens({ refresh_token: token, client_id: clientId }, live),
+      (error: any) =>
+        error.error === (kind === "mcp" ? "invalid_target" : "invalid_grant"),
+    );
+    const rows = (
+      await pool.query("SELECT used_at FROM agent_tokens WHERE family=$1", [
+        family,
+      ])
+    ).rows;
+    assert.equal(
+      rows.length,
+      1,
+      "a rejected refresh creates no new token pair",
+    );
+    assert.equal(
+      rows[0].used_at,
+      null,
+      "a rejected refresh does not consume the original token",
+    );
+  }
+});
+
+test("a code bound to MCP cannot mint credentials for a plugin grant", async () => {
+  const grant = (
+    await pool.query(
+      "SELECT id FROM agent_grants WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    )
+  ).rows[0];
+  const verifier = "a".repeat(64);
+  const redirect = "https://fixture.example.test/callback";
+  const code = await issueCode(pool, {
+    grantId: grant.id,
+    clientId,
+    redirectUri: redirect,
+    challenge: s256(verifier),
+    resource: env.MCP_PUBLIC_URL,
+    scope: "orbyn:read offline_access",
+  });
+  const before = (
+    await pool.query(
+      "SELECT count(*)::integer AS count FROM agent_tokens WHERE grant_id=$1",
+      [grant.id],
+    )
+  ).rows[0].count;
+  await assert.rejects(
+    exchangeCode(
+      {
+        code,
+        client_id: clientId,
+        redirect_uri: redirect,
+        code_verifier: verifier,
+      },
+      await settings(),
+    ),
+    (error: any) => error.error === "invalid_grant",
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::integer AS count FROM agent_tokens WHERE grant_id=$1",
+        [grant.id],
+      )
+    ).rows[0].count,
+    before,
+  );
 });
