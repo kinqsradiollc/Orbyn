@@ -1075,6 +1075,8 @@ export const semanticSetupInput = z
   .object({
     on: z.boolean(),
     embedding_model: z.string().trim().max(200).optional(),
+    embedding_provider_id: z.uuid().optional(),
+    expected_generation: z.uuid().optional(),
     accept: z.boolean().optional(),
   })
   .strict();

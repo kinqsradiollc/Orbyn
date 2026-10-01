@@ -15,6 +15,7 @@ export type ProviderRow = {
   enabled: boolean;
   created_at: Date;
   updated_at: Date;
+  embedding_revision: string;
 };
 
 /** How to call a saved provider with `model`, decrypting its key. */

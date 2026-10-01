@@ -212,10 +212,11 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
       <View style={s.section}>
         <SemanticSetup
           settings={settings}
-          providerName={active?.name ?? null}
+          providers={providers}
           busy={busy}
           act={act}
           onSettings={setSettings}
+          onChanged={load}
         />
       </View>
 
