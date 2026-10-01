@@ -169,6 +169,11 @@ selected text-generation and text-embedding providers/models, credential testing
 catalog refresh and explicit manual model entry where discovery is unavailable.
 Embedding settings must report capability, dimensions and indexing status;
 changing embedding models must handle incompatible existing vectors safely.
+The [embedding provider audit](embedding-provider-audit-2026-10-01.md) defines
+the required mixed-version rollout, provider-bound consent, dimension validation,
+document/configuration revision fences, conditional queue acknowledgement and
+upgrade/race acceptance matrix. Its adapter checkpoints do not complete these
+configuration and reindex requirements.
 Do not assume every text provider supports embeddings or that a model catalog
 implies ChatGPT plan entitlement. Persist selection and verify refresh, account
 switch, revocation and unavailable-provider behavior in both clients.
