@@ -112,3 +112,26 @@ No schema migration is included in this checkpoint. Configuration isolation,
 reindex races, UI acceptance and actual provider authorization remain open.
 The later Azure endpoint correction is separate local work and is not covered
 by these main results.
+
+## Azure adapter checkpoint (local)
+
+Azure embedding calls now use the selected embedding deployment and configured
+API version, with the existing API-key header. Native Anthropic connections and
+Azure connections missing an API version fail before any passage is sent.
+Empty batches make no provider request. OpenAI-compatible requests retain their
+existing endpoint and model field.
+
+The combined provider/stock-semantic/adapter suite passed 17 tests. Backend
+typecheck and build passed. The explicit opt-in test
+`backend/tests/embedding-pgvector.integration.ts` also passed against the marked
+database on port 55435: a mock Azure server returned indexed vectors out of
+order; the adapter restored their order, and PostgreSQL stored and cosine-ranked
+3,072-dimensional vectors correctly. Duplicate response indices were rejected
+without changing stored rows. The test creates only a temporary table and rolls
+back its transaction; it does not change the application's fixed-dimension table.
+
+The first database test attempt exposed eager imports loading database settings
+before the asynchronous test guard. Dynamic imports after that guard corrected
+the harness; the final run passed. This is adapter/storage evidence, not a live
+Azure authorization test or proof of the semantic worker's reindex safety.
+Independent embedding configuration and worker race protection remain open.

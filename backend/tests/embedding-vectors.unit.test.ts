@@ -49,6 +49,63 @@ test("embedding rows follow input indices, with positional compatibility for uni
   assert.deepEqual(embeddingVectors({ data: [] }, 0), []);
 });
 
+test("Azure embeddings use the selected deployment and api-key without a generation model in the body", async (t) => {
+  let captured: { url: string; init: RequestInit } | null = null;
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    captured = { url: String(url), init };
+    return new Response(
+      JSON.stringify({ data: [{ index: 0, embedding: [1, 2] }] }),
+    );
+  });
+  const result = await embed(
+    {
+      format: "azure",
+      baseUrl: "http://127.0.0.1:9999",
+      apiKey: "azure-fixture-key",
+      model: "generation-deployment",
+      options: { apiVersion: "2024-10-21" },
+    },
+    ["passage"],
+    { model: "embedding deployment", expectedDimensions: 2 },
+  );
+  assert.deepEqual(result, [[1, 2]]);
+  assert.ok(captured);
+  const request = captured as { url: string; init: RequestInit };
+  assert.equal(
+    request.url,
+    "http://127.0.0.1:9999/openai/deployments/embedding%20deployment/embeddings?api-version=2024-10-21",
+  );
+  const headers = new Headers(request.init.headers);
+  assert.equal(headers.get("api-key"), "azure-fixture-key");
+  assert.equal(headers.get("authorization"), null);
+  assert.deepEqual(JSON.parse(request.init.body as string), {
+    input: ["passage"],
+  });
+});
+
+test("unsupported embedding routes and missing Azure versions are rejected without sending page text", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("No provider request expected");
+  });
+  const common = {
+    baseUrl: "http://127.0.0.1:9999",
+    apiKey: "fixture-key",
+    model: "fixture-model",
+  };
+  await assert.rejects(
+    embed({ ...common, format: "anthropic" }, ["private page words"]),
+    (error: unknown) =>
+      error instanceof ProviderError && error.reason === "unsupported",
+  );
+  await assert.rejects(
+    embed({ ...common, format: "azure" }, ["private page words"]),
+    (error: unknown) =>
+      error instanceof ProviderError && error.reason === "configuration",
+  );
+  assert.deepEqual(await embed({ ...common, format: "openai" }, []), []);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
 test("embedding rows reject duplicate, missing, fractional, negative and out-of-range indices", () => {
   for (const indices of [
     [0, 0],
