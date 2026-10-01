@@ -78,6 +78,27 @@ authorization code also creates no pair. Plugin authorization remains disabled
 because only the configured MCP resource is accepted by the live token path.
 This is backend isolation/hardening evidence, not delivery of a plugin service.
 
+## Main checkpoint validation
+
+The resource helper, grant discriminator and token binding guards are integrated
+and pushed to main at `7f264a5`. The unchanged checkpoint completed the full
+repository suite: **1,975 passed**, zero failures, cancellations or skips. The
+run used the marked local `orbyn_plugin_20261001_test` database. A short focused
+policy test also used that database during this run; this was not an isolated
+database run. No production database or provider credentials were used.
+
+Workspace typecheck and build completed successfully. The backend Docker image
+`orbyn-connector-isolation:7f264a5` built successfully; a network-disabled smoke
+check of its compiled resource helper preserved plugin bindings and rejected
+cross-service recipients. This does not prove a plugin endpoint or host launch.
+
+Evidence: `/tmp/orbyn-plugin-main-full-tests.log`,
+`/tmp/orbyn-plugin-main-types.log`, `/tmp/orbyn-plugin-main-build.log`,
+`/tmp/orbyn-plugin-main-docker-build.log`, and
+`/tmp/orbyn-plugin-main-docker-smoke.log`. These local logs are not repository
+artifacts. The settings redesign and embedding feature remain separate local
+checkpoints; these results do not validate their browser layout or deployment.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;
