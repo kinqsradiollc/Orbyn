@@ -14,7 +14,6 @@ import {
 import { query, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { hasVectors } from "../search/semantic.js";
-import { semanticConfiguration } from "../search/vectors.js";
 import { assistantMayRead } from "../../lib/doc-visibility.js";
 import { notKeptOut } from "../../lib/assistant-off.js";
 import { authorize } from "../../lib/auth.js";
@@ -58,6 +57,7 @@ async function currentSettings(): Promise<AiSettings> {
       embedding_dimensions: number | null;
       embedding_generation: string;
       embedding_search_enabled: boolean;
+      embedding_ready: boolean;
       semantic_accepted_at: Date | null;
       measure_running: boolean;
       night_token_budget: number;
@@ -66,27 +66,48 @@ async function currentSettings(): Promise<AiSettings> {
               s.embedding_model, s.semantic_accepted_at,
               s.embedding_provider_id,s.embedding_dimensions,s.embedding_generation,
               s.embedding_search_enabled,
+              (s.embedding_search_enabled AND ep.enabled AND s.semantic_accepted_at IS NOT NULL
+                AND s.embedding_model <> '' AND s.embedding_dimensions IS NOT NULL
+                AND s.embedding_provider_revision=ep.embedding_revision) AS embedding_ready,
               EXISTS (SELECT 1 FROM service_heartbeats h WHERE h.service = 'measure'
                         AND h.last_seen_at > now() - interval '3 minutes') AS measure_running
-       FROM ai_settings s LEFT JOIN ai_providers p ON p.id = s.provider_id WHERE s.id`,
+       FROM ai_settings s LEFT JOIN ai_providers p ON p.id = s.provider_id
+         LEFT JOIN ai_providers ep ON ep.id=s.embedding_provider_id WHERE s.id`,
     )
   ).rows[0];
   const fromDatabase = !!(row?.provider_id && row.enabled && row.model);
-  const acceptedEmbedding = await semanticConfiguration();
+  const possible = await hasVectors();
+  const acceptedEmbedding = possible && !!row?.embedding_ready;
+  const progress = acceptedEmbedding
+    ? (
+        await query<{ pending: number; indexed: number }>(
+          `SELECT count(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM doc_embedding_queue q WHERE q.doc_id=d.id))::integer AS pending,
+       count(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM doc_embeddings e WHERE e.doc_id=d.id
+           AND e.embedding_generation=$1 AND e.doc_version=d.version))::integer AS indexed
+      FROM docs d WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
+        AND ${assistantMayRead("d")}`,
+          [row.embedding_generation],
+        )
+      ).rows[0]
+    : undefined;
   return {
     night_token_budget: row?.night_token_budget ?? 1000000,
     provider_id: row?.provider_id ?? null,
     model: row?.model ?? "",
     source: fromDatabase ? "database" : "none",
-    semantic_search: !!acceptedEmbedding,
+    semantic_search: acceptedEmbedding,
     /** Whether this database could do it at all, so the console can say so. */
-    semantic_possible: await hasVectors(),
+    semantic_possible: possible,
     embedding_model: row?.embedding_model ?? "",
     embedding_provider_id: row?.embedding_provider_id ?? null,
     embedding_dimensions: row?.embedding_dimensions ?? null,
     embedding_generation: row?.embedding_generation,
     embedding_needs_validation:
       !!row?.embedding_search_enabled && !acceptedEmbedding,
+    embedding_pending_pages: progress?.pending,
+    embedding_indexed_pages: progress?.indexed,
     semantic_accepted_at: row?.semantic_accepted_at
       ? iso(row.semantic_accepted_at)
       : null,

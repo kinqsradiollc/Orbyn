@@ -282,6 +282,9 @@ test("replacement validates dimensions atomically and does not inherit generatio
     "INSERT INTO doc_embeddings(doc_id,block_id,quote,embedding,model,embedding_generation,doc_version) VALUES ($1,'fixture','old measured passage','[1,0,0]'::vector,$2,$3,$4)",
     [doc.id, expectedModel, settings.embedding_generation, doc.version],
   );
+  const progress = (await call(accounts[0].token, "GET")).json().settings;
+  assert.equal(progress.embedding_indexed_pages, 1);
+  assert.equal(progress.embedding_pending_pages, 1);
   const generationChanged = await app.inject({
     method: "PUT",
     url: "/ai/settings",
@@ -327,6 +330,8 @@ test("replacement validates dimensions atomically and does not inherit generatio
   const replaced = await setup(second, expectedModel);
   assert.equal(replaced.statusCode, 200, replaced.body);
   assert.equal(replaced.json().embedding_dimensions, 3072);
+  assert.equal(replaced.json().embedding_indexed_pages, 0);
+  assert.equal(replaced.json().embedding_pending_pages, 1);
   assert.equal(replaced.json().embedding_provider_id, second);
   assert.notEqual(
     replaced.json().embedding_generation,
@@ -357,6 +362,11 @@ test("replacement validates dimensions atomically and does not inherit generatio
     expected_generation: replaced.json().embedding_generation,
   });
   assert.equal(off.statusCode, 200, off.body);
+  assert.equal(
+    off.json().embedding_pending_pages,
+    undefined,
+    "off does not expose an active-generation progress count",
+  );
   assert.equal(
     (
       await pool.query(
