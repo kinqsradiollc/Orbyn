@@ -10,6 +10,11 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const app = await buildApp();
 let requests = 0;
+let dimensions = 3;
+let expectedModel = "embedding-fixture";
+let invalidVector = false;
+const paths: string[] = [];
+const extraProviders: string[] = [];
 let release: (() => void) | undefined;
 let received: (() => void) | undefined;
 let barrier: Promise<void> | undefined;
@@ -20,13 +25,25 @@ const provider = createServer((req, res) => {
   });
   req.on("end", async () => {
     requests++;
+    paths.push(req.url ?? "");
     const body = JSON.parse(raw);
     assert.deepEqual(body.input, ["Orbyn embedding configuration validation."]);
-    assert.equal(body.model, "embedding-fixture");
+    assert.equal(body.model, expectedModel);
     received?.();
     if (barrier) await barrier;
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ data: [{ index: 0, embedding: [1, 0, 0] }] }));
+    res.end(
+      JSON.stringify({
+        data: [
+          {
+            index: 0,
+            embedding: Array.from({ length: dimensions }, (_, index) =>
+              !invalidVector && index === 0 ? 1 : 0,
+            ),
+          },
+        ],
+      }),
+    );
   });
 });
 const accounts: { token: string; id: string }[] = [];
@@ -78,6 +95,9 @@ after(async () => {
     "UPDATE ai_settings SET embedding_search_enabled=false,embedding_provider_id=NULL,embedding_provider_revision=NULL,embedding_dimensions=NULL,semantic_accepted_at=NULL,semantic_accepted_by=NULL,embedding_model='',embedding_generation=gen_random_uuid()",
   );
   await pool.query("DELETE FROM ai_providers WHERE id=$1", [providerId]);
+  await pool.query("DELETE FROM ai_providers WHERE id=ANY($1::uuid[])", [
+    extraProviders,
+  ]);
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [
     accounts.map((account) => account.id),
   ]);
@@ -235,6 +255,115 @@ test("setup rejects missing recipients and the existing settings route can disab
   assert.equal(
     (await pool.query("SELECT count(*)::integer AS count FROM doc_embeddings"))
       .rows[0].count,
+    0,
+  );
+});
+
+test("replacement validates dimensions atomically and does not inherit generation settings", async () => {
+  let settings = (await call(accounts[0].token, "GET")).json().settings;
+  const setup = (provider: string, model: string) =>
+    call(accounts[0].token, "PUT", {
+      on: true,
+      embedding_provider_id: provider,
+      embedding_model: model,
+      expected_generation: settings.embedding_generation,
+      accept: true,
+    });
+  const initial = await setup(providerId, expectedModel);
+  assert.equal(initial.statusCode, 200, initial.body);
+  settings = initial.json();
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,content) VALUES ($1,'[]') RETURNING id,version",
+      [accounts[0].id],
+    )
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO doc_embeddings(doc_id,block_id,quote,embedding,model,embedding_generation,doc_version) VALUES ($1,'fixture','old measured passage','[1,0,0]'::vector,$2,$3,$4)",
+    [doc.id, expectedModel, settings.embedding_generation, doc.version],
+  );
+  const generationChanged = await app.inject({
+    method: "PUT",
+    url: "/ai/settings",
+    remoteAddress: "10.85.4.2",
+    headers: { authorization: `Bearer ${accounts[0].token}` },
+    payload: { provider_id: null, model: "" },
+  });
+  assert.equal(generationChanged.statusCode, 200, generationChanged.body);
+  assert.equal(
+    generationChanged.json().embedding_generation,
+    settings.embedding_generation,
+  );
+  assert.equal(generationChanged.json().semantic_search, true);
+  invalidVector = true;
+  const rejected = await setup(providerId, expectedModel);
+  assert.equal(rejected.statusCode, 422, rejected.body);
+  assert.equal(
+    (await call(accounts[0].token, "GET")).json().settings.embedding_generation,
+    settings.embedding_generation,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::integer AS count FROM doc_embeddings WHERE doc_id=$1",
+        [doc.id],
+      )
+    ).rows[0].count,
+    1,
+    "failed probe preserves accepted measurements",
+  );
+  invalidVector = false;
+  const second = (
+    await pool.query(
+      "INSERT INTO ai_providers(kind,name,base_url) VALUES ('openai','Second fixture',$1) RETURNING id",
+      [
+        `http://127.0.0.1:${(provider.address() as { port: number }).port}/second`,
+      ],
+    )
+  ).rows[0].id;
+  extraProviders.push(second);
+  dimensions = 3072;
+  expectedModel = "embedding-large-fixture";
+  const replaced = await setup(second, expectedModel);
+  assert.equal(replaced.statusCode, 200, replaced.body);
+  assert.equal(replaced.json().embedding_dimensions, 3072);
+  assert.equal(replaced.json().embedding_provider_id, second);
+  assert.notEqual(
+    replaced.json().embedding_generation,
+    settings.embedding_generation,
+  );
+  assert.equal(paths.at(-1), "/second/embeddings");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::integer AS count FROM doc_embeddings WHERE doc_id=$1",
+        [doc.id],
+      )
+    ).rows[0].count,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::integer AS count FROM doc_embedding_queue WHERE doc_id=$1",
+        [doc.id],
+      )
+    ).rows[0].count,
+    1,
+    "configuration replacement schedules fresh measurements",
+  );
+  const off = await call(accounts[0].token, "PUT", {
+    on: false,
+    expected_generation: replaced.json().embedding_generation,
+  });
+  assert.equal(off.statusCode, 200, off.body);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::integer AS count FROM doc_embedding_queue WHERE doc_id=$1",
+        [doc.id],
+      )
+    ).rows[0].count,
     0,
   );
 });

@@ -139,13 +139,27 @@ export async function measureQueued(limit = 5): Promise<number> {
         current.providerRevision !== config.providerRevision
       )
         return false;
-      const document = await db.query(
-        `SELECT d.id FROM docs d WHERE d.id=$1 AND d.version=$2
-          AND d.deleted_at IS NULL AND ${notKeptOut("d")}
-          AND ${assistantMayRead("d")} FOR SHARE OF d`,
+      const document = await db.query<{
+        project_id: string | null;
+        team_id: string | null;
+      }>(
+        `SELECT d.project_id,d.team_id FROM docs d WHERE d.id=$1 AND d.version=$2
+          AND d.deleted_at IS NULL FOR SHARE OF d`,
         [page.doc_id, page.version],
       );
       if (!document.rowCount) return false;
+      await db.query("SELECT id FROM projects WHERE id=$1 FOR SHARE", [
+        document.rows[0].project_id,
+      ]);
+      await db.query("SELECT id FROM teams WHERE id=$1 FOR SHARE", [
+        document.rows[0].team_id,
+      ]);
+      const stillAllowed = await db.query(
+        `SELECT d.id FROM docs d WHERE d.id=$1 AND ${notKeptOut("d")}
+          AND ${assistantMayRead("d")}`,
+        [page.doc_id],
+      );
+      if (!stillAllowed.rowCount) return false;
       const queue = await db.query(
         "SELECT doc_id FROM doc_embedding_queue WHERE doc_id=$1 AND queue_revision=$2 FOR UPDATE",
         [page.doc_id, page.queue_revision],

@@ -25,6 +25,8 @@ ALTER TABLE ai_settings ADD CONSTRAINT legacy_semantic_worker_disabled
 
 CREATE OR REPLACE FUNCTION ensure_vectors() RETURNS boolean
 LANGUAGE plpgsql AS $fn$
+DECLARE
+  fresh boolean;
 BEGIN
   BEGIN
     CREATE EXTENSION IF NOT EXISTS vector;
@@ -34,6 +36,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
     RETURN false;
   END IF;
+  fresh := to_regclass('doc_embedding_queue') IS NULL;
 
   CREATE TABLE IF NOT EXISTS doc_embeddings (
     doc_id uuid NOT NULL REFERENCES docs(id) ON DELETE CASCADE,
@@ -56,6 +59,10 @@ BEGIN
   ALTER TABLE doc_embeddings ADD COLUMN IF NOT EXISTS doc_version integer;
   -- Unproven legacy provenance cannot answer under a new configuration.
   DELETE FROM doc_embeddings WHERE embedding_generation IS NULL OR doc_version IS NULL;
+  -- An already-running legacy worker must not overwrite a new vector through
+  -- its INSERT ... ON CONFLICT statement, which supplies no provenance.
+  ALTER TABLE doc_embeddings ALTER COLUMN embedding_generation SET NOT NULL;
+  ALTER TABLE doc_embeddings ALTER COLUMN doc_version SET NOT NULL;
 
   CREATE TABLE IF NOT EXISTS doc_embedding_queue (
     doc_id uuid PRIMARY KEY REFERENCES docs(id) ON DELETE CASCADE,
@@ -83,6 +90,13 @@ BEGIN
   CREATE TRIGGER docs_embedding_trigger
     AFTER INSERT OR UPDATE OF content, version, deleted_at, project_id, team_id ON docs
     FOR EACH ROW EXECUTE FUNCTION docs_embedding_queue_touch();
+  IF fresh THEN
+    INSERT INTO doc_embedding_queue(doc_id)
+      SELECT d.id FROM docs d WHERE d.deleted_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id=d.project_id AND p.assistant_off)
+        AND NOT EXISTS (SELECT 1 FROM teams t WHERE t.id=d.team_id AND NOT t.assistant_allowed)
+      ON CONFLICT DO NOTHING;
+  END IF;
   RETURN true;
 END $fn$;
 

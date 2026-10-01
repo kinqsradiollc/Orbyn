@@ -89,6 +89,28 @@ test("provider edits and repeated document changes receive distinct revision tok
       ).rows[0]?.queue_revision;
     const first = await queued();
     assert.ok(first);
+    await client.query(
+      "INSERT INTO doc_embeddings(doc_id,block_id,quote,embedding,model,embedding_generation,doc_version) SELECT $1,'legacy-guard','Current accepted passage','[1,0,0]'::vector,'fixture',embedding_generation,1 FROM ai_settings",
+      [doc.id],
+    );
+    await client.query("SAVEPOINT legacy_write");
+    await assert.rejects(
+      client.query(
+        "INSERT INTO doc_embeddings(doc_id,block_id,quote,embedding,model) VALUES ($1,'legacy-guard','Stale legacy passage','[0,1,0]'::vector,'old-model') ON CONFLICT(doc_id,block_id) DO UPDATE SET quote=excluded.quote,embedding=excluded.embedding,model=excluded.model",
+        [doc.id],
+      ),
+      (error: any) => error.code === "23502",
+    );
+    await client.query("ROLLBACK TO SAVEPOINT legacy_write");
+    assert.equal(
+      (
+        await client.query(
+          "SELECT quote FROM doc_embeddings WHERE doc_id=$1 AND block_id='legacy-guard'",
+          [doc.id],
+        )
+      ).rows[0].quote,
+      "Current accepted passage",
+    );
     await client.query("UPDATE docs SET version=version+1 WHERE id=$1", [
       doc.id,
     ]);
@@ -311,6 +333,145 @@ test("measuring uses the independent provider and discards an answer for an edit
     await pool.query("DELETE FROM ai_providers WHERE id=ANY($1::uuid[])", [
       providerIds,
     ]);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("project and team keep-out changes prevent later batches and final storage", async () => {
+  const { measureQueued } = await import("../src/modules/search/semantic.js");
+  let changePermission: (() => Promise<void>) | undefined;
+  const batchSizes: number[] = [];
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk) => {
+      raw += chunk;
+    });
+    req.on("end", async () => {
+      const body = JSON.parse(raw);
+      batchSizes.push(body.input.length);
+      await changePermission?.();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          data: body.input.map((_: string, index: number) => ({
+            index,
+            embedding: [1, 0, 0],
+          })),
+        }),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  let user: string | undefined;
+  let provider: string | undefined;
+  const teams: string[] = [];
+  try {
+    user = (
+      await pool.query(
+        "INSERT INTO users(email,name,password_hash) VALUES ($1,'Fixture','unusable-test-hash') RETURNING id",
+        [`permission-${randomUUID()}@example.com`],
+      )
+    ).rows[0].id;
+    provider = (
+      await pool.query(
+        "INSERT INTO ai_providers(kind,name,base_url) VALUES ('openai','Permission fixture',$1) RETURNING id",
+        [`http://127.0.0.1:${(server.address() as { port: number }).port}`],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "UPDATE ai_settings SET embedding_search_enabled=true,embedding_provider_id=$1,embedding_provider_revision=1,embedding_dimensions=3,embedding_model='fixture',semantic_accepted_at=now(),embedding_generation=gen_random_uuid()",
+      [provider],
+    );
+    const project = (
+      await pool.query(
+        "INSERT INTO projects(user_id,name) VALUES ($1,'Permission fixture') RETURNING id",
+        [user],
+      )
+    ).rows[0].id;
+    const projectDoc = (
+      await pool.query(
+        "INSERT INTO docs(user_id,project_id,content) VALUES ($1,$2,$3::jsonb) RETURNING id",
+        [
+          user,
+          project,
+          JSON.stringify(
+            Array.from({ length: 65 }, (_, i) => ({
+              id: `p${i}`,
+              type: "paragraph",
+              text: `Paragraph ${i} has enough words to measure.`,
+            })),
+          ),
+        ],
+      )
+    ).rows[0].id;
+    changePermission = async () => {
+      await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+        project,
+      ]);
+    };
+    assert.equal(await measureQueued(), 0);
+    assert.deepEqual(
+      batchSizes,
+      [64],
+      "the second batch is not sent after project keep-out",
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::integer AS count FROM doc_embeddings WHERE doc_id=$1",
+          [projectDoc],
+        )
+      ).rows[0].count,
+      0,
+    );
+    const team = (
+      await pool.query(
+        "INSERT INTO teams(name,created_by) VALUES ('Permission fixture',$1) RETURNING id",
+        [user],
+      )
+    ).rows[0].id;
+    teams.push(team);
+    const teamDoc = (
+      await pool.query(
+        "INSERT INTO docs(user_id,team_id,content) VALUES ($1,$2,$3::jsonb) RETURNING id",
+        [
+          user,
+          team,
+          JSON.stringify([
+            {
+              id: "team",
+              type: "paragraph",
+              text: "A team paragraph with enough words.",
+            },
+          ]),
+        ],
+      )
+    ).rows[0].id;
+    changePermission = async () => {
+      await pool.query("UPDATE teams SET assistant_allowed=false WHERE id=$1", [
+        team,
+      ]);
+    };
+    assert.equal(await measureQueued(), 0);
+    assert.deepEqual(batchSizes, [64, 1]);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::integer AS count FROM doc_embeddings WHERE doc_id=$1",
+          [teamDoc],
+        )
+      ).rows[0].count,
+      0,
+      "a changed team policy prevents the completed response from being stored",
+    );
+  } finally {
+    await pool.query(
+      "UPDATE ai_settings SET embedding_search_enabled=false,embedding_provider_id=NULL,embedding_provider_revision=NULL,embedding_dimensions=NULL,embedding_model='',semantic_accepted_at=NULL,embedding_generation=gen_random_uuid()",
+    );
+    await pool.query("DELETE FROM teams WHERE id=ANY($1::uuid[])", [teams]);
+    if (user) await pool.query("DELETE FROM users WHERE id=$1", [user]);
+    if (provider)
+      await pool.query("DELETE FROM ai_providers WHERE id=$1", [provider]);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
