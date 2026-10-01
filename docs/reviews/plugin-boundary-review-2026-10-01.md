@@ -206,7 +206,7 @@ and build passed. Evidence: /tmp/orbyn-plugin-execute-regressions.log,
 Main integration repeated all 74 checks successfully, and workspace typecheck
 and build passed. Evidence: `/tmp/orbyn-plugin-execute-main-regressions.log`,
 `/tmp/orbyn-plugin-execute-main-types.log`, and
-`/tmp/orbyn-plugin-execute-main-build.log`. Full-suite validation is pending. Image orbyn-plugin-execution:dda1804 built
+`/tmp/orbyn-plugin-execute-main-build.log`. Full-suite validation subsequently passed after the calendar fixture correction: 1,991 passed, zero failed, cancelled or skipped. Image orbyn-plugin-execution:dda1804 built
 successfully. Its compiled service passed health/disabled-route/first-party
 isolation checks and an enabled smoke check of plugin OAuth identity, shared
 get_context reads, rejection of session credentials and two concurrent writes
@@ -233,7 +233,7 @@ The fixture now constructs noon on its requested date via zonedInstant. An
 explicit late-night DST regression demonstrates the former mismatch; all 13
 agenda checks passed after the correction. Agenda production code is unchanged.
 Evidence: /tmp/orbyn-plugin-execute-main-full-tests.log and
-/tmp/orbyn-agenda-calendar-fixture-final-tests.log. Full-suite rerun is pending.
+/tmp/orbyn-agenda-calendar-fixture-final-tests.log. The unchanged corrected checkpoint 8f7836d completed its full rerun with 1,991 passed, zero failed, cancelled or skipped. Evidence: /tmp/orbyn-plugin-execute-main-full-rerun.log.
 
 ## Required next work and acceptance
 

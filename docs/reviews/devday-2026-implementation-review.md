@@ -118,8 +118,8 @@ Add a plugin integration module and explicit service boundary alongside the exis
 The separate backend is now implemented through scoped connector grants,
 recipient-bound token guards, a live plugin principal, a standalone HTTP
 service, and shared capability execution. Authentication/service foundations
-are pushed to main through 751cba8; execution is committed to local main as
-dda1804, with full-suite validation pending. The integration is disabled by
+are pushed to main through 751cba8; execution and the calendar-fixture correction are validated through
+8f7836d, with 1,991 full-suite tests passing and zero failures or skips. The integration is disabled by
 default and OAuth consent still accepts MCP only.
 
 Execution passed 74 focused regressions on main plus workspace typecheck and
