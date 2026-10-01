@@ -176,3 +176,20 @@ document edits during provider calls, disable during provider calls, malformed
 responses, and permission changes. Admin and client controls need explicit
 provider/model selection, validation status, consent destination and reindex
 progress. This contract is an implementation requirement, not completed evidence.
+
+## Azure checkpoint on main
+
+Azure adapter commit `c1e7cc6` was integrated as `4db8089`. Main's full rerun
+passed 1,965 tests, zero failed or skipped. Workspace typechecks and production
+build passed. The image `orbyn-azure-embeddings:4db8089` rebuilt successfully;
+with networking disabled, its compiled adapter rejected an unsupported format
+before making a provider request. Main's explicit pgvector adapter/storage test
+also passed against the marked database on port 55435.
+
+The first full run failed in the Node test runner with "Unable to deserialize
+cloned data" for `doc-editing.test.ts`; it reported 1,948 passing tests and one
+file failure. That file passed all 39 checks on its isolated rerun, followed by
+the complete successful 1,965-test rerun. No failed run is counted as passing.
+
+Independent configuration, the schema/worker foundation and client controls are
+separate local work and are not included in these main validation results.
