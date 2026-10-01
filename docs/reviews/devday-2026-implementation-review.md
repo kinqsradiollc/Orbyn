@@ -1,5 +1,27 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Current checkpoint map — 2 October 2026
+
+This map updates delivery evidence without reducing the full contract below.
+Voice, computer use and speculative removed rows remain excluded. Backend,
+web/desktop and mobile remain in scope.
+
+| Area | Authoritative checkpoint | Evidence and remaining gates |
+| --- | --- | --- |
+| Main session/profile work | Pushed through `986e77f` | Manual profile results/errors are session-bound on both clients; web tab account changes clear root planner data. Fifteen focused checks and workspace typecheck passed on main. Nested caches, other callbacks and visual/native interaction remain open. |
+| Main ChatGPT private inference | Pushed `fef8f7c`, `76fb218`, `3f5ae6f` | Saved-default adapter and executor lease fencing are private; 26 model/transport checks and 25 lease/runtime checks passed on main. No new inference IPC command exists. Signed job assignment/results, composer routing and real-account acceptance remain open. |
+| Plugin recipient/discovery | Local `codex/devday-plugin-boundary`, proof `c6f4b03` | Frozen source `e60fb32` passed 1,995/1,995 backend tests after fixture and runner fixes. Recipient consent, isolated grants/tokens, service discovery and challenges are not merged. Browser consent, gateway, host, provider and deployment gates remain open. |
+| Docs mobile Mermaid | Local `codex/devday-model-catalog`, source `ca21820` and `b1df2ef`, packaging proof `4717551` | Ten families pass the actual strict parser; nine source/runtime checks, workspace types and iOS/Android exports passed. Parsing and packaging do not prove diagram appearance, export interaction or native navigation. |
+| Settings/embedding/Docs source | Local model/Docs worktree | Settings redesign, headings/fences and embedding lifecycle work remain distinct unmerged checkpoints. Web build passed locally; preview permission still blocks visual acceptance. Earlier frozen embedding suite evidence remains scoped to its own source. |
+| Broad ADR | Active, incomplete | Agent rules/ownership/activity/budgets, bound and published pages, Slack/Teams, full Markdown parity, composer/actual inference and cross-client UI acceptance remain deliverables. Existing foundations do not prove these complete. |
+
+A new main full-suite run was started on frozen code `986e77f`, using only the
+marked disposable test database. Evidence destination:
+`/tmp/orbyn-main-session-inference-full-tests.log`. Its final result is pending;
+the local plugin suite does not certify this newer main source. User changes to
+`mobile/app.json` and unrelated untracked files are preserved and are not part
+of these checkpoints.
+
 **Status: revised implementation contract; user authorized tested production checkpoints.** Prepared 30 September 2026 against `main` at `b91ced2`. Worktree: `/Users/anhdang/.codex/worktrees/devday-2026-plan/Orbyn`; branch `codex/devday-2026-plan`. This document supersedes the implementation assumptions in `docs/openai-devday-2026.md`; the original is preserved beside it. Backend, desktop/web and mobile remain in scope.
 
 ## 1. What changed after research
