@@ -67,3 +67,22 @@ failed, cancelled or skipped. Evidence:
 `/tmp/orbyn-plugin-recipient-full-tests.log` (terminal exit 0). No source edits
 were made in this worktree during the run. This satisfies the local backend
 full-suite gate; it does not prove browser layout, host delivery or deployment.
+
+## Plugin discovery checkpoint
+
+The dedicated plugin service now publishes public RFC 9728 metadata at the
+configured resource's derived well-known path. A sibling route module keeps
+discovery outside token authentication. Blank configuration publishes no route.
+The metadata resource and issuer are server-owned; forwarded/Host headers do not
+change them. Plugin 401 responses point to plugin metadata, and the dedicated
+service uses the existing approved connector origin policy with the challenge
+exposed to browser hosts. Neither cookies nor MCP tokens confer plugin authority.
+
+The final clean sequential OAuth/plugin-service run passed 38/38, backend
+typecheck and diff checks passed. Evidence:
+`/tmp/orbyn-plugin-discovery-clean-tests.log` and
+`/tmp/orbyn-plugin-discovery-clean-types.log`. Earlier CORS work had a variable
+name error; that failed run was interrupted, corrected and superseded by the
+clean run. The prior 1,993-test result predates discovery and is not a full-suite
+result for this source. Gateway routing, host acceptance, browser layout and
+production enablement remain pending.

@@ -7,6 +7,9 @@ const { buildPluginService } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { env } = await import("../src/config/env.js");
+const { oauthIssuer } = await import("../src/config/env.js");
+const { pluginMetadataUrl } =
+  await import("../src/modules/plugin/discovery.js");
 const { digest } = await import("../src/lib/auth.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { settings } = await import("../src/lib/settings.js");
@@ -59,6 +62,63 @@ after(async () => {
   await pool.end();
 });
 const headers = { authorization: `Bearer ${token}` };
+test("plugin discovery is public, configured and isolated from MCP", async () => {
+  const path = "/.well-known/oauth-protected-resource/api";
+  const response = await app.inject({
+    url: path,
+    headers: {
+      host: "attacker.example",
+      "x-forwarded-host": "attacker.example",
+      "x-forwarded-proto": "http",
+      origin: "https://chatgpt.com",
+    },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(
+    response.headers["access-control-allow-origin"],
+    "https://chatgpt.com",
+  );
+  assert.equal(response.json().resource, resource);
+  assert.deepEqual(response.json().authorization_servers, [oauthIssuer()]);
+  assert.deepEqual(response.json().bearer_methods_supported, ["header"]);
+  assert.ok(response.json().scopes_supported.includes("orbyn:read"));
+  assert.doesNotMatch(response.body, /attacker/);
+  assert.equal((await disabled.inject({ url: path })).statusCode, 404);
+  assert.equal(
+    (await app.inject({ url: "/.well-known/oauth-protected-resource/mcp" }))
+      .statusCode,
+    404,
+  );
+  const denied = await app.inject({
+    url: "/plugin/connection",
+    headers: { origin: "https://chatgpt.com" },
+  });
+  assert.equal(denied.statusCode, 401);
+  assert.match(
+    String(denied.headers["access-control-expose-headers"]),
+    /WWW-Authenticate/,
+  );
+  const untrusted = await app.inject({
+    url: path,
+    headers: { origin: "https://attacker.example" },
+  });
+  assert.equal(untrusted.headers["access-control-allow-origin"], undefined);
+  assert.equal(
+    denied.headers["www-authenticate"],
+    `Bearer resource_metadata="https://plugin.example.test${path}"`,
+  );
+  assert.equal(
+    pluginMetadataUrl({
+      mcp: env.MCP_PUBLIC_URL,
+      plugin: "https://plugin.example.test/",
+    }),
+    "https://plugin.example.test/.well-known/oauth-protected-resource",
+  );
+  assert.equal(
+    pluginMetadataUrl({ mcp: env.MCP_PUBLIC_URL, plugin: "" }),
+    undefined,
+  );
+});
 test("plugin service is disabled by default and exposes no first-party or MCP routes", async () => {
   assert.equal(
     (await disabled.inject({ url: "/plugin/connection", headers })).statusCode,

@@ -11,6 +11,7 @@ import { describe, argsDigest } from "../../capabilities/registry.js";
 import { ActivityRecorder } from "../mcp-server/recorder.js";
 import { connectorResources } from "../oauth/resources.js";
 import { PluginAuthError, resolvePluginCaller } from "./auth.js";
+import { pluginMetadataUrl } from "./discovery.js";
 
 const connection = z.object({
   kind: z.literal("plugin"),
@@ -43,6 +44,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
   // Configuration is server-owned, validated before serving any request.
   const resources = { mcp: env.MCP_PUBLIC_URL, plugin: env.PLUGIN_PUBLIC_URL };
   connectorResources(resources);
+  const metadataUrl = pluginMetadataUrl(resources);
   app.addHook("preHandler", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
     if (!resources.plugin) return reply.code(404).send({ error: "NOT_FOUND" });
@@ -56,6 +58,11 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       request.pluginCaller = caller;
     } catch (error) {
       if (!(error instanceof PluginAuthError)) throw error;
+      if (error.status === 401 && metadataUrl)
+        reply.header(
+          "WWW-Authenticate",
+          `Bearer resource_metadata="${metadataUrl}"`,
+        );
       return reply.code(error.status).send({
         error: error.status === 401 ? "UNAUTHORIZED" : "FORBIDDEN",
         message: error.message,
