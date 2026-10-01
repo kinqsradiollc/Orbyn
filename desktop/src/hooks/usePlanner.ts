@@ -15,6 +15,7 @@ import { celebrate } from "../lib/celebrate";
 import { onSessionChange, session } from "../lib/session";
 import { deviceTimeZone } from "../lib/planning";
 import { errorText } from "../lib/errors";
+import { chatgptStore } from "../lib/chatgpt";
 
 export type AuthMode = "register" | "login";
 
@@ -112,6 +113,9 @@ export function usePlanner() {
   );
 
   const lastData = useRef("");
+  useEffect(() => {
+    void chatgptStore.syncSession(token || null);
+  }, [token]);
   // Account identity must not wait for planner pagination or other boot reads.
   useEffect(() => {
     if (!token) return;

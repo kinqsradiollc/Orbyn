@@ -64,3 +64,44 @@ export function createOpenAiIdentityVerifier(key: JWTVerifyGetKey = jwks) {
     }
   };
 }
+
+/**
+ * Verify a replacement identity token from an existing local refresh grant.
+ * This is not a sign-in proof: no connection may be created or linked with it.
+ */
+export function createOpenAiRefreshIdentityVerifier(
+  key: JWTVerifyGetKey = jwks,
+) {
+  return async (
+    idToken: string,
+    expected: { clientId: string; subject: string },
+  ): Promise<VerifiedOpenAiIdentity> => {
+    try {
+      const clientId = chatgptModelBinding.shape.client_id.parse(
+        expected.clientId,
+      );
+      const subject = chatgptModelBinding.shape.subject.parse(expected.subject);
+      if (typeof idToken !== "string" || !idToken || idToken.length > 65_536)
+        throw new Error("Invalid refreshed identity input.");
+      const { payload } = await jwtVerify(idToken, key, {
+        issuer: ISSUER,
+        audience: clientId,
+        requiredClaims: ["sub", "exp", "iat"],
+        clockTolerance: 5,
+        maxTokenAge: "10m",
+        algorithms: ["RS256", "ES256"],
+      });
+      if (
+        payload.sub !== subject ||
+        (payload.azp !== undefined && payload.azp !== clientId) ||
+        (Array.isArray(payload.aud) &&
+          payload.aud.length > 1 &&
+          payload.azp !== clientId)
+      )
+        throw new Error("Invalid refreshed identity claims.");
+      return { issuer: ISSUER, subject, clientId };
+    } catch {
+      throw new Error("The refreshed ChatGPT identity could not be verified.");
+    }
+  };
+}

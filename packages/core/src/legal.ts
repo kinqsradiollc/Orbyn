@@ -223,6 +223,8 @@ Orbyn's built-in assistant can read the parts of your workspace needed for a req
 
 ## Connected agents
 
+If you connect your personal ChatGPT account in the Orbyn desktop app, authorization and model-catalog requests go directly to OpenAI. The desktop app stores the issued credentials in encrypted storage on that device; provider access and refresh tokens are not sent to Orbyn's servers, browser storage or connected agents. Orbyn stores the verified account identity, device registration and public signing key, connection availability, model catalog and selected default so it can keep the connection bound to your Orbyn account. Signing in without permission to use your ChatGPT plan does not enable model access. Disconnecting clears credentials on the device and attempts to revoke them with OpenAI. If remote revocation cannot be confirmed, Orbyn tells you so you can also remove the connection in ChatGPT Settings.
+
 You can connect outside AI agents and apps (such as Claude or ChatGPT) to your Orbyn, by signing in with Orbyn or with an agent key. You choose what each one may do and in which spaces, and you can change or disconnect it at any time in Settings → Connected agents. What a connected agent does on your behalf counts as your own use of Orbyn, and the agent's own provider handles what Orbyn sends it under that provider's terms, not ours. Team owners and admins can limit or turn off outside agents in their team.
 
 ## Teams and sharing

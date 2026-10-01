@@ -6,6 +6,7 @@ const {
   ipcMain,
   nativeImage,
   shell,
+  safeStorage,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -18,6 +19,27 @@ const fs = require("node:fs");
 let win = null;
 let tray = null;
 let quitting = false;
+let chatgptManager = null;
+let disposeChatgptBridge = null;
+const chatgptReady = app.whenReady().then(async () => {
+  if (!primary) return null;
+  const { desktopChatgptConfiguration } = require("./chatgpt-config.cjs");
+  const configuration = desktopChatgptConfiguration(
+    JSON.parse(
+      fs.readFileSync(path.join(__dirname, "dist/desktop-config.json"), "utf8"),
+    ),
+  );
+  const { createChatgptManager } = require("./chatgpt-manager.cjs");
+  chatgptManager = await createChatgptManager({
+    ...configuration,
+    directory: path.join(app.getPath("userData"), "chatgpt"),
+    safeStorage,
+    openAuthorization: (url) => shell.openExternal(url),
+  });
+  return chatgptManager;
+});
+// A configuration/storage failure is returned through the guarded IPC handlers.
+void chatgptReady.catch(() => {});
 
 // orbyn:// links (orbyn://task/<id>, orbyn://add?text=…): Orbyn registers
 // the scheme, and a link opens the one running copy, which hands it to the
@@ -224,8 +246,48 @@ const buildTray = () => {
   );
 };
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!primary) return;
+  const { createChatgptIpcGuard } = require("./chatgpt-ipc.cjs");
+  const { installChatgptBridge } = require("./chatgpt-bridge.cjs");
+  const guard = createChatgptIpcGuard({
+    getWindow: () => win,
+    entryFile: path.join(__dirname, "dist/index.html"),
+  });
+  // Install handlers immediately; each operation waits for trusted runtime setup.
+  const manager = new Proxy(
+    {},
+    {
+      get: (_target, name) => {
+        if (name === "subscribe")
+          return (listener) => {
+            let unsubscribe = null,
+              disposed = false;
+            void chatgptReady
+              .then((ready) => {
+                if (ready && !disposed) unsubscribe = ready.subscribe(listener);
+              })
+              .catch(() => {});
+            return () => {
+              disposed = true;
+              unsubscribe?.();
+            };
+          };
+        return async (...args) => {
+          const ready = await chatgptReady;
+          if (!ready || typeof ready[name] !== "function")
+            throw new Error("The desktop ChatGPT runtime is unavailable.");
+          return ready[name](...args);
+        };
+      },
+    },
+  );
+  disposeChatgptBridge = await installChatgptBridge({
+    ipcMain,
+    manager,
+    guard,
+    getWindow: () => win,
+  });
   create();
   buildTray();
   app.on("activate", () => {
@@ -238,6 +300,8 @@ app.whenReady().then(() => {
 // (or Cmd/Ctrl-Q) quits it.
 app.on("before-quit", () => {
   quitting = true;
+  disposeChatgptBridge?.();
+  chatgptManager?.close();
 });
 app.on("window-all-closed", () => {
   // Intentionally left running so the tray stays; quitting is explicit.

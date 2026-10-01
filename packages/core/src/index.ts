@@ -83,6 +83,7 @@ export * from "./code-colour.js";
 export * from "./diagrams.js";
 export * from "./chatgpt-executors.js";
 export * from "./chatgpt-executor-leases.js";
+export * from "./chatgpt-desktop.js";
 export * from "./commands.js";
 export * from "./math-layout.js";
 export * from "./offline-pages.js";

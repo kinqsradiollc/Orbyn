@@ -1,0 +1,252 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+const { createChatgptModelRuntime: create } = createRequire(import.meta.url)(
+  "../../desktop/chatgpt-models.cjs",
+);
+const { createChatgptRegistrationStore: createStore } = createRequire(
+  import.meta.url,
+)("../../desktop/chatgpt-registration.cjs");
+
+test("live picker and real registration store preserve defaults across restart and account-switch races", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "orbyn-model-runtime-"));
+  const options = {
+    directory,
+    apiBaseUrl: "https://fixture.invalid",
+    userId: randomUUID(),
+    registrationId: randomUUID(),
+  };
+  const runtimes: any[] = [];
+  try {
+    const store = await createStore(options);
+    const initial = await store.read();
+    const retained = await store.retain("oaiapp_fixture", initial.revision);
+    const binding = {
+      user_id: options.userId,
+      connection_id: randomUUID(),
+      issuer: "https://auth.openai.com",
+      subject: "fixture",
+      client_id: "oaiapp_fixture",
+    };
+    await store.linkVerifiedConnection(binding, retained.revision);
+    const selection = await store.select(options.registrationId, null);
+    let calls = 0,
+      release!: () => void,
+      started!: () => void;
+    const savingCatalog = new Promise<void>((done) => {
+      started = done;
+    });
+    const adapter = {
+      binding,
+      registrationStore: store,
+      vault: {
+        read: async (requested: unknown) => {
+          assert.deepEqual(requested, binding);
+          return {
+            credentials: {
+              clientId: binding.client_id,
+              accessToken: "synthetic-token",
+              sharingGranted: true,
+              scopes: ["chatgpt.tokens.use.direct"],
+              expiresAt: Date.now() + 120000,
+            },
+          };
+        },
+      },
+      requireLiveConnection: async (requested: unknown) => {
+        assert.deepEqual(requested, binding);
+      },
+      fetch: async () => {
+        if (++calls === 2) {
+          started();
+          await new Promise<void>((done) => {
+            release = done;
+          });
+        }
+        return new Response(
+          JSON.stringify({
+            models: [
+              {
+                slug: "fixture-model",
+                display_name: "Fixture",
+                visibility: "list",
+              },
+            ],
+          }),
+        );
+      },
+    };
+    const runtime = await create(adapter);
+    runtimes.push(runtime);
+    await runtime.picker.load();
+    const pending = runtime.picker.setDefault("fixture-model");
+    await savingCatalog;
+    const cleared = await store.select(null, selection.revision);
+    release();
+    await assert.rejects(pending);
+    assert.equal((await store.modelPreference()).model, null);
+    assert.equal((await store.modelPreference()).version, 0);
+    assert.deepEqual(runtime.picker.snapshot().models, []);
+    runtime.close();
+    await store.select(options.registrationId, cleared.revision);
+    const fresh = await create(adapter);
+    runtimes.push(fresh);
+    await fresh.picker.load();
+    await fresh.picker.setDefault("fixture-model");
+    const restarted = await createStore(options);
+    assert.deepEqual(await restarted.modelPreference(), {
+      binding,
+      model: "fixture-model",
+      version: 1,
+    });
+  } finally {
+    for (const runtime of runtimes) runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+function fixture() {
+  const binding = {
+    user_id: randomUUID(),
+    connection_id: randomUUID(),
+    issuer: "https://auth.openai.com",
+    subject: "fixture",
+    client_id: "oaiapp_fixture",
+  };
+  let selection = "selection",
+    revoked = false,
+    models = ["fixture-model"],
+    version = 0,
+    writes = 0,
+    expiresAt = Date.now() + 120000;
+  const options = {
+    binding,
+    registrationStore: {
+      activeConnection: async () => ({
+        status: "selected",
+        binding,
+        revision: selection,
+      }),
+      connection: async () => binding,
+      modelPreference: async () => ({ binding, model: null, version }),
+      saveModelPreference: async (input: any) => {
+        writes++;
+        return { ...input, version: ++version };
+      },
+    },
+    vault: {
+      read: async () => ({
+        credentials: {
+          clientId: binding.client_id,
+          accessToken: "fixture-secret",
+          sharingGranted: true,
+          scopes: ["chatgpt.tokens.use.direct"],
+          expiresAt,
+        },
+      }),
+    },
+    requireLiveConnection: async () => {
+      if (revoked) throw new Error("revoked");
+    },
+    fetch: async (url: string, init: RequestInit) => {
+      assert.equal(url, "https://api.openai.com/v1/models");
+      assert.equal(
+        (init.headers as any).Authorization,
+        "Bearer fixture-secret",
+      );
+      return new Response(
+        JSON.stringify({
+          models: models.map((slug) => ({
+            slug,
+            display_name: slug,
+            visibility: "list",
+          })),
+        }),
+      );
+    },
+  };
+  return {
+    options,
+    switch: () => {
+      selection = "new-selection";
+    },
+    revoke: () => {
+      revoked = true;
+    },
+    expire: () => {
+      expiresAt = 0;
+    },
+    remove: () => {
+      models = [];
+    },
+    writes: () => writes,
+  };
+}
+test("runtime loads live catalog and saves only a currently available bound default", async () => {
+  const f = fixture(),
+    runtime = await create(f.options);
+  await runtime.picker.load();
+  assert.equal(runtime.picker.snapshot().status, "ready");
+  await runtime.picker.setDefault("fixture-model");
+  assert.equal(f.writes(), 1);
+  assert.ok(
+    !JSON.stringify(runtime.picker.snapshot()).includes("fixture-secret"),
+  );
+  runtime.close();
+});
+test("removed models and changed selection cannot persist a default", async () => {
+  for (const change of ["remove", "switch", "revoke"] as const) {
+    const f = fixture(),
+      runtime = await create(f.options);
+    await runtime.picker.load();
+    f[change]();
+    await assert.rejects(runtime.picker.setDefault("fixture-model"));
+    assert.equal(f.writes(), 0);
+    runtime.close();
+  }
+});
+test("expired credentials and revoked connections leave catalog unavailable", async () => {
+  for (const change of ["expire", "revoke"] as const) {
+    const f = fixture(),
+      runtime = await create(f.options);
+    f[change]();
+    await runtime.picker.load();
+    assert.equal(runtime.picker.snapshot().status, "unavailable");
+    assert.deepEqual(runtime.picker.snapshot().models, []);
+    runtime.close();
+  }
+});
+
+test("closing a runtime aborts an in-flight catalog and cannot publish a late result", async () => {
+  const f = fixture();
+  let started!: () => void;
+  const ready = new Promise<void>((done) => {
+    started = done;
+  });
+  let observed: AbortSignal | undefined;
+  f.options.fetch = async (_url: string, init: RequestInit) => {
+    observed = init.signal as AbortSignal;
+    started();
+    await new Promise<void>((_resolve, reject) => {
+      if (observed!.aborted) reject(new Error("aborted"));
+      else
+        observed!.addEventListener(
+          "abort",
+          () => reject(new Error("aborted")),
+          { once: true },
+        );
+    });
+    return new Response();
+  };
+  const runtime = await create(f.options);
+  const loading = runtime.picker.load();
+  await ready;
+  runtime.close();
+  await loading;
+  assert.equal(observed?.aborted, true);
+  assert.equal(runtime.picker.snapshot().status, "idle");
+  assert.deepEqual(runtime.picker.snapshot().models, []);
+});

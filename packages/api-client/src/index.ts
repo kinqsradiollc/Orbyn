@@ -21,6 +21,11 @@ export type {
 } from "./reminder-actions.js";
 export { ChatgptPlanClient } from "./chatgpt-plan.js";
 export { ChatgptModelPicker } from "./chatgpt-model-picker.js";
+export { ChatgptDesktopStore } from "./chatgpt-desktop-store.js";
+export type {
+  ChatgptDesktopBridge,
+  ChatgptDesktopStoreState,
+} from "./chatgpt-desktop-store.js";
 export type {
   ChatgptModelPickerState,
   ChatgptModelPreferenceStore,
