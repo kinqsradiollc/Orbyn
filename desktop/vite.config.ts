@@ -1,7 +1,26 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+
+function desktopConfiguration(): Plugin {
+  let apiBaseUrl = "http://localhost:8008";
+  return {
+    name: "orbyn-desktop-configuration",
+    apply: "build",
+    configResolved(config) {
+      const env = loadEnv(config.mode, config.envDir, "VITE_");
+      apiBaseUrl = process.env.VITE_API_URL || env.VITE_API_URL || apiBaseUrl;
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "desktop-config.json",
+        source: JSON.stringify({ version: 1, apiBaseUrl }),
+      });
+    },
+  };
+}
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), desktopConfiguration()],
   base: "./",
   server: {
     proxy: {

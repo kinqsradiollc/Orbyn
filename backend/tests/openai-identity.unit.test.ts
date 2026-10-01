@@ -4,6 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { SignJWT } from "jose";
 import { createOpenAiIdentityVerifier } from "../src/modules/auth/openai-identity.js";
 import { createOpenAiIdentityVerifier as sharedVerifier } from "@orbyn/api-client/openai-identity";
+import { createOpenAiRefreshIdentityVerifier } from "@orbyn/api-client/openai-identity";
 
 test("backend and desktop package entrypoint use the same verifier", () => {
   assert.equal(createOpenAiIdentityVerifier, sharedVerifier);
@@ -130,5 +131,63 @@ test("registration placeholders and oversized or malformed tokens never echo pri
     );
   await assert.rejects(
     verify(await token(), { ...expected, clientId: "dynamic_agent_client" }),
+  );
+});
+
+test("refresh identity checks the existing account without weakening nonce-bound sign-in", async () => {
+  const refreshVerifier = createOpenAiRefreshIdentityVerifier(
+    async () => signing.publicKey,
+  );
+  const refreshed = await token({ nonce: undefined });
+  assert.deepEqual(
+    await refreshVerifier(refreshed, {
+      clientId: expected.clientId,
+      subject: "verified-subject",
+    }),
+    {
+      issuer: "https://auth.openai.com",
+      subject: "verified-subject",
+      clientId: expected.clientId,
+    },
+  );
+  await assert.rejects(verify(refreshed, expected), /could not be verified/);
+  await assert.rejects(
+    refreshVerifier(refreshed, {
+      clientId: expected.clientId,
+      subject: "different-subject",
+    }),
+    /could not be verified/,
+  );
+});
+
+test("refresh identity rejects wrong signatures, issuer, audience, expiry, age and authorized party", async () => {
+  const refreshVerifier = createOpenAiRefreshIdentityVerifier(
+    async () => signing.publicKey,
+  );
+  const account = { clientId: expected.clientId, subject: "verified-subject" };
+  for (const over of [
+    { iss: "https://fixture.invalid" },
+    { aud: "wrong-client" },
+    { sub: "wrong-account" },
+    { exp: Math.floor(Date.now() / 1000) - 30 },
+    { exp: undefined },
+    { iat: undefined },
+    { iat: Math.floor(Date.now() / 1000) + 60 },
+    { iat: Math.floor(Date.now() / 1000) - 900 },
+    { azp: "wrong-client" },
+    { aud: [expected.clientId, "another-client"] },
+  ])
+    await assert.rejects(
+      refreshVerifier(await token(over), account),
+      /could not be verified/,
+    );
+  await assert.rejects(
+    refreshVerifier(await token({}, stranger.privateKey), account),
+    /could not be verified/,
+  );
+  await assert.rejects(
+    refreshVerifier("private-fixture-token", account),
+    (e: Error) =>
+      e.message === "The refreshed ChatGPT identity could not be verified.",
   );
 });

@@ -38,6 +38,7 @@
     "files": [
       "dist/**/*",
       "electron.cjs",
+      "chatgpt-*.cjs",
       "preload.cjs"
     ],
     "protocols": [

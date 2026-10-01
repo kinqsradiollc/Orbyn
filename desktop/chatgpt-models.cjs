@@ -1,0 +1,128 @@
+/** Private credential-owning adapter; never expose it or vault credentials over IPC. */
+async function createChatgptModelRuntime({
+  binding: input,
+  registrationStore,
+  vault,
+  requireLiveConnection,
+  fetch,
+  preferenceStore,
+  credentialResolver,
+}) {
+  const { chatgptModelBinding } = await import("@orbyn/core");
+  const { ChatgptPlanClient, ChatgptModelPicker } =
+    await import("@orbyn/api-client");
+  const binding = chatgptModelBinding.parse(input);
+  if (typeof requireLiveConnection !== "function")
+    throw new Error("A live Orbyn connection is required.");
+  const initial = await registrationStore.activeConnection();
+  let closed = false;
+  const lifetime = new AbortController();
+  const same = (value) => JSON.stringify(value) === JSON.stringify(binding);
+  const checkContext = async () => {
+    const active = await registrationStore.activeConnection();
+    if (
+      closed ||
+      active.status !== "selected" ||
+      !same(active.binding) ||
+      active.revision !== initial.revision
+    )
+      throw new Error("The selected ChatGPT account changed.");
+    const own = await registrationStore.connection();
+    if (closed || !same(own))
+      throw new Error("The ChatGPT registration changed.");
+  };
+  await checkContext();
+  const live = async () => {
+    await checkContext();
+    await requireLiveConnection({ ...binding });
+    await checkContext();
+  };
+  // The issued client ID is the registration/workspace consistency anchor.
+  // It is not presented as an independently discovered workspace identifier.
+  const account = {
+    accountId: binding.subject,
+    workspaceId: binding.client_id,
+    clientId: binding.client_id,
+  };
+  const credentials =
+    credentialResolver ??
+    (await require("./chatgpt-credentials.cjs").createChatgptCredentialResolver(
+      {
+        binding,
+        vault,
+        requireLiveConnection: live,
+        fetch,
+      },
+    ));
+  const transport = new ChatgptPlanClient({
+    account,
+    fetch,
+    credential: async () => {
+      await live();
+      const saved = await credentials.current(lifetime.signal);
+      await checkContext();
+      if (
+        !saved ||
+        saved.clientId !== binding.client_id ||
+        !saved.sharingGranted ||
+        saved.expiresAt <= Date.now()
+      )
+        throw new Error(
+          "Reconnect this ChatGPT account before loading its models.",
+        );
+      return { ...account, accessToken: saved.accessToken };
+    },
+  });
+  const models = async (signal) => {
+    const signals = [lifetime.signal, AbortSignal.timeout(30_000)];
+    if (signal) signals.push(signal);
+    const result = await transport.models(AbortSignal.any(signals));
+    await checkContext();
+    return result;
+  };
+  const picker = new ChatgptModelPicker({
+    binding,
+    models,
+    store: {
+      read: async () => {
+        await live();
+        const saved = preferenceStore
+          ? await preferenceStore.read(binding, lifetime.signal)
+          : await registrationStore.modelPreference();
+        await checkContext();
+        return saved;
+      },
+      write: async (preference) => {
+        await live();
+        if (
+          preference.model !== null &&
+          !(await models()).some((model) => model.slug === preference.model)
+        )
+          throw new Error(
+            "This model is no longer available to the selected account.",
+          );
+        await checkContext();
+        const saved = preferenceStore
+          ? await preferenceStore.write(preference, lifetime.signal)
+          : await registrationStore.saveModelPreference(preference, {
+              signal: lifetime.signal,
+              selectionRevision: initial.revision,
+            });
+        await checkContext();
+        return saved;
+      },
+    },
+  });
+  return {
+    picker,
+    models,
+    close() {
+      closed = true;
+      lifetime.abort();
+      credentials.close();
+      picker.close();
+    },
+  };
+}
+
+module.exports = { createChatgptModelRuntime };

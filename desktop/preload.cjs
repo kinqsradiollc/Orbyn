@@ -28,4 +28,16 @@ contextBridge.exposeInMainWorld("orbynDesktop", {
     return () => ipcRenderer.removeListener("orbyn:open-file", handle);
   },
   openWindow: (where) => ipcRenderer.invoke("orbyn:open-window", where),
+  chatgpt: {
+    syncSession: (token) =>
+      ipcRenderer.invoke("orbyn:chatgpt-session", { token }),
+    command: (command) => ipcRenderer.invoke("orbyn:chatgpt", command),
+    onChange: (fn) => {
+      if (typeof fn !== "function")
+        throw new Error("A ChatGPT state listener is required.");
+      const handle = () => fn();
+      ipcRenderer.on("orbyn:chatgpt-changed", handle);
+      return () => ipcRenderer.removeListener("orbyn:chatgpt-changed", handle);
+    },
+  },
 });

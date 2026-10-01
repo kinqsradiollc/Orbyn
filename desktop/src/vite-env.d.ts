@@ -30,5 +30,21 @@ interface Window {
     ) => () => void;
     /** Open a page in a window of its own (NAV-06). */
     openWindow?: (path: string) => Promise<boolean>;
+    /** Guarded main-window bridge; ChatGPT credentials remain in the main process. */
+    chatgpt?: {
+      syncSession: (
+        token: string | null,
+      ) => Promise<import("@orbyn/core").ChatgptDesktopState>;
+      command: (
+        command: import("@orbyn/core").ChatgptDesktopCommand,
+      ) => Promise<
+        | import("@orbyn/core").ChatgptDesktopState
+        | {
+            state: import("@orbyn/core").ChatgptDesktopState;
+            remote_revocation_confirmed: boolean;
+          }
+      >;
+      onChange: (fn: () => void) => () => void;
+    };
   };
 }
