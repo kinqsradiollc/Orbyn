@@ -95,9 +95,35 @@ The resource/grant/token hardening was integrated into local main as `7f264a5`.
 Workspace typechecks/build passed there. Image
 `orbyn-connector-isolation:7f264a5` rebuilt successfully and its compiled resource
 guards preserved a bound plugin recipient and rejected cross-resource selection
-with networking disabled. Main's full suite is still running, and this code
-checkpoint has not yet been pushed. Principal-policy changes are separate local
-work and are not covered by that main image or running suite.
+with networking disabled. Main's full suite completed with 1,975 passing tests and the code was pushed.
+Principal-policy changes are separate local work and are not covered by that
+main image or suite.
+
+## Plugin principal resolver (local)
+
+A separate plugin resolver now accepts only opaque OAuth access credentials
+whose live grant is OAuth/plugin and whose token is bound exactly to the
+configured plugin recipient. Session credentials, personal/agent keys, refresh
+tokens, unbound credentials and MCP grants are refused. It checks current
+expiry, revocation, disabled users, suspended grants, deleted/blocked clients,
+allowed hosts and the outside-agent kill switch. It constructs an ordinary
+member principal with current grant preferences and reachable team policy.
+Host-supplied MCP headers cannot select or broaden plugin permissions.
+
+Grant-row loading and principal construction are shared domain helpers; the
+plugin resolver does not invoke MCP authentication or first-party routes. MCP
+keeps its existing challenge, key compatibility and narrowing behavior.
+
+The combined resource/grant/OAuth/MCP/plugin regressions passed **59 tests**,
+zero failed or skipped. Four mocked resolver tests cover credential and policy
+refusals; a database regression proves that changing a grant's access/personal
+scope and then revoking it takes effect on the next call. Backend typecheck
+and build passed. Logs: /tmp/orbyn-plugin-resolver-final-regressions.log,
+/tmp/orbyn-plugin-resolver-final-types.log, /tmp/orbyn-plugin-resolver-build.log.
+
+This is a callable backend resolver foundation. No plugin HTTP service, OAuth
+consent enablement, provider inference, host launch or UI delivery is claimed.
+The service remains disabled until those contracts and acceptance gates exist.
 
 ## Required next work and acceptance
 
