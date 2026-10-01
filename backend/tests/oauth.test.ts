@@ -296,6 +296,68 @@ after(async () => {
   await pool.end();
 });
 
+test("plugin consent and token families retain a distinct recipient", async () => {
+  const saved = env.PLUGIN_PUBLIC_URL;
+  env.PLUGIN_PUBLIC_URL = "https://plugin.example.com/plugin";
+  try {
+    const who = await h.register("oauth-plugin-recipient", "Recipient");
+    const plugin = request({ resource: env.PLUGIN_PUBLIC_URL });
+    const shown = await check(plugin.req, who.token);
+    assert.equal(shown.statusCode, 200, shown.body);
+    assert.deepEqual(shown.json().resource, {
+      kind: "plugin",
+      url: env.PLUGIN_PUBLIC_URL,
+    });
+    const allowed = await consent(who.token, plugin.req);
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    const code = codeOf(allowed.json().redirect_to);
+    const wrong = await exchange(code, plugin.verifier);
+    assert.equal(wrong.statusCode, 400);
+    assert.equal(wrong.json().error, "invalid_target");
+    const retry = request({ resource: env.PLUGIN_PUBLIC_URL });
+    const retryConsent = await consent(who.token, retry.req);
+    assert.equal(retryConsent.statusCode, 200, retryConsent.body);
+    const tokens = await exchange(
+      codeOf(retryConsent.json().redirect_to),
+      retry.verifier,
+      {
+        resource: env.PLUGIN_PUBLIC_URL,
+      },
+    );
+    assert.equal(tokens.statusCode, 200, tokens.body);
+    const refused = await refresh(tokens.json().refresh_token, CLIENT, {
+      resource: env.MCP_PUBLIC_URL,
+    });
+    assert.equal(refused.statusCode, 400);
+    assert.equal(refused.json().error, "invalid_target");
+    const rotated = await refresh(tokens.json().refresh_token);
+    assert.equal(rotated.statusCode, 200, rotated.body);
+    const portable = request();
+    const portableConsent = await consent(who.token, portable.req);
+    assert.equal(portableConsent.statusCode, 200, portableConsent.body);
+    const portableTokens = await exchange(
+      codeOf(portableConsent.json().redirect_to),
+      portable.verifier,
+    );
+    assert.equal(portableTokens.statusCode, 200, portableTokens.body);
+    const grants = await pool.query(
+      "SELECT resource_kind FROM agent_grants WHERE user_id = $1 AND client_id = $2 ORDER BY resource_kind",
+      [who.id, CLIENT],
+    );
+    assert.deepEqual(
+      grants.rows.map((g) => g.resource_kind),
+      ["mcp", "plugin"],
+    );
+    const pluginRows = await pool.query(
+      "SELECT DISTINCT t.resource FROM agent_tokens t JOIN agent_grants g ON g.id = t.grant_id WHERE g.user_id = $1 AND g.resource_kind = 'plugin'",
+      [who.id],
+    );
+    assert.deepEqual(pluginRows.rows, [{ resource: env.PLUGIN_PUBLIC_URL }]);
+  } finally {
+    env.PLUGIN_PUBLIC_URL = saved;
+  }
+});
+
 // ---- metadata and the resource server ----
 
 test("metadata: RFC 8414 at the issuer, PKCE for all, none or private_key_jwt, CIMD and iss advertised, open CORS", async () => {

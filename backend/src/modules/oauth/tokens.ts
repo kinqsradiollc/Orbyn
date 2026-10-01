@@ -249,12 +249,16 @@ function checkResource(
   try {
     const target = selectConnectorResource(
       resource,
-      { mcp: env.MCP_PUBLIC_URL },
+      { mcp: env.MCP_PUBLIC_URL, plugin: env.PLUGIN_PUBLIC_URL },
       bound,
     );
     // Existing metadata and MCP authentication use the configured canonical
     // string exactly. Normalized comparisons must not change stored recipients.
-    return { ...target, resource: env.MCP_PUBLIC_URL };
+    return {
+      ...target,
+      resource:
+        target.kind === "plugin" ? env.PLUGIN_PUBLIC_URL : env.MCP_PUBLIC_URL,
+    };
   } catch (error) {
     if (error instanceof ResourceTargetError)
       throw new OAuthError(
