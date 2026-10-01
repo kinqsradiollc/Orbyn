@@ -29,6 +29,17 @@ dependencies were not changed.
 
 ## Remaining release gates
 
+The actual-engine syntax check is now reproducible with
+`npm run check:diagrams --workspace mobile`. It uses a local DOM, the actual
+Mermaid parser under strict policy, and shared fixtures in
+`docs/fixtures/mermaid.json`. All ten families parsed successfully. Evidence:
+`/tmp/orbyn-mermaid-parser-acceptance-final.log`. The rebuilt bundle, nine runtime
+regressions and workspace typecheck also passed; logs are
+`/tmp/orbyn-mermaid-parser-bundle.log`, `/tmp/orbyn-mermaid-parser-regressions.log`
+and `/tmp/orbyn-mermaid-parser-types.log`. Initial plain-Node probes could not
+initialize DOMPurify and are superseded by this DOM-backed parser check. This
+does not render SVG or prove appearance, layout, export or browser permissions.
+
 Render all ten fixtures with the actual engine; verify web/mobile layout,
 overflow, source editing, zoom, export and object links; exercise native WebView
 navigation and malformed input; validate the frozen full suite and production
