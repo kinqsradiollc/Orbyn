@@ -166,6 +166,8 @@ const schema = z.object({
    * 401 challenge. Set here, never derived from request headers.
    */
   MCP_PUBLIC_URL: z.string().default("https://mcp.orbyn.dev/mcp"),
+  /** Plugin integration recipient; blank keeps plugin routes disabled. */
+  PLUGIN_PUBLIC_URL: z.string().default(""),
   /** Who issues agent sign-ins (OAuth, phase A2); defaults to APP_URL. */
   OAUTH_ISSUER: z.string().default(""),
   /** Seconds an agent access token (oat_) lasts. */

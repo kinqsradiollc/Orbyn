@@ -29,7 +29,9 @@
     "load": "tsx scripts/load.ts",
     "mcp:catalog": "tsx scripts/mcp-catalog.ts",
     "directory:account": "tsx scripts/directory-account.ts",
-    "gameday": "tsx scripts/gameday.ts"
+    "gameday": "tsx scripts/gameday.ts",
+    "dev:plugin": "tsx watch src/services/plugin.ts",
+    "start:plugin": "node dist/services/plugin.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

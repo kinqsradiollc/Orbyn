@@ -147,6 +147,31 @@ This is a callable backend resolver foundation. No plugin HTTP service, OAuth
 consent enablement, provider inference, host launch or UI delivery is claimed.
 The service remains disabled until those contracts and acceptance gates exist.
 
+## Separate HTTP service foundation (local)
+
+The plugin now has a dedicated service entry point and builder. It mounts only
+plugin connection and typed capability-catalog routes, plus the shared service
+health endpoints. API, assistant, OAuth, model and MCP routes are absent.
+PLUGIN_PUBLIC_URL is server-owned and blank by default; blank configuration
+returns 404 for plugin routes. Every enabled call uses the plugin resolver and
+no-store responses. Tool listing uses the shared registry filtered by the live
+plugin principal. Browser session cookies cannot authenticate the service.
+
+The isolated marked orbyn_plugin_service_20261001_test database was used for
+three new service tests plus existing service/path checks: ten passed, zero
+failed or skipped. Cases include 401, disabled-user 403, malformed catalog
+query 400, rate-limit 429 with Retry-After, wrong-recipient tokens, disabled
+routes, and absence of first-party/MCP paths. Main integration repeated all ten
+tests successfully. Workspace typecheck and build passed there. Logs:
+`/tmp/orbyn-plugin-service-main-tests.log`,
+`/tmp/orbyn-plugin-service-main-types.log`, and
+`/tmp/orbyn-plugin-service-main-build.log`.
+
+This foundation does not yet expose tool execution, UI resources, launch
+contexts or resumable events. OAuth consent remains MCP-only, and plugin
+provider execution and deployment/gateway wiring remain unfinished. Do not
+configure a production plugin recipient as a delivered integration yet.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;
