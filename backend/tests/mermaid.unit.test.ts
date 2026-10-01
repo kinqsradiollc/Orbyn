@@ -1,0 +1,70 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { prepareMermaidSource, MERMAID_MAX_SOURCE } from "@orbyn/core";
+import { mermaidFixtures } from "./helpers/mermaid-fixtures.js";
+
+test("the bundled renderer matches the current security source", () => {
+  const asset = JSON.parse(
+    readFileSync(
+      new URL("../../mobile/assets/mermaid-runtime.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const digest = createHash("sha256")
+    .update(
+      readFileSync(
+        new URL("../../mobile/scripts/mermaid-runtime.mjs", import.meta.url),
+      ),
+    )
+    .update(
+      readFileSync(
+        new URL("../../packages/core/src/mermaid.ts", import.meta.url),
+      ),
+    )
+    .update(
+      readFileSync(
+        new URL("../../mobile/scripts/build-mermaid.mjs", import.meta.url),
+      ),
+    )
+    .update(readFileSync(new URL("../../mobile/package.json", import.meta.url)))
+    .update(readFileSync(new URL("../../package-lock.json", import.meta.url)))
+    .digest("hex");
+  assert.equal(
+    asset.sourceDigest,
+    digest,
+    "run npm run build:diagrams -w mobile after renderer edits",
+  );
+  assert.match(asset.html, /connect-src 'none'/);
+  assert.match(asset.html, /default-src 'none'/);
+});
+
+test("all ten diagram acceptance sources pass shared rendering bounds", () => {
+  assert.equal(mermaidFixtures.length, 10);
+  for (const fixture of mermaidFixtures)
+    assert.equal(prepareMermaidSource(fixture.source), fixture.source);
+});
+test("diagram source normalizes line endings without discarding text", () => {
+  assert.equal(
+    prepareMermaidSource("\uFEFFflowchart TD\r\n A --> B"),
+    "flowchart TD\n A --> B",
+  );
+});
+test("empty and oversized diagram requests are rejected before rendering", () => {
+  for (const source of [
+    "",
+    " ",
+    "a".repeat(MERMAID_MAX_SOURCE + 1),
+    "flowchart TD\n" + "\n".repeat(2048),
+  ])
+    assert.throws(() => prepareMermaidSource(source));
+});
+test("diagram configuration cannot override the application's renderer policy", () => {
+  for (const source of [
+    '%%{init:{"securityLevel":"loose"}}%%\nflowchart TD\n A --> B',
+    "%% { config: {} } %%\nflowchart TD\n A --> B",
+    "---\nconfig:\n securityLevel: loose\n---\nflowchart TD\n A --> B",
+  ])
+    assert.throws(() => prepareMermaidSource(source), /configuration/);
+});
