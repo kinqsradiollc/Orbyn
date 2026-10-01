@@ -237,6 +237,35 @@ Evidence: /tmp/orbyn-plugin-execute-main-full-tests.log and
 
 ## Required next work and acceptance
 
+### Plugin authorization discovery contract
+
+The dedicated plugin service needs protected-resource discovery before host
+integration can be called delivered. Follow
+[RFC 9728 sections 3 and 5](https://www.rfc-editor.org/rfc/rfc9728.html):
+
+- Derive the well-known metadata path from the configured plugin resource URL,
+  inserting `/.well-known/oauth-protected-resource` before its path. For a
+  resource ending in `/plugin`, publish the document at
+  `/.well-known/oauth-protected-resource/plugin` on that resource's origin.
+- Return the configured plugin recipient exactly as `resource`, the configured
+  OAuth issuer in `authorization_servers`, supported Orbyn scopes, and only
+  `header` in `bearer_methods_supported`. Never derive these values from request
+  Host, forwarded headers, query parameters or supplied credentials.
+- Discovery is public and must run outside the plugin token preHandler. Blank
+  plugin configuration must return 404 and must not advertise an enabled plugin.
+- A protected plugin endpoint's 401 must provide its own Bearer challenge with
+  the plugin metadata URL. It must not point to portable MCP metadata. A disabled
+  policy or forbidden connection remains 403; metadata cannot grant authority.
+- Test path-bearing and root recipients, exact issuer/resource values, public
+  discovery without credentials, blank configuration, wrong-recipient tokens,
+  malicious forwarded-host inputs and preserved MCP challenges. Test the actual
+  dedicated service and gateway route; helper tests alone do not prove delivery.
+
+Local recipient issuance work has passed focused service-boundary tests, but it
+is not merged or deployed. Browser consent/host proof and full-suite evidence
+remain separate gates. Provider inference, launch contexts, UI resource CSP and
+events are not implied by protected-resource discovery.
+
 ### Consent diagnostic checkpoint
 
 Main checkpoint `3f81036` replaces rejected-resource URL echoes with a static
