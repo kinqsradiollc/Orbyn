@@ -29,6 +29,8 @@ export const EXCLUSION_REASONS = {
   admin: "The admin console and AI provider settings.",
   internal: "Service-to-service routes, never for people or agents.",
   caldav: "CalDAV for calendar apps, signed in with a personal API key.",
+  editor_sync:
+    "Binary document synchronization is editor transport; connected agents use typed page capabilities instead.",
   stream: "Long-lived event streams (subscriptions/listen arrives in phase 6).",
   mcp: "The MCP address itself.",
   device:
@@ -511,6 +513,8 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /docs/:id/ask": "hosted_ai",
   "POST /docs/:id/assist": "hosted_ai",
   "GET /docs/:id/export": "export_file",
+  "GET /docs/:id/updates": "editor_sync",
+  "POST /docs/:id/updates": "editor_sync",
   "GET /docs/:id/live": "stream",
   "GET /docs/:id/presence": "device",
   "GET /events": "stream",
