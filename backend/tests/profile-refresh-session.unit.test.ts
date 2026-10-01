@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
-function refresh(platform: "desktop" | "mobile") {
+function refresh(platform: "desktop" | "mobile", variable = "refreshUser") {
   const path = new URL(
     `../../${platform}/src/hooks/usePlanner.ts`,
     import.meta.url,
@@ -19,7 +19,7 @@ function refresh(platform: "desktop" | "mobile") {
   const visit = (node: ts.Node) => {
     if (
       ts.isVariableDeclaration(node) &&
-      node.name.getText(source) === "refreshUser"
+      node.name.getText(source) === variable
     )
       initializer = node.initializer;
     ts.forEachChild(node, visit);
@@ -41,6 +41,10 @@ function refresh(platform: "desktop" | "mobile") {
     {
       tokenRef,
       client: {
+        updatePreferences: () => {
+          calls++;
+          return response;
+        },
         me: () => {
           calls++;
           return response;
@@ -52,6 +56,24 @@ function refresh(platform: "desktop" | "mobile") {
   );
   return { callback, tokenRef, profiles, resolve, reject, calls: () => calls };
 }
+
+for (const next of ["owner", "", "another-owner"]) {
+  test(`desktop: preference profile belongs to its starting session (${next || "logout"})`, async () => {
+    const f = refresh("desktop", "setEmailReminders");
+    const pending = f.callback(true);
+    f.tokenRef.current = next;
+    const profile = { id: "owner", email_reminders: true };
+    f.resolve(profile);
+    await pending;
+    assert.deepEqual(f.profiles, next === "owner" ? [profile] : []);
+  });
+}
+test("desktop: signed-out preferences send no request", async () => {
+  const f = refresh("desktop", "setEmailReminders");
+  f.tokenRef.current = "";
+  await f.callback(true);
+  assert.equal(f.calls(), 0);
+});
 
 for (const platform of ["desktop", "mobile"] as const) {
   test(`${platform}: current session accepts its profile`, async () => {
