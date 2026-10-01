@@ -564,3 +564,95 @@ retention failure and its unverified cause remain recorded above; the rerun is
 not evidence of a retention fix. Production deployment of this checkpoint is
 unverified. Enrollment/catalog proof work is starting a fresh stable-source full
 validation before integration.
+
+
+### Validation follow-up and D1 dependency audit — 1 October 2026
+
+The current enrollment/expiry full-suite run has reported a failed MCP matrix
+assertion: two settings queries escaped the read-only transaction client.
+The suite remains running; this is a failed gate, not a passing checkpoint.
+Source inspection locates `cachedSettings()` in the context read capability.
+When the ten-second settings cache expires, that accessor starts `settings()`
+through the primary pool from inside the capability transaction. The two SQL
+statements reported by the guard match the settings loader and legacy-key
+expiry lookup. Reproduce with an explicitly invalidated settings cache before
+choosing a correction; preserve the pool/network guard and cover expired-cache
+behavior rather than accepting these reads as exceptions.
+
+D1 is still incomplete. The shared document type and request schema accept only
+heading levels 1–3, and Markdown parsing only recognizes those levels. Rich HTML
+paste also clamps headings to 3. Extending the parser alone is insufficient:
+update document schemas, outline and heading-link metadata, paste conversion,
+web/native heading rendering, editor controls and HTML export together. The
+export currently adds one to a block heading level to reserve h1 for the page
+title; six-level support must never emit an invalid h7. Round-trip fixtures must
+cover h1–h6, setext headings, closing hashes, anchors, paste, nested navigation
+and rendered exports. Existing tests and build success do not establish this
+parity. Keep source/preview synchronization, reference links, frontmatter,
+math, code coloring, security and ten-family Mermaid verification in scope.
+
+
+The completed main validation passed all 1,808 tests with no failures or skips;
+workspace typechecks and build also passed. The worktree validation completed
+with 1,881 of 1,882 tests passing, with the settings transaction guard as its
+only failure. A deterministic new regression invalidates settings inside a
+read-only transaction and waits for any asynchronous refresh. Against the old
+accessor it fails with two pool reads; against the corrected accessor all 22
+MCP matrix tests pass. The fix prevents background refresh within the read-only
+transaction context; ordinary callers still refresh stale settings. MCP's
+request boundary already awaits settings before capability execution.
+
+The correction is committed as worktree dead110 and integrated into local main
+as fc3bc53. New exact-main and worktree typecheck/build/full-suite pipelines are
+running in separate disposable databases. Neither pending pipeline is recorded
+as passed, and fc3bc53 has not been pushed as a production checkpoint yet.
+Executor enrollment and its expiry corrections remain unmerged. The full ADR,
+including model routes and UI, plugin separation and Docs parity, remains open.
+
+
+### M1 next integration contract: executor leases and catalog publication
+
+Enrollment is committed on the implementation branch as d65849f, with exactly
+12 files. It is not yet integrated into main. This metadata proof does not
+start inference, establish plan entitlement or expose models.
+
+The next service must persist a lease per enrollment identity, recording the
+current enrollment epoch, exact Orbyn session, monotonically increasing lease
+epoch and server expiry. A renewed device key immediately invalidates leases
+bound to its old enrollment epoch. Deleted/recreated enrollment identities
+must receive new executor IDs; old signatures cannot become valid after an
+ABA cycle. Session expiry and account restriction checks run after acquiring
+locks, using current wall-clock time. Connection, enrollment and lease locks
+must use a single order shared with disconnect/re-enrollment paths.
+
+Lease claims require a server-generated, short-lived, one-use proof bound to
+owner, exact session, connection, enrollment ID/epoch and expected lease epoch.
+Never accept a renderer-supplied signing message. Concurrent claims have one
+winner; late claims reject rather than overwrite a newer lease. Renewal and
+catalog publication verify the enrolled Ed25519 key and bind the current lease
+epoch. Publication accepts only the shared strict catalog schema and verifies
+its canonical digest; sequences increase atomically. Reject wrong binding,
+wrong key, stale epoch, reordered/tampered payload, expired lease, old sequence
+and replay without changing the last accepted snapshot. Bound pending proofs,
+host counts, request sizes and catalog size; sweep expired proof rows.
+
+First-party GET /models uses a live Orbyn session and an explicit user-owned
+connection/executor selection. Plugin/OAuth connector principals and API keys
+are rejected. Responses are credential-free and no-store, distinguish ready,
+offline and stale, preserve model ordering and include server-derived snapshot
+age and account-bound default. Missing selection is explicit; never choose an
+arbitrary host or account. The default mutation requires matching preference
+version and a live catalog containing the selected slug; serialize its checks
+with publication/revocation and retain unavailable defaults for display.
+Disconnect removes/inactivates enrollment, leases and snapshots; stale
+connection proof cannot revive them. Inference still checks entitlement at the
+credential-owning runtime immediately before each provider request.
+
+The runtime needs an actual encrypted device signing-key store, lease client,
+heartbeat/reconnect controller and catalog publisher. Wire these into the
+packaged Electron main process and guarded metadata-only IPC, then connect
+settings and composer to one account/default state. Web/mobile consume the
+same server state and show an unavailable executor explicitly. Existing
+private fixture helpers are not evidence of this packaged integration. Cover
+real app interactions and an authorized eligible provider account before
+claiming the end-to-end model experience complete.
