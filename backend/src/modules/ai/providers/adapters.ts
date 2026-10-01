@@ -396,12 +396,11 @@ export async function listModels(ai: Connection): Promise<string[]> {
  * Measure a batch of passages, for finding a page that says the thing in
  * other words.
  *
- * Only the OpenAI-shaped endpoint is spoken here: it is what every
- * self-hosted runner and every hosted provider worth the name offers for
- * embeddings, and a provider without it simply has semantic search off.
+ * OpenAI-compatible and Azure deployment endpoints are supported. A native
+ * messages-only provider cannot receive an embedding request.
  */
 export async function embed(
-  ai: Connection & { model: string },
+  ai: Connection & { model: string; options?: { apiVersion?: string } },
   passages: string[],
   options: {
     model?: string;
@@ -409,14 +408,30 @@ export async function embed(
     expectedDimensions?: number;
   } = {},
 ): Promise<number[][]> {
+  if (!passages.length) return [];
+  if (ai.format === "anthropic")
+    throw new ProviderError(
+      "unsupported",
+      "Choose a provider that supports text embeddings.",
+    );
+  const model = options.model ?? ai.model;
+  if (ai.format === "azure" && !ai.options?.apiVersion?.trim())
+    throw new ProviderError(
+      "configuration",
+      "Azure embeddings need an API version.",
+    );
+  const url =
+    ai.format === "azure"
+      ? `${trimSlash(ai.baseUrl)}/openai/deployments/${encodeURIComponent(model)}/embeddings?api-version=${encodeURIComponent(ai.options!.apiVersion!)}`
+      : `${trimSlash(ai.baseUrl)}/embeddings`;
   const signal = AbortSignal.timeout(options.timeoutMs ?? 60_000);
   const response = await send(
-    `${trimSlash(ai.baseUrl)}/embeddings`,
+    url,
     {
       method: "POST",
       headers: headers(ai),
       body: JSON.stringify({
-        model: options.model ?? ai.model,
+        ...(ai.format === "azure" ? {} : { model }),
         input: passages,
       }),
     },
