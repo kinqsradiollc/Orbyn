@@ -375,6 +375,10 @@ test("full sign-in with PKCE: check, consent, code with state and iss, tokens, M
   assert.equal(out.json().client.verified, true);
   assert.equal(out.json().client.redirect_host, "agent.example.com");
   assert.equal(out.json().account, null);
+  assert.deepEqual(out.json().resource, {
+    kind: "mcp",
+    url: env.MCP_PUBLIC_URL,
+  });
 
   const session = await login(me);
   const signedIn = await check(req, session);

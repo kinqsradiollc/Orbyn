@@ -173,6 +173,7 @@ export async function checkRequest(
   const req = await validateRequest(raw, s);
   const back = redirectHost(req.redirectUri);
   const check: OAuthCheck = {
+    resource: { kind: "mcp", url: req.resource },
     client: {
       id: req.client.id,
       name: req.client.name,
