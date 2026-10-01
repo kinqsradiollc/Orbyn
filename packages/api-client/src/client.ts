@@ -4393,6 +4393,8 @@ export class OrbynClient {
   setSemanticSearch(input: {
     on: boolean;
     embedding_model?: string;
+    embedding_provider_id?: string;
+    expected_generation?: string;
     accept?: boolean;
   }) {
     return this.request<AiSettings>("/ai/settings/semantic", {

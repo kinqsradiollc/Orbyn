@@ -200,3 +200,35 @@ stock-Postgres semantic checks passed against a separate fresh marked database.
 Backend typecheck passed. These changes remain local until the setup path,
 permission-change race coverage, later extension installation and full combined
 validation are complete; they must not be merged as a finished feature.
+
+## Setup API and client wiring (local)
+
+The setup contract now accepts an explicit embedding provider and expected
+configuration generation. After acceptance, it sends only fixed validation text,
+verifies dimensions, then commits under settings/provider revision checks.
+Successful replacement clears old measurements and rebuilds the eligible queue;
+off clears acceptance and measurements. The existing generation-settings route
+also honors an explicit semantic-disable request without changing the embedding
+destination when ordinary generation settings change. Setup uses the sensitive
+route rate limit.
+
+Both clients select an embedding provider independently of chat, identify that
+recipient in consent, display verified dimensions and invalidated acceptance,
+reset acceptance when inputs change, and refresh after conflicts. Native
+Anthropic providers are excluded from the embedding selector. The shared Privacy
+Policy draft now describes the independent recipient and non-personal probe;
+release must publish the revised policy with an appropriate agreement version.
+
+Seven combined pgvector service/API tests passed, including 401/403/400/429,
+missing/disabled provider, missing acceptance, stale setup, provider changes during
+probe, existing-route disable, independent resolution and worker races. Seventeen
+provider/stock-semantic/vector checks passed. Workspace typechecks and production
+build passed before the final pre-batch worker guard; that guard also passed the
+seven combined checks. Final backend typecheck and build also passed afterward.
+
+Pre-batch checks re-evaluate configuration and document eligibility before each
+provider request. They cannot retract text already sent by an in-flight request.
+Client rendered/interactive acceptance, permission-change races, configuration
+replacement/dimension tests, extension installation after an initial stock
+deployment, full combined tests and policy publication remain required. No live
+provider account or native UI interaction is claimed by these controlled tests.

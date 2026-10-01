@@ -81,7 +81,7 @@ export async function measureQueued(limit = 5): Promise<number> {
     )
   ).rows;
   let done = 0;
-  for (const page of waiting) {
+  pages: for (const page of waiting) {
     const wanted = passages(page.content);
     const known = new Map(
       (
@@ -102,6 +102,20 @@ export async function measureQueued(limit = 5): Promise<number> {
     );
     const measured = new Map<string, string>();
     for (let at = 0; at < fresh.length; at += BATCH) {
+      // Queue selection may precede several slow calls. Recheck before every
+      // batch so later pages/batches do not send text after an intervening edit,
+      // keep-out change, disable or provider revision change.
+      const eligible = await pool.query(
+        `SELECT d.id FROM docs d CROSS JOIN ai_settings s
+          JOIN ai_providers p ON p.id=s.embedding_provider_id
+         WHERE d.id=$1 AND d.version=$2 AND d.deleted_at IS NULL
+           AND ${notKeptOut("d")} AND ${assistantMayRead("d")}
+           AND s.id AND s.embedding_search_enabled AND p.enabled
+           AND s.embedding_generation=$3 AND s.semantic_accepted_at IS NOT NULL
+           AND s.embedding_provider_revision=p.embedding_revision`,
+        [page.doc_id, page.version, config.generation],
+      );
+      if (!eligible.rowCount) continue pages;
       const batch = fresh.slice(at, at + BATCH);
       const vectors = await embed(
         ai,

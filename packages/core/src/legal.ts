@@ -307,7 +307,7 @@ If you turn on "Keep the original" (off unless you choose it), the file itself i
 
 ## Search by meaning
 
-Search by meaning is off unless your workspace's administrator turns it on. When it's on, the words of every page (except pages in projects kept out of the assistant) are sent to the AI service to be measured, so a search can find a page that says the same thing in other words. The measurements are kept in Orbyn's database, and deleted when the page is, or when search by meaning is turned off.
+Search by meaning is off unless your workspace's administrator selects an embedding provider and model and accepts sending page text to that provider. This selection is separate from the provider used for chat. Setup sends fixed non-personal validation text to verify the model; it does not send page contents before acceptance. When enabled, the words of eligible pages (excluding deleted pages and pages in projects or teams kept out of the assistant) and semantic search queries are sent to the selected embedding provider. We store the selected provider revision, model, verified dimensions, and who accepted and when. Editing or removing that provider requires renewed validation and acceptance before more text is sent. Measurements are kept in Orbyn's database, replaced when the embedding configuration changes, and deleted when the page is deleted for good or search by meaning is turned off. Search results retain the page's access restrictions. Personal ChatGPT plan credentials are not used for this workspace service.
 
 ## Keeping a project out of the assistant
 

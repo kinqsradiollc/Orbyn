@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import type { AiSettings } from "@orbyn/core";
+import { AI_PROVIDERS, type AiProvider, type AiSettings } from "@orbyn/core";
+import { Segmented } from "../components/Segmented";
 import { client } from "../lib/api";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
@@ -17,23 +18,41 @@ import { shared } from "../styles";
  */
 export function SemanticSetup({
   settings,
-  providerName,
+  providers,
   busy,
   act,
   onSettings,
+  onChanged,
 }: {
   settings: AiSettings;
-  providerName: string | null;
+  providers: AiProvider[];
   busy: boolean;
   act: (fn: () => Promise<void>) => Promise<void>;
   onSettings: (s: AiSettings) => void;
+  onChanged: () => Promise<void>;
 }) {
   const [model, setModel] = useState(settings.embedding_model ?? "");
   const [accept, setAccept] = useState(false);
-  useEffect(
-    () => setModel(settings.embedding_model ?? ""),
-    [settings.embedding_model],
+  const [providerId, setProviderId] = useState(
+    settings.embedding_provider_id ?? "",
   );
+  useEffect(() => {
+    setModel(settings.embedding_model ?? "");
+    setProviderId(settings.embedding_provider_id ?? "");
+    setAccept(false);
+  }, [
+    settings.embedding_model,
+    settings.embedding_provider_id,
+    settings.embedding_generation,
+  ]);
+  const eligible = providers.filter(
+    (provider) =>
+      provider.enabled && AI_PROVIDERS[provider.kind].format !== "anthropic",
+  );
+  const selected = eligible.find((provider) => provider.id === providerId);
+  const providerName = providers.find(
+    (provider) => provider.id === settings.embedding_provider_id,
+  )?.name;
   const on = settings.semantic_search && !!settings.semantic_accepted_at;
   const steps = [
     {
@@ -45,11 +64,35 @@ export function SemanticSetup({
       text: "The measuring service is running.",
     },
     {
-      done: settings.source === "database",
-      text: "A provider is connected for the assistant.",
+      done: !!selected,
+      text: "An independent embedding provider is selected.",
     },
   ];
   const ready = steps.every((x) => x.done);
+  const change = (next: boolean) =>
+    act(async () => {
+      try {
+        onSettings(
+          await client.setSemanticSearch(
+            next
+              ? {
+                  on: true,
+                  embedding_model: model.trim(),
+                  embedding_provider_id: providerId,
+                  expected_generation: settings.embedding_generation,
+                  accept,
+                }
+              : {
+                  on: false,
+                  expected_generation: settings.embedding_generation,
+                },
+          ),
+        );
+      } finally {
+        setAccept(false);
+        await onChanged();
+      }
+    });
   return (
     <FadeIn style={shared.card}>
       <View style={s.head}>
@@ -58,6 +101,12 @@ export function SemanticSetup({
         </Text>
         <Pill label={on ? "On" : "Off"} tone={on ? "accent" : "muted"} />
       </View>
+      {settings.embedding_needs_validation && (
+        <Text style={shared.small}>
+          The saved provider changed or was removed. Validate a provider again
+          before any more page text is sent.
+        </Text>
+      )}
       <Text style={shared.small}>
         Finds a page that says the same thing in other words. It stays off
         unless you set it up: every page is sent to the provider to be measured,
@@ -81,21 +130,40 @@ export function SemanticSetup({
         <>
           <Text style={shared.body}>
             Measuring with {settings.embedding_model}
-            {providerName ? ` on ${providerName}` : ""}.
+            {providerName ? ` on ${providerName}` : ""}.{" "}
+            {settings.embedding_dimensions} dimensions verified.
           </Text>
           <Button
             secondary
             title="Turn off and forget the measurements"
             disabled={busy}
-            onPress={() =>
-              void act(async () =>
-                onSettings(await client.setSemanticSearch({ on: false })),
-              )
-            }
+            onPress={() => void change(false)}
           />
         </>
       ) : (
         <>
+          <Text style={shared.label}>Embedding provider</Text>
+          <Segmented
+            wrap
+            options={eligible.map((provider) => provider.id)}
+            labels={Object.fromEntries(
+              eligible.map((provider) => [provider.id, provider.name]),
+            )}
+            value={providerId}
+            accessibilityLabel="Embedding provider"
+            disabled={busy || !settings.semantic_possible}
+            onChange={(next) => {
+              setProviderId(next);
+              setModel("");
+              setAccept(false);
+            }}
+          />
+          {!eligible.length && (
+            <Text style={shared.small}>
+              Add and enable an OpenAI-compatible or Azure provider below. Chat
+              can remain off.
+            </Text>
+          )}
           <TextInput
             style={shared.input}
             value={model}
@@ -104,13 +172,17 @@ export function SemanticSetup({
             placeholder="Model that measures text"
             placeholderTextColor={colors.faint}
             accessibilityLabel="Model that measures text"
-            onChangeText={setModel}
+            onChangeText={(next) => {
+              setModel(next);
+              setAccept(false);
+            }}
           />
           <View style={s.accept}>
             <Text style={[shared.small, { flex: 1 }]}>
-              I understand that the words of every page (except projects kept
-              out of the assistant) are sent to {providerName ?? "the provider"}{" "}
-              to be measured.
+              I understand that the words of every page (except projects and
+              teams kept out of the assistant) are sent to{" "}
+              {selected?.name ?? "the selected embedding provider"} to be
+              measured.
             </Text>
             <Switch
               trackColor={{ true: colors.accent }}
@@ -121,20 +193,9 @@ export function SemanticSetup({
             />
           </View>
           <Button
-            title="Turn on search by meaning"
+            title="Validate and turn on search by meaning"
             disabled={busy || !ready || !accept || !model.trim()}
-            onPress={() =>
-              void act(async () => {
-                onSettings(
-                  await client.setSemanticSearch({
-                    on: true,
-                    embedding_model: model.trim(),
-                    accept,
-                  }),
-                );
-                setAccept(false);
-              })
-            }
+            onPress={() => void change(true)}
           />
         </>
       )}

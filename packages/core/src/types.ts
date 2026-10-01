@@ -587,6 +587,14 @@ export type AiSettings = {
   semantic_possible: boolean;
   /** The model that measures text for search by meaning ("" until chosen). */
   embedding_model?: string;
+  /** Independently selected workspace provider; never inherited from chat. */
+  embedding_provider_id?: string | null;
+  /** Dimensions verified by a non-personal setup probe. */
+  embedding_dimensions?: number | null;
+  /** Compare-and-set token for concurrent setup changes. */
+  embedding_generation?: string;
+  /** Saved acceptance was invalidated by a provider edit or removal. */
+  embedding_needs_validation?: boolean;
   /** When an admin accepted that every page is sent to be measured. */
   semantic_accepted_at?: string | null;
   /** Whether the measuring service has reported in lately. */
