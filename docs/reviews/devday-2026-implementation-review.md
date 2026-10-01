@@ -136,6 +136,50 @@ Existing desktop Mermaid and rich blocks are reused. Mobile's current flowchart-
 
 ### U1 — UI synchronization and regression gate
 
+#### Web redesign and settings acceptance — user scope addition, 1 October 2026
+
+Complete the existing ADR before declaring the release ready. The user authorizes a
+full web redesign and requires a full settings UI/UX redesign. Preserve the existing
+palette and typefaces; mobile's current visual design is retained. Mobile still
+receives the connection, model and provider functionality required for parity.
+
+The web audit covers the application shell, navigation, Home, Agenda, tasks,
+calendar, projects, Docs, memory, agent notes, views, study, lists, assistant,
+Overnight, teams, booking, notifications, review, settings and admin. Record each
+surface's layout defects and delivery evidence. Correct hierarchy, density,
+alignment, containment, loading/error/empty states and keyboard navigation;
+shared components must be checked across their consumers. A settings-only change
+does not satisfy the full web scope.
+
+Settings must provide a clear navigation structure, searchable controls, readable
+labels and descriptions, account/security management and an identifiable AI &
+models destination. Separate personal connections and model defaults from
+workspace-managed providers. ChatGPT must have a discoverable connection entry,
+account/workspace selection, connection health, device availability, reconnect and
+disconnect actions, and the actual account catalog/default selector. An MCP grant
+to an outside ChatGPT agent is a different connection and must not be presented
+as ChatGPT plan access. Show eligibility or platform constraints accurately;
+never make an enabled connection button depend on an absent runtime.
+
+Provider administration must support multiple saved connections, including
+multiple connections of the same kind and custom compatible endpoints. Inventory
+the existing twenty provider definitions before adding integrations. Validate each
+adapter's actual supported request format and capabilities. Support independently
+selected text-generation and text-embedding providers/models, credential testing,
+catalog refresh and explicit manual model entry where discovery is unavailable.
+Embedding settings must report capability, dimensions and indexing status;
+changing embedding models must handle incompatible existing vectors safely.
+Do not assume every text provider supports embeddings or that a model catalog
+implies ChatGPT plan entitlement. Persist selection and verify refresh, account
+switch, revocation and unavailable-provider behavior in both clients.
+
+Acceptance requires functioning backend/client wiring, focused regressions,
+workspace typechecks/build and full tests, plus actual responsive web interaction
+checks in both themes. Test long labels, large catalogs, search, validation,
+keyboard focus, slow/offline loading and nested menus/modals. Record mobile
+functional parity and native verification separately. Commit and integrate ready
+checkpoints to main; do not report a visual mock or private helper as delivered.
+
 Audit all affected current surfaces: Assistant/Overnight/reminder cards, Docs/editor/comment layers, settings/auth/model picker, navigation/deep links, plugin UI and public viewers. Test narrow phones, tablet widths and wide desktop, both themes, keyboard open/closed, large text, long labels/code/tables/diagrams, empty/error/loading states and overlay nesting. Menus/modals must remain within the viewport and have one focus owner. Restore/send/poll generations, live events, dirty editor saves, model switching and stale approvals must not overwrite newer state. Cover native iOS and Android interactions separately from mobile web. Typechecks/exports alone do not prove touch or visual behavior. Keep visual proof and feature-by-feature acceptance status in the ledger. Do not claim all prior UI defects are fixed without inspecting and reproducing their affected surfaces.
 
 ### Checkpoint policy
