@@ -15,10 +15,11 @@ web/desktop and mobile remain in scope.
 | Settings/embedding/Docs source | Local model/Docs worktree | Settings redesign, headings/fences and embedding lifecycle work remain distinct unmerged checkpoints. Web build passed locally; preview permission still blocks visual acceptance. Earlier frozen embedding suite evidence remains scoped to its own source. |
 | Broad ADR | Active, incomplete | Agent rules/ownership/activity/budgets, bound and published pages, Slack/Teams, full Markdown parity, composer/actual inference and cross-client UI acceptance remain deliverables. Existing foundations do not prove these complete. |
 
-A new main full-suite run was started on frozen code `986e77f`, using only the
-marked disposable test database. Evidence destination:
-`/tmp/orbyn-main-session-inference-full-tests.log`. Its final result is pending;
-the local plugin suite does not certify this newer main source. User changes to
+A main full-suite run on frozen code `986e77f` passed all 2,014 tests, with no
+failures, skips or cancellations, and exited successfully. It used only the
+marked disposable test database. Evidence:
+`/tmp/orbyn-main-session-inference-full-tests.log`. This verifies that main source;
+the separate local plugin suite remains scoped to its own checkpoint. User changes to
 `mobile/app.json` and unrelated untracked files are preserved and are not part
 of these checkpoints.
 
