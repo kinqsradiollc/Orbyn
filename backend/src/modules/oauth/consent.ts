@@ -102,7 +102,7 @@ export async function validateRequest(
   )
     fail(
       400,
-      `This app asked for access to ${q.resource}, which isn't Orbyn's MCP address.`,
+      "This app asked for a connection recipient that is not enabled. Start again from the app.",
     );
   const known = new Set([
     "orbyn:read",

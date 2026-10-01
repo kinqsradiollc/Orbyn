@@ -682,15 +682,29 @@ test("consent API: 401 signed out, 403 with an API key, 400 for broken requests"
     [{ response_type: "token" }, /doesn't do/],
     [{ code_challenge_method: "plain" }, /PKCE/],
     [{ code_challenge: "" }, /PKCE/],
-    [{ resource: "https://api.example.com/mcp" }, /isn't Orbyn's MCP address/],
+    [
+      { resource: "https://api.example.com/mcp" },
+      /recipient that is not enabled/,
+    ],
+    [
+      {
+        resource:
+          "https://private-user:private-secret@api.example.com/mcp?private-query=1#private-fragment",
+      },
+      /recipient that is not enabled/,
+    ],
   ];
   for (const [over, why] of cases) {
     const bad = request(over).req;
     const a = await consent(session, bad);
     assert.equal(a.statusCode, 400, `${JSON.stringify(over)}: ${a.body}`);
     assert.match(a.json().message, why);
+    if (over.resource)
+      assert.doesNotMatch(a.body, /private-|api\.example\.com/);
     const c = await check(bad, session);
     assert.equal(c.statusCode, 400);
+    if (over.resource)
+      assert.doesNotMatch(c.body, /private-|api\.example\.com/);
   }
   // A missing request altogether.
   const none = await inject("POST", "/oauth/authorize", {
