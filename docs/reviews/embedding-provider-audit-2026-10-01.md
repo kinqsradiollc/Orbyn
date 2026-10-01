@@ -147,6 +147,11 @@ must be constrained against re-enablement. The API can retain its public
 must receive an explicit setup conflict rather than silently authorizing the
 generation provider. Migration preserves selected metadata but requires renewed
 provider-bound consent before measuring resumes.
+The deployment must stop every old measure process before running migration 203.
+The legacy flag prevents old processes from starting new work, but cannot cancel
+a job that already read the old configuration; its unfenced queue delete is not
+safe alongside a newly enabled configuration. Keep measuring disabled until the
+new API and measure binaries are deployed, then validate and accept again.
 
 The configuration transaction must bind provider ID, provider revision, model,
 verified dimensions, acceptance actor/time and a new generation UUID. A provider
@@ -232,3 +237,46 @@ Client rendered/interactive acceptance, permission-change races, configuration
 replacement/dimension tests, extension installation after an initial stock
 deployment, full combined tests and policy publication remain required. No live
 provider account or native UI interaction is claimed by these controlled tests.
+
+## Replacement, policy and upgrade acceptance (local)
+
+Nine combined integration checks passed against a new marked pgvector database
+`orbyn_embedding_acceptance_20261001_test` on port 55435. Added evidence covers:
+
+- A failed replacement probe preserves the accepted generation and measurements.
+- Ordinary generation settings leave embedding configuration unchanged.
+- Provider/model replacement validates 3,072 dimensions, clears old vectors and
+  queues fresh measurements; off removes the queued work.
+- A project keep-out change during a 64-passage response prevents a second batch
+  from being sent; a team keep-out change prevents final response storage.
+- A legacy `INSERT ... ON CONFLICT` without provenance is rejected and cannot
+  overwrite a current passage. Generation and document version are now NOT NULL.
+
+The late-install fixture was first migrated on stock PostgreSQL 17.11, where no
+vector queue existed. Its synthetic data and migration history were restored to
+the pgvector PostgreSQL 16.14 test container. The logical fixture transfer omitted
+the source dump's `SET transaction_timeout = 0` statement, unsupported by that
+target version; no production data was involved. The explicit late-install test
+then passed: previously recorded migrations stayed recorded, the repeatable
+function installed flexible-dimension tables, existing pages were queued once,
+and semantic search remained off without consent. This exposed and corrected
+the missing queue backfill. This fixture is upgrade-path evidence, not a general
+recommendation to downgrade PostgreSQL.
+
+Explicit tests (run against their matching marked fixture databases):
+
+```sh
+npx tsx --test --test-concurrency=1 backend/tests/embedding-schema.integration.ts backend/tests/embedding-setup.integration.ts
+npx tsx --test backend/tests/embedding-late-install.integration.ts
+```
+
+The first command requires `TEST_DATABASE_URL` for the fresh pgvector acceptance
+database. The second requires a fresh stock fixture restored onto a server with
+pgvector available but not installed in that database; it deliberately asserts
+those preconditions before migration and is not rerunnable on an already
+installed fixture. Both use the normal `_test` name and server-side marker guard.
+
+The late-install check preceded the final NOT NULL guards; the fresh acceptance
+run includes those guards. Full stock-Postgres validation is running separately
+on `orbyn_embedding_full_20261001_test`. UI interaction, policy publication and
+the remaining ADR requirements are still open.
