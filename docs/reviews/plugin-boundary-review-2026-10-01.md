@@ -237,6 +237,23 @@ Evidence: /tmp/orbyn-plugin-execute-main-full-tests.log and
 
 ## Required next work and acceptance
 
+### Consent diagnostic checkpoint
+
+Main checkpoint `3f81036` replaces rejected-resource URL echoes with a static
+consent diagnostic. Both authorize and authorize/check reject the resource
+without reflecting URL credentials, query values, host names or fragments.
+The OAuth suite passed 28/28 on main, backend typecheck and diff checks passed,
+and the checkpoint was pushed. Evidence:
+`/tmp/orbyn-consent-static-diagnostic-main-tests.log` and
+`/tmp/orbyn-consent-static-diagnostic-main-types.log`. This is focused evidence;
+the earlier 1,991-test full run predates this change.
+
+Local plugin-worktree checkpoint `6143d30` adds server-selected recipient metadata
+and consent labels, with workspace typecheck, 28 OAuth tests and two component
+source-control tests passing. It is not merged: browser layout review remains
+blocked by the saved preview permission. Neither checkpoint enables plugin OAuth
+issuance. The following acceptance requirements remain open.
+
 1. Add a configured plugin resource and disabled-by-default service boundary;
    advertise only enabled services. Never derive recipients from host headers.
 2. Discriminate consent/grants by recipient; bind codes, access tokens, refresh
