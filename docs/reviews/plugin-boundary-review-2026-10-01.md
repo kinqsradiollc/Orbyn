@@ -167,6 +167,13 @@ tests successfully. Workspace typecheck and build passed there. Logs:
 `/tmp/orbyn-plugin-service-main-types.log`, and
 `/tmp/orbyn-plugin-service-main-build.log`.
 
+The unchanged main checkpoint `e75abcf` completed the full rerun with
+**1,985 passed**, zero failures, cancellations or skips. Its earlier process
+was interrupted and vanished without a final result; that partial run is not
+counted as a pass. The successful run used the marked service test database;
+execution work in the other checkout used a different marked database.
+Evidence: `/tmp/orbyn-plugin-service-main-full-rerun.log`.
+
 This foundation does not yet expose tool execution, UI resources, launch
 contexts or resumable events. OAuth consent remains MCP-only, and plugin
 provider execution and deployment/gateway wiring remain unfinished. Do not
