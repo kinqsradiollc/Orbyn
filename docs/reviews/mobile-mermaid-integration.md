@@ -40,6 +40,13 @@ and `/tmp/orbyn-mermaid-parser-types.log`. Initial plain-Node probes could not
 initialize DOMPurify and are superseded by this DOM-backed parser check. This
 does not render SVG or prove appearance, layout, export or browser permissions.
 
+`npm run export --workspace mobile` completed for iOS and Android after the
+parser checkpoint. Both generated Hermes bundles contain the
+`orbyn-diagram-result` runtime marker. Evidence:
+`/tmp/orbyn-mobile-mermaid-native-export.log` (exit 0). This proves the isolated
+renderer is included in the native bundles; it does not prove native WebView
+interaction, file sharing, navigation isolation or responsive layout.
+
 Render all ten fixtures with the actual engine; verify web/mobile layout,
 overflow, source editing, zoom, export and object links; exercise native WebView
 navigation and malformed input; validate the frozen full suite and production
