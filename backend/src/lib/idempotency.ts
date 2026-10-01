@@ -29,6 +29,7 @@ export function idempotency(app: FastifyInstance) {
     // Identity challenges expire in minutes and every proof/disconnect must
     // recheck its live session. A cached reply must not bypass those checks.
     if (
+      request.routeOptions.url === "/models/default" ||
       /^\/ai\/connections\/chatgpt(?:\/|$)/.test(request.routeOptions.url ?? "")
     )
       return;

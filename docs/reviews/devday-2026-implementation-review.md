@@ -656,3 +656,92 @@ same server state and show an unavailable executor explicitly. Existing
 private fixture helpers are not evidence of this packaged integration. Cover
 real app interactions and an authorized eligible provider account before
 claiming the end-to-end model experience complete.
+
+
+M1 lease/catalog implementation continues in managed worktree `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch `codex/devday-model-catalog`, based on main 6bdc26e. This checkout has independent workspace package outputs; it does not alter either running validation checkout. Shared external dependencies are linked without reinstalling or modifying their contents. The earlier implementation worktree retains private runtime helpers and Mermaid work. No host/provider feature is claimed complete by this split.
+
+
+### Enrollment release and isolated lease service — 1 October 2026
+
+Exact main at 6bdc26e passed all 1,823 tests with no failures/skips, workspace
+typechecks and build. Enrollment 8478f19 and exact-upload fixture correction
+6bdc26e were pushed to main. The earlier worktree rerun completed 1,882/1,883
+passing; its sole failure was assistant-job retention. Diagnostics reported a
+completed sweep, no errors, zero assistant rows deleted and two eligible failed
+jobs remaining. This defect is still open; a green exact-main run does not
+establish its root cause or a retention fix.
+
+The isolated M1 worktree now contains migration 202, shared lease/proof/publication
+contracts and a private backend service for one-use lease claims, two-minute
+signed heartbeat leases and signed bounded catalog publications. Lease epochs
+and publication sequences fence replay; exact sessions, connection ownership,
+current enrollment keys/epochs, restrictions and wall-clock expiry are checked.
+Re-enrollment invalidates old leases/proofs; disconnect cascades lease/catalog
+metadata. A sweeper rule removes expired lease challenges. These additions are
+uncommitted and are not exposed through HTTP or wired into a packaged runtime.
+
+Seven database integration tests and three contract tests pass in the separate
+orbyn_model_catalog_20261001_test database. A lock-wait regression failed on the
+initial service: a proof expiring while blocked on its existing lease row was
+accepted. The corrected service rechecks proof expiry after that lock wait;
+the full ten-test focused run now passes. Catalog insertion also checks lease
+expiry in its INSERT SELECT statement. Logs are /tmp/orbyn-lease-proof-expiry-before.log
+and /tmp/orbyn-model-lease-service-tests-after.log. This proves these controlled
+service cases, not provider entitlement, public /models, default mutation,
+UI or real executor availability. Those requirements remain open.
+
+
+M1 now has first-party GET /models and PUT /models/default routes, exact-session
+executor enrollment/lease/publication routes, shared strict public schemas and
+typed client methods. API routes are registered in the planner API service;
+executor routes remain in the AI service. Defaults use one shared database
+writer, with an availability check under the publication/disconnect connection
+lock. Reads lock device sessions before their cascading children to match
+sign-out ordering. Missing, offline and stale catalogs are explicit; removed
+defaults are retained. Default responses and catalog reads are validated by the
+client against the requested binding/selection, and presence reads bypass the
+client cache. These additions remain uncommitted/unmerged pending full checks.
+
+The catalog route shield verifies 401, 403, 400, 422, 429, no-store, rejection of
+unexpected credentials and duplicate Idempotency-Key CAS rejection. Focused
+catalog tests cover cross-device reads, cross-account denial, model removal,
+stale/offline rejection, clearing and concurrent version updates. Shared
+contracts/client tests also pass. An initial route-test attempt imported auth
+before the asynchronous test-database setup and failed connecting to the default
+local database; imports were made dynamic after setup, and the real disposable
+route tests pass. This fixture correction does not constitute a production
+connection fix. The packaged executor controller, account/default UI, native
+interaction and authorized provider flow remain open.
+
+
+### Retention concurrency correction and catalog inventory — 1 October 2026
+
+The retention failure is now reproduced through the actual runSweep function,
+not only inferred from timing. A transaction updates an eligible fixture row
+while sweep deletion waits for its row lock. The old ctid-based DELETE reports
+zero removed after the update commits; the row remains eligible. A direct
+stable-ID comparison deletes it. The production regression uses a composite
+primary key and also updates a selected row to ineligible, verifying that it
+is retained and that unrelated rows sharing one key component survive.
+
+The correction resolves each retention table's primary key from PostgreSQL,
+deletes by that identity and rechecks the retention condition on the current
+row. Missing tables remain skipped for older schemas; tables without primary
+keys are reported as errors with data preserved. All 19 focused sweep/worker
+checks and backend typechecking pass. The correction is local main 4e1c6bc
+(worktree equivalents 9d14c7e and 151fc05); main validation is running before
+push. Main's intervening CRDT checkpoints 3cbde3a and 4637bdf are preserved.
+
+The catalog full run passed 1,839/1,840 tests, typechecks and build. Its only
+failure was the capability route inventory: eight new first-party routes were
+not classified. They are now explicitly excluded from connected-agent access
+as credential operations, rather than marked pending or exposed as tools.
+All 18 focused catalog/inventory checks pass after that correction. The catalog
+worktree also contains the retention fix, and requires a fresh full validation.
+No failed full run is recorded as a clean checkpoint.
+
+The disposable database was removed externally between test runs: a subsequent
+sweeper run failed connecting before any assertion. Only our named disposable
+databases were recreated with the server-side test marker; existing orbyn_test
+and orbyn_runs_test were preserved. This is distinct from the reproduced ctid
+race and does not establish a database or Docker product fix.

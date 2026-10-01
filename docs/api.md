@@ -3203,3 +3203,51 @@ highlights, url, title?, html?, selection?, highlights?, highlights_as?, folder_
 team_id?, doc_id?, due_at?, time_zone?, dry_run? }`. The page's HTML is cleaned here: only its
   readable part is kept, with web links; `orbyn://` in clipped words is written harmlessly. An
   assignment's deadline is read only from a full date on the page. 60 a minute.
+
+## First-party ChatGPT executor catalogs
+
+These routes require a live, verified Orbyn app session. Personal API keys and
+MCP/OAuth connector grants cannot use them. Provider access/refresh tokens are
+never accepted or returned. Responses use `Cache-Control: no-store`.
+
+| Method | Path                                              | Purpose                                                                                    |
+| ------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| POST   | `/ai/connections/chatgpt/executors/challenges`    | Start exact-session public-key enrollment with `connection_id`, `host_id`, `public_key`.   |
+| POST   | `/ai/connections/chatgpt/executors/complete`      | Complete the server proof with `challenge_id`, `signature`.                                |
+| POST   | `/ai/connections/chatgpt/leases/challenges`       | Start a one-use lease proof for an enrolled `executor_id`.                                 |
+| POST   | `/ai/connections/chatgpt/leases/complete`         | Claim the next lease generation with `challenge_id`, `signature`.                          |
+| POST   | `/ai/connections/chatgpt/leases/heartbeat`        | Renew a live lease with signed `heartbeat: {executor_id, lease_epoch, sequence}`.          |
+| POST   | `/ai/connections/chatgpt/catalog`                 | Publish `{catalog, signature}` for the current lease.                                      |
+| GET    | `/models?connection_id=<uuid>&executor_id=<uuid>` | Read an explicitly selected owned account/device catalog and persisted default.            |
+| PUT    | `/models/default`                                 | Update `{selection: {connection_id, executor_id}, preference: {binding, model, version}}`. |
+
+Proofs expire after five minutes and are one-use. Lease claims are bound to the
+current enrollment epoch, exact app session and expected lease generation.
+Leases last two minutes; only a signed heartbeat with a higher sequence extends
+an unexpired lease. Catalog signatures cover the shared canonical account,
+executor, lease generation, publication sequence and ordered model metadata.
+Key renewal, disconnect, session revocation, stale generations and replay fence
+old publications. Catalog bodies are capped at 2 MiB and at 1,000 model entries.
+Expired proof rows are removed by the central sweeper.
+
+`GET /models` returns credential-free `binding`, `executor_id`, `models`,
+`preference`, `published_at`, `expires_at`, `sequence` and `status`:
+
+- `unavailable`: no published snapshot exists.
+- `offline`: the owning device has no current live session/lease.
+- `stale`: a live device's snapshot belongs to another generation or is over five minutes old.
+- `ready`: the current live device has a fresh matching snapshot.
+
+Offline/stale responses can retain the last model metadata for display. They
+cannot authorize a new default. A default is scoped to the verified connection
+binding and updated by version comparison under the same lock as publication
+and disconnect. A removed model remains the saved default until the person
+chooses another model or explicitly clears it (`model: null`). It is never
+silently replaced. Repeating an old version returns 409, including requests
+with the same Idempotency-Key; cached write receipts cannot bypass live checks.
+A new non-null default requires a ready catalog containing its slug.
+
+Catalog metadata reported by a signed device is not proof of provider
+entitlement. The credential-owning runtime must recheck model availability
+before inference. These APIs do not start inference or use managed provider
+credentials as an automatic fallback.

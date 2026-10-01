@@ -3,6 +3,8 @@ import { systemRoutes } from "./modules/system/routes.js";
 import type { FastifyPluginAsync } from "fastify";
 import { createService } from "./services/http.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { chatgptModelRoutes } from "./modules/auth/chatgpt-model-routes.js";
+import { chatgptExecutorRoutes } from "./modules/auth/chatgpt-executor-routes.js";
 import { chatgptConnectionRoutes } from "./modules/auth/chatgpt-routes.js";
 import { userRoutes } from "./modules/users/routes.js";
 import { inboundRoutes } from "./modules/inbound/routes.js";
@@ -91,6 +93,7 @@ export const serviceModules: Record<
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
   api: [
+    chatgptModelRoutes,
     systemRoutes,
     authRoutes,
     userRoutes,
@@ -185,6 +188,7 @@ export const serviceModules: Record<
   /** The assistant (chat, applying proposals) and admin provider settings. */
   ai: [
     chatgptConnectionRoutes,
+    chatgptExecutorRoutes,
     aiRoutes,
     aiAdminRoutes,
     aiStudyRoutes,
