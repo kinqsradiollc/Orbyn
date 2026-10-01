@@ -84,6 +84,7 @@ const earliest = (...dates: (Date | null | undefined)[]) =>
     .reduce<Date | null>((a, d) => (!a || d < a ? d : a), null);
 
 type GrantRow = {
+  resource_kind: "mcp" | "plugin";
   grant_id: string;
   kind: AgentGrantKind;
   client_id: string | null;
@@ -167,7 +168,7 @@ async function principalFor(
   };
 }
 
-const GRANT_SELECT = `SELECT g.id AS grant_id, g.kind, g.client_id, g.client_name, g.name,
+const GRANT_SELECT = `SELECT g.id AS grant_id, g.kind, g.resource_kind, g.client_id, g.client_name, g.name,
     g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
     g.trust, g.space_trust, g.acts_alone,
     t.expires_at AS token_expires_at, t.resource, g.last_write_at,
@@ -250,6 +251,11 @@ export async function resolveCaller(
           : "That access token isn't valid. Sign in again.",
         "invalid_token",
       );
+    if (row.resource_kind !== "mcp")
+      throw unauthorized(
+        "This connection was issued for another service.",
+        "invalid_token",
+      );
     check(row, s);
     const expires = [row.expires_at, row.token_expires_at]
       .filter((d): d is Date => !!d)
@@ -315,7 +321,7 @@ export async function resolveCaller(
     );
     const row = (
       await pool.query<GrantRow>(
-        `SELECT g.id AS grant_id, g.kind, g.client_id, g.client_name, g.name,
+        `SELECT g.id AS grant_id, g.kind, g.resource_kind, g.client_id, g.client_name, g.name,
                 g.access, g.team_ids, g.personal, g.toolsets, g.flags, g.expires_at,
                 g.trust, g.space_trust, g.acts_alone,
                 NULL::timestamptz AS token_expires_at, NULL AS resource,

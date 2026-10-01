@@ -40,6 +40,28 @@ Five unit tests passed. This helper is not yet wired into consent, minting,
 refreshing or service authentication. No plugin endpoint is configured or
 delivered by this checkpoint.
 
+## Grant discriminator and portable-MCP guard (local)
+
+Migration 204 adds `resource_kind` to grants, preserving every existing grant as
+MCP. Live OAuth uniqueness now includes the resource kind. Plugin grants require
+OAuth; agent/personal keys cannot be promoted into plugin connections. Existing
+MCP consent lookup explicitly selects MCP grants. MCP authentication rejects a
+plugin grant even if its token metadata incorrectly names the MCP resource.
+
+Three integration checks passed against the separately marked
+`orbyn_plugin_20261001_test` database on port 55434. They cover distinct grants
+for the same person/app, duplicate rejection, plugin-key rejection, MCP rejection
+of plugin/session credentials, and 401/403/400/429. Combined new-resource/grant
+and existing OAuth/MCP regressions passed **50 tests**, zero failed or skipped.
+Backend typecheck and build passed.
+
+Plugin consent is still disabled: no plugin resource is configured, and the
+existing consent route still validates MCP alone. Resource-aware token minting,
+refresh, a plugin principal and the actual service remain unfinished. Do not
+enable plugin authorization until all API replicas use the new discriminator;
+old consent code cannot safely select among newly created grants for both
+services. No plugin host behavior is proven by these database/route checks.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;
