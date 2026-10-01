@@ -99,6 +99,7 @@ export function usePlanner() {
   }, [setMaintenance]);
 
   const resetSession = () => {
+    tokenRef.current = "";
     void clearCache();
     void clearPageCache();
     clearGlance();
@@ -379,6 +380,7 @@ export function usePlanner() {
     }
     setTwoFactorRequired(false);
     await saveSession(result.token);
+    tokenRef.current = result.token;
     setToken(result.token);
     setUser(result.user);
     return true;
@@ -415,7 +417,17 @@ export function usePlanner() {
     });
 
   /** Re-read the signed-in user, e.g. after confirming their email. */
-  const refreshUser = () => act(async () => setUser(await client.me()));
+  const refreshUser = () =>
+    act(async () => {
+      const owner = tokenRef.current;
+      if (!owner) return;
+      try {
+        const profile = await client.me();
+        if (tokenRef.current === owner) setUser(profile);
+      } catch (error) {
+        if (tokenRef.current === owner) throw error;
+      }
+    });
 
   const shownItems = useMemo(
     () => applyOutbox(items, outbox.entries),

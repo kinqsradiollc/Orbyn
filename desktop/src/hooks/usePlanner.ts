@@ -43,6 +43,7 @@ export function usePlanner() {
   const refreshSeq = useRef(0);
 
   const clearSession = useCallback(() => {
+    tokenRef.current = "";
     session.clear();
     setToken("");
     setUser(null);
@@ -58,6 +59,7 @@ export function usePlanner() {
       onSessionChange((next) => {
         if (next === tokenRef.current) return;
         if (next) {
+          tokenRef.current = next;
           setUser(null);
           setToken(next);
         } else clearSession();
@@ -207,12 +209,23 @@ export function usePlanner() {
   /** Adopt a session from a flow that returns one directly (password reset). */
   const adoptSession = (result: { token: string; user: User }) => {
     session.set(result.token);
+    tokenRef.current = result.token;
     setToken(result.token);
     setUser(result.user);
   };
 
   /** Re-read the signed-in user, e.g. after confirming their email. */
-  const refreshUser = () => act(async () => setUser(await client.me()));
+  const refreshUser = () =>
+    act(async () => {
+      const owner = tokenRef.current;
+      if (!owner) return;
+      try {
+        const profile = await client.me();
+        if (tokenRef.current === owner) setUser(profile);
+      } catch (error) {
+        if (tokenRef.current === owner) throw error;
+      }
+    });
 
   const authenticate = (mode: AuthMode, values: Record<string, string>) =>
     act(async () => {
@@ -242,6 +255,7 @@ export function usePlanner() {
       }
       setTwoFactorRequired(false);
       session.set(result.token);
+      tokenRef.current = result.token;
       setToken(result.token);
       setUser(result.user);
     });
@@ -259,6 +273,7 @@ export function usePlanner() {
       const result = await client.passkeyLogin(handle, response);
       setTwoFactorRequired(false);
       session.set(result.token);
+      tokenRef.current = result.token;
       setToken(result.token);
       setUser(result.user);
     });
