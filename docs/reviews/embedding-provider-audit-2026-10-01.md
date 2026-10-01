@@ -1,7 +1,7 @@
 # Embedding provider and reindex audit
 
-Status: source audit and implementation contract; response validation implemented
-locally, configuration/reindex corrections incomplete.
+Status: source audit and implementation contract; response validation integrated
+into main, configuration/reindex corrections incomplete.
 Required by the accepted settings/provider redesign. No voice or computer-use
 product feature is introduced.
 
@@ -96,5 +96,19 @@ table remains `vector(1536)`, while a direct SQL probe confirmed 3,072-dimension
 vectors are supported by this installed extension. No existing container or
 production database was reset. The configuration migration is still required.
 
-Primary main also contains `202_doc_updates.sql`, absent
-from this implementation worktree; preserve it during later integration.
+Primary main also contains `202_doc_updates.sql`, absent from the model-catalog
+implementation worktree; it was preserved during integration.
+
+## Main checkpoint evidence
+
+The response-validation commit `54618ab` was integrated as main `cb30c13`.
+The exact combined main code passed all 1,963 tests, zero failed or skipped;
+workspace typechecks and the production build also passed. The backend image
+`orbyn-embedding-validation:cb30c13` was rebuilt from main using its dependency
+cache. With networking disabled, that image imported its compiled validation
+and adapter modules and correctly restored indexed vector order.
+
+No schema migration is included in this checkpoint. Configuration isolation,
+reindex races, UI acceptance and actual provider authorization remain open.
+The later Azure endpoint correction is separate local work and is not covered
+by these main results.
