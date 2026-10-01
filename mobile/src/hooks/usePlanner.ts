@@ -118,11 +118,13 @@ export function usePlanner() {
 
   /** Run a mutation with busy/error handling; a 401 clears the session. */
   const act = async (fn: () => Promise<void>) => {
+    const owner = tokenRef.current;
     setBusy(true);
     setError("");
     try {
       await fn();
     } catch (e) {
+      if (tokenRef.current !== owner) return;
       const status = (e as { status?: number }).status;
       // A 503 during maintenance carries the admin's message; show it as is
       // and bring the banner up without waiting for the next poll.
@@ -134,7 +136,7 @@ export function usePlanner() {
       if (status === 503) void checkMaintenance();
       if (status === 401) {
         await clearSession();
-        resetSession();
+        if (tokenRef.current === owner) resetSession();
       }
     } finally {
       setBusy(false);

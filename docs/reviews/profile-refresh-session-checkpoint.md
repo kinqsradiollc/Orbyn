@@ -28,3 +28,14 @@ Together with profile checks, 15/15 passed and workspace typecheck passed.
 Evidence: `/tmp/orbyn-session-tab-data-tests.log` and
 `/tmp/orbyn-session-tab-data-types.log`. Nested view caches and other mutation
 callbacks remain outside this checkpoint's proof scope.
+
+Both mutation wrappers now capture their starting session and ignore a late
+error after it changes. Mobile also checks the session before resetting UI after
+its asynchronous unauthorized-session cleanup. Current-session error handling is
+preserved. Eight actual-callback checks cover 401/503 with and without a session
+switch; together with earlier guards, 23/23 passed and workspace typecheck passed.
+Evidence: `/tmp/orbyn-mutation-session-error-tests.log` and
+`/tmp/orbyn-mutation-session-error-types.log`. Busy-state ownership, successful
+mutation setters, persisted-session storage races and nested caches remain open.
+This local checkpoint must not be conflated with the active main full-suite run,
+which predates these changes.

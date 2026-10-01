@@ -204,12 +204,13 @@ export function usePlanner() {
   }, [refresh, report, refreshMaintenance]);
 
   const act = async (fn: () => Promise<void>) => {
+    const owner = tokenRef.current;
     setBusy(true);
     setError("");
     try {
       await fn();
     } catch (e) {
-      report(e);
+      if (tokenRef.current === owner) report(e);
     } finally {
       setBusy(false);
     }
