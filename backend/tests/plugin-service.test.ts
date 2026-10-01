@@ -9,6 +9,10 @@ const { migrate } = await import("../src/db/migrate.js");
 const { env } = await import("../src/config/env.js");
 const { digest } = await import("../src/lib/auth.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
+const { settings } = await import("../src/lib/settings.js");
+const { resolvePluginCaller } = await import("../src/modules/plugin/auth.js");
+const { pluginWrite } = await import("../src/modules/plugin/execute.js");
+const { CapabilityError } = await import("../src/capabilities/registry.js");
 let app: FastifyInstance;
 let disabled: FastifyInstance;
 let userId: string;
@@ -49,9 +53,9 @@ after(async () => {
     "DELETE FROM system_settings WHERE key='rate_limit_per_minute'",
   );
   invalidateSettings();
+  await Promise.all([app.close(), disabled.close()]);
   await pool.query("DELETE FROM users WHERE id=$1", [userId]);
   await pool.query("DELETE FROM oauth_clients WHERE id=$1", [clientId]);
-  await Promise.all([app.close(), disabled.close()]);
   await pool.end();
 });
 const headers = { authorization: `Bearer ${token}` };
@@ -131,6 +135,210 @@ test("plugin connection and typed catalog require plugin OAuth and reflect live 
     digest(token),
   ]);
 });
+test("plugin capability calls validate input and execute shared reads for the authenticated person", async () => {
+  const call = (payload: object) =>
+    app.inject({ method: "POST", url: "/plugin/tools/call", headers, payload });
+  assert.equal(
+    (await call({ name: "get_context", arguments: {}, approved: true }))
+      .statusCode,
+    400,
+  );
+  assert.equal(
+    (await call({ name: "unknown_tool", arguments: {} })).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await call({
+        name: "create_tasks",
+        arguments: { tasks: [{ title: "Forbidden fixture" }] },
+      })
+    ).statusCode,
+    403,
+  );
+  const answer = await call({ name: "get_context", arguments: {} });
+  assert.equal(answer.statusCode, 200);
+  assert.notEqual(answer.json().isError, true);
+  assert.equal(answer.json().structuredContent.connection.kind, "plugin");
+  assert.equal(answer.json().structuredContent.user.name, "Fixture");
+  const invalid = await call({
+    name: "get_context",
+    arguments: { unexpected: true },
+  });
+  assert.equal(invalid.statusCode, 200);
+  assert.equal(invalid.json().isError, true);
+});
+
+test("plugin writes use shared domain transactions and durable receipts for concurrent repeated requests", async () => {
+  await pool.query(
+    "UPDATE agent_grants SET access='write', trust='full' WHERE user_id=$1 AND resource_kind='plugin'",
+    [userId],
+  );
+  const title = `Plugin fixture ${randomUUID()}`;
+  const payload = {
+    name: "create_tasks",
+    arguments: { client_ref: randomUUID(), tasks: [{ title }] },
+  };
+  const call = () =>
+    app.inject({ method: "POST", url: "/plugin/tools/call", headers, payload });
+  try {
+    const replies = await Promise.all([call(), call()]);
+    for (const response of replies) {
+      assert.equal(response.statusCode, 200);
+      assert.notEqual(
+        response.json().isError,
+        true,
+        JSON.stringify(response.json()),
+      );
+    }
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            "SELECT count(*) FROM items WHERE user_id=$1 AND title=$2",
+            [userId, title],
+          )
+        ).rows[0].count,
+      ),
+      1,
+    );
+    assert.ok(
+      replies.some((response) => response.json()._meta?.["orbyn/replayed"]),
+    );
+    const receipt = (
+      await pool.query(
+        "SELECT count(*) FROM agent_activity WHERE user_id=$1 AND tool='create_tasks'",
+        [userId],
+      )
+    ).rows[0];
+    assert.equal(Number(receipt.count), 1);
+  } finally {
+    await pool.query(
+      "UPDATE agent_grants SET access='read' WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+  }
+});
+
+test("changed and revoked connector permissions cannot enter a pending write", async () => {
+  const live = await settings();
+  const resources = { mcp: env.MCP_PUBLIC_URL, plugin: resource };
+  const p = (await resolvePluginCaller(headers, live, resources)).principal;
+  let entered = false;
+  const write = () =>
+    pluginWrite(p, headers, live, resources, async () => {
+      entered = true;
+    });
+  try {
+    await pool.query(
+      "UPDATE agent_grants SET personal=false WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+    await assert.rejects(
+      write(),
+      (error: unknown) =>
+        error instanceof CapabilityError && error.code === "STALE",
+    );
+    await pool.query(
+      "UPDATE agent_grants SET personal=true, revoked_at=now() WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+    await assert.rejects(
+      write(),
+      (error: unknown) =>
+        error instanceof CapabilityError && error.code === "FORBIDDEN",
+    );
+    assert.equal(entered, false);
+  } finally {
+    await pool.query(
+      "UPDATE agent_grants SET personal=true, revoked_at=NULL WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+  }
+});
+
+test("plugin ask-first trust queues review and host input cannot claim approval", async () => {
+  await pool.query(
+    "UPDATE agent_grants SET access='write', trust='ask' WHERE user_id=$1 AND resource_kind='plugin'",
+    [userId],
+  );
+  const title = `Plugin review fixture ${randomUUID()}`;
+  try {
+    const response = await app.inject({
+      method: "POST",
+      url: "/plugin/tools/call",
+      headers,
+      payload: {
+        name: "create_tasks",
+        arguments: { tasks: [{ title }], client_ref: randomUUID() },
+      },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.notEqual(
+      response.json().isError,
+      true,
+      JSON.stringify(response.json()),
+    );
+    assert.ok(response.json().structuredContent.pending);
+    assert.equal(
+      Number(
+        (
+          await pool.query(
+            "SELECT count(*) FROM items WHERE user_id=$1 AND title=$2",
+            [userId, title],
+          )
+        ).rows[0].count,
+      ),
+      0,
+    );
+  } finally {
+    await pool.query(
+      "UPDATE agent_grants SET access='read', trust='full' WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+  }
+});
+
+test("plugin maintenance permits shared reads and denies writes", async () => {
+  await pool.query(
+    "UPDATE agent_grants SET access='write' WHERE user_id=$1 AND resource_kind='plugin'",
+    [userId],
+  );
+  await pool.query(
+    "INSERT INTO system_settings(key,value) VALUES ('maintenance',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    [JSON.stringify({ enabled: true, message: "Fixture", until: null })],
+  );
+  invalidateSettings();
+  try {
+    const read = await app.inject({
+      method: "POST",
+      url: "/plugin/tools/call",
+      headers,
+      payload: { name: "get_context", arguments: {} },
+    });
+    assert.equal(read.statusCode, 200);
+    assert.notEqual(read.json().isError, true);
+    const write = await app.inject({
+      method: "POST",
+      url: "/plugin/tools/call",
+      headers,
+      payload: {
+        name: "create_tasks",
+        arguments: { tasks: [{ title: "Not during maintenance" }] },
+      },
+    });
+    assert.equal(write.statusCode, 403);
+    assert.equal(write.json().error, "READ_ONLY");
+  } finally {
+    await pool.query("DELETE FROM system_settings WHERE key='maintenance'");
+    invalidateSettings();
+    await pool.query(
+      "UPDATE agent_grants SET access='read' WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+  }
+});
+
 test("plugin boundary retains rate limiting and Retry-After", async () => {
   await pool.query(
     "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute','3'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
