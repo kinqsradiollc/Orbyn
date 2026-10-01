@@ -61,6 +61,8 @@ export async function createService(
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
+      // Node's test runner frames stdout; raw fd writes can corrupt that channel.
+      ...(process.env.NODE_TEST_CONTEXT ? { stream: process.stdout } : {}),
       base: { service: name },
       redact: [
         "req.headers.authorization",
