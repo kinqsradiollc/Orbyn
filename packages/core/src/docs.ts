@@ -779,6 +779,9 @@ const INLINE_RE =
 /** Only supported document and external protocols can become actionable links. */
 export function isDocLinkSafe(href: string): boolean {
   if (/[\s\u0000-\u001f\u007f\\]/.test(href)) return false;
+  // App links and heading anchors stay on the current origin/document.
+  // A double slash would instead select a remote host.
+  if (/^\/(?!\/)/.test(href) || /^#[^#]/.test(href)) return true;
   if (/^orbyn:/i.test(href)) return parseObjectHref(href) !== null;
   try {
     const url = new URL(href);

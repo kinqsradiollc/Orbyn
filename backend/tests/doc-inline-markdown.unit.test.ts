@@ -100,6 +100,8 @@ test("supported external and Orbyn links remain actionable", () => {
     "https://example.test/a",
     "http://localhost:8080/a",
     "mailto:hello@example.test",
+    "/app/person/0b7f6d1e-3c1a-4f7e-9d59-2f0a4b6c8e11",
+    "#section",
     "orbyn://doc/0b7f6d1e-3c1a-4f7e-9d59-2f0a4b6c8e11",
   ]) {
     assert.ok(isDocLinkSafe(href));

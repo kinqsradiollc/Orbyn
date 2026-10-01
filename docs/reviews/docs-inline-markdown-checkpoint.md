@@ -37,3 +37,15 @@ preview synchronization remain part of the broader Docs requirement. Mermaid
 rendering/interaction, math/export fidelity and UI containment retain their own
 gates. Main integration must be checked on its actual source rather than inferred
 from the worktree's other unmerged Docs changes.
+
+## Relative-link regression found by main full suite
+
+Frozen main `049216c` completed 2,050 tests: 2,049 passed and one failed. The
+mention-list regression exposed valid `/app/person/...` links becoming literal
+Markdown. This is an implementation regression, not a fixture failure. Single
+slash app paths and document fragments now remain actionable; double slash remote
+hosts, control characters and backslashes stay rejected. Local focused parser,
+links and richer-page checks passed 51/51; the actual planning/mention integration
+suite then passed 11/11. Evidence: `/tmp/orbyn-doc-relative-tests.log` and
+`/tmp/orbyn-doc-relative-planning-tests.log`. Main needs a fresh full-suite pass
+before this checkpoint is pushed.
