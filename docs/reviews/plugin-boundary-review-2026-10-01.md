@@ -78,6 +78,27 @@ authorization code also creates no pair. Plugin authorization remains disabled
 because only the configured MCP resource is accepted by the live token path.
 This is backend isolation/hardening evidence, not delivery of a plugin service.
 
+## Principal policy foundation (local)
+
+`Principal.via` now has an explicit `plugin` identity. Both policy ceilings and
+live reachable-team filtering classify it as an outside agent. A linked system
+administrator cannot bypass a team's agent-off/read/suggest policy; viewer roles,
+read-only narrowing and personal-space restrictions still apply. Structured
+connection context labels this identity as plugin rather than session.
+
+Two new policy unit tests and seven existing visibility checks passed together
+(nine passed, zero failed or skipped). Backend typecheck passed. This foundation
+does not yet authenticate or construct a real plugin principal; that resolver
+and the plugin service remain required before plugin authorization is enabled.
+
+The resource/grant/token hardening was integrated into local main as `7f264a5`.
+Workspace typechecks/build passed there. Image
+`orbyn-connector-isolation:7f264a5` rebuilt successfully and its compiled resource
+guards preserved a bound plugin recipient and rejected cross-resource selection
+with networking disabled. Main's full suite is still running, and this code
+checkpoint has not yet been pushed. Principal-policy changes are separate local
+work and are not covered by that main image or running suite.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;
