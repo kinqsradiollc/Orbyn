@@ -152,10 +152,12 @@ test("Keep the original: one mechanism, the account setting with a per-import ov
   const outsider = await person();
   const DOCX =
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  // Reuse the uploaded bytes: ZIP headers contain their creation time.
+  const originalBytes = wordFile();
   const importWord = async (name: string, keep?: boolean) => {
     const start = await call(owner.token, "POST", "/imports", {
       file_name: name,
-      bytes: wordFile().length,
+      bytes: originalBytes.length,
       mime: DOCX,
       ...(keep === undefined ? {} : { keep_original: keep }),
     });
@@ -165,7 +167,7 @@ test("Keep the original: one mechanism, the account setting with a per-import ov
       url: start.body.upload_path,
       remoteAddress: address(),
       headers: { "content-type": DOCX },
-      payload: wordFile(),
+      payload: originalBytes,
     });
     assert.equal(put.statusCode, 201, put.body);
     await convertPending();
@@ -190,7 +192,7 @@ test("Keep the original: one mechanism, the account setting with a per-import ov
     headers: { authorization: `Bearer ${owner.token}` },
   });
   assert.equal(got.statusCode, 200);
-  assert.deepEqual(got.rawPayload, wordFile());
+  assert.deepEqual(got.rawPayload, originalBytes);
   assert.match(String(got.headers["content-disposition"]), /^attachment;/);
   // Someone who can't read the page can't read its original.
   assert.equal(
