@@ -19,3 +19,9 @@ account switch/revocation during inference. Evidence:
 provider request was used. This is adapter evidence, not delivered composer or
 executor-job inference. Job assignment, signed receipts, tool/approval authority,
 composer connection selection and real eligible-account acceptance remain open.
+
+The expanded runtime/transport checks passed 26/26, adding proof that a turn
+keeps its captured model when the saved default is cleared mid-response and that
+closing the runtime aborts inference before any output returns. Evidence:
+`/tmp/orbyn-chatgpt-default-lifetime-tests.log`. These checks use controlled
+upstream responses and do not replace real-account or composer acceptance.

@@ -255,6 +255,64 @@ test("revocation or account switch during inference cannot return completed outp
     }
   }
 });
+test("a running turn keeps its captured model when the saved default changes", async () => {
+  const f = fixture();
+  const catalog = f.options.fetch;
+  let runtime: any;
+  f.options.fetch = async (url: string, init: RequestInit) => {
+    if (url.endsWith("/models")) return catalog(url, init);
+    assert.equal(JSON.parse(String(init.body)).model, "fixture-model");
+    await runtime.picker.setDefault(null);
+    return new Response(
+      'data: {"type":"response.output_text.delta","delta":"original model turn"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  };
+  runtime = await create(f.options);
+  try {
+    await runtime.picker.load();
+    await runtime.picker.setDefault("fixture-model");
+    assert.equal(
+      await runtime.completeDefault({
+        input: [{ role: "user", content: "hello" }],
+      }),
+      "original model turn",
+    );
+    assert.equal(runtime.picker.defaultStatus().status, "unselected");
+    await assert.rejects(
+      runtime.completeDefault({ input: [{ role: "user", content: "next" }] }),
+      /default model/,
+    );
+  } finally {
+    runtime.close();
+  }
+});
+test("closing the credential runtime aborts inference before output can return", async () => {
+  const f = fixture();
+  const catalog = f.options.fetch;
+  let runtime: any;
+  let signal: AbortSignal | undefined;
+  f.options.fetch = async (url: string, init: RequestInit) => {
+    if (url.endsWith("/models")) return catalog(url, init);
+    signal = init.signal as AbortSignal;
+    runtime.close();
+    return new Response(
+      'data: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  };
+  runtime = await create(f.options);
+  try {
+    await runtime.picker.load();
+    await runtime.picker.setDefault("fixture-model");
+    await assert.rejects(
+      runtime.completeDefault({ input: [{ role: "user", content: "hello" }] }),
+    );
+    assert.equal(signal?.aborted, true);
+  } finally {
+    runtime.close();
+  }
+});
 test("removed models and changed selection cannot persist a default", async () => {
   for (const change of ["remove", "switch", "revoke"] as const) {
     const f = fixture(),
