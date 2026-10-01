@@ -11,7 +11,7 @@ import {
   type SystemSettingsView,
 } from "@orbyn/core";
 import { env } from "../config/env.js";
-import { pool } from "../db/pool.js";
+import { pool, insideReadTransaction } from "../db/pool.js";
 import { decryptSecret } from "./secrets.js";
 
 /** Settings admins can change in the app. */
@@ -233,10 +233,13 @@ export async function settings(): Promise<LiveSettings> {
 
 /**
  * The last loaded settings without waiting, for hot paths such as CORS and
- * rate limits. Refreshes in the background when stale.
+ * rate limits. Refreshes in the background when stale, except inside a
+ * read-only transaction: its reads must stay on the supplied client. The
+ * request boundary refreshes settings before entering capability reads.
  */
 export function cachedSettings(): LiveSettings {
-  if (Date.now() - loadedAt >= TTL_MS) void settings();
+  if (Date.now() - loadedAt >= TTL_MS && !insideReadTransaction.getStore())
+    void settings();
   return current;
 }
 

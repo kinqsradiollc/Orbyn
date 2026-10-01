@@ -24,7 +24,8 @@ const { AGENT_TOOLSETS } = await import("@orbyn/core");
 const { pool, readTransaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { env } = await import("../src/config/env.js");
-const { invalidateSettings } = await import("../src/lib/settings.js");
+const { invalidateSettings, cachedSettings, settings } =
+  await import("../src/lib/settings.js");
 const { limiter, strikes } =
   await import("../src/modules/mcp-server/routes.js");
 const { clean, cleanTitle, fence } =
@@ -1506,6 +1507,21 @@ test("images that would load from elsewhere never survive cleaning, in any Markd
     "Wow! [not an image] (really)",
   );
   assert.equal(clean("#include <math.h>\nint x;"), "#include <math.h>\nint x;");
+});
+
+test("an expired settings cache cannot launch pool reads inside a read transaction", async () => {
+  await settings();
+  const before = pools.stray.length;
+  await readTransaction(async (db) => {
+    invalidateSettings();
+    const snapshot = cachedSettings();
+    assert.ok(snapshot.agents.agent_limits.calls_per_minute > 0);
+    // Let asynchronous refreshes reach their second query too.
+    await db.query("SELECT pg_sleep(0.02)");
+    assert.equal(pools.stray.length, before);
+  });
+  // An ordinary caller still refreshes the invalidated cache.
+  await settings();
 });
 
 // Last: everything above ran with the network and the pools watched.
