@@ -161,7 +161,7 @@ repeated migration runs produce the same schema. Persist generation and document
 version with each passage. Select the index strategy explicitly; storage support
 for 3,072 dimensions does not prove an HNSW `vector` index supports that size.
 
-Workers capture the queue's complete timestamp token and document version before
+Workers capture a distinct queue revision UUID and document version before
 calling the provider. Afterward, under a short transaction, they recheck enabled
 configuration, provider revision, document revision and assistant visibility.
 Writes and queue acknowledgement must be conditional on those captured values.
@@ -176,3 +176,27 @@ document edits during provider calls, disable during provider calls, malformed
 responses, and permission changes. Admin and client controls need explicit
 provider/model selection, validation status, consent destination and reindex
 progress. This contract is an implementation requirement, not completed evidence.
+
+## Independent schema and worker foundation (local, incomplete)
+
+Migration 203 now introduces separate enablement, provider revisions, verified
+dimensions and configuration generations. It replaces the repeatable vector
+setup with flexible-dimension exact-search storage and queue revision UUIDs;
+the legacy enable flag is constrained false. A UUID changes even when two edits
+share a transaction timestamp. Old consent is cleared and measuring stays off.
+
+The local worker resolves only the accepted embedding provider revision, buffers
+provider results before writes, rechecks configuration/document/queue revisions
+under a short transaction, and conditionally acknowledges the captured queue
+revision. Search filters configuration generation and current document version
+and rechecks active consent after provider inference. This does not yet complete
+the admin setup route or either client's configuration controls.
+
+Three explicit pgvector integration tests passed, covering repeated migration,
+legacy enable rejection, dimension bounds, provider revision changes, distinct
+queue tokens, independent provider selection, read-access filtering, document
+edit during inference, consent invalidation and disable during inference. Four
+stock-Postgres semantic checks passed against a separate fresh marked database.
+Backend typecheck passed. These changes remain local until the setup path,
+permission-change race coverage, later extension installation and full combined
+validation are complete; they must not be merged as a finished feature.
