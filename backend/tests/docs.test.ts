@@ -224,6 +224,81 @@ test("a stale edit is refused instead of overwriting", async () => {
   );
 });
 
+test("six heading levels persist through versioned writes, link options and Markdown/HTML exports", async () => {
+  const levels = [1, 2, 3, 4, 5, 6];
+  const created = await call("POST", "/docs", {
+    title: "Six heading levels",
+    content: parseDoc(
+      levels.map((level) => `${"#".repeat(level)} Depth ${level}`).join("\n\n"),
+    ),
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const doc = created.json();
+  assert.deepEqual(
+    doc.content.map((block: any) => block.level),
+    levels,
+  );
+  const read = await call("GET", `/docs/${doc.id}`);
+  assert.deepEqual(
+    read.json().content.map((block: any) => block.level),
+    levels,
+  );
+  const options = await call("GET", `/links/headings?doc=${doc.id}`);
+  assert.equal(options.statusCode, 200, options.body);
+  assert.deepEqual(
+    options.json().map((heading: any) => heading.level),
+    levels,
+  );
+  const edited = await call("PUT", `/docs/${doc.id}`, {
+    version: doc.version,
+    content: doc.content.map((block: any) =>
+      block.level === 6 ? { ...block, text: "Deep detail" } : block,
+    ),
+  });
+  assert.equal(edited.statusCode, 200, edited.body);
+  assert.equal(edited.json().content[5].level, 6);
+  assert.equal(edited.json().content[5].id, doc.content[5].id);
+  const markdown = await call("GET", `/docs/${doc.id}/export?format=md`);
+  assert.match(markdown.body, /###### Deep detail/);
+  const html = await call("GET", `/docs/${doc.id}/export?format=html`);
+  assert.match(html.body, /<h6(?:\s[^>]*)?>Deep detail<\/h6>/);
+  assert.doesNotMatch(html.body, /<h7\b/);
+  assert.equal(
+    (
+      await call("POST", "/docs", {
+        title: "Bad depth",
+        content: [{ type: "heading", level: 7, text: "Bad" }],
+      })
+    ).statusCode,
+    422,
+  );
+  const malformed = await app.inject({
+    method: "POST",
+    url: "/docs",
+    payload: "{bad",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+  });
+  assert.equal(malformed.statusCode, 400);
+  assert.equal(
+    (await call("GET", `/docs/${doc.id}`, undefined, () => "")).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await call(
+        "GET",
+        `/links/headings?doc=${doc.id}`,
+        undefined,
+        () => otherToken,
+      )
+    ).statusCode,
+    404,
+  );
+});
+
 test("someone else's document is not found, and cannot be edited", async () => {
   const doc = (await call("POST", "/docs", { title: "Private" })).json();
   const get = await call("GET", `/docs/${doc.id}`, undefined, () => otherToken);

@@ -181,7 +181,7 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
     switch (block.type) {
       case "heading": {
         closeList();
-        const level = block.level + 1;
+        const level = block.level;
         const id = o.anchors ? ` id="h-${index}"` : "";
         body.push(
           `<h${level}${id}>${inlineHtml(block.text, opts)}</h${level}>`,
@@ -320,7 +320,8 @@ export function docToHtml(
 <style>
   body { max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem;
          font: 16px/1.65 Georgia, "Times New Roman", serif; color: #1a1a1a; }
-  h1, h2, h3, h4 { font-family: system-ui, sans-serif; line-height: 1.25; }
+  h1, h2, h3, h4, h5, h6 { font-family: system-ui, sans-serif; line-height: 1.25; }
+  h4, h5, h6 { font-size: 1em; }
   code, pre { font-family: ui-monospace, Menlo, Consolas, monospace;
               font-size: 0.92em; }
   pre { background: #f4f4f4; padding: 0.9rem 1rem; overflow-x: auto; }

@@ -228,7 +228,7 @@ function layout(title: string, blocks: DocBlock[]): Line[] {
     switch (block.type) {
       case "heading":
         add(block.text, {
-          size: [18, 15, 13][block.level - 1],
+          size: [18, 15, 13, 13, 13, 13][block.level - 1],
           font: "F2",
           before: 12,
           after: 5,

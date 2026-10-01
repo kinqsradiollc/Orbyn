@@ -1,5 +1,5 @@
 import { inflateRawSync } from "node:zlib";
-import { ommlXmlToLatex, rowsToTable } from "@orbyn/core";
+import { ommlXmlToLatex, rowsToTable, type DocHeadingLevel } from "@orbyn/core";
 
 /**
  * Reading a Word document (.docx) into Markdown for an Orbyn page.
@@ -9,7 +9,7 @@ import { ommlXmlToLatex, rowsToTable } from "@orbyn/core";
  * the export side (../docs/zip.ts), this reads the zip with Node's own zlib
  * rather than a library: only what a Word file uses is handled.
  *
- * Kept: headings (Title and Heading 1–3), paragraphs, bold and italic,
+ * Kept: headings (Title and Heading 1–6), paragraphs, bold and italic,
  * bulleted and numbered lists, quotes, and equations — Word stores their
  * structure (OMML), so they become exact LaTeX: inline as `$…$`, and an
  * equation on its own line as a math block.
@@ -85,7 +85,7 @@ const on = (rPr: string, tag: string) => {
   return !/w:val="(0|false|none)"/.test(m[0]);
 };
 
-type Style = { heading?: 1 | 2 | 3; quote?: boolean; code?: boolean };
+type Style = { heading?: DocHeadingLevel; quote?: boolean; code?: boolean };
 
 /** Paragraph styles by id: which are headings, quotes or code. */
 function readStyles(xml: string): Map<string, Style> {
@@ -100,7 +100,7 @@ function readStyles(xml: string): Map<string, Style> {
         name === "title"
           ? 1
           : level
-            ? (Math.min(Number(level), 3) as 1 | 2 | 3)
+            ? (Math.max(1, Math.min(Number(level), 6)) as DocHeadingLevel)
             : undefined,
       quote: /quote/.test(name),
       code: /code|preformatted|source/.test(name),

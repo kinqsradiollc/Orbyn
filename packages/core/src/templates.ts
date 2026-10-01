@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { docContent } from "./schemas.js";
 import { isValidRrule } from "./time.js";
-import type { DocBlock } from "./docs.js";
+import type { DocBlock, DocHeadingLevel } from "./docs.js";
 
 /**
  * Project templates: how a person or a team runs a kind of project — sprint
@@ -104,7 +104,7 @@ export type ProjectTemplate = {
   created_at: string | null;
 };
 
-const h = (text: string, level: 1 | 2 | 3 = 2): DocBlock => ({
+const h = (text: string, level: DocHeadingLevel = 2): DocBlock => ({
   type: "heading",
   level,
   text,

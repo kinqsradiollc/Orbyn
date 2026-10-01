@@ -229,7 +229,9 @@ export function BlockView({
   const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
   switch (block.type) {
     case "heading": {
-      const H = (["h2", "h3", "h4"] as const)[block.level - 1];
+      const H = (["h1", "h2", "h3", "h4", "h5", "h6"] as const)[
+        block.level - 1
+      ];
       return (
         <H className="doc-heading" dir="auto">
           {<Inline text={block.text} marks={marks} />}
