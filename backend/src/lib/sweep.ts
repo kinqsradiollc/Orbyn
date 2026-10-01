@@ -687,6 +687,24 @@ export async function lastSweep(): Promise<SweepResult | null> {
   );
 }
 
+/** Resolve stable row identities, including composite keys, for the current schema. */
+async function sweepPrimaryKeys(): Promise<Map<string, string[]>> {
+  const result = await pool.query<{ table: string; columns: string[] }>(
+    `SELECT wanted.name AS "table",
+       coalesce(array_agg(a.attname::text ORDER BY k.ordinality)
+         FILTER (WHERE a.attname IS NOT NULL), '{}'::text[]) AS columns
+     FROM unnest($1::text[]) wanted(name)
+     JOIN pg_class c ON c.oid=to_regclass(wanted.name)
+     LEFT JOIN pg_index i ON i.indrelid=c.oid AND i.indisprimary
+     LEFT JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum,ordinality)
+       ON k.ordinality<=i.indnkeyatts
+     LEFT JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=k.attnum AND NOT a.attisdropped
+     GROUP BY wanted.name`,
+    [[...new Set(SWEEP_RULES.map((rule) => rule.table))]],
+  );
+  return new Map(result.rows.map((row) => [row.table, row.columns]));
+}
+
 /**
  * Run every rule once. Returns null when another copy is already sweeping.
  * A rule whose table doesn't exist yet (an older database) is skipped.
@@ -704,6 +722,7 @@ export async function runSweep(): Promise<SweepResult | null> {
     try {
       const started = Date.now();
       const days = await retention();
+      const primaryKeys = await sweepPrimaryKeys();
       const removed: Record<string, number> = {};
       const errors: Record<string, string> = {};
       for (const rule of SWEEP_RULES) {
@@ -711,10 +730,19 @@ export async function runSweep(): Promise<SweepResult | null> {
         if (rule.configurable && !(keep > 0)) continue;
         let total = 0;
         try {
+          const columns = primaryKeys.get(rule.table);
+          // Older installations may not have every retention table yet.
+          if (!columns) continue;
+          if (!columns.length)
+            throw new Error("Retention requires a stable primary key.");
+          const identity = columns
+            .map((column) => '"' + column.replaceAll('"', '""') + '"')
+            .join(",");
           for (let i = 0; i < MAX_SLICES; i++) {
             const res = await pool.query(
-              `DELETE FROM ${rule.table} WHERE ctid IN (
-                 SELECT ctid FROM ${rule.table} WHERE ${rule.where} LIMIT ${SLICE})`,
+              `DELETE FROM ${rule.table} WHERE (${identity}) IN (
+                 SELECT ${identity} FROM ${rule.table} WHERE ${rule.where} LIMIT ${SLICE})
+                 AND (${rule.where})`,
               rule.where.includes("$1") ? [keep] : [],
             );
             total += res.rowCount ?? 0;
