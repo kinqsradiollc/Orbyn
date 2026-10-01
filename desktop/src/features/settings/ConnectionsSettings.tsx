@@ -18,10 +18,8 @@ import {
 } from "@orbyn/core";
 import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
-import { PortabilitySettings } from "./PortabilitySettings";
 import { EmailToTask } from "./EmailToTask";
 import { ConnectedAgents } from "./ConnectedAgents";
-import { ChatDelivery } from "./ChatDelivery";
 import { CalDavNote } from "./CalDavNote";
 import { timeAgo } from "../../lib/tasks";
 import { copyText } from "../../lib/planning";
@@ -103,9 +101,7 @@ export function ConnectionsSettings({ report }: Props) {
       <CalendarFeedCard report={report} />
       <CalendarSubscriptions report={report} />
       <EmailToTask report={report} />
-      <ChatDelivery report={report} />
       <CalDavNote />
-      <PortabilitySettings report={report} />
     </>
   );
 }

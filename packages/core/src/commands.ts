@@ -583,9 +583,49 @@ export function arrangeBarRows<T>(
 
 // ------------------------------------------------------------- settings
 
-/** The web's Settings tabs. */
-export type SettingsTabId =
-  "account" | "planning" | "tags" | "connections" | "privacy";
+/** Settings destinations shared by search, commands and web navigation. */
+export const SETTINGS_CATEGORIES = [
+  {
+    id: "account",
+    label: "Account",
+    hint: "Your identity and account information",
+  },
+  { id: "appearance", label: "Appearance", hint: "Theme, reading and layout" },
+  { id: "planning", label: "Planning", hint: "Working hours, habits and tags" },
+  {
+    id: "notifications",
+    label: "Notifications",
+    hint: "Reminders and delivery channels",
+  },
+  {
+    id: "ai",
+    label: "AI & models",
+    hint: "ChatGPT connections and model defaults",
+  },
+  {
+    id: "connections",
+    label: "Connections",
+    hint: "Calendars, agents and integrations",
+  },
+  {
+    id: "security",
+    label: "Security",
+    hint: "Sign-in methods, sessions and devices",
+  },
+  {
+    id: "privacy",
+    label: "Privacy & data",
+    hint: "Consent, portability and account deletion",
+  },
+] as const;
+
+export type SettingsCategoryId = (typeof SETTINGS_CATEGORIES)[number]["id"];
+/** The old tags destination remains accepted by links. */
+export type SettingsTabId = SettingsCategoryId | "tags";
+
+/** Resolve a legacy destination without changing its control semantics. */
+export const settingsCategory = (tab: SettingsTabId): SettingsCategoryId =>
+  tab === "tags" ? "planning" : tab;
 
 /** Where a setting lives on the phone: a section of Settings, or its own sheet. */
 export type PhoneSettingPlace =
@@ -639,7 +679,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "theme",
     "Theme",
     "Light, dark or your device's",
-    "account",
+    "appearance",
     "Appearance",
     { section: "Appearance" },
     "dark mode light appearance colours",
@@ -648,7 +688,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "reading",
     "Open pages for reading",
     "Pages open to read; double-tap or press Edit to change them",
-    "account",
+    "appearance",
     "Reading",
     { section: "Reading" },
     "read mode reading view edit double tap default hide header full screen",
@@ -657,7 +697,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "start",
     "Open to",
     "What opens when Orbyn starts on this device",
-    "account",
+    "appearance",
     "Start",
     { section: "Start" },
     "start screen launch home default open first",
@@ -666,7 +706,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "sidebar",
     "Arrange",
     "Show, hide and reorder what the sidebar lists",
-    "account",
+    "appearance",
     "Arrange",
     { section: "Arrange" },
     "sidebar navigation menu hide reorder customise customize tabs",
@@ -675,7 +715,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "shortcuts",
     "Keyboard shortcuts",
     "Change the keys a command uses",
-    "account",
+    "appearance",
     "Keyboard shortcuts",
     null,
     "hotkeys keys keyboard bindings rebind",
@@ -693,7 +733,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "email-reminders",
     "Email reminders",
     "A reminder before tasks and events are due",
-    "account",
+    "notifications",
     "Stay in the loop",
     { section: "Stay in the loop" },
     "notifications email push alerts",
@@ -702,8 +742,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "two-step",
     "Two-step verification",
     "A code from an app as well as your password",
-    "account",
-    "Signing in",
+    "security",
+    "Two-step verification",
     { section: "Two-step verification" },
     "2fa totp security authenticator mfa",
   ),
@@ -711,8 +751,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "passkeys",
     "Passkeys",
     "Sign in with your fingerprint or face",
-    "account",
-    "Signing in",
+    "security",
+    "Passkeys",
     { section: "Passkeys" },
     "security webauthn fingerprint face id",
   ),
@@ -720,8 +760,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "signed-in",
     "Signed-in devices",
     "Where you are signed in, and signing out elsewhere",
-    "account",
-    "Signing in",
+    "security",
+    "Signed-in devices",
     { section: "Signed-in devices" },
     "sessions sign out logout security",
   ),
@@ -792,7 +832,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "tags",
     "Tags",
     "Yours and your teams'",
-    "tags",
+    "planning",
     "Tags",
     { sheet: "tags" },
     "labels",
@@ -855,7 +895,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "chat",
     "Chat delivery",
     "Reminders in Slack or Discord",
-    "connections",
+    "notifications",
     "Chat delivery",
     { section: "Chat delivery" },
     "slack discord",
@@ -864,10 +904,19 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "import",
     "Import & export",
     "Bring in Markdown, Notion, Todoist or TickTick; take everything with you",
-    "connections",
+    "privacy",
     "Import & export",
     { section: "Import & export" },
     "import export markdown notion todoist ticktick csv zip backup download",
+  ),
+  setting(
+    "chatgpt-models",
+    "ChatGPT connections and models",
+    "Connect a ChatGPT account and choose its default model",
+    "ai",
+    "AI connections & models",
+    null,
+    "openai plan provider default model executor device",
   ),
   setting(
     "agreed",

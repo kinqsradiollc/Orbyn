@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import { KeyRound, Trash2 } from "lucide-react";
 import { startRegistration } from "@simplewebauthn/browser";
@@ -44,12 +45,11 @@ export function PasskeysSettings({ report }: { report: (e: unknown) => void }) {
     });
 
   return (
-    <>
-      <hr />
+    <SettingsSection className="card settings-card">
       <h2>Passkeys</h2>
       <p className="muted">
-        Sign in with your device — Touch ID, Windows Hello, a phone or a
-        security key — instead of your password. Your password still works.
+        <strong>Sign in with your device</strong> — Touch ID, Windows Hello, a
+        phone or a security key — with your password available as a backup.
       </p>
       {keys === null ? (
         <p className="muted">Loading…</p>
@@ -83,6 +83,6 @@ export function PasskeysSettings({ report }: { report: (e: unknown) => void }) {
         <KeyRound size={14} /> Add a passkey
       </button>
       <OutcomeNote outcome={action.outcome} />
-    </>
+    </SettingsSection>
   );
 }

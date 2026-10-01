@@ -58,6 +58,21 @@ test("unsupported runtime exposes no fake account connection", async () => {
   await assert.rejects(store.command({ action: "connect" }), /desktop runtime/);
 });
 
+test("retry repeats failed session verification instead of treating empty runtime metadata as authenticated", async () => {
+  const f = fixture();
+  let attempts = 0;
+  f.bridge.syncSession = async (token) => {
+    assert.equal(token, "orbyn-session");
+    if (++attempts === 1) throw new Error("temporary network outage");
+    return f.current;
+  };
+  await f.store.syncSession("orbyn-session");
+  assert.equal(f.store.snapshot().status, "unavailable");
+  await f.store.retrySession();
+  assert.equal(f.store.snapshot().status, "ready");
+  assert.equal(f.store.snapshot().connection?.user_id, f.current.user_id);
+});
+
 test("a late session response cannot restore a previous account", async () => {
   const f = fixture(),
     slow = deferred<unknown>(),

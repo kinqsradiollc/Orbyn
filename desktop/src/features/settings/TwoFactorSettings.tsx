@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import type { TwoFactorSetup } from "@orbyn/core";
@@ -51,12 +52,11 @@ export function TwoFactorSettings({
   };
 
   return (
-    <>
-      <hr />
+    <SettingsSection className="card settings-card">
       <h2>Two-step verification</h2>
       <p className="muted">
-        Ask for a code from an authenticator app at sign-in, on top of your
-        password. Works with Google Authenticator, Aegis, 1Password and others.
+        <strong>Add a sign-in code</strong> alongside your password with an
+        authenticator such as Google Authenticator, Aegis or 1Password.
       </p>
 
       {enabled === null ? (
@@ -144,6 +144,6 @@ export function TwoFactorSettings({
         </div>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </>
+    </SettingsSection>
   );
 }

@@ -21,6 +21,9 @@ export const SettingsFocus = createContext<{ key: string; seq: number } | null>(
   null,
 );
 
+/** Redesigned settings show controls on arrival; other consumers retain folding. */
+export const SettingsSectionsVisible = createContext(false);
+
 /** The words of a heading, icons and all left out. */
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -103,8 +106,9 @@ export function SettingsSection({
     labelledBy ||
     "";
   const key = labelledBy || headText;
+  const visible = useContext(SettingsSectionsVisible);
   const [open, setOpen] = useState(
-    () => defaultOpen || remembered()[key] === true,
+    () => defaultOpen || visible || remembered()[key] === true,
   );
   const bodyId = useId();
   // Settings' search chose this section: open it and bring it into view.
@@ -139,6 +143,9 @@ export function SettingsSection({
       );
     return <section className={className}>{children}</section>;
   }
+  const headingProps = isValidElement(head)
+    ? (head.props as { children?: ReactNode; className?: string; id?: string })
+    : {};
 
   return (
     <section
@@ -148,21 +155,28 @@ export function SettingsSection({
       }
       data-open={open || undefined}
     >
-      <button
-        type="button"
-        className="settings-section-head"
-        aria-expanded={open}
-        aria-controls={bodyId}
-        onClick={() => {
-          setOpen((v) => {
-            remember(key, !v);
-            return !v;
-          });
-        }}
+      <h2
+        {...headingProps}
+        className={(headingProps.className ?? "") + " settings-section-title"}
       >
-        {head}
-        <ChevronDown size={16} aria-hidden="true" />
-      </button>
+        <button
+          type="button"
+          className="settings-section-head"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => {
+            setOpen((v) => {
+              remember(key, !v);
+              return !v;
+            });
+          }}
+        >
+          <span className="settings-section-label">
+            {headingProps.children}
+          </span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+      </h2>
       <div id={bodyId} className="settings-section-body" hidden={!open}>
         {body}
       </div>

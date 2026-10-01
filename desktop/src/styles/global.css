@@ -3063,7 +3063,10 @@ footer svg {
   outline-offset: -2px;
 }
 /* The section's own heading, now doubling as the button's label. */
-.settings-section-head h2 {
+.settings-section-title {
+  margin: 0;
+}
+.settings-section-label {
   margin: 0;
   flex: 1;
   min-width: 0;

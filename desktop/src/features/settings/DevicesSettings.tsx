@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useCallback, useEffect, useState } from "react";
 import { Laptop, Monitor, Smartphone } from "lucide-react";
 import {
@@ -80,8 +81,7 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
   const shown = showAll ? (devices ?? []) : recent;
   const hidden = (devices?.length ?? 0) - recent.length;
   return (
-    <>
-      <hr />
+    <SettingsSection className="card settings-card">
       <h2>Your devices</h2>
       <p className="muted">
         Where Orbyn is open, and whether each device is in sync.
@@ -170,6 +170,6 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
         </label>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </>
+    </SettingsSection>
   );
 }
