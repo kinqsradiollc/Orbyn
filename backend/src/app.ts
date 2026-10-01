@@ -1,3 +1,4 @@
+import { pluginRoutes } from "./modules/plugin/routes.js";
 import { reminderActionRoutes } from "./modules/assistant-workspace/reminder-actions.js";
 import { systemRoutes } from "./modules/system/routes.js";
 import type { FastifyPluginAsync } from "fastify";
@@ -88,7 +89,7 @@ import { clipRoutes } from "./modules/clip/routes.js";
  * service that owns it (gateway/nginx.conf); keep the two in step.
  */
 export const serviceModules: Record<
-  "api" | "ai" | "status" | "realtime" | "files" | "mcp",
+  "api" | "ai" | "status" | "realtime" | "files" | "mcp" | "plugin",
   FastifyPluginAsync[]
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
@@ -222,6 +223,7 @@ export const serviceModules: Record<
    * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.
    */
   mcp: [mcpServerRoutes],
+  plugin: [pluginRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);
@@ -233,6 +235,8 @@ export const buildRealtimeService = () =>
 export const buildFilesService = () =>
   createService("files", serviceModules.files);
 export const buildMcpService = () => createService("mcp", serviceModules.mcp);
+export const buildPluginService = () =>
+  createService("plugin", serviceModules.plugin);
 
 /**
  * Every module in one process: tests and quick local development. `first`
