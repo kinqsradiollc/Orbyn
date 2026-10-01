@@ -595,6 +595,10 @@ export type AiSettings = {
   embedding_generation?: string;
   /** Saved acceptance was invalidated by a provider edit or removal. */
   embedding_needs_validation?: boolean;
+  /** Eligible pages still waiting for the current embedding configuration. */
+  embedding_pending_pages?: number;
+  /** Eligible pages with passages measured at their current document version. */
+  embedding_indexed_pages?: number;
   /** When an admin accepted that every page is sent to be measured. */
   semantic_accepted_at?: string | null;
   /** Whether the measuring service has reported in lately. */

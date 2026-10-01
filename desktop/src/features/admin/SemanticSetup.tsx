@@ -79,8 +79,8 @@ export function SemanticSetup({
             : { on: false, expected_generation: settings.embedding_generation },
         );
       } finally {
-        await onChanged();
         setAccept(false);
+        await onChanged();
       }
     });
   return (
@@ -116,11 +116,28 @@ export function SemanticSetup({
       )}
       {on ? (
         <div className="semantic-on">
+          <p role="status">
+            {typeof settings.embedding_indexed_pages === "number" &&
+            typeof settings.embedding_pending_pages === "number"
+              ? `${settings.embedding_indexed_pages} pages measured; ${settings.embedding_pending_pages} pages waiting.`
+              : "Indexing status is unavailable. Refresh to check again."}
+            {!settings.measure_running &&
+              " The measuring service is offline; queued pages will wait until it starts."}
+          </p>
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => act(onChanged)}
+          >
+            Refresh indexing status
+          </button>
           <p>
             Measuring with <strong>{settings.embedding_model}</strong>
             {providerName ? ` on ${providerName}` : ""}. Turned on{" "}
             {new Date(settings.semantic_accepted_at!).toLocaleDateString()}.{" "}
-            {settings.embedding_dimensions} dimensions verified.
+            {settings.embedding_dimensions
+              ? `${settings.embedding_dimensions} dimensions verified.`
+              : ""}
           </p>
           <button
             className="secondary"

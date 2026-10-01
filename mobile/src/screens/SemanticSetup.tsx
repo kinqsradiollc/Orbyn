@@ -128,10 +128,26 @@ export function SemanticSetup({
       </View>
       {on ? (
         <>
+          <Text accessibilityLiveRegion="polite" style={shared.small}>
+            {typeof settings.embedding_indexed_pages === "number" &&
+            typeof settings.embedding_pending_pages === "number"
+              ? `${settings.embedding_indexed_pages} pages measured; ${settings.embedding_pending_pages} pages waiting.`
+              : "Indexing status is unavailable. Refresh to check again."}
+            {!settings.measure_running &&
+              " The measuring service is offline; queued pages will wait until it starts."}
+          </Text>
+          <Button
+            secondary
+            title="Refresh indexing status"
+            disabled={busy}
+            onPress={() => void act(onChanged)}
+          />
           <Text style={shared.body}>
             Measuring with {settings.embedding_model}
             {providerName ? ` on ${providerName}` : ""}.{" "}
-            {settings.embedding_dimensions} dimensions verified.
+            {settings.embedding_dimensions
+              ? `${settings.embedding_dimensions} dimensions verified.`
+              : ""}
           </Text>
           <Button
             secondary

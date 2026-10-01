@@ -280,3 +280,30 @@ The late-install check preceded the final NOT NULL guards; the fresh acceptance
 run includes those guards. Full stock-Postgres validation is running separately
 on `orbyn_embedding_full_20261001_test`. UI interaction, policy publication and
 the remaining ADR requirements are still open.
+
+## Indexing status and actual control-handler checks (local)
+
+The admin response now reports eligible queued pages and pages with passages
+matching the current embedding generation/document version. Disabled or
+invalidated configurations do not report active-generation counts. Acceptance
+state is derived alongside its provider revision in one settings query, rather
+than combining metadata with a separate configuration read.
+
+Both clients display measured/waiting counts, identify an offline measuring
+service, and expose a status refresh action. Missing status remains explicitly
+unavailable instead of being presented as zero; absent dimensions do not receive
+a verified label. Web consent now resets before its conflict refresh, matching
+mobile behavior even if refresh fails.
+
+Nine pgvector API/service checks passed with progress assertions for failed
+replacement, successful replacement and off. Ten control tests passed using
+the actual web/mobile component source with controlled hooks and integration
+stubs: explicit provider/generation submission, input-change consent reset,
+conflict refresh, recipient/dimension/count rendering and missing-status copy.
+These tests do not prove native or browser layout. Workspace typechecks and
+the production build passed.
+
+The existing full run began before these status changes and before the new
+control-test file existed. Even a successful result from that run cannot by
+itself establish complete coverage for this later checkpoint; a stable-source
+rerun is required before integration.
