@@ -47,6 +47,22 @@ after(async () => {
   await pool.end();
 });
 
+test("service logging uses the test runner stdout wrapper", () => {
+  assert.ok(process.env.NODE_TEST_CONTEXT);
+  const original = process.stdout.write;
+  let observed = false;
+  process.stdout.write = function (chunk: any, ...args: any[]) {
+    if (String(chunk).includes("orbyn-test-stdout-wrapper")) observed = true;
+    return Reflect.apply(original, this, [chunk, ...args]);
+  } as typeof original;
+  try {
+    api.log.info("orbyn-test-stdout-wrapper");
+    assert.equal(observed, true);
+  } finally {
+    process.stdout.write = original;
+  }
+});
+
 test("each service exposes only the routes it owns", async () => {
   for (const [app, name] of [
     [api, "api"],
