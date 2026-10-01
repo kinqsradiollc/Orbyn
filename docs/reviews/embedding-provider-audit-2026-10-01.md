@@ -135,3 +135,44 @@ before the asynchronous test guard. Dynamic imports after that guard corrected
 the harness; the final run passed. This is adapter/storage evidence, not a live
 Azure authorization test or proof of the semantic worker's reindex safety.
 Independent embedding configuration and worker race protection remain open.
+
+## Required rollout contract for independent embeddings
+
+The migration must protect mixed-version deployments. Simply adding an embedding
+provider ID while retaining `semantic_search = true` permits an older measure
+process to send page text through the generation provider. The new configuration
+therefore needs a separate enable flag; the legacy flag must remain false and
+must be constrained against re-enablement. The API can retain its public
+`semantic_search` response name while deriving it from the new flag. Old clients
+must receive an explicit setup conflict rather than silently authorizing the
+generation provider. Migration preserves selected metadata but requires renewed
+provider-bound consent before measuring resumes.
+
+The configuration transaction must bind provider ID, provider revision, model,
+verified dimensions, acceptance actor/time and a new generation UUID. A provider
+edit invalidates that revision. Setup probes use fixed non-personal text after
+explicit acceptance; they must finish outside database locks, then compare the
+captured settings/provider revisions before committing. Changing generation
+settings cannot change the embedding destination.
+
+Storage must accept verified dimensions without truncation. Replace
+`ensure_vectors()` as part of the migration so later extension installation and
+repeated migration runs produce the same schema. Persist generation and document
+version with each passage. Select the index strategy explicitly; storage support
+for 3,072 dimensions does not prove an HNSW `vector` index supports that size.
+
+Workers capture the queue's complete timestamp token and document version before
+calling the provider. Afterward, under a short transaction, they recheck enabled
+configuration, provider revision, document revision and assistant visibility.
+Writes and queue acknowledgement must be conditional on those captured values.
+A newer edit stays queued; a disable or provider/configuration replacement
+cannot be undone by an old response. Search filters by current generation and
+current document version and preserves existing read-access restrictions.
+
+Acceptance requires both stock-Postgres and pgvector upgrade paths, repeated
+migrations, extension installation after initial deployment, provider/model and
+dimension replacement, generation-provider independence, consent invalidation,
+document edits during provider calls, disable during provider calls, malformed
+responses, and permission changes. Admin and client controls need explicit
+provider/model selection, validation status, consent destination and reindex
+progress. This contract is an implementation requirement, not completed evidence.
