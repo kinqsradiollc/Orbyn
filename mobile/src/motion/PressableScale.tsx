@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import {
   Animated,
   Pressable,
+  Platform,
   type GestureResponderEvent,
   type PressableProps,
   type StyleProp,
@@ -10,6 +11,7 @@ import {
 import { motion } from "@orbyn/core";
 import { easeOut } from "./easing";
 import { isReducedMotion } from "./useReducedMotion";
+import { pressableWebState } from "./accessibility";
 
 /**
  * Press feedback: scale towards `motion.pressScale` on press-in and back on
@@ -55,6 +57,7 @@ export function PressableScale({
   return (
     <AnimatedPressable
       {...rest}
+      {...pressableWebState(rest, Platform.OS)}
       onPressIn={(e: GestureResponderEvent) => {
         setPressed(true);
         press.onPressIn();

@@ -1,9 +1,11 @@
 import React, { forwardRef } from "react";
 import {
   Pressable as NativePressable,
+  Platform,
   type PressableProps,
   type View,
 } from "react-native";
+import { pressableWebState } from "./accessibility";
 
 /** How far a pressed row, chip or button dims while the finger is down. */
 export const PRESSED_OPACITY = 0.6;
@@ -30,6 +32,7 @@ export const Pressable = forwardRef<View, PressableProps & { quiet?: boolean }>(
             : ({ pressed }) => [style, pressed && dimmed]
         }
         {...rest}
+        {...pressableWebState(rest, Platform.OS)}
       />
     );
   },
