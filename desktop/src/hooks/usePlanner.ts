@@ -41,9 +41,12 @@ export function usePlanner() {
   const tokenRef = useRef(token);
   tokenRef.current = token;
   const refreshSeq = useRef(0);
+  const lastData = useRef("");
 
   const clearSession = useCallback(() => {
     tokenRef.current = "";
+    refreshSeq.current++;
+    lastData.current = "";
     session.clear();
     setToken("");
     setUser(null);
@@ -60,7 +63,14 @@ export function usePlanner() {
         if (next === tokenRef.current) return;
         if (next) {
           tokenRef.current = next;
+          refreshSeq.current++;
+          lastData.current = "";
           setUser(null);
+          setItems([]);
+          setNotices([]);
+          setTeams([]);
+          setMaintenance(null);
+          setError("");
           setToken(next);
         } else clearSession();
       }),
@@ -114,7 +124,6 @@ export function usePlanner() {
     [clearSession, refreshMaintenance],
   );
 
-  const lastData = useRef("");
   useEffect(() => {
     void chatgptStore.syncSession(token || null);
   }, [token]);
