@@ -11,6 +11,8 @@ const { invalidateSettings } = await import("../src/lib/settings.js");
 const { settings } = await import("../src/lib/settings.js");
 const { refreshTokens, issueCode, exchangeCode, s256 } =
   await import("../src/modules/oauth/tokens.js");
+const { resolvePluginCaller, PluginAuthError } =
+  await import("../src/modules/plugin/auth.js");
 const app = await buildApp();
 let userId: string;
 const clientId = `connector-fixture-${randomUUID()}`;
@@ -66,6 +68,51 @@ after(async () => {
   await pool.query("DELETE FROM oauth_clients WHERE id=$1", [clientId]);
   await app.close();
   await pool.end();
+});
+
+test("plugin resolver reads current grants and revocation from the database", async () => {
+  const resource = "https://plugin.example.test/api";
+  await pool.query("UPDATE agent_tokens SET resource=$1 WHERE token_hash=$2", [
+    resource,
+    digest(pluginToken),
+  ]);
+  try {
+    const live = await settings();
+    const resolve = () =>
+      resolvePluginCaller({ authorization: `Bearer ${pluginToken}` }, live, {
+        mcp: env.MCP_PUBLIC_URL,
+        plugin: resource,
+      });
+    const first = await resolve();
+    assert.equal(first.principal.user.id, userId);
+    assert.equal(first.principal.user.role, "member");
+    assert.equal(first.principal.via, "plugin");
+    await pool.query(
+      "UPDATE agent_grants SET access='read', personal=false WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+    const narrowed = await resolve();
+    assert.equal(narrowed.principal.access, "read");
+    assert.equal(narrowed.principal.personal, false);
+    await pool.query(
+      "UPDATE agent_grants SET revoked_at=now() WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+    await assert.rejects(
+      resolve(),
+      (error: unknown) =>
+        error instanceof PluginAuthError && error.status === 401,
+    );
+  } finally {
+    await pool.query(
+      "UPDATE agent_tokens SET resource=$1 WHERE token_hash=$2",
+      [env.MCP_PUBLIC_URL, digest(pluginToken)],
+    );
+    await pool.query(
+      "UPDATE agent_grants SET revoked_at=NULL WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+  }
 });
 
 test("the same app has distinct grants, while duplicates and plugin keys are rejected", async () => {

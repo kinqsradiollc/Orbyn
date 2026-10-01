@@ -99,6 +99,47 @@ Evidence: `/tmp/orbyn-plugin-main-full-tests.log`,
 artifacts. The settings redesign and embedding feature remain separate local
 checkpoints; these results do not validate their browser layout or deployment.
 
+## Principal policy foundation (integrated)
+
+`Principal.via` now has an explicit `plugin` identity. Both policy ceilings and
+live reachable-team filtering classify it as an outside agent. A linked system
+administrator cannot bypass a team's agent-off/read/suggest policy; viewer roles,
+read-only narrowing and personal-space restrictions still apply. Structured
+connection context labels this identity as plugin rather than session.
+
+Two new policy unit tests and seven existing visibility checks passed together
+(nine passed, zero failed or skipped). Backend typecheck passed. The resolver below now constructs the plugin principal. The service remains
+required before plugin authorization is enabled.
+
+## Plugin principal resolver (integrated, validation pending)
+
+A separate plugin resolver now accepts only opaque OAuth access credentials
+whose live grant is OAuth/plugin and whose token is bound exactly to the
+configured plugin recipient. Session credentials, personal/agent keys, refresh
+tokens, unbound credentials and MCP grants are refused. It checks current
+expiry, revocation, disabled users, suspended grants, deleted/blocked clients,
+allowed hosts and the outside-agent kill switch. It constructs an ordinary
+member principal with current grant preferences and reachable team policy.
+Host-supplied MCP headers cannot select or broaden plugin permissions.
+
+Grant-row loading and principal construction are shared domain helpers; the
+plugin resolver does not invoke MCP authentication or first-party routes. MCP
+keeps its existing challenge, key compatibility and narrowing behavior.
+
+The combined resource/grant/OAuth/MCP/plugin regressions passed **59 tests**,
+zero failed or skipped. Four mocked resolver tests cover credential and policy
+refusals; a database regression proves that changing a grant's access/personal
+scope and then revoking it takes effect on the next call. Backend typecheck
+and build passed. Logs: /tmp/orbyn-plugin-resolver-final-regressions.log,
+/tmp/orbyn-plugin-resolver-final-types.log, /tmp/orbyn-plugin-resolver-build.log.
+
+Main integration also passed the same 59 focused regressions. A full main
+run and workspace build evidence will be recorded separately.
+
+This is a callable backend resolver foundation. No plugin HTTP service, OAuth
+consent enablement, provider inference, host launch or UI delivery is claimed.
+The service remains disabled until those contracts and acceptance gates exist.
+
 ## Required next work and acceptance
 
 1. Add a configured plugin resource and disabled-by-default service boundary;

@@ -153,7 +153,9 @@ export const getContext = defineCapability({
               ? "legacy"
               : p.via === "oauth"
                 ? "oauth"
-                : "session",
+                : p.via === "plugin"
+                  ? "plugin"
+                  : "session",
         client: cleanTitle(p.client.name),
         access: p.access,
         trust: p.access === "suggest" ? "suggest" : p.trust.level,

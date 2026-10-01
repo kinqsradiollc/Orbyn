@@ -28,7 +28,7 @@ import type { Spaces } from "../lib/visibility.js";
  */
 
 export type Via =
-  "session" | "legacy_key" | "agent_key" | "oauth" | "assistant";
+  "session" | "legacy_key" | "agent_key" | "oauth" | "plugin" | "assistant";
 
 /** A team as this principal reaches it right now. */
 export type PrincipalTeam = {
@@ -97,6 +97,7 @@ const isAgent = (p: Principal) =>
   p.via === "assistant" ||
   p.via === "agent_key" ||
   p.via === "oauth" ||
+  p.via === "plugin" ||
   p.via === "legacy_key";
 
 const lowest = (...levels: AgentAccess[]): AgentAccess =>
@@ -242,6 +243,7 @@ export async function reachableTeams(
     via === "assistant" ||
     via === "agent_key" ||
     via === "oauth" ||
+    via === "plugin" ||
     via === "legacy_key";
   return agent ? rows.filter((t) => t.agent_access !== "off") : rows;
 }
