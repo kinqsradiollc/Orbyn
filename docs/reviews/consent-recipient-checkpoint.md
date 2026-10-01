@@ -59,3 +59,11 @@ These injected service checks do not prove a host's browser/account-switch UX.
 Remaining acceptance includes browser consent review, plugin metadata/host
 launch, host account-switch UX, events/resources,
 provider credential boundaries, full-suite validation and deployment wiring.
+
+## Frozen full-suite result
+
+Checkpoint `9e747a2` completed the full backend suite with 1,993 passed and zero
+failed, cancelled or skipped. Evidence:
+`/tmp/orbyn-plugin-recipient-full-tests.log` (terminal exit 0). No source edits
+were made in this worktree during the run. This satisfies the local backend
+full-suite gate; it does not prove browser layout, host delivery or deployment.
