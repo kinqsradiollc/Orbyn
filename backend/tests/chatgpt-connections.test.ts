@@ -9,6 +9,8 @@ const {
   finishChatgptConnection,
   listChatgptConnections,
   revokeChatgptConnection,
+  readChatgptModelPreference,
+  saveChatgptModelPreference,
 } = await import("../src/modules/auth/chatgpt-connections.js");
 const people: { userId: string; sessionId: string }[] = [];
 const clientId = "oaiapp_connection_fixture";
@@ -339,4 +341,295 @@ test("concurrent starts cannot exceed the owner's five-attempt cap", async () =>
   );
   for (const result of results)
     if (result.status === "rejected") assert.ok(status(429)(result.reason));
+});
+
+test("backend preference metadata stays bound to a live owner connection and cascades on deletion", async () => {
+  const challenge = await beginChatgptConnection(people[0]);
+  const connection = await finishChatgptConnection(
+    people[0],
+    { challengeId: challenge.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  const first = await readChatgptModelPreference(people[0], connection.id);
+  assert.deepEqual(first, {
+    binding: {
+      user_id: people[0].userId,
+      connection_id: connection.id,
+      issuer: connection.issuer,
+      subject: connection.subject,
+      client_id: clientId,
+    },
+    model: null,
+    version: 0,
+  });
+  await assert.rejects(
+    readChatgptModelPreference(people[1], connection.id),
+    status(404),
+  );
+  await assert.rejects(readChatgptModelPreference(people[0], "invalid-id"));
+  await pool.query(
+    "INSERT INTO chatgpt_model_preferences(connection_id,model,version) VALUES($1,'fixture-model',3)",
+    [connection.id],
+  );
+  assert.deepEqual(await readChatgptModelPreference(people[0], connection.id), {
+    ...first,
+    model: "fixture-model",
+    version: 3,
+  });
+  for (const [model, version] of [
+    ["bad model", "3"],
+    ["", "3"],
+    ["fixture-model", "-1"],
+    ["fixture-model", "9007199254740992"],
+  ])
+    await assert.rejects(
+      pool.query(
+        "UPDATE chatgpt_model_preferences SET model=$2,version=$3 WHERE connection_id=$1",
+        [connection.id, model, version],
+      ),
+    );
+  await revokeChatgptConnection(people[0], connection.id);
+  await assert.rejects(
+    readChatgptModelPreference(people[0], connection.id),
+    status(404),
+  );
+  await pool.query("DELETE FROM chatgpt_identity_connections WHERE id=$1", [
+    connection.id,
+  ]);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM chatgpt_model_preferences WHERE connection_id=$1",
+        [connection.id],
+      )
+    ).rowCount,
+    0,
+  );
+});
+
+test("backend preferences recheck account restrictions and exact session validity", async () => {
+  const challenge = await beginChatgptConnection(people[0]);
+  const connection = await finishChatgptConnection(
+    people[0],
+    { challengeId: challenge.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  try {
+    await pool.query("UPDATE users SET disabled=true WHERE id=$1", [
+      people[0].userId,
+    ]);
+    await assert.rejects(
+      readChatgptModelPreference(people[0], connection.id),
+      status(403),
+    );
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [
+      people[0].userId,
+    ]);
+    await pool.query(
+      "UPDATE sessions SET expires_at=now()-interval '1 minute' WHERE id=$1",
+      [people[0].sessionId],
+    );
+    await assert.rejects(
+      readChatgptModelPreference(people[0], connection.id),
+      status(401),
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [
+      people[0].userId,
+    ]);
+    await pool.query(
+      "UPDATE sessions SET expires_at=now()+interval '1 day' WHERE id=$1",
+      [people[0].sessionId],
+    );
+  }
+});
+
+test("backend model writes require catalog validation, identity agreement and the current version", async () => {
+  const challenge = await beginChatgptConnection(people[0]);
+  const connection = await finishChatgptConnection(
+    people[0],
+    { challengeId: challenge.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  const first = await readChatgptModelPreference(people[0], connection.id);
+  const available = async (binding: unknown, model: string) => {
+    assert.deepEqual(binding, first.binding);
+    if (!model.startsWith("fixture-")) throw new Error("Unavailable model");
+  };
+  await assert.rejects(
+    saveChatgptModelPreference(
+      people[1],
+      { ...first, model: "fixture-a" },
+      available,
+    ),
+    status(404),
+  );
+  await assert.rejects(
+    saveChatgptModelPreference(
+      people[0],
+      {
+        ...first,
+        binding: { ...first.binding, subject: "other" },
+        model: "fixture-a",
+      },
+      available,
+    ),
+    status(409),
+  );
+  await assert.rejects(
+    saveChatgptModelPreference(
+      people[0],
+      { ...first, model: "unavailable" },
+      available,
+    ),
+  );
+  const outcomes = await Promise.allSettled([
+    saveChatgptModelPreference(
+      people[0],
+      { ...first, model: "fixture-a" },
+      available,
+    ),
+    saveChatgptModelPreference(
+      people[0],
+      { ...first, model: "fixture-b" },
+      available,
+    ),
+  ]);
+  assert.equal(outcomes.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(outcomes.filter((r) => r.status === "rejected").length, 1);
+  const saved = await readChatgptModelPreference(people[0], connection.id);
+  assert.equal(saved.version, 1);
+  let staleValidations = 0;
+  await assert.rejects(
+    saveChatgptModelPreference(
+      people[0],
+      { ...first, model: "fixture-stale" },
+      async () => {
+        staleValidations++;
+      },
+    ),
+    status(409),
+  );
+  assert.equal(staleValidations, 0);
+  await revokeChatgptConnection(people[0], connection.id);
+  const returningChallenge = await beginChatgptConnection(people[0], clientId);
+  const returning = await finishChatgptConnection(
+    people[0],
+    {
+      challengeId: returningChallenge.id,
+      clientId,
+      idToken: "fixture",
+    },
+    verified,
+  );
+  assert.equal(returning.id, connection.id);
+  assert.deepEqual(
+    await readChatgptModelPreference(people[0], returning.id),
+    saved,
+  );
+  const cleared = await saveChatgptModelPreference(
+    people[0],
+    { ...saved, model: null },
+    async () => {
+      throw new Error("No catalog needed to clear a choice");
+    },
+  );
+  assert.equal(cleared.model, null);
+  assert.equal(cleared.version, 2);
+  await revokeChatgptConnection(people[0], connection.id);
+  const next = await beginChatgptConnection(people[0], clientId);
+  const returned = await finishChatgptConnection(
+    people[0],
+    { challengeId: next.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  assert.equal(returned.id, connection.id);
+  assert.deepEqual(
+    await readChatgptModelPreference(people[0], returned.id),
+    cleared,
+  );
+});
+
+test("revocation during trusted catalog validation prevents the pending model write", async () => {
+  const challenge = await beginChatgptConnection(people[0]);
+  const connection = await finishChatgptConnection(
+    people[0],
+    { challengeId: challenge.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  const first = await readChatgptModelPreference(people[0], connection.id);
+  await assert.rejects(
+    saveChatgptModelPreference(
+      people[0],
+      { ...first, model: "fixture-a" },
+      async () => {
+        await revokeChatgptConnection(people[0], connection.id);
+      },
+    ),
+    status(404),
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM chatgpt_model_preferences WHERE connection_id=$1",
+        [connection.id],
+      )
+    ).rowCount,
+    0,
+  );
+});
+
+test("account or session changes during catalog validation prevent preference writes", async () => {
+  const challenge = await beginChatgptConnection(people[0]);
+  const connection = await finishChatgptConnection(
+    people[0],
+    { challengeId: challenge.id, clientId, idToken: "fixture" },
+    verified,
+  );
+  const first = await readChatgptModelPreference(people[0], connection.id);
+  for (const mode of ["disabled", "unverified", "expired"]) {
+    try {
+      await assert.rejects(
+        saveChatgptModelPreference(
+          people[0],
+          { ...first, model: "fixture-model" },
+          async () => {
+            if (mode === "disabled")
+              await pool.query("UPDATE users SET disabled=true WHERE id=$1", [
+                people[0].userId,
+              ]);
+            if (mode === "unverified")
+              await pool.query(
+                "UPDATE users SET email_verified=false WHERE id=$1",
+                [people[0].userId],
+              );
+            if (mode === "expired")
+              await pool.query(
+                "UPDATE sessions SET expires_at=now()-interval '1 minute' WHERE id=$1",
+                [people[0].sessionId],
+              );
+          },
+        ),
+        status(mode === "expired" ? 401 : 403),
+      );
+      assert.equal(
+        (
+          await pool.query(
+            "SELECT 1 FROM chatgpt_model_preferences WHERE connection_id=$1",
+            [connection.id],
+          )
+        ).rowCount,
+        0,
+      );
+    } finally {
+      await pool.query(
+        "UPDATE users SET disabled=false,email_verified=true WHERE id=$1",
+        [people[0].userId],
+      );
+      await pool.query(
+        "UPDATE sessions SET expires_at=now()+interval '1 day' WHERE id=$1",
+        [people[0].sessionId],
+      );
+    }
+  }
 });

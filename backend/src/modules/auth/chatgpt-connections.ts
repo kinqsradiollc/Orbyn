@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chatgptModelBinding, fail } from "@orbyn/core";
+import { chatgptModelBinding, chatgptModelPreference, fail } from "@orbyn/core";
 import { pool, transaction, type Db } from "../../db/pool.js";
 import {
   createOpenAiIdentityVerifier,
@@ -170,6 +170,103 @@ export async function listChatgptConnections(binding: SessionBinding) {
       ...row,
       verified_at: row.verified_at.toISOString(),
     }));
+  });
+}
+
+/** Read an owner-bound preference without exposing or receiving provider credentials. */
+export async function readChatgptModelPreference(
+  binding: SessionBinding,
+  connectionId: string,
+) {
+  const id = chatgptModelBinding.shape.connection_id.parse(connectionId);
+  return transaction(async (db) => {
+    await requireLiveSession(db, binding);
+    const connection = (
+      await db.query<{ issuer: string; subject: string; client_id: string }>(
+        `SELECT issuer,subject,client_id FROM chatgpt_identity_connections
+       WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL FOR SHARE`,
+        [id, binding.userId],
+      )
+    ).rows[0];
+    if (!connection) fail(404, "That ChatGPT connection is not available.");
+    const saved = (
+      await db.query<{ model: string | null; version: string }>(
+        "SELECT model,version FROM chatgpt_model_preferences WHERE connection_id=$1",
+        [id],
+      )
+    ).rows[0];
+    return chatgptModelPreference.parse({
+      binding: { user_id: binding.userId, connection_id: id, ...connection },
+      model: saved?.model ?? null,
+      version: saved ? Number(saved.version) : 0,
+    });
+  });
+}
+
+/** Private writer: catalog validation must come from the trusted executor adapter, never request data. */
+export async function saveChatgptModelPreference(
+  session: SessionBinding,
+  value: unknown,
+  requireAvailableModel: (
+    binding: import("@orbyn/core").ChatgptModelBinding,
+    model: string,
+  ) => Promise<void>,
+) {
+  const input = chatgptModelPreference.parse(value);
+  const previous = await readChatgptModelPreference(
+    session,
+    input.binding.connection_id,
+  );
+  if (JSON.stringify(previous.binding) !== JSON.stringify(input.binding))
+    fail(409, "The ChatGPT registration changed. Reload its models.");
+  if (previous.version !== input.version)
+    fail(409, "The default model changed. Reload and try again.");
+  if (typeof requireAvailableModel !== "function")
+    fail(503, "The ChatGPT model catalog is unavailable.");
+  if (input.model !== null)
+    await requireAvailableModel(
+      Object.freeze({ ...previous.binding }),
+      input.model,
+    );
+  return transaction(async (db) => {
+    await requireLiveSession(db, session);
+    const connection = (
+      await db.query<{ issuer: string; subject: string; client_id: string }>(
+        `SELECT issuer,subject,client_id FROM chatgpt_identity_connections
+       WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL FOR UPDATE`,
+        [input.binding.connection_id, session.userId],
+      )
+    ).rows[0];
+    if (!connection) fail(404, "That ChatGPT connection is not available.");
+    const binding = chatgptModelBinding.parse({
+      user_id: session.userId,
+      connection_id: input.binding.connection_id,
+      ...connection,
+    });
+    if (JSON.stringify(binding) !== JSON.stringify(input.binding))
+      fail(409, "The ChatGPT registration changed. Reload its models.");
+    const current = (
+      await db.query<{ version: string }>(
+        "SELECT version FROM chatgpt_model_preferences WHERE connection_id=$1",
+        [binding.connection_id],
+      )
+    ).rows[0];
+    const version = current ? Number(current.version) : 0;
+    if (version !== input.version || !Number.isSafeInteger(version + 1))
+      fail(409, "The default model changed. Reload and try again.");
+    const saved = (
+      await db.query<{ model: string | null; version: string }>(
+        `INSERT INTO chatgpt_model_preferences(connection_id,model,version) VALUES($1,$2,$3)
+       ON CONFLICT(connection_id) DO UPDATE SET model=EXCLUDED.model,version=EXCLUDED.version,updated_at=now()
+       RETURNING model,version`,
+        [binding.connection_id, input.model, version + 1],
+      )
+    ).rows[0];
+    return chatgptModelPreference.parse({
+      binding,
+      model: saved.model,
+      version: Number(saved.version),
+    });
   });
 }
 
