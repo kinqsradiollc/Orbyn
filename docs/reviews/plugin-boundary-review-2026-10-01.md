@@ -133,8 +133,15 @@ scope and then revoking it takes effect on the next call. Backend typecheck
 and build passed. Logs: /tmp/orbyn-plugin-resolver-final-regressions.log,
 /tmp/orbyn-plugin-resolver-final-types.log, /tmp/orbyn-plugin-resolver-build.log.
 
-Main integration also passed the same 59 focused regressions. A full main
-run and workspace build evidence will be recorded separately.
+Main integration at `f14014c` passed the same 59 focused regressions, then the
+unchanged checkpoint completed the full repository suite: **1,982 passed**,
+zero failed, cancelled or skipped. This run used the marked local plugin test
+database; the separate service tests ran against a different marked database.
+Workspace typecheck and build completed successfully. Logs:
+`/tmp/orbyn-plugin-resolver-main-full-tests.log`,
+`/tmp/orbyn-plugin-resolver-main-regressions.log`,
+`/tmp/orbyn-plugin-resolver-main-types.log`, and
+`/tmp/orbyn-plugin-resolver-main-build.log`.
 
 This is a callable backend resolver foundation. No plugin HTTP service, OAuth
 consent enablement, provider inference, host launch or UI delivery is claimed.
