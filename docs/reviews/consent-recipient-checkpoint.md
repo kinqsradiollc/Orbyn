@@ -107,3 +107,9 @@ production logging options are unchanged. The regression verifies writes reach
 the wrapper. Services plus Docs editing passed 44/44, backend typecheck passed:
 `/tmp/orbyn-test-stdout-wrapper-tests.log` and
 `/tmp/orbyn-test-stdout-wrapper-types.log`. A fresh full run remains required.
+
+The frozen checkpoint `e60fb32` completed that fresh run with 1,995 passed and
+zero failed, cancelled or skipped. Evidence:
+`/tmp/orbyn-plugin-discovery-framed-full-tests.log` (exit 0). No source edits in
+this worktree occurred during the run. Browser consent, gateway, host acceptance
+and deployment remain separate pending gates; this is local backend evidence.
