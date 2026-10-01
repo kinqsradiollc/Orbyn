@@ -7,6 +7,7 @@ import {
   sniffPageFile,
 } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
+import { contentDisposition } from "../../lib/disposition.js";
 import {
   diskFull,
   keptDir,
@@ -72,10 +73,7 @@ export async function sweepPageFiles(): Promise<number> {
 }
 
 /** Content-Disposition for a file's own name, safe in a header. */
-const disposition = (kind: "inline" | "attachment", name: string) => {
-  const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, "_");
-  return `${kind}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
-};
+const disposition = contentDisposition;
 
 export async function pageFileStoreRoutes(app: FastifyInstance) {
   // Raw bytes, as the import uploads are (the parser is set in filesRoutes

@@ -10,6 +10,7 @@ import {
 import { env } from "../../config/env.js";
 import { pool, reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
+import { contentDisposition } from "../../lib/disposition.js";
 import { docVisibleTo } from "../../lib/doc-visibility.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
@@ -122,11 +123,10 @@ export async function originalRoutes(app: FastifyInstance) {
       IMPORT_MIME[row.file_type as ImportFileType] ??
       KEPT_MIME[row.file_type] ??
       "application/octet-stream";
-    const name = row.file_name.replace(/["\\\r\n]/g, "_");
     reply.header("Content-Type", type);
     reply.header(
       "Content-Disposition",
-      `attachment; filename="${name.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(row.file_name)}`,
+      contentDisposition("attachment", row.file_name),
     );
     reply.header("Cache-Control", "private, no-store");
     return reply.send(body);

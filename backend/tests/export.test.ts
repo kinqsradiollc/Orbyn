@@ -132,6 +132,31 @@ test("a title that would break a file name is made safe", () => {
   assert.equal(exportName("   ", "md"), "document.md");
 });
 
+test("a page whose title holds an emoji or accents still exports", async () => {
+  const id = (
+    await app.inject({
+      method: "POST",
+      url: "/docs",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        title: "Lançamento 🚀 رؤية",
+        content: [{ type: "paragraph", text: "Hello", id: "p1" }],
+      },
+    })
+  ).json().id;
+  const res = await get(`/docs/${id}/export?format=pdf`);
+  assert.equal(res.statusCode, 200);
+  const given = res.headers["content-disposition"] as string;
+  // The plain filename is flattened to ASCII, so the header itself is legal.
+  assert.match(given, /^attachment; filename="[\x20-\x7e]+\.pdf"/);
+  // And the true name rides along, percent-encoded for browsers to decode.
+  assert.match(given, /filename\*=UTF-8''/);
+  assert.ok(
+    given.includes(encodeURIComponent("Lançamento 🚀 رؤية.pdf")),
+    `the real name is encoded: ${given}`,
+  );
+});
+
 test("the Word file is a real zip that unzips to real parts", async () => {
   const res = await get(`/docs/${docId}/export?format=docx`);
   assert.equal(res.statusCode, 200);

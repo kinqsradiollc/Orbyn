@@ -14,6 +14,7 @@ import {
 } from "@orbyn/core";
 import { pool, reader, transaction, type Db } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
+import { contentDisposition } from "../../lib/disposition.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
@@ -187,10 +188,7 @@ export async function viewRoutes(app: FastifyInstance) {
     const file = viewFileName(view.name);
     return reply
       .header("Content-Type", "text/csv; charset=utf-8")
-      .header(
-        "Content-Disposition",
-        `attachment; filename="${file.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(file)}`,
-      )
+      .header("Content-Disposition", contentDisposition("attachment", file))
       .header("Cache-Control", "no-store")
       .send(csv);
   });

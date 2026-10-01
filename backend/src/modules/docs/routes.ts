@@ -52,6 +52,7 @@ import {
   type Queryable,
 } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
+import { contentDisposition } from "../../lib/disposition.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
@@ -248,9 +249,11 @@ export async function docRoutes(app: FastifyInstance) {
       reply
         .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)
         // The name is offered here so every client gets the same file name.
+        // Written as RFC 5987 so a title holding an emoji or any non-Latin
+        // letter can ride in the header without the server refusing it.
         .header(
           "content-disposition",
-          `attachment; filename="${exportName(title, format).replace(/"/g, "")}"`,
+          contentDisposition("attachment", exportName(title, format)),
         )
         .send(body)
     );
