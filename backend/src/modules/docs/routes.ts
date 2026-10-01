@@ -56,7 +56,7 @@ import { contentDisposition } from "../../lib/disposition.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
-import { announceDocChange } from "./live.js";
+import { announceDocChange, announceCrdtUpdate } from "./live.js";
 import { docArchived } from "../../lib/doc-visibility.js";
 import { linkPrivacy, readableLinks } from "../links/privacy.js";
 import { carryRanges } from "./ranges.js";
@@ -321,6 +321,66 @@ export async function docRoutes(app: FastifyInstance) {
     // Study follows the page (its card lines, and who can read it).
     await syncSavedPages(id);
     return saved;
+  });
+
+  /**
+   * One batch of CRDT updates for a page (EDT-live). The bytes are opaque
+   * here — the Yjs documents on each side make sense of them — so this only
+   * checks the sender can write the page, keeps each batch to a sane size,
+   * and files the updates in order. The NOTIFY that follows carries only
+   * the page's id: readers SELECT what they have not seen, so the news can
+   * stay small whatever the updates weigh.
+   */
+  app.post("/docs/:id/updates", async (r, reply) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    const batch = z
+      .object({ updates: z.array(z.string().max(60_000)).max(64) })
+      .strict()
+      .parse(r.body ?? {});
+    const editor = editorOf(r);
+    // The write check happens under the transaction, against the row: a
+    // page moved to Trash (or a share withdrawn) mid-batch is refused.
+    await transaction(async (db) => {
+      await requireDoc(db, id, u, "items:write");
+      for (const encoded of batch.updates)
+        await db.query(
+          `INSERT INTO doc_updates (doc_id, editor_id, update)
+            VALUES ($1, $2, decode($3, 'base64'))`,
+          [id, editor, encoded],
+        );
+    });
+    await announceCrdtUpdate(pool, id, editor).catch(() => {});
+    reply.code(204);
+    return null;
+  });
+
+  /**
+   * The CRDT updates a reader has not seen yet, oldest first, as base64.
+   * Editors pull this when they open a page (everything since their last
+   * `seq`) and after a stream hiccup; while the stream is healthy the SSE
+   * channel delivers the same rows as they land.
+   */
+  app.get("/docs/:id/updates", async (r) => {
+    const u = await authenticate(r);
+    const id = idParam(r);
+    await transaction((db) => requireDoc(db, id, u, "items:read"));
+    const since = z
+      .object({ since: z.coerce.number().int().min(0).default(0) })
+      .parse(r.query ?? {});
+    const rows = (
+      await reader(r.headers).query<{ seq: string; update: Buffer }>(
+        `SELECT seq, update FROM doc_updates
+          WHERE doc_id = $2 AND seq > $1 ORDER BY seq LIMIT 500`,
+        [since.since, id],
+      )
+    ).rows;
+    return {
+      updates: rows.map((row) => ({
+        seq: Number(row.seq),
+        update: row.update.toString("base64"),
+      })),
+    };
   });
 
   const VERSION_COLUMNS = `v.version, v.title, v.created_at, v.user_id,

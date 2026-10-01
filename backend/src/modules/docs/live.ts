@@ -1,6 +1,7 @@
 import type { FastifyReply } from "fastify";
 import pg from "pg";
 import { env } from "../../config/env.js";
+import { pool } from "../../db/pool.js";
 
 /**
  * Live document changes.
@@ -13,6 +14,9 @@ import { env } from "../../config/env.js";
  */
 
 const CHANNEL = "doc_changed";
+
+/** The channel CRDT update hints ride on. */
+const UPDATE_CHANNEL = "doc_updated";
 
 type Listener = (payload: {
   docId: string;
@@ -31,6 +35,12 @@ type Listener = (payload: {
 /** Who is watching which document, in this copy of the API. */
 const watchers = new Map<string, Set<Listener>>();
 
+/** Who is streaming a page's CRDT updates, by page. */
+const updateWatchers = new Map<
+  string,
+  Set<(updates: { seq: number; update: string; by: string }[]) => void>
+>();
+
 let client: pg.Client | null = null;
 let connecting: Promise<void> | null = null;
 
@@ -43,14 +53,37 @@ async function ensureListening(): Promise<void> {
       connectionString: env.DATABASE_LISTEN_URL || env.DATABASE_URL,
     });
     next.on("notification", (message) => {
-      if (message.channel !== CHANNEL || !message.payload) return;
-      let parsed: Parameters<Listener>[0];
-      try {
-        parsed = JSON.parse(message.payload);
-      } catch {
+      if (!message.payload) return;
+      if (message.channel === CHANNEL) {
+        let parsed: Parameters<Listener>[0];
+        try {
+          parsed = JSON.parse(message.payload);
+        } catch {
+          return;
+        }
+        for (const listener of watchers.get(parsed.docId) ?? [])
+          listener(parsed);
         return;
       }
-      for (const listener of watchers.get(parsed.docId) ?? []) listener(parsed);
+      if (message.channel === UPDATE_CHANNEL) {
+        // A knock, not the parcel: read the new rows from the log and hand
+        // them to this copy's streamers. A race — two knocks before either
+        // has read — is harmless, because each reader tracks its own seq
+        // and skips rows it already has.
+        let parsed: { docId?: string } = {};
+        try {
+          parsed = JSON.parse(message.payload);
+        } catch {
+          return;
+        }
+        const waiting = updateWatchers.get(parsed.docId ?? "");
+        if (!waiting?.size) return;
+        const docId = parsed.docId as string;
+        // Each reader has its own watermark, so each is served its own
+        // missing stretch; one query per reader keeps the bookkeeping
+        // honest (a page with a handful of readers is a handful of rows).
+        for (const deliver of waiting) void deliverUpdates(docId, deliver);
+      }
     });
     next.on("error", () => {
       // Drop the connection so the next watcher rebuilds it.
@@ -58,6 +91,7 @@ async function ensureListening(): Promise<void> {
     });
     await next.connect();
     await next.query(`LISTEN ${CHANNEL}`);
+    await next.query(`LISTEN ${UPDATE_CHANNEL}`);
     client = next;
   })().finally(() => {
     connecting = null;
@@ -96,6 +130,103 @@ export async function announceDocChange(
       ...(news.fields ? { fields: true } : {}),
     }),
   ]);
+}
+
+/**
+ * Tell every copy of the API that a page's CRDT log moved on. The payload
+ * is only the page's id and who wrote: the bytes themselves live in
+ * `doc_updates`, and each copy SELECTs the rows its readers have not seen
+ * (see streamDocUpdates). NOTIFY payloads cap at 8000 bytes, so the news
+ * travels by table, the notification stays a knock on the door.
+ */
+export async function announceCrdtUpdate(
+  db: { query: pg.Pool["query"] },
+  docId: string,
+  by: string,
+): Promise<void> {
+  await db.query("SELECT pg_notify($1, $2)", [
+    UPDATE_CHANNEL,
+    JSON.stringify({ docId, by }),
+  ]);
+}
+
+/**
+ * Read a page's log rows past the reader's watermark and hand them over,
+ * then remember how far it got. Rows arrive in seq order; a reader that
+ * re-asks (a hiccup, a beat race) is served nothing it already has.
+ */
+type UpdateSink = (
+  updates: {
+    seq: number;
+    update: string;
+    by: string;
+  }[],
+) => void;
+
+const watermarks = new Map<UpdateSink, number>();
+
+async function deliverUpdates(docId: string, sink: UpdateSink): Promise<void> {
+  const since = watermarks.get(sink) ?? 0;
+  const rows = (
+    await pool.query<{ seq: string; update: Buffer; editor_id: string }>(
+      `SELECT seq, update, editor_id FROM doc_updates
+        WHERE doc_id = $1 AND seq > $2 ORDER BY seq LIMIT 500`,
+      [docId, since],
+    )
+  ).rows;
+  if (!rows.length) return;
+  watermarks.set(sink, Math.max(since, ...rows.map((row) => Number(row.seq))));
+  sink(
+    rows.map((row) => ({
+      seq: Number(row.seq),
+      update: row.update.toString("base64"),
+      by: row.editor_id,
+    })),
+  );
+}
+
+/**
+ * Stream a page's CRDT updates to one reader as server-sent events. The
+ * reader says which seq it has; everything later comes as it lands, and a
+ * `: seq` comment carries the watermark so a reconnecting reader knows
+ * where to pick up. Returns a function that stops the stream.
+ */
+export async function streamDocUpdates(
+  reply: FastifyReply,
+  docId: string,
+  since: number,
+): Promise<() => void> {
+  await ensureListening();
+  const sink: UpdateSink = (updates) => {
+    try {
+      for (const row of updates)
+        reply.raw.write(`data: ${JSON.stringify(row)}\n\n`);
+    } catch {
+      // The reader is gone; its close handler stops the stream.
+    }
+  };
+  watermarks.set(sink, since);
+  const set = updateWatchers.get(docId) ?? new Set();
+  set.add(sink);
+  updateWatchers.set(docId, set);
+  // Anything the log already holds beyond the reader's watermark goes out
+  // first, so a page busy before the reader joined is caught up at once.
+  void deliverUpdates(docId, sink).catch(() => {});
+  const beat = setInterval(() => {
+    try {
+      const at = watermarks.get(sink) ?? 0;
+      reply.raw.write(`: seq ${at}\n\n`);
+    } catch {
+      // As above: the close handler ends things.
+    }
+  }, 25_000);
+  return () => {
+    clearInterval(beat);
+    watermarks.delete(sink);
+    const current = updateWatchers.get(docId);
+    current?.delete(sink);
+    if (current && current.size === 0) updateWatchers.delete(docId);
+  };
 }
 
 /**
@@ -177,5 +308,7 @@ export async function closeLive(): Promise<void> {
   const open = client;
   client = null;
   watchers.clear();
+  updateWatchers.clear();
+  watermarks.clear();
   await open?.end().catch(() => {});
 }

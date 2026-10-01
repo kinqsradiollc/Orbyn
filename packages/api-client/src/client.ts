@@ -2354,9 +2354,17 @@ export class OrbynClient {
   watchDoc(
     id: string,
     onChange: (version: number, news: DocNews) => void,
+    /** Set to also receive CRDT updates as they land (base64, in seq
+     * order). `seq` is the reader's watermark: pass it back as `since`
+     * when the stream reconnects, so nothing is served twice. */
+    onUpdate?: (update: string, seq: number, by: string) => void,
   ): () => void {
     const abort = new AbortController();
     let stopped = false;
+    // The reader's watermark in the page's CRDT log: every reconnect asks
+    // the server only for what came after this, and every update past it
+    // moves it on.
+    let lastSeq = 0;
     const run = async () => {
       // Reconnect with a widening gap, so a server that is down is not
       // hammered by every open tab at once.
@@ -2365,7 +2373,7 @@ export class OrbynClient {
         try {
           const token = await this.getToken();
           const response = await this.streamFetch(
-            `${this.baseUrl}/events/docs/${id}`,
+            `${this.baseUrl}/events/docs/${id}${onUpdate ? `?since=${lastSeq}` : ""}`,
             {
               headers: {
                 accept: "text/event-stream",
@@ -2419,7 +2427,17 @@ export class OrbynClient {
                   tags?: boolean;
                   fields?: boolean;
                   by?: string;
+                  // CRDT update rows carry their own shape: the binary
+                  // update as base64, its place in the log, and who wrote.
+                  update?: string;
+                  seq?: number;
                 };
+                if (payload.update !== undefined && onUpdate) {
+                  const seq = typeof payload.seq === "number" ? payload.seq : 0;
+                  if (seq > lastSeq) lastSeq = seq;
+                  onUpdate(payload.update, seq, payload.by ?? "");
+                  continue;
+                }
                 onChange(payload.version ?? 0, {
                   trashed: payload.trashed === true,
                   forgotten: payload.forgotten === true,
@@ -2445,6 +2463,26 @@ export class OrbynClient {
       stopped = true;
       abort.abort();
     };
+  }
+
+  /**
+   * Push one batch of CRDT updates for a page. The bytes are opaque here:
+   * they are Yjs updates the editors on each side make sense of. Sent with
+   * the editor id, so a reader can skip its own echo.
+   */
+  sendDocUpdates(id: string, updates: string[]): Promise<void> {
+    return this.request<void>(`/docs/${id}/updates`, {
+      method: "POST",
+      body: { updates },
+      headers: { "X-Orbyn-Editor": this.editorId },
+    });
+  }
+
+  /** The page's CRDT updates past `since`, oldest first, as base64. */
+  listDocUpdates(id: string, since: number) {
+    return this.request<{ updates: { seq: number; update: string }[] }>(
+      `/docs/${id}/updates?since=${since}`,
+    );
   }
 
   listLists() {

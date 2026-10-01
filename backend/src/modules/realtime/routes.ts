@@ -3,7 +3,7 @@ import { fail } from "@orbyn/core";
 import { pool, reader } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
-import { closeLive, streamDocChanges } from "../docs/live.js";
+import { closeLive, streamDocChanges, streamDocUpdates } from "../docs/live.js";
 import { closeLiveNews, streamLive } from "../presence/live.js";
 import { visibleDocs } from "../../lib/visibility.js";
 
@@ -63,23 +63,27 @@ async function docStream(
   r: FastifyRequest,
   reply: FastifyReply,
 ): Promise<FastifyReply> {
-  {
-    const u = await authenticate(r);
-    const id = idParam(r);
-    const doc = (
-      await reader(r.headers).query<{ id: string }>(
-        `SELECT d.id FROM docs d
-          WHERE d.id = $2 AND ${VISIBLE_DOC}`,
-        [u.id, id],
-      )
-    ).rows[0];
-    if (!doc) fail(404, "Document not found");
-    const editor =
-      typeof r.headers["x-orbyn-editor"] === "string"
-        ? r.headers["x-orbyn-editor"].slice(0, 64)
-        : "";
-    const stop = await streamDocChanges(reply, id, editor);
-    r.raw.on("close", stop);
-    return reply;
-  }
+  const u = await authenticate(r);
+  const id = idParam(r);
+  const doc = (
+    await reader(r.headers).query<{ id: string }>(
+      `SELECT d.id FROM docs d
+        WHERE d.id = $2 AND ${VISIBLE_DOC}`,
+      [u.id, id],
+    )
+  ).rows[0];
+  if (!doc) fail(404, "Document not found");
+  const editor =
+    typeof r.headers["x-orbyn-editor"] === "string"
+      ? r.headers["x-orbyn-editor"].slice(0, 64)
+      : "";
+  // One stream, two kinds of news: the version hint that makes an editor
+  // re-read, and — since the page went CRDT — the binary updates open
+  // editors merge as they land. A reader that sent `since` wants the
+  // update log too; older apps, which never do, are none the wiser.
+  const since = Number(r.query && (r.query as { since?: string }).since) || 0;
+  const stops: (() => void)[] = [await streamDocChanges(reply, id, editor)];
+  if (since > 0) stops.push(await streamDocUpdates(reply, id, since));
+  r.raw.on("close", () => stops.forEach((stop) => stop()));
+  return reply;
 }

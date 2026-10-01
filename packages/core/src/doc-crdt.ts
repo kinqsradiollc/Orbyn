@@ -39,7 +39,11 @@ const FIELDS = [
 
 type Field = (typeof FIELDS)[number];
 
-/** The id of each line, in page order. */
+/** The id of each line, in page order — creating it if absent. Only for
+ * local writes on a document that is already the page's own (seeded from
+ * the server's copy): a replica that creates containers before the first
+ * sync races the genesis update for the same root keys, and the loser's
+ * contents vanish. Reads go through `orderOf`'s read-only siblings. */
 const orderOf = (doc: Y.Doc): Y.Array<string> => {
   const root = doc.getMap("doc");
   let order = root.get(ORDER) as Y.Array<string> | undefined;
@@ -50,7 +54,13 @@ const orderOf = (doc: Y.Doc): Y.Array<string> => {
   return order;
 };
 
-/** Each line's own map, keyed by block id. */
+/** The page's order as it stands, or null when this document has none
+ * yet — what a pure reader (or a replica waiting for its seed) wants. */
+const orderView = (doc: Y.Doc): Y.Array<string> | null =>
+  (doc.getMap("doc").get(ORDER) as Y.Array<string> | undefined) ?? null;
+
+/** Each line's own map, keyed by block id — creating it if absent. As
+ * with `orderOf`: local writes on a seeded document only. */
 const blocksOf = (doc: Y.Doc): Y.Map<Y.Map<unknown>> => {
   const root = doc.getMap("doc");
   let blocks = root.get(BLOCKS) as Y.Map<Y.Map<unknown>> | undefined;
@@ -60,6 +70,10 @@ const blocksOf = (doc: Y.Doc): Y.Map<Y.Map<unknown>> => {
   }
   return blocks;
 };
+
+/** The lines as they stand, or null before the first seed. */
+const blocksView = (doc: Y.Doc): Y.Map<Y.Map<unknown>> | null =>
+  (doc.getMap("doc").get(BLOCKS) as Y.Map<Y.Map<unknown>> | undefined) ?? null;
 
 /**
  * The ids the server has been known to hold. A fold that stops sending an
@@ -278,11 +292,14 @@ export function loadBlocks(
 
 /**
  * A page's CRDT document back into the plain blocks the server stores.
+ * Reads nothing into the document: a viewer that has not been seeded yet
+ * simply sees an empty page, rather than racing the seed for the root.
  */
 export function yDocToBlocks(doc: Y.Doc): DocBlock[] {
-  const order = orderOf(doc);
-  const blocks = blocksOf(doc);
+  const order = orderView(doc);
+  const blocks = blocksView(doc);
   const out: DocBlock[] = [];
+  if (!order || !blocks) return out;
   for (const id of order) {
     const map = blocks.get(id);
     if (map) out.push(read(id, map));
@@ -296,7 +313,7 @@ export function yDocToBlocks(doc: Y.Doc): DocBlock[] {
  * line back, which would clobber whoever else was typing in it.
  */
 export function yTextOf(doc: Y.Doc, id: string): Y.Text | null {
-  const text = blocksOf(doc).get(id)?.get(TEXT);
+  const text = blocksView(doc)?.get(id)?.get(TEXT);
   return text instanceof Y.Text ? text : null;
 }
 
