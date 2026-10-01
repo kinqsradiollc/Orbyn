@@ -1,4 +1,26 @@
 import {
+  chatgptExecutorStart,
+  chatgptExecutorFinish,
+  chatgptExecutorChallenge,
+  chatgptExecutorEnrolled,
+  chatgptLeaseStart,
+  chatgptLeaseChallenge,
+  chatgptLeaseFinish,
+  chatgptExecutorLease,
+  chatgptLeaseRenewal,
+  chatgptCatalogPublication,
+  chatgptCatalogReceipt,
+  chatgptCatalogSelection,
+  chatgptCatalogRead,
+  chatgptCatalogDefaultUpdate,
+  chatgptModelPreference,
+  type ChatgptExecutorStart,
+  type ChatgptExecutorFinish,
+  type ChatgptLeaseStart,
+  type ChatgptLeaseRenewal,
+  type ChatgptCatalogPublication,
+  type ChatgptCatalogSelection,
+  type ChatgptCatalogDefaultUpdate,
   chatgptConnectionStart,
   chatgptConnectionFinish,
   chatgptConnectionChallenge,
@@ -1360,6 +1382,113 @@ export class OrbynClient {
     return chatgptConnection.parse(result);
   }
   /** Verified identity metadata for the signed-in person; no cached account catalog. */
+  /** Enroll the credential-owning device using public proof metadata only. */
+  async beginChatgptExecutor(
+    input: ChatgptExecutorStart,
+    signal?: AbortSignal,
+  ) {
+    return chatgptExecutorChallenge.parse(
+      await this.request<unknown>(
+        "/ai/connections/chatgpt/executors/challenges",
+        { method: "POST", body: chatgptExecutorStart.parse(input), signal },
+      ),
+    );
+  }
+  async finishChatgptExecutor(
+    input: ChatgptExecutorFinish,
+    signal?: AbortSignal,
+  ) {
+    return chatgptExecutorEnrolled.parse(
+      await this.request<unknown>(
+        "/ai/connections/chatgpt/executors/complete",
+        { method: "POST", body: chatgptExecutorFinish.parse(input), signal },
+      ),
+    );
+  }
+  async beginChatgptExecutorLease(
+    input: ChatgptLeaseStart,
+    signal?: AbortSignal,
+  ) {
+    return chatgptLeaseChallenge.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/leases/challenges", {
+        method: "POST",
+        body: chatgptLeaseStart.parse(input),
+        signal,
+      }),
+    );
+  }
+  async finishChatgptExecutorLease(
+    input: ChatgptExecutorFinish,
+    signal?: AbortSignal,
+  ) {
+    return chatgptExecutorLease.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/leases/complete", {
+        method: "POST",
+        body: chatgptLeaseFinish.parse(input),
+        signal,
+      }),
+    );
+  }
+  async renewChatgptExecutorLease(
+    input: ChatgptLeaseRenewal,
+    signal?: AbortSignal,
+  ) {
+    return chatgptExecutorLease.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/leases/heartbeat", {
+        method: "POST",
+        body: chatgptLeaseRenewal.parse(input),
+        signal,
+      }),
+    );
+  }
+  async publishChatgptModels(
+    input: ChatgptCatalogPublication,
+    signal?: AbortSignal,
+  ) {
+    return chatgptCatalogReceipt.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/catalog", {
+        method: "POST",
+        body: chatgptCatalogPublication.parse(input),
+        signal,
+      }),
+    );
+  }
+  /** Always refresh executor presence; a cached list cannot authorize a default. */
+  async chatgptModels(input: ChatgptCatalogSelection, signal?: AbortSignal) {
+    const selection = chatgptCatalogSelection.parse(input);
+    const query = new URLSearchParams(selection);
+    const result = chatgptCatalogRead.parse(
+      await this.request<unknown>(`/models?${query}`, { fresh: true, signal }),
+    );
+    if (
+      result.executor_id !== selection.executor_id ||
+      result.binding.connection_id !== selection.connection_id
+    )
+      throw new Error("The ChatGPT catalog selection changed.");
+    return result;
+  }
+  async selectChatgptDefault(
+    input: ChatgptCatalogDefaultUpdate,
+    signal?: AbortSignal,
+  ) {
+    const value = chatgptCatalogDefaultUpdate.parse(input);
+    const result = chatgptModelPreference.parse(
+      await this.request<unknown>("/models/default", {
+        method: "PUT",
+        body: value,
+        signal,
+      }),
+    );
+    if (
+      JSON.stringify(result.binding) !==
+        JSON.stringify(value.preference.binding) ||
+      result.version !== value.preference.version + 1 ||
+      result.model !== value.preference.model
+    )
+      throw new Error("The ChatGPT default response changed.");
+    return result;
+  }
+
   async chatgptConnections(signal?: AbortSignal) {
     return chatgptConnectionList.parse(
       await this.request<unknown>("/ai/connections/chatgpt", {

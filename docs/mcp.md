@@ -1154,4 +1154,4 @@ Catalog version: `2026-09-28`.
 - Report a security problem to the address in https://orbyn.dev/.well-known/security.txt. Please don't test against other people's accounts or data; we answer within three working days.
 - The developer page, with this catalog: https://orbyn.dev/developers/mcp.
 
-Routes: 271 of the app's signed-in routes are covered by tools, 239 are never for agents, and 0 are still to come.
+Routes: 271 of the app's signed-in routes are covered by tools, 247 are never for agents, and 0 are still to come.

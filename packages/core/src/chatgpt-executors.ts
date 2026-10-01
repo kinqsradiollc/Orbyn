@@ -68,3 +68,14 @@ export function chatgptCatalogSigningInput(value: unknown): string {
     chatgptExecutorCatalog.parse(value),
   ]);
 }
+
+/** Public completion metadata; the device key and credentials are never returned. */
+export const chatgptExecutorEnrolled = z
+  .object({
+    id: z.uuid(),
+    binding: chatgptModelBinding,
+    host_id: z.uuid(),
+    public_key_fingerprint: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+    enrollment_epoch: z.number().int().positive(),
+  })
+  .strict();

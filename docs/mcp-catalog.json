@@ -9549,5 +9549,5 @@
       ]
     }
   ],
-  "routes": { "covered": 271, "excluded": 239, "pending": 0 }
+  "routes": { "covered": 271, "excluded": 247, "pending": 0 }
 }
