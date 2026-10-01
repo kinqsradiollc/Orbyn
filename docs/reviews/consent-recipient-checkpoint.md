@@ -96,3 +96,14 @@ fixture uses a distinctive content marker and an explicit public slug containing
 All 18 publication checks passed after correction
 (`/tmp/orbyn-published-password-fixture-tests.log`). Publication production code
 is unchanged. A new frozen full-suite run is still required.
+
+The corrected-fixture full rerun ended with Node's `Unable to deserialize cloned
+data` error for `doc-editing.test.ts`; the log mixes serialized test bytes with
+request output (`/tmp/orbyn-plugin-discovery-full-rerun.log`). Its reported
+1,978 passes and one failure are not a complete passing suite. The isolated file
+passed 39/39. Service logging now explicitly uses `process.stdout` in Node test
+processes, avoiding raw file-descriptor writes into the runner's framed channel;
+production logging options are unchanged. The regression verifies writes reach
+the wrapper. Services plus Docs editing passed 44/44, backend typecheck passed:
+`/tmp/orbyn-test-stdout-wrapper-tests.log` and
+`/tmp/orbyn-test-stdout-wrapper-types.log`. A fresh full run remains required.
