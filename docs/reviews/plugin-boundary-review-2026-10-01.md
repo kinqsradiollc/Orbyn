@@ -206,7 +206,16 @@ and build passed. Evidence: /tmp/orbyn-plugin-execute-regressions.log,
 Main integration repeated all 74 checks successfully, and workspace typecheck
 and build passed. Evidence: `/tmp/orbyn-plugin-execute-main-regressions.log`,
 `/tmp/orbyn-plugin-execute-main-types.log`, and
-`/tmp/orbyn-plugin-execute-main-build.log`. Full-suite validation is pending.
+`/tmp/orbyn-plugin-execute-main-build.log`. Full-suite validation is pending. Image orbyn-plugin-execution:dda1804 built
+successfully. Its compiled service passed health/disabled-route/first-party
+isolation checks and an enabled smoke check of plugin OAuth identity, shared
+get_context reads, rejection of session credentials and two concurrent writes
+creating one task with a replayed receipt. The enabled check verified the test
+marker before seeding fixtures, then removed them. It used a separate marked
+database from the full suite. It did not contact a provider or prove OAuth
+issuance. Logs: /tmp/orbyn-plugin-execute-docker-build.log,
+/tmp/orbyn-plugin-execute-docker-smoke.log, and
+/tmp/orbyn-plugin-execute-docker-enabled-smoke.log.
 
 OAuth issuance remains MCP-only. This does not deliver plugin launch/resource
 UI, asynchronous events/reconnect cursors, host approval or provider inference.
