@@ -53,6 +53,7 @@ export * from "./agent-reports.js";
 export * from "./agent-inbox.js";
 export * from "./agent-context.js";
 export * from "./agent-settings.js";
+export * from "./assistant-rules.js";
 export * from "./character.js";
 export * from "./assistant-ideas.js";
 export * from "./goals.js";

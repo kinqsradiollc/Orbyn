@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   AGENT_BULK_LIMIT,
   agentToolVerb,
+  assistantRuleDecision,
+  type AssistantActionRule,
   type AgentAskFirst,
   type AgentOutcome,
   type ReviewChangeInput,
@@ -144,6 +146,33 @@ export function destination(
         : "This connection can only read your Personal space.",
       "Ask the person to allow changes, or make the change in Orbyn.",
     );
+  const actions: AssistantActionRule["action"][] = [
+    "any_change",
+    tier === "W1" ? "create" : tier === "W3" ? "delete_move_restore" : "edit",
+  ];
+  const effectAction: Record<Effect, AssistantActionRule["action"]> = {
+    email_outside: "email",
+    notify_member: "notify",
+    publish: "publish",
+    fetch_outside: "fetch",
+  };
+  for (const effect of effects) {
+    actions.push(effectAction[effect]);
+  }
+  const rule =
+    p.via === "assistant"
+      ? assistantRuleDecision(
+          p.assistant_rules ?? [],
+          p.assistant_lane ?? "interactive",
+          teamId,
+          actions,
+        )
+      : null;
+  if (rule === "deny")
+    throw new CapabilityError(
+      "FORBIDDEN",
+      "A reviewed assistant rule forbids this action in this space.",
+    );
   // Some effects are known only after resolving the arguments (event invites,
   // subscriptions and assignees). Night work must hold these even at full trust.
   if (
@@ -161,6 +190,11 @@ export function destination(
   if ((level === "suggest" || trust === "suggest") && !ctx.asking?.reviewed)
     return "review";
   const reasons: AskReason[] = [];
+  if (rule === "ask")
+    reasons.push({
+      kind: "every_change",
+      text: "a reviewed assistant rule requires your approval",
+    });
   const need = (kind: AgentAskFirst, text = ASK_WHY[kind]) => {
     if (!p.trust.acts_alone.includes(kind)) reasons.push({ kind, text });
   };

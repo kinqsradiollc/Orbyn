@@ -1,5 +1,9 @@
 import { ZodError, type z } from "zod";
-import { HttpError, type AgentOutcome } from "@orbyn/core";
+import {
+  HttpError,
+  assistantActionRules,
+  type AgentOutcome,
+} from "@orbyn/core";
 import { readTransaction, type Queryable } from "../db/pool.js";
 import { validationMessage } from "../lib/validation-message.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
@@ -323,6 +327,37 @@ export async function execute(
         }
       : undefined;
   const run = async (db: Queryable) => {
+    let currentPrincipal = p;
+    if (p.via === "assistant" && cap.mode !== "read") {
+      // The single locked grant row also serializes rule replacement, including
+      // newly inserted denies. A caller's stale snapshot is never authoritative.
+      const grant = (
+        await db.query<{ rules: unknown; revision: number }>(
+          `SELECT g.assistant_rules AS rules,g.assistant_rules_revision AS revision FROM agent_grants g
+         JOIN users u ON u.id=g.user_id AND NOT u.disabled
+         WHERE g.id=$1 AND g.user_id=$2 AND g.kind='assistant'
+           AND g.revoked_at IS NULL AND g.suspended_at IS NULL FOR SHARE OF g`,
+          [p.grant_id, p.user.id],
+        )
+      ).rows[0];
+      if (!grant)
+        throw new CapabilityError(
+          "FORBIDDEN",
+          "Your assistant is paused or unavailable.",
+        );
+      if (
+        p.assistant_rules_revision !== undefined &&
+        p.assistant_rules_revision !== grant.revision
+      )
+        throw new CapabilityError(
+          "FORBIDDEN",
+          "Assistant rules changed. Review the plan again.",
+        );
+      currentPrincipal = {
+        ...p,
+        assistant_rules: assistantActionRules.parse(grant.rules),
+      };
+    }
     if (grantId && clientRef) {
       replayed = await priorAnswer(db, grantId, name, clientRef);
       if (replayed)
@@ -335,7 +370,7 @@ export async function execute(
     }
     const prefs = await loadPrefs(db, p.user.id);
     const ctx: CapabilityContext = {
-      principal: p,
+      principal: currentPrincipal,
       db,
       now,
       timezone: prefs.timezone,
