@@ -210,6 +210,37 @@ test("failed handoff acknowledgment rejects done, waiting, unaccepted and cancel
   );
 });
 
+test("failed handoffs recheck producing access and unchecked receiving dependencies", async () => {
+  const owner = await person();
+  const first = await accepted(owner);
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Restricted producing evidence',true) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query("UPDATE ai_chats SET project_id=$2 WHERE id=$1", [
+    first.producing.chat,
+    project,
+  ]);
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    first.receiving.job,
+  ]);
+  assert.equal(
+    await acknowledgeFailedAssistantHandoff(owner, first.id, 3),
+    "access",
+  );
+  const second = await accepted(owner);
+  await pool.query(
+    "UPDATE ai_jobs SET state='failed',sources_checked=false WHERE id=$1",
+    [second.receiving.job],
+  );
+  assert.equal(
+    await acknowledgeFailedAssistantHandoff(owner, second.id, 3),
+    "access",
+  );
+});
+
 test("completion derives current receiving evidence and concurrent retries acknowledge once", async () => {
   const owner = await person();
   const { id, receiving } = await accepted(owner);
