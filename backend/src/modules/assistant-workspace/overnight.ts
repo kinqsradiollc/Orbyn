@@ -1,3 +1,5 @@
+import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import { visibleItems } from "../../lib/visibility.js";
 import { visibleNightLeftovers } from "../../lib/assistant-leftovers.js";
 import {
   assistantJobSourcesVisible,
@@ -82,7 +84,12 @@ function stepTitle(step: Record<string, unknown>): string {
     .map((value) => value.trim());
   return (names.length ? label + ": " + names.join("; ") : label).slice(0, 240);
 }
-async function runContext(db: Queryable, userId: string, row: RunRow) {
+/** Internal review state; callers must first enforce job and source visibility. */
+export async function assistantRunReview(
+  db: Queryable,
+  userId: string,
+  row: Pick<RunRow, "result" | "apply_result">,
+) {
   const result = object(object(row.result).assistant_run);
   const receipt = object(object(row.apply_result).structured);
   const rawProposal =
@@ -171,7 +178,7 @@ async function card(
         .digest("hex"),
     };
   }
-  const context = await runContext(db, userId, row);
+  const context = await assistantRunReview(db, userId, row);
   let status =
     object(object(row.result).assistant_run).outcome === "discarded"
       ? ("undone" as const)
@@ -220,7 +227,28 @@ async function card(
           detail: typeof waiting.detail === "string" ? waiting.detail : "",
         }
       : null;
+  const reflectionSources =
+    row.kind === "reflection"
+      ? (
+          await db.query<{
+            number: number;
+            kind: "chat" | "task";
+            id: string;
+            title: string;
+          }>(
+            `SELECT r.position AS number,CASE WHEN r.source_kind='job' THEN 'chat' ELSE 'task' END AS kind,
+      coalesce(c.id,i.id) AS id,coalesce(c.title,i.title) AS title
+     FROM assistant_reflection_receipts r
+     LEFT JOIN ai_chats c ON r.source_kind='job' AND c.id=r.source_chat_id AND ${assistantChatVisible("c", "$1")}
+     LEFT JOIN items i ON r.source_kind='task' AND i.id=r.source_id AND ${visibleItems("i", { user: "$1", ai: true })}
+     WHERE r.user_id=$1 AND r.reflection_job_id=$2 AND (c.id IS NOT NULL OR i.id IS NOT NULL)
+     ORDER BY r.position`,
+            [userId, row.job_id],
+          )
+        ).rows
+      : undefined;
   const result = {
+    ...(reflectionSources ? { reflection_sources: reflectionSources } : {}),
     approval,
     question,
     id: row.id,
@@ -289,7 +317,7 @@ async function keep(
   if (row.state !== "done")
     fail(409, "This run is not finished. Open its chat to answer or stop it.");
   if (row.status === "undone") fail(409, "This run was already undone.");
-  const context = await runContext(db, user.id, row);
+  const context = await assistantRunReview(db, user.id, row);
   if ((input.only || input.steps) && context.proposal?.status !== "pending")
     fail(409, "This proposal was already decided.");
   if (context.proposal)
@@ -310,7 +338,7 @@ async function undo(db: Db, user: UserRow, id: string, selected?: string[]) {
   const row = await requireRun(db, user.id, id, true);
   if (row.state !== "done" && row.state !== "failed")
     fail(409, "This run is still active. Open its chat to stop it.");
-  const context = await runContext(db, user.id, row);
+  const context = await assistantRunReview(db, user.id, row);
   if (row.status === "undone" && !selected) return [];
   const after: (() => Promise<void>)[] = [];
   if (context.proposal?.status === "pending") {

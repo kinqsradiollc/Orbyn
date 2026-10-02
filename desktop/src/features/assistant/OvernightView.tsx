@@ -262,6 +262,26 @@ function RunCard({
       <p className="overnight-summary">
         {run.summary || "Open the chat to see its progress."}
       </p>
+      {!!run.reflection_sources?.length && (
+        <section aria-label="Reflection sources">
+          <h4>Sources</h4>
+          <div className="overnight-sources">
+            {run.reflection_sources.map((source) => (
+              <button
+                className="secondary"
+                key={source.number}
+                onClick={() =>
+                  source.kind === "chat"
+                    ? onOpenChat(source.id)
+                    : onOpen("task", source.id)
+                }
+              >
+                {source.number}. {source.title}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {run.approval && (
         <section aria-label="Approval from your assistant">
           <p>{run.approval.text}</p>

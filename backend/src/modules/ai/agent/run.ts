@@ -1,3 +1,8 @@
+import {
+  reflectionEvidence,
+  reflectionSources,
+  type ReflectionSource,
+} from "./reflection.js";
 import { randomUUID } from "node:crypto";
 import { notifyAssistantAway } from "./notices.js";
 import { recordNightRun } from "./night-status.js";
@@ -77,6 +82,7 @@ export type AssistantAutomation = {
   kind: "idea" | "goal" | "routine" | "task" | "night";
   night_id?: string;
   night_kind?: string;
+  reflection_sources?: ReflectionSource[];
   source_kind?: "task" | "goal" | "routine";
   wait_for_ok?: boolean;
   token_budget?: number;
@@ -348,6 +354,8 @@ async function currentWriteAuthority(
   request: PersistedChatRequest,
 ) {
   await currentNightConsent(db, user.id, request, true);
+  if (request.automation?.night_kind === "reflection")
+    fail(409, "Reflection suggestions require a separate reviewed request.");
   const grant = (
     await db.query<{
       trust: string;
@@ -1128,6 +1136,8 @@ async function approvePlan(
   reviewed: boolean,
   request: PersistedChatRequest,
 ) {
+  if (request.automation?.night_kind === "reflection")
+    fail(409, "Reflection suggestions require a separate reviewed request.");
   const receipt = (
     await pool.query<{ apply_result: unknown }>(
       "SELECT apply_result FROM ai_jobs WHERE id = $1 AND user_id = $2",
@@ -1494,14 +1504,33 @@ export async function runAssistantJob(
     principal = await principalFor(user, request);
     const recordSources = (value: unknown, targets?: string[]) =>
       recordAssistantSources(jobId, user.id, value, targets);
+    const reflecting = request.automation?.night_kind === "reflection";
+    const evidenceSources = reflecting
+      ? reflectionSources.parse(request.automation?.reflection_sources ?? [])
+      : [];
+    const evidence = reflecting
+      ? await reflectionEvidence(pool, user.id, evidenceSources)
+      : [];
+    if (
+      reflecting &&
+      (!evidenceSources.length || evidence.length !== evidenceSources.length)
+    )
+      throw new Error(
+        "The evidence for this reflection changed or is no longer available.",
+      );
+    if (reflecting) await recordSources(evidence);
     const prepared = await contextFor(user, request, recordSources);
-    await recordSources([
-      scoped ?? prepared.snapshot,
-      request.automation,
-      request.scope,
-    ]);
+    const snapshot = reflecting
+      ? {
+          reflection_evidence: evidence.map((entry, index) => ({
+            number: index + 1,
+            ...entry,
+          })),
+        }
+      : (scoped ?? prepared.snapshot);
+    await recordSources([snapshot, request.automation, request.scope]);
     envelope.state.memory = prepared.memory;
-    envelope.state.context = scoped ?? prepared.snapshot;
+    envelope.state.context = snapshot;
     const currentMessage = envelope.state.answer_to_person || request.message;
     await markTask(jobId, request, "working");
     await saveProgress(jobId, envelope, {
@@ -1533,8 +1562,9 @@ export async function runAssistantJob(
             context: prepared.context,
             recordSources,
             allowChanges:
-              isAutomation(request, "idea") ||
-              mayChange(envelope.state.original_request),
+              !reflecting &&
+              (isAutomation(request, "idea") ||
+                mayChange(envelope.state.original_request)),
             log,
             trace: trace.record,
             progress: (label, event) => {
@@ -1554,6 +1584,18 @@ export async function runAssistantJob(
             },
             signal: controller.signal,
             checkpoint: async () => {
+              if (reflecting) {
+                await currentNightConsent(pool, user.id, request);
+                const current = await reflectionEvidence(
+                  pool,
+                  user.id,
+                  evidenceSources,
+                );
+                if (current.length !== evidenceSources.length)
+                  throw new Error(
+                    "The evidence for this reflection changed or is no longer available.",
+                  );
+              }
               await saveProgress(jobId, envelope, {
                 label: "Working on your request",
                 step: envelope.state.lead_steps,
@@ -1563,6 +1605,19 @@ export async function runAssistantJob(
           });
       fallback = result.state.answer ?? "";
       if (result.state.waiting) {
+        if (reflecting) {
+          const question = result.state.waiting.question;
+          result.state.waiting = null;
+          await trace.flush();
+          await finishJob(
+            jobId,
+            user,
+            request,
+            result.state,
+            `${result.state.answer ?? "Reflection needs your input."}\n\nOpen question: ${question}`,
+          );
+          return;
+        }
         if (isAutomation(request, "idea")) {
           result.state.waiting = null;
           await trace.flush();

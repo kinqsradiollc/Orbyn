@@ -12,6 +12,7 @@ export function assistantJobSourcesVisible(
     AND NOT EXISTS(SELECT 1 FROM assistant_job_sources dependency WHERE dependency.job_id=${job}.id AND NOT ${assistantSourceVisible("dependency.source_kind", "dependency.source_id", user, false)}))`;
 }
 const kinds: Record<string, string> = {
+  chat: "chat",
   task: "task",
   event: "task",
   item: "task",
