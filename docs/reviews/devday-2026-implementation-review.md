@@ -1,5 +1,22 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Latest qualified checkpoint — 2 October 2026
+
+PR #146 is merged as **c9b6c78** from **0033a96**, base **7c08aa6**. Cached
+assistant results bind current authority and recheck current producer/source and
+target access using the effective grant scope. Full local tests passed2,176/2,176,
+with all workspace types/build/full-format and all CI37003294826 jobs successful.
+CI backend passed2,175 with one Tesseract skip and zero failures. Candidate,
+CI mergecd57b95 and main have identical tree0d1f05994b7ed460131fe2e16ba9d3ad4ce59222.
+User changes and character work are preserved; no deployment or cleanup occurred.
+
+The complete C1–C6/M1/D1/U1 contract below remains active. Cached-result nested
+dependency closure, original provider-read revisions/concurrency and other
+persisted fast paths still require work. Source completed-draft replay follow-up
+is not included in this merge. Agent ownership/editor, read/effect/notice policy,
+budgets/collaboration, actual models/defaults/execution/providers/embeddings,
+plugin host acceptance and all Docs/Mermaid/whole-app/mobile gates remain open.
+
 ## Current checkpoint map — 2 October 2026
 
 This map updates delivery evidence without reducing the full contract below.

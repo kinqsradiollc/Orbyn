@@ -191,3 +191,29 @@ UI gates remain required. Preserve Orbyn palette and characters. Saved web
 preview denial remains respected; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope; the full ADR goal remains active.
+
+### Qualified cached assistant result checkpoint — 2 October 2026
+
+PR #146 merged as main **c9b6c78**, from frozen **0033a96** on unchanged base
+**7c08aa6**. Assistant cached write results bind to current effective authority
+and recheck producing job/container/source access, grant-scoped source visibility
+and typed targets/structured links across the32 produced receipt families. A held
+result does not repeat the mutation; restoring target access can return the
+original answer. Ordinary connector replay remains unchanged.
+
+Exact candidate local full suite passed **2,176/2,176**, zero failures, skips or
+cancellations,556,169ms. All workspace types, production builds and full formatting
+passed. All CI **37003294826** jobs succeeded; backend passed2,175 with one
+Tesseract-dependent skip and zero failures. CI merge **cd57b95**, candidate and
+resulting main have identical tree **0d1f05994b7ed460131fe2e16ba9d3ad4ce59222**.
+Local main fast-forward preserved user mobile/app.json and unrelated files.
+
+This checkpoint does not complete replay security or the full ADR. Original
+provider-read revisions, nested dependency closure, concurrent source fences and
+other persisted result paths remain open. Completed document draft replay is a
+separate source follow-up, not in this merge. Receiving handoffs/budgets, typed
+read/effect/notice policy, owner/editor UX, actual models/defaults/execution,
+providers/embeddings, separate plugin host acceptance, complete Docs/Mermaid and
+whole-app web/desktop/mobile acceptance remain required. Preserve palette and
+characters. No deployment or cleanup occurred; voice/computer-use product
+features and the speculative Decisions adapter remain excluded.
