@@ -16,6 +16,38 @@ web/desktop and mobile remain in scope.
 | Settings/embedding/Docs source                           | Local model/Docs worktree                                                                     | Settings redesign, headings/fences and embedding lifecycle work remain distinct unmerged checkpoints. Web build passed locally; preview permission still blocks visual acceptance. Earlier frozen embedding suite evidence remains scoped to its own source.                                                                                      |
 | Broad ADR                                                | Active, incomplete                                                                            | Agent rules/ownership/activity/budgets, bound and published pages, Slack/Teams, full Markdown parity, composer/actual inference and cross-client UI acceptance remain deliverables. Existing foundations do not prove these complete.                                                                                                             |
 
+### Runtime and reflection update — 2 October 2026
+
+- **Merged runtime isolation:** PR #135, main `c1b3ffa`. Migration 206 assigns
+  immutable interactive/background/overnight lanes; separate Background and
+  Overnight services own their claims, concurrency, readiness and shutdown.
+  Notifier fallback rejects automation instead of collapsing both into one
+  process. Exact candidate `e6f6376` passed 2,091/2,091 full local tests and all
+  CI jobs. Process tests exercised independent restart/recovery and idle workers.
+- **Merged Memory safeguard:** PR #136, main `3677d53`. Generated automation
+  conversations cannot enter automatic personal Memory extraction. Source owner,
+  person origin and access are checked at enqueue/extraction/write boundaries.
+  Exact candidate `0392e92` passed 2,094/2,094 full local tests and all CI jobs.
+- **Reflection candidate:** draft PR #137, `codex/overnight-reflection`, current
+  head `b29f454`, based on main `3677d53`. Explicit consent, bounded current source
+  evidence, durable revision receipts, read-only reflection and numbered source
+  links exist on both clients. Initial candidate `8535357` passed 2,104/2,104 full
+  local tests and production build/types/format. Follow-up removes misleading
+  change-review controls from reflections, rejects their keep/undo operations,
+  and distinguishes Queued from Working. Focused review tests passed 13/13;
+  full types/build/format passed and the final full suite/CI are in progress.
+  Native source navigation and compact long-label wrapping were observed with
+  synthetic fixtures. Long-content scrolling and web/mobile-web visual gates
+  remain open. This is not merged or deployed.
+- **Remaining agent scope:** truthful separate profiles/workspaces, durable
+  authorized Daytime/Overnight handoffs, typed rules, ownership/activity/budgets
+  and the complete cross-client surface ledger remain required. Shared storage
+  and a saved reflection do not prove collaboration is implemented.
+
+Latest precise process handles, logs and outstanding gates are recorded in
+`docs/reviews/task.md` on the model/Docs implementation branch. No passing subset
+or historical result completes the broader delivery contract.
+
 A main full-suite run on frozen code `986e77f` passed all 2,014 tests, with no
 failures, skips or cancellations, and exited successfully. It used only the
 marked disposable test database. Evidence:
@@ -353,14 +385,14 @@ not stop the other. Production must not silently collapse them into the current
 all-jobs runner or notifier fallback. Show when the required worker is unavailable
 rather than presenting queued work as an active run.
 
-**Current source evidence:** `backend/src/modules/ai/agent/runner.ts` claims all
-queued durable jobs through one loop and one global eight-slot budget. The AI
-routes start that runner; `backend/src/worker/index.ts` can start the same runner
-through `AI_RUNNER_IN_WORKER`. Night jobs carry `automation.kind = 'night'`,
-`night_id` and `source_kind` in `backend/src/worker/night-shift.ts`. Existing web
-`OvernightView` and native `OvernightSheet` provide a review surface, but do not
-establish execution isolation or a separate background workspace. This is an
-identified implementation gap, not a completed feature.
+**Current source evidence:** main `c1b3ffa` (PR #135) now classifies jobs into
+immutable interactive/background/overnight lanes and starts dedicated automation
+services. The original single-loop/eight-slot and notifier-fallback gap is closed
+by that checkpoint, with independent-process recovery tests. Existing web
+`OvernightView` and native `OvernightSheet` remain the morning review surfaces.
+Separate background workspaces/profiles and durable collaboration are still
+implementation gaps; runtime isolation alone does not complete their UI or
+handoff contract.
 
 **Collaboration contract:**
 
