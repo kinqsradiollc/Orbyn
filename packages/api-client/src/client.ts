@@ -2311,9 +2311,18 @@ export class OrbynClient {
   /**
    * A page as a file to keep. Comes back as a blob with the name the server
    * chose, so every client saves the same file under the same name.
+   * An expected version rejects concurrent changes rather than silently exporting another revision.
    */
-  async exportDoc(docId: string, format: ExportFormat) {
-    const response = await this.raw(`/docs/${docId}/export?format=${format}`);
+  async exportDoc(
+    docId: string,
+    format: ExportFormat,
+    options: { version?: number } = {},
+  ) {
+    const revision =
+      options.version === undefined ? "" : `&version=${options.version}`;
+    const response = await this.raw(
+      `/docs/${docId}/export?format=${format}${revision}`,
+    );
     const disposition = response.headers.get("content-disposition") ?? "";
     const named = /filename="([^"]+)"/.exec(disposition)?.[1];
     return { blob: await response.blob(), name: named ?? `document.${format}` };

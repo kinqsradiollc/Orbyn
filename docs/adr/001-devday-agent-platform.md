@@ -311,3 +311,17 @@ must show the same timing and pause details alongside their existing activity en
 No fake running states, always-on promise or completed reflection claim is introduced.
 Code tests establish content and ordering, not screenshot acceptance. The user's
 test-server web review and native visual acceptance remain open.
+
+### Saved-revision export API checkpoint — 3 October 2026
+
+Optional expected document versions protect file exports against concurrent
+changes. Check visibility first, then return409 for any format at a different
+saved revision. Invalid versions use the established422 schema response. Shared
+clients carry the revision and never silently retry against a newer one.
+Unversioned callers keep their existing behavior. The isolated candidate passes
+17 export API checks, one real client check, all workspace types and production
+builds. Exact-head CI remains required before merging this checkpoint.
+
+This is API foundation only: both editors still need explicit save-success and
+offline/failure handling, revision capture and all share-path integration.
+Rendered PDF, publication, native sharing and whole D1/U1 acceptance remain open.
