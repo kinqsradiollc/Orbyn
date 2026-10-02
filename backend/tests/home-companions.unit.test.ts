@@ -157,7 +157,7 @@ for (const mobile of [false, true]) {
     assert.match(html, /Background/);
     assert.match(html, /delegated tasks, results, and questions/);
     assert.match(html, /Overnight/);
-    assert.match(html, /last night’s work/);
+    assert.match(html, /queued night work/);
     assert.doesNotMatch(html, /Working now|Active now|Reflection complete/);
     view.cleanup();
   });

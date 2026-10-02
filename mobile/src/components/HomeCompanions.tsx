@@ -55,7 +55,7 @@ export function HomeCompanions({
             {identity?.name ?? "Your companion"}
           </Text>
           <Text style={shared.small}>
-            Change its name and appearance in assistant settings.
+            Choose its name and appearance in assistant settings.
           </Text>
         </View>
       </View>
@@ -72,11 +72,11 @@ export function HomeCompanions({
       <View style={{ gap: 10 }}>
         <Text style={shared.small}>
           <Text style={shared.sectionTitle}>Background</Text>
-          {"\n"}Return to delegated tasks, results, and questions that need you.
+          {"\n"}Check delegated tasks, results, and questions that need you.
         </Text>
         <Text style={shared.small}>
           <Text style={shared.sectionTitle}>Overnight</Text>
-          {"\n"}Review the last night’s work and what’s still unfinished.
+          {"\n"}Review queued night work and what’s still unfinished.
         </Text>
       </View>
       <Button
