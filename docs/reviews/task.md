@@ -2093,3 +2093,27 @@ Home13e7e8a CI37029683489 remains live with three successful jobs and backend
 full tests pending. Session PR152 also needs the known full-week estimate
 fixture cherry-pick so its main-based full CI can qualify deterministically.
 Do not forget qualified main checkpoints once CI is green.
+
+Source/preview UI increment: desktop DocSourcePreview uses a focus-contained
+native dialog with responsive source/rendered columns, live parent blocks,
+read-only source and mapped caret/block selection. Escape closes only this
+view and restores the opener. Mobile uses the shared Sheet and a source/preview
+toggle; selecting source opens the corresponding rendered block. Opening it
+flushes the current native line through existing syncDraft, never a second
+save path. This is inspection, not a raw-source editing implementation.
+Seven mapping/actual component tests pass; both clients' typechecks and the
+production desktop build pass. No web screenshot or native interaction
+acceptance is claimed. Full automatic scroll synchronization, source editing
+semantics and source/preview external/heading-link interactions still need
+qualification; D1 and whole U1 remain incomplete.
+
+Home13e7e8a CI37029683489 failed agent-writes.test.ts's plan_schedule fixture:
+its UPDATE planner_prefs affected zero rows for a new user, leaving weekday
+capacity in effect. Fixture now INSERTs/UPSERTs the intended all-week hours.
+Focused agent-write13/13 passes. Committed03d7cbc on session PR152,
+1eebf04 on Home PR150,195db39 on source PR148,5b6d9e9 on reference PR151,
+ad658be on preview branch. All source reconciliation was conflict-free.
+Remote reference pushes were transiently rejected twice; retry succeeded and
+latest remote5b6d9e9 must be inspected for new CI. Earlier5a058be CI also failed;
+read its failure log/tmp/orbyn-reference-first-ci-failed.log before concluding
+this fixture was its only cause. Main remainsad90e4b. No merge/deploy/cleanup.

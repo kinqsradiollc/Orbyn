@@ -93,6 +93,7 @@ import {
   type ExportFormat,
   type UndoStack,
 } from "@orbyn/core";
+import { DocSourcePreview } from "./DocSourcePreview";
 import { DocBody } from "./DocBody";
 import { DocNavigationContext } from "./doc-navigation";
 import { openAppUrl } from "../../hooks/useAppLinks";
@@ -281,6 +282,7 @@ export function DocEditor({
   /** Where each line sits in the body, and where "Linked here" is. */
   const lineYs = useRef(new Map<number, number>());
   const linkedY = useRef<number | null>(null);
+  const [sourcePreview, setSourcePreview] = useState(false);
   const [contentsOpen, setContentsOpen] = useState(false);
   useEffect(() => {
     bodyOffset.current = null;
@@ -2381,6 +2383,13 @@ export function DocEditor({
     { label: "Ask about this page", onPress: () => setTalking(true) },
     { label: "Present", onPress: () => setPresenting(true) },
     {
+      label: "Source / preview",
+      onPress: () => {
+        syncDraft();
+        setSourcePreview(true);
+      },
+    },
+    {
       label: pageStarred ? "Unstar" : "Star",
       onPress: () => toggleStar(),
     },
@@ -2521,6 +2530,12 @@ export function DocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <View style={styles.page}>
+        {sourcePreview && (
+          <DocSourcePreview
+            blocks={blocks}
+            onClose={() => setSourcePreview(false)}
+          />
+        )}
         {/* The page's header holds only Back, its title, Info and ⋯. */}
         {headerSlot && (
           <SlotFill slot={headerSlot}>

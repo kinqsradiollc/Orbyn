@@ -138,6 +138,7 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
+import { DocSourcePreview } from "./DocSourcePreview";
 import { DocNavigationContext } from "./doc-navigation";
 import { docCrdtEnabled, useDocYjs } from "./useDocYjs";
 import { liveListChoices } from "../views/LiveList";
@@ -446,6 +447,7 @@ export function DocEditor({
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   /** The Info rail beside the page (NAV-04); it takes the margin's place. */
+  const [sourcePreview, setSourcePreview] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   /** Who else is here; opening the page tells the server this device is. */
   const viewers = useDocViewers(doc.id);
@@ -2921,6 +2923,12 @@ export function DocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <div className="doc-editor">
+        {sourcePreview && (
+          <DocSourcePreview
+            blocks={blocks}
+            onClose={() => setSourcePreview(false)}
+          />
+        )}
         <div className="doc-bar">
           {onBack && (
             <button className="text-button" onClick={onBack}>
@@ -2946,6 +2954,12 @@ export function DocEditor({
             </span>
           )}
           <span className="doc-bar-actions">
+            <button
+              className="text-button"
+              onClick={() => setSourcePreview(true)}
+            >
+              Source / preview
+            </button>
             <DocModeSwitch
               mode={mode}
               canWrite={canWrite}
