@@ -1681,3 +1681,19 @@ pinning these to validated Orbyn surfaces fixes visible string/title contrast.
 Final combined cohort10310 terminal zero:26/26; mobile/backend types passed.
 State/ER screenshots added. Remaining six families, themes/platforms and full
 Docs/UI acceptance remain open. Main documentation checkpointc30c5fc pushed.
+
+## Current reconciliation handoff — 2 October 2026
+
+Mainc30c5fc pushed records fully qualified PR147. Source41aa5cb pushed, preserving
+only two unrelated untracked settings preview helpers. Mermaid fixesdc5a2c8 and
+current-main reconciliation7026041 committed; canonical ADR records actual native
+proof and remaining gates. Old plan dirt untouched.
+
+Docs branch nowd4ad16c reconciles orig/mainc30c5fc without conflicts. Exactly16
+Docs/navigation/render files differ from main; no unrelated feature code. Focused
+cohort passed23/23 (/tmp/orbyn-docs-d4ad16c-focused.log). Workspace typechecks and
+subsequent branch push23618 are live; resume SAME handle. Do not claim successful
+push or combined qualification until terminal. Previous93ad2e2 full2184/2184 and
+CI37005022002 success do not qualify changed d4ad16c. Native simulator currently
+shows corrected ER fixture; controlledsource Metro8088/API8028 continue. Saved
+browser denial still unresolved; do not bypass it. Full ADR remains active.
