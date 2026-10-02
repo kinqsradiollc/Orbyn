@@ -712,3 +712,52 @@ test("persistent chat source gates survive execution job retention and typed del
     missingProject,
   );
 });
+
+test("reflections stay read-only while bulk review handles the night's actual changes", async () => {
+  const me = await person();
+  const fixture = await held(me);
+  const job = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,state,sources_checked) VALUES($1,'done',true) RETURNING id",
+      [me.id],
+    )
+  ).rows[0].id;
+  const reflection = (
+    await pool.query(
+      "INSERT INTO assistant_night_runs(night_id,job_id,kind,summary,status) VALUES($1,$2,'reflection','Evidence-grounded review','kept') RETURNING id",
+      [fixture.night, job],
+    )
+  ).rows[0].id;
+  for (const action of ["keep", "undo"]) {
+    assert.equal(
+      (
+        await h.call(
+          me.token,
+          "POST",
+          `/me/assistant/nights/runs/${reflection}/${action}`,
+          {},
+        )
+      ).statusCode,
+      409,
+    );
+    const snapshot = (
+      await h.call(me.token, "GET", `/me/assistant/nights/${fixture.night}`)
+    ).json();
+    const run = snapshot.runs.find(
+      (entry: { id: string }) => entry.id === fixture.run,
+    );
+    const result = await h.call(
+      me.token,
+      "POST",
+      `/me/assistant/nights/${fixture.night}/${action}-all`,
+      { runs: [{ id: run.id, token: run.decision_token }] },
+    );
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(
+      result
+        .json()
+        .runs.find((entry: { id: string }) => entry.id === reflection).status,
+      "kept",
+    );
+  }
+});
