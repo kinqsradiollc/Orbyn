@@ -204,7 +204,7 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
     switch (block.type) {
       case "heading": {
         closeList();
-        const level = block.level + 1;
+        const level = block.level;
         const id = o.anchors ? ` id="h-${index}"` : "";
         body.push(
           `<h${level}${id}>${inlineHtml(block.text, opts)}</h${level}>`,
