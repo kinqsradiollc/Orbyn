@@ -1186,3 +1186,18 @@ external effects, durable budgets/reservations, receiving handoff authorization
 and dispatch/recovery, actual model/executor and plugin acceptance, full Docs
 parity, and whole-app web/mobile/native UI verification. The full ADR remains
 active; voice/computer-use product features and speculative Decisions stay excluded.
+
+The initial combined candidate **fc82170** completed its full local run:
+**2,130 passed / 11 failed**, zero skips/cancellations, 555,674 ms. Types, build
+and formatting passed; CI **36993742889** finished failed. All eleven local
+failures were legacy Overnight test fixtures constructing new built-in proposals
+without the required guard/job evidence. No qualification run was restarted or
+candidate changed before local and CI terminal results.
+
+Source **d8bf8d5** corrects those fixtures to create an owned chat and actual
+Overnight job before filing the proposal, with server-equivalent lane/rule/action
+checks and the producing identity. The protection stays intact. Source dedicated
+checks passed **27/27**; scoped candidate cherry-pick **a610406** applied cleanly
+and passed **55/55** combined Overnight/review/rules/whole-plan/agent-write checks,
+zero failure/skip/cancellation. The corrected combined tree must finish a fresh
+full local run and CI before merge. No release/deployment/cleanup occurred.
