@@ -1,5 +1,22 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Latest qualified checkpoint — 2 October 2026
+
+PR #146 is merged as **c9b6c78** from **0033a96**, base **7c08aa6**. Cached
+assistant results bind current authority and recheck current producer/source and
+target access using the effective grant scope. Full local tests passed2,176/2,176,
+with all workspace types/build/full-format and all CI37003294826 jobs successful.
+CI backend passed2,175 with one Tesseract skip and zero failures. Candidate,
+CI mergecd57b95 and main have identical tree0d1f05994b7ed460131fe2e16ba9d3ad4ce59222.
+User changes and character work are preserved; no deployment or cleanup occurred.
+
+The complete C1–C6/M1/D1/U1 contract below remains active. Cached-result nested
+dependency closure, original provider-read revisions/concurrency and other
+persisted fast paths still require work. Source completed-draft replay follow-up
+is not included in this merge. Agent ownership/editor, read/effect/notice policy,
+budgets/collaboration, actual models/defaults/execution/providers/embeddings,
+plugin host acceptance and all Docs/Mermaid/whole-app/mobile gates remain open.
+
 ## Current checkpoint map — 2 October 2026
 
 This map updates delivery evidence without reducing the full contract below.
@@ -1345,3 +1362,31 @@ UI gates remain required. Preserve Orbyn palette and characters. Saved web
 preview denial remains respected; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope; the full ADR goal remains active.
+
+### Cached assistant result authority and targets — reviewed candidate, 2 October 2026
+
+Extracted only backend replay and scoped visibility code/tests from source
+c237cfb/afd8160 onto main7c08aa6, preserving current character and application
+work. Cached assistant results bind effective owner/grant/lane/job/scope/team
+role/policy/toolset/flags/trust/rule evidence. Changed or legacy-unbound authority
+holds the answer without repeating the mutation. Current producing work/container
+and recorded dependencies use effective caller scope. Typed targets and structured
+resource links recheck current visibility across the32 produced receipt families;
+synthetic receipts retain their intended Personal/team behavior. Names and set
+ordering do not change the digest. Restored access permits the original retry.
+
+Seven initial authority/producing-source regressions and two later target/scope
+regressions failed before correction. Source focused cohort passed98/98, backend
+types and scoped formatting/diff passed. Combined-CASE diagnostic was stopped for
+measured planning cost; bounded per-family queries passed persistent positive/
+foreign-owner fixtures and synthetic/team/link cases. Candidate is frozen for
+fresh full local suite, all workspace types/build/full format and current-head CI.
+Source results alone do not qualify this candidate for promotion.
+
+Original provider-read versions, nested dependency closure, concurrent source
+fences and other persisted replay paths remain open. This does not complete
+read/effect/notice policy, ownership/editor, receiving handoffs/reservations,
+real account-specific model defaults/execution, provider/embedding choices,
+plugin host acceptance, Docs/Mermaid or whole-app web/desktop/mobile UI gates.
+Preserve Orbyn palette/characters; no public rule editor, deployment or cleanup.
+The complete M1/D1/U1 and C1–C6 ADR acceptance remains active.
