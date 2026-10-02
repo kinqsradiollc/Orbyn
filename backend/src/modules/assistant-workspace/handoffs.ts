@@ -11,6 +11,7 @@ import { transaction, type Queryable } from "../../db/pool.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantRunReview } from "./overnight.js";
+import { assistantSourceRevision } from "../../lib/assistant-source-revision.js";
 
 /** Current producer evidence, never an authorization grant for receiving work. */
 export async function handoffProducerEvidence(
@@ -30,7 +31,7 @@ export async function handoffProducerEvidence(
     }>(
       `SELECT j.id,j.runtime_lane,c.title,j.result,j.apply_result,
         jsonb_build_object('chat_id',c.id,'project_id',c.project_id,'scope_kind',c.scope_kind,'scope_id',c.scope_id) AS container,
-        coalesce((SELECT jsonb_agg(jsonb_build_array(d.source_kind,d.source_id) ORDER BY d.source_kind,d.source_id)
+        coalesce((SELECT jsonb_agg(jsonb_build_array(d.source_kind,d.source_id,${assistantSourceRevision("d.source_kind", "d.source_id")}) ORDER BY d.source_kind,d.source_id)
           FROM assistant_job_sources d WHERE d.job_id=j.id),'[]'::jsonb) AS dependencies
     FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
     JOIN users u ON u.id=j.user_id AND NOT u.disabled

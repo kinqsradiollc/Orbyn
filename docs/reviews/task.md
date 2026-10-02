@@ -1316,3 +1316,39 @@ claimed, Simulator remains on Contents. Source models/settings Docs and whole
 app/mobile parity, typed agent ownership/editor/read/effect enforcement, reviewed
 source revisions, budgets and receiving handoff dispatch remain substantive
 unfinished requirements. Goal remains active; no deployment/cleanup.
+
+## Handoff dependency revision fences — 2 October 2026
+
+Source handoff evidence previously hashed dependency IDs only: editing a cited
+doc/task or team after a reviewed request did not change its producer revision.
+Added current dependency revision digest, alongside existing current visibility.
+Versioned rows use optimistic revision; non-versioned rows use SHA-256 row
+content, excluding read/poll timestamps. Source rows are held FOR SHARE through
+request/acknowledgement transactions to prevent edits between evidence check and
+commit. Digest carries no source content or authority. This is current reviewed
+handoff evidence, not original provider-read snapshots or complete source closure.
+
+Corrected baseline **53276** terminal failed four actual new regressions with
+missing expected rejection: doc/task revision edits, producer source change before
+acknowledgement, and non-versioned team change. First baseline/cohort also exposed
+a fixture creating receiving work already done; corrected it to queued→accepted→
+done before testing acknowledgement. No production invariant was weakened.
+
+After revision fencing **2373** terminal zero36/36. New concurrent edit lock test
+**41250** terminal failed before locking; **5574** terminal zero37/37 afterward.
+Final transcript test proves source last_used_at touch is stable but transcript
+content edit invalidates evidence. **65765** terminal zero38/38, 4,278 ms. Fresh
+marked **orbyn_handoff_revisions_test**, all migrations and **71473** terminal
+zero38/38,5,407 ms. Backend types **95334** terminal zero; scoped formatting and
+diff check passed. Logs `/tmp/orbyn-handoff-source-revisions-{before-corrected,
+after-corrected,locked,final,fresh,types-locked}.log`, lock baseline
+`/tmp/orbyn-handoff-source-lock-before.log`. No public handoff dispatch/routes
+enabled; receiving identity/rules/connection/budget authorization and actual
+round trip/recovery remain required. Do not merge whole source to main.
+
+Plugin d2da6d8 remains frozen; all workspace types/build/full format pipeline
+**30937** terminal zero. Full fresh suite **1770** confirmed live, last observed
+2038 checks; CI **36998159447** backend in progress. Resume same handles. Actual
+web/native consent/host/gateway/UI resource acceptance still open; not delivered
+from tests alone. Entire full ADR scope, current main456e01a and character files
+remain preserved. No deployment/cleanup or goal completion occurred.

@@ -259,3 +259,19 @@ budget reservations. Public rule editor remains disabled. Preserve character
 work, Orbyn palette and mobile parity; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope.
+
+### Handoff dependency revision evidence — source checkpoint, 2 October 2026
+
+Requested handoffs now bind current recorded dependency revisions, in addition
+to producer result, Review/Undo outcome, runtime and container. Source row locks
+fence concurrent edits during reviewed request/acknowledgement. Reading/polling
+transcripts does not create a new revision; substantive edits invalidate earlier
+requests or acknowledgements. Four stale-source regressions and the lock race
+failed before correction. Fresh migrated source cohort passed38/38, backend
+types and scoped formatting passed. This source checkpoint remains unmerged.
+
+This is not original provider-read version snapshots, complete dependency closure
+or authority to dispatch receiving jobs. Per-agent ownership/rules, current
+receiving permissions/connection, durable budget reservations and actual separate
+worker handoff/recovery/UI proof remain required. Full model/provider/plugin,
+Docs/Mermaid and whole-app web/desktop/mobile acceptance remains active.

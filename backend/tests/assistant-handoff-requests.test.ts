@@ -632,3 +632,189 @@ test("flattened source dependencies are rechecked even when the source chat rema
     status(404),
   );
 });
+
+for (const kind of ["doc", "task"] as const) {
+  test(`a changed ${kind} revision invalidates a reviewed handoff request`, async () => {
+    const owner = await person();
+    const { job } = await producer(owner);
+    const source = (
+      await pool.query(
+        kind === "doc"
+          ? "INSERT INTO docs(user_id,title) VALUES($1,'Reviewed evidence') RETURNING id"
+          : "INSERT INTO items(user_id,title) VALUES($1,'Reviewed evidence') RETURNING id",
+        [owner],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,$2,$3)",
+      [job, kind, source],
+    );
+    const input = await request(owner, job);
+    await pool.query(
+      `UPDATE ${kind === "doc" ? "docs" : "items"} SET title='Updated evidence',version=version+1 WHERE id=$1`,
+      [source],
+    );
+    await assert.rejects(
+      createRequestedAssistantHandoff(owner, input),
+      status(409),
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM assistant_handoffs WHERE owner_id=$1",
+          [owner],
+        )
+      ).rows[0].n,
+      0,
+    );
+    const current = await request(owner, job);
+    assert.notEqual(
+      current.expected_producer_revision,
+      input.expected_producer_revision,
+    );
+    await createRequestedAssistantHandoff(owner, current);
+  });
+}
+
+test("source changes fence acknowledgement without changing the producing result", async () => {
+  const owner = await person();
+  const original = await producer(owner);
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Reviewed evidence') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [original.job, doc],
+  );
+  const id = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, original.job),
+  );
+  const receiving = await producer(owner, null, "background", "queued");
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,delivery_attempts=1 WHERE id=$1",
+    [id],
+  );
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,status='accepted',recipient_job_id=$2 WHERE id=$1",
+    [id, receiving.job],
+  );
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query(
+    "UPDATE docs SET title='Changed since review',version=version+1 WHERE id=$1",
+    [doc],
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT status,revision,result FROM assistant_handoffs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    { status: "accepted", revision: 3, result: null },
+  );
+});
+
+test("non-versioned source changes also invalidate handoff evidence", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const team = (
+    await pool.query(
+      "INSERT INTO teams(name,created_by) VALUES('Reviewed team',$1) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  try {
+    await pool.query(
+      "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner')",
+      [team, owner],
+    );
+    await pool.query(
+      "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'team',$2)",
+      [job, team],
+    );
+    const input = await request(owner, job);
+    await pool.query("UPDATE teams SET name='Changed team' WHERE id=$1", [
+      team,
+    ]);
+    await assert.rejects(
+      createRequestedAssistantHandoff(owner, input),
+      status(409),
+    );
+  } finally {
+    await pool.query("DELETE FROM teams WHERE id=$1", [team]);
+  }
+});
+
+test("handoff source revision evidence holds the source against a concurrent edit", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Locked evidence') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [job, doc],
+  );
+  const holder = await pool.connect();
+  const contender = await pool.connect();
+  try {
+    await holder.query("BEGIN");
+    await handoffProducerEvidence(holder, owner, job);
+    await contender.query("BEGIN");
+    await contender.query("SET LOCAL lock_timeout='100ms'");
+    await assert.rejects(
+      contender.query("UPDATE docs SET version=version+1 WHERE id=$1", [doc]),
+      (error: unknown) => (error as { code?: string }).code === "55P03",
+    );
+  } finally {
+    await contender.query("ROLLBACK");
+    await holder.query("ROLLBACK");
+    contender.release();
+    holder.release();
+  }
+  await pool.query("UPDATE docs SET version=version+1 WHERE id=$1", [doc]);
+});
+
+test("source transcript reads do not revise a handoff but transcript edits do", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const chat = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Reviewed transcript')",
+    [chat, owner],
+  );
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'chat',$2)",
+    [job, chat],
+  );
+  const input = await request(owner, job);
+  await pool.query(
+    "UPDATE ai_chats SET last_used_at=clock_timestamp() WHERE id=$1",
+    [chat],
+  );
+  assert.equal(
+    (await request(owner, job)).expected_producer_revision,
+    input.expected_producer_revision,
+  );
+  await pool.query("UPDATE ai_chats SET turns=$2::jsonb WHERE id=$1", [
+    chat,
+    JSON.stringify([{ question: "Updated evidence", answer: "New result" }]),
+  ]);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, input),
+    status(409),
+  );
+});
