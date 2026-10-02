@@ -152,7 +152,17 @@ for (const native of [false, true]) {
     await Promise.resolve();
     const request = f.request();
     if (!native) {
+      let settled = false;
+      void active.then(() => {
+        settled = true;
+      });
       f.receive(request, true);
+      await Promise.resolve();
+      assert.equal(
+        settled,
+        false,
+        "Another window cannot complete an export request.",
+      );
       assert.equal(f.initial.signal().aborted, false);
     }
     f.receive(request);
