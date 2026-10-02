@@ -205,6 +205,29 @@ pane; on mobile, navigation and selected content occupy separate views. These
 are observed layout patterns, not evidence about OpenAI's backend architecture
 or native iOS/Android behavior. No ChatGPT preference or conversation was changed.
 
+**Whole-application scope — explicit user clarification, 2 October:** this is
+an application-wide UI/UX redesign. Assistant/chat improvements alone cannot
+satisfy it. Apply the shared visual system and behavior requirements to every
+user-facing surface and its native/mobile equivalent, including secondary flows,
+empty/error/loading states, detail screens and overlays. Keep a per-surface
+acceptance ledger rather than extrapolating from one redesigned screen.
+
+| Surface group               | Required coverage                                                                                                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shell and account           | Navigation/sidebar/drawer/tabs, search, profile/session loading, sign-in/onboarding, notifications, deep links and menus                                                                      |
+| Daily planning              | Home, Agenda, My tasks, task/event details, Calendar, planning/focus/time tracking, goals, routines and lists                                                                                 |
+| Workspace                   | Projects/stages, saved Views, Memory, Agent notes, Docs library/editor/comments/import/export and Study                                                                                       |
+| Agent work                  | Interactive assistant, separate Background workspace, Overnight history/morning review, activity, approvals, rules, collaboration and companion customization                                 |
+| Shared work                 | Teams/members/permissions, shared projects/pages, Booking, review/change history and published viewers                                                                                        |
+| Settings and administration | Personal preferences, appearance, account/security/privacy/devices, connections/model defaults, workspace providers/embeddings, connected agents/plugins and every existing Admin destination |
+
+Each group must pass a feature inventory, backend/client wiring and persistence
+checks, layout/accessibility review and actual interactions on its supported
+surfaces. Every shipped web/desktop behavior needs a functional mobile entry point.
+Responsive web screenshots do not establish native acceptance. Existing rare
+actions and error recovery must remain discoverable after simplifying the layout.
+The whole-app scope does not reintroduce the explicitly excluded product features.
+
 **Orbyn design requirements:**
 
 - Apply one hierarchy and spacing system across the shell and all U1 surfaces:
