@@ -166,12 +166,16 @@ function PanelHead({
  * reflection panels, in the account's order, hidden ones left out.
  */
 export function HomeSection({
+  canOpenAgentOutput,
+  onOpenAgentOutput,
   layout,
   agentName,
   onOpenLink,
   onOpenStudy,
   onOpenDoc,
 }: {
+  canOpenAgentOutput: boolean;
+  onOpenAgentOutput: (id: string) => void;
   layout: HomeLayout | undefined;
   agentName: string;
   onOpenLink: (
@@ -361,7 +365,10 @@ export function HomeSection({
 
   return (
     <>
-      <HomeCompanions />
+      <HomeCompanions
+        canOpen={canOpenAgentOutput}
+        onOpenChat={onOpenAgentOutput}
+      />
       {homePanels(home).map(panel)}
       <AssistantUpcoming
         agentName={agentName}

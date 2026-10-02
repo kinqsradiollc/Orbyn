@@ -67,7 +67,17 @@ function fixture(mobile: boolean) {
     "../styles": { shared: {} },
     "../theme": { controls: { tap: 44 } },
     "../motion": { Pressable: container },
+    "./Button": {
+      Button: ({ title }: { title: string }) =>
+        React.createElement("button", null, title),
+    },
+    "../assistant/AssistantAgents": {
+      AssistantAgents: ({ visible = true }: { visible?: boolean }) =>
+        visible ? React.createElement("div", null, "Profiles open") : null,
+    },
   };
+  modules["../screens/AssistantAgents"] =
+    modules["../assistant/AssistantAgents"];
   modules["../lib/api"] = modules["../../lib/api"];
   modules["./Character"] = modules["../../components/Character"];
   const exports: Record<string, () => React.ReactElement> = {};
@@ -122,8 +132,43 @@ function action(node: React.ReactNode): (() => void) | undefined {
     React.Children.toArray(props.children).map(action).find(Boolean)
   );
 }
+function profileAction(node: React.ReactNode): (() => void) | undefined {
+  if (!React.isValidElement(node)) return;
+  const props = node.props as {
+    title?: string;
+    onClick?: () => void;
+    onPress?: () => void;
+    children?: React.ReactNode;
+  };
+  if (
+    props.title === "View agent activity" ||
+    props.children === "View agent activity"
+  )
+    return props.onClick ?? props.onPress;
+  return React.Children.toArray(props.children)
+    .map(profileAction)
+    .find(Boolean);
+}
 for (const mobile of [false, true]) {
   const platform = mobile ? "native" : "web";
+  test(`${platform} Home describes results and morning review without fabricated activity`, () => {
+    const view = fixture(mobile);
+    const html = renderToStaticMarkup(view.first);
+    assert.match(html, /Background/);
+    assert.match(html, /delegated tasks, results, and questions/);
+    assert.match(html, /Overnight/);
+    assert.match(html, /last night’s work/);
+    assert.doesNotMatch(html, /Working now|Active now|Reflection complete/);
+    view.cleanup();
+  });
+  test(`${platform} Home exposes the separate profiles on explicit request`, () => {
+    const view = fixture(mobile);
+    assert.doesNotMatch(renderToStaticMarkup(view.first), /Profiles open/);
+    profileAction(view.first)!();
+    assert.match(renderToStaticMarkup(view.render()), /Profiles open/);
+    assert.equal(view.reads(), 1);
+    view.cleanup();
+  });
   test(`${platform} Home browses every preset without changing settings`, () => {
     const view = fixture(mobile);
     assert.doesNotMatch(renderToStaticMarkup(view.first), /Cozy bunny/);

@@ -2,11 +2,16 @@ import { useEffect, useState } from "react";
 import { CHARACTER_PRESETS, type PersonalAgentSettings } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Character } from "../../components/Character";
+import { AssistantAgents } from "../assistant/AssistantAgents";
 
 /** A quiet Home entry point; browsing presets never changes account settings. */
-export function HomeCompanions() {
+export function HomeCompanions({
+  canOpen = false,
+  onOpenChat = () => {},
+}: { canOpen?: boolean; onOpenChat?: (id: string) => void } = {}) {
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   useEffect(() => {
     let live = true;
     let updated = false;
@@ -25,6 +30,14 @@ export function HomeCompanions() {
   }, []);
   return (
     <section className="home-companions-card" aria-label="Your companion">
+      {agentsOpen && (
+        <AssistantAgents
+          identity={identity}
+          canOpen={canOpen}
+          onClose={() => setAgentsOpen(false)}
+          onOpenChat={onOpenChat}
+        />
+      )}
       <div className="home-companions-heading">
         {identity && (
           <Character
@@ -35,9 +48,7 @@ export function HomeCompanions() {
         )}
         <div>
           <h2>{identity?.name ?? "Your companion"}</h2>
-          <p>
-            A familiar face for your space. Customize it in assistant settings.
-          </p>
+          <p>Change its name and appearance in assistant settings.</p>
         </div>
         <button
           className="text-button"
@@ -46,6 +57,21 @@ export function HomeCompanions() {
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? "Hide companions" : "Browse companions"}
+        </button>
+      </div>
+      <div className="home-companions-work">
+        <div className="home-companions-lanes">
+          <p>
+            <strong>Background</strong> Return to delegated tasks, results, and
+            questions that need you.
+          </p>
+          <p>
+            <strong>Overnight</strong> Review the last night’s work and what’s
+            still unfinished.
+          </p>
+        </div>
+        <button className="secondary" onClick={() => setAgentsOpen(true)}>
+          View agent activity
         </button>
       </div>
       {expanded && (

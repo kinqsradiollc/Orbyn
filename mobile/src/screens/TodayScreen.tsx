@@ -44,6 +44,8 @@ const WIDE = 600;
  * up (and Due today, on a server without the Today list).
  */
 export function TodayScreen({
+  canOpenAgentOutput,
+  onOpenAgentOutput,
   items,
   onPlanDay,
   onOpenPlanner,
@@ -64,6 +66,8 @@ export function TodayScreen({
   onOpenLink,
   ...handlers
 }: ListHandlers & {
+  canOpenAgentOutput: boolean;
+  onOpenAgentOutput: (id: string) => void;
   /** Home's layout (W1): its hubs and which panels show, in order. */
   homeLayout?: HomeLayout;
   /** The assistant's name, for Upcoming. */
@@ -167,6 +171,8 @@ export function TodayScreen({
         onPrefillUsed={onQuickAddPrefillUsed}
       />
       <HomeSection
+        canOpenAgentOutput={canOpenAgentOutput}
+        onOpenAgentOutput={onOpenAgentOutput}
         layout={homeLayout}
         agentName={agentName}
         onOpenLink={onOpenLink}

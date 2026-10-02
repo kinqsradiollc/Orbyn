@@ -401,8 +401,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="companions">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">MAKE YOUR SPACE YOURS</span>
-            <h2>A companion that feels like you.</h2>
+            <span className="eyebrow">MEET YOUR COMPANION</span>
+            <h2>Choose a face. Give it a name.</h2>
             <p>
               Start with a familiar face, then choose its look, accessories and
               movement. Keep it animated, still, or tucked away.
@@ -419,27 +419,50 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </li>
             ))}
           </ul>
+          <div className="home-agent-intro">
+            <h2>Give it work. Come back to the result.</h2>
+            <p>
+              Ask Orbyn to handle a task, then leave the chat. Background work
+              continues on the server; Overnight runs in the hours you choose.
+            </p>
+          </div>
           <div className="home-agent-grid">
             <article>
-              <span className="eyebrow">DURING YOUR DAY</span>
-              <h3>Background</h3>
-              <p>
-                Work on the tasks you delegate while you get on with your day.
-                Follow progress, review the result, and stop a run when you need
-                to.
-              </p>
+              <div className="home-agent-label">
+                <span className="eyebrow">DURING THE DAY</span>
+                <h3>Background</h3>
+              </div>
+              <div className="home-agent-detail">
+                <p>
+                  Hand over a task without keeping a chat open. Return to its
+                  progress, result, or a question that needs your answer.
+                </p>
+                <blockquote>
+                  “Read these project notes and draft a list of next steps.”
+                </blockquote>
+                <span className="home-agent-caption">Example task</span>
+              </div>
             </article>
             <article>
-              <span className="eyebrow">ON YOUR SCHEDULE</span>
-              <h3>Overnight</h3>
-              <p>
-                Give night work its own window and budget. Review what happened
-                in the morning, with unfinished work clearly accounted for.
-              </p>
+              <div className="home-agent-label">
+                <span className="eyebrow">WHEN YOU’RE AWAY</span>
+                <h3>Overnight</h3>
+              </div>
+              <div className="home-agent-detail">
+                <p>
+                  Set a night window and a work budget. In the morning, review
+                  the results, proposed changes, and anything left unfinished.
+                </p>
+                <blockquote>
+                  “Work through the tasks I’ve queued for tonight.”
+                </blockquote>
+                <span className="home-agent-caption">Example night queue</span>
+              </div>
             </article>
           </div>
           <p className="home-companion-note">
-            Available when you need them. Idle until authorized work is ready.
+            Separate runs and activity histories. Neither agent is working when
+            there’s no authorized task to do.
           </p>
         </section>
 

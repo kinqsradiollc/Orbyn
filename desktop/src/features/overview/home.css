@@ -349,6 +349,22 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
   gap: 14px;
 }
+.home-companions-work {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-divider);
+}
+.home-companions-work p {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
 .home-companions-presets li {
   min-width: 0;
   padding: 12px;
@@ -359,4 +375,17 @@
   text-align: center;
   color: var(--color-muted);
   overflow-wrap: anywhere;
+}
+
+.home-companions-lanes {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.home-companions-lanes p + p {
+  margin-top: 10px;
+}
+.home-companions-lanes strong {
+  display: block;
+  color: var(--color-text);
+  font-weight: 500;
 }

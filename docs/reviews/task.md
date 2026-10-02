@@ -1894,3 +1894,19 @@ without the user's answer. Native visual acceptance remains open.
 The old implementation worktree remains preserved: all changed source files
 have counterparts in this candidate, but differing files still need individual
 reconciliation before cleanup. No cleanup, main merge, deployment or release.
+
+3 October Home follow-up: researched Muse design and official Dots docs; replaced
+public agent marketing cards with two editorial responsibility/example rows.
+Both signed-in Home clients describe task results and morning review, and expose
+the existing real agent profiles via an explicit action. No fabricated activity,
+reflection completion or computer/voice product capability is introduced.
+Public-only checkpoint worktree assistant-work-ownership is now on
+codex/home-landing-checkpoint, based on main c30c5fc. Its independent qualification is in progress;
+no main merge or production deployment has occurred at this note’s creation.
+
+Current Home qualification: 17/17 focused Home/character tests pass; all workspace
+typechecks, desktop production build/prerender, tracked changed-file formatting
+and git diff --check pass. Public-only main-based checkpoint also passes all
+workspace types, full production build, seven character tests, and generated
+HTML assertions for all eight presets, both agents, labeled examples and unique
+SVG/element IDs. No local web screenshots or native acceptance is claimed.

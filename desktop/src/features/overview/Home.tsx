@@ -139,6 +139,8 @@ type Sources = {
 };
 
 type Openers = {
+  canOpenAgentOutput: boolean;
+  onOpenAgentOutput: (id: string) => void;
   onOpenProject: (id: string) => void;
   onOpenDoc: (id: string) => void;
   onOpenStudy: () => void;
@@ -946,7 +948,10 @@ export function HomeSections(open: Openers) {
 
   return (
     <>
-      <HomeCompanions />
+      <HomeCompanions
+        canOpen={open.canOpenAgentOutput}
+        onOpenChat={open.onOpenAgentOutput}
+      />
       {rows.map((row) =>
         row[0] === "hubs" ? (
           <HubRow
