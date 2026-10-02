@@ -107,9 +107,11 @@ test("turning it on scales an open task's planned time", async () => {
     })
   ).json();
 
+  // Include a full week so Friday/weekend runs have enough working time.
+  // This tests estimate learning, not a plan truncated by remaining capacity.
   const planned = async () => {
     const plan = (
-      await call("POST", "/planner/preview", { days: 3, item_ids: [task.id] })
+      await call("POST", "/planner/preview", { days: 7, item_ids: [task.id] })
     ).json();
     const row = plan.tasks.find(
       (t: { item_id: string }) => t.item_id === task.id,
