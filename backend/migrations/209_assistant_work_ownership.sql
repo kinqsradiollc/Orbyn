@@ -19,7 +19,7 @@ ALTER TABLE ai_jobs ADD CONSTRAINT ai_jobs_work_source_check CHECK (
 
 -- Non-unique on purpose: upgrades preserve existing waiting IDs and active work.
 -- Existing overlapping runs may finish, but no additional owner can acquire it.
-CREATE INDEX ai_jobs_work_source_active ON ai_jobs(user_id,work_source_kind,work_source_id)
+CREATE INDEX ai_jobs_work_source_active ON ai_jobs(work_source_kind,work_source_id)
   WHERE state IN ('running','waiting');
 
 CREATE FUNCTION guard_assistant_work_owner() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -49,9 +49,9 @@ BEGIN
     acquiring := OLD.state NOT IN ('running','waiting');
   END IF;
   IF acquiring AND NEW.state IN ('running','waiting') AND NEW.work_source_id IS NOT NULL THEN
-    PERFORM pg_advisory_xact_lock(hashtextextended('assistant-work:' || NEW.user_id::text || ':' ||
+    PERFORM pg_advisory_xact_lock(hashtextextended('assistant-work:' ||
       NEW.work_source_kind || ':' || NEW.work_source_id::text,209));
-    IF EXISTS(SELECT 1 FROM ai_jobs busy WHERE busy.id<>NEW.id AND busy.user_id=NEW.user_id
+    IF EXISTS(SELECT 1 FROM ai_jobs busy WHERE busy.id<>NEW.id
       AND busy.work_source_kind=NEW.work_source_kind AND busy.work_source_id=NEW.work_source_id
       AND busy.state IN ('running','waiting')) THEN
       RAISE EXCEPTION 'This assigned work already has an active assistant job' USING ERRCODE='55P03';
