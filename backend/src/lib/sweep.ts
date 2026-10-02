@@ -550,6 +550,22 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "assistant_handoff_chains",
+    label: "Assistant collaboration receipts",
+    detail:
+      "Completed collaboration trails retained for 90 days; active handoffs and their execution jobs keep the entire chain.",
+    table: "assistant_handoff_chains",
+    where: `created_at < now() - interval '90 days' AND NOT EXISTS (
+      SELECT 1 FROM assistant_handoffs h
+      LEFT JOIN ai_jobs p ON p.id=h.producer_job_id
+      LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
+      WHERE h.root_id=assistant_handoff_chains.id AND (
+        h.status IN ('proposed','accepted') OR p.state IN ('queued','running','waiting') OR r.state IN ('queued','running','waiting'))
+    )`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "assistant_nights",
     label: "Assistant nights",
     detail:

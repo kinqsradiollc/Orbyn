@@ -476,3 +476,41 @@ and current access revocation before exposing controls in either client.
 
 Disk fell to **220 MiB** during qualification despite the user's ongoing recovery.
 Avoid further large builds or native image generation until space stabilizes.
+
+## Durable handoff storage foundation
+
+Migration **208_assistant_handoffs.sql** adds receipts and a separate chain counter.
+Database guards enforce immutable owner/provenance, distinct runtime/job ownership,
+completed producer jobs, queued recipient jobs, revision/status transitions,
+bounded delivery attempts, exact result references and acknowledged child ancestry.
+The root counter is updated atomically and survives deletion of descendants.
+Concurrent duplicate proposals cannot leave extra receipts or chain rows.
+The sweeper retains whole chains for 90 days and keeps chains with proposed,
+accepted or queued/running/waiting execution work. This is storage foundation only:
+no API, dispatch loop, policy grant or automatically scheduled handoff is enabled.
+
+The exact migration ran successfully in an isolated disposable schema on the
+marked test PostgreSQL database, with minimal parent tables. **16/16** combined
+storage/contract tests passed, zero failures/skips/cancellations, 553 ms; log
+`/tmp/orbyn-handoff-storage-tests-2.log`. The storage tests include two concurrent
+database clients, malformed ownership/receiving work, stale receipt updates,
+finite attempts, incomplete results, child ancestry and persistent chain counts.
+Backend typecheck and focused formatting passed; log
+`/tmp/orbyn-handoff-storage-types.log`. These are not full migration/application
+or separate-worker round-trip qualification. Current source still needs delivery
+service authorization/source/revision/connection/budget checks, atomic receiving
+job creation, source reservations and actual consumer acknowledgments.
+
+## Docs CI follow-up
+
+CI **36979623013** on b3ab641 is terminal failed: backend 2,096 passed, one failed,
+one skipped. The single failure was the old rich-copy assertion expecting h2 for
+a stored level-1 heading after f96264e fixed Markdown level preservation.
+Updated that assertion and added level 1/2/3 HTML-plus-Markdown clipboard coverage;
+the initial added test exposed the existing Markdown trailing newline, which its
+expectation now explicitly preserves. Candidate **25e1e6f** is pushed on draft
+PR #138. **20/20** focused richer-pages/navigation tests passed, 412 ms; log
+`/tmp/orbyn-docs-heading-clipboard-tests-2.log`. New CI **36980902473** is live and
+must be inspected by its handle; no merged application feature is claimed.
+The new level test is mirrored in the model source. Disk recovered to about
+1.6 GiB in the last snapshot but is fluctuating; continue avoiding heavy builds.
