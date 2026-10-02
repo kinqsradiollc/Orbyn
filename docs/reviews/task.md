@@ -2,8 +2,10 @@
 
 ## Full user contract
 
-Canonical ADR: `devday-2026-implementation-review.md`. The broad goal is active
-and incomplete. Every shipped web/desktop feature is required on mobile.
+Canonical architectural decision: `docs/adr/001-devday-agent-platform.md`.
+Its governing acceptance contract is `devday-2026-implementation-review.md`,
+including C1–C6, M1, D1 and U1. The broad goal is active and incomplete. Every
+shipped web/desktop feature is required on mobile.
 The user authorizes ChatGPT desktop/mobile UI reference inspection and requires
 whole-application UI/UX improvement while retaining Orbyn colors/identity. This
 explicitly includes Docs reading/typing/editing/saving, every View and layout,
@@ -26,7 +28,7 @@ commits were already published by the time of the latest fetch.
   published. User-owned `mobile/app.json` and unrelated untracked files remain
   preserved. Root `task.md` belongs to the character task.
 - Source `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch
-  `codex/devday-model-catalog`: **afd8160** before this documentation update,
+  `codex/devday-model-catalog`: **c21e337** before this documentation update,
   reconciled with current main7c08aa6. Retains model,
   Docs, settings, profiles, reflection and handoff work that must not be merged
   wholesale. Two untracked settings preview files remain preserved.
@@ -42,7 +44,9 @@ commits were already published by the time of the latest fetch.
   consent/host/gateway/provider/UI resources/events gates remain open.
 - Docs candidate **514679f**, draft PR #138, remains in
   `assistant-runtime-integration/Orbyn`; full 2,111/2,111 and CI passed on its
-  earlier base. Web/mobile-web/native current interactions remain unverified.
+  earlier base. Native iOS Contents navigation and fold preservation now have
+  interaction proof; inline fragment links, Android and web/mobile-web remain
+  unverified. Current-main reconciliation and qualification are still required.
 - `devday-2026-plan/Orbyn` retains dirty Docs/executor changes; preserve them.
   Character worktree **e4370a3** is clean and integrated but retained until final
   cleanup. No branches/worktrees deleted.
