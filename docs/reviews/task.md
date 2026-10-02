@@ -26,15 +26,15 @@ commits were already published by the time of the latest fetch.
   published. User-owned `mobile/app.json` and unrelated untracked files remain
   preserved. Root `task.md` belongs to the character task.
 - Source `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch
-  `codex/devday-model-catalog`: **bf8a0ab** before this documentation update,
+  `codex/devday-model-catalog`: **afd8160** before this documentation update,
   reconciled with current main7c08aa6. Retains model,
   Docs, settings, profiles, reflection and handoff work that must not be merged
   wholesale. Two untracked settings preview files remain preserved.
 - Scoped backend checkpoint `/Users/anhdang/.codex/worktrees/assistant-work-ownership/Orbyn`,
-  now branch `codex/assistant-current-authority`: **04d1ff7** frozen against main
-  **456e01a**, PR #145 merged as **3450e87**. Full combined qualification
-  **41477** passed2,157/2,157, all CI **37000288172** jobs passed, and workspace
-  types/build/full formatting **11930** finished with exit zero. No public rule
+  now branch `codex/assistant-replay-access`: **0033a96** frozen against main
+  **7c08aa6**, draft PR #146, full suite1849/CI37003294826 live. Workspace
+  types/build/full formatting10871 terminal zero. Prior PR #145 is merged as
+  **3450e87**, full2,157/2,157 and all CI37000288172 passed. No public rule
   editor enabled; no deployment occurred.
 - Plugin `/Users/anhdang/.codex/worktrees/devday-plugin-boundary/Orbyn`:
   **d2da6d8**, draft PR #142, reconciled with main **456e01a**. Full
@@ -1520,3 +1520,46 @@ character work. Original provider-read snapshots/nested closure/source concurren
 and other persistent cached paths remain required, alongside full ADR model/
 provider/plugin/Docs/Mermaid/whole-app/mobile/agent scope. No UI completion or
 deployment/cleanup claimed. Saved local preview denial remains respected.
+
+## Frozen replay candidate and new native Docs proof — 2 October 2026
+
+Current source types/format/diff34260 terminal zero. Sourceafd8160 committed and
+push99333 terminal zero. Extracted only nine replay/scoped-visibility code/test
+files onto current main7c08aa6, in reused owned clean assistant-work-ownership
+checkout. Reviewed gate doc gives ten-file candidate0033a969c241425612a27ad5a1d015a0e950eb09,
+923add28delete. No unmerged models/settings/Docs/profiles/handoffs copied to main.
+Packages75307 terminal zero; push61858 terminal zero. PR146 created41891 terminal
+zero and attached: https://github.com/kinqsradiollc/Orbyn/pull/146.
+
+Exact candidate workspace types/root build/full format10871 terminal zero.
+Fresh markedorbyn_replay_candidate_test full1849 confirmed LIVE after polling;
+last143 tests, not a pass. Logs /tmp/orbyn-replay-0033a96-{types,build,format,
+full-tests}.log. CI37003294826 backend110825678798 live; mobile110825678856,
+Docker110825678815 and mail110825678519 successful. Freeze candidate; resume SAME
+full/CI handles until terminal. Main/head/merge-tree equivalence must be rechecked
+before promotion. Do not restart for observation timeout. PR body
+/tmp/orbyn-assistant-replay-access-pr.md.
+
+Independent native Docs qualification resumed on verified clean514679f in
+assistant-runtime-integration/Orbyn, owned Metro26907:8087 and API30467:8027,
+synthetic account only. Raising owned simulator enabled coordinate clicks after
+previous noWindowsAvailable errors. Contents Result click visibly navigated to
+the exact nested heading and expanded its parent. Then explicitly folded both
+parent and unrelated section, reopened Contents, selected Result again: fresh
+AX/screenshot proved First section expanded, Result content visible and unrelated
+section still folded (Unfold Keep this section folded; unrelated text absent).
+One ScreenCaptureKit error after fold did not mean action failure: fresh AX
+confirmed fold, no duplicate click. No paste/typeText/clipboard or real credentials
+used. Screenshot proof /tmp/orbyn-docs-514679f-native-contents-result.png and
+/tmp/orbyn-docs-514679f-native-contents-preserves-fold.png. Existing synthetic
+typing/save/reload proof retained. Simulator remains at revealed Result with
+unrelated section folded; native handleownedSimulatorPreview/evidenceFs retained.
+
+This closes native iOS Contents nested navigation/fold-preservation only, not
+inline fragment links, Android, web/mobile-web or complete D1/U1. Docs138 still
+needs current-main reconciliation/qualification and remaining interactions;
+do not merge from older automated results. Plugin142 similarly retains actual
+host/consent/UI gates. Saved web denial remains pending user settings clearance.
+Full models/providers/embeddings/plugin/Docs/Mermaid/whole-app/mobile/agent scope,
+original source snapshots/concurrency/nested closure/receiving reservations and
+other persisted replay paths remain active. No deployment/cleanup/completion.
