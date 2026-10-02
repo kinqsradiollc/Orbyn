@@ -183,7 +183,7 @@ const s = themed(() =>
     presetName: {
       textAlign: "center",
       fontFamily: fonts.medium,
-      fontSize: 12,
+      fontSize: 13,
       color: colors.text,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
