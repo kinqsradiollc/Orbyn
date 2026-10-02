@@ -29,7 +29,16 @@ export { validationMessage };
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
 export type ServiceName =
-  "api" | "ai" | "status" | "realtime" | "files" | "mcp" | "plugin" | "all";
+  | "api"
+  | "ai"
+  | "assistant-background"
+  | "assistant-overnight"
+  | "status"
+  | "realtime"
+  | "files"
+  | "mcp"
+  | "plugin"
+  | "all";
 
 const startedAt = Date.now();
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);

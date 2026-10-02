@@ -83,6 +83,19 @@ export function components(): Component[] {
       probe: () => http((env.STATUS_AI_URL || self()) + "/health"),
     },
     {
+      id: "assistant-background",
+      name: "Background agents",
+      description:
+        "Tasks, ideas, goals and routines running in the background.",
+      probe: heartbeat("assistant-background"),
+    },
+    {
+      id: "assistant-overnight",
+      name: "Overnight",
+      description: "Scheduled overnight work and its morning review.",
+      probe: heartbeat("assistant-overnight"),
+    },
+    {
       id: "realtime",
       name: "Live updates",
       description: "Changes, presence and focus reaching your other devices.",

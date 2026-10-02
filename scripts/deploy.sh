@@ -78,6 +78,10 @@ case ",$profiles," in *,formula,*) formula_on=1 ;; esac
 problems=0
 
 preflight() {
+  if [ "$(setting AI_RUNNER_IN_WORKER false)" = true ]; then
+    echo "Remove AI_RUNNER_IN_WORKER=true: assistant-background and assistant-overnight now run separately from the notifier." >&2
+    problems=1
+  fi
   if grep -qE 'TODO|change-me' "$ENV_FILE"; then
     warn "$ENV_FILE still has TODO or change-me values."
   fi
@@ -149,7 +153,7 @@ if [ "$CHECK" = 1 ]; then
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
-  echo "- apply migrations, then roll out api, mcp, ai, realtime, status, notifier, files, converter and the web app"
+  echo "- apply migrations, then roll out api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
   echo "- scanned pages and photos: read with the built-in Tesseract"
   [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
   [ "$ocr_on" = 1 ] && echo "- start or replace the heavy OCR model ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no heavy OCR model (the ocr profile is off; this is the default)"
@@ -299,6 +303,8 @@ rollout api "$(setting API_REPLICAS 2)"
 # Outside agents (MCP): stateless, so copies roll over like the API's.
 rollout mcp "$(setting MCP_REPLICAS 2)"
 rollout ai "$(setting AI_REPLICAS 2)"
+rollout assistant-background "$(setting ASSISTANT_BACKGROUND_REPLICAS 1)"
+rollout assistant-overnight "$(setting ASSISTANT_OVERNIGHT_REPLICAS 1)"
 # Open streams on the old copies close as they stop; clients reconnect to the
 # new ones on their own (EventSource retries), so a rollout loses no updates.
 rollout realtime "$(setting REALTIME_REPLICAS 2)"

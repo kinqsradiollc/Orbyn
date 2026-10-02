@@ -358,7 +358,7 @@ test("the sweeper retains durable checkpoints through a multi-day outage", async
   assert.deepEqual(remaining, [queued, running].sort());
 });
 
-test("concurrent replicas share eight live lease slots and recover an expired slot", async () => {
+test("interactive replicas share four reserved lease slots and recover an expired slot", async () => {
   const ids: string[] = [];
   try {
     const before = (
@@ -371,8 +371,8 @@ test("concurrent replicas share eight live lease slots and recover an expired sl
       ids.map((_, n) => claimAssistantJob(`replica-${n}`)),
     );
     const occupied = claims.filter((claim) => claim !== null);
-    assert.equal(occupied.length, Math.max(0, 8 - before));
-    assert.equal(await claimAssistantJob("ninth-replica"), null);
+    assert.equal(occupied.length, Math.max(0, 4 - before));
+    assert.equal(await claimAssistantJob("fifth-replica"), null);
     assert.ok(occupied.length);
     await pool.query(
       "UPDATE ai_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",

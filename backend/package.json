@@ -31,7 +31,11 @@
     "directory:account": "tsx scripts/directory-account.ts",
     "gameday": "tsx scripts/gameday.ts",
     "dev:plugin": "tsx watch src/services/plugin.ts",
-    "start:plugin": "node dist/services/plugin.js"
+    "start:plugin": "node dist/services/plugin.js",
+    "dev:assistant-background": "tsx watch src/services/assistant-background.ts",
+    "start:assistant-background": "node dist/services/assistant-background.js",
+    "dev:assistant-overnight": "tsx watch src/services/assistant-overnight.ts",
+    "start:assistant-overnight": "node dist/services/assistant-overnight.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

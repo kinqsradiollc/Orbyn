@@ -103,7 +103,7 @@ gateway, and a managed Postgres replaces the `postgres` container.
 
    ```sh
    kubectl apply -k deploy/k8s
-   kubectl -n orbyn rollout status deploy/api deploy/ai deploy/status deploy/notifier deploy/web
+   kubectl -n orbyn rollout status deploy/api deploy/ai deploy/assistant-background deploy/assistant-overnight deploy/status deploy/notifier deploy/web
    ```
 
 5. Point DNS for `api.orbyn.example` and `app.orbyn.example` at the ingress

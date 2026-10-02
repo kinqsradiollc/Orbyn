@@ -3,6 +3,29 @@
 The Compose file in the repository is tuned for local development. This checklist covers what to
 change for a real deployment.
 
+## Assistant runtime processes
+
+Deploy `ai`, `assistant-background` and `assistant-overnight` together with the
+same backend image. The AI HTTP service runs interactive chats; the other two
+services execute only their own automation jobs. `server.js` combines HTTP
+services for development but does not replace these automation processes.
+Migration 206 assigns existing jobs their runtime and prevents reassignment.
+An upgrade establishes full separation after old consumers finish and drain.
+
+The automation workers have private `/ready` probes and separate status-page
+heartbeats. They need no gateway route or published port. Compose defaults each
+to one replica; `ASSISTANT_BACKGROUND_REPLICAS` and
+`ASSISTANT_OVERNIGHT_REPLICAS` can increase availability, while database lease
+limits remain two active jobs per lane across all replicas. Four slots are
+reserved for interactive chats. Idle workers perform queue housekeeping without
+model calls. Remove `AI_RUNNER_IN_WORKER=true` before deployment; the deploy
+preflight rejects it and the notifier no longer executes assistant jobs.
+
+Kubernetes includes both deployments in `assistant-workers.yaml`. Check their
+readiness after rollout and alert on missing runtime heartbeats. Restarting one
+runtime leaves the other available; interrupted work resumes its persisted
+checkpoint within the same lane after its lease expires.
+
 ## Going live on your domain
 
 The shortest path from a fresh server to a working site, with the details in the sections below.

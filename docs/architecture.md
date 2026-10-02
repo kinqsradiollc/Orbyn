@@ -311,10 +311,25 @@ reach, or whose block is gone.
 #### Durable runs and unattended work
 
 `POST /ai/chat/start` writes a queued `ai_jobs` row linked to its chat and
-person turn, then returns immediately. The AI service claims jobs with
-`FOR UPDATE SKIP LOCKED`, runs at most eight concurrently and renews a
-sixty-second lease. `AI_RUNNER_IN_WORKER=true` enables the optional notifier
-consumer. Chats and all assistant automations use this same queue.
+person turn, then returns immediately. Jobs have immutable `runtime_lane`
+ownership: `interactive` for person turns, `background` for ideas/goals/routines/
+handed tasks, and `overnight` for night jobs (including their source task/goal).
+The AI service consumes only interactive jobs; `assistant-background` and
+`assistant-overnight` run in different processes. They use the same durable
+checkpoint format and database, with separate claim filters and reserved limits
+of four, two and two live leases respectively across all replicas. The aggregate
+limit remains eight, including old consumers draining during an upgrade. Claims
+use `FOR UPDATE SKIP LOCKED` and renew a sixty-second lease. The notifier only
+schedules these jobs; `AI_RUNNER_IN_WORKER=true` is rejected. Separate service
+heartbeats and private readiness probes report each automation runtime.
+
+Migration 206 classifies queued checkpoints and preserves terminal provenance.
+Once inserted, a job cannot move lanes; recovery, waiting answers and retries
+retain its owner. A process rejects attempts to start a different lane beside
+its existing runner. During a rolling upgrade, old consumers may finish their
+existing work; full process isolation is established when those copies drain.
+Future cross-runtime collaboration must enqueue an authorized durable handoff,
+not call the other runtime inline.
 
 The lead delegates to the existing specialists, checks their combined plan
 and applies it once. Versioned checkpoints retain messages, completed reports,

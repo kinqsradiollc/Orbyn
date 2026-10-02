@@ -22,7 +22,7 @@ const schema = z.object({
    */
   DATABASE_LISTEN_URL: z.string().default(""),
   PORT: z.coerce.number().default(8000),
-  /** Optional queue consumer in the notifier when no dedicated AI service runs. */
+  /** Deprecated: true is rejected by the notifier; use dedicated assistant services. */
   AI_RUNNER_IN_WORKER: z.enum(["true", "false"]).default("false"),
   CORS_ORIGINS: z
     .string()
