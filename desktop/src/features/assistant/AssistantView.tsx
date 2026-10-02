@@ -307,6 +307,13 @@ export function AssistantView({
         <AssistantAgents
           identity={identity}
           onClose={() => setAgentsOpen(false)}
+          canOpen={!locked}
+          onOpenChat={(id) => {
+            if (!locked)
+              void openChat(id).catch((error) =>
+                toast({ tone: "warn", text: errorText(error) }),
+              );
+          }}
         />
       )}
       <aside

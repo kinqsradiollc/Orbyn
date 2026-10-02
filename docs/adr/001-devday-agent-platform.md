@@ -106,8 +106,11 @@ checkpoint-only writes create no activity. Imported historical jobs do not
 fabricate fresh completion timestamps. Current source visibility filters live
 job links; expired jobs retain only content-free historical events. Queuing alone
 does not set last-work activity. Sixty focused activity, handoff, sweep and runtime
-checks passed on a fresh marked test database. This remains unmerged source;
-profile UI, worker dispatch, budgets and separate-process collaboration are open.
+checks passed on a fresh marked test database. The isolated activity candidate
+`01b8757` is now merged through PR #140 as main `9e7e505`: 2,112/2,112 full local
+tests, workspace types, production builds, full formatting and all CI jobs passed.
+Candidate, CI merge and main trees match. Main `2ba1ae2` records scope continuity.
+Profile UI, worker dispatch, budgets and separate-process collaboration are open.
 
 Profile source now adds a private read-only snapshot and a Your agents panel on
 both clients, retaining the main character design. Working requires a current
@@ -120,3 +123,13 @@ generations and clears stale status after failure. Forty-two focused checks,
 all workspace types, production builds and scoped formatting passed. This is
 unmerged source; responsive/native interaction, reviewed permissions, durable
 budget reservations, dispatch and complete collaboration still need proof.
+
+Profile recent activity and completed-output links now exist in both clients.
+The snapshot bounds each lane to eight events and five outputs, applies current
+source visibility, and removes output links after job deletion. Imported historical
+jobs and later outcome edits cannot invent fresh completion timestamps. Mobile
+opens an output after sheet dismissal; both clients use the existing chat access
+checks. Current corrected-source regression passed 19/19, with 21/21 character/
+style/catalog checks, all workspace types, production builds and scoped formatting.
+This is a source checkpoint, not a merged or visually qualified UI. The full
+governing review, including D1/U1 and whole-app mobile parity, remains required.

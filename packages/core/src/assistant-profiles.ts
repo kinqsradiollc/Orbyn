@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { nightShiftInput } from "./agent-settings.js";
+import { assistantActivityEvent } from "./assistant-activity.js";
 export const assistantProfileCounts = z
   .object({
     working: z.number().int().nonnegative(),
@@ -25,6 +26,19 @@ export const assistantProfile = z
     state: z.enum(["idle", "queued", "working", "waiting", "scheduled"]),
     counts: assistantProfileCounts,
     last_activity_at: z.iso.datetime().nullable(),
+    recent_activity: z.array(assistantActivityEvent).max(8),
+    outputs: z
+      .array(
+        z
+          .object({
+            job_id: z.uuid(),
+            chat_id: z.uuid(),
+            title: z.string().max(120),
+            completed_at: z.iso.datetime(),
+          })
+          .strict(),
+      )
+      .max(5),
     window: z
       .object({
         enabled: z.boolean(),

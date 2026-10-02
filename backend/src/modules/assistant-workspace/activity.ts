@@ -2,6 +2,7 @@ import {
   assistantActivityLane,
   assistantActivityPage,
   assistantActivityQuery,
+  assistantActivityEvent,
   fail,
   type AssistantActivityLane,
 } from "@orbyn/core";
@@ -14,6 +15,34 @@ import { firstParty } from "../proposals/service.js";
 const visibleEvent = `((e.job_id IS NULL) OR (
   j.user_id=e.owner_id AND ${assistantChatVisible("c", "$1")}
   AND ${assistantJobSourcesVisible("j", "$1", false)}))`;
+
+/** Latest bounded, content-free events using exactly the replay feed's access checks. */
+export async function assistantRecentActivity(
+  db: Queryable,
+  ownerId: string,
+  lane: AssistantActivityLane,
+) {
+  const rows = (
+    await db.query<{
+      sequence: string;
+      job_id: string | null;
+      kind: string;
+      created_at: Date;
+    }>(
+      `SELECT e.sequence::text,e.job_id,e.kind,e.created_at FROM assistant_activity_events e
+     LEFT JOIN ai_jobs j ON j.id=e.job_id LEFT JOIN ai_chats c ON c.id=j.chat_id
+     WHERE e.owner_id=$1 AND e.runtime_lane=$2 AND ${visibleEvent}
+     ORDER BY e.sequence DESC LIMIT 8`,
+      [ownerId, lane],
+    )
+  ).rows;
+  return rows.map((row) =>
+    assistantActivityEvent.parse({
+      ...row,
+      created_at: row.created_at.toISOString(),
+    }),
+  );
+}
 
 /** Current-authorized work time, without loading or replaying event contents. */
 export async function assistantLastActivity(

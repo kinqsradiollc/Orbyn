@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AssistantProfileStore } from "@orbyn/api-client";
-import type { PersonalAgentSettings } from "@orbyn/core";
+import {
+  ASSISTANT_ACTIVITY_LABELS,
+  type PersonalAgentSettings,
+} from "@orbyn/core";
 import { X } from "lucide-react";
 import { client } from "../../lib/api";
 import { session, onSessionChange } from "../../lib/session";
@@ -11,9 +14,13 @@ import "./assistant-agents.css";
 export function AssistantAgents({
   identity,
   onClose,
+  onOpenChat,
+  canOpen,
 }: {
   identity: PersonalAgentSettings | null;
   onClose: () => void;
+  onOpenChat: (id: string) => void;
+  canOpen: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const store = useMemo(
@@ -143,6 +150,46 @@ export function AssistantAgents({
                 {profile.budget.limit_tokens.toLocaleString()}. Estimates are
                 not billed usage.
               </p>
+            )}
+            <h4>Recent activity</h4>
+            {profile.recent_activity.length === 0 ? (
+              <p className="muted">No recent activity</p>
+            ) : (
+              <ul className="assistant-agent-activity">
+                {profile.recent_activity.map((event) => (
+                  <li key={event.sequence}>
+                    <span>{ASSISTANT_ACTIVITY_LABELS[event.kind]}</span>
+                    <time dateTime={event.created_at}>
+                      {new Date(event.created_at).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <h4>Outputs</h4>
+            {profile.outputs.length === 0 ? (
+              <p className="muted">No recent outputs</p>
+            ) : (
+              <ul className="assistant-agent-outputs">
+                {profile.outputs.map((output) => (
+                  <li key={output.job_id}>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={!canOpen}
+                      onClick={() => {
+                        onClose();
+                        onOpenChat(output.chat_id);
+                      }}
+                    >
+                      {output.title || "Completed work"}
+                    </button>
+                    <time dateTime={output.completed_at}>
+                      {new Date(output.completed_at).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ul>
             )}
           </section>
         ))}

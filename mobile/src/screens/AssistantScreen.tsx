@@ -519,6 +519,13 @@ export function AssistantScreen({
         visible={agentsOpen}
         identity={identity}
         onClose={() => setAgentsOpen(false)}
+        canOpen={!locked}
+        onOpenChat={(id) => {
+          if (!locked)
+            void openChat(id).catch((error) =>
+              Alert.alert("Couldn't open output", errorText(error)),
+            );
+        }}
       />
       {scope && (
         <View style={s.scopeRow}>

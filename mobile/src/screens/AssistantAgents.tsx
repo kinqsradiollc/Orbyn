@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AppState, Text, View } from "react-native";
 import { AssistantProfileStore } from "@orbyn/api-client";
-import type { PersonalAgentSettings } from "@orbyn/core";
+import {
+  ASSISTANT_ACTIVITY_LABELS,
+  type PersonalAgentSettings,
+} from "@orbyn/core";
 import { BottomSheet } from "../components/BottomSheet";
 import { Character } from "../components/Character";
 import { Button } from "../components/Button";
@@ -14,16 +17,21 @@ export function AssistantAgents({
   visible,
   identity,
   onClose,
+  onOpenChat,
+  canOpen,
 }: {
   visible: boolean;
   identity: PersonalAgentSettings | null;
   onClose: () => void;
+  onOpenChat: (id: string) => void;
+  canOpen: boolean;
 }) {
   const store = useMemo(
     () => new AssistantProfileStore(client, () => session.token),
     [],
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const pendingChat = useRef<string | null>(null);
   useEffect(() => {
     if (!visible) return;
     void store.refresh();
@@ -45,6 +53,11 @@ export function AssistantAgents({
       title="Your agents"
       visible={visible}
       onClose={onClose}
+      afterClose={() => {
+        const id = pendingChat.current;
+        pendingChat.current = null;
+        if (id) onOpenChat(id);
+      }}
       footer={
         <Button
           title={snapshot.loading ? "Refreshing…" : "Refresh status"}
@@ -62,7 +75,7 @@ export function AssistantAgents({
           Agent status could not be refreshed. Try again.
         </Text>
       )}
-      {!snapshot.data && !snapshot.error && (
+      {visible && !snapshot.data && !snapshot.error && (
         <Text style={shared.small}>Loading agent profiles…</Text>
       )}
       {snapshot.data?.profiles.map((profile) => (
@@ -137,6 +150,42 @@ export function AssistantAgents({
               {profile.budget.limit_tokens.toLocaleString()}. Estimates are not
               billed usage.
             </Text>
+          )}
+          <Text style={shared.body}>Recent activity</Text>
+          {profile.recent_activity.length === 0 ? (
+            <Text style={shared.small}>No recent activity</Text>
+          ) : (
+            profile.recent_activity.map((event) => (
+              <View key={event.sequence} style={{ gap: 4 }}>
+                <Text style={shared.small}>
+                  {ASSISTANT_ACTIVITY_LABELS[event.kind]}
+                </Text>
+                <Text style={shared.small}>
+                  {new Date(event.created_at).toLocaleString()}
+                </Text>
+              </View>
+            ))
+          )}
+          <Text style={shared.body}>Outputs</Text>
+          {profile.outputs.length === 0 ? (
+            <Text style={shared.small}>No recent outputs</Text>
+          ) : (
+            profile.outputs.map((output) => (
+              <View key={output.job_id} style={{ gap: 4 }}>
+                <Button
+                  title={output.title || "Completed work"}
+                  secondary
+                  disabled={!canOpen}
+                  onPress={() => {
+                    pendingChat.current = output.chat_id;
+                    onClose();
+                  }}
+                />
+                <Text style={shared.small}>
+                  {new Date(output.completed_at).toLocaleString()}
+                </Text>
+              </View>
+            ))
           )}
         </View>
       ))}

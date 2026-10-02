@@ -17,7 +17,7 @@ import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { firstParty } from "../proposals/service.js";
 import { assistantNightWindow } from "../../worker/night-window.js";
-import { assistantLastActivity } from "./activity.js";
+import { assistantLastActivity, assistantRecentActivity } from "./activity.js";
 
 /** Scheduler timezone/DST semantics; a permitted window is not working status. */
 export function assistantProfileWindow(
@@ -116,6 +116,23 @@ export async function readAssistantProfiles(
       )
     ).rows[0];
     const lastActivity = await assistantLastActivity(db, owner, lane);
+    const outputs = (
+      await db.query<{
+        job_id: string;
+        chat_id: string;
+        title: string;
+        completed_at: Date;
+      }>(
+        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at
+       FROM assistant_activity_events e JOIN ai_jobs j ON j.id=e.job_id
+       JOIN ai_chats c ON c.id=j.chat_id WHERE e.owner_id=$1 AND e.runtime_lane=$2
+       AND e.kind='done' AND j.state='done' AND j.result IS NOT NULL
+       AND j.runtime_lane=$2 AND ${assistantChatVisible("c", "$1")}
+       AND ${assistantJobSourcesVisible("j", "$1", false)}
+       GROUP BY j.id,j.chat_id,c.title ORDER BY max(e.created_at) DESC,j.id DESC LIMIT 5`,
+        [owner, lane],
+      )
+    ).rows;
     profiles.push({
       lane,
       counts,
@@ -127,6 +144,11 @@ export async function readAssistantProfiles(
           window.next_start_at !== null,
       ),
       last_activity_at: lastActivity,
+      recent_activity: await assistantRecentActivity(db, owner, lane),
+      outputs: outputs.map((output) => ({
+        ...output,
+        completed_at: output.completed_at.toISOString(),
+      })),
       window: lane === "overnight" ? window : null,
       budget: lane === "overnight" ? budget : null,
     });

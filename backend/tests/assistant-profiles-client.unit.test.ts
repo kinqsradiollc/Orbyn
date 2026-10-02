@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { OrbynClient } from "@orbyn/api-client";
 const counts = { working: 0, queued: 0, waiting: 0, recovering: 0 };
 const profile = {
+  recent_activity: [],
+  outputs: [],
   state: "idle",
   counts,
   last_activity_at: null,

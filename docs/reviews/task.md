@@ -904,3 +904,35 @@ settings preview files left locally. Latest corrected activity CI
 verified live. Source profile regression **97347** is terminal zero. PR #140
 body updated to disclose the catalog failure and current corrected qualification.
 Keep the exact candidate source frozen until all qualification is terminal.
+
+## Activity merged; profile outputs source checkpoint — 2 October 2026
+
+Activity candidate `01b8757` qualification is terminal: full suite **13554** exit
+zero, **2,112/2,112**, no failures/skips/cancellations, 577,679 ms. Pipeline
+**41776** exit zero; CI **36989279876** completed success for all four jobs.
+The candidate, fetched GitHub merge and resulting main trees match
+`f62fdf5209f0dfb77b60ccb5788724c005742d04`. PR #140 merged as **9e7e505**.
+Main **2ba1ae2** commits the ADR checkpoint and explicitly retains full scope.
+Main dirty mobile/app.json and unrelated untracked files remain untouched.
+
+Current source adds eight recent events and five completed output links per
+profile, with current source visibility, owner/lane isolation and deletion
+handling. Completion times come from actual transitions, not later result edits
+or imported completed jobs. Mobile defers output navigation until sheet dismissal;
+existing chat access checks run again when opening. No visual proof is claimed.
+
+Corrected-source regression **85768** passed **19/19**, 29,747 ms, no failures,
+skips or cancellations (`/tmp/orbyn-profiles-output-current-tests.log`). An earlier
+attempt used DATABASE_URL instead of TEST_DATABASE_URL and was rejected by the
+test guard before database tests ran; it is not qualification evidence. The
+corrected command uses only the marked owned test database. Character/style/catalog
+**85092** passed **21/21**. Corrected types/build **73422** is terminal zero; logs
+`/tmp/orbyn-profiles-output-{types,build,style}.log`. Scoped formatting/diff passed.
+
+Next: receiving authorization, typed rules and agent identities, durable budget
+reservations, dispatch/recovery and worker acknowledgment; profile permissions
+and actual UI interaction. The night scheduler's queued/running busy query still
+lacks a runtime lane predicate and needs a scoped regression before correction.
+Continue plugin reconciliation, real model executor/settings, full Docs D1/U1 and
+whole-app mobile parity. Existing browser denial and native password prompt remain
+open gates. Docker stays under user control. Cleanup remains at the end.

@@ -121,6 +121,103 @@ test("restricted and foreign jobs do not alter profiles or expose activity", asy
     ),
   );
 });
+
+test("recent activity and completed outputs retain authorization and actual completion times", async () => {
+  const user = await person();
+  const id = await job(user.id, "background");
+  await pool.query(
+    "UPDATE ai_jobs SET state='running',lease_until=now()+interval '60 seconds' WHERE id=$1",
+    [id],
+  );
+  await pool.query("UPDATE ai_jobs SET state='done',result=$2 WHERE id=$1", [
+    id,
+    { answer: "PRIVATE PROVIDER ANSWER" },
+  ]);
+  let profile = (await readAssistantProfiles(pool, user.id)).profiles[0];
+  assert.deepEqual(
+    profile.recent_activity.map((event) => event.kind),
+    ["done", "running", "queued"],
+  );
+  assert.equal(profile.outputs.length, 1);
+  assert.equal(profile.outputs[0].job_id, id);
+  const completed = profile.outputs[0].completed_at;
+  assert.equal(
+    JSON.stringify(profile).includes("PRIVATE PROVIDER ANSWER"),
+    false,
+  );
+  await pool.query("UPDATE ai_jobs SET apply_result=$2 WHERE id=$1", [
+    id,
+    { applied: true },
+  ]);
+  profile = (await readAssistantProfiles(pool, user.id)).profiles[0];
+  assert.equal(profile.recent_activity[0].kind, "outcome");
+  assert.equal(
+    profile.outputs[0].completed_at,
+    completed,
+    "an outcome edit is not a new completion",
+  );
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [id, randomUUID()],
+  );
+  profile = (await readAssistantProfiles(pool, user.id)).profiles[0];
+  assert.deepEqual(profile.outputs, []);
+  assert.deepEqual(profile.recent_activity, []);
+  assert.equal(JSON.stringify(profile).includes("Private profile"), false);
+  await pool.query("DELETE FROM ai_jobs WHERE id=$1", [id]);
+  profile = (await readAssistantProfiles(pool, user.id)).profiles[0];
+  assert.deepEqual(profile.outputs, []);
+  assert.equal(profile.recent_activity.length, 4);
+  assert.ok(profile.recent_activity.every((event) => event.job_id === null));
+});
+
+test("output/activity lists are bounded, isolated by lane and omit invented historical completions", async () => {
+  const user = await person();
+  const other = await person();
+  const ids: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const id = await job(user.id, "background");
+    ids.push(id);
+    await pool.query(
+      "UPDATE ai_jobs SET state='done',result='{}' WHERE id=$1",
+      [id],
+    );
+  }
+  const foreign = await job(other.id, "background");
+  await pool.query("UPDATE ai_jobs SET state='done',result='{}' WHERE id=$1", [
+    foreign,
+  ]);
+  const night = await job(user.id, "overnight");
+  await pool.query("UPDATE ai_jobs SET state='done',result='{}' WHERE id=$1", [
+    night,
+  ]);
+  const page = await readAssistantProfiles(pool, user.id);
+  assert.equal(page.profiles[0].recent_activity.length, 8);
+  assert.equal(page.profiles[0].outputs.length, 5);
+  assert.deepEqual(
+    page.profiles[0].outputs.map((output) => output.job_id),
+    ids.slice(-5).toReversed(),
+  );
+  assert.deepEqual(
+    page.profiles[1].outputs.map((output) => output.job_id),
+    [night],
+  );
+  const original = (
+    await pool.query("SELECT chat_id,run_state FROM ai_jobs WHERE id=$1", [
+      night,
+    ])
+  ).rows[0];
+  await pool.query(
+    "INSERT INTO ai_jobs(user_id,chat_id,state,result,run_state,sources_checked) VALUES($1,$2,'done','{}',$3,true)",
+    [user.id, original.chat_id, original.run_state],
+  );
+  assert.deepEqual(
+    (await readAssistantProfiles(pool, user.id)).profiles[1].outputs.map(
+      (output) => output.job_id,
+    ),
+    [night],
+  );
+});
 test("night windows are scheduled permissions, not executing work", () => {
   const settings = {
     ...defaultNightShift(),

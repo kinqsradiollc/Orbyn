@@ -60,3 +60,41 @@
   font-size: 13px;
   line-height: 1.6;
 }
+.assistant-agent-card h4 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.assistant-agent-activity,
+.assistant-agent-outputs {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.assistant-agent-activity li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.assistant-agent-activity time,
+.assistant-agent-outputs time {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.assistant-agent-outputs li {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+.assistant-agent-outputs button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
