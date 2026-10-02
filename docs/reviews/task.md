@@ -1285,3 +1285,34 @@ Plugin **9ce1961** read-only merge-tree against main dabb770 succeeded without
 conflicts (648e672 tree). Reconcile after privacy main checkpoint before fresh
 qualification; preserve its untracked node_modules link. No cleanup/deployment
 or full-goal completion occurred.
+
+## Privacy merged; current plugin qualification — 2 October 2026
+
+All CI **36996647235** jobs terminal successful on f79c852. PR **#144** promoted
+with exact-head guard and merged **eccf338**. Main fast-forwarded preserving
+mobile/app.json and unrelated files; tree equals candidate/CI merge
+**a903b6c7158871b05472e3afb54d824290df80fa**. Main ADR record **456e01a** pushed.
+Source integrated it in **9992899**: one chronological ADR overlap resolved
+retaining both entries; no code difference, no unresolved index entries.
+
+Plugin PR **#142** integrated main456e01a without conflicts, frozen
+**d2da6d8c3f5c367237ebc273aca3fceb91f84a47**, pushed. Packages **74947** terminal
+zero; push **8321** terminal zero. Full fresh marked test database
+**orbyn_plugin_d2da6d8_test**, session **1770** runs. Types/build/format pipeline
+**30937** runs; CI **36998159447** runs exact head, mail succeeded last observed.
+Logs `/tmp/orbyn-plugin-d2da6d8-{packages,full-tests,types,build,format}.log`.
+Resume same handles; do not restart or mutate frozen candidate. Nested backend
+node_modules/@orbyn/core resolves candidate core (root untracked node_modules
+link resolves main, preserved); package core diff only optional recipient type.
+Diff against current main is14files508add24delete, recipient/discovery/consent
+contracts and tests/docs. Keep draft while actual consent/host/gateway/UI resource/
+event/provider acceptance remains open, even if current combined checks pass.
+
+Native fresh reload **514679f** visibly shows saved synthetic paragraph,190words
+and saved timing; persisted paragraph proof screenshot recorded above. Contents
+is visually rendered, but AX omits native app while nested Contents sheet is
+open and coordinate Result tap still fails noWindowsAvailable. No anchor proof
+claimed, Simulator remains on Contents. Source models/settings Docs and whole
+app/mobile parity, typed agent ownership/editor/read/effect enforcement, reviewed
+source revisions, budgets and receiving handoff dispatch remain substantive
+unfinished requirements. Goal remains active; no deployment/cleanup.
