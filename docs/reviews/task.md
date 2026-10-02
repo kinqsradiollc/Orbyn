@@ -1567,3 +1567,31 @@ host/consent/UI gates. Saved web denial remains pending user settings clearance.
 Full models/providers/embeddings/plugin/Docs/Mermaid/whole-app/mobile/agent scope,
 original source snapshots/concurrency/nested closure/receiving reservations and
 other persisted replay paths remain active. No deployment/cleanup/completion.
+
+## Completed document draft replay follow-up — 2 October 2026
+
+Source d415ee9 clarified the canonical ADR path and preserved the full C1–C6,
+M1/D1/U1 acceptance contract. Old devday-2026-plan uncommitted files were inspected
+read-only: every product/test file has a tracked source counterpart, some identical
+and others different. Only temporary .release-check tools are absent. No cleanup
+or wholesale commit occurred.
+
+The completed append_doc draft path bypassed current destination checks under a
+new client_ref. Three actual regressions failed: excluded destination project,
+deleted saved document and restricted Personal scope. Before39122 terminal1,
+20/23 passing, /tmp/orbyn-completed-draft-before.log. Source long-docs now invokes
+current producing-job/source and saved-target guards before returning a persisted
+result or completed-draft error. Corrected initial63938 terminal0,23/23. A later
+53-test invocation silently ignored three nonexistent filenames; count only its
+actual matched tests, not the requested file list. Correct full seven-file cohort
+37852 passed103/103,0fail/skip/cancel,17178ms,
+/tmp/orbyn-completed-draft-cohort-final.log. This includes restoring destination
+access and unchanged saved replay with exactly one page. Backend types94390
+terminal0, /tmp/orbyn-completed-draft-types.log; scoped formatting/diff passed.
+This follow-up stays separate from frozen PR1460033a96.
+
+PR146 full1849 confirmed live at1986 tests; CI37003294826 backend live, other
+three jobs successful. Resume SAME handles; require terminal evidence and fresh
+base/head/tree equivalence before promotion. Main remains7c08aa6. All broader ADR
+gates, nested closure/original source revisions/concurrency and other fast paths
+remain open. Saved browser denial is respected; no deployment or cleanup.

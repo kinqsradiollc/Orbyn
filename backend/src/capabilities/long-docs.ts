@@ -12,6 +12,8 @@ import { readMarkdown } from "./doc-markdown.js";
 import { projectId, teamFilter } from "./common.js";
 import { cleanTitle } from "./format.js";
 import { policy } from "./policy.js";
+import { assertAssistantReplaySources } from "./assistant-replay.js";
+import { assertAssistantReplayTargets } from "./assistant-replay-targets.js";
 import { refUrl } from "./refs.js";
 import {
   CapabilityError,
@@ -406,6 +408,16 @@ export const appendDoc = defineCapability({
       ? await openDraft(ctx, a.draft)
       : await startDraft(ctx, a);
     if (d.done) {
+      // A new client_ref can still reach a persisted result. Its current
+      // destination and producing evidence must remain available before any
+      // saved title, identity or link is returned.
+      await assertAssistantReplaySources(ctx.db, ctx.principal);
+      await assertAssistantReplayTargets(ctx.db, ctx.principal, {
+        structured: d.done,
+        markdown: "",
+        targets: d.done.done.map((x) => x.id),
+        outcome: "ok",
+      });
       if (a.markdown !== undefined || !a.finish)
         throw new CapabilityError(
           "INVALID",

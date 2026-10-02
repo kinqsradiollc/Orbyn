@@ -347,3 +347,19 @@ source fences, other persisted replay paths, receiving handoffs and budgets,
 typed read/effect/notice policy and owner/editor UI remain required. This source
 needs current-main full qualification before scoped promotion; it does not
 complete cached-result security or the full M1/D1/U1 and C1–C6 ADR acceptance.
+
+### Completed document draft replay — source checkpoint, 2 October 2026
+
+A completed long-document draft can return its persisted answer under a new
+client_ref. That path previously disclosed saved page titles and identities after
+destination project exclusion, page deletion or loss of effective Personal scope.
+All three regressions failed before correction. It now rechecks current producing
+job/source access and every saved destination before returning any saved result
+or draft-completed error. Unchanged access and restored access return the original
+answer without creating another page. Ordinary connector behavior is preserved.
+
+The current source cohort passed103/103, with backend types and scoped formatting.
+This follow-up is separate from frozen PR #146; it is not included in that PR's
+full qualification. Complete nested dependency closure, original provider-read
+revisions, concurrency fences and other persisted fast paths remain open. The
+full model/provider/plugin, Docs/Mermaid and whole-app/mobile ADR remains active.
