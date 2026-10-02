@@ -314,6 +314,11 @@ async function keep(
   input: { only?: number[]; steps?: string[] },
 ) {
   const row = await requireRun(db, user.id, id, true);
+  if (row.kind === "reflection")
+    fail(
+      409,
+      "Reflections are saved reviews; they have no changes to keep or undo.",
+    );
   if (row.state !== "done")
     fail(409, "This run is not finished. Open its chat to answer or stop it.");
   if (row.status === "undone") fail(409, "This run was already undone.");
@@ -336,6 +341,11 @@ async function keep(
 }
 async function undo(db: Db, user: UserRow, id: string, selected?: string[]) {
   const row = await requireRun(db, user.id, id, true);
+  if (row.kind === "reflection")
+    fail(
+      409,
+      "Reflections are saved reviews; they have no changes to keep or undo.",
+    );
   if (row.state !== "done" && row.state !== "failed")
     fail(409, "This run is still active. Open its chat to stop it.");
   const context = await assistantRunReview(db, user.id, row);
@@ -447,6 +457,7 @@ export async function overnightRoutes(app: FastifyInstance) {
           const snapshot = await latestNight(db, user.id, id);
           const eligible = snapshot!.runs.filter(
             (run) =>
+              run.kind !== "reflection" &&
               !run.restricted &&
               (action === "undo"
                 ? run.state === "done" || run.state === "failed"
