@@ -2059,3 +2059,37 @@ marker; it was marked only because this task created it explicitly for tests.
 The baseline full suite does not qualify this later SQL optimization; exact-head
 CI/full qualification remains required. Do not merge the larger inherited ADR
 candidate solely because a reference-link cohort passes.
+
+Latest baseline qualification: session83262 is terminalFAIL2364/2366, no skips,
+582927ms. Failures: calendar-wiring newly registered token was classified as
+invalid API key; estimates three-day horizon did not have enough working time
+around the weekend. Reference-specific tests passed, but full success is NOT
+claimed. Estimate fixture now uses7 days and focused3/3 passes; committed
+13e7e8a on Home PR150, cherry-picked9398f40 on source and5a058be on reference.
+PR151 is attached draft stacked on PR148; latest5a058be CI37029825552 is live.
+
+Separate main-based authentication checkpoint2c4e4d4 on
+codex/session-token-namespace in the assistant-work-ownership checkout is pushed
+as attached PR152. New sessions use os_ plus unchanged48 random bytes so their
+leading bytes cannot collide with credential namespaces. Ordinary legacy
+unprefixed sessions retain hash authentication; fake API/agent tokens rejected.
+Main-based session/calendar/email verification20/20 and API/passkey13/13 pass,
+no skips; backend types/format pass. Current PR152 CI is pending before merge.
+The original Home branch13e7e8a remains on remote in PR150, fresh CI pending.
+Main remainsad90e4b; no merge/release/deployment this turn. No source branches
+were discarded; reference/source reconciled without conflict. The overall ADR
+remains incomplete. This handoff update is uncommitted while exact-head CI runs.
+
+Source/preview continuation: reused reference checkout on new branch
+codex/docs-source-preview at5a058be, preserving the reference branch and its
+CI. Uncommitted core doc-source.ts exports exact serializer-based block/source
+ranges and caret lookup; handles stable anchors, multiline Mermaid/math, YAML,
+Unicode, numbered lists, blank blocks and separators without mutating content.
+Three new mapping unit tests and package build pass. Next: integrate desktop
+source/rendered layout and native toggle using the same editor revision/save
+state; wire caret/block navigation and scroll mapping; add actual component
+coverage and screenshot/interaction acceptance. Foundation is NOT D1 completion.
+Home13e7e8a CI37029683489 remains live with three successful jobs and backend
+full tests pending. Session PR152 also needs the known full-week estimate
+fixture cherry-pick so its main-based full CI can qualify deterministically.
+Do not forget qualified main checkpoints once CI is green.

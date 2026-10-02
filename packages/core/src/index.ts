@@ -113,3 +113,5 @@ export * from "./doc-tree.js";
 export * from "./chatgpt-models.js";
 export * from "./chatgpt-connections.js";
 export * from "./mermaid.js";
+
+export * from "./doc-source.js";
