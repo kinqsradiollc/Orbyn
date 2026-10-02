@@ -302,11 +302,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
         <section className="home-features" id="agents">
           <div className="home-section-heading reveal">
             <span className="eyebrow">BACKGROUND AND OVERNIGHT</span>
-            <h2>Delegate a task. Review the work.</h2>
+            <h2>Work you can come back to.</h2>
             <p>
-              Give Background a specific task, or queue work for tonight. Each
-              agent has its own runs, activity and results. Open its profile to
-              see what ran, what needs your input and what it produced.
+              Draft next steps from your project notes, or set aside tasks for
+              tonight. Background and Overnight keep separate activity and
+              results, so you can see what happened and what still needs you.
             </p>
           </div>
           <div className="home-agent-grid">
@@ -318,11 +318,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 </div>
                 <div className="home-agent-detail">
                   <p>{agent.summary}</p>
+                  <div className="home-agent-request">
+                    <span>Example request</span>
+                    <blockquote>“{agent.request}”</blockquote>
+                  </div>
                   <dl className="home-agent-workflow">
-                    <div>
-                      <dt>Example request</dt>
-                      <dd>“{agent.request}”</dd>
-                    </div>
                     <div>
                       <dt>Where to review</dt>
                       <dd>{agent.result}</dd>
