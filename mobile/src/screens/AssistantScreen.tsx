@@ -1079,7 +1079,7 @@ const s = themed(() =>
       flexShrink: 1,
       textAlign: "center",
       fontFamily: fonts.bold,
-      fontSize: 16,
+      fontSize: 15,
       color: colors.text,
       paddingHorizontal: 12,
       paddingVertical: 3,
@@ -1094,7 +1094,7 @@ const s = themed(() =>
       backgroundColor: colors.surfaceMuted,
       alignSelf: "stretch",
     },
-    introTitle: { fontFamily: fonts.medium, fontSize: 20, color: colors.text },
+    introTitle: { fontFamily: fonts.medium, fontSize: 18, color: colors.text },
     introBody: {
       fontFamily: fonts.regular,
       fontSize: 15,
