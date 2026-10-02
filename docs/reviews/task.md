@@ -1949,3 +1949,12 @@ review and native screenshots/interaction remain outstanding.
 - Home companion/guide tests: 11/11. Desktop and mobile typechecks pass.
 - Public Home is being qualified separately on `codex/home-agent-responsibilities`: agents before the catalog/character gallery, concrete supporting copy, research retained in ADR.
 - No runtime capability or character identity changes. Web test-server visual review and native screenshot/interaction acceptance remain open; full ADR stays active.
+
+### Export revision fence foundation — 3 October 2026
+
+- Export route accepts an optional positive safe integer document version. After permission filtering, a mismatch returns409 for every format; inaccessible pages remain404 without exposing revision existence. Invalid versions use the existing schema422 response.
+- Shared client can pass the expected revision; raw export does not retry a conflict against a newer snapshot. Existing unversioned callers keep their behavior.
+- Candidate export integration17/17 and client1/1 pass; all workspace typechecks pass. Disposable marked database name is in /tmp/orbyn-export-version-test-db.txt, distinct from the frozen Docs full-suite database.
+- Initial test used PATCH instead of the established PUT document route, then expected400 instead of existing schema422; corrected the fixtures.
+- This is foundation only. Next connect both editors' flush to explicit save success/offline failure, use content equality rather than native array identity, capture the version, and supply it on all file/share paths. Do not claim unsaved export correctness until those paths and concurrent typing/failure tests pass.
+- Source-preview checkpoint8e0db8f full suite remains running on its unchanged tree. Preserve preview helper files; no cleanup/deploy.
