@@ -182,7 +182,8 @@ production build pass. The full suite exited successfully with 2,148/2,148 and n
 failures/skips/cancellations, log `/tmp/orbyn-companion-model-aa419b8-full-tests.log`.
 After dependency metadata changed, native startup refreshed the diagram source
 digest; HTML remained byte-identical. That artifact is committed in `9e0aeb1`,
-whose fresh full rerun is pending in `/tmp/orbyn-companion-model-9e0aeb1-full-tests.log`.
+whose fresh full rerun passed 2,148/2,148 with zero failures/skips/cancellations
+and terminal exit 0 in `/tmp/orbyn-companion-model-9e0aeb1-full-tests.log`.
 The first combined run is not described as a pre-start frozen `9e0aeb1` run.
 
 Actual native companion customization persisted through a reload and reopened
@@ -198,3 +199,10 @@ of the companion, separate Background/Overnight UI and worker processes, and
 durable collaboration acceptance. The original native abort fix is local
 `dda31cd`; feature code has not been promoted to main. These new documentation
 checkpoints are also local, without pushing unpublished companion work.
+
+Final ordinary-suite acceptance: exact application/asset source `9e0aeb1` passed
+2,148/2,148, zero failures/skips/cancellations, terminal exit 0, 521354 ms. No
+application source changed during that fresh rerun; only ADR/handoff documentation
+changed. This does not imply pgvector integration, production image, Android native
+or upstream ChatGPT OAuth/inference acceptance. Main's whole-app/typing/Views and
+isolated-runtime contract is now committed locally through `f875c8d`.
