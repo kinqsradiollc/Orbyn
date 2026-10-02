@@ -476,3 +476,17 @@ current qualification continues. Full local/all-CI results, web test-server visu
 acceptance and native screenshot/interaction acceptance are separate gates. No
 claim of full U1, reflection or collaboration completion follows from this Home
 increment.
+
+### Published diagrams and delivery authority — 3 October 2026
+
+Render public-page Mermaid sources in an isolated synthetic batch through the
+private HTML renderer, returning inert images and escaped source without sending
+publication forms, app links or live media capabilities to Chromium. Keep the
+published layout and script/frame-denying policy. Recheck publication/password,
+team policy, page revision, public links, files and folder navigation on the
+primary after rendering, before returning HTML. Refuse revoked or changed
+snapshots explicitly. Evidence: `docs/reviews/evidence/publication-renderer.md`.
+
+This candidate requires complete exact-head qualification before main promotion.
+It does not close editor, Word/export, native sharing, whole-app UI or the full
+C1–C6/M1/D1/U1 goal.

@@ -64,3 +64,10 @@ skips or cancellations. Log `/tmp/orbyn-home-profiles-catalog-focused-3.log`.
 A preliminary 26-check invocation omitted the inventory filename; it is not the
 combined acceptance result. An overlapping repeat was cancelled and excluded;
 the final 32-check run used a fresh separate marked disposable database.
+
+Corrected head692cc0f8 full local passed2,320/2,320, zero failed/skipped/cancelled,
+exit0, and all four CI37074275504 jobs passed. This qualifies that exact tree,
+not a later main combination. Integrated publication main86ccd4f8; one append-only
+ADR conflict was resolved by retaining both decisions. No code conflicts or
+remaining markers. New combined-head full/CI qualification still required, and
+native acceptance remains waiting on the human sign-in action.
