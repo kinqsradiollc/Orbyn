@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { pdfTextLines } from "./helpers/pdf-text.js";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -534,8 +535,13 @@ test("rendered PDF contains all Mermaid families and mathematical content throug
   const result = await get(`/docs/${id}/export?format=pdf&version=1`);
   assert.equal(result.statusCode, 200);
   const pages = await readPdf(result.rawPayload, 30);
-  const text = pages.flatMap((p) => p.text.spans.map((s) => s.text)).join(" ");
-  for (const f of mermaidFixtures) assert.ok(text.includes(f.kind));
+  const lines = pdfTextLines(pages);
+  const text = lines.join(" ");
+  for (const f of mermaidFixtures)
+    assert.ok(
+      lines.includes(f.kind),
+      `Missing ${f.kind} heading: ${JSON.stringify(lines)}`,
+    );
   for (const label of [
     "Start",
     "Finish",

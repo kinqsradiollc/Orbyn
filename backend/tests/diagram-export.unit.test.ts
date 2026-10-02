@@ -194,3 +194,23 @@ test("new editor scopes cannot accept a previous bridge's matching sequence numb
   assert.equal(await current, svg);
   second.dispose();
 });
+
+test("standalone and clipboard HTML preserve all six authored heading levels", async () => {
+  const { blocksToClipboard, docToHtml } = await import("@orbyn/core");
+  const blocks = ([1, 2, 3, 4, 5, 6] as const).map((level) => ({
+    type: "heading" as const,
+    level,
+    text: `Level ${level}`,
+  }));
+  for (const html of [
+    docToHtml("Page", blocks),
+    blocksToClipboard(blocks).html,
+  ]) {
+    for (const level of [1, 2, 3, 4, 5, 6])
+      assert.match(
+        html,
+        new RegExp(`<h${level}(?: [^>]*)?>Level ${level}</h${level}>`),
+      );
+    assert.doesNotMatch(html, /<h7>/);
+  }
+});
