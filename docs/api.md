@@ -3316,7 +3316,9 @@ in the file. Optional `version` fencing remains supported. Before PDF delivery,
 access, source revision and included picture permissions are checked again: deleted/inaccessible pages return404
 and changed pages409, including when an older caller omitted `version`. Oversized
 input returns413; unconfigured/unavailable/busy rendering returns503 without a
-partial file. Client disconnects cancel owned work. Standalone HTML preserves
-escaped diagram source markers for local renderers; no scripts or private links
-are added. Native download/share interaction and complete publication/Markdown
+partial file. Client disconnects cancel owned work. Standalone HTML uses the same private renderer to embed inert diagram SVGs,
+MathML and authorized raster images, with escaped source in details and a resource-
+denying CSP installed before content. It requires the configured renderer and
+shares its bounded concurrency; failures return503 without a partial file.
+No executable scripts or private file links are added. Native download/share interaction and complete publication/Markdown
 parity remain separate acceptance gates.

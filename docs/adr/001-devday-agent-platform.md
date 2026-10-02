@@ -435,3 +435,16 @@ page is removed. Evidence: `docs/reviews/evidence/doc-export-images.md`.
 This closes the candidate's PDF/HTML picture-byte gap, subject to full current-head
 qualification. It does not close native sharing, complete rendered HTML/publication,
 Word/export/editor parity or broader C1–C6/M1/D1/U1 acceptance. Goal remains active.
+
+### Portable rendered HTML candidate — 3 October 2026
+
+Use the private first-party renderer for the existing HTML export endpoint as
+well as PDF. Bind internal signatures to output format, share replay/concurrency
+limits, render inert SVG images and MathML, retain escaped source, and install
+script/frame/network-denying CSP before content. Keep screen styles with bounded
+print overrides under media rules. Recheck current page/file authority before
+sending the complete file. Evidence: `docs/reviews/evidence/doc-rendered-html.md`.
+
+Candidate is stacked on the image export checkpoint, not yet qualified for main.
+Publication, source/editor/Word parity, native interaction and the remaining full
+ADR gates still require implementation/acceptance; the objective remains active.

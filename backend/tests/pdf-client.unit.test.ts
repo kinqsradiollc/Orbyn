@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { env } from "../src/config/env.js";
-import { exportRenderedPdf } from "../src/modules/docs/pdf-client.js";
+import {
+  exportRenderedPdf,
+  exportRenderedHtml,
+} from "../src/modules/docs/pdf-client.js";
 import { buildPdfService } from "../src/modules/docs/pdf-service.js";
 
 const key = "client-test-private-renderer-key-at-least-32-characters";
@@ -98,4 +101,36 @@ test("API PDF client maps renderer errors to a generic failure with no partial f
       });
     },
   );
+});
+
+test("HTML client uses format-bound signing, validates portable output and removes listeners", async () => {
+  const portable =
+    '<!doctype html><html><meta http-equiv="Content-Security-Policy" content="default-src none"><p>Portable output</p></html>';
+  const app = buildPdfService({
+    key,
+    executable: "fixture",
+    renderHtml: async ({ html: value }) => {
+      assert.equal(value, html);
+      return portable;
+    },
+  });
+  const previous = [env.DOC_PDF_URL, env.DOC_PDF_KEY];
+  env.DOC_PDF_URL = await app.listen({ host: "127.0.0.1", port: 0 });
+  env.DOC_PDF_KEY = key;
+  const view = scope();
+  try {
+    assert.equal(
+      await exportRenderedHtml(
+        html,
+        view.request as Parameters<typeof exportRenderedHtml>[1],
+        view.reply as Parameters<typeof exportRenderedHtml>[2],
+      ),
+      portable,
+    );
+    assert.equal(view.request.raw.listenerCount("aborted"), 0);
+    assert.equal(view.reply.raw.listenerCount("close"), 0);
+  } finally {
+    [env.DOC_PDF_URL, env.DOC_PDF_KEY] = previous;
+    await app.close();
+  }
 });

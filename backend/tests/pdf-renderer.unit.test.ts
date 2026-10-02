@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   pdfPrintHtml,
   renderPdfSnapshot,
+  renderHtmlSnapshot,
+  portableSnapshotHtml,
 } from "../src/modules/docs/pdf-renderer.js";
 import type {
   PdfBrowser,
@@ -235,4 +237,57 @@ test("oversized HTML is refused before starting a browser", async () => {
     /too large/,
   );
   assert.equal(starts, 0);
+});
+
+test("portable HTML keeps screen styles and contains script-free print bounds", () => {
+  const result = portableSnapshotHtml(html);
+  assert.ok(result.indexOf("Content-Security-Policy") < result.indexOf("<h1>"));
+  assert.match(result, /script-src 'none'/);
+  assert.match(result, /connect-src 'none'/);
+  assert.match(result, /@media print/);
+  assert.match(result, /name="viewport" content="width=device-width/);
+  assert.match(result, /@media screen and \(max-width: 640px\)/);
+  assert.doesNotMatch(result, /<script|<iframe/i);
+});
+
+test("HTML output renders inert diagrams, retains source and never calls PDF printing", async () => {
+  const view = fixture();
+  const result = await renderHtmlSnapshot({
+    ...view.options,
+    html: '<!doctype html><html><pre class="diagram-source" data-orbyn-diagram="mermaid"><code>graph TD; A--&gt;B</code></pre></html>',
+  });
+  assert.match(result, /data:image\/svg\+xml/);
+  assert.match(result, /<details><summary>Diagram source/);
+  assert.doesNotMatch(result, /Spoof|<script/i);
+  assert.equal(
+    view.calls.some((call) => call.method === "Page.printToPDF"),
+    false,
+  );
+  assert.equal(view.closes(), 1);
+  assert.equal(view.listening(), false);
+});
+
+test("HTML renderer retains useful fallback source without engine error details", async () => {
+  const view = fixture({ renderError: true });
+  const result = await renderHtmlSnapshot({
+    ...view.options,
+    html: '<!doctype html><html><pre class="diagram-source" data-orbyn-diagram="mermaid"><code>graph TD; A</code></pre></html>',
+  });
+  assert.match(result, /Diagram rendering unavailable; source retained/);
+  assert.match(result, /graph TD; A/);
+  assert.doesNotMatch(result, /Secret diagram source/);
+  assert.equal(view.closes(), 1);
+});
+
+test("cancelled HTML and missing picture bytes do not hand off a document", async () => {
+  const controller = new AbortController();
+  const view = fixture({ onReady: () => controller.abort() });
+  await assert.rejects(
+    renderHtmlSnapshot({ ...view.options, signal: controller.signal }),
+    { name: "AbortError" },
+  );
+  assert.equal(view.closes(), 1);
+  const missing = fixture({ imageReady: false });
+  await assert.rejects(renderHtmlSnapshot(missing.options));
+  assert.equal(missing.closes(), 1);
 });
