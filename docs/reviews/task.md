@@ -2172,3 +2172,19 @@ namespace and new public Home shared guide. Two append-only ADR/export-list
 conflicts were resolved by retaining both sets of sections and exports; no
 feature or acceptance requirement was discarded. Re-run combined checks before
 relying on earlier candidate qualification. No deployment or cleanup.
+
+3 October HTML export checkpoint: implemented backend-authorized marked HTML
+snapshot enrichment using one strict local engine shared as separately bundled
+app assets. Inert SVG images, escaped source fallback, 100-diagram/size limits,
+queued bridge requests, unique scope IDs, cancellation and persistent batch
+engine on web/native. Source/editor save path unchanged. Types/build pass;
+37/37 focused export/hook/engine/Mermaid tests, 17/17 API exports, real parse and
+render all ten families pass. Engine JSDOM harness now sets zero-valued missing
+padding/border geometry; actual offline Chrome also rendered all ten. Stopped
+only the owned completed fixture Chrome process61087 after verifying results.
+Evidence: docs/reviews/evidence/diagram-html-export.md. No local app screenshot
+or native share acceptance claimed. Next: latest unsaved revision/failure guard,
+PDF rendered images, server/publication parity, full D1/U1/external model gates.
+Home PR155 is still waiting only backend CI; Docker/mobile/mail pass. Preview's
+prior9ae961d all four CI jobs pass; qualification does not cover this new export.
+Full goal active. No deployment or cleanup of repository branches/worktrees.

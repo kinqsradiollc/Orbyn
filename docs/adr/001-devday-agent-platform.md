@@ -546,3 +546,19 @@ or output is fabricated. Reflection and collaboration remain open acceptance
 gates. All character presets remain available; browsing never changes identity.
 Web visual acceptance belongs to the user's test-server review for this increment;
 native screenshot and interaction acceptance remains open.
+
+### Whole-page HTML diagrams — 3 October 2026
+
+Render only Mermaid regions in the existing permission-filtered export snapshot.
+Both clients use the same bounded, strict first-party isolated engine, deny network
+access, and embed sanitized SVG as inert image data URIs. Escaped source remains
+available. Failure gives a generic caption with source; scope change or editor
+close cancels the file. Serial bridge requests retain a live engine through a
+batch and reject stale replies. Desktop loads the engine lazily.
+
+Evidence: `docs/reviews/evidence/diagram-html-export.md`; 37 focused checks,
+17 export API checks, all ten real engine parse/render families, workspace types
+and production build pass. DOM geometry is synthetic; offline Chrome checks are
+engine evidence, not app screenshots. Native sharing, user web visual review,
+PDF/publication/server-direct rendering, latest-unsaved-revision export and full
+D1/U1 acceptance remain open. This does not close the ADR.

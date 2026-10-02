@@ -3,6 +3,7 @@ import {
   CALLOUT_LABELS,
   footnoteNumbers,
   isEmbed,
+  isDiagram,
   isLiveList,
   listLayout,
   mathToText,
@@ -64,6 +65,8 @@ const escapeHtml = (text: string) =>
 
 /** How HTML is written for a page's lines. */
 export type HtmlOptions = {
+  /** Mark diagram source only for local rendering of an authorized export snapshot. */
+  diagramSources?: boolean;
   /** Safe page-scoped reference definitions. */
   references?: ReadonlyMap<string, string>;
   /** Where a picture in the page can be fetched from, when it can. */
@@ -274,7 +277,11 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
         closeList();
         // A live list or an embed is settings, not something to read.
         if (isLiveList(block) || isEmbed(block)) break;
-        body.push(`<pre><code>${escapeHtml(block.text)}</code></pre>`);
+        body.push(
+          isDiagram(block) && o.diagramSources
+            ? `<pre class="diagram-source" data-orbyn-diagram="mermaid"><code>${escapeHtml(block.text)}</code></pre>`
+            : `<pre><code>${escapeHtml(block.text)}</code></pre>`,
+        );
         break;
       case "math":
         closeList();

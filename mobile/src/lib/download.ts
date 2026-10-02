@@ -1,7 +1,12 @@
 import { Platform, Share } from "react-native";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import { EXPORT_FORMATS, EXPORT_LABELS, type ExportFormat } from "@orbyn/core";
+import {
+  EXPORT_FORMATS,
+  EXPORT_LABELS,
+  renderHtmlDiagrams,
+  type ExportFormat,
+} from "@orbyn/core";
 import { client } from "./api";
 
 /**
@@ -54,9 +59,25 @@ export const formatsHere = (): ExportFormat[] => [...EXPORT_FORMATS];
 export async function downloadDoc(
   docId: string,
   format: ExportFormat,
+  diagram?: {
+    render: (source: string) => Promise<string>;
+    signal: AbortSignal;
+  },
 ): Promise<void> {
   const { blob, name } = await client.exportDoc(docId, format);
-  await saveFile(name, blob, blob.type || EXPORT_LABELS[format].type);
+  const exported =
+    format === "html" && diagram
+      ? await renderHtmlDiagrams(
+          await blob.text(),
+          diagram.render,
+          diagram.signal,
+        )
+      : blob;
+  if (diagram?.signal.aborted)
+    throw Object.assign(new Error("Document export was cancelled."), {
+      name: "AbortError",
+    });
+  await saveFile(name, exported, blob.type || EXPORT_LABELS[format].type);
 }
 
 /** What the one control that reveals the shapes is called. */

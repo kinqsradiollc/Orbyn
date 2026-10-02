@@ -408,3 +408,52 @@ test("bold, italic and code are drawn in the fonts they claim", async () => {
   assert.match(body, /\/BaseFont \/Helvetica-Oblique/);
   assert.match(body, /\/BaseFont \/Courier/);
 });
+
+test("HTML export marks only authorized Mermaid source and preserves standalone math", async () => {
+  const created = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Rendered export",
+      content: [
+        {
+          type: "code",
+          lang: "mermaid",
+          text: 'flowchart LR\nA["<script>bad</script>"] --> B',
+          id: "diagram",
+        },
+        {
+          type: "code",
+          lang: "js",
+          text: "const ordinary = true",
+          id: "ordinary",
+        },
+        { type: "math", text: "\\frac{a}{b}", id: "math" },
+      ],
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  const result = await get(`/docs/${created.json().id}/export?format=html`);
+  assert.equal(result.statusCode, 200);
+  assert.equal(
+    (result.body.match(/data-orbyn-diagram="mermaid"/g) ?? []).length,
+    1,
+  );
+  assert.match(result.body, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.match(result.body, /<pre><code>const ordinary = true<\/code><\/pre>/);
+  assert.match(result.body, /<math[ >]/);
+  assert.doesNotMatch(result.body, /<script|<iframe/i);
+  assert.equal(
+    (
+      await get(
+        `/docs/${created.json().id}/export?format=html`,
+        () => strangerToken,
+      )
+    ).statusCode,
+    404,
+  );
+  const markdown = await get(`/docs/${created.json().id}/export?format=md`);
+  assert.match(markdown.body, /```mermaid/);
+  assert.match(markdown.body, /<script>bad<\/script>/);
+});

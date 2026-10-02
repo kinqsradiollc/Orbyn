@@ -36,3 +36,13 @@ await writeFile(
   `${root}assets/mermaid-runtime.json`,
   JSON.stringify({ sourceDigest, html }),
 );
+
+// Each app bundles its own first-party asset; runtime imports never cross app boundaries.
+const desktopAssets = fileURLToPath(
+  new URL("../../desktop/src/assets/", import.meta.url),
+);
+await mkdir(desktopAssets, { recursive: true });
+await writeFile(
+  `${desktopAssets}mermaid-runtime.json`,
+  JSON.stringify({ sourceDigest, html }),
+);

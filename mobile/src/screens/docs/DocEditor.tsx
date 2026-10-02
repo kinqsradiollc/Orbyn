@@ -94,6 +94,7 @@ import {
   type UndoStack,
 } from "@orbyn/core";
 import { DocSourcePreview } from "./DocSourcePreview";
+import { useDiagramExport } from "./use-diagram-export";
 import { DocBody } from "./DocBody";
 import { DocNavigationContext } from "./doc-navigation";
 import { openAppUrl } from "../../hooks/useAppLinks";
@@ -2365,6 +2366,7 @@ export function DocEditor({
     showToast({ text: "Added the summary under the recording" });
   };
 
+  const diagramExport = useDiagramExport(`${userId ?? ""}:${doc.id}`);
   /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
     // Reading and editing (EDT-10): the same switch as Info's, a tap away.
@@ -2483,7 +2485,16 @@ export function DocEditor({
   const exportActions: MoreAction[] = formatsHere().map(
     (format: ExportFormat) => ({
       label: EXPORT_LABELS[format].name,
-      onPress: () => void downloadDoc(doc.id, format).catch(report),
+      onPress: () =>
+        void (async () => {
+          await downloadDoc(doc.id, format, {
+            render: diagramExport.render,
+            signal: diagramExport.signal(),
+          });
+        })().catch((error) => {
+          if (!(error instanceof Error && error.name === "AbortError"))
+            report(error);
+        }),
     }),
   );
   // ---- contents (NAV-03) ----
@@ -2530,6 +2541,7 @@ export function DocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <View style={styles.page}>
+        {diagramExport.surface}
         {sourcePreview && (
           <DocSourcePreview
             blocks={blocks}

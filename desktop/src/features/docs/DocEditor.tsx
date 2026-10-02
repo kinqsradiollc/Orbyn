@@ -99,6 +99,7 @@ import {
   textToBlocks,
   withDepth,
   type DocAiAction,
+  renderHtmlDiagrams,
   type ExportFormat,
   type DocMode,
   type DocSuggestion,
@@ -139,6 +140,7 @@ import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
 import { DocSourcePreview } from "./DocSourcePreview";
+import { useDiagramExport } from "./use-diagram-export";
 import { DocNavigationContext } from "./doc-navigation";
 import { docCrdtEnabled, useDocYjs } from "./useDocYjs";
 import { liveListChoices } from "../views/LiveList";
@@ -2694,12 +2696,28 @@ export function DocEditor({
    * and what it is called, so a page saved from a phone and a page saved
    * from here are the same file.
    */
+  const diagramExport = useDiagramExport(`${userId ?? ""}:${doc.id}`);
   const download = async (format: ExportFormat) => {
     setDownloadMenu(false);
     toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
     try {
+      const signal = diagramExport.signal();
       const { blob, name } = await client.exportDoc(doc.id, format);
-      const url = URL.createObjectURL(blob);
+      const exported =
+        format === "html"
+          ? new Blob(
+              [
+                await renderHtmlDiagrams(
+                  await blob.text(),
+                  diagramExport.render,
+                  signal,
+                ),
+              ],
+              { type: blob.type },
+            )
+          : blob;
+      if (signal.aborted) return;
+      const url = URL.createObjectURL(exported);
       const a = document.createElement("a");
       a.href = url;
       a.download = name;
@@ -2707,7 +2725,7 @@ export function DocEditor({
       URL.revokeObjectURL(url);
       toast({ text: `Downloaded “${name}”` });
     } catch (e) {
-      report(e);
+      if (!(e instanceof Error && e.name === "AbortError")) report(e);
     }
   };
 
@@ -2923,6 +2941,7 @@ export function DocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <div className="doc-editor">
+        {diagramExport.surface}
         {sourcePreview && (
           <DocSourcePreview
             blocks={blocks}

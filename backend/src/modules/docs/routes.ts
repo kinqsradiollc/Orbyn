@@ -242,7 +242,10 @@ export async function docRoutes(app: FastifyInstance) {
         : format === "pdf"
           ? docToPdf(title, blocks)
           : format === "html"
-            ? docToHtml(title, blocks, { math: createMathHtml() })
+            ? docToHtml(title, blocks, {
+                math: createMathHtml(),
+                diagramSources: true,
+              })
             : format === "txt"
               ? docToText(title, blocks)
               : docToMarkdown(title, blocks);

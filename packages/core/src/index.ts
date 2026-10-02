@@ -117,3 +117,5 @@ export * from "./mermaid.js";
 export * from "./doc-source.js";
 
 export * from "./home-agent-guide.js";
+
+export * from "./diagram-export.js";
