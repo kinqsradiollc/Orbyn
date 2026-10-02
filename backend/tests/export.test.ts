@@ -623,6 +623,7 @@ test("standalone HTML renders all ten families with inert SVG, math and retained
     ),
   ].map((match) => decodeURIComponent(match[1]));
   assert.equal(svgs.length, 10);
+  assert.match(result.body, /name="viewport" content="width=device-width/);
   assert.equal(
     (result.body.match(/<details><summary>Diagram source/g) ?? []).length,
     10,

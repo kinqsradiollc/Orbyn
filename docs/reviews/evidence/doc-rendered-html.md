@@ -1,6 +1,6 @@
 # Portable rendered HTML candidate — 3 October 2026
 
-Branch `codex/docs-rendered-html`, stacked on image checkpoint30b496aa/PR162.
+Branch `codex/docs-rendered-html`, reconciled with main192cb475 after image PR162 merged. Image head30b496aa passed2,269/2,269 full local tests and all four exact CI37064382202 jobs.
 The existing HTML export endpoint now renders diagrams through the same private,
 first-party isolated engine as PDF rather than leaving only source markers.
 
@@ -13,7 +13,7 @@ first-party isolated engine as PDF rather than leaving only source markers.
   URIs, MathML and retained escaped diagram source. CSP is inserted before the
   content; scripts, frames and external resource loads remain denied. The engine
   remains in a separate private page/process profile, never a user browser.
-- Portable HTML keeps screen styling; print overrides live under `@media print`.
+- Portable HTML includes a responsive viewport, narrow-screen text wrapping and horizontally scrollable tables, and keeps screen styling; print overrides live under `@media print`.
   Images/fonts must load before handoff. Cancellation, failure or oversized output
   cannot return a partial file. The API rechecks current page/file authority.
 - Existing DOC_PDF configuration/private image serves both formats. No additional
@@ -38,17 +38,16 @@ first-party isolated engine as PDF rather than leaving only source markers.
 
 ![Portable HTML print proof](html-renderer-print-contact.png)
 
-Logs: `/tmp/orbyn-html-renderer-wired-tests-3.log`,
-`/tmp/orbyn-html-renderer-api-3.log`, and
-`/tmp/orbyn-html-renderer-{all-types,build,format}.log`.
+Logs: `/tmp/orbyn-html-renderer-final-units.log`,
+`/tmp/orbyn-html-renderer-final-api.log`, and
+`/tmp/orbyn-html-renderer-current-{all-types,build,format}.log`.
 Initial implementation checks caught a missing auth format variable and a test
 fixture missing the authorized diagram class; corrected and rerun. A test-file
 editing mistake was restored from the parent before adding the two format tests;
 existing service regression coverage remains present. Initial API marker-only
 expectation was strengthened to require an actual inert SVG and retained source.
 
-Full exact-head local/all CI still required before promotion, plus parent image
-qualification. Publication/reference/source/editor parity, native sharing and
+Full exact-head local/all CI still required before promotion, parent image qualification is complete. Publication/reference/source/editor parity, native sharing and
 broader C1–C6/M1/D1/U1 remain open. No app UI permission was bypassed; PDF evidence
 is a synthetic export check, not web/native visual acceptance. No deploy/release/
 cleanup and no voice/computer-use product expansion.

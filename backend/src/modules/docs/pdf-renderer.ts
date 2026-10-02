@@ -28,7 +28,7 @@ function snapshotHtml(html: string, print: boolean): string {
   const at = start.index + start[0].length;
   return (
     html.slice(0, at) +
-    `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}"><style>${print ? PRINT_STYLE : `figure img { max-width: 100%; height: auto; } @media print { ${PRINT_STYLE} }`}</style>` +
+    `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">${print ? "" : '<meta name="viewport" content="width=device-width, initial-scale=1">'}<style>${print ? PRINT_STYLE : `figure img { max-width: 100%; height: auto; } @media screen and (max-width: 640px) { html body { overflow-wrap: anywhere; } table { display: block; max-width: 100%; overflow-x: auto; } } @media print { ${PRINT_STYLE} }`}</style>` +
     html.slice(at)
   );
 }

@@ -245,6 +245,8 @@ test("portable HTML keeps screen styles and contains script-free print bounds", 
   assert.match(result, /script-src 'none'/);
   assert.match(result, /connect-src 'none'/);
   assert.match(result, /@media print/);
+  assert.match(result, /name="viewport" content="width=device-width/);
+  assert.match(result, /@media screen and \(max-width: 640px\)/);
   assert.doesNotMatch(result, /<script|<iframe/i);
 });
 
