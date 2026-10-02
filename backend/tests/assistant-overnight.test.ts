@@ -41,10 +41,44 @@ async function held(user: Person, nightId?: string) {
     tool: "create_tasks",
     args: { tasks: [{ title: `${job} ${id}` }] },
   }));
+  const night =
+    nightId ??
+    (
+      await pool.query(
+        "INSERT INTO assistant_nights(user_id, local_day, status, runs) VALUES($1, '2050-01-01', 'done', 1) RETURNING id",
+        [user.id],
+      )
+    ).rows[0].id;
+  const chat = (
+    await pool.query(
+      "INSERT INTO ai_chats(id,user_id,title,origin) VALUES($2,$1,'Night tasks','night') RETURNING id",
+      [user.id, randomUUID()],
+    )
+  ).rows[0].id;
+  const queued = (
+    await pool.query(
+      `INSERT INTO ai_jobs(user_id,chat_id,state,sources_checked,run_origin,run_state)
+     VALUES($1,$2,'done',true,'night',$3::jsonb) RETURNING id`,
+      [
+        user.id,
+        chat,
+        JSON.stringify({
+          version: 1,
+          request: { automation: { kind: "night", night_id: night } },
+        }),
+      ],
+    )
+  ).rows[0].id;
   const proposal = await createAgentProposal(pool, {
     userId: user.id,
     grantId: principal.grant_id!,
     clientName: "Orbyn",
+    assistantGuard: {
+      lane: "overnight",
+      rules_revision: principal.assistant_rules_revision!,
+      job_id: queued,
+      checks: [{ team_id: null, actions: ["any_change", "create"] }],
+    },
     summary: "Night tasks",
     changes: [
       {
@@ -64,28 +98,15 @@ async function held(user: Person, nightId?: string) {
       },
     ],
   });
-  const night =
-    nightId ??
-    (
-      await pool.query(
-        "INSERT INTO assistant_nights(user_id, local_day, status, runs) VALUES($1, '2050-01-01', 'done', 1) RETURNING id",
-        [user.id],
-      )
-    ).rows[0].id;
-  const queued = (
-    await pool.query(
-      "INSERT INTO ai_jobs(user_id, state, result, sources_checked) VALUES($1, 'done', $2::jsonb, true) RETURNING id",
-      [
-        user.id,
-        JSON.stringify({
-          assistant_run: {
-            outcome: "pending",
-            proposal_id: `proposal:${proposal.id}`,
-          },
-        }),
-      ],
-    )
-  ).rows[0].id;
+  await pool.query("UPDATE ai_jobs SET result=$2::jsonb WHERE id=$1", [
+    queued,
+    JSON.stringify({
+      assistant_run: {
+        outcome: "pending",
+        proposal_id: `proposal:${proposal.id}`,
+      },
+    }),
+  ]);
   const run = (
     await pool.query(
       "INSERT INTO assistant_night_runs(night_id, job_id, kind, summary) VALUES($1, $2, 'handed', 'Prepared two tasks') RETURNING id",
