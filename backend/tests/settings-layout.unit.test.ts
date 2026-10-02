@@ -181,7 +181,7 @@ test("settings search destinations follow all eight categories and retain legacy
     assert.equal(settingById(id)?.tab, category, id);
   assert.equal(searchSettings("ChatGPT connections")[0].id, "chatgpt-models");
   assert.ok(
-    !searchSettings("ChatGPT connections", "phone").some(
+    searchSettings("ChatGPT connections", "phone").some(
       (entry) => entry.id === "chatgpt-models",
     ),
   );

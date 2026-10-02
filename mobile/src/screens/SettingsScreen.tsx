@@ -4,6 +4,7 @@ import {
   SettingsSection,
 } from "./settings/SettingsSection";
 import { PrivacySection } from "./settings/PrivacySection";
+import { ChatgptModelsSection } from "./settings/ChatgptModelsSection";
 import { ArrangeList, StartChoice } from "./settings/LayoutSection";
 import React, { useEffect, useMemo, useState } from "react";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
@@ -1156,6 +1157,8 @@ export function SettingsScreen({
         act={act}
         onDeleted={onAccountDeleted}
       />
+
+      <ChatgptModelsSection userId={user?.id ?? ""} />
 
       <SettingsSection title="AI provider">
         <Text style={shared.body}>

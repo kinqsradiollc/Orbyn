@@ -294,7 +294,7 @@ export function SettingsView({
                   <DevicesSettings report={report} />
                 </>
               )}
-              {tab === "ai" && <ChatgptConnections />}
+              {tab === "ai" && <ChatgptConnections userId={user?.id ?? ""} />}
               {tab === "account" && onOpenWhatsNew && (
                 <SettingsSection className="card settings-card">
                   <h2>What's new</h2>

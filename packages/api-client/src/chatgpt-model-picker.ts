@@ -16,7 +16,7 @@ export type ChatgptModelPickerState = {
   error: string | null;
 };
 export type ChatgptModelPreferenceStore = {
-  read(binding: ChatgptModelBinding): Promise<unknown>;
+  read(binding: ChatgptModelBinding, signal?: AbortSignal): Promise<unknown>;
   /** Atomically compare version and persist the choice; a conflict must reject. */
   write(preference: ChatgptModelPreference): Promise<unknown>;
 };
@@ -94,7 +94,7 @@ export class ChatgptModelPicker {
     try {
       const [catalog, saved] = await Promise.all([
         this.options.models(abort.signal),
-        this.options.store.read({ ...this.binding }),
+        this.options.store.read({ ...this.binding }, abort.signal),
       ]);
       const models = catalog.map((model) => chatgptModel.parse(model));
       if (
@@ -120,6 +120,60 @@ export class ChatgptModelPicker {
         saving: false,
         error: "ChatGPT models could not be loaded. Reconnect or retry.",
       });
+    }
+  }
+
+  /** Read a default changed on another client before capturing a new inference turn. */
+  async refreshPreference(signal?: AbortSignal): Promise<void> {
+    if (
+      this.closed ||
+      this.state.status !== "ready" ||
+      this.state.saving ||
+      !this.state.preference
+    )
+      throw new Error(
+        "Load an available ChatGPT default model before continuing.",
+      );
+    const generation = this.generation;
+    const previous = this.state.preference;
+    try {
+      signal?.throwIfAborted();
+      const preference = this.preference(
+        await this.options.store.read({ ...this.binding }, signal),
+      );
+      signal?.throwIfAborted();
+      if (
+        this.closed ||
+        generation !== this.generation ||
+        this.state.saving ||
+        this.state.status !== "ready" ||
+        !this.state.preference
+      )
+        throw new Error("The ChatGPT default changed while it was being read.");
+      if (
+        preference.version < this.state.preference.version ||
+        (preference.version === this.state.preference.version &&
+          preference.model !== this.state.preference.model)
+      )
+        throw new Error("The ChatGPT default response is stale.");
+      this.publish({ ...this.state, preference, error: null });
+    } catch {
+      if (
+        !this.closed &&
+        generation === this.generation &&
+        !this.state.saving &&
+        this.state.preference?.version === previous.version
+      )
+        this.publish({
+          ...this.state,
+          status: "unavailable",
+          models: [],
+          error:
+            "The default model could not be refreshed. Reload before continuing.",
+        });
+      throw new Error(
+        "The default model could not be refreshed. Reload before continuing.",
+      );
     }
   }
 

@@ -4,9 +4,10 @@ import type { ChatgptDesktopCommand } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { chatgptStore, useChatgptConnection } from "../../lib/chatgpt";
 import { SettingsSection } from "./SettingsSection";
+import { ChatgptRemoteModels } from "./ChatgptRemoteModels";
 
 /** Personal connections and defaults share the guarded desktop metadata store. */
-export function ChatgptConnections() {
+export function ChatgptConnections({ userId = "" }: { userId?: string }) {
   const state = useChatgptConnection();
   const id = useId();
   const [query, setQuery] = useState("");
@@ -49,13 +50,7 @@ export function ChatgptConnections() {
         Connect a personal ChatGPT account and choose its default model.
       </p>
       {state.status === "unsupported" ? (
-        <div className="ai-connection-note">
-          <strong>Connect from the Orbyn desktop app</strong>
-          <p>
-            The desktop app owns the connection and keeps your ChatGPT
-            credentials in encrypted device storage.
-          </p>
-        </div>
+        <ChatgptRemoteModels userId={userId} />
       ) : (
         <>
           <div className="settings-head ai-connection-heading">

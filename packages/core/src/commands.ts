@@ -915,7 +915,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Connect a ChatGPT account and choose its default model",
     "ai",
     "AI connections & models",
-    null,
+    { section: "AI connections & models" },
     "openai plan provider default model executor device",
   ),
   setting(

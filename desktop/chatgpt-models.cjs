@@ -84,11 +84,18 @@ async function createChatgptModelRuntime({
     binding,
     models,
     store: {
-      read: async () => {
+      read: async (_binding, signal) => {
+        const readSignal = AbortSignal.any([
+          lifetime.signal,
+          AbortSignal.timeout(30_000),
+          ...(signal ? [signal] : []),
+        ]);
+        readSignal.throwIfAborted();
         await live();
         const saved = preferenceStore
-          ? await preferenceStore.read(binding, lifetime.signal)
+          ? await preferenceStore.read(binding, readSignal)
           : await registrationStore.modelPreference();
+        readSignal.throwIfAborted();
         await checkContext();
         return saved;
       },
@@ -118,6 +125,12 @@ async function createChatgptModelRuntime({
     models,
     /** Private executor adapter: resolve the saved default without a paid fallback. */
     async completeDefault(request, options = {}) {
+      const signals = [lifetime.signal, AbortSignal.timeout(120_000)];
+      if (options.signal) signals.push(options.signal);
+      const signal = AbortSignal.any(signals);
+      signal.throwIfAborted();
+      await live();
+      await picker.refreshPreference(signal);
       await live();
       const state = picker.snapshot();
       const chosen = picker.defaultStatus();
@@ -129,8 +142,6 @@ async function createChatgptModelRuntime({
         throw new Error(
           "Choose an available ChatGPT default model before continuing.",
         );
-      const signals = [lifetime.signal, AbortSignal.timeout(120_000)];
-      if (options.signal) signals.push(options.signal);
       // A per-turn model is immutable even if the default is changed later.
       const result = await transport.complete(
         {
@@ -138,7 +149,7 @@ async function createChatgptModelRuntime({
           input: request.input,
           instructions: request.instructions,
         },
-        { signal: AbortSignal.any(signals) },
+        { signal },
       );
       await live();
       return result;

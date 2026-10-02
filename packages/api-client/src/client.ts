@@ -1,5 +1,6 @@
 import {
   chatgptExecutorStart,
+  chatgptExecutorList,
   chatgptExecutorFinish,
   chatgptExecutorChallenge,
   chatgptExecutorEnrolled,
@@ -1487,6 +1488,16 @@ export class OrbynClient {
     )
       throw new Error("The ChatGPT default response changed.");
     return result;
+  }
+
+  /** Discover owned devices without reading any provider credential or signing key. */
+  async chatgptExecutors(signal?: AbortSignal) {
+    return chatgptExecutorList.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/executors", {
+        signal,
+        fresh: true,
+      }),
+    );
   }
 
   async chatgptConnections(signal?: AbortSignal) {

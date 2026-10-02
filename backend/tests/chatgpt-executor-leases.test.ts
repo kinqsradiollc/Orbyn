@@ -650,3 +650,94 @@ test("the central sweeper removes expired lease proofs and retains live proofs",
     [live.id],
   );
 });
+
+test("owned device discovery is credential-free, cross-device and excludes revoked/expired registrations", async () => {
+  const { listChatgptExecutors } =
+    await import("../src/modules/auth/chatgpt-model-catalog.js");
+  const f = await fixture();
+  const remote = await person(f.session.userId);
+  assert.deepEqual(await listChatgptExecutors(remote), [
+    {
+      executor_id: f.executor.id,
+      connection_id: f.connection.id,
+      host_id: f.executor.host_id,
+    },
+  ]);
+  assert.deepEqual(await listChatgptExecutors(await person()), []);
+  await pool.query(
+    "UPDATE sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",
+    [f.session.sessionId],
+  );
+  assert.deepEqual(await listChatgptExecutors(remote), []);
+  await assert.rejects(listChatgptExecutors(f.session), status(401));
+  const revoked = await fixture();
+  await revokeChatgptConnection(revoked.session, revoked.connection.id);
+  assert.deepEqual(await listChatgptExecutors(revoked.session), []);
+});
+
+test("device discovery API enforces session principals, empty query, account restrictions and rate limits", async () => {
+  const f = await fixture();
+  const app = await createService("all", [chatgptExecutorRoutes]);
+  const path = "/ai/connections/chatgpt/executors";
+  const call = (token?: string, url = path, ip = "10.78.5.1") =>
+    app.inject({
+      method: "GET",
+      url,
+      headers: token ? { authorization: `Bearer ${token}` } : {},
+      remoteAddress: ip,
+    });
+  try {
+    assert.equal((await call()).statusCode, 401);
+    assert.equal((await call("oat_fixture")).statusCode, 401);
+    const apiKey = `ok_${randomUUID()}`;
+    await pool.query(
+      "INSERT INTO api_keys(user_id,name,prefix,key_hash) VALUES($1,'Fixture','ok_fixture',$2)",
+      [f.session.userId, digest(apiKey)],
+    );
+    assert.equal((await call(apiKey)).statusCode, 403);
+    assert.equal(
+      (await call(f.session.token, `${path}?access_token=forbidden`))
+        .statusCode,
+      422,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/ai/connections/chatgpt/leases/challenges",
+          headers: {
+            authorization: `Bearer ${f.session.token}`,
+            "content-type": "application/json",
+          },
+          payload: "{",
+        })
+      ).statusCode,
+      400,
+    );
+    const got = await call(f.session.token);
+    assert.equal(got.statusCode, 200, got.body);
+    assert.equal(got.headers["cache-control"], "no-store");
+    assert.deepEqual(got.json(), [
+      {
+        executor_id: f.executor.id,
+        connection_id: f.connection.id,
+        host_id: f.executor.host_id,
+      },
+    ]);
+    await pool.query("UPDATE users SET disabled=true WHERE id=$1", [
+      f.session.userId,
+    ]);
+    assert.equal((await call(f.session.token)).statusCode, 403);
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [
+      f.session.userId,
+    ]);
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i++)
+      statuses.push(
+        (await call(f.session.token, path, "10.78.5.2")).statusCode,
+      );
+    assert.ok(statuses.includes(429));
+  } finally {
+    await app.close();
+  }
+});
