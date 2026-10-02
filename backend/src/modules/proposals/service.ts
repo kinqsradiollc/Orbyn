@@ -11,6 +11,7 @@ import {
   reviewChange,
   reviewPath,
   type ProposalSource,
+  type AssistantProposalGuard,
   type ProposalStatus,
   type ReviewApplied,
   type ReviewChange,
@@ -44,6 +45,7 @@ import {
 } from "../docs/service.js";
 import { createProject, deleteProject } from "../projects/service.js";
 import { applyProject } from "../ai/project-proposal.js";
+import { checkAssistantProposalRules } from "../agents/assistant-rules.js";
 import { applySessionChange } from "../ai/session-change.js";
 import { linkDecision } from "../work-records/service.js";
 import { actionStaleness, applyAction } from "./actions.js";
@@ -104,11 +106,12 @@ type Row = {
   decision_links: { action_index: number; decision_id: string }[] | null;
   applied_project_id: string | null;
   team_ids: string[];
+  assistant_guard: unknown;
 };
 
 const SELECT = `SELECT id, user_id, source, kind, grant_id, client_name, summary, status,
   applied, created_at, expires_at, decided_at, changes, actions, project,
-  session_change, decision_links, applied_project_id, team_ids FROM proposals`;
+  session_change, decision_links, applied_project_id, team_ids, assistant_guard FROM proposals`;
 
 /** The web app's link to a proposal. */
 export const reviewUrl = (id: string) =>
@@ -126,6 +129,7 @@ export type NewProposal = {
   summary: string;
   changes: ReviewChange[];
   kind?: "change" | "idea";
+  assistantGuard?: AssistantProposalGuard;
 };
 
 /**
@@ -140,6 +144,13 @@ export async function createAgentProposal(
   if (input.changes.length > MAX_PROPOSAL_CHANGES)
     fail(422, `A proposal holds at most ${MAX_PROPOSAL_CHANGES} changes.`);
   const changes = input.changes.map((c) => reviewChange.parse(c));
+  const guard = await checkAssistantProposalRules(
+    db,
+    input.userId,
+    input.grantId,
+    input.assistantGuard,
+    true,
+  );
   const teams = [
     ...new Set(
       changes.flatMap((c) =>
@@ -150,8 +161,8 @@ export async function createAgentProposal(
   const row = (
     await db.query<{ id: string; expires_at: Date }>(
       `INSERT INTO proposals (user_id, actions, source, kind, grant_id, client_name,
-         summary, changes, team_ids)
-       VALUES ($1, '[]'::jsonb, 'agent', $2, $3, $4, $5, $6::jsonb, $7::uuid[])
+         summary, changes, team_ids, assistant_guard)
+       VALUES ($1, '[]'::jsonb, 'agent', $2, $3, $4, $5, $6::jsonb, $7::uuid[], $8::jsonb)
        RETURNING id, expires_at`,
       [
         input.userId,
@@ -161,6 +172,7 @@ export async function createAgentProposal(
         input.summary.slice(0, 500),
         JSON.stringify(changes),
         teams,
+        guard === null ? null : JSON.stringify(guard),
       ],
     )
   ).rows[0];
@@ -1409,7 +1421,33 @@ export async function applyProposal(
   let projectId: string | null = null;
   let made: number[] = [];
   if (row.source === "agent") {
+    const guard = await checkAssistantProposalRules(
+      db,
+      u.id,
+      row.grant_id,
+      row.assistant_guard,
+    );
     const changes = row.changes.map((c) => reviewChange.parse(c));
+    for (const change of changes) {
+      if (
+        change.type === "action" &&
+        change.action === "plan.apply" &&
+        (typeof change.input.grant_id !== "string" ||
+          change.input.grant_id.toLowerCase() !== row.grant_id)
+      )
+        fail(403, "A reviewed plan must use its original connection.");
+      if (change.type === "action" && change.action === "plan.apply") {
+        // Only the separately stored server guard may select assistant identity.
+        delete change.input.assistant_lane;
+        delete change.input.assistant_job_id;
+        delete change.input.assistant_rules_revision;
+        if (guard) {
+          change.input.assistant_lane = guard.lane;
+          if (guard.job_id) change.input.assistant_job_id = guard.job_id;
+          change.input.assistant_rules_revision = guard.rules_revision;
+        }
+      }
+    }
     if (input.steps) {
       const change = changes[0];
       if (
