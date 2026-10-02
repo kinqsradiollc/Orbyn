@@ -897,3 +897,10 @@ plugin branch overlaps; finish model executor/settings and Docs D1/U1. Native QA
 is still waiting for dismissal of the owned simulator's Save Password prompt and
 browser saved-deny permission remains unresolved; do not bypass either. Main
 character work and other dirty files stay preserved until integration is complete.
+
+Profile source is committed/pushed **d3b4c64**, with only preserved untracked
+settings preview files left locally. Latest corrected activity CI
+**36989279876** is verified live on **01b8757**; **13554** and **41776** are also
+verified live. Source profile regression **97347** is terminal zero. PR #140
+body updated to disclose the catalog failure and current corrected qualification.
+Keep the exact candidate source frozen until all qualification is terminal.
