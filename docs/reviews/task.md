@@ -2280,3 +2280,12 @@ export/save/share/scope/Home/API/client checks pass. No conflict markers remain,
 formatting passes. The frozen2437/2437 evidence remains tied to7cd75934.
 PR157 is still running its backend test job; do not merge yet. PR158 full local
 suite43323 and CI37046563935 remain live; Docker/mobile/mail already pass.
+
+### Main checkpoint and exact-head freshness qualification — 3 October 2026
+
+- Public Home PR157 passed all four CI37045908216 jobs and merged asmainb00c736ac73ed2c99540fa81022fc66a1432d578. Local main fast-forwarded; mobile/app.json and all unrelated untracked files remain preserved. No deploy.
+- Docs source reconciled that main as18725980; only two Home test assertions and appended ADR text changed. Runtime source still matches frozen7cd75934, whose full2437/2437 passed. Latest Home13/13 pass; prior combined81/81 passed before these two assertions. No unresolved conflicts. Larger PR153 remains draft.
+- Export primary-read8b48b1de full local2209/2209 passed, zero failures/skips/cancellations, exit0,520675ms. Session43323 terminal; evidence in PR158's docs/reviews/evidence/doc-export-primary.md.
+- Primary candidate reconciled mainb00c736 ascac22362b6bbfe84ce2bdb96e88ea89e9bdca511. Both ADR sections retained. Current42/42 combined checks, alltypes/build/fullformat PASS in /tmp/orbyn-export-primary-cac22362-{focused,types,build,format}.log.
+- Currentcac22362 FULL LOCAL SUITE LIVE on session6346, /tmp/orbyn-export-primary-cac22362-full-tests.log, dedicated marked database /tmp/orbyn-export-primary-current-test-db.txt. Do not edit that frozen tree, duplicate or restart the run. Its new exact-head CI is required; old8b CI is superseded. PR158 mergeState CLEAN as observed.
+- Wait for exact local/full CI qualification, then merge PR158 with matching head and verify main. Reconcile Docs afterward. Next implementation: rendered PDF/math/diagrams and remaining real native sharing/screenshots, publication and whole U1/model/plugin/runtime gates. Full ADR ACTIVE; no cleanup/deployment.
