@@ -118,3 +118,21 @@ collaboration remain required. Web/desktop features require mobile parity.
 Preserve main's character work and Orbyn's palette. Unverified responsive/native
 behavior and external integration gates remain open. Related worktree cleanup
 comes after integration and qualification, without discarding retained work.
+
+### Independent Overnight scheduling checkpoint — 2 October 2026
+
+PR #141 is merged as main `7f3894f`, from frozen candidate `9b87ce3`.
+The scheduler's per-owner busy check now applies to Overnight jobs; unrelated
+queued/running Background or interactive jobs cannot starve its night work.
+Own-lane serialization and the shared-task ownership guard remain enforced.
+Four new regression cases failed before the correction. Afterward, the focused
+night/runtime/ownership suite passed 53/53 and the fresh full local suite passed
+2,120/2,120 with no failures, skips or cancellations. All workspace types,
+production builds and full formatting passed; every CI job passed. Candidate,
+GitHub merge and resulting main trees match
+`3e2d1b8410f139b625c88036679d62a77c08caca`. No deployment occurred.
+
+This completes a scheduler checkpoint, not bounded handoff dispatch or full A4.
+Typed rules, agent ownership records, durable budgets, receiving authorization
+and cross-runtime round trips still require integration. The whole-app D1/U1,
+provider/model, plugin and mobile parity deliverables remain in scope.
