@@ -29,16 +29,30 @@ web/desktop and mobile remain in scope.
   person origin and access are checked at enqueue/extraction/write boundaries.
   Exact candidate `0392e92` passed 2,094/2,094 full local tests and all CI jobs.
 - **Reflection candidate:** draft PR #137, `codex/overnight-reflection`, current
-  head `b29f454`, based on main `3677d53`. Explicit consent, bounded current source
+  head `061a501`, based on main `3677d53`. Explicit consent, bounded current source
   evidence, durable revision receipts, read-only reflection and numbered source
   links exist on both clients. Initial candidate `8535357` passed 2,104/2,104 full
   local tests and production build/types/format. Follow-up removes misleading
   change-review controls from reflections, rejects their keep/undo operations,
   and distinguishes Queued from Working. Focused review tests passed 13/13;
-  full types/build/format passed and the final full suite/CI are in progress.
+  full types/build/format passed and b29f454 passed 2,105/2,105 full local tests.
+  Test-only 061a501 fixes same-tick fixture timestamps and adds a scan-cutoff
+  regression (10/10 focused). All four CI jobs passed; backend reported 2,105
+  passed, zero failed and one Tesseract-dependent skip out of 2,106.
   Native source navigation and compact long-label wrapping were observed with
   synthetic fixtures. Long-content scrolling and web/mobile-web visual gates
   remain open. This is not merged or deployed.
+- **Docs navigation candidate:** source `77b7d5b`, isolated main candidate
+  `b3ab641` on draft PR #138, `codex/docs-navigation`. Both editors resolve heading fragments
+  and own-origin app links inside the app, preserving drafts and unrelated folds.
+  Mobile measures outer heading rows and applies destination pages/fragments
+  together after loading; HTML preserves heading levels and working local heading
+  links with private-resource filtering. Source and isolated main candidate f96264e passed 53 focused checks,
+  workspace types, production build and formatting. Native iOS taps on a fresh
+  candidate bundle proved relative app navigation, a folded same-page heading
+  jump and a cross-page heading link after correcting a stale-page race. Latest
+  CI, web/mobile-web/native Android and outline interaction gates remain open. This is unmerged and does not
+  complete D1.
 - **Remaining agent scope:** truthful separate profiles/workspaces, durable
   authorized Daytime/Overnight handoffs, typed rules, ownership/activity/budgets
   and the complete cross-client surface ledger remain required. Shared storage
