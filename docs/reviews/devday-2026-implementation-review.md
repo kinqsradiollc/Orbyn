@@ -1,5 +1,29 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Current checkpoint map — 2 October 2026
+
+This map updates delivery evidence without reducing the full contract below.
+Voice, computer use and speculative removed rows remain excluded. Backend,
+web/desktop and mobile remain in scope.
+
+| Area                                                     | Authoritative checkpoint                                                                      | Evidence and remaining gates                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Main session/profile work                                | Pushed through `60de59c`                                                                      | Profile, mutation errors and preference results are session-bound; web tab account changes clear root planner data. Focused checks and workspace typecheck passed on main. Nested caches, other callbacks and visual/native interaction remain open.                                                                                              |
+| Main Docs literals/math exports and mobile file handling | Integrated through `b6096c8`                                                                  | Shared code spans, escaped literals and safe links; bounded MathML HTML export; 13 real mobile utility checks with platform/share mocks and workspace types passed. The exact main full suite passed 2,078/2,078. Native bundles passed on corresponding local source. Browser/native visual interaction and broader Markdown parity remain open. |
+| Main ChatGPT private inference                           | Pushed `fef8f7c`, `76fb218`, `3f5ae6f`                                                        | Saved-default adapter and executor lease fencing are private; 26 model/transport checks and 25 lease/runtime checks passed on main. No new inference IPC command exists. Signed job assignment/results, composer routing and real-account acceptance remain open.                                                                                 |
+| Plugin recipient/discovery                               | Local `codex/devday-plugin-boundary`, proof `c6f4b03`                                         | Frozen source `e60fb32` passed 1,995/1,995 backend tests after fixture and runner fixes. Recipient consent, isolated grants/tokens, service discovery and challenges are not merged. Browser consent, gateway, host, provider and deployment gates remain open.                                                                                   |
+| Docs mobile Mermaid                                      | Local `codex/devday-model-catalog`, source `ca21820` and `b1df2ef`, packaging proof `4717551` | Ten families pass the actual strict parser; nine source/runtime checks, workspace types and iOS/Android exports passed. Parsing and packaging do not prove diagram appearance, export interaction or native navigation.                                                                                                                           |
+| Settings/embedding/Docs source                           | Local model/Docs worktree                                                                     | Settings redesign, headings/fences and embedding lifecycle work remain distinct unmerged checkpoints. Web build passed locally; preview permission still blocks visual acceptance. Earlier frozen embedding suite evidence remains scoped to its own source.                                                                                      |
+| Broad ADR                                                | Active, incomplete                                                                            | Agent rules/ownership/activity/budgets, bound and published pages, Slack/Teams, full Markdown parity, composer/actual inference and cross-client UI acceptance remain deliverables. Existing foundations do not prove these complete.                                                                                                             |
+
+A main full-suite run on frozen code `986e77f` passed all 2,014 tests, with no
+failures, skips or cancellations, and exited successfully. It used only the
+marked disposable test database. Evidence:
+`/tmp/orbyn-main-session-inference-full-tests.log`. This verifies that main source;
+the separate local plugin suite remains scoped to its own checkpoint. User changes to
+`mobile/app.json` and unrelated untracked files are preserved and are not part
+of these checkpoints.
+
 **Status: revised implementation contract; user authorized tested production checkpoints.** Prepared 30 September 2026 against `main` at `b91ced2`. Worktree: `/Users/anhdang/.codex/worktrees/devday-2026-plan/Orbyn`; branch `codex/devday-2026-plan`. This document supersedes the implementation assumptions in `docs/openai-devday-2026.md`; the original is preserved beside it. Backend, desktop/web and mobile remain in scope.
 
 ## 1. What changed after research
@@ -65,7 +89,7 @@ Each row is part of the eventual scope. “Gate/spike” preserves the feature f
 | A1 / P0: SIWC             | Separate identity linking from plan credentials. Electron system-browser PKCE/state/nonce and validated ID token; secure OS storage; atomic refresh; first-option branding. Web partner flow and mobile callback/storage are separate eligibility spikes. Device executor, account model picker and dedicated SSE adapter in shared contracts + Electron/mobile modules. | State/nonce/replay/issuer/audience/account-link attacks rejected; no email-only account merge; actual eligible plan call; logout/revoke/account-switch tests; no tokens in server logs/DB; web and native callback proof. Unsupported deployment remains clearly unavailable, not a decorative sign-in button. |
 | A2 / P0: managed AI       | Add connection-kind discriminator while keeping provider resolution, budgets, team/MCP flows and managed automations. Plan transport cannot leak into managed credentials or vice versa.                                                                                                                                                                                 | Existing provider suite passes; same managed conversation and automation behavior; explicit model/connection preserved; no silent paid fallback.                                                                                                                                                               |
 | A3 / P0: Sol + caching    | Add catalog entry and capability validation; Responses tool path; supported reasoning values. Cache stable instruction/tool prefixes with documented controls, measure hits/write/input/output usage. Keep selected model rather than forcing a default.                                                                                                                 | Managed mock payload tests and real permitted probe; cost/latency quality evaluation against current baseline; unsupported settings fail clearly. API price is not an end-user plan bill.                                                                                                                      |
-| A4 / P1: agent platform   | Typed per-action rules; adapt named assistant into multi-agent identity/owner/scope; link routines/goals, memory and channel settings; proactive read-only profile; persisted activity events; work/speed budgets; non-overridable hard stops; specialist agent ownership.                                                                                               | Every write path enforces rules; revocation during execution; impersonation/source leakage tests; job recovery with changed identity/scope; resumable activity; budget reservation races and accounting reconciliation; both clients render ownership/rules/activity.                                          |
+| A4: agent platform        | Typed per-action rules; adapt named assistant into multi-agent identity/owner/scope; link routines/goals, memory and channel settings; proactive read-only profile; persisted activity events; work/speed budgets; non-overridable hard stops; specialist agent ownership.                                                                                               | Every write path enforces rules; revocation during execution; impersonation/source leakage tests; job recovery with changed identity/scope; resumable activity; budget reservation races and accounting reconciliation; both clients render ownership/rules/activity.                                          |
 | A5 / P2: maintained pages | Bind exact block IDs to agent + schedule; preserve human blocks; `@orbyn` comments create scoped jobs and replies; page UI creates routines; authorization intersection; mobile reading/sharing and editing remain planned.                                                                                                                                              | Concurrent human edit produces conflict, not overwrite; deleted/moved blocks invalidate bindings; revoked page access stops work/delivery; mention edit/delete/retry dedup; private comments never enter shared results; desktop and mobile flows exercised.                                                   |
 | A6 / P2: Slack then Teams | OAuth installation, workspace/account mapping, opt-in DM delivery, durable outbox, signed callback validation, dedup, unsubscribe/revocation; replies map to exact waiting ID.                                                                                                                                                                                           | Provider mock contracts; verified signatures/replay/rate limits; real authorized test workspace delivery and stale reply rejection; titles rechecked for current visibility. Nothing sent without explicit connection consent.                                                                                 |
 | A7 / P2: published pages  | Read-only publication record, explicit content selection, scoped revocable token, expiry and audit; distinguish pinned snapshot from live refresh. Reuse links/privacy modules.                                                                                                                                                                                          | Anonymous boundary tests; unpublished/private/source-excluded data absent; revocation immediate; updates don't silently broaden published scope; responsive viewer proof.                                                                                                                                      |
@@ -113,6 +137,32 @@ The user removed voice and computer use. A8, A9 and speculative A12 are not impl
 
 Add a plugin integration module and explicit service boundary alongside the existing MCP process. Plugin resource/UI/event handlers use the same typed capabilities but an independently authenticated connector principal; they do not call the browser's assistant session or impersonate first-party routes. Host-provided metadata is untrusted. Plugin backend provider calls use authorized managed/BYO connections only. User-controlled plan tokens never enter this integration. Apply trust, scopes, revisions and durable receipts before writes. Share domain services rather than duplicating tool mutations. Define explicit schemas for launch context, UI resource reads, tool calls, asynchronous job/result events and reconnect cursors. Retain the existing portable MCP surface. Test separate issuer/resource/audience and account-switch behavior, inaccessible tools, rate limiting, duplicate callbacks and tenant isolation.
 
+#### P1 checkpoint evidence — 1 October 2026
+
+The separate backend is now implemented through scoped connector grants,
+recipient-bound token guards, a live plugin principal, a standalone HTTP
+service, and shared capability execution. Authentication/service foundations
+are pushed to main through 751cba8; execution and the calendar-fixture correction are validated through
+8f7836d, with 1,991 full-suite tests passing and zero failures or skips. The integration is disabled by
+default and OAuth consent still accepts MCP only.
+
+Execution passed 74 focused regressions on main plus workspace typecheck and
+build. Image orbyn-plugin-execution:dda1804 built successfully; compiled smoke
+checks against a separately marked disposable test database proved plugin
+identity, shared reads, session rejection, first-party route isolation, disabled
+routes, and concurrent requests producing one task with a replayed receipt.
+These checks seed OAuth credentials directly and do not prove an authorization
+flow or host launch. See [plugin boundary evidence](plugin-boundary-review-2026-10-01.md).
+
+P1 remains unfinished: resource-aware OAuth consent/metadata and account-switch
+proof; bounded launch/resource schemas; CSP-protected UI resources; asynchronous
+job/event results and reconnect cursors; provider execution with managed/BYO
+credentials; tenant/host acceptance; deployment wiring. P2 host entry points and
+external approval also remain open. A4 agent rules/ownership/activity/budgets is
+a separate retained ledger row and is not completed by this plugin checkpoint.
+The UI preview remains blocked by a saved Browser Use permission despite user
+authorization; source/control tests are not visual or native interaction proof.
+
 ### M1 — Account model catalog and defaults
 
 Expose a first-party `/models` experience for ChatGPT-connected users. The credential-owning runtime fetches `GET https://api.openai.com/v1/models` with that account's token, normalizes `models[]` using list visibility, slug and display name, and preserves upstream ordering. Backend GET `/models` requires an Orbyn session and returns only sanitized catalog metadata for the selected user-owned connection/executor; it never proxies arbitrary URLs or accepts a plan token. A device publishes an account-bound catalog snapshot through its authenticated executor channel. A missing/offline/expired snapshot is explicitly unavailable/stale, not a managed catalog mislabeled as ChatGPT. Persist default model by user + connection + ChatGPT account/workspace. Changing the account refreshes its catalog and restores that account's default. An unavailable saved model is shown as unavailable and requires a new choice; never silently replace it. Inference rechecks current model availability in the credential-owning runtime. Plugin calls cannot access this first-party preference API. Settings and composer share one selected/default state; model and connection switch cancel old loads. Tests include cross-user snapshots, invalid defaults, stale/offline catalog, account switching, revocation, reconnect and concurrent preference edits. [Official catalog contract](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
@@ -135,6 +185,74 @@ Use the VS Code built-in Markdown experience as a concrete baseline, with docume
 Existing desktop Mermaid and rich blocks are reused. Mobile's current flowchart-only renderer is insufficient for D1. Choose a bundled isolated rendering surface or authorized generated SVG with sanitized bounded output; validate Expo/native support before selecting the implementation. No renderer choice may turn private diagrams into publicly accessible assets. [VS Code baseline](https://code.visualstudio.com/docs/languages/markdown), [Mermaid security](https://mermaid.js.org/config/schema-docs/config-properties-securitylevel.html).
 
 ### U1 — UI synchronization and regression gate
+
+#### Mandatory mobile parity — user scope clarification, 2 October 2026
+
+Every feature implemented and shipped on web/desktop must also be implemented
+on mobile. Track backend/shared behavior, web/desktop entry points, mobile entry
+points, persistence and failure states, and acceptance evidence together for
+each feature. Retaining mobile's visual design does not exclude any functionality
+from this requirement. A shared helper, typecheck or Expo export is not native
+interaction proof. Verify iOS and Android behavior as well as mobile web.
+
+Platform eligibility and native callback limitations remain genuine release
+gates; they do not remove mobile from the contract. Mark the affected feature
+incomplete until an appropriate mobile flow and its acceptance evidence exist.
+The private desktop ChatGPT executor, unmerged settings redesign and isolated
+Mermaid source are foundations rather than completed cross-client features.
+
+Current Docs HTML exports use one server renderer and the existing mobile
+Download/Share menu already includes HTML. Source and automated save/share checks
+must still be distinguished from actual mobile interaction and visual fidelity.
+
+#### Web redesign and settings acceptance — user scope addition, 1 October 2026
+
+Complete the existing ADR before declaring the release ready. The user authorizes a
+full web redesign and requires a full settings UI/UX redesign. Preserve the existing
+palette and typefaces; mobile's current visual design is retained. Mobile still
+receives the connection, model and provider functionality required for parity.
+
+The web audit covers the application shell, navigation, Home, Agenda, tasks,
+calendar, projects, Docs, memory, agent notes, views, study, lists, assistant,
+Overnight, teams, booking, notifications, review, settings and admin. Record each
+surface's layout defects and delivery evidence. Correct hierarchy, density,
+alignment, containment, loading/error/empty states and keyboard navigation;
+shared components must be checked across their consumers. A settings-only change
+does not satisfy the full web scope.
+
+Settings must provide a clear navigation structure, searchable controls, readable
+labels and descriptions, account/security management and an identifiable AI &
+models destination. Separate personal connections and model defaults from
+workspace-managed providers. ChatGPT must have a discoverable connection entry,
+account/workspace selection, connection health, device availability, reconnect and
+disconnect actions, and the actual account catalog/default selector. An MCP grant
+to an outside ChatGPT agent is a different connection and must not be presented
+as ChatGPT plan access. Show eligibility or platform constraints accurately;
+never make an enabled connection button depend on an absent runtime.
+
+Provider administration must support multiple saved connections, including
+multiple connections of the same kind and custom compatible endpoints. Inventory
+the existing twenty provider definitions before adding integrations. Validate each
+adapter's actual supported request format and capabilities. Support independently
+selected text-generation and text-embedding providers/models, credential testing,
+catalog refresh and explicit manual model entry where discovery is unavailable.
+Embedding settings must report capability, dimensions and indexing status;
+changing embedding models must handle incompatible existing vectors safely.
+The [embedding provider audit](embedding-provider-audit-2026-10-01.md) defines
+the required mixed-version rollout, provider-bound consent, dimension validation,
+document/configuration revision fences, conditional queue acknowledgement and
+upgrade/race acceptance matrix. Its adapter checkpoints do not complete these
+configuration and reindex requirements.
+Do not assume every text provider supports embeddings or that a model catalog
+implies ChatGPT plan entitlement. Persist selection and verify refresh, account
+switch, revocation and unavailable-provider behavior in both clients.
+
+Acceptance requires functioning backend/client wiring, focused regressions,
+workspace typechecks/build and full tests, plus actual responsive web interaction
+checks in both themes. Test long labels, large catalogs, search, validation,
+keyboard focus, slow/offline loading and nested menus/modals. Record mobile
+functional parity and native verification separately. Commit and integrate ready
+checkpoints to main; do not report a visual mock or private helper as delivered.
 
 Audit all affected current surfaces: Assistant/Overnight/reminder cards, Docs/editor/comment layers, settings/auth/model picker, navigation/deep links, plugin UI and public viewers. Test narrow phones, tablet widths and wide desktop, both themes, keyboard open/closed, large text, long labels/code/tables/diagrams, empty/error/loading states and overlay nesting. Menus/modals must remain within the viewport and have one focus owner. Restore/send/poll generations, live events, dirty editor saves, model switching and stale approvals must not overwrite newer state. Cover native iOS and Android interactions separately from mobile web. Typechecks/exports alone do not prove touch or visual behavior. Keep visual proof and feature-by-feature acceptance status in the ledger. Do not claim all prior UI defects are fixed without inspecting and reproducing their affected surfaces.
 
@@ -565,7 +683,6 @@ not evidence of a retention fix. Production deployment of this checkpoint is
 unverified. Enrollment/catalog proof work is starting a fresh stable-source full
 validation before integration.
 
-
 ### Validation follow-up and D1 dependency audit — 1 October 2026
 
 The current enrollment/expiry full-suite run has reported a failed MCP matrix
@@ -591,7 +708,6 @@ and rendered exports. Existing tests and build success do not establish this
 parity. Keep source/preview synchronization, reference links, frontmatter,
 math, code coloring, security and ten-family Mermaid verification in scope.
 
-
 The completed main validation passed all 1,808 tests with no failures or skips;
 workspace typechecks and build also passed. The worktree validation completed
 with 1,881 of 1,882 tests passing, with the settings transaction guard as its
@@ -608,7 +724,6 @@ running in separate disposable databases. Neither pending pipeline is recorded
 as passed, and fc3bc53 has not been pushed as a production checkpoint yet.
 Executor enrollment and its expiry corrections remain unmerged. The full ADR,
 including model routes and UI, plugin separation and Docs parity, remains open.
-
 
 ### M1 next integration contract: executor leases and catalog publication
 
@@ -657,9 +772,7 @@ private fixture helpers are not evidence of this packaged integration. Cover
 real app interactions and an authorized eligible provider account before
 claiming the end-to-end model experience complete.
 
-
 M1 lease/catalog implementation continues in managed worktree `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch `codex/devday-model-catalog`, based on main 6bdc26e. This checkout has independent workspace package outputs; it does not alter either running validation checkout. Shared external dependencies are linked without reinstalling or modifying their contents. The earlier implementation worktree retains private runtime helpers and Mermaid work. No host/provider feature is claimed complete by this split.
-
 
 ### Enrollment release and isolated lease service — 1 October 2026
 
@@ -690,7 +803,6 @@ and /tmp/orbyn-model-lease-service-tests-after.log. This proves these controlled
 service cases, not provider entitlement, public /models, default mutation,
 UI or real executor availability. Those requirements remain open.
 
-
 M1 now has first-party GET /models and PUT /models/default routes, exact-session
 executor enrollment/lease/publication routes, shared strict public schemas and
 typed client methods. API routes are registered in the planner API service;
@@ -712,7 +824,6 @@ local database; imports were made dynamic after setup, and the real disposable
 route tests pass. This fixture correction does not constitute a production
 connection fix. The packaged executor controller, account/default UI, native
 interaction and authorized provider flow remain open.
-
 
 ### Retention concurrency correction and catalog inventory — 1 October 2026
 

@@ -67,6 +67,10 @@ temporary task-owned simulator was shut down and deleted, recovering about
 1.6 GiB. PostgreSQL and Docker became unresponsive; no shared Docker restart or
 unrelated container/volume deletion was attempted. Full-suite acceptance needs
 a fresh marked database and terminal passing totals after environment recovery.
+After external recovery, the test container is healthy and available disk is
+about 8.1 GiB. No agent Docker restart was performed. Frozen source `24419a9` is
+now rerunning against fresh marked `orbyn_models_24419a9_full_test`, log
+`/tmp/orbyn-chatgpt-remote-24419a9-recovered-full-tests.log`; acceptance is pending.
 
 The production backend Docker image `orbyn-chatgpt-remote:24419a9` built
 successfully, log `/tmp/orbyn-chatgpt-remote-24419a9-docker-build.log`.
@@ -126,7 +130,7 @@ Disk space temporarily fell below 300 MiB, then recovered to about 7 GiB.
 Five completed task-owned test logs were losslessly gzip archived, with original
 paths retained as pointer files. No unrelated worktree, dependency, Docker volume
 or cache was deleted. A new task-owned iPhone 17 simulator, fresh marked database
-`orbyn_mobile_models_24419a9_test` and loopback API at 8027/Metro at 8087 are being
+`orbyn_mobile_models_24419a9_test` and loopback API at 8027/Metro at 8087 were
 used for native verification. Metro's IPv6 bind versus manifest mismatch was
 resolved with its advertised localhost hostname. The native authentication
 screen rendered; the settings flow was not reached. Host disk exhaustion then

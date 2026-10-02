@@ -12,7 +12,11 @@ pushes are authorized. Preserve user changes and all unrelated files.
 
 ## Authoritative state
 
-Main is pushed through `4d6f858`. Frozen code `b6096c8` passed 2,078/2,078 full
+Main is pushed through `1a26644`. A concurrent companion task has since integrated
+`2eb34a5` and `0749e6e` into local main; those commits are not pushed and are
+not part of this branch's frozen verification. Preserve their ownership and do
+not push them accidentally with an unrelated checkpoint. Frozen code `b6096c8`
+passed 2,078/2,078 full
 backend tests; Docs/mobile export evidence is recorded in the main artifacts.
 `mobile/app.json` and unrelated untracked files remain user-owned/uncommitted.
 The current model/Docs worktree contains the new cross-client model-management
@@ -31,9 +35,12 @@ recipient OAuth/discovery and host/provider acceptance are still unmerged.
    Do not run another DB suite concurrently against that database or edit source.
    Log: `/tmp/orbyn-chatgpt-remote-24419a9-full-tests.log`; session 97567 ended with
    exit 7 during disk exhaustion before terminal TAP totals. This is not a pass.
-   PostgreSQL/Docker are now unresponsive. A fresh marked database creation
-   attempt timed out; it is not confirmed created. Do not restart shared Docker
-   or touch other containers/volumes without user authorization.
+   The user chose to recover Docker themselves. After recovery the test container
+   was healthy; no agent restart was performed. A fresh database
+   `orbyn_models_24419a9_full_test` was created and its marker verified. Frozen
+   source `24419a9` is now rerunning in session 87973, log
+   `/tmp/orbyn-chatgpt-remote-24419a9-recovered-full-tests.log`. No other DB suite
+   may run on this database. Do not restart Docker or touch unrelated containers.
 2. Recheck disk first. Space recovered to 7 GiB, then fresh simulator initialization
    reduced it to about 2.8 GiB. Five completed task-owned logs were losslessly gzip
    archived with verified original bytes and pointer stubs. Preserve other files
@@ -54,9 +61,14 @@ recipient OAuth/discovery and host/provider acceptance are still unmerged.
    unverified: API session 44808 died with ENOSPC, Metro session 11998 is stopped.
    Preserve the synthetic QA database; no real provider credentials were used.
    Preserve character-worktree servers at 8018/8083; do not stop/reuse them as
-   this proof. The user chose to recover Docker themselves; wait for recovery,
-   do not restart Docker on their behalf. Continue independent checks meanwhile.
-4. Only promote ready scoped code after exact-main tests/build checks. The older
+   this proof. Space recovered to about 8.1 GiB after external recovery. Avoid
+   starting another simulator during the full suite; retry native interaction
+   after the run finishes and confirm available disk first.
+4. Only promote ready scoped code after exact-main tests/build checks. Main has
+   concurrent companion source changes, so integrate/retest that dependency only
+   after the frozen local suite completes; do not claim the older 2,078-test result
+   validates the newer main. The local shared core/API dist bindings are isolated
+   from main's package build outputs. The older
    settings redesign controls the web entry point, so review its dependency rather
    than cherry-picking the UI changes without the required source.
 5. Continue the retained ADR requirements. Real eligible-account/native auth,
@@ -72,3 +84,15 @@ New local logs are listed in the model-management checkpoint artifact.
 The independent `24419a9` unit set passed 48/48 without Docker, no skipped tests;
 log `/tmp/orbyn-chatgpt-remote-24419a9-unit-tests.log`. The checkpoint now lists
 actual web/mobile entry points and explicit native auth/execution parity gaps.
+Docs headings/renderer/inline/dialect/Mermaid/mobile download checks passed 61/61,
+and real MathML unit checks passed 12/12, with no skips. Logs:
+`/tmp/orbyn-mobile-parity-docs-24419a9-unit-tests.log` and
+`/tmp/orbyn-mobile-parity-math-24419a9-unit-tests.log`. These are local-source
+behavioral checks; actual previews remain open. Main `1a26644` now records the
+native relative-link routing acceptance gap; it ships documentation only.
+
+Prepared (not run) `/tmp/orbyn-native-model-fixture-24419a9.mts` creates a strictly
+marked/synthetic QA-owner connection with controlled identity verification and
+real signed enrollment/lease/catalog service calls, then heartbeats a 65-model
+catalog. It makes no provider calls and stores no real provider credentials. Use
+only with its named disposable QA database/session; do not infer OAuth proof.

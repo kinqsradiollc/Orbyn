@@ -9,7 +9,8 @@ surrounding-space and newline normalization. Surrounding styles survive embedded
 literal spans. Plain and escaped runs retain source offsets used by comments.
 
 Links become actionable only for HTTP, HTTPS, mailto and valid Orbyn object
-addresses. Other schemes, control characters, backslashes, malformed Orbyn links
+addresses, single-slash relative app paths and nonempty heading fragments.
+Other schemes, control characters, backslashes, malformed Orbyn links
 and protocol-relative addresses retain their source without an actionable URL.
 Web, mobile and HTML export consume this shared parser. Markdown storage and
 round trips retain the original source; normalization changes the rendered code
@@ -61,5 +62,8 @@ slash app paths and document fragments now remain actionable; double slash remot
 hosts, control characters and backslashes stay rejected. Local focused parser,
 links and richer-page checks passed 51/51; the actual planning/mention integration
 suite then passed 11/11. Evidence: `/tmp/orbyn-doc-relative-tests.log` and
-`/tmp/orbyn-doc-relative-planning-tests.log`. Main needs a fresh full-suite pass
-before this checkpoint is pushed.
+`/tmp/orbyn-doc-relative-planning-tests.log`. Frozen main `b6096c8` now passed
+all 2,078 tests with no failures, skips or cancellations, including the actual
+mention-list regression. Evidence: `/tmp/orbyn-docs-mobile-main-full-tests.log`.
+Main workspace typecheck also passed. Browser/native visual acceptance and the
+remaining Markdown contract are still open.
