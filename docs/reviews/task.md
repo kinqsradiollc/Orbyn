@@ -1249,3 +1249,39 @@ agent ownership, budget reservations and receiving collaboration remain open.
 Full models/providers/plugin, Docs and whole-app UI/mobile/native acceptance
 stays active. Saved web preview denial remains respected. No cleanup, deployment
 or goal completion occurred.
+
+## Terminal privacy tests and native Docs persistence — 2 October 2026
+
+Frozen PR #144 **f79c852** full handle **74602** terminal zero: **2,151/2,151**,
+no failures/skips/cancellations, 563,046 ms. Fresh database
+**orbyn_source_privacy_f79c852_test**. All types/build/full format and 69 focused
+checks remain terminal green. Current CI **36996647235** backend still live;
+do not restart. Fetched exact CI merge **2f1984a**, parents dabb770/f79c852;
+candidate/CI merge tree **a903b6c7158871b05472e3afb54d824290df80fa** matches.
+Still draft; no main merge until terminal CI and fresh base/head recheck.
+
+Native Docs **514679f** evidence advanced: clicking the existing empty editor
+then a single native `a` key exposed a settable field. Used setValue with synthetic
+`Native Docs typing and save QA.`; no clipboard/paste. Back ended editing;
+subsequent close flushed save, API request **3cd6fffd-2cce-43c8-90db-96c5b655490c**
+PUT /docs returned HTTP 200. Owned synthetic database
+**orbyn_docs_788161e_native_test** shows doc f7772b29-d592-47bb-a78c-786f9458b290
+version 2 and paragraph persisted. An older mounted/reopened view displayed
+184 words; after Device→Shake→Expo Reload and opening the fixture from Home,
+UI displays paragraph and 190 words/Saved 4 min ago. This proves typed native
+persistence across reload, not every navigation/cache case. Investigate older
+mounted view behavior before declaring all editing flows complete.
+
+Screenshot `/tmp/orbyn-docs-514679f-native-persisted-paragraph.png`. Contents
+menu opens and visually renders First section, Result and unrelated heading.
+AX returns no app contents while this nested sheet is open; coordinate click
+on visible Result failed **noWindowsAvailable**. No blind retry, no heading
+navigation claim. Simulator remains on Contents. Native iOS Docs typing/save,
+fold/unfold and relative in-app page navigation have partial interaction evidence;
+exact anchor navigation, wider native/Android/web/mobile-web and full Docs/UI
+contract remain open. Saved browser denial remains respected.
+
+Plugin **9ce1961** read-only merge-tree against main dabb770 succeeded without
+conflicts (648e672 tree). Reconcile after privacy main checkpoint before fresh
+qualification; preserve its untracked node_modules link. No cleanup/deployment
+or full-goal completion occurred.
