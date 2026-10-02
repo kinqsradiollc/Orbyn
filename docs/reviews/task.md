@@ -2271,3 +2271,12 @@ main promotion.
 Next: reconcile source with main, retaining appended ADR histories; apply primary
 fix after qualification, then continue rendered PDF/math/diagram parity and
 remaining actual UI/model/plugin/runtime gates. Full ADR active; no cleanup/deploy.
+
+Mainba08edb reconciliation completed asac0488da. Overlaps in export.test.ts and
+the ADR were resolved by retaining the complete authorized diagram and revision
+regressions and both appended histories. Relative toc928b25d the result changes
+only docs/adr and docs/api; no runtime source changed. All81 combined current
+export/save/share/scope/Home/API/client checks pass. No conflict markers remain,
+formatting passes. The frozen2437/2437 evidence remains tied to7cd75934.
+PR157 is still running its backend test job; do not merge yet. PR158 full local
+suite43323 and CI37046563935 remain live; Docker/mobile/mail already pass.
