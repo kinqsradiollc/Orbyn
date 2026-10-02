@@ -555,3 +555,41 @@ transactional distinct receiving-job creation and inherited source dependencies,
 source ownership reservations, consumption-time revision/access checks, durable
 completion/failure acknowledgment, worker recovery tests and both client activity
 views. No automatic handoff authority can be inferred from a saved proposal.
+
+## Character changes on main and ownership candidate
+
+Main and origin/main are **e4370a3**, including **7c96f70** (companion wardrobe
+and assistant chat redesign) and **e4370a3** (companion editor save visibility).
+The user explicitly flagged these changes. Preserve their UI and character
+behavior when integrating every candidate; do not overwrite the character task's
+worktree or main's dirty `mobile/app.json` and unrelated untracked files.
+
+Ownership source **49fad02** fixes the initial per-owner guard from cf7f9eb:
+assigned task/goal/routine identity now serializes across both execution lanes
+and across members of a shared task. Migration 209 backfills explicit source
+assignments, preserves existing active overlaps on upgrade, prevents identity
+changes and blocks new ownership until running/waiting work completes. Lease
+expiry alone does not release ownership. The claim query skips busy assignments.
+This does not yet wire receiving handoffs or complete collaboration.
+
+The isolated candidate is **b7bd994** on `codex/assistant-work-ownership`, at
+`/Users/anhdang/.codex/worktrees/assistant-work-ownership/Orbyn`, pushed on draft
+PR **#139**. It changes only migration 209, the runner and ownership tests.
+Source combined checks passed **36/36**; candidate focused checks passed **13/13**,
+zero failures/skips/cancellations. Candidate workspace types, production build
+and full formatting passed. Logs are `/tmp/orbyn-main-work-ownership-focused-2.log`
+and `/tmp/orbyn-main-work-ownership-{types,build,format}-2.log`.
+
+Candidate b7bd994 remains frozen on base **296a342** while local full backend
+suite **4802** and CI **36983314493** run. Local log:
+`/tmp/orbyn-main-work-ownership-b7bd994-full-tests.log`. CI mobile/mail/Docker
+passed; backend/web is still running in the latest live check. Do not restart
+either on a polling timeout. Once terminal, integrate the latest character main
+and qualify the exact combined head before promoting PR #139.
+
+Docs CI **36980902473** on **25e1e6f** is now terminal green: backend **2,098 passed,
+zero failed, one known Tesseract-dependent skip**, 2,099 total. Log:
+`/tmp/orbyn-docs-25e1e6f-ci.log`. PR #138 is still a draft with web/mobile-web,
+Android and other documented UI gates outstanding; green CI is not release or
+whole-ADR completion. Its candidate also needs the latest character main before
+promotion. The full ADR goal remains active.
