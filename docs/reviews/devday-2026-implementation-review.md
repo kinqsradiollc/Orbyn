@@ -53,7 +53,8 @@ web/desktop and mobile remain in scope.
   jump, outline navigation into a folded section and a cross-page heading link
   after correcting a stale-page race. CI 36979623013 found one stale rich-copy
   heading assertion; 25e1e6f corrects it and adds clipboard level coverage (20/20
-  focused checks). Latest CI 36980902473 is running. Web/mobile-web/native Android
+  focused checks). CI 36980902473 passed all jobs: backend 2,098 passed, zero
+  failed and one known Tesseract-dependent skip. Web/mobile-web/native Android
   interaction gates remain open. This is unmerged and does not
   complete D1.
 - **Handoff foundation:** local source `98ff22a`, `0c8f832` and `4eaa652` defines
@@ -68,6 +69,16 @@ web/desktop and mobile remain in scope.
   are enabled. Receiving-side rules/connections/budgets, cross-lane source
   reservations, separate-worker round trips and client controls remain required.
   This source foundation is unmerged and does not deliver collaboration.
+- **Assigned source ownership:** source `49fad02`, candidate `b7bd994` on draft
+  PR #139, serializes task/goal/routine ownership across Background/Overnight and
+  across members of shared tasks. Waiting or expired leases retain ownership;
+  explicit completion releases it. Migration 209 preserves existing active
+  overlaps on upgrade and rejects new overlapping claims and identity changes.
+  Source combined checks passed 36/36; isolated candidate checks passed 13/13,
+  all workspace types, production build and formatting passed. Full local suite
+  session 4802 and CI 36983314493 remain live. The candidate is frozen on main
+  296a342; integrate and requalify current main character updates 7c96f70/e4370a3
+  before promotion. This remains unmerged and does not dispatch handoffs.
 - **Remaining agent scope:** truthful separate profiles/workspaces, durable
   authorized Daytime/Overnight handoffs, typed rules, ownership/activity/budgets
   and the complete cross-client surface ledger remain required. Shared storage
