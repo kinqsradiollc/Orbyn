@@ -2533,6 +2533,9 @@ export function DocEditor({
         {sourcePreview && (
           <DocSourcePreview
             blocks={blocks}
+            docId={doc.id}
+            onAppLink={openAppUrl}
+            report={report}
             onClose={() => setSourcePreview(false)}
           />
         )}

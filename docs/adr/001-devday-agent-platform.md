@@ -487,3 +487,19 @@ and legacy anchored rules remain rules. Markdown and HTML export regressions
 cover source retention and script escaping. This does not complete reference
 links, synchronized source/preview, D1 export coverage or whole-app U1. Native
 visual acceptance remains pending, with the explicit terms confirmation gate.
+
+### D1 source and preview synchronization — 3 October 2026
+
+The candidate now maps the existing anchored serializer to exact block offsets
+and lines. Web source and rendered panes synchronize scrolling from actual
+block geometry, suppress reciprocal programmatic scroll events, and share the
+parent editor's live blocks. Native preview scrolling retains the corresponding
+source block when toggling. Both previews own heading/stable-block navigation;
+opening a different page dismisses the preview and uses existing app routing.
+No separate draft, revision or save request is introduced. Source is read-only.
+
+Mapping and actual component regressions pass 12/12. Current mobile types and
+desktop production build qualify code paths only. Real browser/native geometry,
+link interactions, screenshots, keyboard and theme acceptance remain unproven.
+Raw-source editing is not introduced or claimed; the editor continues to own
+changes. Full D1 and U1 remain incomplete.

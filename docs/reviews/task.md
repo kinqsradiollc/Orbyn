@@ -2117,3 +2117,27 @@ Remote reference pushes were transiently rejected twice; retry succeeded and
 latest remote5b6d9e9 must be inspected for new CI. Earlier5a058be CI also failed;
 read its failure log/tmp/orbyn-reference-first-ci-failed.log before concluding
 this fixture was its only cause. Main remainsad90e4b. No merge/deploy/cleanup.
+
+3 October source/preview follow-up: added shared fractional line/block mapping,
+web bidirectional scroll sync using rendered geometry with reciprocal event
+fencing, and native scroll-position preservation on source toggle. Added local
+heading/stable-block navigation contexts on both surfaces; same-page links keep
+the draft and cross-page links close preview before existing app routing.
+Focused source/component cohort passes12/12, no skips. Initial navigation tests
+used an unsupported /app/docs relative URL; corrected fixtures use supported
+orbyn://doc links. The tests also caught missing null guards for unknown headings;
+fixed in both clients, with typechecks catching the same defect. VM transpilation
+uses ES2022 so Map iteration matches the app runtime.
+Current mobile types and desktop typecheck/build pass; all workspace typecheck
+prior handle34956 completed successfully before navigation additions. Logs:
+/tmp/orbyn-source-sync-navigation-{tests,types,build}.log. No screenshot or
+native geometry/interaction acceptance is claimed. Read-only source remains
+inspection, with parent-owned draft/save. Source PR153 stays draft.
+
+Main now63f4a13: Home PR150 and exact-head auth PR152 merged after four CI jobs
+passed. Public Home editorial PR154 head4e23899 awaits backend CI; three other
+jobs pass. Signed-in Home web/mobile shared copy is committed9f0c398 in PR148.
+Reference PR151 head5b6d9e9 and prior preview db94738 have all four CI jobs passing,
+but inherit larger unqualified scope and must not merge wholesale to main.
+Current primary user's dirty files, preview files and original source branches
+remain preserved. No deployment or worktree/branch cleanup.

@@ -70,3 +70,23 @@ test("empty source and blocks without writable anchors remain safe and determini
     1,
   );
 });
+
+test("fractional source scrolling maps to and from multiline rendered blocks", async () => {
+  const { docSourcePosition, docSourceLineAt } = await import("@orbyn/core");
+  const map = docSourceMap(
+    parseDoc(
+      "# Heading\n^heading\n\n```mermaid\nflowchart LR\nA --> B\n```\n^diagram",
+      { anchors: true },
+    ),
+  );
+  const range = map.ranges[1];
+  const line = range.startLine + (range.endLine - range.startLine) / 2;
+  const position = docSourcePosition(map, line)!;
+  assert.equal(position.range.blockId, "diagram");
+  assert.equal(position.progress, 0.5);
+  assert.equal(docSourceLineAt(position.range, position.progress), line);
+  assert.equal(docSourcePosition(map, -10)?.range.blockIndex, 0);
+  assert.equal(docSourcePosition(docSourceMap([]), 1), null);
+  assert.equal(docSourceLineAt(range, Number.NaN), range.startLine);
+  assert.equal(docSourceLineAt(range, 100), range.endLine);
+});

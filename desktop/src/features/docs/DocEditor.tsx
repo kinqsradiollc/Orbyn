@@ -2926,6 +2926,12 @@ export function DocEditor({
         {sourcePreview && (
           <DocSourcePreview
             blocks={blocks}
+            docId={doc.id}
+            onAppLink={(url) =>
+              window.dispatchEvent(
+                new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+              )
+            }
             onClose={() => setSourcePreview(false)}
           />
         )}

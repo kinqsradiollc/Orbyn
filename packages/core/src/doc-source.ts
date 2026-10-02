@@ -69,3 +69,44 @@ export function docSourceBlockAt(
   }
   return map.ranges[Math.max(0, low - 1)];
 }
+
+/** Map a one-based fractional source line to a block and progress within it. */
+export function docSourcePosition(
+  map: DocSourceMap,
+  line: number,
+): { range: DocSourceRange; progress: number } | null {
+  if (!map.ranges.length) return null;
+  const target = Number.isFinite(line) ? Math.max(1, line) : 1;
+  let low = 0,
+    high = map.ranges.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (map.ranges[middle].startLine <= target) low = middle + 1;
+    else high = middle;
+  }
+  const range = map.ranges[Math.max(0, low - 1)];
+  return {
+    range,
+    progress: Math.max(
+      0,
+      Math.min(
+        1,
+        (target - range.startLine) /
+          Math.max(1, range.endLine - range.startLine),
+      ),
+    ),
+  };
+}
+
+/** The corresponding source line at a fractional position in a rendered block. */
+export function docSourceLineAt(
+  range: DocSourceRange,
+  progress: number,
+): number {
+  const amount = Number.isFinite(progress)
+    ? Math.max(0, Math.min(1, progress))
+    : 0;
+  return (
+    range.startLine + amount * Math.max(0, range.endLine - range.startLine)
+  );
+}
