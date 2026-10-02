@@ -63,6 +63,7 @@ const receive = async (event) => {
       maxEdges: 512,
       htmlLabels: false,
       flowchart: { htmlLabels: false },
+      gantt: { fontSize: 16, sectionFontSize: 14, barHeight: 28, barGap: 8 },
       journey: {
         textPlacement: "tspan",
         sectionFills: [palette.secondaryColor],
@@ -162,7 +163,14 @@ const receive = async (event) => {
       if (labels.length < 2) continue;
       const visible = new Set(
         visibleDiagramTicks(
-          labels.map((label) => label.getBoundingClientRect()),
+          labels.map((label) => {
+            const bounds = label.getBoundingClientRect();
+            return {
+              left: bounds.left,
+              right: bounds.right,
+              text: label.textContent ?? "",
+            };
+          }),
         ),
       );
       labels.forEach((label, index) => {

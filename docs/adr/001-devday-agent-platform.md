@@ -490,3 +490,13 @@ snapshots explicitly. Evidence: `docs/reviews/evidence/publication-renderer.md`.
 This candidate requires complete exact-head qualification before main promotion.
 It does not close editor, Word/export, native sharing, whole-app UI or the full
 C1–C6/M1/D1/U1 goal.
+
+### Gantt label readability candidate — 3 October 2026
+
+Keep task, section and chronological labels readable in the isolated renderer.
+Measure tick spacing and retain one label per displayed date, preserving the
+underlying grid, authored format and task times. The current synthetic printed
+fixture and real PDF font/bounds checks are recorded in
+`docs/reviews/evidence/diagram-readability.md`. Both clients' exports use this
+server rendering path. Editor/native preview parity and complete D1/U1 remain
+open; candidate needs full exact-head qualification before main promotion.
