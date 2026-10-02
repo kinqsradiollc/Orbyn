@@ -342,3 +342,8 @@ separate compact synthetic summary was seeded into the same named QA night to
 inspect long source-button wrapping independently; the source conversation still
 contains the original four-section synthetic reflection. No real user data changed.
 Current native app is on the Overnight sheet; avoid app.paste entirely.
+
+Compact native fixture screenshot confirms the complete long task source label
+wraps inside its button, both sources and Open chat fit without overlap:
+`/tmp/orbyn-reflection-native-source-layout-20261002.png`. This verifies wrapping
+independently; long-content scrolling remains unverified due the tool failures.
