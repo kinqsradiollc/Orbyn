@@ -1692,8 +1692,8 @@ proof and remaining gates. Old plan dirt untouched.
 Docs branch nowd4ad16c reconciles orig/mainc30c5fc without conflicts. Exactly16
 Docs/navigation/render files differ from main; no unrelated feature code. Focused
 cohort passed23/23 (/tmp/orbyn-docs-d4ad16c-focused.log). Workspace typechecks and
-subsequent branch push23618 are live; resume SAME handle. Do not claim successful
-push or combined qualification until terminal. Previous93ad2e2 full2184/2184 and
+subsequent branch push23618 terminated zero; d4ad16c is pushed. Combined full
+qualification and required UI checks remain outstanding. Previous93ad2e2 full2184/2184 and
 CI37005022002 success do not qualify changed d4ad16c. Native simulator currently
 shows corrected ER fixture; controlledsource Metro8088/API8028 continue. Saved
 browser denial still unresolved; do not bypass it. Full ADR remains active.
