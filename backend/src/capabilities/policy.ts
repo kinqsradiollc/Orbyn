@@ -51,6 +51,8 @@ export type PrincipalFlags = {
 export type Principal = {
   /** Server-selected runtime; clients and model arguments cannot supply it. */
   assistant_lane?: AssistantActionRule["lane"];
+  /** Producing durable job, assigned only by the server runner. */
+  assistant_job_id?: string;
   assistant_rules_revision?: number;
   /** Loaded afresh under the grant lock for each capability write. */
   assistant_rules?: AssistantActionRule[];

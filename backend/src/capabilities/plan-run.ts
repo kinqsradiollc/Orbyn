@@ -669,6 +669,7 @@ export async function runPlan(
 export const planApplyInput = z.object({
   grant_id: z.uuid(),
   assistant_lane: assistantActionRule.shape.lane.optional(),
+  assistant_job_id: z.uuid().optional(),
   assistant_rules_revision: z.number().int().positive().optional(),
   job: z.string().min(1).max(64),
   summary: z.string().max(300),
@@ -753,6 +754,7 @@ export async function applyApprovedPlan(
     ...(via === "assistant"
       ? {
           assistant_lane: input.assistant_lane ?? "interactive",
+          assistant_job_id: input.assistant_job_id,
           assistant_rules_revision: g.assistant_rules_revision,
           assistant_rules: assistantActionRules.parse(g.assistant_rules),
         }

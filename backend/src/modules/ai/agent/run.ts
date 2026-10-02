@@ -393,9 +393,14 @@ async function currentWriteAuthority(
   if (!job) fail(404, "The sources for this chat are no longer available.");
 }
 
-async function principalFor(user: UserRow, request: PersistedChatRequest) {
+async function principalFor(
+  user: UserRow,
+  request: PersistedChatRequest,
+  jobId: string,
+) {
   await currentNightConsent(pool, user.id, request);
   const principal = await assistantPrincipal(user, { refusePaused: true });
+  principal.assistant_job_id = jobId;
   principal.assistant_lane =
     request.automation?.kind === "night" || request.automation?.night_id
       ? "overnight"
@@ -1152,7 +1157,7 @@ async function approvePlan(
       })
       .parse(receipt);
   }
-  principal = await principalFor(user, request);
+  principal = await principalFor(user, request, jobId);
   if (
     reviewed &&
     (approvedRulesRevision ?? 1) !== principal.assistant_rules_revision
@@ -1507,7 +1512,7 @@ export async function runAssistantJob(
     }
     const ai = await resolveAi();
     if (!ai) throw new Error("The AI assistant is not set up yet.");
-    principal = await principalFor(user, request);
+    principal = await principalFor(user, request, jobId);
     const recordSources = (value: unknown, targets?: string[]) =>
       recordAssistantSources(jobId, user.id, value, targets);
     const prepared = await contextFor(user, request, recordSources);
@@ -1999,7 +2004,7 @@ export async function answerAssistantApproval(
     );
   const card = seen.state.waiting;
   // Checked before the claim, so a refusal leaves the card answerable.
-  if (approved) await principalFor(user, seen.request);
+  if (approved) await principalFor(user, seen.request, jobId);
   if (approved && scope !== "once") {
     if (!seen.state.selected_steps.length)
       throw new Error("This plan has no changes to remember.");

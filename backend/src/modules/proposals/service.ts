@@ -1439,9 +1439,11 @@ export async function applyProposal(
       if (change.type === "action" && change.action === "plan.apply") {
         // Only the separately stored server guard may select assistant identity.
         delete change.input.assistant_lane;
+        delete change.input.assistant_job_id;
         delete change.input.assistant_rules_revision;
         if (guard) {
           change.input.assistant_lane = guard.lane;
+          if (guard.job_id) change.input.assistant_job_id = guard.job_id;
           change.input.assistant_rules_revision = guard.rules_revision;
         }
       }

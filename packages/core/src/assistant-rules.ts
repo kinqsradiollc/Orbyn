@@ -46,6 +46,7 @@ export const assistantProposalGuard = z
   .object({
     lane: assistantActionRule.shape.lane,
     rules_revision: z.number().int().positive().max(2147483647),
+    job_id: z.uuid().optional(),
     checks: z.array(assistantRuleCheck).max(100),
   })
   .strict();
