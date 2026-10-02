@@ -115,6 +115,7 @@ type RunEnvelope = {
   started_at?: number;
   elapsed_ms?: number;
   reviewed?: boolean;
+  approved_rules_revision?: number;
   declined?: boolean;
   request: PersistedChatRequest;
   state: LeadState;
@@ -392,9 +393,20 @@ async function currentWriteAuthority(
   if (!job) fail(404, "The sources for this chat are no longer available.");
 }
 
-async function principalFor(user: UserRow, request: PersistedChatRequest) {
+async function principalFor(
+  user: UserRow,
+  request: PersistedChatRequest,
+  jobId: string,
+) {
   await currentNightConsent(pool, user.id, request);
   const principal = await assistantPrincipal(user, { refusePaused: true });
+  principal.assistant_job_id = jobId;
+  principal.assistant_lane =
+    request.automation?.kind === "night" || request.automation?.night_id
+      ? "overnight"
+      : request.automation
+        ? "background"
+        : "interactive";
   if (isAutomation(request, "task") && request.automation.id) {
     const visible = await pool.query(
       `SELECT 1 FROM items i WHERE i.id=$1 AND ${visibleItems("i", { user: "$2", ai: true })}`,
@@ -1127,6 +1139,7 @@ async function approvePlan(
   state: LeadState,
   reviewed: boolean,
   request: PersistedChatRequest,
+  approvedRulesRevision?: number,
 ) {
   const receipt = (
     await pool.query<{ apply_result: unknown }>(
@@ -1144,7 +1157,12 @@ async function approvePlan(
       })
       .parse(receipt);
   }
-  principal = await principalFor(user, request);
+  principal = await principalFor(user, request, jobId);
+  if (
+    reviewed &&
+    (approvedRulesRevision ?? 1) !== principal.assistant_rules_revision
+  )
+    fail(409, "Assistant rules changed. Review this plan again.");
   const nightPrefs = await currentNightConsent(pool, user.id, request);
   const scopeSnapshot = await assistantApprovalScopes(user.id);
   const checked = await checkMergedPlan(pool, principal, state.selected_steps);
@@ -1229,6 +1247,7 @@ async function approvePlan(
   if (result.ask)
     return {
       applied: false,
+      rules_revision: principal.assistant_rules_revision,
       structured: null,
       why: result.ask.why,
       what: result.ask.what,
@@ -1254,9 +1273,11 @@ function approvalWaiting(
   request: PersistedChatRequest,
   question: string,
   detail: string,
+  rulesRevision?: number,
 ): LeadWaiting {
   return {
     kind: "approval",
+    assistant_rules_revision: rulesRevision,
     id: randomUUID(),
     question,
     detail,
@@ -1491,7 +1512,7 @@ export async function runAssistantJob(
     }
     const ai = await resolveAi();
     if (!ai) throw new Error("The AI assistant is not set up yet.");
-    principal = await principalFor(user, request);
+    principal = await principalFor(user, request, jobId);
     const recordSources = (value: unknown, targets?: string[]) =>
       recordAssistantSources(jobId, user.id, value, targets);
     const prepared = await contextFor(user, request, recordSources);
@@ -1607,6 +1628,7 @@ export async function runAssistantJob(
           result.state,
           envelope.reviewed === true,
           request,
+          envelope.approved_rules_revision,
         );
       } catch (error) {
         // The apply ran in one transaction that rolled back: nothing changed.
@@ -1642,6 +1664,9 @@ export async function runAssistantJob(
             ...(applied.why ?? []),
             ...("what" in applied ? (applied.what ?? []) : []),
           ].join("\n"),
+          "rules_revision" in applied
+            ? applied.rules_revision
+            : principal.assistant_rules_revision,
         );
         await trace.flush();
         if (!(await parked())) throw new Error("stopped");
@@ -1814,6 +1839,7 @@ export async function runAssistantJob(
               request,
               "I ran out of time. Do you want me to apply the changes prepared so far?",
               checked.approvals.join("\n"),
+              principal.assistant_rules_revision,
             );
           else state.selected_steps = [];
         }
@@ -1978,7 +2004,7 @@ export async function answerAssistantApproval(
     );
   const card = seen.state.waiting;
   // Checked before the claim, so a refusal leaves the card answerable.
-  if (approved) await principalFor(user, seen.request);
+  if (approved) await principalFor(user, seen.request, jobId);
   if (approved && scope !== "once") {
     if (!seen.state.selected_steps.length)
       throw new Error("This plan has no changes to remember.");
@@ -2004,6 +2030,22 @@ export async function answerAssistantApproval(
     if (!envelope || envelope.state.waiting?.kind !== "approval")
       throw new Error("Already answered.");
     const { request, state } = envelope;
+    if (approved) {
+      const current = (
+        await db.query<{ revision: number }>(
+          `SELECT assistant_rules_revision AS revision FROM agent_grants
+         WHERE user_id=$1 AND kind='assistant' AND revoked_at IS NULL AND suspended_at IS NULL FOR UPDATE`,
+          [user.id],
+        )
+      ).rows[0];
+      if (
+        !current ||
+        current.revision !==
+          (envelope.state.waiting.assistant_rules_revision ?? 1)
+      )
+        fail(409, "Assistant rules changed. Review this plan again.");
+      envelope.approved_rules_revision = current.revision;
+    }
     state.waiting = null;
     delete state.loop;
     envelope.reviewed = approved;

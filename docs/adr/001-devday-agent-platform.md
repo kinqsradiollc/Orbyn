@@ -118,3 +118,47 @@ collaboration remain required. Web/desktop features require mobile parity.
 Preserve main's character work and Orbyn's palette. Unverified responsive/native
 behavior and external integration gates remain open. Related worktree cleanup
 comes after integration and qualification, without discarding retained work.
+
+### Independent Overnight scheduling checkpoint — 2 October 2026
+
+PR #141 is merged as main `7f3894f`, from frozen candidate `9b87ce3`.
+The scheduler's per-owner busy check now applies to Overnight jobs; unrelated
+queued/running Background or interactive jobs cannot starve its night work.
+Own-lane serialization and the shared-task ownership guard remain enforced.
+Four new regression cases failed before the correction. Afterward, the focused
+night/runtime/ownership suite passed 53/53 and the fresh full local suite passed
+2,120/2,120 with no failures, skips or cancellations. All workspace types,
+production builds and full formatting passed; every CI job passed. Candidate,
+GitHub merge and resulting main trees match
+`3e2d1b8410f139b625c88036679d62a77c08caca`. No deployment occurred.
+
+This completes a scheduler checkpoint, not bounded handoff dispatch or full A4.
+Typed rules, agent ownership records, durable budgets, receiving authorization
+and cross-runtime round trips still require integration. The whole-app D1/U1,
+provider/model, plugin and mobile parity deliverables remain in scope.
+
+### Qualified source privacy and parent deletion checkpoint — 2 October 2026
+
+PR **#144** is merged as main **eccf338**, from frozen candidate **f79c852** on
+base **dabb770**. Migration 213 prevents account/team cascades from recreating
+history-access metadata for a disappearing parent; ordinary target deletion
+retains original owner/team history. Personal notice enqueue/inbox/push delivery
+checks job-only dependencies; Review summaries, counts, outcomes and saved
+notices omit unavailable producing-job sources. No production data was touched
+during reproduction. Current access protection does not prove source revisions.
+
+Fresh marked database full local suite passed **2,151/2,151**, no failures/skips/
+cancellations (563,046 ms); combined focused suite **69/69** passed. All workspace
+types, production builds and full formatting passed. Every CI job
+**36996647235** passed. Candidate, GitHub merge **2f1984a** and resulting main
+trees match **a903b6c7158871b05472e3afb54d824290df80fa**. No deployment occurred.
+
+The entire revised acceptance contract remains active: account-specific real
+model execution/defaults, provider/embedding options, separate plugin backend
+and supported host integration, full Docs Markdown/Mermaid parity, whole-app
+web/desktop/mobile UX, independent agent profiles and bounded authorized
+collaboration, typed ownership/rules/editor, reviewed source revisions and
+budget reservations. Public rule editor remains disabled. Preserve character
+work, Orbyn palette and mobile parity; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope.

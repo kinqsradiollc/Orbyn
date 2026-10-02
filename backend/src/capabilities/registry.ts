@@ -1,6 +1,10 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import type { AgentAccess, AgentToolset } from "@orbyn/core";
+import type {
+  AgentAccess,
+  AgentToolset,
+  AssistantProposalGuard,
+} from "@orbyn/core";
 import type { Queryable } from "../db/pool.js";
 import { derivedKey } from "../lib/secrets.js";
 import type { Spaces } from "../lib/visibility.js";
@@ -74,6 +78,8 @@ export type CursorCodec = {
 };
 
 export type CapabilityContext = {
+  /** Resolved by domain destinations, never copied from tool arguments. */
+  assistant_rule_checks?: AssistantProposalGuard["checks"];
   principal: Principal;
   /** A read-only transaction for reads. */
   db: Queryable;
