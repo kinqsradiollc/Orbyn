@@ -168,7 +168,13 @@ export async function openPdfBrowser(
       {
         cwd: directory,
         detached: process.platform !== "win32",
-        env: { PATH: process.env.PATH, LANG: "en_US.UTF-8", TMPDIR: directory },
+        env: {
+          PATH: process.env.PATH,
+          LANG: "en_US.UTF-8",
+          TMPDIR: directory,
+          XDG_CONFIG_HOME: directory,
+          XDG_CACHE_HOME: directory,
+        },
         stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"],
       },
     );

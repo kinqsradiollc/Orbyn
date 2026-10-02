@@ -32,7 +32,7 @@ The shortest path from a fresh server to a working site, with the details in the
 
 1. Put the domain on Cloudflare DNS and create a tunnel (Zero Trust → Networks → Tunnels); give it
    a public hostname pointing at `http://gateway:8081`.
-2. On your machine, fill in `.env.production`: the tunnel token, `APP_URL` and `CORS_ORIGINS` as
+2. On your machine, fill in `.env.production` (including an independent `DOC_PDF_KEY` generated with `openssl rand -hex 32`): the tunnel token, `APP_URL` and `CORS_ORIGINS` as
    `https://your-domain`, a generated `POSTGRES_PASSWORD` and `SECRETS_KEY`, `ADMIN_EMAILS`, and
    how mail goes out (your own mail server, or a provider). Never commit it; git ignores it.
 3. Still on your machine, check the file before it travels:
@@ -52,15 +52,16 @@ From then on, every update is `./scripts/deploy.sh` ([Updating the server](#upda
 
 ## Images
 
-Two images are built from the repository root:
+Backend, private PDF renderer and web images are built from the repository root:
 
-| Dockerfile             | Image role                                       | Commands                                                                                                                                                                     |
-| ---------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/Dockerfile`   | Every backend service and migrations (one image) | `node backend/dist/services/api.js`, `.../services/ai.js`, `.../services/status.js`, `.../services/notifier.js`, `node backend/dist/migrate.js`; `server.js` runs all in one |
-| `desktop/Dockerfile`   | Static web app behind unprivileged nginx         | nginx                                                                                                                                                                        |
-| `pgbouncer/Dockerfile` | Connection pooler (Alpine's PgBouncer)           | Configured from environment at start                                                                                                                                         |
-| `formula/Dockerfile`   | Equations on imported scans (pix2tex, CPU)       | Built only with the `formula` Compose profile                                                                                                                                |
-| `ocr/Dockerfile`       | Heavy OCR for imported scans (CPU, Python)       | Built only with the `ocr` Compose profile; see [Importing files](#importing-pdf-and-word-files-into-docs)                                                                    |
+| Dockerfile                        | Image role                                       | Commands                                                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/Dockerfile`              | Every backend service and migrations (one image) | `node backend/dist/services/api.js`, `.../services/ai.js`, `.../services/status.js`, `.../services/notifier.js`, `node backend/dist/migrate.js`; `server.js` runs all in one |
+| `backend/Dockerfile --target pdf` | Private sandboxed document renderer              | `node backend/dist/services/pdf.js`; no database/provider credentials                                                                                                        |
+| `desktop/Dockerfile`              | Static web app behind unprivileged nginx         | nginx                                                                                                                                                                        |
+| `pgbouncer/Dockerfile`            | Connection pooler (Alpine's PgBouncer)           | Configured from environment at start                                                                                                                                         |
+| `formula/Dockerfile`              | Equations on imported scans (pix2tex, CPU)       | Built only with the `formula` Compose profile                                                                                                                                |
+| `ocr/Dockerfile`                  | Heavy OCR for imported scans (CPU, Python)       | Built only with the `ocr` Compose profile; see [Importing files](#importing-pdf-and-word-files-into-docs)                                                                    |
 
 The gateway uses the stock `nginxinc/nginx-unprivileged` image with `gateway/` mounted.
 
@@ -68,6 +69,7 @@ Both are multi-stage, run as non-root, and use `node:22-bookworm-slim` / `nginx-
 
 ```bash
 docker build -f backend/Dockerfile -t orbyn-backend .
+docker build -f backend/Dockerfile --target pdf -t orbyn-pdf .
 docker build -f desktop/Dockerfile -t orbyn-web .
 docker build -t orbyn-pgbouncer pgbouncer
 ```
@@ -807,3 +809,21 @@ semantic up -d measure`). It measures changed pages in its own process, never in
 3. In Admin → AI, choose the model that measures text and accept that every page (except those in
    projects kept out of the assistant) is sent to be measured. Turning it off forgets every
    measurement.
+
+## Private document PDF rendering
+
+Set `DOC_PDF_KEY` to an independent random secret of at least 32 characters before
+updating a server with rendered PDF exports (`openssl rand -hex 32`). The API and
+private renderer share this key; do not reuse database, provider or session keys.
+Compose supplies `DOC_PDF_URL=http://pdf:8000` to the API. `DOC_PDF_CONCURRENCY`
+defaults to two and accepts one through four; `PDF_REPLICAS` defaults to one.
+
+The deployment script validates the key and starts/rolls the private renderer
+before rolling the API. Missing configuration fails preflight. The renderer's
+health check is independent of the database and it has no published port.
+Chromium's sandbox stays enabled with the renderer-only
+[seccomp profile](../deploy/pdf/README.md), dropped capabilities, a read-only root,
+and bounded temporary/shared memory. Kubernetes nodes require that profile to be
+provisioned before the PDF deployment is enabled. Do not disable the sandbox to
+work around host incompatibility. Unavailable exports return 503 without a partial
+or downgraded file; changed/deleted/inaccessible sources are rejected before delivery.

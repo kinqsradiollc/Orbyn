@@ -31,6 +31,9 @@ process.env.FILES_DIR = dir;
 process.env.PAGE_FILES_DIR = join(dir, "kept");
 process.env.FILES_MIN_FREE_MB = "0";
 
+const { startTestPdfService } = await import("./helpers/pdf-service.js");
+const pdfService = await startTestPdfService();
+const { readPdf } = await import("../src/modules/imports/pdf.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -124,6 +127,7 @@ after(async () => {
   const { closeLive } = await import("../src/modules/docs/live.js");
   await closeLive();
   await app.close();
+  await pdfService.close();
   await pool.end();
 });
 
@@ -1301,7 +1305,14 @@ test("exports carry tables, callouts, footnotes and pictures' captions", async (
   assert.match(md.body, /\[\^1\]: Source: the lecture\./);
   const pdf = await call(me, "GET", `/docs/${doc.id}/export?format=pdf`);
   assert.equal(pdf.statusCode, 200);
-  assert.ok(pdf.rawPayload.toString("latin1").includes("Tip:"));
+  const pages = await readPdf(pdf.rawPayload, 20);
+  const text = pages
+    .flatMap((page) => page.text.spans.map((span) => span.text))
+    .join(" ");
+  assert.match(text, /Tip\s+Start early/);
+  assert.match(text, /Consistency/);
+  assert.match(text, /Source: the lecture/);
+  assert.match(text, /Picture: The diagram/);
 });
 
 test("the new routes answer 429 past the per-minute limit", async () => {

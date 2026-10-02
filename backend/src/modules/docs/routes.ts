@@ -70,7 +70,7 @@ import {
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { syncSavedPages } from "../study/service.js";
 import { docToDocx } from "./docx.js";
-import { docToPdf } from "./pdf.js";
+import { exportRenderedPdf } from "./pdf-client.js";
 import { visibleItems } from "../../lib/visibility.js";
 import {
   COLUMNS,
@@ -256,7 +256,14 @@ export async function docRoutes(app: FastifyInstance) {
       format === "docx"
         ? docToDocx(title, blocks)
         : format === "pdf"
-          ? docToPdf(title, blocks)
+          ? await exportRenderedPdf(
+              docToHtml(title, blocks, {
+                math: createMathHtml(),
+                diagramSources: true,
+              }),
+              r,
+              reply,
+            )
           : format === "html"
             ? docToHtml(title, blocks, {
                 math: createMathHtml(),
@@ -265,6 +272,18 @@ export async function docRoutes(app: FastifyInstance) {
             : format === "txt"
               ? docToText(title, blocks)
               : docToMarkdown(title, blocks);
+    if (format === "pdf") {
+      // Printing can take seconds: recheck current visibility/revision before file delivery.
+      const current = (
+        await pool.query<{ version: number }>(
+          `SELECT d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+          [u.id, id],
+        )
+      ).rows[0];
+      if (!current) fail(404, "Document not found");
+      if (current.version !== doc.version)
+        fail(409, "This page changed. Refresh it before exporting.");
+    }
     return (
       reply
         .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)

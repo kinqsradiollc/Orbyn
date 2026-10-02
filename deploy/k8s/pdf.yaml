@@ -1,0 +1,101 @@
+# Private document renderer. Provision deploy/pdf/seccomp.json at this kubelet
+# localhost profile path on every eligible node before enabling this deployment.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pdf
+  labels: { app.kubernetes.io/name: orbyn, app.kubernetes.io/component: pdf }
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      { app.kubernetes.io/name: orbyn, app.kubernetes.io/component: pdf }
+  template:
+    metadata:
+      labels:
+        { app.kubernetes.io/name: orbyn, app.kubernetes.io/component: pdf }
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 35
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          { type: Localhost, localhostProfile: orbyn/pdf-seccomp.json }
+      containers:
+        - name: pdf
+          image: ghcr.io/your-org/orbyn-pdf:TAG
+          command: ["node", "backend/dist/services/pdf.js"]
+          ports: [{ name: http, containerPort: 8000 }]
+          # Deliberately omit envFrom: the renderer does not receive the database,
+          # mail, provider or file-store credentials in orbyn-secrets.
+          env:
+            - name: PORT
+              value: "8000"
+            - name: DOC_PDF_KEY
+              valueFrom:
+                { secretKeyRef: { name: orbyn-secrets, key: DOC_PDF_KEY } }
+            - name: DOC_PDF_CONCURRENCY
+              value: "2"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: shm, mountPath: /dev/shm }
+      volumes:
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 512Mi }
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pdf
+  labels: { app.kubernetes.io/name: orbyn, app.kubernetes.io/component: pdf }
+spec:
+  selector: { app.kubernetes.io/name: orbyn, app.kubernetes.io/component: pdf }
+  ports: [{ name: http, port: 8000, targetPort: http }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: private-pdf-renderer
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: pdf }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: api }
+      ports: [{ protocol: TCP, port: 8000 }]
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-pdf
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/component: api }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: pdf }
+      ports: [{ protocol: TCP, port: 8000 }]
