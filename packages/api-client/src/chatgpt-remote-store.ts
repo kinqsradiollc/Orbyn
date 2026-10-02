@@ -8,6 +8,7 @@ import {
   type ChatgptCatalogDefaultUpdate,
   type ChatgptExecutorSummary,
 } from "@orbyn/core";
+import { throwIfAborted } from "./abort.js";
 
 export type ChatgptRemoteApi = {
   chatgptExecutors(signal?: AbortSignal): Promise<unknown>;
@@ -185,7 +186,7 @@ export class ChatgptRemoteStore {
           op.signal,
         ),
       );
-      op.signal.throwIfAborted();
+      throwIfAborted(op.signal);
       if (!op.current()) return;
       const selection =
         previous &&
@@ -205,7 +206,7 @@ export class ChatgptRemoteStore {
             selection,
           )
         : null;
-      op.signal.throwIfAborted();
+      throwIfAborted(op.signal);
       if (!op.current()) return;
       this.publish({
         ...empty(),
@@ -255,7 +256,7 @@ export class ChatgptRemoteStore {
         ),
         selection,
       );
-      op.signal.throwIfAborted();
+      throwIfAborted(op.signal);
       if (op.current())
         this.publish({ ...this.state, status: "ready", catalog });
     } catch {
@@ -303,7 +304,7 @@ export class ChatgptRemoteStore {
           op.signal,
         ),
       );
-      op.signal.throwIfAborted();
+      throwIfAborted(op.signal);
       if (
         JSON.stringify(preference.binding) !==
           JSON.stringify(catalog.binding) ||

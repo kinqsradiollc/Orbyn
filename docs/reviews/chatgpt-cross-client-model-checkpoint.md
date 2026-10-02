@@ -69,8 +69,14 @@ unrelated container/volume deletion was attempted. Full-suite acceptance needs
 a fresh marked database and terminal passing totals after environment recovery.
 After external recovery, the test container is healthy and available disk is
 about 8.1 GiB. No agent Docker restart was performed. Frozen source `24419a9` is
-now rerunning against fresh marked `orbyn_models_24419a9_full_test`, log
-`/tmp/orbyn-chatgpt-remote-24419a9-recovered-full-tests.log`; acceptance is pending.
+reran against fresh marked `orbyn_models_24419a9_full_test`, log
+`/tmp/orbyn-chatgpt-remote-24419a9-recovered-full-tests.log`: 2,098/2,099 passed,
+one generated catalog mismatch, no skipped tests. Its declared excluded-route
+count needed to change from 245 to 246. Commit `6da9ad5` regenerates only those
+two catalog lines; four focused generator checks pass. The `6da9ad5` full rerun was deliberately interrupted before source changes after
+actual native testing found the abort compatibility failure; it has no terminal
+passing totals. Log: `/tmp/orbyn-chatgpt-remote-6da9ad5-full-tests.log`.
+Acceptance requires a new complete run on the corrected source.
 
 The production backend Docker image `orbyn-chatgpt-remote:24419a9` built
 successfully, log `/tmp/orbyn-chatgpt-remote-24419a9-docker-build.log`.
@@ -139,3 +145,31 @@ Metro stopped; about 1.6 GiB recovered. Preserve the QA database and logs until
 Docker recovers. Existing character-worktree previews at
 8018/8083 are preserved and are not evidence for this source. Native settings
 interaction and actual provider-account acceptance are still pending.
+
+## Actual native abort compatibility correction
+
+On the task-owned iPhone SE/iOS 18.5 with Expo Go 57, synthetic Orbyn sign-in,
+Workspace → Settings and the ChatGPT search destination were exercised. Discovery
+returned HTTP 200 but the native controller showed an unavailable error. React
+Native installs `abort-controller`, whose signal has no `throwIfAborted` method.
+A controlled probe using that installed implementation reproduced the exact error.
+The regression set failed before the fix (21/23 passed, two failures), log
+`/tmp/orbyn-native-abort-before-fix-tests.log`.
+
+The shared controller and picker now use an internal cancellation check based on
+`signal.aborted`, retaining cancellation and late-result fences. No dependency or
+provider credential was added. After the fix, 43 focused tests passed without skips
+and every workspace typecheck passed. Logs: `/tmp/orbyn-native-abort-after-fix-tests.log`
+and `/tmp/orbyn-native-abort-typecheck.log`.
+
+After an actual Expo reload, the native empty-device state rendered successfully.
+A strictly marked synthetic QA database then served 65 models through real signed
+enrollment, lease and catalog service calls with a controlled identity verifier.
+Actual native taps verified explicit device selection, the 50-row render limit,
+search reaching model 65, long-label wrapping, save and clear. Backend reads
+confirmed `fixture-model-65` at preference version 1, then null at version 2.
+Screenshot: `/tmp/orbyn-native-model-clear-default-20261002.png`. Fixture log:
+`/tmp/orbyn-native-model-fixture-24419a9.log`. This proves controlled native settings
+behavior, not upstream OAuth eligibility or provider inference. Large text, software
+keyboard, dark theme and offline interaction remain pending. Earlier image/export
+results predate this correction; a fresh frozen full suite is still required.

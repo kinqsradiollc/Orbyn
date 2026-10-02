@@ -7,6 +7,7 @@ import {
   type ChatgptModelBinding,
   type ChatgptModelPreference,
 } from "@orbyn/core";
+import { throwIfAborted } from "./abort.js";
 
 export type ChatgptModelPickerState = {
   status: "idle" | "loading" | "ready" | "unavailable";
@@ -137,11 +138,11 @@ export class ChatgptModelPicker {
     const generation = this.generation;
     const previous = this.state.preference;
     try {
-      signal?.throwIfAborted();
+      throwIfAborted(signal);
       const preference = this.preference(
         await this.options.store.read({ ...this.binding }, signal),
       );
-      signal?.throwIfAborted();
+      throwIfAborted(signal);
       if (
         this.closed ||
         generation !== this.generation ||

@@ -1,11 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { ChatgptRemoteStore } from "@orbyn/api-client";
 import type {
   ChatgptCatalogRead,
   ChatgptCatalogDefaultUpdate,
 } from "@orbyn/core";
+
+const mobileRequire = createRequire(
+  new URL("../../mobile/package.json", import.meta.url),
+);
+const nativeRequire = createRequire(
+  mobileRequire.resolve("react-native/package.json"),
+);
+const { AbortController: NativeAbortController } =
+  nativeRequire("abort-controller");
 
 const device = () => ({
   executor_id: randomUUID(),
@@ -91,6 +101,56 @@ function fixture() {
     },
   };
 }
+
+test("React Native abort signals support discovery, catalog selection and default writes", async () => {
+  const original = globalThis.AbortController;
+  globalThis.AbortController = NativeAbortController;
+  const f = fixture();
+  try {
+    assert.equal(
+      typeof new NativeAbortController().signal.throwIfAborted,
+      "undefined",
+    );
+    await f.store.refresh();
+    assert.equal(f.store.snapshot().status, "ready");
+    await f.store.select(selection(f.a));
+    assert.equal(f.store.snapshot().catalog?.status, "ready");
+    await f.store.save("model-a");
+    assert.equal(f.store.snapshot().catalog?.preference.model, "model-a");
+    await f.store.save(null);
+    assert.equal(f.store.snapshot().catalog?.preference.model, null);
+    await f.store.refresh();
+    assert.equal(f.store.snapshot().status, "ready");
+    assert.equal(f.writes.length, 2);
+  } finally {
+    f.store.close();
+    globalThis.AbortController = original;
+  }
+});
+
+test("React Native cancellation still discards an ignored transport's late device reply", async () => {
+  const original = globalThis.AbortController;
+  globalThis.AbortController = NativeAbortController;
+  const f = fixture();
+  const pending = deferred<unknown>();
+  f.api.chatgptExecutors = async (signal) => {
+    f.signals.push(signal);
+    return pending.promise;
+  };
+  try {
+    const read = f.store.refresh();
+    f.store.close();
+    await read;
+    assert.equal(f.signals[0]?.aborted, true);
+    pending.resolve([f.a]);
+    await Promise.resolve();
+    assert.equal(f.store.snapshot().devices.length, 0);
+  } finally {
+    pending.resolve([]);
+    f.store.close();
+    globalThis.AbortController = original;
+  }
+});
 
 test("device discovery requires explicit selection and snapshots are independent", async () => {
   const f = fixture();
