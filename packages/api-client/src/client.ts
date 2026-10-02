@@ -2,6 +2,7 @@ import {
   assistantActivityLane,
   assistantActivityQuery,
   assistantActivityPage,
+  assistantProfiles,
   type AssistantActivityLane,
   chatgptExecutorStart,
   chatgptExecutorList,
@@ -3518,6 +3519,15 @@ export class OrbynClient {
     };
   }
   // ---- The Review inbox ----
+  /** Current authorized work evidence, independent of device presence. */
+  async assistantProfiles(signal?: AbortSignal) {
+    return assistantProfiles.parse(
+      await this.request<unknown>("/me/assistant/profiles", {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
   /** Recover authorized execution activity with an owner/lane-scoped cursor. */
   async assistantActivity(
     lane: AssistantActivityLane,

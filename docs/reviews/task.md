@@ -834,3 +834,66 @@ passed on the current source, log `/tmp/orbyn-assistant-activity-all-types.log`.
 Current packages build **47370** and scoped formatting passed. The 60-test
 regression also includes actual sweeper execution against migration 210. This
 source checkpoint is not a qualified main merge or a completed profile UI.
+
+## Runtime profiles and frozen main activity candidate
+
+Reused the clean ownership worktree (its previous branch remains recoverable)
+for **codex/assistant-activity**, based on current main **f7a3667**. Initial source
+cherry-pick conflicted only on sweeper/core export context and the source handoff.
+Resolved by preserving main and adding just activity; excluded unmerged reflection/
+handoff sweep rules and the source-only review document. The candidate contains
+no profile UI or unfinished model/settings work. PR **#140** is draft and attached.
+
+Candidate **38be150** workspace types/build/full formatting passed (**63117** zero).
+Fresh-db full suite **67161** terminal failure: **2,111 passed, one failed**, 2,112
+total, no skips/cancellations, 559,950 ms. The sole failure is the generated catalog
+route exclusion count. CI **36988277413** terminal failure on the same catalog,
+2,110 backend passes, one failure and one Tesseract skip; mobile/Docker/mail green.
+Logs `/tmp/orbyn-activity-38be150-{full-tests,ci,types,build,format}.log`.
+No candidate edits/restarts occurred while those qualification handles were live.
+After terminal status, regenerated only docs/mcp-catalog.json and docs/mcp.md;
+actual catalog test passed. Corrected **01b8757** pushed, frozen. Its fresh marked
+**orbyn_activity_01b8757_test** full suite is live **13554**, and types/build/format
+pipeline **41776** is live. Log prefix `/tmp/orbyn-activity-01b8757-`. New CI is
+pending fresh inspection. No main merge or deployment; do not shrink remaining ADR.
+
+Profiles source implements `GET /me/assistant/profiles` with repeatable-read,
+primary, private/no-store evidence, enabled-owner/first-party access and 120/min
+limits. Core schemas and typed client bind two distinct runtime profiles. A job
+needs a future execution lease to count as working; expired/missing leases count
+as recovery, queued/waiting stay distinct. Source-inaccessible jobs do not affect
+status. Night windows reuse the actual scheduler timezone/DST helper; scheduled
+windows are not work, and open windows without jobs remain idle. Owner-specific
+per-night estimates/limits never imply billed usage or new reservations. Last
+work comes from the same filtered durable events. Refactored the last-work query
+to avoid loading replay pages just to display a timestamp.
+
+Both clients implement **Your agents**, reachable in chat history/drawer. Web
+uses an accessible native modal dialog with contained scrolling; mobile uses the
+existing safe-area scrolling BottomSheet and drawer-dismiss sequencing. Cards
+reuse main's Character and show separate runtime states, counts, last work,
+night schedule and estimates. Shared **AssistantProfileStore** coalesces reads,
+cancels/reset on close, clears failed-refresh evidence and fences stale responses
+across generations and session changes. No voice/computer-use product features.
+The cards do not yet expose complete reviewed rules/permissions, detailed outputs,
+durable budgets or receiving dispatch; visual/native gates remain open.
+
+Latest source qualification: **19/19** actual profile/activity/window tests,
+24,382 ms (`/tmp/orbyn-assistant-profiles-current-tests.log`), plus **23/23**
+character/style/catalog/shared-store checks, 3,037 ms
+(`/tmp/orbyn-agent-profiles-contracts.log`). Includes 401/403/400/429, disabled
+owners, current source filtering, lease recovery, separate lanes, DST windows,
+per-owner/per-night estimates, fresh client schema rejection, coalescing, closed
+and account-change response fencing. **34945** terminal zero: all workspace
+types and production builds (`/tmp/orbyn-agent-profiles-current-{types,build}.log`).
+Scoped modified-file formatting and diff checks passed. Existing untracked
+settings preview files remain untouched. No actual current profile layout or
+native interaction is claimed from static checks/builds.
+
+Next: inspect corrected activity CI/live handles; complete and qualify profile
+recent outputs/permissions plus UI interaction; wire typed receiving authorization,
+reservation/dispatch/recovery, prove separate process round trips; reconcile older
+plugin branch overlaps; finish model executor/settings and Docs D1/U1. Native QA
+is still waiting for dismissal of the owned simulator's Save Password prompt and
+browser saved-deny permission remains unresolved; do not bypass either. Main
+character work and other dirty files stay preserved until integration is complete.

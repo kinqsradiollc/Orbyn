@@ -15,6 +15,25 @@ const visibleEvent = `((e.job_id IS NULL) OR (
   j.user_id=e.owner_id AND ${assistantChatVisible("c", "$1")}
   AND ${assistantJobSourcesVisible("j", "$1", false)}))`;
 
+/** Current-authorized work time, without loading or replaying event contents. */
+export async function assistantLastActivity(
+  db: Queryable,
+  ownerId: string,
+  lane: AssistantActivityLane,
+  through = "9223372036854775807",
+) {
+  const latest = (
+    await db.query<{ last_activity_at: Date | null }>(
+      `SELECT max(e.created_at) AS last_activity_at FROM assistant_activity_events e
+     LEFT JOIN ai_jobs j ON j.id=e.job_id LEFT JOIN ai_chats c ON c.id=j.chat_id
+     WHERE e.owner_id=$1 AND e.runtime_lane=$2 AND e.sequence<=$3::bigint
+       AND e.kind<>'queued' AND ${visibleEvent}`,
+      [ownerId, lane, through],
+    )
+  ).rows[0].last_activity_at;
+  return latest?.toISOString() ?? null;
+}
+
 /** Replay current-authorized, content-free execution activity without treating presence as work. */
 export async function assistantActivity(
   db: Queryable,
@@ -49,22 +68,14 @@ export async function assistantActivity(
       [ownerId, lane, after, current, limit + 1],
     )
   ).rows;
-  const latest = (
-    await db.query<{ last_activity_at: Date | null }>(
-      `SELECT max(e.created_at) AS last_activity_at FROM assistant_activity_events e
-     LEFT JOIN ai_jobs j ON j.id=e.job_id LEFT JOIN ai_chats c ON c.id=j.chat_id
-     WHERE e.owner_id=$1 AND e.runtime_lane=$2 AND e.sequence<=$3::bigint
-       AND e.kind<>'queued' AND ${visibleEvent}`,
-      [ownerId, lane, current],
-    )
-  ).rows[0].last_activity_at;
+  const latest = await assistantLastActivity(db, ownerId, lane, current);
   const hasMore = events.length > limit;
   const page = events.slice(0, limit);
   return assistantActivityPage.parse({
     lane,
     cursor: hasMore ? page.at(-1)!.sequence : current,
     has_more: hasMore,
-    last_activity_at: latest?.toISOString() ?? null,
+    last_activity_at: latest,
     events: page.map((event) => ({
       ...event,
       created_at: event.created_at.toISOString(),

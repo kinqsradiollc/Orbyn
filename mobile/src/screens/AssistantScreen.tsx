@@ -29,6 +29,7 @@ import { AssistantDrawer } from "../components/AssistantDrawer";
 import { PlanView, tickedMoves } from "../components/PlanView";
 import { SmallAction } from "../components/SmallAction";
 import { AssistantUpcoming } from "../components/AssistantUpcoming";
+import { AssistantAgents } from "./AssistantAgents";
 import { TurnChanges } from "../components/TurnChanges";
 import type { MoreAction } from "../components/MoreMenu";
 import { ProposalReview } from "../components/ProposalReview";
@@ -205,6 +206,7 @@ export function AssistantScreen({
     setCustomizingCharacter,
   } = assistant;
   const [identityName, setIdentityName] = useState("Orbyn");
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [identityPersona, setIdentityPersona] = useState("");
   const [appearance, setAppearance] = useState(() => characterAppearance({}));
   const [identitySaving, setIdentitySaving] = useState(false);
@@ -425,6 +427,11 @@ export function AssistantScreen({
         }}
         shortcuts={[
           {
+            icon: "sparkles",
+            label: "Your agents",
+            onPress: () => closeDrawerThen(() => setAgentsOpen(true)),
+          },
+          {
             icon: "calendarCheck",
             label: "Upcoming",
             onPress: () => closeDrawerThen(() => setUpcomingOpen(true)),
@@ -507,6 +514,11 @@ export function AssistantScreen({
         agentName={agentName}
         visible={upcomingOpen}
         onClose={() => setUpcomingOpen(false)}
+      />
+      <AssistantAgents
+        visible={agentsOpen}
+        identity={identity}
+        onClose={() => setAgentsOpen(false)}
       />
       {scope && (
         <View style={s.scopeRow}>

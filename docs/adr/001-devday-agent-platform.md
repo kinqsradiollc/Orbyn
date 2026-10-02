@@ -108,3 +108,15 @@ job links; expired jobs retain only content-free historical events. Queuing alon
 does not set last-work activity. Sixty focused activity, handoff, sweep and runtime
 checks passed on a fresh marked test database. This remains unmerged source;
 profile UI, worker dispatch, budgets and separate-process collaboration are open.
+
+Profile source now adds a private read-only snapshot and a Your agents panel on
+both clients, retaining the main character design. Working requires a current
+execution lease; expired leases are recovery pending, waiting remains distinct,
+and an empty night window is idle. Future enabled windows can be scheduled.
+Last-work time comes from authorized persisted events, not presence. Existing
+night token estimates and limits are shown as estimates, not billed usage or
+new budget reservations. Shared request cancellation fences closed/account-change
+generations and clears stale status after failure. Forty-two focused checks,
+all workspace types, production builds and scoped formatting passed. This is
+unmerged source; responsive/native interaction, reviewed permissions, durable
+budget reservations, dispatch and complete collaboration still need proof.

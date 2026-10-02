@@ -1,4 +1,5 @@
 export { OrbynClient, isAbortError } from "./client.js";
+export * from "./assistant-profile-store.js";
 export type {
   OrbynClientOptions,
   RequestOptions,

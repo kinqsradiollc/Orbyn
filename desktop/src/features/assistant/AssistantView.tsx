@@ -47,6 +47,7 @@ import { TurnChanges } from "./TurnChanges";
 import { ReminderNudge } from "./ReminderNudge";
 import { ProposalReview } from "../../components/ProposalReview";
 import { AssistantUpcoming } from "./AssistantUpcoming";
+import { AssistantAgents } from "./AssistantAgents";
 import { client } from "../../lib/api";
 import type { Assistant } from "../../hooks/useAssistant";
 import { stagger } from "../../lib/motion";
@@ -149,6 +150,7 @@ export function AssistantView({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [chatMenu, setChatMenu] = useState<{
     chat: AiChatSummary;
     anchor: DOMRect;
@@ -301,6 +303,12 @@ export function AssistantView({
 
   return (
     <section className={"ai-chat" + (empty ? " is-empty" : "")}>
+      {agentsOpen && (
+        <AssistantAgents
+          identity={identity}
+          onClose={() => setAgentsOpen(false)}
+        />
+      )}
       <aside
         className={"ai-history" + (historyOpen ? " is-open" : "")}
         aria-label="Chat history"
@@ -323,6 +331,13 @@ export function AssistantView({
               <SquarePen size={16} aria-hidden="true" />
             </button>
           </div>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setAgentsOpen(true)}
+          >
+            Your agents
+          </button>
           <a href="/app/overnight">Overnight</a>
           <input
             type="search"
