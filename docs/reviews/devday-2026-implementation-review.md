@@ -188,6 +188,42 @@ Existing desktop Mermaid and rich blocks are reused. Mobile's current flowchart-
 
 #### ChatGPT reference and separate agent runtimes — user scope addition, 2 October 2026
 
+**Agent profile and truthful availability — reference supplied 2 October:**
+give Daytime/Background and Overnight separate profile panels built around the
+person's existing Orbyn companion. Each shows its name, current state, last actual
+activity, next scheduled run or trigger, recent work and outputs. Use the supplied
+compact profile card as an information-hierarchy reference, expressed through
+Orbyn's colors and controls. Provide equivalent entry points and actions on
+web/Electron, iOS and Android, including narrow layouts and large text.
+
+- Idle means no model run is in progress. An available worker may poll the queue
+  without calling a model. Only a task, enabled schedule, or authorized automatic
+  trigger begins a run; a continuously available service must not be presented
+  as continuously thinking or working.
+- Distinguish Idle/Ready, Scheduled, Working, Waiting for you, Paused/Disabled,
+  Unavailable and Failed. Resolve status from persisted jobs, enabled schedules,
+  approvals and fresh runtime health. A stale/offline worker cannot report Ready.
+- "Active 18 minutes ago" must come from the person's actual job activity, never
+  a worker heartbeat, page visit, polling request or animation. Show a truthful
+  empty state before the first run and explicit scheduled times with timezones.
+- Activity and outputs are permission-filtered, associated with the correct
+  runtime and linked to the original task, run, review or artifact. Refresh,
+  restart, completion, cancellation and permission loss must update both clients.
+- Let people inspect the current task, answer an outstanding approval/question,
+  stop a run, manage its schedule and open its outputs. Preserve the existing
+  companion configuration and reduced-motion/static/hidden choices; idle agents
+  should not animate as if they were processing work.
+- Keep service availability, execution-device availability and agent activity
+  distinct. Show an execution device only when Orbyn actually uses it. The
+  reference's Call/computer controls do not add voice or computer-use features;
+  connection actions appear only for working authorized integrations.
+
+Acceptance requires real idle-to-running-to-completed and waiting/stop/recovery
+transitions for both independent runtimes, persisted last-activity timestamps,
+no provider calls while idle, permission-safe activity/output links, and actual
+profile interactions on web and native mobile. A styled card or heartbeat alone
+does not complete this requirement.
+
 The user explicitly authorizes inspecting [ChatGPT](https://chatgpt.com/) on laptop
 and mobile as a UI/UX reference and requires this direction to be part of the ADR.
 Improve the whole Orbyn application to that level of visual consistency while
