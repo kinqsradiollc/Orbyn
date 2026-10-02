@@ -350,3 +350,49 @@ test("review checks the producing conversation's current project visibility", as
   );
   await unchanged(user.id, proposal);
 });
+
+for (const removed of ["source", "job"] as const) {
+  test(`review reads, badge and notification omit a proposal after ${removed} cleanup`, async () => {
+    const { reviewItem, reviewInbox, pendingCount, proposalOutcome } =
+      await import("../src/modules/proposals/service.js");
+    const { listNotifications } =
+      await import("../src/modules/notifications/service.js");
+    const { user, p, proposal, job } = await prepare();
+    assert.equal((await reviewItem(pool, user.id, proposal)).id, proposal);
+    assert.equal(await pendingCount(pool, user.id), 1);
+    assert.ok(
+      (await listNotifications(pool, user.id)).some(
+        (n) => n.ref === `proposal:${proposal}`,
+      ),
+    );
+    if (removed === "job")
+      await pool.query("DELETE FROM ai_jobs WHERE id=$1", [job]);
+    else {
+      const doc = (
+        await pool.query(
+          "INSERT INTO docs(user_id,title) VALUES($1,'Private reviewed source') RETURNING id",
+          [user.id],
+        )
+      ).rows[0].id;
+      await pool.query(
+        "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+        [job, doc],
+      );
+      await pool.query("DELETE FROM docs WHERE id=$1", [doc]);
+    }
+    await assert.rejects(reviewItem(pool, user.id, proposal), status(404));
+    assert.equal((await reviewInbox(pool, user.id)).pending.length, 0);
+    assert.equal(await pendingCount(pool, user.id), 0);
+    assert.equal(
+      await proposalOutcome(pool, user.id, p.grant_id, proposal),
+      null,
+    );
+    assert.equal(
+      (await listNotifications(pool, user.id)).some(
+        (n) => n.ref === `proposal:${proposal}`,
+      ),
+      false,
+    );
+    await unchanged(user.id, proposal);
+  });
+}
