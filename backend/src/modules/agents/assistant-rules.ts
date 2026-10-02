@@ -8,6 +8,8 @@ import {
   type AgentAccess,
 } from "@orbyn/core";
 import { transaction, type Queryable } from "../../db/pool.js";
+import { assistantChatVisible } from "../../lib/assistant-visibility.js";
+import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { reachableTeams } from "../../capabilities/policy.js";
 
 /** Review does not change the producing runtime or silently accept edited rules. */
@@ -58,6 +60,25 @@ export async function checkAssistantProposalRules(
     return null;
   }
   const guard = assistantProposalGuard.parse(value);
+  if (!guard.job_id && guard.lane !== "interactive")
+    fail(
+      409,
+      "This suggestion has no producing job evidence. Ask for a new one.",
+    );
+  if (guard.job_id) {
+    const job = (
+      await db.query<{ runtime_lane: string }>(
+        `SELECT j.runtime_lane FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
+       WHERE j.id=$2 AND ${assistantChatVisible("c", "$1")}
+       AND ${assistantJobSourcesVisible("j", "$1", false)} FOR SHARE OF j`,
+        [ownerId, guard.job_id],
+      )
+    ).rows[0];
+    if (!job)
+      fail(403, "The producing work or its sources are no longer available.");
+    if (job.runtime_lane !== guard.lane)
+      fail(409, "This suggestion does not match its producing runtime.");
+  }
   if (guard.rules_revision !== row.revision)
     fail(
       409,

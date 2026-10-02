@@ -305,6 +305,7 @@ export async function toReview(
           assistantGuard: {
             lane: p.assistant_lane ?? "interactive",
             rules_revision: p.assistant_rules_revision ?? 1,
+            ...(p.assistant_job_id ? { job_id: p.assistant_job_id } : {}),
             checks: ctx.assistant_rule_checks ?? [],
           },
         }

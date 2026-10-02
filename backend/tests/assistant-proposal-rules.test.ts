@@ -47,6 +47,23 @@ async function prepare(plan = false) {
   });
   const p = await assistantPrincipal(user);
   p.assistant_lane = "background";
+  const chat = randomUUID();
+  const job = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin) VALUES($1,$2,'Proposal evidence','task')",
+    [chat, user.id],
+  );
+  await pool.query(
+    `INSERT INTO ai_jobs(id,user_id,chat_id,state,sources_checked,run_origin,run_state)
+    VALUES($1,$2,$3,'running',true,'task',$4)`,
+    [
+      job,
+      user.id,
+      chat,
+      { version: 1, request: { automation: { kind: "task" } } },
+    ],
+  );
+  p.assistant_job_id = job;
   const args = plan
     ? {
         summary: "Background plan",
@@ -76,7 +93,7 @@ async function prepare(plan = false) {
     "",
   );
   assert.ok(proposal, JSON.stringify(output));
-  return { user, p, proposal };
+  return { user, p, proposal, job, chat };
 }
 async function unchanged(owner: string, proposal: string) {
   assert.equal(
@@ -224,4 +241,112 @@ test("a removed source connection cannot acquire assistant guard metadata", asyn
     ),
     status(403),
   );
+});
+
+for (const plan of [false, true]) {
+  test(`${plan ? "whole plan" : "typed change"} holds after producing source access is removed`, async () => {
+    const { user, proposal, job } = await prepare(plan);
+    const source = (
+      await pool.query(
+        "INSERT INTO docs(user_id,title) VALUES($1,'Source') RETURNING id",
+        [user.id],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+      [job, source],
+    );
+    await pool.query("DELETE FROM docs WHERE id=$1", [source]);
+    await assert.rejects(
+      transaction((db) => applyProposal(db, user, proposal)),
+      status(403),
+    );
+    await unchanged(user.id, proposal);
+  });
+  test(`${plan ? "whole plan" : "typed change"} holds after producing job cleanup`, async () => {
+    const { user, proposal, job } = await prepare(plan);
+    await pool.query("DELETE FROM ai_jobs WHERE id=$1", [job]);
+    await assert.rejects(
+      transaction((db) => applyProposal(db, user, proposal)),
+      status(403),
+    );
+    await unchanged(user.id, proposal);
+  });
+}
+test("a proposal cannot select a different producing runtime or owner", async () => {
+  const a = await prepare();
+  const b = await prepare();
+  await pool.query(
+    "UPDATE proposals SET assistant_guard=jsonb_set(assistant_guard,'{job_id}',to_jsonb($2::text)) WHERE id=$1",
+    [a.proposal, b.job],
+  );
+  await assert.rejects(
+    transaction((db) => applyProposal(db, a.user, a.proposal)),
+    status(403),
+  );
+  await unchanged(a.user.id, a.proposal);
+  await pool.query(
+    "UPDATE proposals SET assistant_guard=jsonb_set(jsonb_set(assistant_guard,'{job_id}',to_jsonb($2::text)),'{lane}','\"overnight\"') WHERE id=$1",
+    [a.proposal, a.job],
+  );
+  await assert.rejects(
+    transaction((db) => applyProposal(db, a.user, a.proposal)),
+    status(409),
+  );
+  await unchanged(a.user.id, a.proposal);
+});
+
+test("proposal creation refuses unknown source coverage and missing background producer", async () => {
+  const { user, p, job } = await prepare();
+  const create = () =>
+    execute(
+      registry,
+      p,
+      "create_tasks",
+      { tasks: [{ title: "Held without source coverage" }] },
+      { write: transaction },
+    );
+  await pool.query("UPDATE ai_jobs SET sources_checked=false WHERE id=$1", [
+    job,
+  ]);
+  const unknown = await create();
+  assert.equal(unknown.result.isError, true);
+  assert.match(
+    JSON.stringify(unknown.result),
+    /sources are no longer available/,
+  );
+  delete p.assistant_job_id;
+  const missing = await create();
+  assert.equal(missing.result.isError, true);
+  assert.match(JSON.stringify(missing.result), /producing job evidence/);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM proposals WHERE user_id=$1",
+        [user.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+});
+test("review checks the producing conversation's current project visibility", async () => {
+  const { user, proposal, chat } = await prepare();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Original scope') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  await pool.query("UPDATE ai_chats SET project_id=$2 WHERE id=$1", [
+    chat,
+    project,
+  ]);
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  await assert.rejects(
+    transaction((db) => applyProposal(db, user, proposal)),
+    status(403),
+  );
+  await unchanged(user.id, proposal);
 });
