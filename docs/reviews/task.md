@@ -2164,3 +2164,11 @@ self-contained inert images and retaining source/error details. Keep backend
 visibility projection authoritative, no re-fetch of raw blocks or external
 renderer/network calls. A partial source fallback must not close D1. Desktop
 SVG resource sanitation, browser/native export and visual acceptance remain open.
+
+Latest main checkpoint: public Home PR154 exact4e23899 passed all four jobs in
+CI37034443999 and merged as4e5a3f6. Local main fast-forwarded while preserving
+user changes. Current Docs source reconciles main4e5a3f6, including auth/session
+namespace and new public Home shared guide. Two append-only ADR/export-list
+conflicts were resolved by retaining both sets of sections and exports; no
+feature or acceptance requirement was discarded. Re-run combined checks before
+relying on earlier candidate qualification. No deployment or cleanup.
