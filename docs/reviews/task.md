@@ -421,9 +421,9 @@ Evidence `/tmp/orbyn-main-doc-navigation-native-deep-link-20261002.png`;
 fixture `/tmp/orbyn-doc-navigation-native-deep-link-fixture.mts`.
 
 Outstanding: web/mobile-web interactions at the authorized preview after its
-saved permission is changed, native Android and actual outline navigation. No Docs navigation code is merged or
+saved permission is changed and native Android. No Docs navigation code is merged or
 deployed yet. This checkpoint does not complete the wider D1 Markdown contract.
-Free disk was most recently about 3 GiB. Preserve unrelated preview files and
+Free disk was most recently about 1.6 GiB; the user is recovering more space. Preserve unrelated preview files and
 user changes. Do not restart Docker Desktop or use clipboard-based native input.
 
 Latest source audit: main **324d08e** contains only the ADR evidence update after
@@ -436,3 +436,12 @@ The main-candidate native API/Metro handles replace the old model preview handle
 61269/65880, whose own processes were terminated. Current native screen is the
 successful cross-page Result heading, no false error banner. The shared code and
 mobile root timing fix are committed; there are no pending application edits.
+
+Native outline qualification on candidate **b3ab641**: opened Info → Contents,
+selected Result inside a folded First section, and verified that the editor
+unfolded the containing section and scrolled to the highlighted Result heading.
+The unrelated Keep this section folded remained collapsed. Evidence:
+`/tmp/orbyn-main-doc-navigation-native-outline-20261002.png`. This closes the
+native iOS outline gate only; web/mobile-web and Android remain unverified.
+Latest live CI snapshot: Docker, mobile and mail passed; backend-and-web is still
+in progress on run **36979623013**. Docker Desktop remains under user control.
