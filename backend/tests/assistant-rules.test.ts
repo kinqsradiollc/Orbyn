@@ -338,3 +338,174 @@ test("rule edits wait for the actual in-flight capability transaction", async ()
     "deny",
   );
 });
+
+test("assistant identity respects stored access and Personal/team scope ceilings", async () => {
+  const p = await person();
+  await pool.query(
+    "UPDATE agent_grants SET access='read',personal=false,team_ids='{}',flags=$2 WHERE id=$1",
+    [p.grant_id, { hide_outside_content: true }],
+  );
+  const current = await assistantPrincipal(p.user);
+  assert.equal(current.access, "read");
+  assert.equal(current.personal, false);
+  assert.deepEqual(current.team_ids, []);
+  assert.deepEqual(current.teams, []);
+  assert.equal(current.flags.hide_outside_content, true);
+});
+
+for (const unavailable of ["suspended_at=now()", "disabled=true"] as const) {
+  test(`an existing assistant principal cannot read after ${unavailable}`, async () => {
+    const p = await person();
+    const doc = (
+      await pool.query(
+        "INSERT INTO docs(user_id,title,content) VALUES($1,'Private grant source',$2) RETURNING id",
+        [
+          p.user.id,
+          JSON.stringify([
+            { type: "paragraph", text: "Private grant evidence" },
+          ]),
+        ],
+      )
+    ).rows[0].id;
+    const args = { id: `doc:${doc}` };
+    assert.equal(
+      (await execute(registry, p, "fetch", args)).result.isError,
+      undefined,
+    );
+    await pool.query(
+      `UPDATE ${unavailable === "disabled=true" ? "users" : "agent_grants"} SET ${unavailable} WHERE id=$1`,
+      [unavailable === "disabled=true" ? p.user.id : p.grant_id],
+    );
+    const denied = await execute(registry, p, "fetch", args);
+    assert.equal(denied.outcome, "denied");
+    assert.doesNotMatch(
+      JSON.stringify(denied.result),
+      /Private grant evidence|Private grant source/,
+    );
+    const { withReadContext } = await import("../src/capabilities/execute.js");
+    await assert.rejects(
+      withReadContext(p, "fetch", args, async () => "must not run"),
+      /paused or unavailable/,
+    );
+  });
+}
+
+test("a saved assistant principal cannot bypass narrowed scope/access on its next call", async () => {
+  const p = await person();
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Personal source') RETURNING id",
+      [p.user.id],
+    )
+  ).rows[0].id;
+  await pool.query("UPDATE agent_grants SET personal=false WHERE id=$1", [
+    p.grant_id,
+  ]);
+  const hidden = await execute(registry, p, "fetch", { id: `doc:${doc}` });
+  assert.equal(hidden.outcome, "denied");
+  assert.doesNotMatch(JSON.stringify(hidden.result), /Personal source/);
+  await pool.query(
+    "UPDATE agent_grants SET personal=true,access='read' WHERE id=$1",
+    [p.grant_id],
+  );
+  const denied = await execute(
+    registry,
+    p,
+    "create_tasks",
+    { tasks: [{ title: "Must not be created" }] },
+    { write: transaction },
+  );
+  assert.equal(denied.outcome, "denied");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM items WHERE user_id=$1",
+        [p.user.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("current assistant reads lose removed teams and writes observe current team role", async () => {
+  const initial = await person();
+  const team = (
+    await pool.query(
+      "INSERT INTO teams(name,created_by) VALUES('Grant scope team',$1) RETURNING id",
+      [initial.user.id],
+    )
+  ).rows[0].id;
+  try {
+    await pool.query(
+      "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner')",
+      [team, initial.user.id],
+    );
+    const p = await assistantPrincipal(initial.user);
+    const doc = (
+      await pool.query(
+        "INSERT INTO docs(user_id,team_id,title) VALUES($1,$2,'Team evidence') RETURNING id",
+        [p.user.id, team],
+      )
+    ).rows[0].id;
+    assert.equal(
+      (await execute(registry, p, "fetch", { id: `doc:${doc}` })).result
+        .isError,
+      undefined,
+    );
+    await pool.query("UPDATE agent_grants SET team_ids='{}' WHERE id=$1", [
+      p.grant_id,
+    ]);
+    const hidden = await execute(registry, p, "fetch", { id: `doc:${doc}` });
+    assert.equal(hidden.outcome, "denied");
+    assert.doesNotMatch(JSON.stringify(hidden.result), /Team evidence/);
+    await pool.query("UPDATE agent_grants SET team_ids=NULL WHERE id=$1", [
+      p.grant_id,
+    ]);
+    await pool.query(
+      "UPDATE team_members SET role='viewer' WHERE team_id=$1 AND user_id=$2",
+      [team, p.user.id],
+    );
+    const held = await execute(
+      registry,
+      p,
+      "create_tasks",
+      { tasks: [{ title: "Viewer cannot create", team }] },
+      { write: transaction },
+    );
+    assert.equal(held.outcome, "denied");
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM items WHERE team_id=$1",
+          [team],
+        )
+      ).rows[0].n,
+      0,
+    );
+  } finally {
+    await pool.query("DELETE FROM teams WHERE id=$1", [team]);
+  }
+});
+
+test("caller restrictions remain ceilings even when the current stored grant is broader", async () => {
+  const p = await person();
+  p.personal = false;
+  p.flags.readonly = true;
+  const { withReadContext } = await import("../src/capabilities/execute.js");
+  const current = await withReadContext(
+    p,
+    "get_context",
+    {},
+    async (ctx) => ctx.principal,
+  );
+  assert.equal(current.personal, false);
+  assert.equal(current.flags.readonly, true);
+  const held = await execute(
+    registry,
+    p,
+    "create_tasks",
+    { tasks: [{ title: "Caller ceiling" }] },
+    { write: transaction },
+  );
+  assert.equal(held.outcome, "denied");
+});

@@ -1,14 +1,16 @@
 import { ZodError, type z } from "zod";
-import {
-  HttpError,
-  assistantActionRules,
-  type AgentOutcome,
-} from "@orbyn/core";
+import { HttpError, type AgentOutcome } from "@orbyn/core";
 import { readTransaction, type Queryable } from "../db/pool.js";
 import { validationMessage } from "../lib/validation-message.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 import { cap as capText } from "./format.js";
 import { policy, type Principal } from "./policy.js";
+import { currentAssistantPrincipal } from "./assistant-principal.js";
+import {
+  assistantReplayAuthority,
+  assertAssistantReplaySources,
+} from "./assistant-replay.js";
+import { assertAssistantReplayTargets } from "./assistant-replay-targets.js";
 import {
   keepAnswer,
   priorAnswer,
@@ -236,17 +238,21 @@ export async function withReadContext<T>(
   await cursorKey();
   return readTransaction(
     async (db) => {
+      const current = await currentAssistantPrincipal(db, p);
       const prefs = await loadPrefs(db, p.user.id);
       return fn({
-        principal: p,
+        principal: current,
         db,
         now: options.now ?? new Date(),
         timezone: prefs.timezone,
-        spaces: policy.spaces(p),
-        cursor: cursorCodec(p, name, args),
+        spaces: policy.spaces(current),
+        cursor: cursorCodec(current, name, args),
       });
     },
-    { primary: options.primary, timeoutMs: READ_TIMEOUT_MS },
+    {
+      primary: p.via === "assistant" || options.primary,
+      timeoutMs: READ_TIMEOUT_MS,
+    },
   );
 }
 
@@ -327,47 +333,38 @@ export async function execute(
         }
       : undefined;
   const run = async (db: Queryable) => {
-    let currentPrincipal = p;
-    if (p.via === "assistant" && cap.mode !== "read") {
-      // The single locked grant row also serializes rule replacement, including
-      // newly inserted denies. A caller's stale snapshot is never authoritative.
-      const grant = (
-        await db.query<{ rules: unknown; revision: number }>(
-          `SELECT g.assistant_rules AS rules,g.assistant_rules_revision AS revision FROM agent_grants g
-         JOIN users u ON u.id=g.user_id AND NOT u.disabled
-         WHERE g.id=$1 AND g.user_id=$2 AND g.kind='assistant'
-           AND g.revoked_at IS NULL AND g.suspended_at IS NULL FOR SHARE OF g`,
-          [p.grant_id, p.user.id],
-        )
-      ).rows[0];
-      if (!grant)
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "Your assistant is paused or unavailable.",
-        );
-      if (
-        p.assistant_rules_revision !== undefined &&
-        p.assistant_rules_revision !== grant.revision
-      )
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "Assistant rules changed. Review the plan again.",
-        );
-      currentPrincipal = {
-        ...p,
-        assistant_rules_revision: grant.revision,
-        assistant_rules: assistantActionRules.parse(grant.rules),
-      };
-    }
+    const currentPrincipal = await currentAssistantPrincipal(
+      db,
+      p,
+      cap.mode !== "read",
+    );
+    if (!policy.allows(currentPrincipal, cap))
+      throw new CapabilityError(
+        "FORBIDDEN",
+        `This connection can't use ${name}.`,
+      );
     if (grantId && clientRef) {
       replayed = await priorAnswer(db, grantId, name, clientRef);
-      if (replayed)
+      if (replayed) {
+        if (
+          currentPrincipal.via === "assistant" &&
+          replayed.assistant_authority !==
+            assistantReplayAuthority(currentPrincipal)
+        )
+          throw new CapabilityError(
+            "FORBIDDEN",
+            "Assistant authority changed. The cached result was held.",
+            "Read the current work or ask the person to review it. Do not repeat the change with a new client_ref.",
+          );
+        await assertAssistantReplaySources(db, currentPrincipal);
+        await assertAssistantReplayTargets(db, currentPrincipal, replayed);
         return {
           structured: replayed.structured,
           markdown: replayed.markdown,
           links: replayed.links as ResultLink[] | undefined,
           targets: replayed.targets,
         } as CapabilityResult<unknown>;
+      }
     }
     const prefs = await loadPrefs(db, p.user.id);
     const ctx: CapabilityContext = {
@@ -378,8 +375,8 @@ export async function execute(
       db,
       now,
       timezone: prefs.timezone,
-      spaces: policy.spaces(p),
-      cursor: cursorCodec(p, name, input),
+      spaces: policy.spaces(currentPrincipal),
+      cursor: cursorCodec(currentPrincipal, name, input),
       ...(options.progress ? { progress: options.progress } : {}),
       ...(asking ? { asking } : {}),
     };
@@ -402,6 +399,11 @@ export async function execute(
       });
       if (clientRef)
         await keepAnswer(db, grantId, name, clientRef, {
+          ...(currentPrincipal.via === "assistant"
+            ? {
+                assistant_authority: assistantReplayAuthority(currentPrincipal),
+              }
+            : {}),
           structured: answer.structured,
           markdown: answer.markdown,
           links: answer.links,
@@ -416,7 +418,7 @@ export async function execute(
     const answer =
       cap.mode === "read"
         ? await readTransaction(run, {
-            primary: options.primary,
+            primary: p.via === "assistant" || options.primary,
             timeoutMs: READ_TIMEOUT_MS,
           })
         : options.write
