@@ -368,7 +368,10 @@ export async function rememberMemory(
   return { entry: entryOf(doc), created, changed };
 }
 
-/** Queue the completed visible turns for off-request memory learning. */
+/**
+ * Learn only from conversations the person started. Automated prompts and
+ * reflections are generated evidence, not personal facts supplied by the user.
+ */
 export async function enqueueMemory(
   db: Queryable,
   input: {
@@ -380,7 +383,8 @@ export async function enqueueMemory(
 ) {
   await db.query(
     `INSERT INTO memory_queue (chat_id, user_id, turns, source_project_id)
-     VALUES ($1, $2, $3::jsonb, $4)`,
+     SELECT $1, $2, $3::jsonb, $4
+     FROM ai_chats WHERE id = $1 AND user_id = $2 AND origin = 'person'`,
     [
       input.chatId,
       input.userId,

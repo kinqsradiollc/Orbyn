@@ -23,6 +23,7 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { visibleItems, visibleProjects } from "../../lib/visibility.js";
 import { createDoc } from "../docs/service.js";
+import { enqueueMemory } from "../memory/service.js";
 
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 
@@ -368,11 +369,12 @@ export async function finishChatTurn(
           role: turn.role,
           content: turn.history_text ?? turn.text,
         }));
-      await db.query(
-        `INSERT INTO memory_queue (chat_id, user_id, turns, source_project_id)
-         VALUES ($1, $2, $3::jsonb, $4)`,
-        [chatId, userId, JSON.stringify(memoryTurns), row.project_id],
-      );
+      await enqueueMemory(db, {
+        chatId,
+        userId,
+        turns: memoryTurns,
+        sourceProjectId: row.project_id,
+      });
     }
   };
   if (sharedDb) await finish(sharedDb);
