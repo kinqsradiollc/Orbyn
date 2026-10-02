@@ -1346,9 +1346,9 @@
 }
 .ai-character-modal form > .button-row {
   position: sticky;
-  bottom: -22px;
+  bottom: 0;
   padding: 14px 0;
-  margin-bottom: -22px;
+  margin-bottom: 0;
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   z-index: 1;

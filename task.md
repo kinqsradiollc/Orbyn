@@ -42,7 +42,7 @@ companion implementation was already pushed in `0749e6e`; this task expands it.
 ## Environment and ownership
 
 Main's uncommitted `mobile/app.json` and unrelated untracked files must stay untouched.
-Latest main before integration: `324d08e`; its additional change only updates ADR notes.
+Integration parent: `296a342`; its additional changes only update ADR notes.
 No edits to the concurrent ADR/reflection/Docs worktrees. No deployment/tag/release.
 
 Preview: web 5174, mobile web 8083, API 8018. Only disposable databases were used:
@@ -55,8 +55,8 @@ No provider is configured for the disposable fixture; live model success was not
 ## Delivery and remaining qualification
 
 Delivery target is local `main` and `origin/main`, using a normal fast-forward without
-rewriting other agents' commits. Git history identifies the expansion commit; the
-final delivery report records the verified remote SHA. Unrelated working changes are
+rewriting other agents' commits. The expansion is integrated at `7c96f70`; full main typecheck and production build
+passed. The final delivery report records the verified remote SHA. Unrelated working changes are
 preserved. No production deployment, release or tag is part of this request.
 
 Before native release, run a physical-device or simulator tap/performance check. The
