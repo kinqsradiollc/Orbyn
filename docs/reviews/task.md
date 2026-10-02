@@ -1783,3 +1783,23 @@ read-only catalog, revocation401. Synthetic owner/client removed; only the owned
 node PID95267 received TERM. Evidence: evidence/plugin-profile-runtime.txt.
 No OAuth browser consent, external host, gateway exposure or production enablement
 is claimed; full ADR and UI gates remain incomplete.
+
+## Plugin gates and native settings continuation — 2 October 2026
+
+Frozen plugina74ad26 pipeline47503 terminated zero:2186/2186 full tests, no
+failures/skips/cancellations,558414ms. Types/build/full-format gates also passed.
+CI37012184719 backend-and-web still pending; mobile/docker/mail passed. Browser
+consent/host/production delivery gates remain open; PR142 is still draft.
+
+Native settings inspection found models below account deletion and API
+connections under Planning. Moved these into a dedicated Connections group;
+search identity/destinations retained. Actual models search still opens and
+scrolls to the intended section with readable wrapped text and no overlapping
+controls. Native typecheck56675 passed. Screenshots/provenance in
+evidence/settings-native. No real ChatGPT account/catalog/inference is claimed.
+
+User renewed computer-use authorization. Exact web preview5174 attempt was
+still rejected by the saved Block/Deny preference; no bypass attempted. Asked
+for saved setting change. Follow-up answer did not establish a setting change;
+asked whether changed to Allow, pending. Native work continues independently.
+Full ADR remains active/incomplete, main remainsc30c5fc, no cleanup/deployment.

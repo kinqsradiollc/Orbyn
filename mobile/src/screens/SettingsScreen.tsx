@@ -387,14 +387,26 @@ export function SettingsScreen({
           detail="Routines the planner fits into free time"
           onPress={onOpenHabits}
         />
+      </View>
+
+      <Text style={[shared.eyebrow, s.section]}>CONNECTIONS</Text>
+      <View style={[shared.card, s.rows]}>
         <LinkRow
-          divider
           icon="link"
           title="Connections"
           detail="API keys, webhooks and calendar feed"
           onPress={onOpenConnections}
         />
       </View>
+
+      <ChatgptModelsSection userId={user?.id ?? ""} />
+
+      <SettingsSection title="AI provider">
+        <Text style={shared.body}>
+          An admin connects the AI provider in Admin → AI, and its keys stay on
+          the server, never on this device.
+        </Text>
+      </SettingsSection>
 
       {analytics && analytics.planned_minutes > 0 && (
         <SettingsAnchor name="Where your time goes">
@@ -1157,15 +1169,6 @@ export function SettingsScreen({
         act={act}
         onDeleted={onAccountDeleted}
       />
-
-      <ChatgptModelsSection userId={user?.id ?? ""} />
-
-      <SettingsSection title="AI provider">
-        <Text style={shared.body}>
-          An admin connects the AI provider in Admin → AI, and its keys stay on
-          the server, never on this device.
-        </Text>
-      </SettingsSection>
 
       <Button
         destructive
