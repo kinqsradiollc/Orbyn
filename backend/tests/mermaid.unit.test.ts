@@ -165,3 +165,39 @@ test("actual size keeps wide diagrams readable while fit restores containment", 
   assert.equal(diagramDisplayScale(2000, 320, 20, true), 3);
   assert.equal(diagramDisplayScale(NaN, NaN, NaN), 1);
 });
+
+test("bounded rendering rejects directives and size limits before calling the engine", async () => {
+  const { renderBoundedMermaid, MERMAID_MAX_SOURCE, MERMAID_MAX_SVG } =
+    await import("@orbyn/core");
+  const calls: string[] = [];
+  const renderer = {
+    render: async (_id: string, source: string) => {
+      calls.push(source);
+      return { svg: "<svg />" };
+    },
+  };
+  for (const source of [
+    "%%{init: {securityLevel: 'loose'}}%%\nflowchart LR\nA --> B",
+    "x".repeat(MERMAID_MAX_SOURCE + 1),
+    "x\n".repeat(2049),
+  ])
+    await assert.rejects(renderBoundedMermaid(renderer, "test", source));
+  assert.equal(calls.length, 0);
+  assert.equal(
+    await renderBoundedMermaid(
+      renderer,
+      "test",
+      "\ufeffflowchart LR\r\nA --> B",
+    ),
+    "<svg />",
+  );
+  assert.deepEqual(calls, ["flowchart LR\nA --> B"]);
+  await assert.rejects(
+    renderBoundedMermaid(
+      { render: async () => ({ svg: "x".repeat(MERMAID_MAX_SVG + 1) }) },
+      "test",
+      "flowchart LR\nA --> B",
+    ),
+    /too large/,
+  );
+});

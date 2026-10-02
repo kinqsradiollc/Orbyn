@@ -2141,3 +2141,26 @@ Reference PR151 head5b6d9e9 and prior preview db94738 have all four CI jobs pass
 but inherit larger unqualified scope and must not merge wholesale to main.
 Current primary user's dirty files, preview files and original source branches
 remain preserved. No deployment or worktree/branch cleanup.
+
+3 October Mermaid desktop security follow-up: found desktop bypassed native's
+prepareMermaidSource bounds and directive ban. RichBlocks now uses bounded
+rendering, strict locked config, inert labels, max512 edges and bounded output.
+Shared preparation also rejects image/icon packs and CSS resource URLs before
+rendering on both clients. Source fallback remains intact. Native asset rebuilt
+and digest regression passes. Actual desktop effect harness proves rejected
+inputs never reach the engine and oversized engine output fails. Cohort23/23
+passes; real engine parses all ten families; desktop build/mobile types pass.
+Initial harness lacked React global (corrected); actual-engine check initially
+could not resolve jsdom, restored only the missing declared dependency symlink
+to existing /private/tmp/orbyn-mermaid-parse-check/node_modules/jsdom. No install
+or dependency/lockfile change. Logs /tmp/orbyn-mermaid-web-bounds-*.log.
+
+Export investigation: backend docs/routes.ts's HTML export calls docToHtml with
+math only. Core export.ts's code case writes all Mermaid blocks as source.
+Standalone SVG export exists in both renderers; whole-page rendered HTML/PDF
+parity is still open. Next implement an authorized export-snapshot batch diagram
+render pipeline using the strict local renderer on both clients, embedding
+self-contained inert images and retaining source/error details. Keep backend
+visibility projection authoritative, no re-fetch of raw blocks or external
+renderer/network calls. A partial source fallback must not close D1. Desktop
+SVG resource sanitation, browser/native export and visual acceptance remain open.

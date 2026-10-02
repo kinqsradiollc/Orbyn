@@ -503,3 +503,19 @@ desktop production build qualify code paths only. Real browser/native geometry,
 link interactions, screenshots, keyboard and theme acceptance remain unproven.
 Raw-source editing is not introduced or claimed; the editor continues to own
 changes. Full D1 and U1 remain incomplete.
+
+### D1 Mermaid rendering bounds — 3 October 2026
+
+Desktop now applies the same 65,536-character/2,048-line input and 2 MiB output
+bounds as native. Diagram configuration is locked, with strict security, inert
+labels, 512-edge limit and suppressed engine error drawings. Shared preparation
+rejects configuration headers/directives and image/icon pack or CSS resource
+URLs before rendering; unsupported source remains available. Native's bundled
+asset is regenerated from that shared source.
+
+Twenty-three bounds/runtime/actual desktop effect regressions pass, all ten
+diagram family fixtures parse under the real strict engine, desktop build and
+mobile types pass. These checks establish neither visual acceptance nor complete
+SVG resource sanitization on desktop. Current whole-page HTML export emits
+Mermaid source, while standalone diagram SVG export exists; rendered whole-page
+HTML/PDF parity remains an explicit D1 gap, not closed by source fallback.

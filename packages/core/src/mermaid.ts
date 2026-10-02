@@ -18,7 +18,26 @@ export function prepareMermaidSource(source: string): string {
     throw new Error(
       "Diagram configuration directives are not supported. Keep the diagram source without its configuration header.",
     );
+  // Image/icon packs and CSS resources can fetch before SVG sanitization.
+  // Preserve the rejected source, rather than granting diagrams network access.
+  if (/@\{[^}]*\b(?:img|icon)\s*:/i.test(text) || /url\s*\(/i.test(text))
+    throw new Error("External diagram resources are not supported.");
   return text;
+}
+
+/** Render bounded source through an application-owned engine; never bind diagram scripts. */
+export async function renderBoundedMermaid(
+  renderer: {
+    render: (id: string, source: string) => Promise<{ svg: string }>;
+  },
+  id: string,
+  source: string,
+): Promise<string> {
+  const prepared = prepareMermaidSource(source);
+  const { svg } = await renderer.render(id, prepared);
+  if (typeof svg !== "string" || svg.length > MERMAID_MAX_SVG)
+    throw new Error("The rendered diagram is too large.");
+  return svg;
 }
 
 /** Pin diagram families to the application's palette rather than Mermaid defaults. */
