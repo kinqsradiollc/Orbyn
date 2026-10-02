@@ -79,8 +79,9 @@ export type HtmlOptions = {
   /** Give each heading an id (`h-<n>`, by line), for a contents list. */
   anchors?: boolean;
   /**
-   * Typeset maths as HTML (a published page writes MathML); left out, or
-   * returning null, maths is written as its plain reading.
+   * Typeset maths as HTML (a published page writes MathML). Left out, maths
+   * is written as its plain reading. Returning null retains escaped LaTeX
+   * source, labelled as a fallback, rather than losing unsupported notation.
    */
   math?: (tex: string, display: boolean) => string | null;
 };
@@ -94,7 +95,10 @@ function inlineHtml(text: string, o: HtmlOptions = {}): string {
     .map((run: DocInline) => {
       const body = escapeHtml(run.math ? mathToText(run.text) : run.text);
       if (run.math)
-        return o.math?.(run.text, false) ?? `<span class="m">${body}</span>`;
+        return o.math
+          ? (o.math(run.text, false) ??
+              `<code class="math-source" title="Math source (rendering unavailable)">${escapeHtml(run.text)}</code>`)
+          : `<span class="m">${body}</span>`;
       if (run.code) return `<code>${body}</code>`;
       if (run.footnote) {
         const n = o.notes?.get(run.footnote) ?? run.footnote;
@@ -252,8 +256,10 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
       case "math":
         closeList();
         body.push(
-          o.math?.(block.text, true) ??
-            `<p class="m">${escapeHtml(mathToText(block.text))}</p>`,
+          o.math
+            ? (o.math(block.text, true) ??
+                `<pre class="math-source" title="Math source (rendering unavailable)"><code>${escapeHtml(block.text)}</code></pre>`)
+            : `<p class="m">${escapeHtml(mathToText(block.text))}</p>`,
         );
         break;
       case "divider":
