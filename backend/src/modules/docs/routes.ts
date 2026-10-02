@@ -71,6 +71,8 @@ import { adoptDeviceZone } from "../planner/timezone.js";
 import { syncSavedPages } from "../study/service.js";
 import { docToDocx } from "./docx.js";
 import { exportRenderedPdf } from "./pdf-client.js";
+import { exportImages } from "./export-images.js";
+import { claimToken } from "../imports/tokens.js";
 import { visibleItems } from "../../lib/visibility.js";
 import {
   COLUMNS,
@@ -252,49 +254,79 @@ export async function docRoutes(app: FastifyInstance) {
       ),
       env.APP_URL,
     );
-    const body =
-      format === "docx"
-        ? docToDocx(title, blocks)
-        : format === "pdf"
-          ? await exportRenderedPdf(
-              docToHtml(title, blocks, {
-                math: createMathHtml(),
-                diagramSources: true,
-              }),
-              r,
-              reply,
-            )
-          : format === "html"
-            ? docToHtml(title, blocks, {
-                math: createMathHtml(),
-                diagramSources: true,
-              })
-            : format === "txt"
-              ? docToText(title, blocks)
-              : docToMarkdown(title, blocks);
-    if (format === "pdf") {
-      const current = (
-        await pool.query<{ version: number }>(
-          `SELECT d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
-          [u.id, id],
-        )
-      ).rows[0];
-      if (!current) fail(404, "Document not found");
-      if (current.version !== doc.version)
-        fail(409, "This page changed. Refresh it before exporting.");
+    const imageFormat = format === "pdf" || format === "html";
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (imageFormat) {
+      r.raw.once("aborted", abort);
+      reply.raw.once("close", abort);
+      if (r.raw.aborted || reply.raw.destroyed) abort();
     }
-    return (
-      reply
-        .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)
-        // The name is offered here so every client gets the same file name.
-        // Written as RFC 5987 so a title holding an emoji or any non-Latin
-        // letter can ride in the header without the server refusing it.
-        .header(
-          "content-disposition",
-          contentDisposition("attachment", exportName(title, format)),
-        )
-        .send(body)
-    );
+    try {
+      const images = imageFormat
+        ? await exportImages(pool, u.id, blocks, {
+            baseUrl: env.FILES_URL,
+            signal: controller.signal,
+            readPath: (file) => {
+              if (env.FILES_SECRET.length < 16)
+                fail(503, "Picture export is not configured.");
+              return `/files/r/${claimToken("page-read", {
+                f: file,
+                e: Math.floor(Date.now() / 1000) + 30,
+              })}`;
+            },
+          })
+        : undefined;
+      const html = imageFormat
+        ? docToHtml(title, blocks, {
+            math: createMathHtml(),
+            diagramSources: true,
+            fileUrl: images?.fileUrl,
+          })
+        : undefined;
+      if (html && Buffer.byteLength(html) > 20 * 1024 * 1024)
+        fail(413, "This document is too large to export.");
+      const body =
+        format === "docx"
+          ? docToDocx(title, blocks)
+          : format === "pdf"
+            ? await exportRenderedPdf(html!, r, reply)
+            : format === "html"
+              ? html!
+              : format === "txt"
+                ? docToText(title, blocks)
+                : docToMarkdown(title, blocks);
+      if (imageFormat) {
+        const current = (
+          await pool.query<{ version: number }>(
+            `SELECT d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+            [u.id, id],
+          )
+        ).rows[0];
+        if (!current) fail(404, "Document not found");
+        if (current.version !== doc.version)
+          fail(409, "This page changed. Refresh it before exporting.");
+      }
+      await images?.revalidate();
+      return (
+        reply
+          .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)
+          // The name is offered here so every client gets the same file name.
+          // Written as RFC 5987 so a title holding an emoji or any non-Latin
+          // letter can ride in the header without the server refusing it.
+          .header(
+            "content-disposition",
+            contentDisposition("attachment", exportName(title, format)),
+          )
+          .send(body)
+      );
+    } finally {
+      controller.abort();
+      if (imageFormat) {
+        r.raw.removeListener("aborted", abort);
+        reply.raw.removeListener("close", abort);
+      }
+    }
   });
 
   app.get("/docs/:id/markdown", async (r, reply) => {

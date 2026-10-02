@@ -421,3 +421,17 @@ remains active; no deployment, release or cleanup is performed.
 - Combineda039f271 CI37057124805 failed one all-family PDF text assertion despite local2,488/2,488. Reproduced in a hardened offline Linux renderer: “flowchart” prints correctly but pdf.js returns adjacent `fl`/`owchart` font runs. The test inserted a false space. Position-based line reconstruction and normalization now recover all ten exact headings and all six required SVG labels from the Linux file. A regression covers split font runs and ligatures; expected headings are exact line checks.
   -Current57 browser/helper/service/primary/deployment units and63 actual export/rich-page/heading/text checks pass. All workspace types/build/full formatting pass after the fix. Linux diagnostic artifact is `/tmp/orbyn-pdf-linux-api-batch.pdf`; its older image isolates printing/font behavior and is not current-head image qualification.
   -New full exact-head local and CI qualification required after committing this correction. Previous main/combined CI failures are not passing evidence. PR161 stays draft until corrected full local/all CI pass; no main merge/deploy/release/cleanup.
+
+### Authorized picture snapshots for PDF and HTML — 3 October 2026
+
+Candidate follows the qualified PDF checkpoint and uses the same endpoint on all
+clients. Export authorized raster bytes as inert data URIs rather than omitting
+pictures. Authorize on the primary, fetch only bounded signed first-party paths,
+keep credentials/network out of the renderer, and recheck page/file access before
+delivery. Missing/revoked pictures must fail explicitly rather than produce a
+caption-only partial file. Preserve copied-file reference access when the original
+page is removed. Evidence: `docs/reviews/evidence/doc-export-images.md`.
+
+This closes the candidate's PDF/HTML picture-byte gap, subject to full current-head
+qualification. It does not close native sharing, complete rendered HTML/publication,
+Word/export/editor parity or broader C1–C6/M1/D1/U1 acceptance. Goal remains active.
