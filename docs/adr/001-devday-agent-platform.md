@@ -325,3 +325,16 @@ builds. Exact-head CI remains required before merging this checkpoint.
 This is API foundation only: both editors still need explicit save-success and
 offline/failure handling, revision capture and all share-path integration.
 Rendered PDF, publication, native sharing and whole D1/U1 acceptance remain open.
+
+### Public Home request examples — 3 October 2026
+
+[Muse's design account](https://introducing.muse.ai/) describes task-shaped outputs
+and meaningful updates. [Dots' profile documentation](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
+exposes activity and task controls. Use those presentation patterns to make
+Orbyn's existing responsibilities easier to understand. Public Home now gives
+each agent a labeled example quotation, followed by where to review the work
+and when it pauses. Preserve all character presets, Orbyn tokens and truthful
+idle behavior. This checkpoint changes public presentation only; signed-in/native
+Home refinements remain in the larger candidate. Reflection/collaboration and
+the full ADR acceptance gates remain open. User test-server visual review is
+still outstanding; automated content checks do not prove visual acceptance.

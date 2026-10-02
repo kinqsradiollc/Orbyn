@@ -1329,3 +1329,21 @@ html.js .reveal.is-visible {
     gap: 6px;
   }
 }
+
+.home-agent-request {
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-surface);
+}
+.home-agent-request > span {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.home-agent-request blockquote {
+  margin: 8px 0 0;
+  color: var(--color-text);
+  font-size: 18px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}

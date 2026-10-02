@@ -63,6 +63,8 @@ for (const signedIn of [false, true]) {
       assert.ok(work.includes(guide.pause));
     }
     assert.match(work, /Example request/);
+    assert.equal((work.match(/<blockquote>/g) ?? []).length, 2);
+    assert.match(work, /Work you can come back to/);
     assert.match(work, /idle until they have authorized work/);
     assert.doesNotMatch(work, /Working now|Active now|Reflection complete/);
     for (const character of core.CHARACTER_PRESETS)
