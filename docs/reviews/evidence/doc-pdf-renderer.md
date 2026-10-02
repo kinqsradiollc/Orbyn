@@ -21,20 +21,20 @@ kills the owned process group and removes its temporary profile.
 
 ## Observed evidence
 
--53/53 focused renderer/pipe/shared engine/web hook checks passed, zero failures,
-skips or cancellations; log `/tmp/orbyn-pdf-renderer-qualified-focused.log`.
--All workspace typechecks and production builds passed; logs
-`/tmp/orbyn-pdf-renderer-current-{types,build}.log`.
--Scoped formatting and git diff --check passed.
--Actual offline fixture printed with sandboxed Chrome154 on macOS. Output
-`/tmp/orbyn-pdf-renderer-qa/doc-export-renderer-qa.pdf`; snapshot retained in
-`/tmp/orbyn-pdf-renderer-qa/print-snapshot.html`.
--Poppler reports11 A4 pages, tagged PDF and no PDF JavaScript. All pages were
-rendered to PNG at a1000-pixel longest edge and visually inspected.
--Inline fraction/integral and display sum are typeset; Greek/CJK glyphs, emphasis,
-long code and unbroken table content are visible and contained.
--All ten Mermaid families render: flowchart, sequence, state, class, ER, Gantt,
-pie, journey, mindmap and timeline. Test-only page breaks isolate each family.
+- 53/53 focused renderer/pipe/shared engine/web hook checks passed, zero failures,
+  skips or cancellations; log `/tmp/orbyn-pdf-renderer-qualified-focused.log`.
+- All workspace typechecks and production builds passed; logs
+  `/tmp/orbyn-pdf-renderer-current-{types,build}.log`.
+- Scoped formatting and git diff --check passed.
+- Actual offline fixture printed with sandboxed Chrome154 on macOS. Output
+  `/tmp/orbyn-pdf-renderer-qa/doc-export-renderer-qa.pdf`; snapshot retained in
+  `/tmp/orbyn-pdf-renderer-qa/print-snapshot.html`.
+- Poppler reports11 A4 pages, tagged PDF and no PDF JavaScript. All pages were
+  rendered to PNG at a1000-pixel longest edge and visually inspected.
+- Inline fraction/integral and display sum are typeset; Greek/CJK glyphs, emphasis,
+  long code and unbroken table content are visible and contained.
+- All ten Mermaid families render: flowchart, sequence, state, class, ER, Gantt,
+  pie, journey, mindmap and timeline. Test-only page breaks isolate each family.
 
 Inspection found and corrected two defects:
 
@@ -49,15 +49,15 @@ Inspection found and corrected two defects:
 
 ## Remaining required work
 
--Integrate the renderer into the authorized, primary-read, revision-fenced export
-API and client flows. The current API still uses the older plain PDF writer.
--Qualify Chromium installation and sandbox behavior in the production container;
-do not solve a container failure by disabling the browser sandbox.
--Bound concurrent work, map unavailable/timeout errors, and cancel on client
-disconnection without sending a partial file.
--Update route integration checks to inspect rendered PDF text and all ten
-diagram families instead of implementation-specific plain-writer streams.
--Real native download/share and visual/interaction acceptance; publication
-rendering parity; full current-head local/CI qualification.
+- Integrate the renderer into the authorized, primary-read, revision-fenced export
+  API and client flows. The current API still uses the older plain PDF writer.
+- Qualify Chromium installation and sandbox behavior in the production container;
+  do not solve a container failure by disabling the browser sandbox.
+- Bound concurrent work, map unavailable/timeout errors, and cancel on client
+  disconnection without sending a partial file.
+- Update route integration checks to inspect rendered PDF text and all ten
+  diagram families instead of implementation-specific plain-writer streams.
+- Real native download/share and visual/interaction acceptance; publication
+  rendering parity; full current-head local/CI qualification.
 
 This is offline renderer evidence, not product delivery or full D1/U1 acceptance.
