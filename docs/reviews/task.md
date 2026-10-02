@@ -20,7 +20,7 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `c1b3ffa`.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `3677d53`.
   Companion and whole-app ADR updates are published. Main `f875c8d` passed
   2,083/2,083 ordinary tests (zero fail/skip/cancel), workspace types and production
   build. `495a359` fixes CI's missing per-service backend image tags and ADR
@@ -53,47 +53,75 @@ boundary. Generated answers remain saved. Explicit reviewed memory edits remain
 available. This deliberately does not automatically learn even from a person's
 later reply inside a chat whose origin is automation.
 
-Verification: 10/10 focused Memory/chat-sweep tests, zero fail/skip/cancel,
-`/tmp/orbyn-reflection-memory-tests-2.log`; marked disposable database
-`orbyn_reflection_memory_20261002_test`. Backend typecheck exit 0,
-`/tmp/orbyn-reflection-memory-types.log`. Committed on the model branch and
-cherry-picked cleanly onto current main as `0392e92` on
-`codex/reflection-memory-boundary`, in the existing assistant-runtime-integration
-worktree. Draft PR https://github.com/kinqsradiollc/Orbyn/pull/136 is pushed and
-attached. It is not merged. No UI completion is claimed for this safeguard.
+Memory safeguard PR https://github.com/kinqsradiollc/Orbyn/pull/136 is merged as
+`3677d53`. Exact head `0392e92` passed **2,094/2,094** full local tests, zero
+failures/skips/cancellations, exit 0, 560653 ms. Log
+`/tmp/orbyn-main-memory-0392e92-full-tests.log`; session 18328 is terminal.
+Backend types/build and full formatting passed in terminal session 98107,
+`/tmp/orbyn-main-memory-0392e92-{types,build,format}.log`.
+CI 36973246684 passed all four jobs. Exact head and unchanged base `c1b3ffa`
+were checked before merging; local main fast-forward preserved user changes.
+Integration worktree `assistant-runtime-integration/Orbyn` now contains the clean
+reflection candidate `8535357` on `codex/overnight-reflection`, based on main
+`3677d53`. It was cherry-picked without conflicts from source `fccfe8d`. Model branch has main `c1b3ffa` via `880beb5`; integrate
+newer main after committing its pending source, without stashing user files.
 
-Exact source `0392e92` is frozen for the full suite in session **18328**, marked
-DB `orbyn_main_memory_0392e92_test`, log
-`/tmp/orbyn-main-memory-0392e92-full-tests.log`. Backend types/build then full
-formatting run sequentially in session **98107**, logs
-`/tmp/orbyn-main-memory-0392e92-{types,build,format}.log`. Session 98107 is now
-terminal exit 0: backend types/build and full formatting passed. Full test session
-18328 remains live (188 passing tests at last log read). Poll that exact handle/log
-before rerunning. Keep PR 136 draft
-until full verification and exact-head CI pass. The model branch has merged main
-`c1b3ffa` without conflicts (`880beb5`).
+### Reflection candidate (committed, draft PR; not merged)
 
-Next implementation sequence:
+Migration 207, reflection evidence/receipt service and scheduler now implement:
 
-1. Add explicit reflection consent to shared Night Shift settings and both clients.
-   Older saved settings must parse safely; an older client's PUT must preserve the
-   saved reflection choice instead of resetting it through a schema default.
-2. Capture bounded recent work evidence at execution time using current job/chat
-   source visibility. Include failures, waiting questions, approvals and actual
-   kept/undone decisions. Carry all source dependencies into the reflection job.
-   Never bake private summaries into a queued prompt before permission rechecks.
-3. Persist a receipt keyed by source identities and revisions, exclude prior
-   reflections as fresh evidence, and do no provider work when nothing changed.
-   Serialize claiming; retain recovery/cancellation and night time/token/run caps.
-   Reserve bounded reflection capacity after useful work without hiding skipped
-   work. Add a retention rule for any new growing receipt table.
-4. Enforce reflection's review boundary in code, even with full trust. Clearly
-   separate observed facts, interpretations, questions and proposed follow-ups.
-   Keep its output in morning review and both agent profiles. No automatic memory,
-   rules or permission changes. Daytime collaboration still needs the separate
-   durable authorized handoff channel; a saved reflection alone does not deliver it.
-5. Test no new evidence, deleted/denied sources, duplicate claims/restarts,
-   cancellation and budget exhaustion, then actual web/native output access.
+- Explicit consent on both clients; old saved preferences default off and old
+  client PUTs preserve the saved reflection choice.
+- At most 20 fresh source revisions, current permissions and source dependency
+  tracking, task/run outcomes and proposal/undo facts. Queued prompts carry only
+  identities; provider checkpoints recheck current visibility and revisions.
+- Serialized revision receipts, no reflection-of-reflection loops, no provider
+  work without new evidence; one bounded reflection slot within the existing
+  ten-run/night window/token caps, with at most 30,000 tokens.
+- Code-enforced read-only reflection even under full trust. Questions remain in
+  the saved morning output. Numbered source links are present in both clients.
+- Receipt retention and original transcript/document access propagation.
+
+Workspace types passed after the initial implementation:
+`/tmp/orbyn-reflection-types-2.log`, package build
+`/tmp/orbyn-reflection-packages-2.log` (session 15787 exit 0). Later test/CSS
+additions require a fresh check.
+
+Focused evidence, kept distinct:
+
+- First cohort: 42/43 passed. Empty-evidence final-slot scheduling failed and was
+  fixed (`/tmp/orbyn-overnight-reflection-tests.log`).
+- Second cohort: 38/39 passed; worker refusal assertion wording was corrected
+  (`/tmp/orbyn-overnight-reflection-tests-2.log`).
+- Actual controlled Overnight child-process cohort: **6/6 passed**, exit 0,
+  `/tmp/orbyn-reflection-worker-tests.log`, session 3964. Includes full-trust
+  memory-edit refusal, completed-worker restart without duplicate output/provider
+  calls, and permission revocation during a provider response blocking output.
+- Latest combined attempt failed before assertions: PostgreSQL 55434 refused
+  connections in all five files (`/tmp/orbyn-overnight-reflection-tests-3.log`,
+  terminal session 66879). This is not a test pass.
+- New final-slot reservation and underlying-document revocation tests are not
+  yet executed. Source-button wrapping was improved in CSS, not visually verified.
+
+After recovery, exact isolated-main candidate `8535357` passed **50/50** focused
+reflection/night-settings/night-shift/night-safety/night-window/Overnight tests,
+zero failures/skips/cancellations, 21796 ms, terminal session 43307. Log
+`/tmp/orbyn-reflection-8535357-focused.log`. This includes the new source document,
+failed/waiting evidence and final-slot reservation cases. Package build, all three
+workspace typechecks and full formatting passed in terminal session 89682:
+`/tmp/orbyn-reflection-8535357-{packages,backend-types,desktop-types,mobile-types,format}.log`.
+
+Draft PR https://github.com/kinqsradiollc/Orbyn/pull/137 is pushed and attached.
+Source is frozen in the integration worktree while full suite session **40367**
+runs against fresh marked `orbyn_main_reflection_8535357_test`, log
+`/tmp/orbyn-main-reflection-8535357-full-tests.log`. Root production build session
+**32769** runs separately, log `/tmp/orbyn-reflection-8535357-build.log`. Both are
+live at this handoff update; poll their existing handles before repeating work.
+
+Still required: focused/full verification on isolated current main, cancellation,
+consent/budget cases, pending-run restart coverage, actual web/mobile/native source
+navigation. Durable authorized Daytime handoffs and truthful agent profiles remain
+separate unfinished work. A saved reflection is not a delivered handoff.
 
 ## Runtime isolation — merged checkpoint, 2 October
 
@@ -146,7 +174,7 @@ Profiles, collaboration handoffs and whole-app UX remain implementation work.
 Overnight reflection is also explicitly required: bounded source-grounded review
 of work/outcomes/approvals/undo/failures, saved morning output, no duplicate loops,
 reviewed proposed memory/rule changes and authorized handoffs to Daytime. This is
-recorded in main `bb78cdf`; reflection execution/UI is not implemented yet.
+recorded in main `bb78cdf`; reflection execution/UI is now a local candidate, with remaining gates above.
 
 ## Current qualification
 
@@ -205,13 +233,30 @@ identity verification is fixture setup, not upstream OAuth evidence.
 
 ## Environment and permissions
 
-Own QA API session 82920/8027 and Metro 70797/8087 run from combined source.
-Synthetic fixture session 53819 is stopped. Only the named QA DB was migrated.
-Preserve companion preview servers on 8018/8083. Disk fell to ~1.1 GiB at the latest check; check before
-large builds. Runtime PR Docker builds are running in CI. Local generated outputs
-are small; do not delete unverified old packages or shared caches. Docker was externally recovered; the user asked to recover it
-themselves, so do not restart Docker. No unrelated containers/volumes were deleted.
-Only the older task-owned temporary simulator was deleted after ENOSPC.
+Disk recovered from 133 MiB to approximately **3.6 GiB**, and Docker became
+responsive externally. The agent did not restart Docker Desktop. Only the named
+test container `orbyn-postgres-test-1` was started afterwards; its tmpfs databases
+were lost, so fresh marked databases were created. Preserve other preview servers
+on 8018/8083 and all unrelated containers, volumes, simulators and packages.
+
+Own API 82920/PID 25504 was stopped after checking ownership. Replacement API
+4912/8027 exited 1. Bootstrap `/tmp/orbyn-reflection-native-api.mts`; log
+`/tmp/orbyn-reflection-native-api.log`. Metro 70797/8087 was last running.
+The marked QA DB `orbyn_mobile_models_24419a9_test` was migrated through 207 and
+seeded using `/tmp/orbyn-reflection-native-fixture.mts`; synthetic IDs saved in
+`/tmp/orbyn-reflection-native-fixture.json`. Docker's tmpfs DB may be lost on
+recovery. No current API/native interaction success is implied by the seed.
+Native observation/clicks failed with `failedToCreateImageDestination` as space
+ran out. No reflection UI acceptance is recorded. Native token fixture files
+are private and must never be printed.
+
+User explicitly authorized reading/updating `.env.production`. Main's ignored
+file was updated locally by appending only missing `AI_RUNNER_IN_WORKER=false`,
+`ASSISTANT_BACKGROUND_REPLICAS=1`, `ASSISTANT_OVERNIGHT_REPLICAS=1`, and
+`DEBUG_ERRORS=false`. Previous contents/values were preserved. Compose config
+validation passed with output captured, no secrets printed. This file must not be
+committed. No deployment/release/tag occurred; repository auto-deploy is disabled.
+Actual deploy.sh requires `.env`; alternate ENV_FILE is allowed only with --check.
 
 Browser Use's saved block for local 127.0.0.1:5174 is unchanged. Do not bypass it
 through another URL/port, Chrome/native/headless/CDP. ChatGPT reference access is
@@ -225,10 +270,10 @@ ChatGPT acceptance or evidence about OpenAI runtime architecture.
 1. Use the complete ADR as scope. Keep all surface and parity gates explicit.
 2. Rebuild exact compiled artifacts when disk permits and finish remaining model
    settings native/web acceptance before promoting pending source checkpoints.
-3. Complete runtime PR 135 qualification described above, then integrate ready
-   code to main after a fresh fetch and conflict check. The implementation now
-   has independent lanes/processes; current main still uses the old mixed runner
-   until that PR is promoted. Existing Overnight views prove review UI only.
+3. Runtime PR 135 and Memory PR 136 are merged and qualified. Finish reflection
+   candidate review, commit it separately, and cherry-pick only that checkpoint
+   into a branch from fresh main in the integration worktree. A draft PR may run
+   CI while local recovery is pending; do not merge before all remaining gates.
 4. Implement durable collaboration receipts, permission/source/budget rechecks,
    idempotence and finite handoff depth; prevent concurrent source ownership or
    duplicate changes and unattended per-job pushes.
