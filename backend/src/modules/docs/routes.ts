@@ -53,6 +53,7 @@ import {
 } from "../../db/pool.js";
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { contentDisposition } from "../../lib/disposition.js";
+import { createMathHtml } from "../../lib/math-html.js";
 import { idParam } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
@@ -241,7 +242,7 @@ export async function docRoutes(app: FastifyInstance) {
         : format === "pdf"
           ? docToPdf(title, blocks)
           : format === "html"
-            ? docToHtml(title, blocks)
+            ? docToHtml(title, blocks, { math: createMathHtml() })
             : format === "txt"
               ? docToText(title, blocks)
               : docToMarkdown(title, blocks);
