@@ -43,16 +43,31 @@ web/desktop and mobile remain in scope.
   synthetic fixtures. Long-content scrolling and web/mobile-web visual gates
   remain open. This is not merged or deployed.
 - **Docs navigation candidate:** source `77b7d5b`, isolated main candidate
-  `b3ab641` on draft PR #138, `codex/docs-navigation`. Both editors resolve heading fragments
+  `25e1e6f` on draft PR #138, `codex/docs-navigation`. Both editors resolve heading fragments
   and own-origin app links inside the app, preserving drafts and unrelated folds.
   Mobile measures outer heading rows and applies destination pages/fragments
   together after loading; HTML preserves heading levels and working local heading
   links with private-resource filtering. Source and isolated main candidate f96264e passed 53 focused checks,
   workspace types, production build and formatting. Native iOS taps on a fresh
   candidate bundle proved relative app navigation, a folded same-page heading
-  jump and a cross-page heading link after correcting a stale-page race. Latest
-  CI, web/mobile-web/native Android and outline interaction gates remain open. This is unmerged and does not
+  jump, outline navigation into a folded section and a cross-page heading link
+  after correcting a stale-page race. CI 36979623013 found one stale rich-copy
+  heading assertion; 25e1e6f corrects it and adds clipboard level coverage (20/20
+  focused checks). Latest CI 36980902473 is running. Web/mobile-web/native Android
+  interaction gates remain open. This is unmerged and does not
   complete D1.
+- **Handoff foundation:** local source `98ff22a`, `0c8f832` and `4eaa652` defines
+  bounded receipts, durable chain counters and explicit follow-up requests.
+  Current owner, source visibility, completed producer, outcome/review revision
+  and container/dependency bindings are rechecked before creation or replay.
+  Reciprocal follow-ups preserve acknowledged ancestry and cannot reset depth;
+  UUID case variants deduplicate. Exact storage migration and full fresh-database
+  migrations were exercised. Combined focused tests passed 23/23, with no skips
+  or failures; backend types and focused formatting passed. Receiving jobs and
+  acknowledgments were simulated for these tests. No endpoints or dispatch loop
+  are enabled. Receiving-side rules/connections/budgets, cross-lane source
+  reservations, separate-worker round trips and client controls remain required.
+  This source foundation is unmerged and does not deliver collaboration.
 - **Remaining agent scope:** truthful separate profiles/workspaces, durable
   authorized Daytime/Overnight handoffs, typed rules, ownership/activity/budgets
   and the complete cross-client surface ledger remain required. Shared storage
