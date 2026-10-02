@@ -24,6 +24,31 @@ wrong technically: the raw validation issues, or a server error's own message.
 | 502    | AI provider returned an error or invalid plan                                 |
 | 503    | AI is not configured on the server                                            |
 
+## Personal assistant identity and character
+
+`GET /me/agent` returns `{ name, persona, character, named_at, updated_at }`.
+`PUT /me/agent` accepts `{ name, persona?, character? }` and returns the same shape.
+These routes require an Orbyn app session; personal API keys are refused (`403`).
+Writes allow 30 requests per minute per address and are audited. Unknown fields or
+invalid choices return `422`; malformed JSON returns `400`.
+
+The optional `character` object contains curated choices:
+
+| Field       | Choices                                | Default    |
+| ----------- | -------------------------------------- | ---------- |
+| `body`      | `orb`, `pebble`, `spark`               | `orb`      |
+| `palette`   | `fern`, `sage`, `ink`                  | `fern`     |
+| `eyes`      | `round`, `soft`, `bright`              | `round`    |
+| `ring`      | `orbit`, `halo`, `none`                | `orbit`    |
+| `accessory` | `none`, `glasses`, `headphones`, `cap` | `none`     |
+| `presence`  | `animated`, `static`, `hidden`         | `animated` |
+
+Omitting `character` preserves a saved appearance. Supplying it replaces the
+appearance, with omitted fields receiving the defaults above. Legacy records return
+these defaults. Appearance is scoped to the signed-in person and rendered locally
+from shared vector artwork; no external asset URLs are accepted. MCP identity edits
+continue to accept only name/persona and preserve the appearance.
+
 ## ChatGPT identity connections
 
 These first-party routes run in the AI service. They require an active, verified

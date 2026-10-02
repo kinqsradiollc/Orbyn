@@ -26,6 +26,7 @@ const {
   isDateKey,
   keepAgendaNotes,
   localDateKey,
+  zonedInstant,
 } = await import("@orbyn/core");
 type DocBlock = import("@orbyn/core").DocBlock;
 type DocSummary = import("@orbyn/core").DocSummary;
@@ -72,6 +73,10 @@ after(async () => {
 const texts = (blocks: DocBlock[]) =>
   blocks.map((b) => (b.type === "divider" ? "" : b.text));
 const today = () => localDateKey(new Date(), TZ);
+const noonOn = (date: string) => {
+  const [year, month, day] = date.split("-").map(Number);
+  return zonedInstant(year, month, day, 12, 0, TZ);
+};
 
 test("a rewrite keeps Notes and everything under it, word for word", () => {
   const fresh = buildAgenda([], { timeZone: TZ, now: new Date() });
@@ -397,12 +402,21 @@ test("another day's page is there only once someone writes it", async () => {
   assert.ok(week.some((d) => d.id === doc.id));
 });
 
+test("calendar-day fixtures preserve the requested Melbourne date across daylight saving", () => {
+  const lateEvening = zonedInstant(2026, 10, 1, 23, 30, TZ);
+  assert.equal(
+    localDateKey(new Date(lateEvening.getTime() + 3 * 86_400_000), TZ),
+    "2026-10-05",
+  );
+  assert.equal(localDateKey(noonOn("2026-10-04"), TZ), "2026-10-04");
+});
+
 test("a page written ahead is brought up to date on its day, unless it was changed", async () => {
   const ahead = addDays(today(), 2);
   const doc = (await call("POST", `/agenda/${ahead}`)).json();
   assert.equal(doc.agenda_date, ahead);
   // Its day comes: untouched, it is written again from the calendar.
-  const onTheDay = new Date(Date.now() + 2 * 86_400_000);
+  const onTheDay = noonOn(ahead);
   const fresh = await todaysAgenda(userId, { now: onTheDay });
   assert.equal(fresh.id, doc.id);
   assert.equal(fresh.version, 2);
@@ -417,7 +431,7 @@ test("a page written ahead is brought up to date on its day, unless it was chang
   });
   assert.equal(edited.statusCode, 200, edited.body);
   const onThatDay = await todaysAgenda(userId, {
-    now: new Date(Date.now() + 3 * 86_400_000),
+    now: noonOn(later),
   });
   assert.equal(onThatDay.id, kept.id);
   assert.ok(texts(onThatDay.content).includes("Packed my bag"));

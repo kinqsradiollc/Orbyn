@@ -514,17 +514,27 @@ test("a page published to the web reads at /p/<slug>, hidden from search, and Un
 });
 
 test("a password keeps a published page shut until it is typed", async () => {
-  const doc = await page(owner, "Answers", [p("42")]);
+  const privateContent =
+    "private published answer only visible after unlocking";
+  const doc = await page(owner, "Answers", [p(privateContent)]);
   const info = (
     await call(owner, "PUT", `/docs/${doc.id}/publish`, {
       password: "open sesame",
+      slug: "answers-42-password-fixture",
     })
   ).json().published;
   assert.equal(info.has_password, true);
   const shut = await call(null, "GET", info.path);
   assert.equal(shut.statusCode, 401);
   assert.match(shut.body, /needs a password/);
-  assert.ok(!shut.body.includes("42"));
+  assert.ok(
+    shut.body.includes("42"),
+    "the public form URL is not private content",
+  );
+  assert.ok(
+    !shut.body.includes(privateContent),
+    "the locked page must omit its content",
+  );
   const wrong = await app.inject({
     method: "POST",
     url: `${info.path}/unlock`,
@@ -546,7 +556,10 @@ test("a password keeps a published page shut until it is typed", async () => {
   assert.match(String(right.headers["set-cookie"]), /HttpOnly/);
   const opened = await call(null, "GET", info.path, undefined, { cookie });
   assert.equal(opened.statusCode, 200);
-  assert.match(opened.body, /42/);
+  assert.ok(
+    opened.body.includes(privateContent),
+    "unlocking must reveal the actual content",
+  );
   // A new password shuts it again for everyone.
   await call(owner, "PUT", `/docs/${doc.id}/publish`, {
     password: "another one",

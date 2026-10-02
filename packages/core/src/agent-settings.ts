@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  characterAppearanceInput,
+  type CharacterAppearance,
+} from "./character.js";
 
 export const agentSettingsInput = z
   .object({
@@ -7,10 +11,15 @@ export const agentSettingsInput = z
   })
   .strict();
 
-export type AgentIdentityInput = z.input<typeof agentSettingsInput>;
+/** First-party appearance edits; MCP identity edits retain their existing scope. */
+export const personalAgentSettingsInput = agentSettingsInput.extend({
+  character: characterAppearanceInput.optional(),
+});
+export type AgentIdentityInput = z.input<typeof personalAgentSettingsInput>;
 export type PersonalAgentSettings = {
   name: string;
   persona: string;
+  character: CharacterAppearance;
   named_at: string | null;
   updated_at: string;
 };

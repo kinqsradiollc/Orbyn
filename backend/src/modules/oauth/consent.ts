@@ -102,7 +102,7 @@ export async function validateRequest(
   )
     fail(
       400,
-      `This app asked for access to ${q.resource}, which isn't Orbyn's MCP address.`,
+      "This app asked for a connection recipient that is not enabled. Start again from the app.",
     );
   const known = new Set([
     "orbyn:read",
@@ -197,6 +197,7 @@ export async function checkRequest(
     pool.query<{ id: string }>(
       `SELECT id FROM agent_grants
         WHERE user_id = $1 AND kind = 'oauth' AND client_id = $2 AND revoked_at IS NULL
+          AND resource_kind = 'mcp'
           AND authorized_at IS NOT NULL`,
       [who.user.id, req.client.id],
     ),
@@ -273,6 +274,7 @@ export async function allowRequest(
       await db.query<{ id: string; access: AgentAccess; toolsets: string[] }>(
         `SELECT id, access, toolsets FROM agent_grants
           WHERE user_id = $1 AND kind = 'oauth' AND client_id = $2 AND revoked_at IS NULL
+            AND resource_kind = 'mcp'
           FOR UPDATE`,
         [user.id, req.client.id],
       )

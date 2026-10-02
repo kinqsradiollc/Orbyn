@@ -29,7 +29,7 @@ export { validationMessage };
 
 /** Each deployable HTTP service, plus "all" for single-process mode. */
 export type ServiceName =
-  "api" | "ai" | "status" | "realtime" | "files" | "mcp" | "all";
+  "api" | "ai" | "status" | "realtime" | "files" | "mcp" | "plugin" | "all";
 
 const startedAt = Date.now();
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -47,7 +47,7 @@ const OPEN_DURING_MAINTENANCE = [
  * Paths that answer maintenance mode themselves: MCP lets reads through and
  * turns writes into a JSON-RPC error its clients understand.
  */
-const OWN_MAINTENANCE = new Set(["/mcp"]);
+const OWN_MAINTENANCE = new Set(["/mcp", "/plugin/tools/call"]);
 /** Paths anyone with a link can open: booking pages, invites, profiles, RSVPs. */
 const PUBLIC_PAGES = /^\/(book|invite|u|rsvp)(\/|$)/;
 
@@ -61,6 +61,8 @@ export async function createService(
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
+      // Node's test runner frames stdout; raw fd writes can corrupt that channel.
+      ...(process.env.NODE_TEST_CONTEXT ? { stream: process.stdout } : {}),
       base: { service: name },
       redact: [
         "req.headers.authorization",

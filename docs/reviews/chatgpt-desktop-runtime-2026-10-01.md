@@ -13,6 +13,8 @@
 
 The focused connection suite passed all 147 tests, including offline-default preservation and identity-only consent. The full model-worktree suite passed all 1,942 tests against its disposable database. Workspace typechecks and the production build passed. Main integration requires its own validation because it also contains concurrent CRDT work.
 
+The runtime was integrated on main as `d9bfb50`. That exact combined code passed all 1,957 repository tests against the disposable test database, workspace typechecks and the production build. The separate settings UI changes and its startup-retry refinement remain local work awaiting preview verification.
+
 An unsigned macOS arm64 directory package was produced. Its own Electron binary successfully imported the archived core schemas, API client, identity verifier and private manager. The first packaging attempt exposed a locally missing `jose` installation: Node had resolved it from a parent directory, while the packager omitted it. Installing the already-declared dependency inside this checkout corrected the package. A clean dependency installation remains required for release builds.
 
 Tests use fake provider responses and disposable local data. They do not establish successful authorization with a real eligible ChatGPT account, native UI behavior, Windows/Linux packaging, or plan inference.

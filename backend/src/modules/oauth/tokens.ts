@@ -18,6 +18,11 @@ import type { LiveSettings } from "../../lib/settings.js";
 import { announceAuthChange, noticeAgentEvent } from "../agents/service.js";
 import { disallowedHost, OAuthError } from "./clients.js";
 import { MAX_GRANTS, liveGrantCount } from "../agents/service.js";
+import {
+  selectConnectorResource,
+  ResourceTargetError,
+  type ConnectorResource,
+} from "./resources.js";
 
 /**
  * Codes and tokens for agents that signed in with Orbyn. Everything is
@@ -104,6 +109,7 @@ export type TokenResponse = {
 };
 
 type GrantState = {
+  resource_kind: "mcp" | "plugin";
   id: string;
   user_id: string;
   authorized_at: Date | null;
@@ -121,7 +127,7 @@ type GrantState = {
   client_redirect_uris: string[] | null;
 };
 
-const GRANT_STATE = `SELECT g.id, g.user_id, g.authorized_at, g.client_id, g.client_name, g.access, g.toolsets,
+const GRANT_STATE = `SELECT g.id, g.resource_kind, g.user_id, g.authorized_at, g.client_id, g.client_name, g.access, g.toolsets,
     g.expires_at, g.suspended_at, g.revoked_at, u.disabled, c.blocked AS client_blocked,
     c.kind AS client_kind, c.host AS client_host, c.redirect_uris AS client_redirect_uris
   FROM agent_grants g JOIN users u ON u.id = g.user_id
@@ -169,7 +175,13 @@ async function mint(
   family: string,
   familyExpires: Date,
   offline: boolean,
+  target: ConnectorResource,
 ): Promise<TokenResponse> {
+  if (g.resource_kind !== target.kind)
+    throw new OAuthError(
+      "invalid_grant",
+      "This authorization belongs to another service.",
+    );
   const access = `${ACCESS_PREFIX}${secret()}`;
   const refresh = `${REFRESH_PREFIX}${secret()}`;
   const ttl = env.OAUTH_ACCESS_TTL;
@@ -192,7 +204,7 @@ async function mint(
       g.id,
       access.slice(0, 8),
       family,
-      env.MCP_PUBLIC_URL,
+      target.resource,
       accessEnd,
       refresh.slice(0, 8),
       familyExpires,
@@ -230,14 +242,27 @@ export function isOurResource(resource: string): boolean {
 }
 
 /** The resource a token request names, checked (RFC 8707). */
-function checkResource(resource: string | undefined, bound?: string) {
-  if (resource === undefined || resource === "") return;
-  const canonical = env.MCP_PUBLIC_URL;
-  if (!isOurResource(resource) || (bound && bound !== canonical))
-    throw new OAuthError(
-      "invalid_target",
-      `Tokens here are only for ${canonical}.`,
+function checkResource(
+  resource: string | undefined,
+  bound?: string,
+): ConnectorResource {
+  try {
+    const target = selectConnectorResource(
+      resource,
+      { mcp: env.MCP_PUBLIC_URL },
+      bound,
     );
+    // Existing metadata and MCP authentication use the configured canonical
+    // string exactly. Normalized comparisons must not change stored recipients.
+    return { ...target, resource: env.MCP_PUBLIC_URL };
+  } catch (error) {
+    if (error instanceof ResourceTargetError)
+      throw new OAuthError(
+        "invalid_target",
+        "This token request names another service.",
+      );
+    throw error;
+  }
 }
 
 /** grant_type=authorization_code (RFC 6749 §4.1.3, with PKCE). */
@@ -291,7 +316,7 @@ export async function exchangeCode(
     );
   if (!same(s256(code_verifier), row.code_challenge))
     throw new OAuthError("invalid_grant", "The code_verifier doesn't match.");
-  checkResource(resource, row.resource);
+  const target = checkResource(resource, row.resource);
   return transaction(async (db) => {
     const g = (
       await db.query<GrantState>(
@@ -324,6 +349,7 @@ export async function exchangeCode(
       randomUUID(),
       familyEnd,
       row.scope.split(" ").includes("offline_access"),
+      target,
     );
     await db.query(
       "UPDATE agent_grants SET authorized_at = coalesce(authorized_at, now()) WHERE id = $1",
@@ -400,8 +426,9 @@ export async function refreshTokens(
         expires_at: Date | null;
         family_expires_at: Date | null;
         used_at: Date | null;
+        resource: string | null;
       }>(
-        `SELECT grant_id, family, expires_at, family_expires_at, used_at
+        `SELECT grant_id, family, expires_at, family_expires_at, used_at, resource
            FROM agent_tokens WHERE token_hash = $1 AND kind = 'refresh' FOR UPDATE`,
         [digest(refresh_token)],
       )
@@ -411,6 +438,9 @@ export async function refreshTokens(
         "invalid_grant",
         "This refresh token isn't valid. Sign in again.",
       );
+    // Legacy unbound refresh tokens are MCP-only. A different stored recipient
+    // cannot be silently replaced by the default when resource is omitted.
+    const target = checkResource(resource, t.resource ?? env.MCP_PUBLIC_URL);
     if (t.used_at) {
       // A retry right after it rotated (a lost answer, two tabs at once)
       // isn't theft: it gets another pair, a couple of times at most.
@@ -469,7 +499,7 @@ export async function refreshTokens(
         "invalid_grant",
         "This sign-in is too old. Sign in again.",
       );
-    return mint(db, g, t.family, familyEnd, true);
+    return mint(db, g, t.family, familyEnd, true, target);
   });
   if (reused || !tokens)
     throw new OAuthError(

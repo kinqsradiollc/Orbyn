@@ -134,6 +134,7 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
+import { docCrdtEnabled, useDocYjs } from "./useDocYjs";
 import { liveListChoices } from "../views/LiveList";
 import {
   LinkedHere,
@@ -1008,7 +1009,35 @@ export function DocEditor({
    * Follow the document while it is open. When it changes somewhere else the
    * server says only that it moved on; the new copy is read here and folded
    * in, so two people can work on the same page at once.
+   *
+   * With the CRDT on, the same stream also carries the page's binary
+   * updates; they fold into the hook's Y.Doc and the merged lines come
+   * back through `onRemoteChange`, which queues a save of what merged —
+   * so the server's stored blocks follow the CRDT, and the editor's
+   * version-based reconcile stays the fallback for everything else.
    */
+  const crdt = useDocYjs(
+    doc,
+    client,
+    client.editorId,
+    useCallback(
+      (merged: DocBlock[]) => {
+        if (!dirty.current) {
+          // Nothing local waiting: take the merged page as it stands.
+          setBlocks(merged);
+          live.current = { ...live.current, blocks: merged };
+          base.current = merged;
+          void persist(live.current.title, merged);
+        }
+        // With edits waiting, the debounced save already carries fresher
+        // lines than these; the merge of the two happens at the next
+        // reconcile, as it does today.
+      },
+      [persist],
+    ),
+  );
+  const crdtOn = docCrdtEnabled();
+
   useEffect(
     () => client.watchDoc(doc.id, (v, news) => onEvent.current(v, news)),
     [doc.id],
