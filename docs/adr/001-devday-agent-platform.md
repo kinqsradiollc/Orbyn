@@ -96,3 +96,25 @@ Its fresh native verification is blocked by an iOS password-save prompt, pending
 the user's dismissal. Web/mobile-web and native Android interaction gates remain
 open. The governing review and implementation handoff
 retain the full remaining scope; these checkpoints do not complete the ADR.
+
+### Activity checkpoint and scope continuity — 2 October 2026
+
+PR #140 is merged as main `9e7e505`, from frozen candidate `01b8757`.
+Migration 210 records content-free job transitions in separate owner/runtime
+streams with monotonic replay cursors and 90-day event retention. The private
+read route and typed client recheck current source visibility. Polling,
+heartbeats and checkpoint-only writes do not fabricate work activity.
+The fresh marked database suite passed 2,112/2,112, with no failures, skips or
+cancellations. Workspace types, production builds and full formatting passed;
+all four CI jobs passed. Candidate, CI merge and resulting main trees are
+identical (`f62fdf5209f0dfb77b60ccb5788724c005742d04`). No deployment occurred.
+
+The governing revised implementation review remains the full acceptance
+contract. This checkpoint does not narrow it to assistant chat or activity:
+whole-app layout, Docs editing/rendering/export, views and settings, provider
+and embedding options, actual account-specific model execution, separate plugin
+integration, typed agent rules, durable budgets and bounded cross-runtime
+collaboration remain required. Web/desktop features require mobile parity.
+Preserve main's character work and Orbyn's palette. Unverified responsive/native
+behavior and external integration gates remain open. Related worktree cleanup
+comes after integration and qualification, without discarding retained work.
