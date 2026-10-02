@@ -276,6 +276,23 @@ function RunCard({
       <Text style={[shared.body, { marginVertical: 12 }]}>
         {run.summary || "Open the chat to see its progress."}
       </Text>
+      {!!run.reflection_sources?.length && (
+        <View style={{ gap: 8 }}>
+          <Text style={shared.label}>Sources</Text>
+          {run.reflection_sources.map((source) => (
+            <Button
+              secondary
+              key={source.number}
+              title={`${source.number}. ${source.title}`}
+              onPress={() =>
+                source.kind === "chat"
+                  ? onOpenChat(source.id)
+                  : onOpen("task", source.id)
+              }
+            />
+          ))}
+        </View>
+      )}
       {run.approval && (
         <View style={{ gap: 8, marginBottom: 12 }}>
           <Text style={shared.body}>{run.approval.text}</Text>

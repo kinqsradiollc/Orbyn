@@ -540,6 +540,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "assistant_reflection_receipts",
+    label: "Overnight reflection receipts",
+    detail:
+      "Evidence revisions already reflected on, retained with their night run and never while that run is active.",
+    table: "assistant_reflection_receipts",
+    where: `created_at < now() - interval '90 days' AND NOT EXISTS(SELECT 1 FROM ai_jobs j WHERE j.id=assistant_reflection_receipts.reflection_job_id AND j.state IN ('queued','running','waiting'))`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "assistant_nights",
     label: "Assistant nights",
     detail:

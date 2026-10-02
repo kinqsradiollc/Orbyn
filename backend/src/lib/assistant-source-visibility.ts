@@ -15,6 +15,12 @@ export function assistantSourceVisible(
   const jobCase = includeJob
     ? `WHEN 'job' THEN EXISTS(SELECT 1 FROM ai_jobs source_job JOIN ai_chats source_chat ON source_chat.id=source_job.chat_id WHERE source_job.id=${id} AND source_job.user_id=${user} AND source_chat.user_id=${user} AND (source_chat.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=source_chat.project_id AND ${visibleProjects("source_project", { user, ai: true })})) AND (source_chat.scope_kind IS DISTINCT FROM 'task' OR EXISTS(SELECT 1 FROM items source_item WHERE source_item.id=source_chat.scope_id AND ${visibleItems("source_item", { user, ai: true })})) AND NOT EXISTS(SELECT 1 FROM assistant_chat_sources dependency WHERE dependency.chat_id=source_chat.id AND NOT ${assistantSourceVisible("dependency.source_kind", "dependency.source_id", user, false)}))`
     : "";
+  // Chat content dependencies are flattened into each derived job/transcript by
+  // recordAssistantSources. This terminal edge checks the original container's
+  // current existence, owner and scope without recursively expanding CASE SQL.
+  const chatCase = `WHEN 'chat' THEN EXISTS(SELECT 1 FROM ai_chats source_chat WHERE source_chat.id=${id} AND source_chat.user_id=${user}
+      AND (source_chat.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=source_chat.project_id AND ${visibleProjects("source_project", { user, ai: true })}))
+      AND (source_chat.scope_kind IS DISTINCT FROM 'task' OR EXISTS(SELECT 1 FROM items source_item WHERE source_item.id=source_chat.scope_id AND ${visibleItems("source_item", { user, ai: true })})))`;
   return `(CASE ${kind}
     WHEN 'doc' THEN EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=${id} AND ${visibleDocs("source_doc", { user, ai: true })})
     WHEN 'project' THEN EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=${id} AND ${visibleProjects("source_project", { user, ai: true })})
@@ -34,5 +40,6 @@ export function assistantSourceVisible(
       AND (source_exam.own OR coalesce(source_exam.source_ref,source_exam.exam_key) NOT LIKE 'sub:%' OR EXISTS(SELECT 1 FROM calendar_subscriptions source_calendar JOIN external_events source_event ON source_event.subscription_id=source_calendar.id WHERE source_calendar.user_id=${user} AND source_calendar.id::text=split_part(coalesce(source_exam.source_ref,source_exam.exam_key), ':', 2) AND md5(source_event.uid)=split_part(split_part(coalesce(source_exam.source_ref,source_exam.exam_key), ':', 3), '|', 1)))
       AND (source_exam.exam_key NOT LIKE 'item:%' OR EXISTS(SELECT 1 FROM items source_item WHERE source_item.id::text=split_part(split_part(source_exam.exam_key, ':', 2), '|', 1) AND ${visibleItems("source_item", { user, ai: true })})))
     ${jobCase}
+    ${chatCase}
     ELSE false END)`;
 }

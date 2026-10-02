@@ -34,6 +34,20 @@
 .overnight-actions button {
   min-height: 44px;
 }
+.overnight-sources {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.overnight-sources button {
+  min-width: 0;
+  min-height: 44px;
+  max-width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .overnight-summary {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
