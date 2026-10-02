@@ -26,11 +26,16 @@ CodeQL/security scan workflow found in the inventory.
    client runtime and native/build tools before selecting upgrades.
 2. Prioritize the direct backend PDF import path (`backend/src/modules/imports/pdf.ts`)
    and its `pdfjs-dist` dependency. It parses uploaded PDF data with the library's
-   `getDocument`; the inspected call does not explicitly disable JavaScript
-   evaluation. The audit marks the installed range against
+   `getDocument`. The audit marks the installed range against
    [GHSA-hq66-cqwq-w95j](https://github.com/advisories/GHSA-hq66-cqwq-w95j).
-   Confirm the affected behavior, assess the supported upgrade and test PDF import
-   compatibility; this source inspection is not an exploit reproduction.
+   The published advisory describes browser-hosted PDF.js with scripting enabled
+   and no script-blocking CSP, and identifies 6.2.108 as patched. The current
+   inspected consumer extracts PDF content in the backend; no browser PDF.js
+   viewer was found in the source inventory. This does not establish the advisory's
+   viewer/scripting preconditions in Orbyn. An evaluation flag on `getDocument`
+   must not be presented as the advisory's scripting mitigation. Assess the
+   supported upgrade and test PDF import compatibility; source inspection is not
+   an exploit reproduction.
 3. Assess Fastify/URI parsing and transitive XML, certificate and expansion
    advisories in their actual consumers. Do not apply suggested Expo/React Native
    major-version changes or downgrades as an automatic release repair.
