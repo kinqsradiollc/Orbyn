@@ -1221,3 +1221,26 @@ policy, budget reservations or collaboration. Source privacy follow-ups **977288
 **866e4c0**, **411935e** still require extraction and full current-main qualification.
 The entire retained ADR, web/mobile parity, actual UI/model/plugin/Docs gates and
 end-of-goal cleanup remain active. No release/tag/deployment occurred.
+
+### Source privacy and parent deletion candidate — 2 October 2026
+
+`codex/assistant-source-privacy` is a scoped candidate based on main **dabb770**,
+after qualified PR #143. Source changes **977288c**, **866e4c0**, **411935e**
+applied without conflicts as **a3f6e33**, **90bd749**, **52b8d01**. No unmerged
+model/settings/profile/reflection UI is included; no public rule editor is enabled.
+
+Migration 213 keeps deleted-target history permissions while preventing recreated
+metadata for deleted owners/teams. Notification enqueue, inbox and delivery check
+job-only dependencies as well as conversations. Review item/inbox/badge/outcome
+and its saved in-app notification recheck separately stored producing-job sources.
+Missing source/producer or owner/runtime mismatch hides generated content; source
+cohorts preserve existing non-job behavior and actual worker cancellation sends
+nothing after source exclusion. Source tests/types passed as recorded in handoff;
+these do not yet qualify the combined main candidate.
+
+Freeze this candidate and run fresh full local tests, workspace types, production
+build, full formatting and exact-head CI before promotion. Full A4 policy/agent UX,
+source revision snapshots, budgets and receiving collaboration, model/executor,
+plugin, complete Docs and whole-app web/mobile/native UI gates remain required.
+No deployment/release/cleanup occurred. Voice/computer-use product features and
+speculative Decisions remain excluded.
