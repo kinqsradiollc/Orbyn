@@ -224,6 +224,28 @@ no provider calls while idle, permission-safe activity/output links, and actual
 profile interactions on web and native mobile. A styled card or heartbeat alone
 does not complete this requirement.
 
+**Overnight reflection — explicit user addition, 2 October:** Overnight must be
+able to reflect on recent work as a bounded, scheduled part of the night. Review
+completed and unfinished tasks, failed/cancelled runs, questions and approvals,
+and changes the person kept or undid. Produce a concise private reflection with
+evidence links, lessons, unresolved questions and suggested next actions, visible
+in the morning review and the Overnight profile's outputs on both clients.
+
+Reflection uses the same per-night token/time budget, cancellation, checkpoint
+recovery and permission checks as other night work. It must reach completion and
+return to idle, with no unbounded self-triggering loop. Avoid repeated reflection
+of the same source revisions through a durable receipt. Distinguish observed
+facts from interpretations, and do not silently change agent rules, approvals,
+source tasks or long-term memory on the strength of an inferred lesson. Proposed
+durable changes follow their existing consent/review policy.
+
+Useful findings may be handed to the Daytime agent through the durable bounded
+collaboration channel, carrying source references, scope and provenance. The
+receiving agent rechecks permissions and applicability before acting; a reflection
+is not blanket authorization for follow-up writes. Test denied/deleted sources,
+no new evidence, budget exhaustion, retries, restart without duplicate outputs,
+and actual mobile/web access to the saved reflection and proposed follow-ups.
+
 The user explicitly authorizes inspecting [ChatGPT](https://chatgpt.com/) on laptop
 and mobile as a UI/UX reference and requires this direction to be part of the ADR.
 Improve the whole Orbyn application to that level of visual consistency while
