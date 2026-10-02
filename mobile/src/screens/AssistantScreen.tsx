@@ -15,6 +15,7 @@ import {
   assistantSuggestions,
   characterAppearance,
   CHARACTER_PERSONAS,
+  CHARACTER_STATE_LABELS,
   type AssistantSource,
   type Item,
   type Plan,
@@ -105,11 +106,14 @@ export function AssistantTopBar({
         <Character
           appearance={identity?.character}
           state={characterState}
-          size={36}
+          size={72}
           name={agentName}
         />
         <Text style={s.topName} numberOfLines={1}>
           {agentName}
+        </Text>
+        <Text style={s.topStatus} numberOfLines={1}>
+          {CHARACTER_STATE_LABELS[characterState]}
         </Text>
       </PressableScale>
       <PressableScale
@@ -200,8 +204,6 @@ export function AssistantScreen({
     customizingCharacter,
     setCustomizingCharacter,
   } = assistant;
-  const { height } = useWindowDimensions();
-  const [characterGreeting, setCharacterGreeting] = useState(0);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [appearance, setAppearance] = useState(() => characterAppearance({}));
@@ -219,6 +221,9 @@ export function AssistantScreen({
   const [personAnswer, setPersonAnswer] = useState("");
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
   const identityFormWasOpen = useRef(false);
+  const identitySheetMode = useRef(false);
+  if (identity && (!identity.named_at || customizingCharacter))
+    identitySheetMode.current = customizingCharacter;
   useEffect(() => {
     const open = !!identity && (!identity.named_at || customizingCharacter);
     const alreadyOpen = identityFormWasOpen.current;
@@ -318,7 +323,7 @@ export function AssistantScreen({
       <BottomSheet
         visible={!!identity && (!identity.named_at || customizingCharacter)}
         title={
-          customizingCharacter
+          identitySheetMode.current
             ? "Make your assistant your own"
             : "Meet your Orbyn companion"
         }
@@ -337,7 +342,7 @@ export function AssistantScreen({
               style={s.sheetAction}
             />
             <Button
-              title={customizingCharacter ? "Cancel" : "Keep Orbyn"}
+              title={identitySheetMode.current ? "Cancel" : "Keep Orbyn"}
               secondary
               onPress={() =>
                 customizingCharacter
@@ -520,25 +525,7 @@ export function AssistantScreen({
         </View>
       )}
       {turns.length === 0 && (
-        <FadeIn style={[s.welcome, { minHeight: Math.max(240, height - 420) }]}>
-          {characterAppearance(identity?.character).presence !== "hidden" && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Say hello to ${agentName}`}
-              disabled={
-                characterAppearance(identity?.character).presence !== "animated"
-              }
-              onPress={() => setCharacterGreeting((n) => n + 1)}
-            >
-              <Character
-                appearance={identity?.character}
-                state={characterState}
-                size={144}
-                name={agentName}
-                greeting={characterGreeting}
-              />
-            </Pressable>
-          )}
+        <FadeIn style={s.welcome}>
           {activeChat?.swept_at ? (
             <View style={s.sweptNote}>
               <Text style={s.sweptTitle}>
@@ -553,9 +540,18 @@ export function AssistantScreen({
               )}
             </View>
           ) : (
-            <Text style={s.welcomeLine}>
-              Ask for anything — you can undo what I change.
-            </Text>
+            <View style={s.intro}>
+              <Text style={s.introTitle}>Hi, I’m {agentName}.</Text>
+              <Text style={s.introBody}>
+                What’s on your mind? We can make a plan, untangle a task, or
+                find a little room in your day.
+              </Text>
+              <SmallAction
+                label="Make me yours"
+                disabled={!identity}
+                onPress={() => setCustomizingCharacter(true)}
+              />
+            </View>
           )}
         </FadeIn>
       )}
@@ -581,9 +577,6 @@ export function AssistantScreen({
             </FadeIn>
           ) : (
             <FadeIn key={turn.id} from="left" style={s.botRow}>
-              <View style={s.avatar}>
-                <Icon name="sparkles" size={13} color={colors.accent} />
-              </View>
               <View style={s.botBubble}>
                 <ProposalReview
                   proposal={turn.proposal}
@@ -1044,7 +1037,7 @@ const s = themed(() =>
     welcome: {
       alignItems: "center",
       justifyContent: "center",
-      paddingVertical: 24,
+      paddingVertical: 16,
     },
     welcomeLine: {
       fontFamily: fonts.regular,
@@ -1077,18 +1070,36 @@ const s = themed(() =>
     roundPressed: { backgroundColor: colors.surfaceMuted },
     topIdentity: {
       flex: 1,
-      flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
-      gap: 4,
+      gap: 2,
       minHeight: controls.tap,
     },
     topName: {
       flexShrink: 1,
       textAlign: "center",
       fontFamily: fonts.bold,
-      fontSize: 18,
+      fontSize: 16,
       color: colors.text,
+      paddingHorizontal: 12,
+      paddingVertical: 3,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.pill,
+    },
+    topStatus: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted },
+    intro: {
+      gap: 10,
+      padding: 18,
+      borderRadius: radii.card,
+      backgroundColor: colors.surfaceMuted,
+      alignSelf: "stretch",
+    },
+    introTitle: { fontFamily: fonts.medium, fontSize: 20, color: colors.text },
+    introBody: {
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      lineHeight: 23,
+      color: colors.textSoft,
     },
     suggestions: { gap: 2, marginBottom: 10 },
     suggestion: {
@@ -1115,9 +1126,8 @@ const s = themed(() =>
     userRow: { flexDirection: "row", justifyContent: "flex-end" },
     userBubble: {
       maxWidth: "85%",
-      backgroundColor: colors.accent,
-      borderRadius: 18,
-      borderBottomRightRadius: 5,
+      backgroundColor: colors.accentSoft,
+      borderRadius: radii.card,
       paddingHorizontal: 15,
       paddingVertical: 11,
     },
@@ -1125,7 +1135,7 @@ const s = themed(() =>
       fontFamily: fonts.regular,
       fontSize: 15,
       lineHeight: 21,
-      color: colors.white,
+      color: colors.text,
     },
     botRow: { gap: 8 },
     avatar: {
@@ -1140,12 +1150,9 @@ const s = themed(() =>
     botBubble: {
       minWidth: 0,
       width: "100%",
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 18,
-      borderTopLeftRadius: 5,
-      padding: 14,
+      backgroundColor: colors.surfaceMuted,
+      borderRadius: radii.card,
+      padding: 16,
     },
     trace: {
       marginTop: 8,
@@ -1222,7 +1229,7 @@ const s = themed(() =>
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 27,
+      borderRadius: radii.pill,
       padding: 5,
       paddingLeft: 16,
     },
