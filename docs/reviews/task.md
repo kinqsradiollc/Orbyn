@@ -1595,3 +1595,19 @@ three jobs successful. Resume SAME handles; require terminal evidence and fresh
 base/head/tree equivalence before promotion. Main remains7c08aa6. All broader ADR
 gates, nested closure/original source revisions/concurrency and other fast paths
 remain open. Saved browser denial is respected; no deployment or cleanup.
+
+PR146 local full1849 subsequently terminated with exit zero:2176/2176,
+0fail/skip/cancel,556169ms. Frozen0033a96 and GitHub mergecd57b95 have identical
+tree0d1f05994b7ed460131fe2e16ba9d3ad4ce59222; merge parents are unchanged
+main7c08aa6 and0033a96. CI37003294826 backend110825678798 remains authoritative
+IN_PROGRESS, test step began11:53:36UTC. Watch13854 is live,
+/tmp/orbyn-replay-0033a96-ci-watch.log. Do not restart or promote before terminal
+CI success and a fresh base/head/tree check. PR body updated with local full proof.
+
+Native Docs continuation used the same owned simulator and clean514679f fixture.
+Folding First section succeeded and fresh AX confirmed both it and the unrelated
+section folded. Scroll and drag controls failed with noWindowsAvailable, including
+after exposed Raise action. Inline fragment interaction therefore remains
+unverified. Prior Contents/typing/save proofs remain valid; no paste/typeText/
+clipboard used. Simulator is now at the folded page, not revealed Result. This
+tool issue does not block backend/source progress or authorize browser bypass.
