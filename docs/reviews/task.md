@@ -997,3 +997,46 @@ host launch, gateway, UI resources/events and actual provider inference remain
 open plugin gates. This turn does not wire receiving authorization: typed rules,
 agent identities, reservation/dispatch and separate-worker handoff round trips
 remain next dependencies. Preserve the entire ADR and mobile parity scope.
+
+## Typed action restrictions source — 2 October 2026
+
+Source **4ec8644** adds migration 211 on the existing stable named-assistant
+grant, preserving its identity, Memory, schedules, appearance and trust. Strict
+bounded rules bind server-selected interactive/background/overnight lanes,
+action classes and all/personal/team scopes. Deny dominates ask and allow in any
+order; allow does not raise access or override unattended/source ceilings.
+Revision-guarded replacement serializes on the grant; unrelated team scopes are
+refused. No public editing route or automated text-to-rule conversion is enabled.
+
+The actual capability write transaction loads current persisted rules under the
+grant lock before executing; caller allow snapshots are ignored. Principal and
+approval-card revisions fence rule changes before approval and again at apply.
+Legacy cards are valid only at initial revision one. A newly collected card
+records the revision used for that collection. Declining remains available.
+The card's existing waiting ID remains mandatory. Approval grant locks use
+FOR UPDATE so saved-scope writes cannot cause shared-lock upgrade deadlocks.
+
+Current **55617** terminal zero: **19/19** rules/night safety/assistant write
+regressions, 5,465 ms, no failures/skips/cancellations. **89713** backend types
+terminal zero; packages **26205** and scoped formatting/diff passed. An earlier
+typecheck caught nullable waiting-state narrowing; corrected before checkpoint.
+Fresh marked **orbyn_rules_211_test**, **74514** terminal zero: all migrations
+and **7/7** dedicated tests, 2,487 ms. Logs
+`/tmp/orbyn-assistant-rules-{current-tests,current-types,fresh-tests,packages}.log`.
+Tests exercise actual PostgreSQL blocking of a rule edit by an in-flight write,
+not merely a delay, plus persisted deny, stale principal/approval, replacement
+race, strict bounds and existing hard stops. Source is committed/pushed only.
+
+Required next work: independent agent ownership records; first-party rule editor
+and inspection on both clients; proposal-review provenance and current rule
+rechecks (including background lane); read/external-effect enforcement; receiving
+handoff checks, connection/budget reservations and dispatch/recovery. Do not
+enable rule editing or ship this as complete policy until those paths are wired
+and qualified. Budget and permission hard stops must remain independently checked.
+
+Scheduler full suite **75320** is terminal zero: **2,120/2,120**, no failures,
+skips/cancellations, 622,944 ms. All types/build/format passed; CI **36990759723**
+still verified in progress, backend tests live while mobile/Docker/mail passed.
+Plugin pipeline **75235** terminal zero: all types/build/full formatting passed;
+full suite **19850** and CI **36991179849** remain verified live on **9ce1961**.
+Keep both candidates frozen and poll their same handles; no main merge yet.

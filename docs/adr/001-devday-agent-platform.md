@@ -150,3 +150,14 @@ first-party sessions. All eight overlaps are resolved; 62 current focused checks
 passed. Combined full qualification is running; previous branch results do not
 qualify this tree. Actual consent/host launch, provider calls, gateway/deployment
 and plugin UI/resources/events remain required, and the candidate is unmerged.
+
+Typed action restriction source `4ec8644` preserves existing named-assistant
+ownership and adds bounded, revisioned runtime/action/space rules. Current write
+transactions load persisted restrictions under the grant lock; deny dominates
+ask/allow without raising underlying authority. Approval cards and apply checks
+fence rule revision changes. Nineteen focused regressions and backend types
+passed, plus seven tests with all migrations in a fresh marked database, including
+actual concurrent rule/write locking. This source is unmerged and not full A4:
+agent ownership migration, cross-client editing/inspection, proposal provenance,
+read/effect rules, receiving budgets/dispatch and separate-worker handoffs remain.
+No public rule editing route or inferred standing-instruction policy is enabled.
