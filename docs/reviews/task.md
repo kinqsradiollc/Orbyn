@@ -1370,3 +1370,51 @@ web/native consent, host launch, gateway/UI resources/events/provider gates open
 so no plugin main merge claimed. Saved local preview denial remains a required
 visual-verification dependency; no bypass. Main remains456e01a with preserved
 mobile/app.json and character files. Goal active, no deployment/cleanup.
+
+## Current assistant authority checkpoint — 2 October 2026
+
+Source **118f421** committed/pushed. Constructor formerly returned write/all
+teams/Personal regardless of stored grant ceilings. Capability reads did not
+reload grant status; write check loaded only current rules. New
+currentAssistantPrincipal intersects current owned active grant with the caller:
+access, Personal/team scopes, current team role/policy, toolsets, trust/approval
+exceptions and outside-content restrictions. Paused/disabled/expired authority
+stops callbacks. Read contexts use primary and current scopes; writes hold grant
+against mutation. Caller lane/job/readonly restrictions remain server-selected.
+Typed read-action rules and complete cache/replay authorization remain open.
+
+Valid baseline **77436** terminal failed four actual regressions: constructor
+ceilings, paused read, disabled-owner read and narrowed scope/access. Initial
+fixtures had a JSON array parameter serialization error and attempted revoking
+the non-revocable built-in grant; corrected to JSON.stringify and disabled owner
+without weakening production constraints. **62951** terminal zero37/37 in7,441ms;
+extended **12909** terminal zero61/61 in10,890ms (rules/trust/Review/handoff).
+Backend types **23735** terminal zero and scoped format/diff passed. Logs
+`/tmp/orbyn-assistant-live-scope-{before-valid,after,extended,types}.log`.
+Additional current team removal/viewer downgrade and caller ceilings covered.
+
+Extracted cleanly onto main456e01a in reused owned clean worktree
+**assistant-work-ownership/Orbyn**, branch **codex/assistant-current-authority**.
+Code **d2484b5**, frozen docs candidate **04d1ff710e98956e1059ea41619cda23847405fb**.
+Draft PR **#145** created/attached;5files353add51delete versus main. No handoff,
+model/Docs/settings source changes accidentally included. Packages **26298**
+terminal zero; push **72106** terminal zero; PR creation **84275** terminal zero.
+Full fresh marked **orbyn_authority_04d1ff7_test**, handle **41477** live. Workspace
+types/build/full-format **11930** live. CI **37000288172** live exacthead04d1ff7.
+Logs `/tmp/orbyn-authority-04d1ff7-{full-tests,types,build,format}.log`. Freeze
+candidate and resume same handles; promote only terminal local/CI proof and
+fresh main/head/merge-tree checks. Keep main mobile/app.json/unrelated artifacts.
+
+Plugin d2da6d8 full2,155/2,155/alltypes/build/format and all CI36998159447 now
+terminal green. PR142 remains draft due actual consent/host/gateway/UI-resource/
+event/provider gates. Source handoff revisions d69d08738/38 remain unmerged.
+Read/external/notification typed policy, original source snapshots, full replay
+outcome/source authorization, per-agent ownership/editor, durable receiving
+budgets and cross-runtime dispatch/recovery remain required. Preserve full
+models/providers/embedding/Docs/Mermaid/whole-app/mobile scope and characters.
+
+Asked user asynchronously to clear saved Browser Use denial at127.0.0.1:5174
+(required AGENT.md/ADR web visual verification); response pending. Do not treat
+elapsed time as permission or bypass using other endpoints/tools. Native Docs
+last verified514679f typing/save across reload, not all navigation/Android/web
+gates. Goal active, no deployment/cleanup or completion.
