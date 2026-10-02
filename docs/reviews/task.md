@@ -445,3 +445,34 @@ The unrelated Keep this section folded remained collapsed. Evidence:
 native iOS outline gate only; web/mobile-web and Android remain unverified.
 Latest live CI snapshot: Docker, mobile and mail passed; backend-and-web is still
 in progress on run **36979623013**. Docker Desktop remains under user control.
+
+## Collaboration contract foundation — not delivered runtime behavior
+
+`packages/core/src/assistant-handoffs.ts` now defines strict request and receipt
+schemas plus revision-guarded status transitions. Requests cannot assign owner,
+producer lane, recipient job, chain depth or authority. Receipts retain producer
+job/revision, owner, parent/root, sources, distinct recipient job, result revision
+and a bounded failure code. Only background ↔ overnight transfers are supported;
+interactive conversations are excluded. Local transitions reject stale changes,
+duplicate acceptance, premature completion, terminal reopening and backward
+timestamps. Hard limits: depth 3, chain count 20, 3 delivery attempts, 20 sources.
+The chain count requires database enforcement; the schema alone cannot enforce
+cross-record provenance, ownership, permissions, idempotence or concurrent work.
+
+Focused contract tests passed **10/10**, no failures/skips/cancellations, 406 ms;
+log `/tmp/orbyn-handoff-contract-tests.log`. Core package compilation passed.
+Workspace typecheck remains live in terminal **53125**; log
+`/tmp/orbyn-handoff-contract-types.log`. Do not restart based on a polling timeout.
+This is source-only foundation work, not a merged or production-ready handoff
+service. There are no new endpoints, scheduler calls or permission grants.
+
+Next: durable handoff/chain tables with atomic root-count/idempotence guards,
+current owner/source/rule/connection/budget rechecks before acceptance and use,
+transactional distinct recipient job creation, cross-lane source reservations,
+durable completion/failure acknowledgment and retention. Integrate through
+`startAssistantAutomation` and runner claims without changing runtime ownership
+or passing unattended proposals as approval. Prove with separate worker processes
+and current access revocation before exposing controls in either client.
+
+Disk fell to **220 MiB** during qualification despite the user's ongoing recovery.
+Avoid further large builds or native image generation until space stabilizes.
