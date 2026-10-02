@@ -48,7 +48,7 @@ export function HomeCompanions({
         )}
         <div>
           <h2>{identity?.name ?? "Your companion"}</h2>
-          <p>Change its name and appearance in assistant settings.</p>
+          <p>Choose its name and appearance in assistant settings.</p>
         </div>
         <button
           className="text-button"
@@ -62,12 +62,12 @@ export function HomeCompanions({
       <div className="home-companions-work">
         <div className="home-companions-lanes">
           <p>
-            <strong>Background</strong> Return to delegated tasks, results, and
+            <strong>Background</strong> Check delegated tasks, results, and
             questions that need you.
           </p>
           <p>
-            <strong>Overnight</strong> Review the last night’s work and what’s
-            still unfinished.
+            <strong>Overnight</strong> Review queued night work and what’s still
+            unfinished.
           </p>
         </div>
         <button className="secondary" onClick={() => setAgentsOpen(true)}>
