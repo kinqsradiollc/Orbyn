@@ -2,49 +2,22 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import {
-  mkdtempSync,
-  writeFileSync,
-  readFileSync,
-  rmSync,
-  existsSync,
-} from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 
-const { buildPdfService } = await import("../src/modules/docs/pdf-service.js");
-const executable =
-  process.env.PDF_TEST_CHROME ??
-  [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-  ].find(existsSync);
-if (!executable)
-  throw new Error(
-    "Set PDF_TEST_CHROME to a sandboxed Chromium executable for actual export integration checks.",
-  );
-const pdfKey = "export-test-private-renderer-key-at-least-32-characters";
+const { startTestPdfService } = await import("./helpers/pdf-service.js");
 const { renderPdfSnapshot } =
   await import("../src/modules/docs/pdf-renderer.js");
 let beforePdfPrint: (() => Promise<void>) | undefined;
-const pdfService = buildPdfService({
-  key: pdfKey,
-  executable,
-  render: async (options) => {
-    const before = beforePdfPrint;
-    beforePdfPrint = undefined;
-    if (before) await before();
-    return renderPdfSnapshot(options);
-  },
+const pdfService = await startTestPdfService(async (options) => {
+  const before = beforePdfPrint;
+  beforePdfPrint = undefined;
+  if (before) await before();
+  return renderPdfSnapshot(options);
 });
-process.env.DOC_PDF_URL = await pdfService.listen({
-  host: "127.0.0.1",
-  port: 0,
-});
-process.env.DOC_PDF_KEY = pdfKey;
 const { readPdf } = await import("../src/modules/imports/pdf.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");

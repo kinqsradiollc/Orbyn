@@ -13,6 +13,7 @@ and every environment variable the system reads.
 
 ```bash
 cp .env.example .env
+printf '\nDOC_PDF_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 ```
 
 The root `.env` is read by Docker Compose and by the backend when it runs locally. Never commit
