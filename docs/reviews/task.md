@@ -20,25 +20,30 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `324d08e` (latest ADR evidence checkpoint).
-  Companion and whole-app ADR updates are published. Main `f875c8d` passed
-  2,083/2,083 ordinary tests (zero fail/skip/cancel), workspace types and production
-  build. `495a359` fixes CI's missing per-service backend image tags and ADR
-  formatting; `8f2e7b3` adds the user's truthful agent availability/profile scope. Main's user-owned
-  `mobile/app.json` and unrelated untracked files remain unchanged. Root `task.md`
-  belongs to the companion task; do not overwrite it.
-- Model/Docs/settings worktree `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`,
-  branch `codex/devday-model-catalog`: main `0749e6e` merged as `aa419b8`; portable
-  native abort fix `dda31cd`; final diagram digest `9e0aeb1`. Later commits change
-  only ADR/evidence/handoff docs. Own core/API package outputs are isolated.
-  Untracked `desktop/settings-connection-preview.html` and
-  `desktop/src/settings-connection-preview.tsx` remain preserved. The untracked
-  settings review was byte-identical to main and backed up at
-  `/tmp/orbyn-preserved-settings-redesign-20261002.md` before installing its tracked
-  main version during merge.
-- Plugin worktree `devday-plugin-boundary`: preserved `c6f4b03`; recipient
-  OAuth/discovery UI still unmerged. Earlier frozen source `e60fb32` full 1,995
-  green is scoped to that source. Main has disabled service/auth foundations.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote **9e1a2c8**,
+  checked this continuation. PR #141 independently schedules Overnight; exact
+  candidate full 2,120/2,120 and all CI jobs passed. Character changes remain
+  published. User-owned `mobile/app.json` and unrelated untracked files remain
+  preserved. Root `task.md` belongs to the character task.
+- Source `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch
+  `codex/devday-model-catalog`: **185a9d7** committed and pushed. Retains model,
+  Docs, settings, profiles, reflection and handoff work that must not be merged
+  wholesale. Two untracked settings preview files remain preserved.
+- Scoped backend checkpoint `/Users/anhdang/.codex/worktrees/assistant-work-ownership/Orbyn`,
+  now branch `codex/assistant-rule-review`: **fc82170** frozen against main
+  **9e1a2c8**. Scheduler branch **9b87ce3** remains retained after its merge.
+  Rule/review/source safeguards cherry-picked cleanly; full combined qualification
+  running. No UI or public rule editor enabled; not merged or deployed.
+- Plugin `/Users/anhdang/.codex/worktrees/devday-plugin-boundary/Orbyn`:
+  **9ce1961**, draft PR #142. Full 2,116/2,116 and types/build/format/CI passed on
+  base **2ba1ae2**; integrate/requalify newer main before promotion. Actual
+  consent/host/gateway/provider/UI resources/events gates remain open.
+- Docs candidate **514679f**, draft PR #138, remains in
+  `assistant-runtime-integration/Orbyn`; full 2,111/2,111 and CI passed on its
+  earlier base. Web/mobile-web/native current interactions remain unverified.
+- `devday-2026-plan/Orbyn` retains dirty Docs/executor changes; preserve them.
+  Character worktree **e4370a3** is clean and integrated but retained until final
+  cleanup. No branches/worktrees deleted.
 
 ## Overnight reflection — implementation started
 
@@ -1085,3 +1090,37 @@ first-party web/mobile rule editor, budgets/reservations and receiving dispatch.
 Run full combined source qualification before any scoped production candidate.
 This does not complete A4 or the wider ADR. Current source tree is clean except
 the two preserved untracked settings previews; no cleanup/deployment occurred.
+
+## Producing job/source binding and main candidate — 2 October 2026
+
+Source **185a9d7** adds server-only producing job identity to the runner principal
+and separately persisted proposal guard. Creation and approval recheck current
+owner, immutable runtime lane, checked job dependencies and conversation/project
+visibility. Whole-plan review strips action-input producer identity and supplies
+only verified server evidence, including nested review proposals. Background and
+Overnight proposals without producing work hold; interactive non-job capability
+calls remain supported. Cleanup/missing sources hold instead of acquiring session
+authority. This checks current access; reviewed source revision snapshots remain
+an explicit further requirement.
+
+Source **36273** terminal zero: **43/43**, no failures/skips/cancellations,
+9,022 ms, including existing agent-write and whole-plan behavior. First run
+**72064** had two test fixture errors referencing nonexistent Docs body; corrected
+before rerun. Fresh marked **orbyn_proposal_job_test**, **42887** terminal zero:
+all migrations plus **14/14**, 3,277 ms. Types **55367** and packages **31956**
+terminal zero. Logs `/tmp/orbyn-proposal-job-{tests-2,fresh,types-2,packages}.log`.
+
+Reused clean merged scheduler worktree to create **codex/assistant-rule-review**
+from current **origin/main 9e1a2c8**. Cherry-picks **4ec8644**, **35d186f** and
+**185a9d7** applied without conflicts as **5b1704e**, **c8f3b7d**, **6641e52**;
+ADR checkpoint **fc82170** is pushed and frozen. Current full candidate tests
+**68672** on fresh marked **orbyn_rule_review_full_test** and types/build/format
+pipeline **96665** were started and are still pending terminal observation.
+Logs `/tmp/orbyn-rule-review-fc82170-{full-tests,types,build,format}.log`.
+Re-poll these exact handles; do not restart or mutate the frozen candidate.
+
+No main merge, deployment or cleanup occurred this continuation. Full ADR and
+web/mobile parity remain active. Next: finish this combined backend qualification,
+then permissions/rule editor and agent records, read/external/notification guards,
+source revision evidence, budget reservations and receiving dispatch/recovery;
+also finish actual models/executor, plugin, Docs and whole-app UI gates.
