@@ -9,6 +9,7 @@ const {
   handoffProducerEvidence,
   createRequestedAssistantHandoff,
   acknowledgeCompletedAssistantHandoff,
+  acknowledgeFailedAssistantHandoff,
 } = await import("../src/modules/assistant-workspace/handoffs.js");
 const owners: string[] = [];
 before(() => migrate());
@@ -84,6 +85,130 @@ async function accepted(owner: string, project: string | null = null) {
   );
   return { id, producing, receiving };
 }
+
+test("actual failed receiving jobs acknowledge once across concurrent retries", async () => {
+  const owner = await person();
+  const { id, receiving } = await accepted(owner);
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+  await pool.query(
+    "UPDATE ai_jobs SET state='failed',error_message='Private provider details' WHERE id=$1",
+    [receiving.job],
+  );
+  assert.deepEqual(
+    await Promise.all([
+      acknowledgeFailedAssistantHandoff(owner, id, 3),
+      acknowledgeFailedAssistantHandoff(owner, id, 3),
+    ]),
+    ["execution", "execution"],
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT status,revision,failure,result FROM assistant_handoffs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    { status: "failed", revision: 4, failure: "execution", result: null },
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 4),
+    status(409),
+  );
+});
+
+test("failed handoffs record access loss without exposing restricted result or error contents", async () => {
+  const owner = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Failed receiving source') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  const { id, receiving } = await accepted(owner, project);
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  assert.equal(await acknowledgeFailedAssistantHandoff(owner, id, 3), "access");
+  assert.equal(
+    (
+      await pool.query("SELECT result FROM assistant_handoffs WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].result,
+    null,
+  );
+});
+
+test("failed handoffs distinguish changed producing evidence and enforce owner/revision guards", async () => {
+  const owner = await person();
+  const other = await person();
+  const { id, producing, receiving } = await accepted(owner);
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(other, id, 3),
+    status(404),
+  );
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 2),
+    status(409),
+  );
+  await pool.query("UPDATE ai_jobs SET result=$2 WHERE id=$1", [
+    producing.job,
+    { answer: "Changed producing result." },
+  ]);
+  assert.equal(
+    await acknowledgeFailedAssistantHandoff(owner, id, 3),
+    "revision",
+  );
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [owner]);
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+});
+
+test("failed handoff acknowledgment rejects done, waiting, unaccepted and cancelled work", async () => {
+  const owner = await person();
+  const { id, receiving } = await accepted(owner);
+  for (const state of ["waiting", "done"]) {
+    await pool.query("UPDATE ai_jobs SET state=$2 WHERE id=$1", [
+      receiving.job,
+      state,
+    ]);
+    await assert.rejects(
+      acknowledgeFailedAssistantHandoff(owner, id, 3),
+      status(409),
+    );
+  }
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query(
+    "UPDATE assistant_handoffs SET status='cancelled',revision=revision+1 WHERE id=$1",
+    [id],
+  );
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 4),
+    status(409),
+  );
+  const producing = await producer(owner);
+  const proposal = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, producing.job),
+  );
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, proposal, 1),
+    status(409),
+  );
+});
 
 test("completion derives current receiving evidence and concurrent retries acknowledge once", async () => {
   const owner = await person();

@@ -4,6 +4,7 @@ import {
   assistantHandoffInput,
   ASSISTANT_HANDOFF_LIMITS,
   fail,
+  HttpError,
   type AssistantHandoffSource,
 } from "@orbyn/core";
 import { transaction, type Queryable } from "../../db/pool.js";
@@ -243,5 +244,85 @@ export async function acknowledgeCompletedAssistantHandoff(
       [handoffId, expectedRevision, JSON.stringify(receiving.source)],
     );
     return receiving.source;
+  });
+}
+
+/** Record terminal receiving failure with a server-derived reason, never caller text. */
+export async function acknowledgeFailedAssistantHandoff(
+  ownerId: string,
+  handoffId: string,
+  expectedRevision: number,
+): Promise<"access" | "revision" | "execution"> {
+  z.uuid().parse(ownerId);
+  z.uuid().parse(handoffId);
+  z.number().int().positive().parse(expectedRevision);
+  return transaction(async (db) => {
+    const receipt = (
+      await db.query<{
+        revision: number;
+        status: string;
+        failure: string | null;
+        producer_job_id: string;
+        producer_revision: string;
+        recipient_job_id: string | null;
+        recipient_lane: string;
+      }>(
+        `SELECT h.revision,h.status,h.failure,h.producer_job_id,h.producer_revision,
+          h.recipient_job_id,h.recipient_lane
+         FROM assistant_handoffs h JOIN users u ON u.id=h.owner_id AND NOT u.disabled
+         WHERE h.id=$2 AND h.owner_id=$1 FOR UPDATE OF h`,
+        [ownerId, handoffId],
+      )
+    ).rows[0];
+    if (!receipt) fail(404, "That handoff is not available.");
+    const replay =
+      receipt.status === "failed" && receipt.revision === expectedRevision + 1;
+    if (!replay && receipt.revision !== expectedRevision)
+      fail(409, "That handoff changed. Reload before acknowledging it.");
+    if (!receipt.recipient_job_id || (!replay && receipt.status !== "accepted"))
+      fail(409, "Only accepted receiving work can report execution failure.");
+    const receiving = (
+      await db.query<{ visible: boolean }>(
+        `SELECT coalesce(${assistantChatVisible("c", "$1")}
+          AND ${assistantJobSourcesVisible("j", "$1", false)},false) AS visible
+         FROM ai_jobs j LEFT JOIN ai_chats c ON c.id=j.chat_id
+         WHERE j.id=$2 AND j.user_id=$1 AND j.runtime_lane=$3 AND j.state='failed'
+         FOR SHARE OF j`,
+        [ownerId, receipt.recipient_job_id, receipt.recipient_lane],
+      )
+    ).rows[0];
+    if (!receiving) fail(409, "The receiving work has not failed.");
+    let reason: "access" | "revision" | "execution" = receiving.visible
+      ? "execution"
+      : "access";
+    if (receiving.visible) {
+      try {
+        const producing = await handoffProducerEvidence(
+          db,
+          ownerId,
+          receipt.producer_job_id,
+        );
+        if (producing.source.revision !== receipt.producer_revision)
+          reason = "revision";
+      } catch (error) {
+        if (!(error instanceof HttpError) || error.statusCode !== 404)
+          throw error;
+        reason = "access";
+      }
+    }
+    if (replay) {
+      if (receipt.failure !== reason)
+        fail(
+          409,
+          "The failed work's evidence changed. Review its current state.",
+        );
+      return reason;
+    }
+    await db.query(
+      `UPDATE assistant_handoffs SET status='failed',failure=$3,revision=revision+1,
+        updated_at=greatest(updated_at,clock_timestamp()) WHERE id=$1 AND revision=$2`,
+      [handoffId, expectedRevision, reason],
+    );
+    return reason;
   });
 }
