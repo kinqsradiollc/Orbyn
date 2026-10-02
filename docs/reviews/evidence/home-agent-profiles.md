@@ -24,6 +24,13 @@ browser or arbitrary third-party action feature is introduced.
 
 ## Qualification
 
+The first full exact-head suite at `22f2e1b8` failed 2,298/2,299: the new private
+profile endpoint was missing its route-inventory classification. It is now
+classified `people_only`, matching the existing private activity feed. The
+first-party route rejects agent/API credentials, validates query input and uses
+permission-filtered snapshots; the inventory ratchet and pending maximum are
+unchanged. Requalification is required for the corrected head.
+
 - 22/22 focused profile, client, store and Home checks pass, zero skips/cancelled.
   Log `/tmp/orbyn-home-profiles-focused.log`.
 - All workspace typechecks pass after adding the omitted shared activity-label
