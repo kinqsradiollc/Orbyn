@@ -1,14 +1,11 @@
 import { ZodError, type z } from "zod";
-import {
-  HttpError,
-  assistantActionRules,
-  type AgentOutcome,
-} from "@orbyn/core";
+import { HttpError, type AgentOutcome } from "@orbyn/core";
 import { readTransaction, type Queryable } from "../db/pool.js";
 import { validationMessage } from "../lib/validation-message.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 import { cap as capText } from "./format.js";
 import { policy, type Principal } from "./policy.js";
+import { currentAssistantPrincipal } from "./assistant-principal.js";
 import {
   keepAnswer,
   priorAnswer,
@@ -236,17 +233,21 @@ export async function withReadContext<T>(
   await cursorKey();
   return readTransaction(
     async (db) => {
+      const current = await currentAssistantPrincipal(db, p);
       const prefs = await loadPrefs(db, p.user.id);
       return fn({
-        principal: p,
+        principal: current,
         db,
         now: options.now ?? new Date(),
         timezone: prefs.timezone,
-        spaces: policy.spaces(p),
-        cursor: cursorCodec(p, name, args),
+        spaces: policy.spaces(current),
+        cursor: cursorCodec(current, name, args),
       });
     },
-    { primary: options.primary, timeoutMs: READ_TIMEOUT_MS },
+    {
+      primary: p.via === "assistant" || options.primary,
+      timeoutMs: READ_TIMEOUT_MS,
+    },
   );
 }
 
@@ -327,38 +328,16 @@ export async function execute(
         }
       : undefined;
   const run = async (db: Queryable) => {
-    let currentPrincipal = p;
-    if (p.via === "assistant" && cap.mode !== "read") {
-      // The single locked grant row also serializes rule replacement, including
-      // newly inserted denies. A caller's stale snapshot is never authoritative.
-      const grant = (
-        await db.query<{ rules: unknown; revision: number }>(
-          `SELECT g.assistant_rules AS rules,g.assistant_rules_revision AS revision FROM agent_grants g
-         JOIN users u ON u.id=g.user_id AND NOT u.disabled
-         WHERE g.id=$1 AND g.user_id=$2 AND g.kind='assistant'
-           AND g.revoked_at IS NULL AND g.suspended_at IS NULL FOR SHARE OF g`,
-          [p.grant_id, p.user.id],
-        )
-      ).rows[0];
-      if (!grant)
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "Your assistant is paused or unavailable.",
-        );
-      if (
-        p.assistant_rules_revision !== undefined &&
-        p.assistant_rules_revision !== grant.revision
-      )
-        throw new CapabilityError(
-          "FORBIDDEN",
-          "Assistant rules changed. Review the plan again.",
-        );
-      currentPrincipal = {
-        ...p,
-        assistant_rules_revision: grant.revision,
-        assistant_rules: assistantActionRules.parse(grant.rules),
-      };
-    }
+    const currentPrincipal = await currentAssistantPrincipal(
+      db,
+      p,
+      cap.mode !== "read",
+    );
+    if (!policy.allows(currentPrincipal, cap))
+      throw new CapabilityError(
+        "FORBIDDEN",
+        `This connection can't use ${name}.`,
+      );
     if (grantId && clientRef) {
       replayed = await priorAnswer(db, grantId, name, clientRef);
       if (replayed)
@@ -378,8 +357,8 @@ export async function execute(
       db,
       now,
       timezone: prefs.timezone,
-      spaces: policy.spaces(p),
-      cursor: cursorCodec(p, name, input),
+      spaces: policy.spaces(currentPrincipal),
+      cursor: cursorCodec(currentPrincipal, name, input),
       ...(options.progress ? { progress: options.progress } : {}),
       ...(asking ? { asking } : {}),
     };
@@ -416,7 +395,7 @@ export async function execute(
     const answer =
       cap.mode === "read"
         ? await readTransaction(run, {
-            primary: options.primary,
+            primary: p.via === "assistant" || options.primary,
             timeoutMs: READ_TIMEOUT_MS,
           })
         : options.write
