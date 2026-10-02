@@ -228,6 +228,33 @@ Responsive web screenshots do not establish native acceptance. Existing rare
 actions and error recovery must remain discoverable after simplifying the layout.
 The whole-app scope does not reintroduce the explicitly excluded product features.
 
+**Experience-level coverage — further user clarification, 2 October:** the
+redesign includes Docs design and typing, Views, and all layouts and interactions.
+Changing surface styling without improving these workflows is insufficient.
+
+- **Docs:** library/search/create/open, reading and editing, typography and line
+  spacing, title/body typing, formatting and Markdown/source/preview affordances,
+  code/tables/math/Mermaid, comments, links, outline, import/export and sharing.
+  Preserve stable block IDs, caret/selection, undo/redo, composition/IME and dirty
+  drafts during refresh, collaboration, navigation and failed saves. Verify save
+  status, retry/close flushing, long-document responsiveness, keyboard shortcuts
+  and native keyboard/toolbar/sheet containment. Test actual typing/editing and
+  persisted results; parser/export checks alone do not establish this experience.
+- **Views:** discovery, creation/editing, saved filter/sort/grouping controls,
+  columns/visibility, layout switching, row/card actions, selection and detail
+  navigation across every supported list/table/board/calendar layout. Check long
+  content, empty/error/loading states, density, horizontal/vertical scrolling,
+  responsive equivalents and persisted view settings. Do not remove supported
+  functionality to make a cleaner screenshot.
+- **Every layout:** shell/content sizing, panes, headers/toolbars, form/list/detail
+  alignment, resizing/collapse, sticky elements, menus/modals/sheets, focus return,
+  touch targets, keyboard access and transitions between surfaces. Exercise both
+  themes, narrow/wide screens and native large text/software keyboard.
+
+Record visual quality, workflow behavior and persistence separately in each
+surface's acceptance ledger, including defects reproduced and evidence after
+the correction. This remains part of the full application deliverable.
+
 **Orbyn design requirements:**
 
 - Apply one hierarchy and spacing system across the shell and all U1 surfaces:
