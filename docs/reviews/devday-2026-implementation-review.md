@@ -1201,3 +1201,23 @@ checks passed **27/27**; scoped candidate cherry-pick **a610406** applied cleanl
 and passed **55/55** combined Overnight/review/rules/whole-plan/agent-write checks,
 zero failure/skip/cancellation. The corrected combined tree must finish a fresh
 full local run and CI before merge. No release/deployment/cleanup occurred.
+
+### Qualified rule/review checkpoint merged — 2 October 2026
+
+PR **#143** merged to main as **9c344b8**. Exact frozen candidate **e58ed27**
+passed **2,141/2,141** full local tests, zero failures/skips/cancellations,
+549,434 ms, on a fresh marked database. Workspace types, production build and
+full formatting passed. CI **36995158096** finished success for all four jobs.
+Unchanged base **9e1a2c8**, fetched GitHub merge parents and resulting main were
+verified; candidate and merge trees match
+**a8f0bd5a54f60886e4b261378576f465b6daae70**. User mobile/app.json and unrelated
+local files remain preserved. This is a merged backend checkpoint, not deployment.
+
+Main now has typed rule persistence/current-write checks, stale approval fencing,
+server-held Review runtime/connection/rule evidence, and producing-job/source
+checks before proposal creation and approval. Public rule editor routes/UI remain
+disabled. This is not complete agent ownership/rules UX, notifications/read/external
+policy, budget reservations or collaboration. Source privacy follow-ups **977288c**,
+**866e4c0**, **411935e** still require extraction and full current-main qualification.
+The entire retained ADR, web/mobile parity, actual UI/model/plugin/Docs gates and
+end-of-goal cleanup remain active. No release/tag/deployment occurred.
