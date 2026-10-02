@@ -4,6 +4,7 @@ CREATE OR REPLACE FUNCTION doc_reference_mask(source text) RETURNS text
 LANGUAGE plpgsql IMMUTABLE STRICT AS $$
 DECLARE
   result text := source;
+  chars text[] := regexp_split_to_array(source, '');
   at_pos integer := 1;
   scan_pos integer;
   close_pos integer;
@@ -13,18 +14,18 @@ DECLARE
   ch text;
 BEGIN
   WHILE at_pos <= size LOOP
-    ch := substr(source, at_pos, 1);
-    IF ch = E'\\' AND substr(source, at_pos + 1, 1) ~ '[[:punct:]]' THEN
+    ch := chars[at_pos];
+    IF ch = E'\\' AND chars[at_pos + 1] ~ '[[:punct:]]' THEN
       result := overlay(result placing '  ' from at_pos for 2);
       at_pos := at_pos + 2;
       CONTINUE;
     END IF;
     IF ch = '$' THEN
       scan_pos := at_pos + 1;
-      WHILE scan_pos <= size AND substr(source, scan_pos, 1) NOT IN (E'\n', E'\r', '$') LOOP
-        scan_pos := scan_pos + CASE WHEN substr(source, scan_pos, 1) = E'\\' THEN 2 ELSE 1 END;
+      WHILE scan_pos <= size AND chars[scan_pos] NOT IN (E'\n', E'\r', '$') LOOP
+        scan_pos := scan_pos + CASE WHEN chars[scan_pos] = E'\\' THEN 2 ELSE 1 END;
       END LOOP;
-      IF scan_pos > at_pos + 1 AND substr(source, scan_pos, 1) = '$' THEN
+      IF scan_pos > at_pos + 1 AND chars[scan_pos] = '$' THEN
         result := overlay(result placing repeat(' ', scan_pos - at_pos + 1) from at_pos for scan_pos - at_pos + 1);
         at_pos := scan_pos + 1;
         CONTINUE;
@@ -32,13 +33,13 @@ BEGIN
     END IF;
     IF ch = '`' THEN
       width := 1;
-      WHILE substr(source, at_pos + width, 1) = '`' LOOP width := width + 1; END LOOP;
+      WHILE chars[at_pos + width] = '`' LOOP width := width + 1; END LOOP;
       scan_pos := at_pos + width;
       close_pos := 0;
       WHILE scan_pos <= size LOOP
-        IF substr(source, scan_pos, 1) <> '`' THEN scan_pos := scan_pos + 1; CONTINUE; END IF;
+        IF chars[scan_pos] <> '`' THEN scan_pos := scan_pos + 1; CONTINUE; END IF;
         candidate_width := 1;
-        WHILE substr(source, scan_pos + candidate_width, 1) = '`' LOOP candidate_width := candidate_width + 1; END LOOP;
+        WHILE chars[scan_pos + candidate_width] = '`' LOOP candidate_width := candidate_width + 1; END LOOP;
         IF candidate_width = width THEN close_pos := scan_pos; EXIT; END IF;
         scan_pos := scan_pos + candidate_width;
       END LOOP;
@@ -80,10 +81,12 @@ BEGIN
     IF label = '' OR definitions ? label THEN CONTINUE; END IF;
     definitions := definitions || jsonb_build_object(label, coalesce(definition[2], definition[3]));
   END LOOP;
+  IF definitions = '{}'::jsonb THEN RETURN; END IF;
   FOR entry IN SELECT value, ordinality FROM jsonb_array_elements(blocks) WITH ORDINALITY LOOP
     IF entry.value->>'type' IN ('code', 'math', 'divider') THEN CONTINUE; END IF;
     raw := coalesce(entry.value->>'text', '');
     IF entry.value->>'type' = 'paragraph' AND regexp_match(raw, '^ {0,3}\[[^]\n]+\]:') IS NOT NULL THEN CONTINUE; END IF;
+    IF strpos(raw, '[') = 0 THEN CONTINUE; END IF;
     masked := doc_reference_mask(raw);
     cursor_pos := 1;
     FOR occurrence IN SELECT regexp_matches(masked, '(\[([^]\n]+)\](?:\[([^]\n]*)\])?)', 'g') LOOP

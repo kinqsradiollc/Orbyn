@@ -2043,3 +2043,19 @@ Full suite is confirmed running in session83262,
 full ADR, not completed by these cohorts. Reference checkpoint can be committed
 as a candidate; main delivery still requires qualified isolation/reconciliation,
 CI and the relevant runtime/visual acceptance. No native consent was accepted.
+
+Reference checkpoint23228c3 is committed/pushed. Its baseline full suite remains
+live in83262; never claim terminal success from progress. A separate bounded
+SQL profile found a valid9.6KB unmatched-backtick line took17754ms in the old
+scanner (plain10KB183ms). Character-array scanning in a temporary function
+reduced these to146ms and9ms; eleven literal/Unicode/large fixtures match the
+old output. Latest migration214 adds that scanner and no-definition/no-bracket
+fast exits. Fresh isolated marked database
+orbyn_references_optimized_20261003_test applies the migration from scratch and
+passes23/23 API privacy/index tests plus two query-budget regressions (no skips).
+Logs/tmp/orbyn-reference-optimized-api-tests-2.log and
+/tmp/orbyn-reference-performance-tests.log. Initial fresh DB lacked its safety
+marker; it was marked only because this task created it explicitly for tests.
+The baseline full suite does not qualify this later SQL optimization; exact-head
+CI/full qualification remains required. Do not merge the larger inherited ADR
+candidate solely because a reference-link cohort passes.
