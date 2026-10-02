@@ -59,8 +59,7 @@ checkpoint fixtures; it is not a passing result. No product fallback was added.
 
 Main full test log `/tmp/orbyn-main-f875c8d-release-full-tests.log`; types/build
 logs `/tmp/orbyn-main-f875c8d-types.log` and `-build.log`. Main CI `36971290485`
-for `8f2e7b3`: Docker live smoke, mobile exports and mail passed; backend/web was
-still running at last read. Production auto-deployment is disabled; pushing main
+for `8f2e7b3` completed successfully in all four jobs, including backend/web. Production auto-deployment is disabled; pushing main
 is not production deployment. Do not claim a release or live production version.
 
 Exact-main integration worktree is now
@@ -72,15 +71,24 @@ pushed; draft PR https://github.com/kinqsradiollc/Orbyn/pull/135 is attached. CI
 runs on the PR before promotion. Do not merge it until its required checks and
 a complete corrected local suite pass.
 
-Initial full suite session 44256 is still running at last check on marked DB
-`orbyn_main_runtime_fc4a55c_test`, log
-`/tmp/orbyn-main-runtime-fc4a55c-full-tests.log`. It has eight known failures:
-one historical schema clone omitted new insert triggers, and old automation
-fixtures assumed that the API process still executed background jobs. Corrected
-fixtures are already integrated above. Later edits change tests/docs only;
-application source stayed frozen. This initial run is not acceptance evidence.
-After its terminal result, run a fresh complete suite on a new marked DB against
-`e6f6376`; do not restart because of an observation timeout.
+Initial full suite session 44256 is terminal exit 1: 2,091 tests, 2,083 pass,
+eight failures, no skips/cancellations. Marked DB
+`orbyn_main_runtime_fc4a55c_test`; log
+`/tmp/orbyn-main-runtime-fc4a55c-full-tests.log`. All eight failures were in the
+historical schema clone and old automation fixtures, now fixed as below.
+
+The corrected complete suite is LIVE in session **57320**, frozen source
+`e6f6376`, fresh marked DB `orbyn_main_runtime_e6f6376_test`, log
+`/tmp/orbyn-main-runtime-e6f6376-full-tests.log`. Poll this exact handle/log before
+any rerun. Formatting session **65860** logs to
+`/tmp/orbyn-main-runtime-e6f6376-format.log`. The integration worktree is clean;
+local dependency links were placed inside ignored node_modules directories.
+Its diff from the earlier build/typechecked source `fc4a55c` contains tests and
+docs only, with identical application/asset source.
+
+PR 135 head `e6f6376` was MERGEABLE with no unresolved Git conflicts. Its CI has
+backend/web, mobile and Docker jobs running and mail passed at the latest read.
+Recheck exact head and main before merge; do not infer success from this snapshot.
 
 The fixes pass 8/8 notice/migration tests and 49/49 automation/task tests. Logs:
 `/tmp/orbyn-runtime-legacy-notice-tests.log`,
@@ -90,9 +98,8 @@ The earlier automation run was 48/49 before that fixture fix. Main-based workspa
 types, production build and format check passed on application source `fc4a55c`;
 logs `/tmp/orbyn-main-runtime-fc4a55c-{types,build,format}.log`. Kustomize and
 Compose validate. Root dependencies link to existing installations, and core/API
-outputs resolve inside the integration worktree. Its untracked
-`desktop/node_modules` and `mobile/node_modules` are task-owned dependency links;
-do not stage them or confuse them with product edits. No npm install was run.
+outputs resolve inside the integration worktree. Its task-owned dependency links are inside ignored node_modules directories.
+No npm install was run.
 
 CI run 36971290485 on main `8f2e7b3` completed successfully in all four jobs:
 backend/web, mobile exports, Docker live smoke and mail. `bb78cdf` is a subsequent
