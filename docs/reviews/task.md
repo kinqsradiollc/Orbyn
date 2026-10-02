@@ -1124,3 +1124,43 @@ web/mobile parity remain active. Next: finish this combined backend qualificatio
 then permissions/rule editor and agent records, read/external/notification guards,
 source revision evidence, budget reservations and receiving dispatch/recovery;
 also finish actual models/executor, plugin, Docs and whole-app UI gates.
+
+## Corrected review candidate and native observation — 2 October 2026
+
+PR **#143** is draft and attached: https://github.com/kinqsradiollc/Orbyn/pull/143.
+Initial **fc82170** full **68672** terminal failed: **2,130/2,141 passed**, **11
+failed**, no skip/cancel, 555,674 ms. Pipeline **96665** terminal zero, all workspace
+types/build/full format. CI **36993742889** terminal failed. All eleven failures
+are `assistant-overnight.test.ts` legacy fixtures creating guarded built-in proposals
+without producing evidence. Protection was retained; no early cancellation/restart.
+
+Source **d8bf8d5** corrects fixture sequencing: create owned conversation and
+actual Overnight job before filing proposal, bind lane/rules/checks/job, then save
+its result and night-run reference. Initial new fixture omitted chat's mandatory
+id; corrected before rerun. Source **69108** terminal zero: **27/27**, no skip/cancel,
+12,116 ms. Scoped cherry-pick **a610406** applied without conflict; **54754** terminal
+zero **55/55**, no skip/cancel, 13,165 ms. ADR **e58ed27** pushed on PR #143,
+freeze this exact head until all qualification runs terminal.
+
+Current corrected full **74503** runs on fresh marked
+**orbyn_rule_review_corrected_test**; pipeline **51246** types/build/full format.
+Logs `/tmp/orbyn-rule-review-e58ed27-{full-tests,types,build,format}.log`.
+These handles are live now; poll them, never restart solely on observation timeout.
+Recheck PR #143 head and current origin/main before promotion. No main merge yet.
+
+Owned native QA window is accessible again; password prompt gone. Skipped optional
+synthetic onboarding, used Device→Shake→Expo Reload. Current Metro PID **26907**
+port8087 cwd is clean Docs **514679f** worktree, API8027 PID30467 remains owned.
+Observed Docs library open, fixture reading, first-section fold/unfold, and relative
+app link opening destination page inside Orbyn. Returning via related-page link
+reopened QA with its folds intact. Evidence screenshot
+`/tmp/orbyn-docs-514679f-native-folded-fixture.png`.
+
+Precise heading-link click still throws `noWindowsAvailable` on coordinates.
+AX merges both inline links into one row and semantic click chooses destination;
+this does not prove heading navigation. Added empty synthetic block to enter editing;
+native editor exposed as a Group, not a settable text field; `setValue` refused.
+No clipboard/paste/typing workaround used and no save proof claimed. Simulator stays
+on synthetic empty-block editing. Web saved denial remains respected. Actual
+heading navigation, typing/saving, mobile-web/web, Android and wider UI remain open.
+Full ADR active, no cleanup/deployment, preserved main/character changes untouched.
