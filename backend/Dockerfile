@@ -57,6 +57,7 @@ COPY --from=build --chown=node:node /app/packages/api-client/package.json ./pack
 COPY --from=build --chown=node:node /app/packages/api-client/dist ./packages/api-client/dist
 COPY --from=build --chown=node:node /app/backend/package.json ./backend/package.json
 COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
+COPY --chown=node:node backend/assets ./backend/assets
 COPY --from=build --chown=node:node /app/backend/migrations ./backend/migrations
 # Served at GET /openapi.yaml.
 COPY --chown=node:node docs/openapi.yaml ./docs/openapi.yaml

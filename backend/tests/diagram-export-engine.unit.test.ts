@@ -174,3 +174,40 @@ test("actual bundled engine renders all export families as self-contained images
     dom.window.close();
   }
 });
+
+test("export images preserve bounded intrinsic dimensions without copying SVG attributes", async () => {
+  const marked =
+    '<html><pre class="diagram-source" data-orbyn-diagram="mermaid"><code>graph TD; A--&gt;B</code></pre></html>';
+  const sized = await renderHtmlDiagrams(
+    marked,
+    async () => '<svg viewBox="-10 -20 80.2 240.5"><text>Fixture</text></svg>',
+  );
+  assert.match(sized, /<img alt="Mermaid diagram" width="81" height="241"/);
+  for (const viewBox of [
+    "0 0 -1 10",
+    "0 0 Infinity 10",
+    "0 0 1000001 10",
+    "0 0 10",
+    "0 0 0 10",
+  ]) {
+    const invalid = await renderHtmlDiagrams(
+      marked,
+      async () => `<svg viewBox="${viewBox}"></svg>`,
+    );
+    assert.doesNotMatch(invalid, /<img[^>]* width=/);
+  }
+});
+
+test("export bounds UTF-8 input and cumulative encoded diagram output", async () => {
+  await assert.rejects(
+    renderHtmlDiagrams("中".repeat(7 * 1024 * 1024), async () => "<svg/>"),
+    /too large/,
+  );
+  const marked =
+    '<pre class="diagram-source" data-orbyn-diagram="mermaid"><code>graph TD; A--&gt;B</code></pre>';
+  const svg = "<svg><text>" + " ".repeat(1_900_000) + "</text></svg>";
+  await assert.rejects(
+    renderHtmlDiagrams(marked.repeat(5), async () => svg),
+    /rendered document is too large/,
+  );
+});

@@ -2303,3 +2303,11 @@ Home responsibility qualification: all workspace typechecks and production build
 passed, as did formatting of all eleven scoped files and git diff --check. These
 are code/content checks; visual/native acceptance and the broader candidate's
 exact-head full-suite/CI remain separate open gates.
+
+### Offline PDF rendering and shared diagram corrections — 3 October 2026
+
+- Added bounded private-pipe sandboxed Chromium printing helper and backend-owned generated Mermaid asset. Root generator preserves mobile wrapper; no runtime app/backend import crossing.
+- Actual synthetic offline PDF contains all ten families and typeset inline/display math. Visual review fixed intrinsic-size upscaling/15-to11-page splits and invisible journey task labels. Shared theme/image changes apply to web/native exports as well.
+  -53focused checks, all workspace types/production builds and scoped formatting pass. Evidence: evidence/doc-pdf-renderer.md. No localhost app inspection or terms acceptance occurred.
+- API still uses old PDF writer. Next implement authorized primary/revision-fenced API integration, bounded work/cancellation and container Chromium sandbox qualification, then real native sharing/publication/full D1/U1 gates.
+- Commit this renderer foundation, reconcile main9702f19e preserving both ADR histories and all export regressions, then run full exact-head qualification without editing that frozen runtime tree. Full goal stays active; no cleanup/deploy.

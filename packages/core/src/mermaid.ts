@@ -121,7 +121,7 @@ export function visibleDiagramTicks(
 /** Family-specific fixes for Mermaid selectors that style both boxes and text. */
 export function mermaidDiagramCss(palette: Record<string, string>): string {
   const vars = mermaidThemeVariables(palette);
-  return `text.journey-section, text.journey-section tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
+  return `text.journey-section, text.journey-section tspan, text.task, text.task tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
 }
 
 /** Center a measured SVG label without assuming that its local origin is zero. */

@@ -35,6 +35,27 @@ export const DIAGRAM_EXPORT_PALETTE = {
   lowText: colors.lowText,
 };
 
+/** Preserve intrinsic diagram dimensions instead of stretching narrow diagrams to page width. */
+function imageDimensions(svg: string): string {
+  const root = /^\s*<svg\b[^>]*>/i.exec(svg)?.[0];
+  const value = /\bviewBox=["']([^"']+)["']/i.exec(root ?? "")?.[1];
+  const dimensions = value
+    ?.trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (
+    !dimensions ||
+    dimensions.length !== 4 ||
+    !dimensions.every(Number.isFinite) ||
+    dimensions[2] <= 0 ||
+    dimensions[3] <= 0 ||
+    dimensions[2] > 1_000_000 ||
+    dimensions[3] > 1_000_000
+  )
+    return "";
+  return ` width="${Math.ceil(dimensions[2])}" height="${Math.ceil(dimensions[3])}"`;
+}
+
 /** Enrich only marked source in the backend-authorized export snapshot, never raw document data. */
 export async function renderHtmlDiagrams(
   html: string,
@@ -42,7 +63,7 @@ export async function renderHtmlDiagrams(
   signal?: AbortSignal,
 ): Promise<string> {
   if (signal?.aborted) throw abort();
-  if (html.length > 20 * 1024 * 1024)
+  if (new TextEncoder().encode(html).byteLength > 20 * 1024 * 1024)
     throw new Error("This document is too large to render for export.");
   const pattern =
     /<pre class="diagram-source" data-orbyn-diagram="mermaid"><code>([\s\S]*?)<\/code><\/pre>/g;
@@ -69,7 +90,7 @@ export async function renderHtmlDiagrams(
       // SVG as an image is inert; the trusted isolated renderer also strips external resources.
       const uri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
       parts.push(
-        `<figure class="export-diagram"><img alt="Mermaid diagram" src="${uri}">${retained}</figure>`,
+        `<figure class="export-diagram"><img alt="Mermaid diagram"${imageDimensions(svg)} src="${uri}">${retained}</figure>`,
       );
     } catch (error) {
       if (
@@ -84,7 +105,10 @@ export async function renderHtmlDiagrams(
     cursor = match.index! + match[0].length;
   }
   if (signal?.aborted) throw abort();
-  return parts.join("") + html.slice(cursor);
+  const output = parts.join("") + html.slice(cursor);
+  if (new TextEncoder().encode(output).byteLength > 20 * 1024 * 1024)
+    throw new Error("This rendered document is too large to export.");
+  return output;
 }
 
 let bridgeSequence = 0;
