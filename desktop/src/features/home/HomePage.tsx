@@ -196,20 +196,19 @@ export function HomePage({ signedIn, onNavigate }: Props) {
       <main id="home-main">
         <section className="home-hero">
           <div className="home-hero-copy">
-            {/* Says plainly what Orbyn is. The headline is a feeling; this
-                line is what someone searching for a planner is looking for. */}
+            {/* Keep the first screen specific to the work Orbyn supports. */}
             <span className="home-kicker">
               <span /> TASKS · CALENDAR · PROJECTS · NOTES · AI
             </span>
             <h1>
-              Your life.
+              Plan your day.
               <br />
-              In a better <em>orbit.</em>
+              Keep work <em>moving.</em>
             </h1>
             <p>
-              One planner for the things you need to do, the people you make
-              time for and the ideas you don’t want to lose — that plans your
-              day around them.
+              Keep tasks, calendar and project notes together. Plan around your
+              available time, delegate a task to Background, or queue work for
+              Overnight and review it in the morning.
             </p>
             <div className="home-hero-actions">
               <button className="primary" onClick={start}>
@@ -289,13 +288,13 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <Sparkles size={19} />
               </span>
               <div>
-                <strong>A mind beside yours.</strong>
-                <small>A clear plan starts with a conversation.</small>
+                <strong>Draft next steps from your notes.</strong>
+                <small>Example request for Background.</small>
               </div>
             </div>
             <div className="home-floating-reminder" aria-hidden="true">
               <Bell size={17} />
-              <span>A gentle nudge, right on time.</span>
+              <span>Reminders at the times you choose.</span>
             </div>
           </div>
         </section>
@@ -305,10 +304,10 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           aria-label="Product principles"
         >
           <span>
-            <ListTodo size={18} /> Less to hold in your head
+            <ListTodo size={18} /> Tasks and calendar in one place
           </span>
           <span>
-            <Sparkles size={18} /> A little help thinking ahead
+            <Sparkles size={18} /> Delegated work with results to review
           </span>
           <span>
             <ShieldCheck size={18} /> You decide what AI can change
@@ -320,15 +319,15 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="features">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">LIFE HAS A LOT OF MOVING PARTS</span>
+            <span className="eyebrow">TASKS, CALENDAR AND NOTES</span>
             <h2>
-              Give them a place
+              See the day.
               <br />
-              to come together.
+              Find the work behind it.
             </h2>
             <p>
-              A planner for the whole picture, from everyday errands to your
-              next big thing.
+              Follow a task from its project notes to a time on your calendar.
+              Keep the details close when plans change.
             </p>
           </div>
           <div className="home-feature-grid">
@@ -420,10 +419,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             ))}
           </ul>
           <div className="home-agent-intro">
-            <h2>Give it work. Come back to the result.</h2>
+            <h2>Two agents. Separate work schedules.</h2>
             <p>
-              Ask Orbyn to handle a task, then leave the chat. Background work
-              continues on the server; Overnight runs in the hours you choose.
+              Background handles delegated tasks as they come up. Overnight
+              works through a queue in your chosen night window. Each has its
+              own runs, activity and results.
             </p>
           </div>
           <div className="home-agent-grid">
@@ -434,8 +434,9 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </div>
               <div className="home-agent-detail">
                 <p>
-                  Hand over a task without keeping a chat open. Return to its
-                  progress, result, or a question that needs your answer.
+                  Delegate a task and close the app. Open agent activity to
+                  check progress, read the result, or answer a question before
+                  work continues.
                 </p>
                 <blockquote>
                   “Read these project notes and draft a list of next steps.”
@@ -450,8 +451,9 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </div>
               <div className="home-agent-detail">
                 <p>
-                  Set a night window and a work budget. In the morning, review
-                  the results, proposed changes, and anything left unfinished.
+                  Queue tasks, set a night window and choose a work budget. Open
+                  Overnight in the morning to review results, proposed changes
+                  and unfinished work.
                 </p>
                 <blockquote>
                   “Work through the tasks I’ve queued for tonight.”
@@ -461,8 +463,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             </article>
           </div>
           <p className="home-companion-note">
-            Separate runs and activity histories. Neither agent is working when
-            there’s no authorized task to do.
+            An agent stays idle until it has authorized work. You choose what to
+            delegate and review proposed changes before applying them.
           </p>
         </section>
 
