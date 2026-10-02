@@ -16,6 +16,8 @@ import { helpers, type Person } from "./mcp-helpers.js";
  * the titles for the people who can open them.
  */
 
+const { startTestPdfService } = await import("./helpers/pdf-service.js");
+const pdfService = await startTestPdfService();
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -135,6 +137,7 @@ after(async () => {
   const { closeLive } = await import("../src/modules/docs/live.js");
   await closeLive();
   await app.close();
+  await pdfService.close();
   await pool.end();
 });
 
