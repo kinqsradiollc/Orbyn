@@ -26,6 +26,7 @@ import {
   assistantSuggestions as SUGGESTIONS,
   characterAppearance,
   CHARACTER_PERSONAS,
+  CHARACTER_STATE_LABELS,
   type AssistantSource,
   type Item,
   type Plan,
@@ -144,7 +145,6 @@ export function AssistantView({
           },
         ]
     : SUGGESTIONS;
-  const [characterGreeting, setCharacterGreeting] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
@@ -412,7 +412,7 @@ export function AssistantView({
             }}
           >
             <section
-              className="modal modal-small scale-in"
+              className="modal ai-character-modal scale-in"
               role="dialog"
               aria-modal="true"
               aria-labelledby="ai-name-title"
@@ -521,10 +521,11 @@ export function AssistantView({
             <Character
               appearance={identity?.character}
               state={characterState}
-              size={36}
+              size={72}
               name={agentName}
             />
             <span>{agentName}</span>
+            <small>{CHARACTER_STATE_LABELS[characterState]}</small>
           </button>
           {/* History and New chat live in the Chats panel; on a phone the
               panel is hidden, so these two open it or start afresh. */}
@@ -578,30 +579,21 @@ export function AssistantView({
           {restoringChat && <p role="status">{restoringChat}</p>}
           {empty && !restoringChat && (
             <>
-              <div className="ai-character-welcome">
-                {characterAppearance(identity?.character).presence !==
-                  "hidden" && (
-                  <button
-                    type="button"
-                    className="character-greet"
-                    aria-label={`Say hello to ${agentName}`}
-                    disabled={
-                      characterAppearance(identity?.character).presence !==
-                      "animated"
-                    }
-                    onClick={() => setCharacterGreeting((n) => n + 1)}
-                  >
-                    <Character
-                      appearance={identity?.character}
-                      state={characterState}
-                      size={144}
-                      name={agentName}
-                      greeting={characterGreeting}
-                    />
-                  </button>
-                )}
+              <div className="ai-intro">
+                <h2>Hi, I’m {agentName}.</h2>
+                <p>
+                  What’s on your mind? We can make a plan, untangle a task, or
+                  find a little room in your day.
+                </p>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={!identity}
+                  onClick={() => setCustomizingCharacter(true)}
+                >
+                  Make me yours
+                </button>
               </div>
-              <h2 className="ai-greeting">What’s on your mind today?</h2>
             </>
           )}
 

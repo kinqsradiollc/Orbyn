@@ -1,74 +1,63 @@
-# Customizable Orbyn character
+# Expanded companion and assistant UI — 2026-10-02
 
-Worktree: `/Users/anhdang/.codex/worktrees/character/Orbyn`
-Branch: `codex/character`, rebased onto `main` at `1a26644`.
+Worktree: `/Users/anhdang/.codex/worktrees/character/Orbyn`, branch `codex/character`.
+User authorized committing and pushing the completed expansion to main. The earlier
+companion implementation was already pushed in `0749e6e`; this task expands it.
 
-## Scope and implementation
+## Delivered scope
 
-An original soft orbit spirit shared by web/Electron and React Native: rounded paws,
-a sprout, glossy eyes, cheek highlights and themed shading. Name, communication
-style, body, palette, eyes, ring, accessory and presence are editable in onboarding,
-the assistant header and Settings → Connected agents. All selections persist per
-account through `/me/agent`. Older clients and MCP name/persona edits preserve the
-appearance. Migration 205 adds the JSON column with legacy defaults.
+- Nine distinct silhouettes, six palettes using existing theme tokens, six eye styles,
+  seven ear/sprout choices, five tails, six markings and three aura choices.
+- Independent headwear, eyewear, neckwear, outfit, backwear and extra-accessory slots:
+  31 non-empty wardrobe selections, including headphones, scarves, hoodies, crowns,
+  glasses and wings. Explicit headwear/eyewear take precedence over legacy cap/glasses.
+- Eight starter looks, Surprise me and Reset look. These preserve visibility/movement.
+- Shape / Wardrobe / Finish / Motion categories use one shared catalog on both clients.
+  Live expression previews, greeting waves, gentle/bouncy/floaty movement, and a padded
+  SVG frame for tall hats and moving wings. Actual chat expressions still follow runs.
+- Web/Electron and React Native assistant screens now center the character and name,
+  with a quieter introduction, softer message bubbles and a pill composer. Desktop
+  editor has more room and a sticky Save row. Native closing sheet keeps its title.
+- Existing strict account settings contract, migration 205, ownership and MCP scope
+  remain in force. Old records gain new field defaults; no migration or dependency added.
 
-The shared SVG rig breathes, blinks, looks around while working, tilts while waiting,
-celebrates briefly on completion and waves when the user taps the welcome character
-or presses Say hello in the preview. Expressions follow actual assistant state.
-Static, hidden, reduced motion, background and offscreen web views stop animation.
-Motion uses a bounded 30fps requestAnimationFrame loop with cached artwork; native
-screens animate only while mounted and the app is active. A real-device performance
-check remains necessary.
+## Qualification
 
-The native bundle initially failed on the existing Yjs/lib0 crypto dependency. The
-Metro resolver now maps only lib0's native random source to Expo Crypto. Web resolution
-is unchanged. No third-party artwork, trackers or runtime animation service is used.
+- Full workspace typecheck passed.
+- Root production build passed; desktop rebuilt after final header CSS changes.
+- Focused character, identity/MCP, trust, mobile download and nudge tests: 59 passing.
+  Tests include all catalog choices across every silhouette/state, layered wearables,
+  randomization without mutation, old records, finite poses, and API 401/403/400/422/429.
+- iOS and Android Expo/Hermes exports passed (6.8 MB each).
+- Real web/mobile web checks: layered bunny saved on web and loaded on mobile; cloud
+  with Honey/stars/floaty saved on mobile and loaded on web; preview waving and working
+  movement observed; static stopped transforms and disabled waving; reduced motion
+  produced a still web rig. A real unconfigured-provider failure displayed error state.
+- Desktop 1280 px and phone 390 px had no horizontal overflow. Compact web header
+  controls were checked for overlap; Upcoming opened with real Goals/Routines results.
+- Native simulator tap verification remains incomplete: macOS simulator control could
+  select the dedicated iPhone 17 but could not target the Expo Go launch confirmation.
+  Packaged Electron and physical device animation performance are not verified.
 
-## Ownership and local environment
+## Environment and ownership
 
-The other ADR worktrees were left untouched. On 2026-10-02 the user authorized
-integration into local main; unrelated working changes must remain intact. No PR,
-push or deployment has been performed. The preview uses disposable databases
-`orbyn_character_test` and `orbyn_character_checks_test`, separate from the main DB.
-API is on 8018, web on 5174, mobile web on 8083. Preview fixture: Character Preview,
-with assistant named Nova. No AI provider is configured for that fixture; its error
-expression was checked by making a failed chat request.
+Main's uncommitted `mobile/app.json` and unrelated untracked files must stay untouched.
+Integration parent: `296a342`; its additional changes only update ADR notes.
+No edits to the concurrent ADR/reflection/Docs worktrees. No deployment/tag/release.
 
-## Validation
+Preview: web 5174, mobile web 8083, API 8018. Only disposable databases were used:
+`orbyn_character_test` and `orbyn_character_checks_test`. Test Postgres uses tmpfs;
+Docker restarts clear them. Disk exhaustion interrupted Docker/API after the passing
+checks. Disk recovered to over 6 GB and the preview database/account were restored.
+API now runs the compiled server, avoiding watch restarts during package builds.
+No provider is configured for the disposable fixture; live model success was not tested.
 
-- Full workspace typecheck passed; desktop production build passed.
-- Focused character, H8 identity and agent trust tests: 23 passing.
-- Refreshed native iOS/Android Expo exports passed with the revised rig.
-- Web/mobile web verified appearance persistence, cross-client refresh, hidden/static
-  presence, a real assistant error and reduced motion before the drawing revision.
-- The revised art appears on both previews. Both paw waves were observed through
-  SVG transforms; reduced motion returns both rigs to a still pose. Static preview
-  disables waving. Mobile 390px and desktop 1280px layouts have no horizontal overflow.
-- Native simulator/device interactions and packaged Electron launch are not verified.
+## Delivery and remaining qualification
 
-## Main integration qualification — 2026-10-02
+Delivery target is local `main` and `origin/main`, using a normal fast-forward without
+rewriting other agents' commits. The expansion is integrated at `7c96f70`; full main typecheck and production build
+passed. The final delivery report records the verified remote SHA. Unrelated working changes are
+preserved. No production deployment, release or tag is part of this request.
 
-Rebased cleanly onto current main `1a26644`; migration 205 has no collision. The
-last main commit only adds a Docs parity note; application code matches the
-validated revision. Full
-workspace typecheck, root production build, and refreshed iOS/Android exports pass.
-Character, identity/MCP preservation, agent trust, mobile export compatibility and
-reminder regressions: **57 tests passing**. An initial run lost its database
-connection when the test container exited; it was restarted, only the two disposable
-character databases were recreated and marked test, and the complete selection was
-rerun successfully. The disposable preview fixture was restored.
-
-Native interaction remains unverified: a booted iPhone 17 with Expo Go was available,
-but repeated CUA Simulator selection timed out; one attempt exposed only the iOS
-home screen. The follow-up browser control also timed out. Earlier web/mobile web
-interaction evidence above remains valid because rebasing changed no character UI
-code. Packaged Electron launch and real-device performance remain unverified.
-
-## Handoff
-
-The implementation is qualified for local main integration by the tests/builds and
-previous preview checks above. These checks do not establish complete native release
-qualification. Preserve the primary checkout's uncommitted mobile/app.json and all
-untracked user files during integration. No push, PR, release, production migration
-or deployment is part of this request. Before publishing native builds, complete
-manual simulator/device and packaged Electron interactions.
+Before native release, run a physical-device or simulator tap/performance check. The
+new choices can be extended through the shared catalog and pure vector rig.

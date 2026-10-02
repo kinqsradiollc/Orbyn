@@ -62,3 +62,25 @@ New connection/executor, catalog/default, typed rule/agent ownership, activity, 
 ## Acceptance and current state
 
 This ADR is complete as an architectural decision. Product implementation remains open in C1–C6, with per-feature acceptance criteria in the governing artifact. No OAuth runtime, new `/models` route, typed rules, mobile Mermaid parity, plugin service or UI repair is claimed by this documentation checkpoint.
+
+### Integration constraint — 2 October 2026
+
+Main now includes companion wardrobe and assistant chat redesign (`7c96f70`) and
+companion editor save visibility (`e4370a3`). Preserve those characters, controls
+and styling when integrating the broader platform and UI changes. Qualification
+on an older main base does not qualify the combined version: integrate current
+main and rerun the affected checks before each application checkpoint.
+
+Assigned-source ownership candidate `b7bd994` on draft PR #139 adds a database
+guard across Background/Overnight lanes and shared-task members. Its focused
+tests, types, build and formatting passed; full local/CI qualification remains
+running. It is not merged and has not yet incorporated the latest character
+main. Handoff acknowledgment source `6fd43f4` derives receiving outcomes from
+current completed-job evidence, checks producer revision and both jobs' access,
+and serializes idempotent retries. The combined contract/storage/request checks
+passed 27/27, with backend types and formatting. It does not enable dispatch,
+grant receiving authority or prove separate-worker collaboration.
+
+Docs PR #138 CI is now green on `25e1e6f`; web/mobile-web and native Android
+interaction gates remain open. The governing review and implementation handoff
+retain the full remaining scope; these checkpoints do not complete the ADR.
