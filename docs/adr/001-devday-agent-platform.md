@@ -435,3 +435,31 @@ page is removed. Evidence: `docs/reviews/evidence/doc-export-images.md`.
 This closes the candidate's PDF/HTML picture-byte gap, subject to full current-head
 qualification. It does not close native sharing, complete rendered HTML/publication,
 Word/export/editor parity or broader C1–C6/M1/D1/U1 acceptance. Goal remains active.
+
+### Signed-in Home/profile promotion candidate — 3 October 2026
+
+Extract the signed-in Home guide and separate agent profiles from the larger
+candidate onto current main (`192cb475`), with matching web/desktop and native
+entry points. Keep the same shared Background/Overnight requests and workflow
+steps as public Home. Replace the generic companion subtitle with “Background
+progress and Overnight results.” Browse every character preset without changing
+account settings. Profile activity, last work and outputs come from a private,
+permission-filtered primary snapshot; refresh and avatar presence are not work.
+
+The profile contract distinguishes idle, queued/recovering, working, waiting and
+scheduled states. Overnight alone has a night window and estimated budget. Each
+lane keeps its own activity and outputs. Open completed work only when the current
+interactive chat can safely switch. User-facing activity labels are shared by
+both clients; structured state is validated independently of copy.
+
+Research remains the primary [Muse design account](https://introducing.muse.ai/)
+and [Dots tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory).
+Their useful presentation patterns inform reviewable responsibilities; this
+candidate adds no browser, computer, voice or external messaging capabilities.
+
+Focused profile/store/client/Home checks pass 22/22. The first typecheck exposed
+an omitted shared activity-label export; the scoped prerequisite was added and
+current qualification continues. Full local/all-CI results, web test-server visual
+acceptance and native screenshot/interaction acceptance are separate gates. No
+claim of full U1, reflection or collaboration completion follows from this Home
+increment.

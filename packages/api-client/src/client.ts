@@ -1,5 +1,6 @@
 import {
   assistantActivityLane,
+  assistantProfiles,
   assistantActivityQuery,
   assistantActivityPage,
   type AssistantActivityLane,
@@ -3514,6 +3515,15 @@ export class OrbynClient {
       grantId: grant.id,
       changes: activity.filter((a) => a.job === job),
     };
+  }
+  /** Current authorized work evidence, independent of device presence. */
+  async assistantProfiles(signal?: AbortSignal) {
+    return assistantProfiles.parse(
+      await this.request<unknown>("/me/assistant/profiles", {
+        fresh: true,
+        signal,
+      }),
+    );
   }
   // ---- The Review inbox ----
   /** Recover authorized execution activity with an owner/lane-scoped cursor. */
