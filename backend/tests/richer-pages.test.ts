@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // Connects only to a verified test database (see setup.ts).
@@ -32,10 +32,19 @@ process.env.PAGE_FILES_DIR = join(dir, "kept");
 process.env.FILES_MIN_FREE_MB = "0";
 
 const { startTestPdfService } = await import("./helpers/pdf-service.js");
-const pdfService = await startTestPdfService();
+const { renderPdfSnapshot } =
+  await import("../src/modules/docs/pdf-renderer.js");
+let beforePdfPrint: (() => Promise<void>) | undefined;
+const pdfService = await startTestPdfService(async (options) => {
+  const before = beforePdfPrint;
+  beforePdfPrint = undefined;
+  if (before) await before();
+  return renderPdfSnapshot(options);
+});
 const { readPdf } = await import("../src/modules/imports/pdf.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
+const { env } = await import("../src/config/env.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { sweepPageFiles } =
   await import("../src/modules/page-files/store-routes.js");
@@ -108,6 +117,7 @@ const read = async (who: Person, id: string) =>
 
 before(async () => {
   await migrate();
+  env.FILES_URL = await app.listen({ host: "127.0.0.1", port: 0 });
   me = await register("Writer");
   mate = await register("Mate");
   viewer = await register("Watcher");
@@ -1272,7 +1282,7 @@ test("uploads at the same time can't together go over the space", async () => {
   }
 });
 
-test("exports carry tables, callouts, footnotes and pictures' captions", async () => {
+test("exports carry tables, callouts, footnotes and authorized picture bytes", async () => {
   const doc = await page(me, "Export me", [
     para("A claim[^1] and ~~an old one~~ and =={green}a key idea=="),
     {
@@ -1280,10 +1290,23 @@ test("exports carry tables, callouts, footnotes and pictures' captions", async (
       text: "| Term | Meaning |\n| --- | --- |\n| CAP | Consistency |",
     },
     { type: "callout", kind: "tip", text: "Start early" },
-    { type: "image", file: randomUUID(), text: "The diagram" },
     { type: "footnote", label: "1", text: "Source: the lecture." },
   ]);
+  const made = await call(me, "POST", `/docs/${doc.id}/files`, {
+    name: "export-picture.png",
+    bytes: PNG.length,
+    width: 1,
+    height: 1,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const sent = await upload(made.json().upload_path, PNG);
+  assert.equal(sent.statusCode, 201, sent.body);
+  await save(me, doc.id, [
+    ...doc.content,
+    { type: "image", file: made.json().file.id, text: "The diagram" },
+  ]);
   const html = await call(me, "GET", `/docs/${doc.id}/export?format=html`);
+  assert.equal(html.statusCode, 200, html.body);
   assert.match(html.body, /<table>.*<th>Term<\/th>/s);
   assert.match(html.body, /<blockquote class="c tip"><strong>Tip<\/strong>/);
   assert.match(html.body, /<s>an old one<\/s>/);
@@ -1293,7 +1316,9 @@ test("exports carry tables, callouts, footnotes and pictures' captions", async (
     html.body,
     /<li id="fn-1" value="1">Source: the lecture\.<\/li>/,
   );
-  assert.match(html.body, /Picture: The diagram/);
+  assert.match(html.body, /<img src="data:image\/png;base64,/);
+  assert.ok(html.body.includes(PNG.toString("base64")));
+  assert.match(html.body, /<figcaption>The diagram<\/figcaption>/);
   const docx = await call(me, "GET", `/docs/${doc.id}/export?format=docx`);
   assert.equal(docx.statusCode, 200);
   // Word's own footnotes: a part of their own, referenced from the text.
@@ -1312,7 +1337,126 @@ test("exports carry tables, callouts, footnotes and pictures' captions", async (
   assert.match(text, /Tip\s+Start early/);
   assert.match(text, /Consistency/);
   assert.match(text, /Source: the lecture/);
-  assert.match(text, /Picture: The diagram/);
+  assert.match(text, /The diagram/);
+  assert.ok(
+    pages.some((page) => page.text.images > 0),
+    "PDF must contain the uploaded raster image",
+  );
+});
+
+test("image export refuses missing and foreign pictures without embedding private bytes", async () => {
+  const privatePage = await page(stranger, "Private image");
+  const privateImage = await picture(stranger, privatePage.id);
+  for (const file of [privateImage, randomUUID()]) {
+    const doc = await page(me, "Unavailable picture", [
+      image(file, "missing-image"),
+    ]);
+    for (const format of ["pdf", "html"]) {
+      const res = await call(
+        me,
+        "GET",
+        `/docs/${doc.id}/export?format=${format}`,
+      );
+      assert.equal(res.statusCode, 404, res.body);
+      assert.doesNotMatch(res.body, /data:image|%PDF|iVBOR/);
+    }
+    assert.equal(
+      (await call(me, "GET", `/docs/${doc.id}/export?format=md`)).statusCode,
+      200,
+    );
+  }
+});
+
+test("PDF image delivery rejects a picture removed during rendering", async () => {
+  const doc = await page(me, "Image revocation");
+  const file = await picture(me, doc.id);
+  await save(me, doc.id, [image(file, "revoked-image")]);
+  beforePdfPrint = async () => {
+    const removed = await call(me, "DELETE", `/docs/files/${file}`);
+    assert.equal(removed.statusCode, 204, removed.body);
+  };
+  const result = await call(me, "GET", `/docs/${doc.id}/export?format=pdf`);
+  assert.equal(result.statusCode, 404, result.body);
+  assert.doesNotMatch(result.body, /%PDF|data:image|iVBOR/);
+});
+
+test("copied pictures still export after their original page is permanently removed", async () => {
+  const original = await page(me, "Original picture page");
+  const file = await picture(me, original.id);
+  const copy = await page(me, "Copied picture page", [
+    image(file, "copied-image"),
+  ]);
+  // A real save records the authorized reference before removing the source.
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM page_file_refs WHERE doc_id = $1 AND file_id = $2",
+        [copy.id, file],
+      )
+    ).rowCount,
+    1,
+  );
+  await pool.query("DELETE FROM docs WHERE id = $1", [original.id]);
+  assert.equal(await owner(file), null);
+  const html = await call(me, "GET", `/docs/${copy.id}/export?format=html`);
+  assert.equal(html.statusCode, 200, html.body);
+  assert.ok(html.body.includes(PNG.toString("base64")));
+  const link = await call(me, "GET", `/docs/files/${file}`);
+  assert.equal(link.statusCode, 200, link.body);
+  const shown = await app.inject({ method: "GET", url: link.json().url_path });
+  assert.equal(shown.statusCode, 200, shown.body);
+  assert.deepEqual(shown.rawPayload, PNG);
+  const pdf = await call(me, "GET", `/docs/${copy.id}/export?format=pdf`);
+  assert.equal(pdf.statusCode, 200, pdf.body.slice(0, 100));
+  assert.ok(
+    (await readPdf(pdf.rawPayload, 20)).some((page) => page.text.images > 0),
+  );
+});
+
+test("larger image PDF carries its authored width, caption and surrounding headings", async () => {
+  const bytes = await readFile(
+    new URL("./fixtures/export-picture.png", import.meta.url),
+  );
+  const doc = await page(me, "Image export layout");
+  const made = await call(me, "POST", `/docs/${doc.id}/files`, {
+    name: "export-picture.png",
+    bytes: bytes.length,
+    width: 640,
+    height: 240,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const sent = await upload(made.json().upload_path, bytes);
+  assert.equal(sent.statusCode, 201, sent.body);
+  await save(me, doc.id, [
+    { type: "heading", level: 2, text: "Before the picture" },
+    para("This paragraph must stay above the figure."),
+    {
+      type: "image",
+      file: made.json().file.id,
+      text: "An authorized raster picture with its caption.",
+      width: 75,
+    },
+    { type: "heading", level: 2, text: "After the picture" },
+    para("This paragraph must stay below the caption."),
+  ]);
+  const html = await call(me, "GET", `/docs/${doc.id}/export?format=html`);
+  assert.equal(html.statusCode, 200, html.body);
+  assert.match(html.body, /style="width:75%"/);
+  assert.ok(html.body.includes(bytes.toString("base64")));
+  const pdf = await call(me, "GET", `/docs/${doc.id}/export?format=pdf`);
+  assert.equal(pdf.statusCode, 200, pdf.body.slice(0, 100));
+  const pages = await readPdf(pdf.rawPayload, 20);
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].text.images, 1);
+  const text = pages[0].text.spans.map((span) => span.text).join(" ");
+  for (const label of [
+    "Before the picture",
+    "After the picture",
+    "An authorized raster picture",
+  ])
+    assert.ok(text.includes(label), label);
+  if (process.env.PDF_TEST_IMAGE_OUTPUT)
+    await writeFile(process.env.PDF_TEST_IMAGE_OUTPUT, pdf.rawPayload);
 });
 
 test("the new routes answer 429 past the per-minute limit", async () => {

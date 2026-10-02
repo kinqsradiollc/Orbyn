@@ -272,3 +272,36 @@ test("real HTTP redirects are not followed, including to another file-store path
     );
   }
 });
+
+test("disconnect aborts a real stalled picture stream without returning partial bytes", async () => {
+  const { createServer } = await import("node:http");
+  const controller = new AbortController();
+  let abortTimer: ReturnType<typeof setTimeout> | undefined;
+  const server = createServer((_req, res) => {
+    res.writeHead(200, {
+      "content-type": "image/png",
+      "content-length": String(png.length),
+    });
+    res.write(png.subarray(0, 12));
+    abortTimer = setTimeout(() => controller.abort(), 50);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as { port: number };
+  try {
+    await assert.rejects(
+      exportImages(database().db, "owner", [block], {
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        readPath: () => "/files/r/signed.test",
+        signal: controller.signal,
+      }),
+      status(503),
+    );
+    assert.equal(controller.signal.aborted, true);
+  } finally {
+    clearTimeout(abortTimer);
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
+});

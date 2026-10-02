@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
@@ -18,6 +19,8 @@ function fixture({
   visible = true,
   status = 0,
   path = "/docs/:id/export",
+  visibleAfterRender = visible,
+  versionAfterRender = 8,
 } = {}) {
   const source = ts.createSourceFile(
     "routes.ts",
@@ -48,7 +51,15 @@ function fixture({
     query: async () => {
       reads++;
       return {
-        rows: visible ? [{ title: "Current title", content, version: 8 }] : [],
+        rows: (reads > 1 ? visibleAfterRender : visible)
+          ? [
+              {
+                title: "Current title",
+                content,
+                version: reads > 1 ? versionAfterRender : 8,
+              },
+            ]
+          : [],
       };
     },
   };
@@ -63,6 +74,8 @@ function fixture({
     ).outputText,
     {
       exports,
+      AbortController,
+      Buffer,
       z,
       pool,
       EXPORT_FORMATS,
@@ -92,6 +105,10 @@ function fixture({
       env: { APP_URL: "https://fixture.invalid" },
       docToDocx: render,
       exportRenderedPdf: render,
+      exportImages: async (db: unknown) => {
+        dependencies.push(db);
+        return { fileUrl: () => null, revalidate: async () => {} };
+      },
       docToHtml: render,
       docToText: render,
       docToMarkdown: render,
@@ -100,13 +117,20 @@ function fixture({
       contentDisposition: (_kind: string, name: string) => name,
     },
   );
-  const run = (query: unknown) => {
+  const run = async (query: unknown) => {
+    const raw = new EventEmitter();
     const reply = {
+      raw: new EventEmitter(),
       type: () => reply,
       header: () => reply,
       send: (body: unknown) => body,
     };
-    return exports.handler!({ query, headers: {} }, reply);
+    try {
+      return await exports.handler!({ query, headers: {}, raw }, reply);
+    } finally {
+      assert.equal(raw.listenerCount("aborted"), 0);
+      assert.equal(reply.raw.listenerCount("close"), 0);
+    }
   };
   return { run, reads: () => reads, dependencies, pool };
 }
@@ -118,8 +142,13 @@ for (const format of EXPORT_FORMATS) {
       await view.run({ format, version: 8 }),
       "Current exported content",
     );
-    assert.equal(view.reads(), format === "pdf" ? 2 : 1);
-    assert.deepEqual(view.dependencies, [view.pool, view.pool]);
+    assert.equal(view.reads(), format === "pdf" || format === "html" ? 2 : 1);
+    assert.deepEqual(
+      view.dependencies,
+      format === "pdf" || format === "html"
+        ? [view.pool, view.pool, view.pool]
+        : [view.pool, view.pool],
+    );
     assert.equal(await view.run({ format }), "Current exported content");
   });
   test(`${format} refuses a superseded revision even if the replica would match`, async () => {
@@ -163,5 +192,17 @@ for (const status of [401, 403, 429, 400]) {
     const view = fixture({ path: "/docs/:id/markdown", status });
     await assert.rejects(view.run({}), { statusCode: status });
     assert.equal(view.reads(), 0);
+  });
+}
+
+for (const format of ["html", "pdf"]) {
+  test(`${format} fences access and revision after materializing its snapshot`, async () => {
+    await assert.rejects(
+      fixture({ visibleAfterRender: false }).run({ format }),
+      { statusCode: 404 },
+    );
+    await assert.rejects(fixture({ versionAfterRender: 9 }).run({ format }), {
+      statusCode: 409,
+    });
   });
 }

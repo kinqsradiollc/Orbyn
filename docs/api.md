@@ -1028,10 +1028,17 @@ File exports and the legacy Markdown export read document visibility, content, l
 state and link visibility from the primary database. They do not depend on a client consistency
 header or a read replica catching up after a save or permission change.
 
-`docx` and `pdf` are written directly: `.docx` is a zip of XML using Node's `zlib`, and PDF uses
-standard fonts. PDF carries headings, lists, checklists, quotes, code, rules, and bold and italic
-within a line. It currently writes image captions and plain math symbols; rendered diagram and
-formula PDF export remains unsupported.
+`docx` is a zip of XML using Node's `zlib`. PDF uses the private offline renderer
+and includes LaTeX math and ten Mermaid diagram families. PDF and HTML embed
+currently authorized PNG, JPEG, GIF and WebP picture bytes with captions. They
+recheck page visibility/revision and included file access before delivery, even
+without `version`. Missing or revoked pictures return `404` rather than a partial
+file; changed metadata returns `409`, unsupported metadata `422`, oversized
+pictures `413`, and unavailable/invalid picture bytes `503`. Limits are 32 unique
+pictures, 4 MiB each and 8 MiB combined, with a 15-second combined fetch deadline.
+Duplicate references share one embedded data URI. Only signed first-party file
+paths are fetched; redirects and arbitrary authored URLs are refused. Word,
+Markdown and plain-text exports retain their existing picture representations.
 
 ### `GET /docs/:id/markdown` (auth)
 
@@ -3306,7 +3313,7 @@ credentials as an automatic fallback.
 `GET /docs/:id/export?format=pdf` uses an authorized, primary-read snapshot and a
 private offline renderer. LaTeX math and ten Mermaid diagram families are rendered
 in the file. Optional `version` fencing remains supported. Before PDF delivery,
-access and source revision are checked again: deleted/inaccessible pages return404
+access, source revision and included picture permissions are checked again: deleted/inaccessible pages return404
 and changed pages409, including when an older caller omitted `version`. Oversized
 input returns413; unconfigured/unavailable/busy rendering returns503 without a
 partial file. Client disconnects cancel owned work. Standalone HTML preserves

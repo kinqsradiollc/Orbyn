@@ -13,7 +13,7 @@ async function readableImages(db: Queryable, userId: string, ids: string[]) {
     await db.query<ImageRow>(
       `SELECT f.id, f.mime, f.bytes::float8 AS bytes FROM page_files f
        WHERE f.id = ANY ($2::uuid[]) AND f.status = 'ready'
-         AND f.kind = 'image' AND f.doc_id IS NOT NULL
+         AND f.kind = 'image'
          AND ${pageFileReadableBy("$1")}`,
       [userId, ids],
     )

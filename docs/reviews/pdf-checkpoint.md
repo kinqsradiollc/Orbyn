@@ -34,3 +34,14 @@ PR161 is merged as e06c448450495d4948794485469926fe87ceb897. Exact tested head f
 Image export implementation continues on codex/docs-export-images in the character checkout, based on this main merge. New export-images helper deduplicates and checks primary file visibility/readiness, validates raster MIME/signatures, limits32 images/4MiB each/8MiB combined, fetches signed first-party paths sequentially with a15s aggregate deadline, rejects redirects/traversal, embeds inert data URIs and rechecks file visibility/metadata. It is not yet wired into the export route.12 focused unit tests and backend typecheck pass after rebuilding current packages; initial typecheck used stale broad-source package output and failed on the old reflection union, not this helper.
 
 Next: wire PDF/HTML image snapshots with request-disconnect cancellation, revalidate page and file authorization immediately before delivery, add actual API/raster PDF evidence, then qualify the entire new branch. Rendered HTML diagram parity/publication, native sharing and all remaining full ADR gates remain open. Preserve broad source histories, permission boundaries and primary user changes.
+
+## Image route implementation — 3 October 2026
+
+Image snapshots are now wired to PDF/HTML with cancellation,20MiB final HTML bound,
+current page/file fences and explicit failure instead of silent omission. Copied
+pictures no longer depend on a non-null original page in the store.38 focused
+loader/actual-route/logger units and42 actual API/rich-page tests pass. Real encrypted
+file storage and private Chromium printing were exercised; one-page640×240/75%
+figure screenshot inspected with no overlap/clipping. Current logs and screenshot:
+`evidence/doc-export-images.md`. Run full exact-head local/all CI before promotion;
+full ADR and native/publication/HTML-diagram/Word/editor gates remain open.
