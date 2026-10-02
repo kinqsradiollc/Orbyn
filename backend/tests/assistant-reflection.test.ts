@@ -30,6 +30,8 @@ async function person() {
   await assistantPrincipal({ id, name: "Reflection tester", role: "member" });
   return id;
 }
+// Evidence precedes the JS scan cutoff: Postgres timestamps have microseconds,
+// while Date only has milliseconds. Same-tick fixture inserts can look newer.
 async function source(user: string, project: string | null = null) {
   const chat = randomUUID();
   const job = randomUUID();
@@ -38,7 +40,7 @@ async function source(user: string, project: string | null = null) {
     [chat, user, project],
   );
   await pool.query(
-    "INSERT INTO ai_jobs(id,user_id,chat_id,turn_id,state,result,sources_checked) VALUES($1,$2,$3,$4,'done',$5::jsonb,true)",
+    "INSERT INTO ai_jobs(id,user_id,chat_id,turn_id,state,result,sources_checked,created_at) VALUES($1,$2,$3,$4,'done',$5::jsonb,true,now()-interval '1 second')",
     [
       job,
       user,
@@ -54,7 +56,7 @@ async function source(user: string, project: string | null = null) {
 async function task(user: string) {
   return (
     await pool.query(
-      "INSERT INTO items(user_id,title,notes) VALUES($1,'Review the draft','Check the sources') RETURNING id",
+      "INSERT INTO items(user_id,title,notes,updated_at) VALUES($1,'Review the draft','Check the sources',now()-interval '1 second') RETURNING id",
       [user],
     )
   ).rows[0].id as string;
@@ -116,6 +118,24 @@ test("reflection evidence is bounded, current and excludes another person's work
     (await pendingReflectionSources(pool, user, new Date())).length,
     20,
   );
+});
+
+test("reflection scan cutoff excludes later evidence at sub-millisecond precision", async () => {
+  const user = await person();
+  const original = await source(user);
+  const cutoff = new Date("2026-10-02T01:00:00.000Z");
+  await pool.query(
+    "UPDATE ai_jobs SET created_at=$2::timestamptz+interval '0.5 milliseconds' WHERE id=$1",
+    [original.job, cutoff],
+  );
+  assert.deepEqual(await pendingReflectionSources(pool, user, cutoff), []);
+  const included = await pendingReflectionSources(
+    pool,
+    user,
+    new Date(cutoff.getTime() + 1),
+  );
+  assert.equal(included.length, 1);
+  assert.equal(included[0].id, original.job);
 });
 
 test("reflection distinguishes failed work and the question still awaiting a person", async () => {
@@ -182,6 +202,12 @@ test("deleted and kept-out sources block both new evidence and saved derived out
   const original = await source(user, project);
   const refs = await pendingReflectionSources(pool, user, new Date());
   const evidence = await reflectionEvidence(pool, user, refs);
+  assert.equal(
+    evidence.length,
+    1,
+    "the fixture must supply the source being revoked",
+  );
+  assert.equal(evidence[0].source.id, original.job);
   const derived = await source(user);
   await recordAssistantSources(derived.job, user, evidence);
   assert.ok(
@@ -217,6 +243,12 @@ test("reflection retains underlying document permissions through source transcri
   await recordAssistantSources(original.job, user, { kind: "doc", id: doc });
   const refs = await pendingReflectionSources(pool, user, new Date());
   const evidence = await reflectionEvidence(pool, user, refs);
+  assert.equal(
+    evidence.length,
+    1,
+    "the fixture must supply the source being revoked",
+  );
+  assert.equal(evidence[0].source.id, original.job);
   const derived = await source(user);
   await recordAssistantSources(derived.job, user, evidence);
   const dependencies = (
