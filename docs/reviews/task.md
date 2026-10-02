@@ -80,7 +80,7 @@ historical schema clone and old automation fixtures, now fixed as below.
 The corrected complete suite is LIVE in session **57320**, frozen source
 `e6f6376`, fresh marked DB `orbyn_main_runtime_e6f6376_test`, log
 `/tmp/orbyn-main-runtime-e6f6376-full-tests.log`. Poll this exact handle/log before
-any rerun. Formatting session **65860** logs to
+any rerun. Formatting session **65860** finished exit 0; all files pass. Log:
 `/tmp/orbyn-main-runtime-e6f6376-format.log`. The integration worktree is clean;
 local dependency links were placed inside ignored node_modules directories.
 Its diff from the earlier build/typechecked source `fc4a55c` contains tests and
@@ -176,8 +176,9 @@ identity verification is fixture setup, not upstream OAuth evidence.
 
 Own QA API session 82920/8027 and Metro 70797/8087 run from combined source.
 Synthetic fixture session 53819 is stopped. Only the named QA DB was migrated.
-Preserve companion preview servers on 8018/8083. Disk last ~3.3 GiB; check before
-large builds. Docker was externally recovered; the user asked to recover it
+Preserve companion preview servers on 8018/8083. Disk fell to ~1.1 GiB at the latest check; check before
+large builds. Runtime PR Docker builds are running in CI. Local generated outputs
+are small; do not delete unverified old packages or shared caches. Docker was externally recovered; the user asked to recover it
 themselves, so do not restart Docker. No unrelated containers/volumes were deleted.
 Only the older task-owned temporary simulator was deleted after ENOSPC.
 
