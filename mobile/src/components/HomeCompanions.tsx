@@ -78,8 +78,10 @@ export function HomeCompanions({
         {HOME_AGENT_GUIDE.map((agent) => (
           <View key={agent.name} style={{ gap: 4 }}>
             <Text style={shared.sectionTitle}>{agent.name}</Text>
+            <Text style={shared.small}>{agent.timing}</Text>
             <Text style={shared.small}>{agent.summary}</Text>
             <Text style={shared.small}>{agent.result}</Text>
+            <Text style={shared.small}>{agent.pause}</Text>
           </View>
         ))}
         <Text style={shared.small}>{HOME_AGENT_IDLE_NOTE}</Text>

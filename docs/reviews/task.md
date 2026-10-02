@@ -1942,3 +1942,10 @@ ADR sections and exports. Text reconciliation conflicts were resolved; no
 unresolved files remain. Local Home tests 11/11, desktop/native typechecks pass.
 Public package and production web/prerender builds pass. User test-server web
 review and native screenshots/interaction remain outstanding.
+
+### Home timing and pause parity — 3 October 2026
+
+- Added shared Background/Overnight timing and pause details to signed-in web and native Home, alongside the existing descriptions and activity entry.
+- Home companion/guide tests: 11/11. Desktop and mobile typechecks pass.
+- Public Home is being qualified separately on `codex/home-agent-responsibilities`: agents before the catalog/character gallery, concrete supporting copy, research retained in ADR.
+- No runtime capability or character identity changes. Web test-server visual review and native screenshot/interaction acceptance remain open; full ADR stays active.

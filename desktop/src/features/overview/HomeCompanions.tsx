@@ -68,8 +68,11 @@ export function HomeCompanions({
         <div className="home-companions-lanes">
           {HOME_AGENT_GUIDE.map((agent) => (
             <p key={agent.name}>
-              <strong>{agent.name}</strong> {agent.summary}
+              <strong>{agent.name}</strong>
+              <small>{agent.timing}</small>
+              {agent.summary}
               <small>{agent.result}</small>
+              <small>{agent.pause}</small>
             </p>
           ))}
           <p>{HOME_AGENT_IDLE_NOTE}</p>
