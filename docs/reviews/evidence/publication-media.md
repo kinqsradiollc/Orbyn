@@ -32,6 +32,12 @@ sharing remain open. It is not the full Docs or U1 completion checkpoint.
 
 ## Evidence
 
+First full qualification at `edeb63a5` failed 2,297/2,298 locally and
+CI37069676634: the new public media route was missing from the explicit public
+inventory. Its scope/password/revocation defenses were checked before recording
+it as public. The inventory ratchet remains unchanged; the corrected head needs
+full qualification.
+
 Focused checks pass 39/39 (11 actual-media integration checks, 18 existing
 publication checks and 10 transport units), with no skipped/cancelled tests.
 Log `/tmp/orbyn-publication-media-final-focused-2.log`. A first byte-budget
