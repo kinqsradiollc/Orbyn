@@ -1217,3 +1217,35 @@ Then continue typed notification/read/external restrictions, per-agent ownership
 first-party web/mobile editor, source revisions, budgets/reservations and handoff
 receiving authorization/dispatch/recovery, plus the complete model/plugin/Docs and
 whole-app UI gates. No cleanup/deployment or goal completion occurred.
+
+## Current main reconciliation and privacy gate — 2 October 2026
+
+PR #143 is merged as **9c344b8**, with documentation checkpoint **dabb770** on
+main/origin. Frozen **e58ed27** passed **2,141/2,141** local tests, workspace
+types/build/full formatting and all CI jobs **36995158096**. Exact candidate,
+GitHub merge and resulting main trees matched. No deployment occurred.
+
+Source reconciled current main in merge **b05d9bf**, committed and pushed. All
+13 overlaps resolved; staged reconciliation changed only the two chronological
+ADR/review documents, preserving source implementations and published main code.
+All workspace types **96596** terminal zero; no unmerged entries or conflict
+markers. Untracked settings previews remain preserved. Main mobile/app.json and
+character task artifacts remain untouched. Do not merge this entire source branch.
+
+Scoped draft PR **#144**, frozen **f79c852**, remains on base **dabb770**. Combined
+focused **80654** terminal zero: **69/69**, no failures/skips/cancellations,
+22,920 ms. Pipeline **87200** terminal zero: all workspace types, root production
+build and full formatting. Full fresh marked database suite **74602** remains
+live on **orbyn_source_privacy_f79c852_test**; resume the same handle. CI
+**36996647235** backend-and-web **110804794360** remains live; mobile, Docker
+and mail succeeded. Logs `/tmp/orbyn-source-privacy-f79c852-{full-tests,focused,
+types,build,format}.log`. Keep candidate frozen until both runs terminate.
+
+Before promotion verify current head/base and exact merge-tree equivalence, then
+merge with exact head protection and fast-forward main preserving its dirty files.
+Source privacy is current-access protection, not reviewed source revision
+snapshots. Public typed-rule editor, read/external/notification rule enforcement,
+agent ownership, budget reservations and receiving collaboration remain open.
+Full models/providers/plugin, Docs and whole-app UI/mobile/native acceptance
+stays active. Saved web preview denial remains respected. No cleanup, deployment
+or goal completion occurred.
