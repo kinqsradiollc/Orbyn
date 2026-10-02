@@ -6,6 +6,41 @@ const page = {
   observed_at: new Date().toISOString(),
   profiles: [],
 } as unknown as AssistantProfiles;
+test("account changes replace pending profile reads and clear previous evidence immediately", async () => {
+  let owner = "owner-a";
+  const resolvers: ((value: AssistantProfiles) => void)[] = [];
+  const signals: AbortSignal[] = [];
+  const store = new AssistantProfileStore(
+    {
+      assistantProfiles: (signal) => {
+        signals.push(signal!);
+        return new Promise((resolve) => resolvers.push(resolve));
+      },
+    },
+    () => owner,
+  );
+  const initial = store.refresh();
+  resolvers[0](page);
+  await initial;
+  const previous = store.refresh();
+  owner = "owner-b";
+  const current = store.refresh();
+  assert.notEqual(current, previous);
+  assert.equal(signals[1].aborted, true);
+  assert.equal(signals.length, 3);
+  assert.deepEqual(store.getSnapshot(), {
+    data: null,
+    loading: true,
+    error: false,
+  });
+  const nextPage = { ...page, observed_at: "2026-10-02T12:00:00.000Z" };
+  resolvers[2](nextPage);
+  await current;
+  resolvers[1](page);
+  await previous;
+  assert.equal(store.getSnapshot().data, nextPage);
+  assert.equal(store.getSnapshot().loading, false);
+});
 test("profile store coalesces requests, cancels and fences closed generations", async () => {
   const resolvers: ((value: AssistantProfiles) => void)[] = [];
   const signals: AbortSignal[] = [];

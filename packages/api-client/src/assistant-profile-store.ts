@@ -16,10 +16,13 @@ export class AssistantProfileStore {
   private generation = 0;
   private pending: Promise<void> | null = null;
   private abort: AbortController | null = null;
+  private binding: unknown;
   constructor(
     private client: Pick<OrbynClient, "assistantProfiles">,
     private sessionBinding: () => unknown = () => null,
-  ) {}
+  ) {
+    this.binding = sessionBinding();
+  }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -32,9 +35,10 @@ export class AssistantProfileStore {
     this.listeners.forEach((listener) => listener());
   }
   refresh = (): Promise<void> => {
+    const binding = this.sessionBinding();
+    if (binding !== this.binding) this.reset();
     if (this.pending) return this.pending;
     const generation = this.generation;
-    const binding = this.sessionBinding();
     const abort = (this.abort = new AbortController());
     this.publish({ ...this.state, loading: true });
     this.pending = this.client
@@ -70,6 +74,7 @@ export class AssistantProfileStore {
   /** Closing, sign-out or account change clears evidence and cancels outstanding reads. */
   reset = () => {
     this.generation++;
+    this.binding = this.sessionBinding();
     this.abort?.abort();
     this.abort = null;
     this.pending = null;

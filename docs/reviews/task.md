@@ -1829,3 +1829,24 @@ and restarted Codex. Binding that exact URL after restart still receives a saved
 permission denial. No alternate port, browser, raw CDP or indirect access was
 used. Browser screenshots remain pending. Continue independent native/backend
 work; the full ADR remains active and incomplete.
+
+## Profile account refresh fence — 2 October 2026
+
+Shared AssistantProfileStore previously coalesced a refresh after account change
+with the previous account's pending request. Its response fence eventually
+cleared the evidence, but no current-account request began at refresh time.
+The store now tracks its session binding and resets before request coalescing
+when that binding changes. This immediately clears previous evidence, aborts
+the old request and starts the current read. Late old responses remain fenced.
+Both clients use this store. This does not replace their session lifecycle reset
+or prove immediate UI removal before any refresh/lifecycle event.
+
+A regression reproduced the old promise reuse, then passed after the fix.
+Pipeline9925 exited zero: package builds,4/4 profile store/client tests,
+desktop/mobile typechecks, focused formatting and diff check. Logs are
+/tmp/orbyn-profile-account-before.log and /tmp/orbyn-profile-account-after.log.
+Actual cross-client account switching and profile visual acceptance remain open.
+The user's renewed request to use native Chrome cannot override the browser
+tool's explicit prohibition on alternate surfaces for this blocked preview.
+No workaround was attempted. Continue the full ADR; this checkpoint is not a
+claim that receiving dispatch, budgets, runtime health or collaboration is done.
