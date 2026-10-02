@@ -580,3 +580,13 @@ must show the same timing and pause details alongside their existing activity en
 No fake running states, always-on promise or completed reflection claim is introduced.
 Code tests establish content and ordering, not screenshot acceptance. The user's
 test-server web review and native visual acceptance remain open.
+
+### Export revision fence — 3 October 2026
+
+An editor may bind file export to its last confirmed saved document revision.
+The API checks visibility before the revision and returns409 on a mismatch for
+all formats. The shared client carries the optional version and never silently
+retries a conflict against a newer revision. Existing unversioned callers remain
+compatible. Candidate API/client checks pass; editor save-success and offline
+failure integration, revision capture during concurrent typing, and every share
+path remain required before current-source export acceptance can close.

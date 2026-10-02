@@ -457,3 +457,59 @@ test("HTML export marks only authorized Mermaid source and preserves standalone 
   assert.match(markdown.body, /```mermaid/);
   assert.match(markdown.body, /<script>bad<\/script>/);
 });
+
+test("export revision checks reject changed pages without disclosing inaccessible versions", async () => {
+  const original = (await get(`/docs/${docId}`)).json();
+  assert.equal(
+    (await get(`/docs/${docId}/export?format=html&version=${original.version}`))
+      .statusCode,
+    200,
+  );
+  const changed = await app.inject({
+    method: "PUT",
+    url: `/docs/${docId}`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Updated export revision",
+      content: original.content,
+      version: original.version,
+    },
+  });
+  assert.equal(changed.statusCode, 200, changed.body);
+  const stale = await get(
+    `/docs/${docId}/export?format=html&version=${original.version}`,
+  );
+  assert.equal(stale.statusCode, 409, stale.body);
+  for (const format of ["md", "txt", "pdf", "docx"])
+    assert.equal(
+      (
+        await get(
+          `/docs/${docId}/export?format=${format}&version=${original.version}`,
+        )
+      ).statusCode,
+      409,
+    );
+  assert.equal(
+    (
+      await get(
+        `/docs/${docId}/export?format=html&version=${changed.json().version}`,
+      )
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await get(
+        `/docs/${docId}/export?format=html&version=${original.version}`,
+        () => strangerToken,
+      )
+    ).statusCode,
+    404,
+  );
+  for (const invalid of ["0", "-1", "1.5", "abc", "9007199254740992"])
+    assert.equal(
+      (await get(`/docs/${docId}/export?format=html&version=${invalid}`))
+        .statusCode,
+      422,
+    );
+});
