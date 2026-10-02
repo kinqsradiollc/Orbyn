@@ -20,22 +20,22 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: **456e01a**. PRs #143 and
-  #144 are merged; their exact qualification evidence is recorded below.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: **7c08aa6**, pushed. PRs #143,
+  #144 and #145 are merged; their exact qualification evidence is recorded below.
   PR #141 independently schedules Overnight. Character changes remain
   published. User-owned `mobile/app.json` and unrelated untracked files remain
   preserved. Root `task.md` belongs to the character task.
 - Source `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch
-  `codex/devday-model-catalog`: **8bfcd48** before this documentation update,
-  committed and pushed. Retains model,
+  `codex/devday-model-catalog`: **bf8a0ab** before this documentation update,
+  reconciled with current main7c08aa6. Retains model,
   Docs, settings, profiles, reflection and handoff work that must not be merged
   wholesale. Two untracked settings preview files remain preserved.
 - Scoped backend checkpoint `/Users/anhdang/.codex/worktrees/assistant-work-ownership/Orbyn`,
   now branch `codex/assistant-current-authority`: **04d1ff7** frozen against main
-  **456e01a**, draft PR #145. Full combined qualification **41477** and backend
-  CI **37000288172** are still running. Workspace types/build/full formatting
-  pipeline **11930** previously finished with exit zero. No UI or public rule
-  editor enabled; this candidate is not merged or deployed.
+  **456e01a**, PR #145 merged as **3450e87**. Full combined qualification
+  **41477** passed2,157/2,157, all CI **37000288172** jobs passed, and workspace
+  types/build/full formatting **11930** finished with exit zero. No public rule
+  editor enabled; no deployment occurred.
 - Plugin `/Users/anhdang/.codex/worktrees/devday-plugin-boundary/Orbyn`:
   **d2da6d8**, draft PR #142, reconciled with main **456e01a**. Full
   2,155/2,155 and types/build/format/all CI passed for this candidate. Actual
@@ -1454,3 +1454,32 @@ and fresh base/head/tree checks before promotion. Saved web preview denial still
 pending user clearance, no bypass. Native partial Docs proof does not satisfy all
 UI gates. Full ADR model/provider/plugin/Docs/Mermaid/whole-app/mobile/agent
 scope remains active; no cleanup, deployment or completion.
+
+## Current main promotion and source reconciliation — 2 October 2026
+
+PR145 ready/merge50237 terminal zero, MERGED3450e874412dcdaec852610f2a2dd718d9dec0dd.
+Every CI37000288172 job terminal successful; backend110816193464 completed11:32:50UTC.
+CI log /tmp/orbyn-authority-04d1ff7-ci-backend.log proves checkouta94a7c4 and
+2,156 passes/one Tesseract skip/zero failures. Frozen candidate/CI merge/resulting
+main tree94774365fcabd2b7d331d35a3d110880dce5a641 identical. Main11263 terminal
+zero ff-only preserved mobile/app.json/unrelated files. ADR/review docs7c08aa6
+committed and push30109 terminal zero. PR body63565 terminal zero updated delivery.
+Earlier gh observation27877 terminated with a network error; separate authoritative
+job/run/pull responses confirmed terminal success, so no CI was restarted.
+
+Replay sourcec237cfb push4408 terminal zero. Reconciled main7c08aa6 asbf8a0ab:
+resolved source replay import and chronological ADR append conflicts; retained
+both evidence histories. Staged merge changed only two docs82 lines; application
+code identical to c237cfb. No unresolved index entries or discarded source/character
+changes. Requalification20346 focused terminal zero72/72;41356 backend types
+terminal zero. Scoped docs formatting/diff check passed. Logs
+/tmp/orbyn-replay-bf8a0ab-{focused,types}.log. Source preview untracked files remain preserved.
+
+Next implement complete cached target authorization across supported refs and
+effective grant-scoped dependencies, source revision/read snapshots/concurrency
+fences. Current legacy cache holds do not replace that work. Keep C1–C6/M1/D1/U1,
+full Docs/provider/plugin/whole-app/mobile/agent acceptance active. Plugin142
+all automated proof green but actual consent/host/gateway/UI gates remain open;
+Docs138/reflection137 require current-main integration and actual interaction.
+Saved web denial pending explicit settings clearance; never bypass. Cleanup only
+after integration/qualification. Goal remains active, no deployment.
