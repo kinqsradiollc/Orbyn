@@ -20,6 +20,7 @@ export function MermaidDiagram({ text }: { text: string }) {
   const sequence = useRef(0);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [viewportWidth, setViewportWidth] = useState(0);
   const [result, setResult] = useState<{
     id: string;
     error?: string;
@@ -47,8 +48,9 @@ export function MermaidDiagram({ text }: { text: string }) {
         source: text,
         palette: JSON.parse(palette),
         zoom,
+        viewportWidth: viewportWidth || undefined,
       }),
-    [instance, text, palette, zoom],
+    [instance, text, palette, zoom, viewportWidth],
   );
   const id = JSON.parse(request).id as string;
   const current = result?.id === id ? result : null;
@@ -94,7 +96,16 @@ export function MermaidDiagram({ text }: { text: string }) {
     [text],
   );
   return (
-    <View style={s.box}>
+    <View
+      style={s.box}
+      onLayout={(event) => {
+        const width = Math.max(
+          120,
+          Math.floor(event.nativeEvent.layout.width - 16),
+        );
+        setViewportWidth((previous) => (previous === width ? previous : width));
+      }}
+    >
       <View style={s.toolbar}>
         <Text style={s.label}>{diagramKind(text)} diagram</Text>
         <Pressable
@@ -119,6 +130,14 @@ export function MermaidDiagram({ text }: { text: string }) {
           style={s.button}
         >
           <Text style={s.action}>+</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Fit diagram to width"
+          onPress={() => setZoom(1)}
+          style={s.button}
+        >
+          <Text style={s.action}>Fit</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"

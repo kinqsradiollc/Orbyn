@@ -15,7 +15,7 @@ function runtime(
   const configurations: Record<string, unknown>[] = [];
   const parent = {};
   const drawing = {
-    style: {},
+    style: {} as { width?: string; height?: string; maxWidth?: string },
     viewBox: { baseVal: { width: 300, height: 160 } },
   };
   const host = {
@@ -25,6 +25,7 @@ function runtime(
       return drawing;
     },
   };
+  const styleNode = { tagName: "style", textContent: style, attributes: [] };
   const parsed = {
     documentElement: {},
     querySelectorAll(selector: string) {
@@ -32,7 +33,7 @@ function runtime(
         removed.push(selector);
         return [];
       }
-      return [{ tagName: "style", textContent: style, attributes: [] }];
+      return [styleNode];
     },
   };
   const source = readFileSync(
@@ -96,7 +97,15 @@ function runtime(
         ...patch,
       }),
     });
-  return { send, messages, configurations, removed, palette };
+  return {
+    send,
+    messages,
+    configurations,
+    removed,
+    palette,
+    styleNode,
+    drawing,
+  };
 }
 
 test("isolated renderer accepts only host messages and pins every configuration key", async () => {
@@ -143,12 +152,55 @@ test("CSS escapes, imports and external image functions are rejected for SVG exp
     ".node{fill:u\\72l(https://fixture.invalid/x)}",
     '.node{background:image-set("https://fixture.invalid/x" 1x)}',
     ".node{fill:url(https://fixture.invalid/x)}",
+    "@keyframes dash{to{stroke-dashoffset:0;fill:url(https://fixture.invalid/x)}}",
+    "@keyframes untrusted{to{stroke-dashoffset:0;}}",
   ]) {
     const fixture = runtime(async () => ({ svg: "<svg/>" }), style);
     await fixture.send("unsafe");
     assert.equal(typeof fixture.messages[0].error, "string");
     assert.equal(fixture.messages[0].svg, undefined);
   }
+});
+
+test("bundled Mermaid static diagrams render despite its unconditional stock keyframes", async () => {
+  const fixture = runtime(
+    async () => ({ svg: "<svg/>" }),
+    "@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}.node{fill:#ffffff}",
+  );
+  await fixture.send("stock-styles");
+  assert.equal(fixture.messages[0].error, undefined);
+  assert.equal(typeof fixture.messages[0].svg, "string");
+  assert.doesNotMatch(fixture.styleNode.textContent, /@keyframes/i);
+  assert.match(fixture.styleNode.textContent, /\.node\{fill:#ffffff\}/);
+});
+
+test("entity attribute rows use the validated Orbyn surface palette", async () => {
+  const fixture = runtime(async () => ({ svg: "<svg/>" }));
+  await fixture.send("entity-theme");
+  const theme = fixture.configurations[0].themeVariables as Record<
+    string,
+    string
+  >;
+  assert.equal(
+    theme.rowOdd,
+    fixture.palette.secondaryColor,
+  );
+  assert.equal(
+    theme.rowEven,
+    fixture.palette.primaryColor,
+  );
+  assert.equal(theme.primaryTextColor, fixture.palette.primaryTextColor);
+});
+
+test("a narrow diagram viewport starts fitted and zoom remains relative to that fit", async () => {
+  const fixture = runtime(async () => ({ svg: "<svg/>" }));
+  await fixture.send("fitted", { viewportWidth: 174 });
+  assert.equal(fixture.drawing.style.width, "150px");
+  assert.equal(fixture.drawing.style.height, "80px");
+  assert.equal(fixture.messages[0].height, 104);
+  await fixture.send("zoomed", { viewportWidth: 174, zoom: 2 });
+  assert.equal(fixture.drawing.style.width, "300px");
+  assert.equal(fixture.messages[1].height, 184);
 });
 
 test("a newer render fences an older in-flight result and duplicate messages", async () => {

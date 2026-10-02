@@ -1,4 +1,6 @@
 import { Platform, Share } from "react-native";
+import { File, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import { EXPORT_FORMATS, EXPORT_LABELS, type ExportFormat } from "@orbyn/core";
 import { client } from "./api";
 
@@ -32,10 +34,8 @@ export async function saveFile(
     }
     return;
   }
-  const [{ File, Paths }, Sharing] = await Promise.all([
-    import("expo-file-system"),
-    import("expo-sharing"),
-  ]);
+  // Keep native dependencies in Metro's initial module graph; deferred
+  // dependency URLs can resolve incorrectly in a linked workspace preview.
   const file = new File(Paths.cache, name.replace(/[\\/:*?"<>|]+/g, "-"));
   file.create({ overwrite: true });
   file.write(

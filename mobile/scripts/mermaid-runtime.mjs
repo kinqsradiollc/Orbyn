@@ -51,6 +51,9 @@ const receive = async (event) => {
         throw new Error("Invalid diagram theme.");
       palette[key] = value;
     }
+    // Mermaid base theme otherwise supplies pale ER rows even in dark mode.
+    palette.rowOdd = palette.secondaryColor;
+    palette.rowEven = palette.primaryColor;
     const config = {
       startOnLoad: false,
       securityLevel: "strict",
@@ -97,6 +100,13 @@ const receive = async (event) => {
         }
       }
       if (node.tagName === "style") {
+        // Mermaid emits these two stock animations even for static diagrams.
+        // Remove only their exact inert bodies; every other at-rule, escape
+        // and external resource still fails closed below.
+        node.textContent = node.textContent.replace(
+          /@keyframes\s+(?:edge-animation-frame|dash)\s*\{\s*(?:from|to)\s*\{\s*stroke-dashoffset\s*:\s*0\s*;?\s*\}\s*\}/gi,
+          "",
+        );
         if (/[\\@]|image-set\s*\(/i.test(node.textContent))
           throw new Error("External diagram styles are not supported.");
         for (const match of node.textContent.matchAll(/url\(([^)]*)\)/gi)) {
@@ -118,13 +128,18 @@ const receive = async (event) => {
     const zoom = Number.isFinite(request.zoom)
       ? Math.min(3, Math.max(0.5, request.zoom))
       : 1;
-    drawing.style.width = `${width * zoom}px`;
-    drawing.style.height = `${height * zoom}px`;
+    const viewport = Number.isFinite(request.viewportWidth)
+      ? Math.max(120, Math.min(8192, request.viewportWidth))
+      : width + 24;
+    const scale = Math.min(1, (viewport - 24) / width) * zoom;
+    drawing.style.width = `${width * scale}px`;
+    drawing.style.height = `${height * scale}px`;
     send({
       type: "orbyn-diagram-result",
       id: request.id,
       width,
-      height: height * zoom,
+      // Match the renderer host's 12px padding above and below the SVG.
+      height: height * scale + 24,
       svg: safeSvg,
     });
   } catch (error) {

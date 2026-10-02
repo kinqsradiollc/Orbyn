@@ -1651,3 +1651,33 @@ checkout; no paste/typeText/clipboard. Evidence committed under
 docs/reviews/evidence/docs-navigation/native-inline-fragment.png. Current simulator
 is at revealed Result. This closes that iOS interaction, not web/mobile-web,
 Android, cross-page/stale races or all D1/U1. Full ADR remains active.
+
+## Native Mermaid runtime fixes — 2 October 2026
+
+Real native engine output rejected every static diagram because Mermaid emits
+two stock CSS keyframes. The renderer removes only exact inert stock bodies;
+all unknown at-rules, CSS escapes and external resource requests still fail closed.
+Measured viewport width now fits diagrams initially; Fit resets relative zoom.
+Native SVG export uses initial-graph Expo dependencies because linked-worktree
+deferred imports failed. Corrected before-fix tests reproduced these failures.
+Combined runtime/download cohort92583 terminated zero:25/25, no failures/skips;
+mobile/backend types passed. Native flowchart, sequence fit/zoom/refit/source
+and 23 KB SVG system share-sheet handoff verified on source Metro8088/API8028.
+Evidence: docs/reviews/evidence/mermaid-native/. No recipient/save action selected.
+Native dismissal failed noWindowsAvailable. Other families/platforms/themes and
+full D1/U1 remain open. Preview helpers and old plan dirt preserved.
+
+PR147 merged4bbcfec from53089fd: full2181/2181, types/build/full-format and
+CI37004911014 passed, candidate/CI/main treeab575239dd8e10fab7a52d32946a75a1229ab95f.
+Docs CI37005022002 now all successful on93ad2e2; local full2184/2184 passed.
+Reconcile current main and requalify before Docs promotion; UI gates remain open.
+
+Native controls recovered by rebinding Simulator and invoking exposed Cancel;
+share sheet dismissed without choosing a recipient. State fixture exposed missing
+24px renderer host padding; before-fix assertion failed, fixed height shows full
+final node. ER fixture exposed pale attribute rows in dark mode. Actual Mermaid
+unified ER uses rowOdd/rowEven (not legacy attributeBackgroundColor keys);
+pinning these to validated Orbyn surfaces fixes visible string/title contrast.
+Final combined cohort10310 terminal zero:26/26; mobile/backend types passed.
+State/ER screenshots added. Remaining six families, themes/platforms and full
+Docs/UI acceptance remain open. Main documentation checkpointc30c5fc pushed.
