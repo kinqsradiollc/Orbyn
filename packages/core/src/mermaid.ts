@@ -91,10 +91,15 @@ export function mermaidThemeVariables(palette: Record<string, string>) {
 
 /** Keep chronological axis labels legible at their measured display width. */
 export function visibleDiagramTicks(
-  bounds: readonly { left: number; right: number }[],
+  bounds: readonly { left: number; right: number; text?: string }[],
 ): number[] {
   const valid = bounds
-    .map((box, index) => ({ left: box.left, right: box.right, index }))
+    .map((box, index) => ({
+      left: box.left,
+      right: box.right,
+      text: box.text?.trim(),
+      index,
+    }))
     .filter(
       (box) =>
         Number.isFinite(box.left) &&
@@ -103,11 +108,20 @@ export function visibleDiagramTicks(
     )
     .sort((a, b) => a.left - b.left);
   if (!valid.length) return [];
-  const first = valid[0];
-  const last = valid[valid.length - 1];
+  // Short date formats can repeat for multiple sub-day ticks. Keep one label
+  // per displayed value while preserving the underlying grid and timestamps.
+  const seen = new Set<string>();
+  const distinct = valid.filter((box) => {
+    if (!box.text) return true;
+    if (seen.has(box.text)) return false;
+    seen.add(box.text);
+    return true;
+  });
+  const first = distinct[0];
+  const last = distinct[distinct.length - 1];
   const selected = [first.index];
   let right = first.right;
-  for (const box of valid.slice(1, -1)) {
+  for (const box of distinct.slice(1, -1)) {
     if (box.left >= right + 8 && box.right + 8 <= last.left) {
       selected.push(box.index);
       right = box.right;
@@ -121,7 +135,7 @@ export function visibleDiagramTicks(
 /** Family-specific fixes for Mermaid selectors that style both boxes and text. */
 export function mermaidDiagramCss(palette: Record<string, string>): string {
   const vars = mermaidThemeVariables(palette);
-  return `text.journey-section, text.journey-section tspan, text.task, text.task tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
+  return `.tick text { font-size: 16px !important; } text.journey-section, text.journey-section tspan, text.task, text.task tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
 }
 
 /** Center a measured SVG label without assuming that its local origin is zero. */

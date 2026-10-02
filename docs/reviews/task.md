@@ -23,35 +23,28 @@ exports. Native Terms acceptance requires the human. Docker stays user-controlle
 
 ## Main and qualification
 
-- Main: `012d16e8`, HTML PR163 merged after exact `a7d2764f` full local
-  2,277/2,277 and all CI37068507160. PDF PR161 and picture PR162 are also merged.
-  No deployment. Root `mobile/app.json` and unrelated untracked files preserved.
-- Publication media: `character/Orbyn`, branch `codex/docs-publication-media`,
-  exact `88024f64`, draft PR164 against main. CI37071640135 passed all jobs.
-  Fresh full local session77084, log
-  `/tmp/orbyn-publication-media-88024f64-full-tests.log`, still running.
-  First `edeb63a5` full local 2,297/2,298 and CI37069676634 failed the PUBLIC
-  route inventory; classified the scoped route without changing ratchets or
-  security assertions. Repair focused27/27, backend types/build/format passed.
-- Home profiles: `assistant-runtime-integration/Orbyn`,
-  `codex/home-agent-profiles`, exact `64534482`, draft PR165 against main.
-  Fresh full local session98447 and CI37071883926 still running. Log
-  `/tmp/orbyn-home-profiles-64534482-full-tests.log`.
-  First `22f2e1b8` full local2,298/2,299 and CI37070166479 failed private-route
-  inventory; classified profiles as people_only, preserving actual auth checks.
-  Repair focused14/14; earlier scoped group22/22. All workspace types/build/format
-  pass. Native current-head visual/interaction and Android acceptance remain open.
-- Publication renderer: current `assistant-work-ownership/Orbyn`,
-  `codex/docs-publication-renderer`, local commits `a8727afa` plus merge `d951353c`
-  importing media inventory repair. Only diagram sources enter private Chromium;
-  inert diagrams retain source, and current publication/page/links/media/folder
-  authority is fenced after rendering. Combined actual integration/units/existing
-  publication checks38/38 pass; workspace types pass. Build/format live.
-  Full local/current-head CI not yet run. Evidence `evidence/publication-renderer.md`.
+- Main86ccd4f8: publication renderer PR166 merged after exact2a46a360 full
+  local2,318/2,318 and all CI37073694699. Media PR164 merged as43812305 after
+  exact88024f64 full2,298/2,298/all CI37071640135. Earlier PDF/image/HTML
+  checkpoints remain merged. Root user files preserved; no deployment.
+- Home profiles: assistant-runtime-integration/Orbyn, codex/home-agent-profiles,
+  exact692cc0f8, draft PR165. Fresh local session70210 and CI37074275504 live.
+  Log `/tmp/orbyn-home-profiles-692cc0f8-full-tests.log`.
+  Previous64534482 local2,298/2,299 and CI37071883926 failed generated route
+  catalog (248 vs249 private exclusions), now regenerated. Current focused32/32
+  and all workspace types/build/format pass. Must integrate new main86 after this
+  frozen run before final combined qualification. Native human sign-in pending.
+- Current character/Orbyn now owns codex/docs-diagram-readability: local565032d3
+  plus main86 merge. Larger Gantt bars/text/ticks and repeated-date suppression;
+  final scoped16 checks pass with actual PDF font/bounds/spacing assertions.
+  Synthetic current screenshot `evidence/gantt-readable.png` inspected. Combined
+  focused/full local/CI qualification still pending. Existing media branch retained.
+- assistant-work-ownership/Orbyn retains qualified publication-renderer2a46a360;
+  clean. No further runtime changes there.
 
 ## Native QA state
 
-Current Home source serves Expo Go at port8087 and test API8027, isolated marked
+Home UI source (unchanged by692 catalog/media integration) serves Expo Go at port8087 and test API8027, isolated marked
 owned database recorded in `/tmp/orbyn-native-home-64534482-db.txt`. Metro needed
 IPv4-first resolution to serve the simulator. Old cached build and old nonexistent
 QA database are excluded from evidence. Current source reaches native sign-in.
