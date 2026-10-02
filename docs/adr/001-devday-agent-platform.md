@@ -242,3 +242,27 @@ models/defaults/execution, providers/embeddings, separate plugin integration,
 agent collaboration/reflection and whole-app Docs/UI acceptance. Preserve palette
 and characters; voice/computer-use product features remain excluded. No
 deployment or cleanup occurred. The full ADR remains active.
+
+### Home agent presentation — 3 October 2026
+
+Apply the user’s Muse/Dots direction to both public and signed-in Home, with native
+parity. Research: [Muse design](https://introducing.muse.ai/) emphasizes visible
+background activity, meaningful interruptions, and task-shaped outputs;
+[official Dots documentation](https://learn.chatgpt.com/docs/dots) describes work
+between conversations and separate task activity. These inform the presentation,
+not additional Orbyn capabilities or blanket permission to act.
+
+Home should explain a concrete responsibility and where to review its result.
+Public examples must be labeled examples, never fabricated live runs. Use two
+plain editorial rows for Background and Overnight, with separate timing and
+morning review descriptions; keep character customization distinct from work.
+Signed-in Home opens real permission-filtered profiles with activity and outputs.
+Idle must remain idle when no authorized work exists. Reflection and inter-agent
+collaboration remain existing acceptance gates, not advertised completed features.
+Preserve Orbyn tokens and character preferences; avoid generic slogans and a
+repeated grid of decorative feature cards.
+
+The user owns web visual validation on their test server for this increment.
+Code/build checks do not establish visual acceptance. Native screenshot and
+interaction acceptance remains required and the disposable account’s terms
+confirmation is still pending.

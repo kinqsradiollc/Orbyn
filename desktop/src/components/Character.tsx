@@ -33,9 +33,13 @@ export function Character({
   const ref = useRef<SVGSVGElement>(null);
   const greetedAt = useRef(-Infinity);
   const [visible, setVisible] = useState(false);
-  const [foreground, setForeground] = useState(!document.hidden);
+  const [foreground, setForeground] = useState(
+    () => typeof document !== "undefined" && !document.hidden,
+  );
   const [reduced, setReduced] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    () =>
+      typeof window === "undefined" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const [pose, setPose] = useState(STILL_CHARACTER_POSE);
   const art = useMemo(
