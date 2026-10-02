@@ -69,18 +69,22 @@ web/desktop and mobile remain in scope.
   are enabled. Receiving-side rules/connections/budgets, cross-lane source
   reservations, separate-worker round trips and client controls remain required.
   This source foundation is unmerged and does not deliver collaboration.
-- **Assigned source ownership:** source `49fad02`, candidate `b7bd994` on draft
-  PR #139, serializes task/goal/routine ownership across Background/Overnight and
+- **Assigned source ownership:** PR #139 is merged on main as `76ec92b`, from
+  qualified candidate `51ce91b`. It serializes task/goal/routine ownership across Background/Overnight and
   across members of shared tasks. Waiting or expired leases retain ownership;
   explicit completion releases it. Migration 209 preserves existing active
   overlaps on upgrade and rejects new overlapping claims and identity changes.
-  Source combined checks passed 36/36; isolated candidate checks passed 13/13,
-  all workspace types, production build and formatting passed. Full local suite
-  session 4802 and CI 36983314493 remain live. The candidate is frozen on main
-  296a342; integrate and requalify current main character updates 7c96f70/e4370a3
-  before promotion. This remains unmerged and does not dispatch handoffs.
+  It preserves main's character updates and corrects six off-scale font sizes on
+  both clients without changing the shared scale. Current candidate checks passed
+  13/13 ownership/runtime and 17/17 character/style checks, all workspace types,
+  production builds and formatting. Full local suite passed 2,103/2,103; CI
+  36984587146 passed all four jobs, with 2,102 backend passes, zero failures and
+  one known Tesseract skip. Independent compiled processes proved ownership,
+  waiting and release behavior. Main's tree matches the tested candidate and CI
+  merge tree. This does not enable handoff dispatch or establish whole-app UI acceptance.
 - **Remaining agent scope:** truthful separate profiles/workspaces, durable
-  authorized Daytime/Overnight handoffs, typed rules, ownership/activity/budgets
+  authorized Daytime/Overnight handoffs, typed rules, receiving source inheritance,
+  activity/budgets
   and the complete cross-client surface ledger remain required. Shared storage
   and a saved reflection do not prove collaboration is implemented.
 
