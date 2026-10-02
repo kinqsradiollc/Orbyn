@@ -1270,3 +1270,27 @@ budget reservations. Public rule editor remains disabled. Preserve character
 work, Orbyn palette and mobile parity; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope.
+
+### Current assistant authority candidate gate — 2 October 2026
+
+Source **118f421** was extracted cleanly onto main **456e01a** as **d2484b5**.
+Built-in principal construction now respects stored access, Personal/team scope
+and outside-content restrictions. Every capability and generic read context
+reloads its active owned grant; disabled/paused/expired grants stop before the
+callback. Current and caller rights intersect, including team membership/role/
+agent policy, toolsets, trust and approval exceptions. Reads consult the primary;
+write checks hold the grant against changes. Typed rule revision fencing remains.
+
+Four valid baseline regressions failed before correction. Source extended suite
+passed **61/61**, backend types and scoped formatting/diff passed. These source
+results do not qualify the combined main candidate. Freeze current candidate for
+fresh full local tests, all workspace types/build/full format and current-head CI
+before promotion. No public rule editor or other unmerged feature is enabled.
+
+Receiving handoff identity/rules/connection/budget authorization, original
+provider-read snapshots and complete replay/outcome source-authorization proof
+remain open. Typed per-action read/external/notification policy and owner/editor
+UI are unfinished. Full real model/provider/embedding/plugin, Docs/Mermaid and
+whole-app web/desktop/mobile acceptance remains required. Saved web preview
+denial still blocks required visual QA; permission request is pending. Preserve
+character work and mobile parity. No deployment, cleanup or goal completion.
