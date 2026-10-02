@@ -77,3 +77,7 @@ interactions after human sign-in. Commit and attach a scoped publication-rendere
 PR, then full current-head qualification before promotion. Reconcile parent/main
 without conflicts. Continue all C1–C6/M1/D1/U1 gates; no premature goal completion
 or cleanup. Disk is low: check before large builds, do not reinstall dependencies.
+
+## Current ChatGPT model settings candidate
+
+Checkout codex/chatgpt-model-settings is a scoped extraction on main110, preserving4f/e7 and the two untracked settings previews. Owned executor discovery, shared remote state, settings UI on both clients, and remote default refresh before private inference are implemented. Combined67/67, all workspace types/build and owned formatting pass. Full formatting flags only preserved user preview; not staged/edited. Exact-head full/CI and authenticated executor/native/editor/UI acceptance remain required. Markdown89c3 has local2353/allCI success but native/editor acceptance remains open. Home5a and embed79fa full/CI remain live. Full C1-C6/M1/D1/U1 goal retained; no deploy/release/cleanup.

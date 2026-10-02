@@ -1,3 +1,4 @@
+import { ChatgptConnections } from "./ChatgptConnections";
 import { SettingsFocus, SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import {
@@ -274,15 +275,7 @@ export function SettingsView({
             <DevicesSettings report={report} />
           </SettingsSection>
         )}
-        {tab === "account" && (
-          <SettingsSection className="card settings-card">
-            <h2>AI provider</h2>
-            <p className="muted">
-              An admin connects the AI provider in Admin → AI, and its keys stay
-              on the server.
-            </p>
-          </SettingsSection>
-        )}
+        {tab === "account" && <ChatgptConnections userId={user?.id ?? ""} />}
         {tab === "account" && onOpenWhatsNew && (
           <SettingsSection className="card settings-card">
             <h2>What's new</h2>

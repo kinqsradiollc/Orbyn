@@ -1,11 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { ChatgptModelPicker } from "@orbyn/api-client";
 import {
   chatgptModelBinding,
   type ChatgptModelBinding,
   type ChatgptModelPreference,
 } from "@orbyn/core";
+
+const mobileRequire = createRequire(
+  new URL("../../mobile/package.json", import.meta.url),
+);
+const nativeRequire = createRequire(
+  mobileRequire.resolve("react-native/package.json"),
+);
+const { AbortController: NativeAbortController } =
+  nativeRequire("abort-controller");
 
 const binding: ChatgptModelBinding = {
   user_id: "00000000-0000-4000-8000-000000000001",
@@ -45,6 +55,20 @@ function fixture(
   });
   return { picker, writes };
 }
+test("default refresh accepts React Native signals and still rejects native cancellation", async () => {
+  const { picker } = fixture();
+  const controller = new NativeAbortController();
+  try {
+    await picker.load();
+    await picker.refreshPreference(controller.signal);
+    assert.equal(picker.snapshot().status, "ready");
+    controller.abort();
+    await assert.rejects(picker.refreshPreference(controller.signal));
+    assert.equal(picker.snapshot().status, "unavailable");
+  } finally {
+    picker.close();
+  }
+});
 test("settings and composer observe one account's catalog and versioned default", async () => {
   const { picker, writes } = fixture();
   let settings = 0;

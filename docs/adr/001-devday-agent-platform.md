@@ -472,3 +472,13 @@ fixture and real PDF font/bounds checks are recorded in
 `docs/reviews/evidence/diagram-readability.md`. Both clients' exports use this
 server rendering path. Editor/native preview parity and complete D1/U1 remain
 open; candidate needs full exact-head qualification before main promotion.
+
+### ChatGPT model settings promotion candidate — 3 October 2026
+
+First-party Settings on web/desktop/mobile expose owned device catalogs and
+account-bound defaults. The credential-owning runtime rereads the shared
+default before capturing inference; failed, foreign or regressed reads cannot
+use a cached model. Device discovery returns credential-free metadata for
+current owned registrations and is excluded from agent tools. This is a scoped
+candidate; evidence and remaining M1/U1 acceptance gates are recorded in
+`docs/reviews/evidence/chatgpt-model-settings.md`.
