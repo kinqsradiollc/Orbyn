@@ -31,6 +31,8 @@ import {
   colourable,
   diagramKind,
   docObjectLinks,
+  docReferenceLinks,
+  footnoteNumbers,
   fileSize,
   layoutFlowchart,
   isAudio,
@@ -64,6 +66,7 @@ import { openObject, pillKey, shortDue, usePagePills } from "./links";
 
 // ------------------------------------------------------------- footnotes ---
 
+import { FootnoteContext } from "./footnotes";
 export { FootnoteContext } from "./footnotes";
 
 /** A footnote's words, as the page lists them. */
@@ -1043,7 +1046,7 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
       {section.missing ? (
         <Text style={s.muted}>The part of the page this showed has gone.</Text>
       ) : (
-        <SectionBody blocks={section.blocks} />
+        <SectionBody blocks={section.blocks} references={section.references} />
       )}
       {section.more && (
         <Text style={s.muted}>Open the page to read the rest.</Text>
@@ -1057,10 +1060,32 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
  * body is read when it's needed rather than imported, since the body draws
  * embeds too.
  */
-function SectionBody({ blocks }: { blocks: DocBlock[] }) {
+function SectionBody({
+  blocks,
+  references,
+}: {
+  blocks: DocBlock[];
+  references?: [string, string][];
+}) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DocBody } = require("./DocBody") as typeof import("./DocBody");
-  return <DocBody content={blocks} />;
+  const context = useMemo(
+    () => ({
+      numbers: footnoteNumbers(blocks),
+      texts: new Map(
+        blocks
+          .filter((b) => b.type === "footnote")
+          .map((b) => [b.label, b.text]),
+      ),
+      references: references ? new Map(references) : docReferenceLinks(blocks),
+    }),
+    [blocks, references],
+  );
+  return (
+    <FootnoteContext.Provider value={context}>
+      <DocBody content={blocks} />
+    </FootnoteContext.Provider>
+  );
 }
 
 function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {

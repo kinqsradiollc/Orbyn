@@ -1153,7 +1153,9 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           value={{
             numbers,
             texts,
-            references: docReferenceLinks(section.blocks),
+            references: section.references
+              ? new Map(section.references)
+              : docReferenceLinks(section.blocks),
           }}
         >
           <div className="doc-embed-body">

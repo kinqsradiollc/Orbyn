@@ -5,6 +5,7 @@ import {
   blockPlainText,
   blockText,
   docAnchorInput,
+  docReferenceLinks,
   docExtractInput,
   docFoldsInput,
   docMergeInput,
@@ -15,6 +16,7 @@ import {
   linkMarkdown,
   newBlockId,
   plainText,
+  parseObjectHref,
   sectionOf,
   type Doc,
   type DocBlock,
@@ -34,7 +36,7 @@ import {
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { idParam } from "../../lib/params.js";
 import { announceDocChange } from "./live.js";
-import { readableLinks } from "../links/privacy.js";
+import { readableLinks, linkPrivacy } from "../links/privacy.js";
 import {
   announceDocs,
   COLUMNS,
@@ -543,9 +545,13 @@ export async function docStructureRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!doc) fail(404, "Document not found");
     const content = await withTaskState(db, id, doc.content ?? []);
+    // Project the complete source page before slicing: reference definitions
+    // outside the selected section still determine its links and privacy.
+    const privacy = await linkPrivacy(db, u.id, content);
+    const readable = privacy.value(content);
     const lines = block
-      ? sectionOf(content, block)
-      : content.slice(0, EMBED_LINES);
+      ? sectionOf(readable, block)
+      : readable.slice(0, EMBED_LINES);
     return {
       doc_id: id,
       title: doc.title || "Untitled",
@@ -554,7 +560,11 @@ export async function docStructureRoutes(app: FastifyInstance) {
       missing: !!block && !lines.length,
       more: !block && content.length > EMBED_LINES,
       // Words of links this reader can't open read "Private page" (D3aF).
-      blocks: await readableLinks(db, u.id, lines),
+      blocks: lines,
+      references: [...docReferenceLinks(readable)].filter(([, href]) => {
+        const target = parseObjectHref(href);
+        return !target || !privacy.hidden(target);
+      }),
     };
   });
 

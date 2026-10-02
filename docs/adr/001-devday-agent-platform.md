@@ -482,3 +482,13 @@ show them as page text. The scoped candidate preserves the existing publication
 and diagram changes on main1100ca98. See
 `docs/reviews/evidence/markdown-parity.md` for evidence and remaining acceptance
 gates. This does not close D1 or the wider UI scope.
+
+### Embedded reference context — 3 October 2026
+
+An embedded section resolves references from its authorized source page, even
+when the definitions are outside the selected heading. Privacy projection
+precedes section selection; inaccessible object destinations are excluded from
+the returned context. Both clients isolate embedded reference and footnote
+contexts from the containing page. See
+`docs/reviews/evidence/reference-embeds.md`; runtime/visual acceptance and full
+qualification remain open.
