@@ -4,6 +4,7 @@ import {
   mermaidThemeVariables,
   mermaidDiagramCss,
   visibleDiagramTicks,
+  diagramLabelTranslation,
   MERMAID_MAX_SVG,
 } from "@orbyn/core";
 
@@ -123,6 +124,18 @@ const receive = async (event) => {
     const scale = Math.min(1, (viewport - 24) / width) * zoom;
     drawing.style.width = `${width * scale}px`;
     drawing.style.height = `${height * scale}px`;
+    for (const node of drawing.querySelectorAll(".mindmap-node")) {
+      const circle = [...node.children].find(
+        (child) => child.tagName.toLowerCase() === "circle",
+      );
+      const label = node.querySelector("g.label");
+      if (!circle || !label) continue;
+      const transform = diagramLabelTranslation(label.getBBox(), {
+        x: Number(circle.getAttribute("cx") || 0),
+        y: Number(circle.getAttribute("cy") || 0),
+      });
+      if (transform) label.setAttribute("transform", transform);
+    }
     for (const axis of drawing.querySelectorAll("g")) {
       const labels = [...axis.children]
         .filter((node) => node.classList?.contains("tick"))

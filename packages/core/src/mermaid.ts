@@ -102,5 +102,26 @@ export function visibleDiagramTicks(
 /** Family-specific fixes for Mermaid selectors that style both boxes and text. */
 export function mermaidDiagramCss(palette: Record<string, string>): string {
   const vars = mermaidThemeVariables(palette);
-  return `text.journey-section, text.journey-section tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; }`;
+  return `text.journey-section, text.journey-section tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
+}
+
+/** Center a measured SVG label without assuming that its local origin is zero. */
+export function diagramLabelTranslation(
+  bounds: { x: number; y: number; width: number; height: number },
+  center: { x: number; y: number },
+): string | null {
+  if (
+    ![
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      center.x,
+      center.y,
+    ].every(Number.isFinite) ||
+    bounds.width <= 0 ||
+    bounds.height <= 0
+  )
+    return null;
+  return `translate(${center.x - bounds.x - bounds.width / 2}, ${center.y - bounds.y - bounds.height / 2})`;
 }

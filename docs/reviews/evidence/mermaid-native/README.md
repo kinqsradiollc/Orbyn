@@ -51,3 +51,15 @@ provider failure. The toast was dismissed for mindmap layout inspection.
 Native evidence does not qualify web/desktop, Android, light theme, large-font,
 malformed/large-content or complete Docs acceptance. The saved browser denial
 remains respected. These changes are not merged or deployed.
+
+## Mindmap alignment verification
+
+`mindmap-centered.png` records the actual native narrow preview after measured
+SVG bounding-box centering of circular root labels, token-colored connectors,
+and horizontal centering of narrow diagram canvases. Project is centered inside
+its circle, all four nodes and connectors are contained, and the controls do
+not overlap. The same label-placement helper is consumed by desktop and mobile.
+
+The focused Mermaid/runtime/download cohort passed 30/30 and all workspace
+typechecks completed with exit zero. This evidence covers the native fixture;
+web/desktop and remaining theme/platform acceptance are still required.

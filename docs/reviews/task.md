@@ -1719,3 +1719,16 @@ currently at mindmap, synthetic owner; unset-provider dev toast dismissed,
 composer was not edited/submitted by this work. Browser denial remains unresolved.
 Current mainc30c5fc, Docsd4ad16c pushed/types23focused passed but combined full/UI
 gates outstanding. No deployment/cleanup. Full ADR active.
+
+## Mindmap centering checkpoint — 2 October 2026
+
+After the user-requested ADR status report, resumed the current Mermaid work.
+Measured SVG bounds now center circular mindmap labels in both renderers;
+connector styling uses validated palette tokens and narrow mobile canvases are
+horizontally centered. Actual native screenshot mindmap-centered.png confirms
+contained nodes, readable labels and connectors, and non-overlapping controls.
+
+Pipeline89402 terminated zero: focused cohort30/30 and all workspace types.
+These fixes remain source-branch work until checkpoint qualification; no main
+merge or deployment is claimed. Whole ADR remains incomplete and active.
+Free disk space is approximately747MiB; avoid large builds while constrained.

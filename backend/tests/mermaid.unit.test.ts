@@ -6,6 +6,7 @@ import {
   prepareMermaidSource,
   mermaidThemeVariables,
   visibleDiagramTicks,
+  diagramLabelTranslation,
   colors,
   darkColors,
   MERMAID_MAX_SOURCE,
@@ -45,6 +46,7 @@ test("the bundled renderer matches the current security source", () => {
   );
   assert.match(asset.html, /connect-src 'none'/);
   assert.match(asset.html, /default-src 'none'/);
+  assert.match(asset.html, /width:max-content;margin:0 auto/);
 });
 
 test("all ten diagram acceptance sources pass shared rendering bounds", () => {
@@ -129,4 +131,28 @@ test("tick measurement accepts non-enumerable DOMRect coordinates", () => {
     { left: { get: () => 10 }, right: { get: () => 40 } },
   ) as { left: number; right: number };
   assert.deepEqual(visibleDiagramTicks([box]), [0]);
+});
+
+test("mindmap circular labels center their actual local bounds", () => {
+  assert.equal(
+    diagramLabelTranslation(
+      { x: 0, y: 0, width: 100, height: 20 },
+      { x: 0, y: 0 },
+    ),
+    "translate(-50, -10)",
+  );
+  assert.equal(
+    diagramLabelTranslation(
+      { x: -5, y: -12, width: 100, height: 20 },
+      { x: 10, y: 20 },
+    ),
+    "translate(-35, 22)",
+  );
+  assert.equal(
+    diagramLabelTranslation(
+      { x: 0, y: 0, width: NaN, height: 20 },
+      { x: 0, y: 0 },
+    ),
+    null,
+  );
 });

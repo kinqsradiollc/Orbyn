@@ -30,7 +30,7 @@ const result = await build({
   legalComments: "inline",
 });
 const script = result.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");
-const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;background:transparent}body{overflow:auto}#diagram{padding:12px;width:max-content}svg{display:block}</style></head><body><div id="diagram"></div><script>${script}</script></body></html>`;
+const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'"><style>html,body{margin:0;background:transparent}body{overflow:auto}#diagram{padding:12px;width:max-content;margin:0 auto}svg{display:block}</style></head><body><div id="diagram"></div><script>${script}</script></body></html>`;
 await mkdir(`${root}assets`, { recursive: true });
 await writeFile(
   `${root}assets/mermaid-runtime.json`,

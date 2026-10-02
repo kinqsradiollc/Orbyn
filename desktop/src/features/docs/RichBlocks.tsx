@@ -45,6 +45,7 @@ import {
   mermaidThemeVariables,
   mermaidDiagramCss,
   visibleDiagramTicks,
+  diagramLabelTranslation,
   docObjectLinks,
   fileSize,
   isAudio,
@@ -1040,6 +1041,18 @@ export function Diagram({ text }: { text: string }) {
       .then(({ svg }) => {
         if (!live || !box.current) return;
         box.current.innerHTML = svg;
+        for (const node of box.current.querySelectorAll("svg .mindmap-node")) {
+          const circle = [...node.children].find(
+            (child) => child.tagName.toLowerCase() === "circle",
+          );
+          const label = node.querySelector<SVGGElement>("g.label");
+          if (!circle || !label) continue;
+          const transform = diagramLabelTranslation(label.getBBox(), {
+            x: Number(circle.getAttribute("cx") || 0),
+            y: Number(circle.getAttribute("cy") || 0),
+          });
+          if (transform) label.setAttribute("transform", transform);
+        }
         for (const axis of box.current.querySelectorAll("svg g")) {
           const labels = [...axis.children]
             .filter((node) => node.classList.contains("tick"))

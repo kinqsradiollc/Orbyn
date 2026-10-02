@@ -7,6 +7,7 @@ import {
   mermaidThemeVariables,
   mermaidDiagramCss,
   visibleDiagramTicks,
+  diagramLabelTranslation,
   MERMAID_MAX_SVG,
   colors,
 } from "@orbyn/core";
@@ -58,6 +59,8 @@ function runtime(
     mermaidThemeVariables,
     mermaidDiagramCss,
     visibleDiagramTicks,
+    diagramLabelTranslation,
+    diagramLabelTranslation,
     MERMAID_MAX_SVG,
     window: {
       parent,
