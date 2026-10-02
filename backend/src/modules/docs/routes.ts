@@ -790,7 +790,10 @@ export async function docRoutes(app: FastifyInstance) {
         u.id,
         placed.map((c) =>
           stored
-            ? { ...c, text: keepLinkLabels(c.text, stored, shownPrivate) }
+            ? {
+                ...c,
+                text: keepLinkLabels(c.text, stored, shownPrivate, c.block_id),
+              }
             : c,
         ),
         note,

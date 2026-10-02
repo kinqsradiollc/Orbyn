@@ -1930,3 +1930,116 @@ changed-file formatting and diff checks pass. Logs /tmp/orbyn-frontmatter-final-
 A separate marked orbyn_frontmatter_20261003_test database is prepared for the
 current frozen source full suite. Its result must be recorded separately when
 terminal; do not reuse the earlier 2329-test proof for this new head.
+
+## Current follow-up — 3 October, reference links
+
+Source candidate is frozen at 22e5596 on codex/devday-model-catalog. The previous
+6a48853 full suite terminated: 2345/2346 passed, one failure in the font-scale
+check caused by the Home clamp heading. No skipped/cancelled tests,580004ms.
+22e5596 copies the independently tested public Home type-scale correction; its
+focused style/Markdown checks passed and full suite session11430 is running.
+Log /tmp/orbyn-source-22e5596-full-tests.log, marked test database remains
+orbyn_frontmatter_20261003_test. Do not mutate this frozen source during the suite.
+
+Public Home PR149 head caa1979 fixes the same heading with36px wide/24px narrow.
+Style/character17/17 and desktop build pass; new CI must pass before merging.
+Earlier73087df CI failed only the font-scale check. Main remains c30c5fc at the
+last confirmed check. No merge/deployment is claimed.
+
+Reused the clean, already integrated character checkout at
+/Users/anhdang/.codex/worktrees/character/Orbyn for codex/docs-reference-links,
+based on6a48853 with the same type-scale fix as175d696. Original codex/character
+e4370a3 remains preserved. This branch has UNCOMMITTED reference-link work:
+core parser/collector/export, actual inline renderer tests, both client contexts
+and editor/embedded-page integration. Read-only definitions stay source, safe
+full/collapsed/shortcut links resolve in page context, literals/unsafe URLs are
+rejected, first duplicate wins, external publication filters are reused.
+55 focused style/Markdown/render tests passed, both actual inline renderers
+follow reference heading targets. All workspace types/production build passed
+before the test-only renderer fixture additions; the local missing WebView
+package was restored using the existing dependency symlink, no install/lock edit.
+Logs /tmp/orbyn-reference-{combined-tests,final-types,final-build}.log.
+
+DO NOT COMMIT/SHIP REFERENCE WORK YET: the investigation found existing
+objectRefsIn/redactLine/redactValue and keepLinkLabels recognize only inline
+object links. Document reference definitions can point to orbyn objects, but
+references need page-scoped target collection, private label redaction, correct
+selection offsets and save restoration without cross-document reference leakage.
+Next action is privacy regressions against actual document read/save/publication
+paths, then extend these helpers/backend indexes as needed. Preserve full D1
+scope; do not replace this with external-only reference support. Native terms
+confirmation and visual acceptance remain pending. Full ADR remains incomplete.
+
+## Latest authoritative state — 3 October reference privacy
+
+Public Home PR149 is MERGED as main ad90e4b; all four exact-head caa1979 CI jobs
+passed. Local main fast-forward preserved user mobile/app.json/untracked files.
+Source full 22e5596 is terminal PASS2346/2346, no fail/skip/cancel,572686ms,
+session11430, /tmp/orbyn-source-22e5596-full-tests.log. All four CI jobs on22e5596
+also passed. Source reconciled with main as2099f1c: only ADR text had a conflict,
+resolved by preserving all sections; git diff22e5596 is empty (identical full tree).
+Source remains draft PR148, no broader ADR completion or deployment claimed.
+
+Reference work remains UNCOMMITTED in character checkout oncodex/docs-reference-links.
+Private reference definitions/keys/tooltips and display labels are now neutralized
+per structured document, and save restoration recovers original reference syntax
+without losing unrelated edits. Object target extraction sees reference definitions;
+quote-label lookup sees every reference label; comment source/shown offset mapping
+shares the exact projection. Line-level proposals take their originating block ID.
+Both clients' actual reference-to-heading renderers are tested. Current pure
+privacy/link/Markdown cohort33/33; separate range/proposal/renderer cohort20/20.
+Real read/export/save/comment integration19/19 passed on isolated marked
+orbyn_references_20261003_test, log/tmp/orbyn-reference-privacy-integration-2.log.
+Initial integration fixture used text instead of body oncomments and was corrected.
+All workspace typechecks passed before the final linear-time span-lookup change;
+rerun types/build/focused checks before committing. Do not claim current full suite.
+
+STILL REQUIRED BEFORE REFERENCE CHECKPOINT: current SQL object_links index only
+recognizes inline links; add regression/migration or a shared writer path for
+reference definitions and actual usage, preserving literal-code/math exclusions
+and first-definition semantics. Inspect task conversion and Linked here/unlinked
+mentions contexts so original reference labels cannot leak outside document reads.
+More precise standalone-string/context projection and publication/search/history
+coverage may be needed. Complete real save/revision/concurrent/privacy cases and
+qualified main-based checkpoint/fullsuite, then native interaction acceptance.
+Native terms confirmation is still pending; do not accept or seed around it.
+Whole M1/D1/U1/C1–C6 ADR remains active and incomplete, no cleanup/release/deploy.
+
+Derived reference follow-up: task conversion now resolves authorized display text
+from the complete source document and produces Review Private page for a private
+reference. The actual read/export/save/comment/task integration cohort passes20/20,
+no skipped tests, /tmp/orbyn-reference-derived-integration.log. All workspace types
+passed in terminal57676 (/tmp/orbyn-reference-derived-types.log). Linked here now
+loads source document definitions per page, redacts before clipping a source block,
+and uses its own page context instead of borrowing another page’s reference map.
+Final sourceText clipping change still needs typecheck/focused proof. SQL incoming
+link indexing still needs a regression and migration/shared projection; source
+references remain uncommitted pending that proof and full qualification. No native
+acceptance, overall ADR completion or new main merge is claimed for reference work.
+
+Home follow-up: public copy-only checkpoint235444b pushed in PR150. Concrete hero
+and agent review destinations replace vague slogans; Muse and Dots primary
+sources re-read. Build/prerender, seven character tests, unique anchors and
+scoped format passed. Signed-in web/native copy aligned in source29ca729,
+pushed to draft PR148; ten actual component tests and both client types pass.
+Neither checkpoint establishes visual acceptance or full ADR completion.
+
+Reference index: migration214 initially failed PostgreSQL regex repetition limit
+on999; changed unlimited regex matching plus explicit999-character guards.
+Actual privacy/index API cohort now21/21 passes, no skips,
+/tmp/orbyn-reference-index-integration-2.log. Migration and reference source
+remain uncommitted pending SQL parity/security review and full qualification.
+
+Reference historical privacy follow-up: a new real comments API regression
+proved private tooltip titles leaked after their definition was removed. Core
+collects all three quoted title forms and the backend selects reference
+definitions/actual usage from each historical page independently. Initial API
+cohort22/23 failed this regression; fixed cohort23/23 passes with no skips in
+/tmp/orbyn-reference-history-api-tests.log. Database/parser literal and long-label
+parity is included. Focused reference/actual-renderer16/16 passes. Current all
+workspace types and production build passed (qualified-types/build logs).
+Full suite is confirmed running in session83262,
+/tmp/orbyn-reference-full-tests.log; await its terminal result. Scope remains
+full ADR, not completed by these cohorts. Reference checkpoint can be committed
+as a candidate; main delivery still requires qualified isolation/reconciliation,
+CI and the relevant runtime/visual acceptance. No native consent was accepted.

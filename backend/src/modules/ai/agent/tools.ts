@@ -2,6 +2,7 @@ import { parseProjectDraft } from "../project-draft.js";
 import { projectDraftSchema, type ProjectDraft } from "@orbyn/core";
 import { z } from "zod";
 import {
+  docReferenceLinks,
   blockText,
   keepLinkLabels,
   type RedactedLine,
@@ -2188,7 +2189,7 @@ async function proposeDocEdit(
     for (const b of doc.content) {
       if (!b.id) continue;
       const kept = blockText(b);
-      const line = links.line(kept);
+      const line = links.line(kept, docReferenceLinks(doc.content));
       const at = line.text.indexOf(change.find);
       if (at !== -1) {
         found = { id: b.id, kept, line, at };
@@ -2209,7 +2210,7 @@ async function proposeDocEdit(
       kind: change.replace ? "replace" : "delete",
       range_start: start,
       range_end: end,
-      text: keepLinkLabels(change.replace, doc.content, links.hidden),
+      text: keepLinkLabels(change.replace, doc.content, links.hidden, found.id),
       quote: kept.slice(start, end),
     });
     made.push(change.find);

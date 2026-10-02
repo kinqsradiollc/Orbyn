@@ -50,11 +50,11 @@ export function Inline({
   style?: object;
   marks?: Mark[];
 }) {
-  // A #tag stands apart from the words around it, on a quiet ground.
-  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
-    tagRuns(run, text),
-  );
   const notes = useContext(FootnoteContext);
+  // A #tag stands apart from the words around it, on a quiet ground.
+  const runs: TaggedRun[] = parseDocInline(text, notes.references).flatMap(
+    (run) => tagRuns(run, text),
+  );
   const navigation = useContext(DocNavigationContext);
   const followLink = (href: string) => {
     const destination = docLinkDestination(href, webOrigin);

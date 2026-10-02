@@ -19,7 +19,8 @@ import { helpers, type Person } from "./mcp-helpers.js";
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { linkMarkdown } = await import("@orbyn/core");
+const { linkMarkdown, docReferenceLinks, docReferenceSpans } =
+  await import("@orbyn/core");
 
 const { runTool } = await import("../src/modules/ai/agent/tools.js");
 
@@ -676,4 +677,247 @@ test("a title quoted as plain words stays hidden after its link leaves the page"
     .json()
     .find((c: { id: string }) => c.id === made.json().id);
   assert.equal(hers.quote, "Budget 2027 private");
+});
+
+test("document references retain private read/export/save/range protection", async () => {
+  const created = await call(ana, "POST", "/docs", {
+    title: "Reference privacy",
+    team_id: lab,
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const page = created.json();
+  const content = [
+    para(
+      `[Budget 2027 private]: orbyn://doc/${personalId} "Budget 2027 private"`,
+      "refdef",
+    ),
+    para("Review [Budget 2027 private] before tomorrow.", "refline"),
+  ];
+  const saved = await call(ana, "PUT", `/docs/${page.id}`, {
+    version: page.version,
+    content,
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  assert.equal((await call(null, "GET", `/docs/${page.id}`)).statusCode, 401);
+  assert.equal(
+    (await call(stranger, "GET", `/docs/${page.id}`)).statusCode,
+    404,
+  );
+  const seen = await call(ben, "GET", `/docs/${page.id}`);
+  assert.equal(seen.statusCode, 200, seen.body);
+  noSecrets(seen.body, "reference read");
+  for (const format of ["md", "html", "txt"]) {
+    const exported = await call(
+      ben,
+      "GET",
+      `/docs/${page.id}/export?format=${format}`,
+    );
+    assert.equal(exported.statusCode, 200, exported.body);
+    noSecrets(exported.body, `reference export ${format}`);
+  }
+  const visible = seen.json();
+  const line = visible.content[1].text;
+  const start = line.indexOf("tomorrow");
+  const comment = await call(ben, "POST", `/docs/${page.id}/comments`, {
+    body: "Check this date",
+    block_id: "refline",
+    range_start: start,
+    range_end: start + 8,
+    quote: "tomorrow",
+  });
+  assert.equal(comment.statusCode, 201, comment.body);
+  const ownerComments = await call(ana, "GET", `/docs/${page.id}/comments`);
+  const remark = ownerComments
+    .json()
+    .find((row: { id: string }) => row.id === comment.json().id);
+  assert.equal(remark.range_start, content[1].text.indexOf("tomorrow"));
+  const updated = await call(ben, "PUT", `/docs/${page.id}`, {
+    version: visible.version,
+    content: visible.content.map((block: { id: string; text: string }) =>
+      block.id === "refline"
+        ? { ...block, text: "Updated: " + block.text }
+        : block,
+    ),
+  });
+  assert.equal(updated.statusCode, 200, updated.body);
+  noSecrets(updated.body, "reference saved projection");
+  const owner = (await call(ana, "GET", `/docs/${page.id}`)).json();
+  assert.equal(owner.content[0].text, content[0].text);
+  assert.equal(owner.content[1].text, "Updated: " + content[1].text);
+  await call(ana, "DELETE", `/docs/${page.id}`);
+});
+
+test("tasks made from reference-bearing checklist lines use the maker's authorized reading", async () => {
+  const created = await call(ana, "POST", "/docs", {
+    title: "Reference checklist",
+    team_id: lab,
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const page = created.json();
+  const saved = await call(ana, "PUT", `/docs/${page.id}`, {
+    version: page.version,
+    content: [
+      para(`[Budget 2027 private]: orbyn://doc/${personalId}`, "def"),
+      {
+        id: "todo",
+        type: "todo",
+        done: false,
+        text: "Review [Budget 2027 private]",
+      },
+    ],
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const made = await call(ben, "POST", `/docs/${page.id}/tasks`, {
+    block_ids: ["todo"],
+  });
+  assert.equal(made.statusCode, 200, made.body);
+  noSecrets(made.body, "reference checklist task");
+  assert.equal(made.json().items[0].title, "Review Private page");
+  await call(ana, "DELETE", `/docs/${page.id}`);
+});
+
+test("reference index finds actual usage, honors first definitions and keeps Linked here private", async () => {
+  const created = await call(ana, "POST", "/docs", {
+    title: "Reference index",
+    team_id: lab,
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const page = created.json();
+  const content = [
+    para(`[Open]: orbyn://doc/${openId}`, "open-def"),
+    para(`[Budget 2027 private]: orbyn://doc/${personalId}`, "private-def"),
+    para("[Shadow]: https://example.test", "shadow-first"),
+    para(`[shadow]: orbyn://doc/${personalId}`, "shadow-second"),
+    para(
+      "Read [Open], [other words][open], [Open][] and [Budget 2027 private].",
+      "live",
+    ),
+    para("`[Open]`", "literal-code"),
+    para("$[Open]$", "literal-math"),
+    para("\\[Open]", "escaped"),
+    para("![Open][]", "image"),
+    para("[Shadow]", "shadow"),
+    { id: "fence", type: "code", lang: "md", text: "[Open]" },
+  ];
+  const saved = await call(ana, "PUT", `/docs/${page.id}`, {
+    version: page.version,
+    content,
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const rows = (
+    await pool.query<{ source_block: string; target_id: string }>(
+      "SELECT source_block, target_id FROM object_links WHERE source_kind = 'doc' AND source_id = $1 AND link_kind = 'link' ORDER BY target_id",
+      [page.id],
+    )
+  ).rows;
+  assert.equal(rows.length, 2, JSON.stringify(rows));
+  assert.ok(
+    rows.every((row) => row.source_block === "live"),
+    JSON.stringify(rows),
+  );
+  const here = await call(ben, "GET", `/links/here?kind=doc&id=${openId}`);
+  assert.equal(here.statusCode, 200, here.body);
+  noSecrets(here.body, "reference Linked here");
+  const entry = here
+    .json()
+    .items.find((row: { id: string }) => row.id === page.id);
+  assert.ok(entry, here.body);
+  assert.equal(entry.context.linked, "Open");
+  const changed = await call(ana, "PUT", `/docs/${page.id}`, {
+    version: saved.json().version,
+    content: [para("References removed", "live")],
+  });
+  assert.equal(changed.statusCode, 200, changed.body);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM object_links WHERE source_kind = 'doc' AND source_id = $1 AND link_kind = 'link'",
+        [page.id],
+      )
+    ).rowCount,
+    0,
+  );
+  await call(ana, "DELETE", `/docs/${page.id}`);
+});
+
+test("private reference tooltip quotes stay protected after their source definition is removed", async () => {
+  const page = (
+    await call(ana, "POST", "/docs", {
+      title: "Reference tooltip history",
+      team_id: lab,
+      content: [
+        para(
+          `[Budget]: orbyn://doc/${personalId} "Distinct confidential tooltip"`,
+          "definition",
+        ),
+        para("[Budget]", "usage"),
+      ],
+    })
+  ).json();
+  const made = await call(ana, "POST", `/docs/${page.id}/comments`, {
+    body: "Review",
+    block_id: "no-such-line",
+    quote: "Distinct confidential tooltip",
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const changed = await call(ana, "PUT", `/docs/${page.id}`, {
+    version: page.version,
+    content: [para("Removed definition", "usage")],
+  });
+  assert.equal(changed.statusCode, 200, changed.body);
+  const seen = await call(ben, "GET", `/docs/${page.id}/comments`);
+  assert.equal(seen.statusCode, 200, seen.body);
+  assert.doesNotMatch(seen.body, /Distinct confidential tooltip/);
+  assert.equal(
+    seen.json().find((row: { id: string }) => row.id === made.json().id).quote,
+    "Private page",
+  );
+  const own = await call(ana, "GET", `/docs/${page.id}/comments`);
+  assert.equal(
+    own.json().find((row: { id: string }) => row.id === made.json().id).quote,
+    "Distinct confidential tooltip",
+  );
+  await call(ana, "DELETE", `/docs/${page.id}`);
+});
+
+test("database reference projection agrees with the parser on literal and label boundaries", async () => {
+  const cases = [
+    "[Open]",
+    "[Different][open]",
+    "[Open][]",
+    "`[Open]`",
+    "``[Open]``",
+    "`unclosed [Open]",
+    "\\[Open]",
+    "![Open][]",
+    "$[Open]$",
+    "$unclosed [Open]",
+    "[Open](https://example.test)",
+    "[src: Open]",
+    "[missing]",
+    "[O😀]",
+    "[" + "a".repeat(999) + "]",
+    "[" + "a".repeat(1000) + "]",
+  ];
+  for (const text of cases) {
+    const blocks = [
+      para(`[Open]: orbyn://doc/${openId}`, "definition"),
+      para(`[O😀]: orbyn://doc/${openId}`, "unicode"),
+      para(`[${"a".repeat(999)}]: orbyn://doc/${openId}`, "long"),
+      para(text, "usage"),
+    ];
+    const expected = docReferenceSpans(text, docReferenceLinks(blocks)).length;
+    const actual = (
+      await pool.query("SELECT * FROM doc_reference_targets($1::jsonb)", [
+        JSON.stringify(blocks),
+      ])
+    ).rows;
+    assert.equal(actual.length, expected, text);
+    assert.ok(
+      actual.every(
+        (row) => row.block_id === "usage" && row.target_id === openId,
+      ),
+      text,
+    );
+  }
 });

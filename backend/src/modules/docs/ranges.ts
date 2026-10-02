@@ -1,5 +1,6 @@
 import {
   blockText,
+  docReferenceLinks,
   hiddenLinkLabels,
   objectRefsInValue,
   redactQuote,
@@ -60,6 +61,7 @@ export async function carryRanges<T extends Ranged>(
   // Past links too, so a line cut mid-address whose link has since left
   // the page still reads as its own words to someone who can open it.
   const known = way === "shown" ? objectRefsInValue([content, past]) : [];
+  const references = docReferenceLinks(content);
   return rows.map((row) => {
     const block = row.block_id
       ? content.find((b) => b.id === row.block_id)
@@ -69,7 +71,7 @@ export async function carryRanges<T extends Ranged>(
         ? { start: row.range_start, end: row.range_end }
         : null;
     const stored = block ? blockText(block) : "";
-    const line = links.line(stored);
+    const line = links.line(stored, references);
     if (way === "stored") {
       if (!ranged || !line.changed) return row;
       const start = line.toStored(ranged.start);
@@ -118,15 +120,16 @@ const PAST_STATES = 50;
 /**
  * The links (as `[words](orbyn://…)`) the page's recent past states held,
  * each once. Only the link text is read out of the database, never whole
- * past pages, so this stays small however long the page is. Words holding
+ * past pages. Reference definitions and their resolved usage are selected
+ * separately as page-scoped blocks. Inline words holding
  * a quote mark or backslash are skipped (their JSON escapes would need
  * undoing); such a title is still hidden wherever its link is. A link
  * added and taken out again within one sitting never reaches the history
  * (only a sitting's first state is kept), so its title quoted as plain
  * words is the one case still given back as quoted.
  */
-async function pastLinks(db: Queryable, docId: string): Promise<string[]> {
-  return (
+async function pastLinks(db: Queryable, docId: string): Promise<unknown[]> {
+  const inline = (
     await db.query<{ link: string }>(
       `SELECT DISTINCT '[' || m[1] || '](' || m[2] || ')' AS link
          FROM (SELECT content::text AS t FROM doc_versions
@@ -135,6 +138,25 @@ async function pastLinks(db: Queryable, docId: string): Promise<string[]> {
       [docId, PAST_STATES, PAST_LINK],
     )
   ).rows.map((r) => r.link);
+  // Keep each historical page separate: a reused reference label must never
+  // borrow another revision's destination. Select definitions and actual usage,
+  // not arbitrary prose or code, and let the shared projection read exact JSON
+  // strings (including quote marks and backslashes in private titles).
+  const references = await db.query<{ content: DocBlock[] }>(
+    `SELECT selected.content
+       FROM (SELECT content FROM doc_versions WHERE doc_id = $1
+             ORDER BY created_at DESC LIMIT $2) v
+       CROSS JOIN LATERAL (
+         SELECT coalesce(jsonb_agg(b.value ORDER BY b.ordinality), '[]'::jsonb) AS content
+           FROM jsonb_array_elements(v.content) WITH ORDINALITY b
+          WHERE (b.value->>'type' = 'paragraph' AND b.value->>'text' ~ '^ {0,3}\\['
+                 AND b.value->>'text' ~ '\\]:')
+             OR coalesce(nullif(b.value->>'id', ''), '#' || (b.ordinality - 1)) IN
+                (SELECT block_id FROM doc_reference_targets(v.content))
+       ) selected`,
+    [docId, PAST_STATES],
+  );
+  return [...inline, ...references.rows.map((row) => row.content)];
 }
 
 /** A picker link inside a page's JSON text (Postgres regular expression). */

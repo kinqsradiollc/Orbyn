@@ -25,6 +25,7 @@ import {
   Diagram,
   EmbedBlock,
   FileCard,
+  FootnoteContext,
   FootnoteLine,
   FootnoteRef,
   ImageBlock,
@@ -71,8 +72,9 @@ function Pieces({ run, marks }: { run: DocInline; marks: Mark[] }) {
  */
 export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
   const navigation = useContext(DocNavigationContext);
+  const { references } = useContext(FootnoteContext);
   // A #tag stands apart from the words around it, drawn as a quiet chip.
-  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
+  const runs: TaggedRun[] = parseDocInline(text, references).flatMap((run) =>
     tagRuns(run, text),
   );
   return (

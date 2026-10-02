@@ -7,6 +7,7 @@ import {
   listLayout,
   mathToText,
   parseDocInline,
+  docReferenceLinks,
   parseTable,
   serializeDoc,
   type DocBlock,
@@ -63,6 +64,8 @@ const escapeHtml = (text: string) =>
 
 /** How HTML is written for a page's lines. */
 export type HtmlOptions = {
+  /** Safe page-scoped reference definitions. */
+  references?: ReadonlyMap<string, string>;
   /** Where a picture in the page can be fetched from, when it can. */
   fileUrl?: (id: string) => string | null;
   /** The number each footnote shows (`footnoteNumbers`). */
@@ -92,7 +95,7 @@ const TINT_HEX = { amber: "#fbf1dc", green: "#e7f0ea", rose: "#fbefea" };
 
 /** One line's styled runs as HTML. Maths is written as symbols. */
 function inlineHtml(text: string, o: HtmlOptions = {}): string {
-  return parseDocInline(text)
+  return parseDocInline(text, o.references)
     .map((run: DocInline) => {
       const body = escapeHtml(run.math ? mathToText(run.text) : run.text);
       if (run.math)
@@ -157,6 +160,7 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
   const opts = {
     ...o,
     notes,
+    references: o.references ?? docReferenceLinks(blocks),
     linkUrl: (href: string) => {
       // Local heading links refer only to the already authorized exported page.
       // Keep legacy h-N targets used by published contents lists.

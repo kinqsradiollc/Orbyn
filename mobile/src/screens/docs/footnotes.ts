@@ -7,6 +7,7 @@ import { createContext } from "react";
  * every kind of block.
  */
 export const FootnoteContext = createContext<{
+  references?: ReadonlyMap<string, string>;
   numbers: Map<string, number>;
   texts: Map<string, string>;
   onShow?: (n: string, words: string) => void;

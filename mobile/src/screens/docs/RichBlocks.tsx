@@ -25,6 +25,9 @@ import {
   colourCode,
   colourable,
   docObjectLinks,
+  docReferenceLinks,
+  footnoteNumbers,
+  footnoteTexts,
   fileSize,
   isAudio,
   PAGE_FILE_TYPES,
@@ -56,6 +59,7 @@ import { openObject, pillKey, shortDue, usePagePills } from "./links";
 
 // ------------------------------------------------------------- footnotes ---
 
+import { FootnoteContext } from "./footnotes";
 export { FootnoteContext } from "./footnotes";
 
 /** A footnote's words, as the page lists them. */
@@ -934,7 +938,17 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
 function SectionBody({ blocks }: { blocks: DocBlock[] }) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DocBody } = require("./DocBody") as typeof import("./DocBody");
-  return <DocBody content={blocks} />;
+  return (
+    <FootnoteContext.Provider
+      value={{
+        references: docReferenceLinks(blocks),
+        numbers: footnoteNumbers(blocks),
+        texts: footnoteTexts(blocks),
+      }}
+    >
+      <DocBody content={blocks} />
+    </FootnoteContext.Provider>
+  );
 }
 
 function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {

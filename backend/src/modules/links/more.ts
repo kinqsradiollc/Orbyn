@@ -1,4 +1,5 @@
 import {
+  docReferenceLinks,
   blockPlainText,
   docPreview,
   fail,
@@ -374,7 +375,7 @@ export async function unlinkedMentions(
       for (const name of names) {
         const found = findMention(b.text, name);
         if (!found) continue;
-        const line = links.line(b.text);
+        const line = links.line(b.text, docReferenceLinks(d.content ?? []));
         hit = {
           doc_id: d.id,
           title: d.title || "Untitled",
