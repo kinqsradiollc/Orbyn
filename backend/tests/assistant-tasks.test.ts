@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { MAX_AGENT_TASKS } from "@orbyn/core";
 import "./setup.js";
+import { startTestAssistantRuntime } from "./helpers/assistant-runtime.js";
 
 /**
  * W3: handing a task to Orbyn. A fake provider stands in for the model, so
@@ -45,6 +46,7 @@ const { scanAssistantTasks } = await import("../src/worker/assistant-tasks.js");
 
 const app = await buildApp();
 const users: string[] = [];
+let stopBackground: (() => Promise<void>) | undefined;
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 let address = 0;
 const nextAddress = () =>
@@ -159,9 +161,11 @@ before(async () => {
     "UPDATE ai_settings SET provider_id=$1, model='assistant-task-test' WHERE id",
     [providerId],
   );
+  stopBackground = await startTestAssistantRuntime("background");
 });
 
 after(async () => {
+  await stopBackground?.();
   await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [users]);
   await pool.query(
     "UPDATE ai_settings SET provider_id=NULL, model='' WHERE id",
