@@ -745,3 +745,32 @@ mobile-toolbar checks passed, no fail/skip/cancel, 1,759 ms; all workspace types
 passed, **33840** zero. Logs: `/tmp/orbyn-doc-fragment-renderer-{tests,types}.log`.
 Both follow-ups remain unmerged and require runtime acceptance. Disk about
 **2.1 GiB**; avoid unnecessary large builds. Full ADR remains active.
+
+## Latest checkpoint and live Docs handles
+
+ADR-only main checkpoint **f7a3667** is pushed (exact two-document patch from
+source **968ad3d**). It records merged ownership **76ec92b**, not deployment.
+The main working tree still preserves the user's mobile configuration/untracked
+files. PR #139's body now records its merged state and terminal qualification.
+
+Docs CI **36985225329** on **788161e** is terminal green: all jobs passed;
+backend 2,100 passed, zero failed and one Tesseract skip, 2,101 total. It checked
+merge **47ccffc** with main **5559758**. Log `/tmp/orbyn-docs-788161e-ci.log`.
+After terminal results, the Docs candidate merged latest main **f7a3667** without
+conflicts and cherry-picked Unicode link source **c608f54** as **c922d34** and
+owning-page href source **5e1da8d** as **514679f**. Candidate **514679f** is pushed
+and frozen on PR #138. **56/56** renderer/navigation/rich-copy/mobile-toolbar/
+character/style checks passed, zero fail/skip/cancel, 2,853 ms;
+`/tmp/orbyn-docs-514679f-focused.log`. Remaining types/build/format pipeline
+**91141** is live, log prefix `/tmp/orbyn-docs-514679f-`. Full local suite **17106**
+is live on newly created marked `orbyn_docs_514679f_test`, log
+`/tmp/orbyn-docs-514679f-full-tests.log`. CI **36986507597** is verified live.
+Do not modify the candidate source or duplicate runs while qualification runs.
+
+The old owned native API PID **26847** was stopped and restarted from current
+candidate as **66033**, 8027; log `/tmp/orbyn-docs-514679f-native-api.log`. Startup
+migrates the existing synthetic QA DB to include merged migration 209. Metro
+**71570** remains 8087, watching current candidate source. A fresh native reload
+is still required before claiming current-head interaction. The iOS Save Password
+prompt remains pending the user's **Not Now** dismissal, and the saved browser
+preview denial remains unresolved. PR #138 is unmerged; keep its UI gates open.
