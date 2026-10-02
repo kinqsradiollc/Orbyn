@@ -699,6 +699,8 @@ export const PUBLIC: string[] = [
   // password form for a page that has one.
   "GET /p/:slug",
   "GET /p/:slug/:doc",
+  // Publication-scoped media rechecks live publication/password/page/ref authority.
+  "GET /p/:slug/media/:doc/:file",
   "POST /p/:slug/unlock",
   "GET /mcp",
   "DELETE /mcp",
