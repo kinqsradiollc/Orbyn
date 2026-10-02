@@ -562,3 +562,21 @@ and production build pass. DOM geometry is synthetic; offline Chrome checks are
 engine evidence, not app screenshots. Native sharing, user web visual review,
 PDF/publication/server-direct rendering, latest-unsaved-revision export and full
 D1/U1 acceptance remain open. This does not close the ADR.
+
+### Home responsibilities before decoration — 3 October 2026
+
+Rechecked primary product references: [Muse's design account](https://introducing.muse.ai/)
+puts work status, activity and approved permissions behind the avatar, and describes
+notifications for meaningful results or input. [Dots documentation](https://learn.chatgpt.com/docs/dots)
+describes ongoing responsibilities between conversations. Use those interaction
+patterns to explain Orbyn's existing work; they do not prove Orbyn has the same tools.
+
+Public Home now gives Background and Overnight their own section before the feature
+catalog and character gallery. Navigation opens the agents section. Each has a timing,
+a labeled example request, a review destination and a stopping condition. Replace
+vague supporting slogans with specific task, calendar, project and review copy.
+Character presets stay available in their own section. Signed-in web/native Home
+must show the same timing and pause details alongside their existing activity entry.
+No fake running states, always-on promise or completed reflection claim is introduced.
+Code tests establish content and ordering, not screenshot acceptance. The user's
+test-server web review and native visual acceptance remain open.

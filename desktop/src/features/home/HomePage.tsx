@@ -177,7 +177,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <a href="#features">Features</a>
           <a href="#planning">Planning</a>
           <a href="#work">Projects & docs</a>
-          <a href="#companions">Companions</a>
+          <a href="#agents">Agents</a>
           <a href="#together">Teams</a>
           <a href="#yours">Privacy</a>
           <a href="#faq">FAQ</a>
@@ -299,6 +299,46 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           </span>
         </section>
 
+        <section className="home-features" id="agents">
+          <div className="home-section-heading reveal">
+            <span className="eyebrow">BACKGROUND AND OVERNIGHT</span>
+            <h2>Delegate a task. Review the work.</h2>
+            <p>
+              Give Background a specific task, or queue work for tonight. Each
+              agent has its own runs, activity and results. Open its profile to
+              see what ran, what needs your input and what it produced.
+            </p>
+          </div>
+          <div className="home-agent-grid">
+            {HOME_AGENT_GUIDE.map((agent) => (
+              <article key={agent.name}>
+                <div className="home-agent-label">
+                  <span className="eyebrow">{agent.timing}</span>
+                  <h3>{agent.name}</h3>
+                </div>
+                <div className="home-agent-detail">
+                  <p>{agent.summary}</p>
+                  <dl className="home-agent-workflow">
+                    <div>
+                      <dt>Example request</dt>
+                      <dd>“{agent.request}”</dd>
+                    </div>
+                    <div>
+                      <dt>Where to review</dt>
+                      <dd>{agent.result}</dd>
+                    </div>
+                    <div>
+                      <dt>When it pauses</dt>
+                      <dd>{agent.pause}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="home-companion-note">{HOME_AGENT_IDLE_NOTE}</p>
+        </section>
+
         <section className="home-features" id="features">
           <div className="home-section-heading reveal">
             <span className="eyebrow">TASKS, CALENDAR AND NOTES</span>
@@ -338,7 +378,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <span className="home-feature-icon">
                 <Sparkles />
               </span>
-              <h3>An assistant with room to work.</h3>
+              <h3>Ask about your work.</h3>
               <p>
                 Ask for a summary of your week, a plan for tomorrow, or a change
                 of direction. Review its suggestions, or explicitly delegate a
@@ -360,7 +400,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 ahead, in your inbox, Slack or Discord.
               </p>
               <div className="home-feature-note">
-                <span /> At the right time. In your own rhythm.
+                <span /> Choose the time and delivery channel.
               </div>
             </article>
             <article className="home-feature reveal" style={stagger(3)}>
@@ -400,43 +440,6 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </li>
             ))}
           </ul>
-          <div className="home-agent-intro">
-            <span className="eyebrow">WORK BETWEEN CHECK-INS</span>
-            <h2>Give your agents work to come back to.</h2>
-            <p>
-              Choose what to delegate, then review the work in one place.
-              Background handles individual tasks. Overnight works through your
-              night queue on a separate schedule.
-            </p>
-          </div>
-          <div className="home-agent-grid">
-            {HOME_AGENT_GUIDE.map((agent) => (
-              <article key={agent.name}>
-                <div className="home-agent-label">
-                  <span className="eyebrow">{agent.timing}</span>
-                  <h3>{agent.name}</h3>
-                </div>
-                <div className="home-agent-detail">
-                  <p>{agent.summary}</p>
-                  <dl className="home-agent-workflow">
-                    <div>
-                      <dt>Example request</dt>
-                      <dd>“{agent.request}”</dd>
-                    </div>
-                    <div>
-                      <dt>Where to review</dt>
-                      <dd>{agent.result}</dd>
-                    </div>
-                    <div>
-                      <dt>When it pauses</dt>
-                      <dd>{agent.pause}</dd>
-                    </div>
-                  </dl>
-                </div>
-              </article>
-            ))}
-          </div>
-          <p className="home-companion-note">{HOME_AGENT_IDLE_NOTE}</p>
         </section>
 
         <section className="home-features home-split" id="planning">
@@ -460,11 +463,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
         <section className="home-features" id="work">
           <div className="home-section-heading reveal">
             <span className="eyebrow">PROJECTS AND PAGES</span>
-            <h2>
-              The big things,
-              <br />
-              and the thinking behind them.
-            </h2>
+            <h2>Project tasks and their notes.</h2>
             <p>
               Projects keep the work in order. Pages keep the words beside it.
             </p>
@@ -528,7 +527,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <span>A</span>
                 <span>J</span>
                 <span>M</span>
-                <small>A shared orbit.</small>
+                <small>Shared with your team.</small>
               </div>
             </article>
             <article className="home-feature reveal" style={stagger(1)}>
@@ -584,12 +583,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-how" id="how-it-works">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">A SMALL START IS STILL A START</span>
-            <h2>
-              From on your mind
-              <br />
-              to in your plans.
-            </h2>
+            <span className="eyebrow">GET STARTED</span>
+            <h2>Add a task. Choose when to work.</h2>
           </div>
           <div className="home-steps">
             {[
