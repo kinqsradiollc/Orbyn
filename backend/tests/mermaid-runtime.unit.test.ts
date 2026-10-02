@@ -60,7 +60,6 @@ function runtime(
     mermaidDiagramCss,
     visibleDiagramTicks,
     diagramLabelTranslation,
-    diagramLabelTranslation,
     MERMAID_MAX_SVG,
     window: {
       parent,
