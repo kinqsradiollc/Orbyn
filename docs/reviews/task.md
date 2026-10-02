@@ -2188,3 +2188,12 @@ PDF rendered images, server/publication parity, full D1/U1/external model gates.
 Home PR155 is still waiting only backend CI; Docker/mobile/mail pass. Preview's
 prior9ae961d all four CI jobs pass; qualification does not cover this new export.
 Full goal active. No deployment or cleanup of repository branches/worktrees.
+
+Source8e0db8f CI37040583868 stopped at formatting only: generated desktop
+Mermaid JSON lives under desktop/src, unlike mobile/assets, and was checked as
+handwritten source. Added a narrow .prettierignore entry for that generated
+first-party engine. Bundle equality/digest checks still own its integrity;
+no runtime change or test exclusion. Full8e0db8f local suite remains live on
+session40820; do not restart. Home PR155 passed all four jobs and merged as
+main80dff7a; local main fast-forwarded preserving user changes. Source candidate
+is not yet reconciled with that main checkpoint. No deploy/cleanup.
