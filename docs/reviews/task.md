@@ -22,31 +22,32 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: **7c08aa6**, pushed. PRs #143,
-  #144 and #145 are merged; their exact qualification evidence is recorded below.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: **e1d46af**, pushed. PRs #143,
+  #144, #145 and #146 are merged; their exact qualification evidence is recorded below.
   PR #141 independently schedules Overnight. Character changes remain
   published. User-owned `mobile/app.json` and unrelated untracked files remain
   preserved. Root `task.md` belongs to the character task.
 - Source `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch
-  `codex/devday-model-catalog`: **c21e337** before this documentation update,
-  reconciled with current main7c08aa6. Retains model,
+  `codex/devday-model-catalog`: **209725e** before this documentation update,
+  reconciled with current maine1d46af. Retains model,
   Docs, settings, profiles, reflection and handoff work that must not be merged
   wholesale. Two untracked settings preview files remain preserved.
 - Scoped backend checkpoint `/Users/anhdang/.codex/worktrees/assistant-work-ownership/Orbyn`,
-  now branch `codex/assistant-replay-access`: **0033a96** frozen against main
-  **7c08aa6**, draft PR #146, full suite1849/CI37003294826 live. Workspace
-  types/build/full formatting10871 terminal zero. Prior PR #145 is merged as
+  now branch `codex/assistant-draft-replay`: **53089fd** frozen against main
+  **e1d46af**, draft PR #147, full suite17430/CI37004911014 live. Workspace
+  types/build/full formatting95506 terminal zero. PR #146 merged as **c9b6c78**,
+  full2,176/2,176 and all CI37003294826 passed. Prior PR #145 is merged as
   **3450e87**, full2,157/2,157 and all CI37000288172 passed. No public rule
   editor enabled; no deployment occurred.
 - Plugin `/Users/anhdang/.codex/worktrees/devday-plugin-boundary/Orbyn`:
   **d2da6d8**, draft PR #142, reconciled with main **456e01a**. Full
   2,155/2,155 and types/build/format/all CI passed for this candidate. Actual
   consent/host/gateway/provider/UI resources/events gates remain open.
-- Docs candidate **514679f**, draft PR #138, remains in
-  `assistant-runtime-integration/Orbyn`; full 2,111/2,111 and CI passed on its
-  earlier base. Native iOS Contents navigation and fold preservation now have
-  interaction proof; inline fragment links, Android and web/mobile-web remain
-  unverified. Current-main reconciliation and qualification are still required.
+- Docs candidate **93ad2e2**, draft PR #138, remains in
+  `assistant-runtime-integration/Orbyn`, reconciled with current maine1d46af.
+  Focused23/23 and all types/build/format passed; full86001/CI37005022002 live.
+  Native iOS Contents and inline fragment navigation/fold preservation have
+  interaction proof. Android and web/mobile-web remain unverified.
 - `devday-2026-plan/Orbyn` retains dirty Docs/executor changes; preserve them.
   Character worktree **e4370a3** is clean and integrated but retained until final
   cleanup. No branches/worktrees deleted.
@@ -1611,3 +1612,42 @@ after exposed Raise action. Inline fragment interaction therefore remains
 unverified. Prior Contents/typing/save proofs remain valid; no paste/typeText/
 clipboard used. Simulator is now at the folded page, not revealed Result. This
 tool issue does not block backend/source progress or authorize browser bypass.
+
+## Qualified replay merge and current Docs qualification — 2 October 2026
+
+All CI37003294826 jobs succeeded. Backend log44519 terminal0 proves checkout
+cd57b95,2,175passes/0fail/1Tesseractskip. Candidate0033a96/CI/mainc9b6c78 trees
+match0d1f05994b7ed460131fe2e16ba9d3ad4ce59222. Ready/merge88424 terminal0 with
+exact --match-head-commit; PR146 MERGED12:06:25UTC. Mainff37436 terminal0 preserved
+user files. ADR/review checkpointe1d46af pushed84251 terminal0. PR body33026
+terminal0 updated merged state. No deployment/cleanup.
+
+Completed-draft candidate53089fd contains only two backend files and one review
+gate on current maine1d46af. Pushed35484 terminal0, draft PR147 created18278
+terminal0 and attached. Fresh markedorbyn_draft_candidate_test full17430 confirmed
+live; workspace types/build/full-format95506 terminal0. CI37004911014 backend
+live, other jobs successful. Logs /tmp/orbyn-draft-53089fd-{full-tests,types,build,
+format}.log. Exact candidate frozen; resume same process, no timeout restart.
+
+Model source209725e reconciles maine1d46af. Add/add test conflict retained all
+five completed-draft regressions; only one blank line changed. ADR conflict
+preserved both chronological source and qualified-main records. No application
+implementation was lost. Source push57569 terminal0. Untracked preview files
+remain preserved; old plan dirty work remains untouched.
+
+Docs PR138 now clean93ad2e2 on maine1d46af; merge had no conflicts. Push43745
+terminal0. Package build,23 focused navigation/fragment/render tests, all workspace
+types/root build/full-format82301 terminal0. Logs /tmp/orbyn-docs-93ad2e2-{packages,
+focused,types,build,format}.log. Fresh markedorbyn_docs_current_test full86001
+started and remains to qualify; CI37005022002 live. No promotion until terminal
+combined gates and required browser/native interactions. Do not reuse older
+514679f full result to qualify93ad2e2.
+
+Native same-page inline fragment is now proven: Back then visible Docs library
+entry reopened at top, both sections folded; screenshot-grounded Jump to result
+tap expanded First section, revealed/scrolled to Result and preserved unrelated
+fold. Fresh AX and screenshot agree. Owned Metro26907 cwd confirms current Docs
+checkout; no paste/typeText/clipboard. Evidence committed under
+docs/reviews/evidence/docs-navigation/native-inline-fragment.png. Current simulator
+is at revealed Result. This closes that iOS interaction, not web/mobile-web,
+Android, cross-page/stale races or all D1/U1. Full ADR remains active.
