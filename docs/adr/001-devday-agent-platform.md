@@ -176,3 +176,60 @@ from its action input. Thirty-six current regressions, backend types and seven
 fresh-database migration/review tests passed. This is unmerged source. Current
 job/source provenance, read/effect/notification checks, agent records, cross-client
 editing, budgets and actual receiving-worker collaboration remain required.
+
+### Activity checkpoint and scope continuity — 2 October 2026
+
+PR #140 is merged as main `9e7e505`, from frozen candidate `01b8757`.
+Migration 210 records content-free job transitions in separate owner/runtime
+streams with monotonic replay cursors and 90-day event retention. The private
+read route and typed client recheck current source visibility. Polling,
+heartbeats and checkpoint-only writes do not fabricate work activity.
+The fresh marked database suite passed 2,112/2,112, with no failures, skips or
+cancellations. Workspace types, production builds and full formatting passed;
+all four CI jobs passed. Candidate, CI merge and resulting main trees are
+identical (`f62fdf5209f0dfb77b60ccb5788724c005742d04`). No deployment occurred.
+
+The governing revised implementation review remains the full acceptance
+contract. This checkpoint does not narrow it to assistant chat or activity:
+whole-app layout, Docs editing/rendering/export, views and settings, provider
+and embedding options, actual account-specific model execution, separate plugin
+integration, typed agent rules, durable budgets and bounded cross-runtime
+collaboration remain required. Web/desktop features require mobile parity.
+Preserve main's character work and Orbyn's palette. Unverified responsive/native
+behavior and external integration gates remain open. Related worktree cleanup
+comes after integration and qualification, without discarding retained work.
+
+### Independent Overnight scheduling checkpoint — 2 October 2026
+
+PR #141 is merged as main `7f3894f`, from frozen candidate `9b87ce3`.
+The scheduler's per-owner busy check now applies to Overnight jobs; unrelated
+queued/running Background or interactive jobs cannot starve its night work.
+Own-lane serialization and the shared-task ownership guard remain enforced.
+Four new regression cases failed before the correction. Afterward, the focused
+night/runtime/ownership suite passed 53/53 and the fresh full local suite passed
+2,120/2,120 with no failures, skips or cancellations. All workspace types,
+production builds and full formatting passed; every CI job passed. Candidate,
+GitHub merge and resulting main trees match
+`3e2d1b8410f139b625c88036679d62a77c08caca`. No deployment occurred.
+
+This completes a scheduler checkpoint, not bounded handoff dispatch or full A4.
+Typed rules, agent ownership records, durable budgets, receiving authorization
+and cross-runtime round trips still require integration. The whole-app D1/U1,
+provider/model, plugin and mobile parity deliverables remain in scope.
+
+### Current main/source reconciliation — 2 October 2026
+
+The chronological record above includes earlier candidate states. Current main
+**dabb770** includes qualified PR **#143**, merge **9c344b8**: typed write rules,
+stale approval fences and server-held Review producing-job/rule/runtime authority.
+Exact **e58ed27** passed **2,141/2,141** full local tests, all workspace types/build/
+format and all CI jobs **36995158096**. Candidate/CI merge/main trees matched.
+Public rule editor routes/UI remain disabled and full A4/D1/U1 remains active.
+
+Scoped privacy/deletion candidate **f79c852**, draft PR **#144**, is frozen on
+current main with full qualification running. Source **977288c**, **866e4c0**,
+**411935e** retain owner/team history during ordinary target removal, suppress
+notice job-only source exposure and hide Review summaries after source loss.
+Actual generated runtime, providers, Docs, profile and whole-app UI/native/browser
+acceptance, typed agent records/editor, budgets and receiving collaboration remain
+required. Character work is preserved; no deployment or cleanup occurred.

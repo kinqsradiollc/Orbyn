@@ -1177,3 +1177,69 @@ The full existing scope, cross-client parity and current native/browser gates
 remain active. Typed notification/read/external rules, agent records/editor,
 revision snapshots, durable budgets and receiving collaboration are still needed;
 these privacy fixes are not their completion. No release or cleanup occurred.
+
+### Reviewed action rules and producing-source checks — 2 October 2026
+
+Scoped candidate `codex/assistant-rule-review` is based on current main `9e1a2c8`.
+Three source checkpoints (`4ec8644`, `35d186f`, `185a9d7`) applied cleanly; no
+model/settings/profile/reflection UI changes are included. This is a candidate,
+not a completed A4 implementation or deployed change.
+
+Typed action rules are revision guarded and loaded under the source grant lock.
+Deny dominates ask/allow; existing permissions and unattended hard stops remain
+upper bounds. Question/approval waiting identities remain required, and rule edits
+invalidate prior approval cards and proposal reviews. Actual Review Inbox typed
+changes and whole plans retain server-selected runtime/rule/connection authority.
+The producing durable job and current job/chat dependencies are rechecked at
+creation and approval. Unknown source coverage, missing jobs, restricted projects,
+foreign owners and mismatched runtimes hold the suggestion without applying it.
+Whole-plan action arguments cannot substitute an assistant connection or producer.
+
+Source focused checks passed **43/43**, zero failure/skip/cancellation, and fresh
+marked `orbyn_proposal_job_test` migrated from empty then passed **14/14** dedicated
+checks. Source backend types and packages passed. Initial fixture-column errors
+were corrected and the cohort rerun. These results do not qualify the combined
+main candidate: its full tests, workspace types, production build and formatting
+must pass before promotion. First-party rule editing routes/UI remain disabled.
+
+Remaining scope includes typed agent ownership, permissions/rule editing on both
+clients, reviewed source revision snapshots, notification restrictions, read and
+external effects, durable budgets/reservations, receiving handoff authorization
+and dispatch/recovery, actual model/executor and plugin acceptance, full Docs
+parity, and whole-app web/mobile/native UI verification. The full ADR remains
+active; voice/computer-use product features and speculative Decisions stay excluded.
+
+The initial combined candidate **fc82170** completed its full local run:
+**2,130 passed / 11 failed**, zero skips/cancellations, 555,674 ms. Types, build
+and formatting passed; CI **36993742889** finished failed. All eleven local
+failures were legacy Overnight test fixtures constructing new built-in proposals
+without the required guard/job evidence. No qualification run was restarted or
+candidate changed before local and CI terminal results.
+
+Source **d8bf8d5** corrects those fixtures to create an owned chat and actual
+Overnight job before filing the proposal, with server-equivalent lane/rule/action
+checks and the producing identity. The protection stays intact. Source dedicated
+checks passed **27/27**; scoped candidate cherry-pick **a610406** applied cleanly
+and passed **55/55** combined Overnight/review/rules/whole-plan/agent-write checks,
+zero failure/skip/cancellation. The corrected combined tree must finish a fresh
+full local run and CI before merge. No release/deployment/cleanup occurred.
+
+### Qualified rule/review checkpoint merged — 2 October 2026
+
+PR **#143** merged to main as **9c344b8**. Exact frozen candidate **e58ed27**
+passed **2,141/2,141** full local tests, zero failures/skips/cancellations,
+549,434 ms, on a fresh marked database. Workspace types, production build and
+full formatting passed. CI **36995158096** finished success for all four jobs.
+Unchanged base **9e1a2c8**, fetched GitHub merge parents and resulting main were
+verified; candidate and merge trees match
+**a8f0bd5a54f60886e4b261378576f465b6daae70**. User mobile/app.json and unrelated
+local files remain preserved. This is a merged backend checkpoint, not deployment.
+
+Main now has typed rule persistence/current-write checks, stale approval fencing,
+server-held Review runtime/connection/rule evidence, and producing-job/source
+checks before proposal creation and approval. Public rule editor routes/UI remain
+disabled. This is not complete agent ownership/rules UX, notifications/read/external
+policy, budget reservations or collaboration. Source privacy follow-ups **977288c**,
+**866e4c0**, **411935e** still require extraction and full current-main qualification.
+The entire retained ADR, web/mobile parity, actual UI/model/plugin/Docs gates and
+end-of-goal cleanup remain active. No release/tag/deployment occurred.
