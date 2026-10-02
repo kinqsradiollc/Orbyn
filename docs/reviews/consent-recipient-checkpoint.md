@@ -113,3 +113,19 @@ zero failed, cancelled or skipped. Evidence:
 `/tmp/orbyn-plugin-discovery-framed-full-tests.log` (exit 0). No source edits in
 this worktree occurred during the run. Browser consent, gateway, host acceptance
 and deployment remain separate pending gates; this is local backend evidence.
+
+## Current-main deployment profile checkpoint — 2 October 2026
+
+Reconciled origin/mainc30c5fc without conflicts (merge9e7c429). Added an
+opt-in Compose plugin profile running the dedicated service, blank recipient
+by default and loopback-only publication8040. The existing gateway does not
+automatically expose it; deployment documentation records exact permitted
+routes and production qualification requirements. No running container or
+production configuration was changed. Untracked dependency symlink preserved.
+
+Fresh marked orbyn_plugin_current_test cohort passed41/41, exit zero, including
+OAuth, plugin service, recipient labels and deployment profile checks. Compose
+config validated with a synthetic POSTGRES_PASSWORD solely for interpolation;
+no actual credentials were read or printed. First config attempt failed because
+this isolated worktree has no .env password, then the synthetic check passed.
+Full frozen candidate gates and browser consent/host delivery remain pending.
