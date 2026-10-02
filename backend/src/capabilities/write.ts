@@ -407,6 +407,8 @@ const refKey = (grantId: string, tool: string, clientRef: string) =>
   `ref:${createHash("sha256").update(`${grantId}|${tool}|${clientRef}`).digest("base64url")}`;
 
 export type Recorded = {
+  /** Server-generated authority digest; legacy assistant records must be held. */
+  assistant_authority?: string;
   structured: unknown;
   markdown: string;
   links?: unknown[];
