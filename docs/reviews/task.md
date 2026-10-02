@@ -1352,3 +1352,21 @@ Plugin d2da6d8 remains frozen; all workspace types/build/full format pipeline
 web/native consent/host/gateway/UI resource acceptance still open; not delivered
 from tests alone. Entire full ADR scope, current main456e01a and character files
 remain preserved. No deployment/cleanup or goal completion occurred.
+
+## Current terminal plugin local qualification — 2 October 2026
+
+Handoff source revision checkpoint **d69d087** committed/pushed, unmerged.
+Fresh38/38 and backend types/format proof recorded above; no receiving authority
+or public dispatch enabled. Continue durable receiving ownership/rules/connection
+and budget reservations/round trips, original provider-read source snapshots and
+complete whole-app/model/Docs/plugin/mobile acceptance.
+
+Frozen plugin **d2da6d8**, PR142: full **1770** terminal zero **2,155/2,155**,
+no failures/skips/cancellations,567,742ms. Fresh database
+**orbyn_plugin_d2da6d8_test**. Types/build/full-format **30937** terminal zero.
+CI **36998159447** backend **110809519299** remains live; mobile/Docker/mail
+successful. Poll that CI; do not restart/mutate current candidate. Actual
+web/native consent, host launch, gateway/UI resources/events/provider gates open,
+so no plugin main merge claimed. Saved local preview denial remains a required
+visual-verification dependency; no bypass. Main remains456e01a with preserved
+mobile/app.json and character files. Goal active, no deployment/cleanup.
