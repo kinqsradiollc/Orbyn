@@ -1019,11 +1019,15 @@ when its page is deleted for good. Parallel uploads are counted one at a time ag
 carries a `content-disposition` with the file name, so every client saves the same file under the
 same name.
 
-`docx` and `pdf` are written directly rather than through a library — a `.docx` is a zip of XML and
-Node already has DEFLATE in `zlib`, and a PDF with the standard fourteen fonts needs no font
-embedded. That keeps the backend on the ten dependencies it has. The PDF carries headings, lists,
-checklists, quotes, code, rules, and bold and italic within a line; it has no images (a page has
-none) and writes a formula as the symbols it reads as, the same as everywhere outside the editor.
+Optional `version` is a positive safe integer identifying the editor's confirmed saved revision.
+A visible page at another version returns `409`; an inaccessible page still returns `404` before
+any revision comparison. Invalid versions return `422`. Omitting it keeps the existing latest
+saved-page behavior. A conflict must not be silently retried against a different revision.
+
+`docx` and `pdf` are written directly: `.docx` is a zip of XML using Node's `zlib`, and PDF uses
+standard fonts. PDF carries headings, lists, checklists, quotes, code, rules, and bold and italic
+within a line. It currently writes image captions and plain math symbols; rendered diagram and
+formula PDF export remains unsupported.
 
 ### `GET /docs/:id/markdown` (auth)
 
