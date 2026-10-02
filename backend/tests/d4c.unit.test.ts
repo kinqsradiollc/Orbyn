@@ -294,8 +294,12 @@ test("every setting the phone lists names a section or sheet its Settings has", 
       ),
       "utf8",
     );
+  const settings = read("SettingsScreen.tsx");
+  assert.match(settings, /<ChatgptModelsSection\s+userId=/);
   const source =
-    read("SettingsScreen.tsx") + read("settings/PrivacySection.tsx");
+    settings +
+    read("settings/PrivacySection.tsx") +
+    read("settings/ChatgptModelsSection.tsx");
   const places = new Set(
     [...source.matchAll(/(?:title|name)="([^"]+)"/g)].map((m) =>
       sectionKey(m[1]),
