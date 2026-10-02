@@ -88,6 +88,18 @@ export async function drainMemoryQueue(
 
   for (const job of jobs) {
     try {
+      // Recheck persisted provenance before any provider call, including queued
+      // turns written by an older worker during a rolling deployment.
+      const personalChat = (
+        await pool.query(
+          "SELECT 1 FROM ai_chats WHERE id=$1 AND user_id=$2 AND origin='person'",
+          [job.chat_id, job.user_id],
+        )
+      ).rowCount;
+      if (!personalChat) {
+        await pool.query("DELETE FROM memory_queue WHERE id = $1", [job.id]);
+        continue;
+      }
       const keptOut = await keptOutFor(pool, job.user_id);
       if (
         job.source_project_id &&
@@ -134,11 +146,19 @@ export async function drainMemoryQueue(
         ]);
         const stillQueued = (
           await db.query(
-            "SELECT 1 FROM memory_queue WHERE id = $1 AND user_id = $2",
+            `SELECT 1 FROM memory_queue q JOIN ai_chats c ON c.id=q.chat_id
+             WHERE q.id=$1 AND q.user_id=$2 AND c.user_id=$2 AND c.origin='person'
+             FOR SHARE OF c`,
             [job.id, job.user_id],
           )
         ).rowCount;
-        if (!stillQueued) return;
+        if (!stillQueued) {
+          await db.query(
+            "DELETE FROM memory_queue WHERE id=$1 AND user_id=$2",
+            [job.id, job.user_id],
+          );
+          return;
+        }
         for (const topic of result.topics)
           await rememberMemory(
             db,
