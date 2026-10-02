@@ -706,3 +706,10 @@ public workflow collapses to one column at narrow widths; signed-in guide conten
 wraps and native content grows naturally. Web visual acceptance remains with the
 user's test server for this increment. Native screenshot/interaction acceptance
 and the complete U1 gates remain open. Retain current character work and palette.
+
+Public Home promotion candidate: based on main9702f19e, includes only shared
+copy, the public page's workflow layout, its focused checks and this ADR section.
+Signed-in Home/profile and renderer work remain in the larger draft. Local Home
+checks3/3, all workspace typechecks/builds and full formatting pass. Web visual
+acceptance is still delegated to the user's test server for this increment;
+full exact-head local and CI qualification is required before main merge.
