@@ -20,7 +20,7 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `3677d53`.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `324d08e` (latest ADR evidence checkpoint).
   Companion and whole-app ADR updates are published. Main `f875c8d` passed
   2,083/2,083 ordinary tests (zero fail/skip/cancel), workspace types and production
   build. `495a359` fixes CI's missing per-service backend image tags and ADR
@@ -132,9 +132,22 @@ on PR 137. Exact candidate is frozen again for a full local suite in session
 `/tmp/orbyn-main-reflection-b29f454-full-tests.log`. Full types/build/format sequence
 is session **78370**, logs `/tmp/orbyn-reflection-b29f454-{types,build,format}.log`.
 Full types/build/format session 78370 is terminal exit 0: all passed. Full test
-session 15253 is still live (358 tests passing at the latest check). Poll the
-existing handle before repeating work.
-Main remains `3677d53`; nothing from PR 137 is merged or deployed.
+session 15253 is terminal exit 0: **2,105/2,105** passed, no failures/skips/
+cancellations, 583801 ms. Main is `1768376`; PR 137 remains unmerged.
+
+CI on b29f454 failed one reflection permission test because its same-tick source
+fixture could fall after the millisecond JS scan cutoff. Test-only head **061a501**
+sets fixture timestamps before the cutoff, requires nonempty evidence before
+asserting revocation, and adds a sub-millisecond cutoff regression. Focused tests
+passed **10/10**, `/tmp/orbyn-reflection-cutoff-focused.log`. CI **36977493426**
+passed all four jobs. Backend results: **2,105 passed, 0 failed, 1 skipped** out of
+2,106; the skipped case requires Tesseract, and the prior full local suite ran it.
+Log `/tmp/orbyn-reflection-061a501-ci.log`. The fix is copied to model source as
+`2208b8b`. No reflection application code changed after b29f454.
+
+Integration checkout is now **codex/docs-navigation**, current head **b3ab641** from
+main 1768376 (latest main 324d08e adds documentation only). Reflection branch/head 061a501 and draft PR 137 remain intact.
+Do not assume the integration checkout still contains reflection changes.
 
 Still required: focused/full verification on isolated current main, cancellation,
 consent/budget cases, pending-run restart coverage, actual web/mobile/native source
@@ -324,9 +337,8 @@ ChatGPT acceptance or evidence about OpenAI runtime architecture.
    Slack/Teams, complete Markdown parity, native auth/composer/execution and plugin
    host/provider acceptance. Foundations and passing subsets do not complete them.
 
-Main native Docs relative links remain source-inspected gaps: raw `/app/...` and
-`#section` go to `Linking.openURL`; origin routing/local outline jumps need their
-own implementation and actual taps. Main `1a26644` records this gap only.
+Main native Docs relative links were a source-inspected gap recorded by 1a26644.
+The implementation below is committed in a separate pending checkpoint.
 
 ## Latest continuation note
 
@@ -347,3 +359,80 @@ Compact native fixture screenshot confirms the complete long task source label
 wraps inside its button, both sources and Open chat fit without overlap:
 `/tmp/orbyn-reflection-native-source-layout-20261002.png`. This verifies wrapping
 independently; long-content scrolling remains unverified due the tool failures.
+
+## Docs navigation checkpoint — 2 October 2026
+
+Source **77b7d5b** on model/Docs branch; cherry-picked without conflicts onto fresh
+main 1768376 as **66583c6**, branch **codex/docs-navigation**, in the reused
+assistant-runtime-integration checkout. Initial qualification session **96531** failed 52/53: main's HTML exporter
+shifted heading levels by one. Follow-up **f96264e** preserves the Markdown level.
+Qualification session **39162** is terminal exit 0: **53/53** focused checks,
+all workspace types, production build and full formatting passed. Logs
+`/tmp/orbyn-main-doc-navigation-{packages,tests,types,build,format}-2.log`.
+Current exact candidate is **b3ab641**, which adds the separately verified mobile
+root deep-link timing correction below. Draft PR
+https://github.com/kinqsradiollc/Orbyn/pull/138 is pushed and attached; its latest
+CI must be inspected before promotion.
+
+Shared navigation safely resolves same-origin `/app/...` routes, external relative
+resources, Unicode/duplicate heading fragments, stored block IDs and legacy h-N
+outline anchors. Both editors keep same-page jumps in their current draft, unfold
+only containing sections, and wait for stored folds before initial jumps. Mobile
+foldable headings now report outer-row positions; previously the nested text
+reported y=0 and the native jump stayed at the top. Editing lines report layout
+as well. HTML exports resolve local heading links to their actual h-N targets;
+published private resource links remain subject to the existing filter.
+
+Source qualification: **53/53** focused parser/navigation/math-HTML/mobile-download
+checks passed, zero failures/skips/cancellations, 971 ms. Logs
+`/tmp/orbyn-doc-navigation-tests-2.log`. All workspace types passed (terminal
+session 82300), `/tmp/orbyn-doc-navigation-types-2.log`. Root production build and
+focused formatting passed (terminal session 27412), logs
+`/tmp/orbyn-doc-navigation-{build,format}.log`. These results are scoped to model
+source; main candidate qualification is distinct.
+
+Actual narrow native iOS QA on source: a relative app link opened the correct
+page inside Orbyn. A nested heading fragment then unfolded its containing
+section, scrolled Result into view and preserved the unrelated folded section.
+Evidence `/tmp/orbyn-doc-navigation-native-relative-20261002.png` and
+`/tmp/orbyn-doc-navigation-native-heading-20261002.png`. Disposable fixture
+`/tmp/orbyn-doc-navigation-native-fixture.mts`, IDs
+`/tmp/orbyn-doc-navigation-native-fixture.json`. The initial scroll failure was
+reproduced and corrected; temporary numeric-only diagnostics were removed.
+The test link was moved to a separate synthetic row for semantic activation.
+
+Candidate native preview was moved to the integration branch: only the named
+API/Metro preview processes were restarted, Docker was untouched. Current API
+session **10091**, `/tmp/orbyn-doc-navigation-candidate-api.log`, port 8027; Metro
+session **31081**, `/tmp/orbyn-doc-navigation-candidate-metro.log`, port 8087.
+Explicit Expo Reload fetched a fresh candidate iOS bundle (1503 modules).
+Relative app navigation and a folded same-page heading jump passed again.
+Candidate screenshots `/tmp/orbyn-main-doc-navigation-native-relative-20261002.png`
+and `/tmp/orbyn-main-doc-navigation-native-heading-20261002.png`.
+
+Cross-page `/app/doc/<id>#result` then reproduced a transient error: RootScreen
+assigned the fragment before awaiting the new document, applying it briefly to
+the old page. Candidate **b3ab641** / source **a880a90** awaits the document first,
+then applies the page and fragment in the same update. Mobile types and focused
+formatting passed (terminal session **59916**), log
+`/tmp/orbyn-main-doc-navigation-mobile-types-3.log`. Native retest reached the
+Result heading, unfolded only its containing section and showed no error banner.
+Evidence `/tmp/orbyn-main-doc-navigation-native-deep-link-20261002.png`;
+fixture `/tmp/orbyn-doc-navigation-native-deep-link-fixture.mts`.
+
+Outstanding: web/mobile-web interactions at the authorized preview after its
+saved permission is changed, native Android and actual outline navigation. No Docs navigation code is merged or
+deployed yet. This checkpoint does not complete the wider D1 Markdown contract.
+Free disk was most recently about 3 GiB. Preserve unrelated preview files and
+user changes. Do not restart Docker Desktop or use clipboard-based native input.
+
+Latest source audit: main **324d08e** contains only the ADR evidence update after
+1768376; Docs navigation and reflection remain draft PRs, not merged application
+features. Main user changes are preserved. Candidate Docs head **b3ab641** is
+pushed; latest CI run **36979623013** is in progress. Earlier f96264e CI run
+36978986389 is superseded. Do not restart or claim either run passed without
+checking its handle. Reflection head **061a501**, CI 36977493426 is terminal green.
+The main-candidate native API/Metro handles replace the old model preview handles
+61269/65880, whose own processes were terminated. Current native screen is the
+successful cross-page Result heading, no false error banner. The shared code and
+mobile root timing fix are committed; there are no pending application edits.
