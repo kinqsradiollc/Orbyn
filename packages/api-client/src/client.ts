@@ -2,8 +2,10 @@ import {
   assistantActivityLane,
   assistantActivityQuery,
   assistantActivityPage,
+  assistantProfiles,
   type AssistantActivityLane,
   chatgptExecutorStart,
+  chatgptExecutorList,
   chatgptExecutorFinish,
   chatgptExecutorChallenge,
   chatgptExecutorEnrolled,
@@ -1494,6 +1496,16 @@ export class OrbynClient {
     )
       throw new Error("The ChatGPT default response changed.");
     return result;
+  }
+
+  /** Discover owned devices without reading any provider credential or signing key. */
+  async chatgptExecutors(signal?: AbortSignal) {
+    return chatgptExecutorList.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/executors", {
+        signal,
+        fresh: true,
+      }),
+    );
   }
 
   async chatgptConnections(signal?: AbortSignal) {
@@ -3507,6 +3519,15 @@ export class OrbynClient {
     };
   }
   // ---- The Review inbox ----
+  /** Current authorized work evidence, independent of device presence. */
+  async assistantProfiles(signal?: AbortSignal) {
+    return assistantProfiles.parse(
+      await this.request<unknown>("/me/assistant/profiles", {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
   /** Recover authorized execution activity with an owner/lane-scoped cursor. */
   async assistantActivity(
     lane: AssistantActivityLane,
@@ -4474,6 +4495,8 @@ export class OrbynClient {
   setSemanticSearch(input: {
     on: boolean;
     embedding_model?: string;
+    embedding_provider_id?: string;
+    expected_generation?: string;
     accept?: boolean;
   }) {
     return this.request<AiSettings>("/ai/settings/semantic", {

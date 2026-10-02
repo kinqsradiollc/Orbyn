@@ -1,4 +1,5 @@
 export { OrbynClient, isAbortError } from "./client.js";
+export * from "./assistant-profile-store.js";
 export type {
   OrbynClientOptions,
   RequestOptions,
@@ -22,6 +23,11 @@ export type {
 export { ChatgptPlanClient } from "./chatgpt-plan.js";
 export { ChatgptModelPicker } from "./chatgpt-model-picker.js";
 export { ChatgptDesktopStore } from "./chatgpt-desktop-store.js";
+export { ChatgptRemoteStore } from "./chatgpt-remote-store.js";
+export type {
+  ChatgptRemoteState,
+  ChatgptRemoteApi,
+} from "./chatgpt-remote-store.js";
 export type {
   ChatgptDesktopBridge,
   ChatgptDesktopStoreState,

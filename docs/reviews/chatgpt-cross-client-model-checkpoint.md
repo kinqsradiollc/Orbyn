@@ -1,0 +1,208 @@
+# ChatGPT model management across clients — local checkpoint
+
+## Implemented behavior
+
+Web and mobile now discover this person's enrolled ChatGPT devices through a
+first-party metadata endpoint. Discovery returns only executor, connection and
+host identifiers, excludes revoked connections and expired device sessions,
+requires a live verified Orbyn session, rejects agent/API principals and applies
+rate limits. No provider token, signing key, session identifier or user-agent/IP
+is returned.
+
+Both settings surfaces use the same API-client controller. The person explicitly
+chooses a device; the controller reads its live `/models` catalog and saves the
+exact account-bound preference version. Search covers the catalog; native model
+rows are capped at 50 with search reaching later results. Offline, stale,
+expired and unavailable devices cannot authorize a model. Failed saves discard
+the observed revision until refresh. No paid/provider/model fallback is selected.
+The shared settings index now exposes the ChatGPT destination on mobile.
+
+The controller cancels old operations and fences results across session changes,
+device changes and unmount. Reads/writes have a 30-second UI lifetime even when a
+transport ignores cancellation. The earliest catalog/lease expiry updates model
+availability without another API read; suspended timers cannot permit a save.
+Both app hooks hide old data before account-change effects run and recreate their
+controllers during React StrictMode setup/cleanup/setup.
+
+The desktop private executor refreshes the saved preference before a new turn,
+so a default changed on web/mobile is used without waiting for its periodic
+catalog refresh. Completed preference reads update the desktop picker. A running
+turn retains its captured model. Foreign, stale or failed preference reads prevent
+inference instead of falling back to cached state. Concurrent fresh reads converge
+on the same bound preference.
+
+## Mobile parity gate
+
+The user explicitly requires every shipped web/desktop feature on mobile. The
+current source implements these settings operations in both clients; this table
+does not substitute for interaction acceptance.
+
+| Operation                                                        | Web implementation                                                             | Native mobile implementation                                          | Current acceptance                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Discover owned devices and choose one explicitly                 | `ChatgptRemoteModels` custom device select                                     | `ChatgptModelsSection` contained device radio list                    | Route guards, owner fences and actual handler tests pass; visual/touch gates open.          |
+| Search the complete catalog                                      | Name/ID filter and custom model select                                         | Name/ID filter; at most 50 rendered rows, search reaches later models | Both handler trees exercised; keyboard/large-text proof open.                               |
+| Save or clear the bound default                                  | Model select includes no-default choice                                        | Model rows plus clear-default action                                  | Shared CAS/controller tests pass; real eligible account and actual native interaction open. |
+| Handle expiry, offline devices, failed saves and account changes | Shared controller plus web lifecycle hook                                      | Same controller plus native lifecycle hook                            | Timeout/expiry/cancellation/StrictMode tests pass; live device acceptance open.             |
+| Connect a new ChatGPT account                                    | Desktop private OAuth runtime; website eligibility gated                       | Native callback/storage flow still incomplete                         | Required parity gap; not a shipped complete feature.                                        |
+| Start assistant execution with the chosen account/model          | Private runtime has controlled inference tests; composer/job wiring incomplete | Native execution/composer delivery incomplete                         | Required parity gap; catalog/default settings do not prove execution.                       |
+
+Native entry is Settings → AI connections & models and the shared settings search
+destination. Both actual root settings components mount their respective model
+controls. The desktop native runtime rereads the persisted default before each
+new turn; a running turn retains its captured model. These source checks and
+test fixtures do not prove a real provider connection on any platform.
+
+## Evidence
+
+The first full run on `acc5c59` finished with 2,097/2,099 passing, two failures
+and no skipped tests (`/tmp/orbyn-chatgpt-remote-full-tests.log`). The private
+device-discovery route lacked its required capability exclusion, and the phone
+settings inventory fixture did not include the newly mounted child section.
+Commit `24419a9` corrects both. Its 37 focused inventory/UI tests passed with no
+failures or skips (`/tmp/orbyn-chatgpt-remote-inventory-tests.log`). A fresh full
+run on frozen source `24419a9` stopped with exit 7 during host disk exhaustion,
+before the terminal TAP totals (`/tmp/orbyn-chatgpt-remote-24419a9-full-tests.log`).
+The independent QA API also reported `ENOSPC`. Neither run is acceptance. The
+temporary task-owned simulator was shut down and deleted, recovering about
+1.6 GiB. PostgreSQL and Docker became unresponsive; no shared Docker restart or
+unrelated container/volume deletion was attempted. Full-suite acceptance needs
+a fresh marked database and terminal passing totals after environment recovery.
+After external recovery, the test container is healthy and available disk is
+about 8.1 GiB. No agent Docker restart was performed. Frozen source `24419a9` is
+reran against fresh marked `orbyn_models_24419a9_full_test`, log
+`/tmp/orbyn-chatgpt-remote-24419a9-recovered-full-tests.log`: 2,098/2,099 passed,
+one generated catalog mismatch, no skipped tests. Its declared excluded-route
+count needed to change from 245 to 246. Commit `6da9ad5` regenerates only those
+two catalog lines; four focused generator checks pass. The `6da9ad5` full rerun was deliberately interrupted before source changes after
+actual native testing found the abort compatibility failure; it has no terminal
+passing totals. Log: `/tmp/orbyn-chatgpt-remote-6da9ad5-full-tests.log`.
+Acceptance requires a new complete run on the corrected source.
+
+The production backend Docker image `orbyn-chatgpt-remote:24419a9` built
+successfully, log `/tmp/orbyn-chatgpt-remote-24419a9-docker-build.log`.
+The earlier `acc5c59` compiled smoke passed actual schema, signed-out controller,
+401 route and malformed-JSON 400 checks; that smoke does not cover the newer
+capability exclusion. Its exact `24419a9` replacement also passed strict schema,
+capability exclusion, signed-out 401/no-store and malformed-JSON 400 checks with
+an actual completion marker (`/tmp/orbyn-chatgpt-remote-24419a9-docker-smoke.log`).
+Image/build evidence is separate from native UI evidence.
+
+After the environment failure, all 48 checks that run without Docker passed on
+`24419a9`, with no failures/skips: shared remote store, actual cross-client
+hooks/handler trees, private model runtime, picker, API catalog client and
+settings layout. Log: `/tmp/orbyn-chatgpt-remote-24419a9-unit-tests.log`. No DB
+integration or full-suite result is inferred from this independent run.
+
+Frozen source for this checkpoint passed 69 focused checks and workspace
+core/API/backend/web/mobile typechecks. The focused set includes real route and
+service guards, strict fresh API-client parsing, controller races/timeouts/expiry,
+actual app hook lifecycle callbacks and actual UI handler trees with mocked
+platform/control islands, private inference with controlled transport and the
+existing settings navigation tests. These VM/handler tests are not visual proof.
+Logs: `/tmp/orbyn-chatgpt-remote-final-focused.log` and
+`/tmp/orbyn-chatgpt-remote-types.log`.
+
+The web production build and native iOS/Android Metro exports passed. Logs:
+`/tmp/orbyn-chatgpt-remote-web-build.log` and
+`/tmp/orbyn-chatgpt-remote-native-export.log`. Native metadata SHA-256:
+`87fd0415aea647fd40d28fc9036be89ab972bf36eeb6924d724d8c1d09388a62`.
+Web index SHA-256:
+`11d72222f6ba474d1e267374456bebe316970359086cbc44c861025375e559f4`.
+The shared Friday exam fixture correction was brought from main; its actual
+integration suite passed 21/21, log `/tmp/orbyn-chatgpt-remote-nudge-tests.log`.
+
+Earlier attempts exposed extra host metadata passed to a strict selection schema,
+an incorrect malformed-GET-body expectation, a preview consumer requiring a
+backward-compatible empty owner prop, and the older settings fixture that excluded
+mobile. These were corrected and the full focused set rerun. Passing portions of
+failed attempts were not substituted for the final set.
+
+## Remaining acceptance and scope
+
+This is local source, not main integration, deployment or a completed A1 feature.
+The full local suite and exact-main integration must pass before promotion.
+Responsive web preview remains blocked by its saved Browser Use permission;
+actual native interaction and large-text/keyboard/overlay acceptance remain open.
+Native bundles do not prove touch behavior. New native ChatGPT sign-in remains a
+required mobile deliverable, with platform/eligibility constraints retained as
+release gates. The UI accurately explains the current desktop connection path.
+
+Real eligible-account catalog/default/inference acceptance, signed job assignment
+and results, composer routing, and complete device executor delivery remain open.
+This metadata/default feature does not itself start an assistant job or prove
+mobile sign-in. Settings redesign and the wider ADR remain incomplete.
+
+Disk space temporarily fell below 300 MiB, then recovered to about 7 GiB.
+Five completed task-owned test logs were losslessly gzip archived, with original
+paths retained as pointer files. No unrelated worktree, dependency, Docker volume
+or cache was deleted. A new task-owned iPhone 17 simulator, fresh marked database
+`orbyn_mobile_models_24419a9_test` and loopback API at 8027/Metro at 8087 were
+used for native verification. Metro's IPv6 bind versus manifest mismatch was
+resolved with its advertised localhost hostname. The native authentication
+screen rendered; the settings flow was not reached. Host disk exhaustion then
+stopped the isolated API. The temporary simulator was deleted and the task-owned
+Metro stopped; about 1.6 GiB recovered. Preserve the QA database and logs until
+Docker recovers. Existing character-worktree previews at
+8018/8083 are preserved and are not evidence for this source. Native settings
+interaction and actual provider-account acceptance are still pending.
+
+## Actual native abort compatibility correction
+
+On the task-owned iPhone SE/iOS 18.5 with Expo Go 57, synthetic Orbyn sign-in,
+Workspace → Settings and the ChatGPT search destination were exercised. Discovery
+returned HTTP 200 but the native controller showed an unavailable error. React
+Native installs `abort-controller`, whose signal has no `throwIfAborted` method.
+A controlled probe using that installed implementation reproduced the exact error.
+The regression set failed before the fix (21/23 passed, two failures), log
+`/tmp/orbyn-native-abort-before-fix-tests.log`.
+
+The shared controller and picker now use an internal cancellation check based on
+`signal.aborted`, retaining cancellation and late-result fences. No dependency or
+provider credential was added. After the fix, 43 focused tests passed without skips
+and every workspace typecheck passed. Logs: `/tmp/orbyn-native-abort-after-fix-tests.log`
+and `/tmp/orbyn-native-abort-typecheck.log`.
+
+After an actual Expo reload, the native empty-device state rendered successfully.
+A strictly marked synthetic QA database then served 65 models through real signed
+enrollment, lease and catalog service calls with a controlled identity verifier.
+Actual native taps verified explicit device selection, the 50-row render limit,
+search reaching model 65, long-label wrapping, save and clear. Backend reads
+confirmed `fixture-model-65` at preference version 1, then null at version 2.
+Screenshot: `/tmp/orbyn-native-model-clear-default-20261002.png`. Fixture log:
+`/tmp/orbyn-native-model-fixture-24419a9.log`. This proves controlled native settings
+behavior, not upstream OAuth eligibility or provider inference. Large text, software
+keyboard, dark theme and offline interaction remain pending. Earlier image/export
+results predate this correction; a fresh frozen full suite is still required.
+
+## Integration with new main UI
+
+Local main companion source `2eb34a5`/`0749e6e` was merged as `aa419b8`, preserving
+its web/native components and account settings. Combined workspace types and
+production build pass. The full suite exited successfully with 2,148/2,148 and no
+failures/skips/cancellations, log `/tmp/orbyn-companion-model-aa419b8-full-tests.log`.
+After dependency metadata changed, native startup refreshed the diagram source
+digest; HTML remained byte-identical. That artifact is committed in `9e0aeb1`,
+whose fresh full rerun passed 2,148/2,148 with zero failures/skips/cancellations
+and terminal exit 0 in `/tmp/orbyn-companion-model-9e0aeb1-full-tests.log`.
+The first combined run is not described as a pre-start frozen `9e0aeb1` run.
+
+Actual native companion customization persisted through a reload and reopened
+with its saved name/body/accessory/static state. The model section still opens
+and correctly disables changes for the controlled expired device; model-65
+search and dark-theme persistence were exercised on combined source. Screenshots:
+`/tmp/orbyn-native-main-companion-persisted-20261002.png` and
+`/tmp/orbyn-native-model-offline-dark-20261002.png`.
+
+The canonical ADR on local main now explicitly includes the user-authorized
+ChatGPT desktop/mobile visual reference, whole-application redesign, preservation
+of the companion, separate Background/Overnight UI and worker processes, and
+durable collaboration acceptance. The original native abort fix is local
+`dda31cd`; feature code has not been promoted to main. These new documentation
+checkpoints are also local, without pushing unpublished companion work.
+
+Final ordinary-suite acceptance: exact application/asset source `9e0aeb1` passed
+2,148/2,148, zero failures/skips/cancellations, terminal exit 0, 521354 ms. No
+application source changed during that fresh rerun; only ADR/handoff documentation
+changed. This does not imply pgvector integration, production image, Android native
+or upstream ChatGPT OAuth/inference acceptance. Main's whole-app/typing/Views and
+isolated-runtime contract is now committed locally through `f875c8d`.

@@ -11,7 +11,13 @@
  * The HTML is read by a small reader of its own rather than the browser's,
  * so the same code runs on the web, on a phone and in tests.
  */
-import { MAX_DEPTH, parseDoc, withDepth, type DocBlock } from "./docs.js";
+import {
+  MAX_DEPTH,
+  parseDoc,
+  withDepth,
+  type DocBlock,
+  type DocHeadingLevel,
+} from "./docs.js";
 import { rowsToTable } from "./imports.js";
 
 type HtmlNode =
@@ -423,7 +429,7 @@ export function htmlToBlocks(html: string): DocBlock[] {
     if (heading) {
       startLine({
         type: "heading",
-        level: Math.min(3, Number(heading[1])) as 1 | 2 | 3,
+        level: Number(heading[1]) as DocHeadingLevel,
         text: "",
       });
       children({ ...ctx, style: { ...ctx.style, bold: false } });

@@ -90,12 +90,92 @@ grant receiving authority or prove separate-worker collaboration. Source
 error text or restricted outcomes; its 32 contract/storage/request checks and
 backend types passed. Handoff services remain unmerged and unwired.
 
-Docs PR #138 had green CI on `25e1e6f`; combined character candidate `788161e`
-passed 37 focused checks, all types/build/format, with new CI still running.
+Docs PR #138 candidate `514679f` includes current main and characters, Unicode
+heading links and owning-page URLs. All 56 focused checks, workspace types,
+production builds and formatting passed. The full local suite passed 2,111/2,111;
+CI passed all jobs, with 2,110 backend passes, zero failures and one Tesseract skip.
 Its fresh native verification is blocked by an iOS password-save prompt, pending
 the user's dismissal. Web/mobile-web and native Android interaction gates remain
 open. The governing review and implementation handoff
 retain the full remaining scope; these checkpoints do not complete the ADR.
+
+Persisted activity source now implements migration 210, owner/runtime sequence
+counters, content-free job transition events, a private authorized replay route,
+typed client recovery and 90-day event retention. Heartbeats, polling and
+checkpoint-only writes create no activity. Imported historical jobs do not
+fabricate fresh completion timestamps. Current source visibility filters live
+job links; expired jobs retain only content-free historical events. Queuing alone
+does not set last-work activity. Sixty focused activity, handoff, sweep and runtime
+checks passed on a fresh marked test database. The isolated activity candidate
+`01b8757` is now merged through PR #140 as main `9e7e505`: 2,112/2,112 full local
+tests, workspace types, production builds, full formatting and all CI jobs passed.
+Candidate, CI merge and main trees match. Main `2ba1ae2` records scope continuity.
+Profile UI, worker dispatch, budgets and separate-process collaboration are open.
+
+Profile source now adds a private read-only snapshot and a Your agents panel on
+both clients, retaining the main character design. Working requires a current
+execution lease; expired leases are recovery pending, waiting remains distinct,
+and an empty night window is idle. Future enabled windows can be scheduled.
+Last-work time comes from authorized persisted events, not presence. Existing
+night token estimates and limits are shown as estimates, not billed usage or
+new budget reservations. Shared request cancellation fences closed/account-change
+generations and clears stale status after failure. Forty-two focused checks,
+all workspace types, production builds and scoped formatting passed. This is
+unmerged source; responsive/native interaction, reviewed permissions, durable
+budget reservations, dispatch and complete collaboration still need proof.
+
+Profile recent activity and completed-output links now exist in both clients.
+The snapshot bounds each lane to eight events and five outputs, applies current
+source visibility, and removes output links after job deletion. Imported historical
+jobs and later outcome edits cannot invent fresh completion timestamps. Mobile
+opens an output after sheet dismissal; both clients use the existing chat access
+checks. Current corrected-source regression passed 19/19, with 21/21 character/
+style/catalog checks, all workspace types, production builds and scoped formatting.
+This is a source checkpoint, not a merged or visually qualified UI. The full
+governing review, including D1/U1 and whole-app mobile parity, remains required.
+
+The scheduler still used a global queued/running busy check after worker lanes
+were separated. Source `0ae3d05` scopes that check to Overnight: unrelated
+Background/interactive jobs no longer block it, while own-lane serialization and
+the shared-task ownership guard remain. Four regression cases failed before the
+fix; all 53 focused night/runtime/ownership checks passed afterward. Isolated
+main candidate `9b87ce3` is draft PR #141 with full qualification in progress.
+It does not enable handoff dispatch or complete agent collaboration.
+
+Retained plugin recipient/discovery work is reconciled with main `2ba1ae2` in
+`9ce1961`, draft PR #142, preserving newer runtime and character changes.
+Recipient-specific consent/grant lookup, code/refresh binding, public configured
+discovery and authentication challenges remain separate from portable MCP and
+first-party sessions. All eight overlaps are resolved; 62 current focused checks
+passed. Combined full qualification is running; previous branch results do not
+qualify this tree. Actual consent/host launch, provider calls, gateway/deployment
+and plugin UI/resources/events remain required, and the candidate is unmerged.
+
+Typed action restriction source `4ec8644` preserves existing named-assistant
+ownership and adds bounded, revisioned runtime/action/space rules. Current write
+transactions load persisted restrictions under the grant lock; deny dominates
+ask/allow without raising underlying authority. Approval cards and apply checks
+fence rule revision changes. Nineteen focused regressions and backend types
+passed, plus seven tests with all migrations in a fresh marked database, including
+actual concurrent rule/write locking. This source is unmerged and not full A4:
+agent ownership migration, cross-client editing/inspection, proposal provenance,
+read/effect rules, receiving budgets/dispatch and separate-worker handoffs remain.
+No public rule editing route or inferred standing-instruction policy is enabled.
+
+Scheduler PR #141 is now merged as main `7f3894f`; ADR evidence is committed on
+main `9e1a2c8`. Full local 2,120/2,120, all types/build/format and all CI jobs
+passed; candidate, tested merge and main trees match. Plugin candidate `9ce1961`
+passed 2,116/2,116 and all CI jobs but remains draft with interaction gates and
+current-main integration outstanding. Neither checkpoint is a deployment.
+
+Proposal rule source `35d186f` records server-generated runtime/revision/action-
+space evidence and rechecks it under the original grant at human review. Rule
+edits invalidate stale suggestions. Built-in and plugin plan identities are
+preserved; a plan cannot choose another connection or take assistant identity
+from its action input. Thirty-six current regressions, backend types and seven
+fresh-database migration/review tests passed. This is unmerged source. Current
+job/source provenance, read/effect/notification checks, agent records, cross-client
+editing, budgets and actual receiving-worker collaboration remain required.
 
 ### Activity checkpoint and scope continuity — 2 October 2026
 
@@ -137,6 +217,23 @@ Typed rules, agent ownership records, durable budgets, receiving authorization
 and cross-runtime round trips still require integration. The whole-app D1/U1,
 provider/model, plugin and mobile parity deliverables remain in scope.
 
+### Current main/source reconciliation — 2 October 2026
+
+The chronological record above includes earlier candidate states. Current main
+**dabb770** includes qualified PR **#143**, merge **9c344b8**: typed write rules,
+stale approval fences and server-held Review producing-job/rule/runtime authority.
+Exact **e58ed27** passed **2,141/2,141** full local tests, all workspace types/build/
+format and all CI jobs **36995158096**. Candidate/CI merge/main trees matched.
+Public rule editor routes/UI remain disabled and full A4/D1/U1 remains active.
+
+Scoped privacy/deletion candidate **f79c852**, draft PR **#144**, is frozen on
+current main with full qualification running. Source **977288c**, **866e4c0**,
+**411935e** retain owner/team history during ordinary target removal, suppress
+notice job-only source exposure and hide Review summaries after source loss.
+Actual generated runtime, providers, Docs, profile and whole-app UI/native/browser
+acceptance, typed agent records/editor, budgets and receiving collaboration remain
+required. Character work is preserved; no deployment or cleanup occurred.
+
 ### Qualified source privacy and parent deletion checkpoint — 2 October 2026
 
 PR **#144** is merged as main **eccf338**, from frozen candidate **f79c852** on
@@ -162,6 +259,40 @@ budget reservations. Public rule editor remains disabled. Preserve character
 work, Orbyn palette and mobile parity; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope.
+
+### Handoff dependency revision evidence — source checkpoint, 2 October 2026
+
+Requested handoffs now bind current recorded dependency revisions, in addition
+to producer result, Review/Undo outcome, runtime and container. Source row locks
+fence concurrent edits during reviewed request/acknowledgement. Reading/polling
+transcripts does not create a new revision; substantive edits invalidate earlier
+requests or acknowledgements. Four stale-source regressions and the lock race
+failed before correction. Fresh migrated source cohort passed38/38, backend
+types and scoped formatting passed. This source checkpoint remains unmerged.
+
+This is not original provider-read version snapshots, complete dependency closure
+or authority to dispatch receiving jobs. Per-agent ownership/rules, current
+receiving permissions/connection, durable budget reservations and actual separate
+worker handoff/recovery/UI proof remain required. Full model/provider/plugin,
+Docs/Mermaid and whole-app web/desktop/mobile acceptance remains active.
+
+### Cached result authority — source checkpoint, 2 October 2026
+
+Assistant write retries previously returned cached private results before current
+destination policy ran. Source now binds the result to a server-generated digest
+of effective owner/grant, lane/job, scope, team role/policy, toolsets, flags, trust
+and typed rule revision. Changed or legacy-unbound authority holds the result;
+the original mutation is not repeated. Names and set ordering do not invalidate
+equivalent authority. For job-bound results, replay also checks the owned current
+container, immutable runtime lane and strict recorded source visibility.
+
+Four authority regressions and three producing-source regressions failed before
+their respective fixes. Current rules/trust/Review/handoff/replay cohort passed
+72/72, with backend types and scoped formatting. This is unmerged source, not
+complete replay authorization: target visibility and grant-scoped dependency
+closure, original provider-read versions, concurrent source fencing and replay
+across every supported target family still require implementation and proof.
+The full ADR, whole-app and mobile acceptance gates remain open.
 
 ### Qualified current assistant authority checkpoint — 2 October 2026
 
@@ -191,6 +322,47 @@ UI gates remain required. Preserve Orbyn palette and characters. Saved web
 preview denial remains respected; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope; the full ADR goal remains active.
+
+### Current cached target and effective source scope — source checkpoint, 2 October 2026
+
+Cached assistant result targets and structured resource links now recheck current
+effective grant scope. This covers the32 receipt families currently produced by
+write capabilities, including persisted resources and synthetic settings/focus
+receipts. A foreign owner, excluded project, removed/off team or source moved
+beyond the earlier caller's teams cannot expose the stored private answer.
+Scoped source helpers preserve the existing owner-wide projections when no
+restriction is supplied. Identity/reference parsing never treats prose or plan
+step labels as authorization evidence. Holds do not rerun the original mutation;
+restoring target access can return that original answer with the same client_ref.
+
+Two real regressions failed before correction. Current focused rules/Review/
+handoff/notices/visibility/replay suite passed98/98. Positive/foreign-owner tests
+exercise persistent receipt families against PostgreSQL; synthetic Personal and
+team receipts, disabled team policy and linked focus destinations are covered.
+Family-specific bounded queries replaced a costly combined CASE: observed local
+task check fell from3,327ms to34ms. This is not a production latency benchmark.
+
+Original provider-read versions, complete nested dependency closure, concurrent
+source fences, other persisted replay paths, receiving handoffs and budgets,
+typed read/effect/notice policy and owner/editor UI remain required. This source
+needs current-main full qualification before scoped promotion; it does not
+complete cached-result security or the full M1/D1/U1 and C1–C6 ADR acceptance.
+
+### Completed document draft replay — source checkpoint, 2 October 2026
+
+A completed long-document draft can return its persisted answer under a new
+client_ref. That path previously disclosed saved page titles and identities after
+destination project exclusion, page deletion or loss of effective Personal scope.
+All three regressions failed before correction. It now rechecks current producing
+job/source access and every saved destination before returning any saved result
+or draft-completed error. Unchanged access and restored access return the original
+answer without creating another page. Ordinary connector behavior is preserved.
+
+The current source cohort passed103/103, with backend types and scoped formatting.
+This follow-up is separate from frozen PR #146; it is not included in that PR's
+full qualification. Complete nested dependency closure, original provider-read
+revisions, concurrency fences and other persisted fast paths remain open. The
+full model/provider/plugin, Docs/Mermaid and whole-app/mobile ADR remains active.
 
 ### Qualified cached assistant result checkpoint — 2 October 2026
 
@@ -243,6 +415,45 @@ agent collaboration/reflection and whole-app Docs/UI acceptance. Preserve palett
 and characters; voice/computer-use product features remain excluded. No
 deployment or cleanup occurred. The full ADR remains active.
 
+### Native Mermaid correctness checkpoint — 2 October 2026
+
+Source dc5a2c8 fixes failures reproduced on the actual bundled engine in the
+owned narrow iOS preview: static diagrams rejected by unconditional stock CSS
+keyframes, initial horizontal clipping, omitted vertical padding, unreadable
+dark ER attribute rows and failed deferred native export dependency loading.
+Only exact inert stock keyframe bodies are stripped; unknown CSS at-rules,
+escapes and external resources remain rejected. Width is measured and diagrams
+fit initially, with relative zoom and Fit reset. Height includes host padding;
+ER row colors come from validated Orbyn surface tokens. Expo export dependencies
+are loaded in the initial module graph. No new permissions or network access.
+
+Corrected before-fix regressions failed; combined final cohort passed26/26 with
+mobile/backend types passing. Native flowchart/sequence/state/ER rendering,
+sequence zoom/refit/source and SVG file creation/system handoff are proven in
+docs/reviews/evidence/mermaid-native/. No recipient or save destination selected.
+Six remaining diagram families, malformed/large fixtures, light theme, Android,
+web/mobile-web and complete Docs/UI acceptance remain open. Source7026041
+reconciles current mainc30c5fc; its sole conflict was a test blank line, with all
+regressions preserved. This source checkpoint is not merged or deployed.
+
+### Screenshot acceptance requirement — user clarification, 2 October 2026
+
+Every web, desktop and mobile redesign must include screenshots of the actual
+running surface and inspection for overlap, clipping, label readability, toolbar
+wrapping and nested overlay containment. Include relevant narrow/wide widths,
+both themes, long content and keyboard/large text states. Store provenance with
+commit, platform, viewport, fixture and observed defects. Passing tests, builds
+or responsive web screenshots do not replace native evidence. Unavailable
+surfaces remain explicitly unverified and cannot be declared complete.
+
+Mermaid's ten native fixture families now rendered, but screenshot review exposed
+further styling defects. Shared palette rules and adaptive measured Gantt tick
+selection are implemented for web/desktop and mobile. Native rechecks prove pie
+segment distinction, non-overlapping Gantt dates and restored Morning journey
+section text. Mindmap root alignment/faint links and small fitted labels still
+need work. Fullscreen/zoom usability and remaining platform/theme gates stay
+open. This remains an implementation checkpoint, not release acceptance.
+
 ### Home agent presentation — 3 October 2026
 
 Apply the user’s Muse/Dots direction to both public and signed-in Home, with native
@@ -266,3 +477,13 @@ The user owns web visual validation on their test server for this increment.
 Code/build checks do not establish visual acceptance. Native screenshot and
 interaction acceptance remains required and the disposable account’s terms
 confirmation is still pending.
+
+3 October D1 frontmatter checkpoint: closed initial YAML metadata is preserved
+as one literal source block, including delimiters, blank lines, BOM, tags and
+anchor-like text; it is never evaluated. Both client code views identify it as
+YAML frontmatter and use bundled syntax coloring. A moved or malformed edited
+block exports as a safe fence. Leading thematic rules serialize unambiguously,
+and legacy anchored rules remain rules. Markdown and HTML export regressions
+cover source retention and script escaping. This does not complete reference
+links, synchronized source/preview, D1 export coverage or whole-app U1. Native
+visual acceptance remains pending, with the explicit terms confirmation gate.

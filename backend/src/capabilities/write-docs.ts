@@ -436,7 +436,7 @@ const noLine = (block: string) =>
   );
 
 const words = (s: string) =>
-  plainText(s.replace(/^#{1,3}\s+/, ""))
+  plainText(s.replace(/^#{1,6}\s+/, ""))
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();

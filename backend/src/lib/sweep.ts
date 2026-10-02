@@ -540,6 +540,32 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "assistant_reflection_receipts",
+    label: "Overnight reflection receipts",
+    detail:
+      "Evidence revisions already reflected on, retained with their night run and never while that run is active.",
+    table: "assistant_reflection_receipts",
+    where: `created_at < now() - interval '90 days' AND NOT EXISTS(SELECT 1 FROM ai_jobs j WHERE j.id=assistant_reflection_receipts.reflection_job_id AND j.state IN ('queued','running','waiting'))`,
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "assistant_handoff_chains",
+    label: "Assistant collaboration receipts",
+    detail:
+      "Completed collaboration trails retained for 90 days; active handoffs and their execution jobs keep the entire chain.",
+    table: "assistant_handoff_chains",
+    where: `created_at < now() - interval '90 days' AND NOT EXISTS (
+      SELECT 1 FROM assistant_handoffs h
+      LEFT JOIN ai_jobs p ON p.id=h.producer_job_id
+      LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
+      WHERE h.root_id=assistant_handoff_chains.id AND (
+        h.status IN ('proposed','accepted') OR p.state IN ('queued','running','waiting') OR r.state IN ('queued','running','waiting'))
+    )`,
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "assistant_activity_events",
     label: "Assistant work activity",
     detail:

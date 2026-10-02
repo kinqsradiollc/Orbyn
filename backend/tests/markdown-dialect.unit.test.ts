@@ -10,6 +10,7 @@ import {
   serializeDoc,
   tableMarkdown,
   type DocBlock,
+  type DocHeadingLevel,
 } from "@orbyn/core";
 
 /**
@@ -28,6 +29,9 @@ const every: DocBlock[] = [
   { id: "bh1", type: "heading", level: 1, text: "Lecture 5" },
   { id: "bh2", type: "heading", level: 2, text: "Why **caching** matters" },
   { id: "bh3", type: "heading", level: 3, text: "" },
+  { id: "bh4", type: "heading", level: 4, text: "Nested section" },
+  { id: "bh5", type: "heading", level: 5, text: "Detail" },
+  { id: "bh6", type: "heading", level: 6, text: "Literal closing hashes ###" },
   {
     id: "bp1",
     type: "paragraph",
@@ -294,7 +298,7 @@ function randomBlock(r: () => number, n: number): DocBlock {
     case 0:
       b = {
         type: "heading",
-        level: (1 + Math.floor(r() * 3)) as 1 | 2 | 3,
+        level: (1 + Math.floor(r() * 6)) as DocHeadingLevel,
         text: words(r),
       };
       break;

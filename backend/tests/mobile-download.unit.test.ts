@@ -24,6 +24,13 @@ const compiled = ts.transpileModule(
   },
 ).outputText;
 
+test("native file export does not depend on loading deferred dependency bundles", async () => {
+  const f = mount("ios", { deferredImportsUnavailable: true });
+  await f.api.saveFile("diagram.svg", "<svg/>", "image/svg+xml");
+  assert.equal(f.shared.length, 1);
+  assert.equal(f.shared[0].mimeType, "image/svg+xml");
+});
+
 function mount(
   platform: string,
   options: {
@@ -33,6 +40,7 @@ function mount(
     clickError?: Error;
     writeError?: Error;
     shareError?: Error;
+    deferredImportsUnavailable?: boolean;
   } = {},
 ) {
   const exports: {
@@ -69,6 +77,7 @@ function mount(
       this.entry.bytes = bytes;
     }
   };
+  let evaluating = true;
   runInNewContext(compiled, {
     exports,
     Blob,
@@ -97,6 +106,14 @@ function mount(
       },
     },
     require(id: string) {
+      if (
+        options.deferredImportsUnavailable &&
+        !evaluating &&
+        ["expo-file-system", "expo-sharing"].includes(id)
+      )
+        throw new Error(
+          "Native dependency is unavailable as a deferred bundle",
+        );
       if (id === "react-native")
         return {
           Platform: { OS: platform },
@@ -141,6 +158,7 @@ function mount(
       throw new Error(`Unexpected module ${id}`);
     },
   });
+  evaluating = false;
   return { api: exports, requests, files, shared, texts, links, revoked, urls };
 }
 

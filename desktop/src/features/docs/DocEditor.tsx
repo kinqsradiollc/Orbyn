@@ -59,6 +59,9 @@ import {
   linkQueryAt,
   currentHeading,
   docOutline,
+  docFragmentIndex,
+  docFoldsForTarget,
+  parseAppLink,
   moveSection,
   pageFreshness,
   showsOutline,
@@ -134,12 +137,14 @@ import { DocSuggestions } from "./DocSuggestions";
 import type { Mark } from "./marks";
 import { readSelection, type Picked } from "./selection";
 import { BlockView } from "./DocBlocks";
+import { DocNavigationContext } from "./doc-navigation";
 import { docCrdtEnabled, useDocYjs } from "./useDocYjs";
 import { liveListChoices } from "../views/LiveList";
 import {
   LinkedHere,
   LinkPicker,
   LinkPillProvider,
+  OPEN_LINK_EVENT,
   useLinkPills,
 } from "./DocLinks";
 import {
@@ -542,13 +547,22 @@ export function DocEditor({
    * for them on every device.
    */
   const [folds, setFolds] = useState<Set<string>>(() => new Set());
+  const [foldsLoaded, setFoldsLoaded] = useState(false);
   const foldTimer = useRef<number | null>(null);
   useEffect(() => {
     let live = true;
     setFolds(new Set());
+    setFoldsLoaded(false);
     client.docFolds(doc.id).then(
-      (r) => live && setFolds(new Set(r.block_ids)),
-      () => {},
+      (r) => {
+        if (live) {
+          setFolds(new Set(r.block_ids));
+          setFoldsLoaded(true);
+        }
+      },
+      () => {
+        if (live) setFoldsLoaded(true);
+      },
     );
     return () => {
       live = false;
@@ -1402,23 +1416,20 @@ export function DocEditor({
    * search hit, an answer that cites it. Headings folded over it open.
    */
   const goToBlock = (blockId: string) => {
-    const at = live.current.blocks.findIndex((b) => b.id === blockId);
-    if (at >= 0 && folds.size) {
-      const covering = live.current.blocks.flatMap((b, i) =>
-        b.type === "heading" && b.id && folds.has(b.id) && i < at ? [b.id] : [],
+    const current = live.current.blocks;
+    const at = docFragmentIndex(current, blockId);
+    if (at === null)
+      return report(
+        new Error("This heading or line is no longer in the page."),
       );
-      if (covering.length) {
-        const next = new Set(folds);
-        for (const id of covering) next.delete(id);
-        saveFolds(next);
-      }
-    }
+    const next = docFoldsForTarget(current, folds, at);
+    if (next.size !== folds.size) saveFolds(next);
     requestAnimationFrame(() => {
-      const el = blockEls.current.get(blockId);
+      const el = lineEls()[at];
       el?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
-    setActiveComment(blockId);
-    setFlash(blockId);
+    setActiveComment(current[at].id ?? null);
+    setFlash(current[at].id ?? null);
   };
   useEffect(() => {
     if (!flash) return;
@@ -1444,10 +1455,10 @@ export function DocEditor({
   };
 
   useEffect(() => {
-    if (!initialBlockId) return;
+    if (!initialBlockId || !foldsLoaded) return;
     const frame = requestAnimationFrame(() => goToBlock(initialBlockId));
     return () => cancelAnimationFrame(frame);
-  }, [doc.id, initialBlockId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [doc.id, initialBlockId, foldsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * A proposal is a stretch of one named line, so there is no way to propose
@@ -3560,313 +3571,351 @@ export function DocEditor({
               )}
 
               <LinkPillProvider value={pillActions}>
-                <FootnoteContext.Provider value={footnotes}>
-                  <div
-                    className="doc-body"
-                    ref={bodyRef}
-                    onCopy={(e) => {
-                      // Across lines, a copy carries the page's own HTML and
-                      // Markdown, so another app keeps its shape (EDT-15).
-                      const lines = selectedLines();
-                      if (!lines) return;
-                      e.preventDefault();
-                      copyInto(lines, e.clipboardData);
-                    }}
-                    onDragOver={onLinkDragOver}
-                    onDragLeave={(e) => {
+                <DocNavigationContext.Provider
+                  value={{
+                    docId: doc.id,
+                    onFragment: goToBlock,
+                    onAppLink: (url) => {
+                      const link = parseAppLink(url);
                       if (
-                        e.currentTarget.contains(e.relatedTarget as Node | null)
+                        link?.kind === "doc" &&
+                        link.id === doc.id &&
+                        link.block
                       )
-                        return;
-                      setLinkDrop(null);
-                    }}
-                    onDrop={(e) => void onLinkDrop(e)}
-                  >
-                    {blocks.map((block, index) =>
-                      focused === index && (!reading || suggesting) ? (
-                        <textarea
-                          dir="auto"
-                          key={`${index}-${block.type}`}
-                          id={`doc-block-${index}`}
-                          ref={areaRef}
-                          className="doc-input"
-                          // A nested line is typed where it reads, stepped in.
-                          data-depth={layout[index].depth || undefined}
-                          style={
-                            layout[index].depth
-                              ? ({
-                                  "--depth": layout[index].depth,
-                                } as CSSProperties)
-                              : undefined
-                          }
-                          rows={1}
-                          defaultValue={serializeBlock(
-                            block,
-                            layout[index].number,
-                          )}
-                          onPaste={(e) => onPaste(e, index)}
-                          onChange={(e) => {
-                            e.currentTarget.style.height = "auto";
-                            e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
-                            watchSlash(
-                              index,
-                              e.currentTarget.value,
-                              e.currentTarget,
-                            );
-                            watchLink(
-                              index,
-                              e.currentTarget.value,
-                              e.currentTarget,
-                            );
-                            watchMention(
-                              index,
-                              e.currentTarget.value,
-                              e.currentTarget,
-                            );
-                            editBlock(index, e.currentTarget.value);
-                          }}
-                          onKeyDown={(e) => {
-                            // The slash menu, the link picker and the people
-                            // picker own Enter and the arrows while open.
-                            if (
-                              (slash || picking || mention) &&
-                              ["Enter", "ArrowUp", "ArrowDown"].includes(e.key)
-                            )
-                              return;
-                            if (mention && e.key === "Escape") {
-                              setMention(null);
-                              return;
+                        goToBlock(link.block);
+                      else
+                        window.dispatchEvent(
+                          new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+                        );
+                    },
+                  }}
+                >
+                  <FootnoteContext.Provider value={footnotes}>
+                    <div
+                      className="doc-body"
+                      ref={bodyRef}
+                      onCopy={(e) => {
+                        // Across lines, a copy carries the page's own HTML and
+                        // Markdown, so another app keeps its shape (EDT-15).
+                        const lines = selectedLines();
+                        if (!lines) return;
+                        e.preventDefault();
+                        copyInto(lines, e.clipboardData);
+                      }}
+                      onDragOver={onLinkDragOver}
+                      onDragLeave={(e) => {
+                        if (
+                          e.currentTarget.contains(
+                            e.relatedTarget as Node | null,
+                          )
+                        )
+                          return;
+                        setLinkDrop(null);
+                      }}
+                      onDrop={(e) => void onLinkDrop(e)}
+                    >
+                      {blocks.map((block, index) =>
+                        focused === index && (!reading || suggesting) ? (
+                          <textarea
+                            dir="auto"
+                            key={`${index}-${block.type}`}
+                            id={`doc-block-${index}`}
+                            ref={areaRef}
+                            className="doc-input"
+                            // A nested line is typed where it reads, stepped in.
+                            data-depth={layout[index].depth || undefined}
+                            style={
+                              layout[index].depth
+                                ? ({
+                                    "--depth": layout[index].depth,
+                                  } as CSSProperties)
+                                : undefined
                             }
-                            onKey(e, index);
-                          }}
-                          onBlur={() => {
-                            setPicking(null);
-                            if (suggesting) void proposeLine(index);
-                            else settlePendingTask(index);
-                            setFocused((f) => (f === index ? null : f));
-                          }}
-                        />
-                      ) : (
-                        <div
-                          key={index}
-                          hidden={hiddenLines[index]}
-                          data-block-id={block.id ?? undefined}
-                          data-block-source={blockText(block)}
-                          className={
-                            "doc-block-row" +
-                            (WIDE_BLOCKS.has(block.type) ? " is-wide" : "") +
-                            (block.id && block.id === flash
-                              ? " is-flash"
-                              : "") +
-                            (block.type === "heading" &&
-                            block.id &&
-                            folds.has(block.id)
-                              ? " is-folded"
-                              : "") +
-                            (linkDrop === index ? " is-drop-after" : "") +
-                            (linkDrop === -1 && index === 0
-                              ? " is-drop-before"
-                              : "") +
-                            (block.id && commented[block.id]?.length
-                              ? " has-comment"
-                              : "") +
-                            (block.id && block.id === activeComment
-                              ? " is-active"
-                              : "")
-                          }
-                          ref={(el) => {
-                            if (!block.id) return;
-                            if (el) blockEls.current.set(block.id, el);
-                            else blockEls.current.delete(block.id);
-                          }}
-                          onClick={() =>
-                            block.id &&
-                            commented[block.id]?.length &&
-                            setActiveComment(block.id)
-                          }
-                        >
-                          {block.type === "heading" &&
-                            block.id &&
-                            (folds.has(block.id) || canFold(blocks, index)) && (
-                              <button
-                                className="doc-fold"
-                                aria-label={
-                                  folds.has(block.id)
-                                    ? `Unfold “${blockText(block)}”`
-                                    : `Fold “${blockText(block)}”`
-                                }
-                                aria-expanded={!folds.has(block.id)}
-                                title={folds.has(block.id) ? "Unfold" : "Fold"}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFold(block.id!);
-                                }}
-                              >
-                                {folds.has(block.id) ? (
-                                  <ChevronRight size={14} aria-hidden="true" />
-                                ) : (
-                                  <ChevronDown size={14} aria-hidden="true" />
-                                )}
-                              </button>
+                            rows={1}
+                            defaultValue={serializeBlock(
+                              block,
+                              layout[index].number,
                             )}
-                          {!reading && (
-                            <button
-                              className="doc-handle"
-                              aria-label="Block options"
-                              aria-haspopup="menu"
-                              onClick={(e) =>
-                                setMenu({
-                                  index,
-                                  at: e.currentTarget.getBoundingClientRect(),
-                                })
-                              }
-                            >
-                              <GripVertical size={14} aria-hidden="true" />
-                            </button>
-                          )}
-                          <div
-                            className="doc-block"
-                            role={reading && !suggesting ? undefined : "button"}
-                            tabIndex={reading && !suggesting ? undefined : 0}
-                            onClick={() => {
-                              if (reading && !suggesting) return;
-                              // A click that ends a drag is a selection, not a
-                              // request to edit: opening the input here would throw
-                              // the selected words away before they can be used.
-                              if (!window.getSelection()?.isCollapsed) return;
-                              setFocused(index);
+                            onPaste={(e) => onPaste(e, index)}
+                            onChange={(e) => {
+                              e.currentTarget.style.height = "auto";
+                              e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                              watchSlash(
+                                index,
+                                e.currentTarget.value,
+                                e.currentTarget,
+                              );
+                              watchLink(
+                                index,
+                                e.currentTarget.value,
+                                e.currentTarget,
+                              );
+                              watchMention(
+                                index,
+                                e.currentTarget.value,
+                                e.currentTarget,
+                              );
+                              editBlock(index, e.currentTarget.value);
                             }}
                             onKeyDown={(e) => {
+                              // The slash menu, the link picker and the people
+                              // picker own Enter and the arrows while open.
                               if (
-                                (!reading || suggesting) &&
-                                e.key === "Enter"
-                              ) {
-                                e.preventDefault();
-                                setFocused(index);
+                                (slash || picking || mention) &&
+                                ["Enter", "ArrowUp", "ArrowDown"].includes(
+                                  e.key,
+                                )
+                              )
+                                return;
+                              if (mention && e.key === "Escape") {
+                                setMention(null);
+                                return;
                               }
+                              onKey(e, index);
                             }}
+                            onBlur={() => {
+                              setPicking(null);
+                              if (suggesting) void proposeLine(index);
+                              else settlePendingTask(index);
+                              setFocused((f) => (f === index ? null : f));
+                            }}
+                          />
+                        ) : (
+                          <div
+                            key={index}
+                            hidden={hiddenLines[index]}
+                            data-block-id={block.id ?? undefined}
+                            data-block-source={blockText(block)}
+                            className={
+                              "doc-block-row" +
+                              (WIDE_BLOCKS.has(block.type) ? " is-wide" : "") +
+                              (block.id && block.id === flash
+                                ? " is-flash"
+                                : "") +
+                              (block.type === "heading" &&
+                              block.id &&
+                              folds.has(block.id)
+                                ? " is-folded"
+                                : "") +
+                              (linkDrop === index ? " is-drop-after" : "") +
+                              (linkDrop === -1 && index === 0
+                                ? " is-drop-before"
+                                : "") +
+                              (block.id && commented[block.id]?.length
+                                ? " has-comment"
+                                : "") +
+                              (block.id && block.id === activeComment
+                                ? " is-active"
+                                : "")
+                            }
+                            ref={(el) => {
+                              if (!block.id) return;
+                              if (el) blockEls.current.set(block.id, el);
+                              else blockEls.current.delete(block.id);
+                            }}
+                            onClick={() =>
+                              block.id &&
+                              commented[block.id]?.length &&
+                              setActiveComment(block.id)
+                            }
                           >
-                            <BlockView
-                              block={block}
-                              marks={
-                                block.id
-                                  ? [
-                                      ...(commented[block.id] ?? []),
-                                      ...proposedMarks[block.id],
-                                    ]
-                                  : []
+                            {block.type === "heading" &&
+                              block.id &&
+                              (folds.has(block.id) ||
+                                canFold(blocks, index)) && (
+                                <button
+                                  className="doc-fold"
+                                  aria-label={
+                                    folds.has(block.id)
+                                      ? `Unfold “${blockText(block)}”`
+                                      : `Fold “${blockText(block)}”`
+                                  }
+                                  aria-expanded={!folds.has(block.id)}
+                                  title={
+                                    folds.has(block.id) ? "Unfold" : "Fold"
+                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFold(block.id!);
+                                  }}
+                                >
+                                  {folds.has(block.id) ? (
+                                    <ChevronRight
+                                      size={14}
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <ChevronDown size={14} aria-hidden="true" />
+                                  )}
+                                </button>
+                              )}
+                            {!reading && (
+                              <button
+                                className="doc-handle"
+                                aria-label="Block options"
+                                aria-haspopup="menu"
+                                onClick={(e) =>
+                                  setMenu({
+                                    index,
+                                    at: e.currentTarget.getBoundingClientRect(),
+                                  })
+                                }
+                              >
+                                <GripVertical size={14} aria-hidden="true" />
+                              </button>
+                            )}
+                            <div
+                              className="doc-block"
+                              role={
+                                reading && !suggesting ? undefined : "button"
                               }
-                              onToggleTodo={
-                                structural ? () => toggleTodo(index) : undefined
-                              }
-                              number={layout[index].number}
-                              depth={layout[index].depth}
-                              isTask={!!block.id && linked.has(block.id)}
-                              projectId={doc.project_id ?? null}
-                              pageBlocks={blocks}
-                              onReplace={
-                                structural && !reading
-                                  ? (b) => {
-                                      const next = blocks.slice();
-                                      next[index] = b;
-                                      update(next);
-                                    }
-                                  : undefined
-                              }
-                            />
+                              tabIndex={reading && !suggesting ? undefined : 0}
+                              onClick={() => {
+                                if (reading && !suggesting) return;
+                                // A click that ends a drag is a selection, not a
+                                // request to edit: opening the input here would throw
+                                // the selected words away before they can be used.
+                                if (!window.getSelection()?.isCollapsed) return;
+                                setFocused(index);
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  (!reading || suggesting) &&
+                                  e.key === "Enter"
+                                ) {
+                                  e.preventDefault();
+                                  setFocused(index);
+                                }
+                              }}
+                            >
+                              <BlockView
+                                block={block}
+                                marks={
+                                  block.id
+                                    ? [
+                                        ...(commented[block.id] ?? []),
+                                        ...proposedMarks[block.id],
+                                      ]
+                                    : []
+                                }
+                                onToggleTodo={
+                                  structural
+                                    ? () => toggleTodo(index)
+                                    : undefined
+                                }
+                                number={layout[index].number}
+                                depth={layout[index].depth}
+                                isTask={!!block.id && linked.has(block.id)}
+                                projectId={doc.project_id ?? null}
+                                pageBlocks={blocks}
+                                onReplace={
+                                  structural && !reading
+                                    ? (b) => {
+                                        const next = blocks.slice();
+                                        next[index] = b;
+                                        update(next);
+                                      }
+                                    : undefined
+                                }
+                              />
+                            </div>
                           </div>
-                        </div>
-                      ),
-                    )}
-                    {!reading && structural && (
-                      <button
-                        className="doc-add"
-                        onClick={() => insertAfter(blocks.length - 1)}
-                      >
-                        <Plus size={14} aria-hidden="true" /> Add a block
-                        <kbd>/</kbd>
-                      </button>
-                    )}
-                    {menu && (
-                      <DocBlockMenu
-                        anchor={menu.at}
-                        block={blocks[menu.index]}
-                        isFirst={menu.index === 0}
-                        isLast={menu.index === blocks.length - 1}
-                        onTurnInto={(kind) => turnInto(menu.index, kind)}
-                        onMove={(by) => moveBlock(menu.index, by)}
-                        onDuplicate={() => duplicate(menu.index)}
-                        onComment={() => commentOn(menu.index)}
-                        onDelete={() => removeAt(menu.index)}
-                        onIndent={(by) => indent(menu.index, by)}
-                        canIndent={
-                          indentBlocks(blocks, menu.index, 1) !== blocks
-                        }
-                        canOutdent={
-                          indentBlocks(blocks, menu.index, -1) !== blocks
-                        }
-                        structural={structural}
-                        onCopyLink={() => void copyLineLink(menu.index)}
-                        onMoveToPage={() => void moveToNewPage(menu.index)}
-                        onClose={() => setMenu(null)}
-                      />
-                    )}
-                    {mention && (
-                      <PeopleMenu
-                        anchor={mention.at}
-                        query={mention.query}
-                        people={people}
-                        onPick={pickPerson}
-                        onClose={() => setMention(null)}
-                      />
-                    )}
-                    {slash && (
-                      <SlashMenu
-                        anchor={slash.at}
-                        query={slash.query}
-                        insertsOnly={slash.insertsOnly}
-                        onPick={pickSlash}
-                        onClose={() => setSlash(null)}
-                      />
-                    )}
-                    {picking && (
-                      <LinkPicker
-                        anchor={picking.at}
-                        query={picking.query}
-                        projectName={doc.project_name}
-                        onPick={pickLink}
-                        onCreate={(kind, title) =>
-                          void createAndLink(kind, title)
-                        }
-                        onClose={() => {
-                          embedNext.current = false;
-                          setPicking(null);
-                        }}
-                        report={report}
-                      />
-                    )}
-                    {inserting && (
-                      <TemplateInsert
-                        anchor={inserting.at}
-                        doc={{ title, project_name: doc.project_name }}
-                        onPick={(lines) => {
-                          const now = live.current.blocks;
-                          const next = now.slice();
-                          const empty =
-                            next[inserting.index]?.type === "paragraph" &&
-                            !blockText(next[inserting.index])
-                              .replace(/^\/\S*$/, "")
-                              .trim();
-                          next.splice(inserting.index, empty ? 1 : 0, ...lines);
-                          setFocused(null);
-                          update(next);
-                        }}
-                        onClose={() => setInserting(null)}
-                        report={report}
-                      />
-                    )}
-                  </div>
-                </FootnoteContext.Provider>
+                        ),
+                      )}
+                      {!reading && structural && (
+                        <button
+                          className="doc-add"
+                          onClick={() => insertAfter(blocks.length - 1)}
+                        >
+                          <Plus size={14} aria-hidden="true" /> Add a block
+                          <kbd>/</kbd>
+                        </button>
+                      )}
+                      {menu && (
+                        <DocBlockMenu
+                          anchor={menu.at}
+                          block={blocks[menu.index]}
+                          isFirst={menu.index === 0}
+                          isLast={menu.index === blocks.length - 1}
+                          onTurnInto={(kind) => turnInto(menu.index, kind)}
+                          onMove={(by) => moveBlock(menu.index, by)}
+                          onDuplicate={() => duplicate(menu.index)}
+                          onComment={() => commentOn(menu.index)}
+                          onDelete={() => removeAt(menu.index)}
+                          onIndent={(by) => indent(menu.index, by)}
+                          canIndent={
+                            indentBlocks(blocks, menu.index, 1) !== blocks
+                          }
+                          canOutdent={
+                            indentBlocks(blocks, menu.index, -1) !== blocks
+                          }
+                          structural={structural}
+                          onCopyLink={() => void copyLineLink(menu.index)}
+                          onMoveToPage={() => void moveToNewPage(menu.index)}
+                          onClose={() => setMenu(null)}
+                        />
+                      )}
+                      {mention && (
+                        <PeopleMenu
+                          anchor={mention.at}
+                          query={mention.query}
+                          people={people}
+                          onPick={pickPerson}
+                          onClose={() => setMention(null)}
+                        />
+                      )}
+                      {slash && (
+                        <SlashMenu
+                          anchor={slash.at}
+                          query={slash.query}
+                          insertsOnly={slash.insertsOnly}
+                          onPick={pickSlash}
+                          onClose={() => setSlash(null)}
+                        />
+                      )}
+                      {picking && (
+                        <LinkPicker
+                          anchor={picking.at}
+                          query={picking.query}
+                          projectName={doc.project_name}
+                          onPick={pickLink}
+                          onCreate={(kind, title) =>
+                            void createAndLink(kind, title)
+                          }
+                          onClose={() => {
+                            embedNext.current = false;
+                            setPicking(null);
+                          }}
+                          report={report}
+                        />
+                      )}
+                      {inserting && (
+                        <TemplateInsert
+                          anchor={inserting.at}
+                          doc={{ title, project_name: doc.project_name }}
+                          onPick={(lines) => {
+                            const now = live.current.blocks;
+                            const next = now.slice();
+                            const empty =
+                              next[inserting.index]?.type === "paragraph" &&
+                              !blockText(next[inserting.index])
+                                .replace(/^\/\S*$/, "")
+                                .trim();
+                            next.splice(
+                              inserting.index,
+                              empty ? 1 : 0,
+                              ...lines,
+                            );
+                            setFocused(null);
+                            update(next);
+                          }}
+                          onClose={() => setInserting(null)}
+                          report={report}
+                        />
+                      )}
+                    </div>
+                  </FootnoteContext.Provider>
+                </DocNavigationContext.Provider>
               </LinkPillProvider>
 
               {/* One quiet line at the end of the page. The Markdown help

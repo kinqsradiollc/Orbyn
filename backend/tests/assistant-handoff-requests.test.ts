@@ -1,0 +1,820 @@
+import "./setup.js";
+import { before, after, test } from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { HttpError } from "@orbyn/core";
+const { pool } = await import("../src/db/pool.js");
+const { migrate } = await import("../src/db/migrate.js");
+const {
+  handoffProducerEvidence,
+  createRequestedAssistantHandoff,
+  acknowledgeCompletedAssistantHandoff,
+  acknowledgeFailedAssistantHandoff,
+} = await import("../src/modules/assistant-workspace/handoffs.js");
+const owners: string[] = [];
+before(() => migrate());
+after(async () => {
+  await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [owners]);
+  await pool.end();
+});
+async function person() {
+  const id = randomUUID();
+  owners.push(id);
+  await pool.query(
+    "INSERT INTO users(id,email,password_hash,name) VALUES($1,$2,'test','Handoff tester')",
+    [id, `handoff-${id}@example.test`],
+  );
+  return id;
+}
+async function producer(
+  owner: string,
+  project: string | null = null,
+  lane = "overnight",
+  state = "done",
+) {
+  const chat = randomUUID();
+  const job = randomUUID();
+  const origin = lane === "overnight" ? "night" : "task";
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin,project_id) VALUES($1,$2,'Reflection result',$4,$3)",
+    [chat, owner, project, origin],
+  );
+  await pool.query(
+    `INSERT INTO ai_jobs(id,user_id,chat_id,turn_id,state,result,sources_checked,run_origin,run_state)
+    VALUES($1,$2,$3,$4,$8,$5,true,$7,$6)`,
+    [
+      job,
+      owner,
+      chat,
+      randomUUID(),
+      { answer: "Review the next step." },
+      { version: 1, request: { automation: { kind: origin } } },
+      origin,
+      state,
+    ],
+  );
+  return { job, chat };
+}
+async function request(owner: string, job: string) {
+  const evidence = await handoffProducerEvidence(pool, owner, job);
+  return {
+    producer_job_id: job,
+    expected_producer_revision: evidence.source.revision,
+    recipient_lane: evidence.lane === "overnight" ? "background" : "overnight",
+    title: "Review the next step",
+    instruction: "Check the cited result and propose a follow-up.",
+  };
+}
+const status = (expected: number) => (error: unknown) =>
+  error instanceof HttpError && error.statusCode === expected;
+
+async function accepted(owner: string, project: string | null = null) {
+  const producing = await producer(owner);
+  const id = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, producing.job),
+  );
+  const receiving = await producer(owner, project, "background", "queued");
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,delivery_attempts=1 WHERE id=$1",
+    [id],
+  );
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,status='accepted',recipient_job_id=$2 WHERE id=$1",
+    [id, receiving.job],
+  );
+  return { id, producing, receiving };
+}
+
+test("actual failed receiving jobs acknowledge once across concurrent retries", async () => {
+  const owner = await person();
+  const { id, receiving } = await accepted(owner);
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+  await pool.query(
+    "UPDATE ai_jobs SET state='failed',error_message='Private provider details' WHERE id=$1",
+    [receiving.job],
+  );
+  assert.deepEqual(
+    await Promise.all([
+      acknowledgeFailedAssistantHandoff(owner, id, 3),
+      acknowledgeFailedAssistantHandoff(owner, id, 3),
+    ]),
+    ["execution", "execution"],
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT status,revision,failure,result FROM assistant_handoffs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    { status: "failed", revision: 4, failure: "execution", result: null },
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 4),
+    status(409),
+  );
+});
+
+test("failed handoffs record access loss without exposing restricted result or error contents", async () => {
+  const owner = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Failed receiving source') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  const { id, receiving } = await accepted(owner, project);
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  assert.equal(await acknowledgeFailedAssistantHandoff(owner, id, 3), "access");
+  assert.equal(
+    (
+      await pool.query("SELECT result FROM assistant_handoffs WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].result,
+    null,
+  );
+});
+
+test("failed handoffs distinguish changed producing evidence and enforce owner/revision guards", async () => {
+  const owner = await person();
+  const other = await person();
+  const { id, producing, receiving } = await accepted(owner);
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(other, id, 3),
+    status(404),
+  );
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 2),
+    status(409),
+  );
+  await pool.query("UPDATE ai_jobs SET result=$2 WHERE id=$1", [
+    producing.job,
+    { answer: "Changed producing result." },
+  ]);
+  assert.equal(
+    await acknowledgeFailedAssistantHandoff(owner, id, 3),
+    "revision",
+  );
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [owner]);
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+});
+
+test("failed handoff acknowledgment rejects done, waiting, unaccepted and cancelled work", async () => {
+  const owner = await person();
+  const { id, receiving } = await accepted(owner);
+  for (const state of ["waiting", "done"]) {
+    await pool.query("UPDATE ai_jobs SET state=$2 WHERE id=$1", [
+      receiving.job,
+      state,
+    ]);
+    await assert.rejects(
+      acknowledgeFailedAssistantHandoff(owner, id, 3),
+      status(409),
+    );
+  }
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query(
+    "UPDATE assistant_handoffs SET status='cancelled',revision=revision+1 WHERE id=$1",
+    [id],
+  );
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, id, 4),
+    status(409),
+  );
+  const producing = await producer(owner);
+  const proposal = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, producing.job),
+  );
+  await assert.rejects(
+    acknowledgeFailedAssistantHandoff(owner, proposal, 1),
+    status(409),
+  );
+});
+
+test("failed handoffs recheck producing access and unchecked receiving dependencies", async () => {
+  const owner = await person();
+  const first = await accepted(owner);
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Restricted producing evidence',true) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query("UPDATE ai_chats SET project_id=$2 WHERE id=$1", [
+    first.producing.chat,
+    project,
+  ]);
+  await pool.query("UPDATE ai_jobs SET state='failed' WHERE id=$1", [
+    first.receiving.job,
+  ]);
+  assert.equal(
+    await acknowledgeFailedAssistantHandoff(owner, first.id, 3),
+    "access",
+  );
+  const second = await accepted(owner);
+  await pool.query(
+    "UPDATE ai_jobs SET state='failed',sources_checked=false WHERE id=$1",
+    [second.receiving.job],
+  );
+  assert.equal(
+    await acknowledgeFailedAssistantHandoff(owner, second.id, 3),
+    "access",
+  );
+});
+
+test("completion derives current receiving evidence and concurrent retries acknowledge once", async () => {
+  const owner = await person();
+  const { id, receiving } = await accepted(owner);
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  const results = await Promise.all([
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    acknowledgeCompletedAssistantHandoff(
+      owner.toUpperCase(),
+      id.toUpperCase(),
+      3,
+    ),
+  ]);
+  const evidence = await handoffProducerEvidence(pool, owner, receiving.job);
+  assert.deepEqual(results, [evidence.source, evidence.source]);
+  const receipt = (
+    await pool.query(
+      "SELECT status,revision,result FROM assistant_handoffs WHERE id=$1",
+      [id],
+    )
+  ).rows[0];
+  assert.deepEqual(receipt, {
+    status: "completed",
+    revision: 4,
+    result: evidence.source,
+  });
+  const followup = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, receiving.job),
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT parent_id,root_id,depth FROM assistant_handoffs WHERE id=$1",
+        [followup],
+      )
+    ).rows[0],
+    { parent_id: id, root_id: id, depth: 1 },
+  );
+  await pool.query("UPDATE ai_jobs SET result=$2 WHERE id=$1", [
+    receiving.job,
+    { answer: "Changed after acknowledgment." },
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+});
+
+test("acknowledgment rejects stale receipts, incomplete work and changed producing evidence", async () => {
+  const owner = await person();
+  const { id, producing, receiving } = await accepted(owner);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 2),
+    status(409),
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query("UPDATE ai_jobs SET apply_result=$2 WHERE id=$1", [
+    producing.job,
+    { changed: true },
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT revision FROM assistant_handoffs WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].revision,
+    3,
+  );
+});
+
+test("acknowledgment checks owner and current receiving visibility before completion or replay", async () => {
+  const owner = await person();
+  const other = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Receiving evidence') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  const { id, receiving } = await accepted(owner, project);
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(other, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE projects SET assistant_off=false WHERE id=$1", [
+    project,
+  ]);
+  await acknowledgeCompletedAssistantHandoff(owner, id, 3);
+  await pool.query("UPDATE ai_jobs SET sources_checked=false WHERE id=$1", [
+    receiving.job,
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE ai_jobs SET sources_checked=true WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [owner]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+});
+
+test("unaccepted and cancelled handoffs cannot acknowledge work", async () => {
+  const owner = await person();
+  const producing = await producer(owner);
+  const id = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, producing.job),
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 1),
+    status(409),
+  );
+  await pool.query(
+    "UPDATE assistant_handoffs SET status='cancelled',revision=revision+1 WHERE id=$1",
+    [id],
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 2),
+    status(409),
+  );
+});
+
+test("producer revision includes outcome changes but excludes presence writes", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const first = await handoffProducerEvidence(pool, owner, job);
+  await pool.query(
+    "UPDATE ai_jobs SET heartbeat_at=now(),last_polled_at=now() WHERE id=$1",
+    [job],
+  );
+  assert.deepEqual(await handoffProducerEvidence(pool, owner, job), first);
+  await pool.query("UPDATE ai_jobs SET apply_result=$2 WHERE id=$1", [
+    job,
+    { changed: true },
+  ]);
+  assert.notEqual(
+    (await handoffProducerEvidence(pool, owner, job)).source.revision,
+    first.source.revision,
+  );
+});
+
+test("concurrent explicit requests deduplicate without creating receiving jobs", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const input = await request(owner, job);
+  const ids = await Promise.all([
+    createRequestedAssistantHandoff(owner, input),
+    createRequestedAssistantHandoff(owner.toUpperCase(), {
+      ...input,
+      producer_job_id: input.producer_job_id.toUpperCase(),
+    }),
+  ]);
+  assert.equal(ids[0], ids[1]);
+  const row = (
+    await pool.query("SELECT * FROM assistant_handoffs WHERE id=$1", [ids[0]])
+  ).rows[0];
+  assert.equal(row.status, "proposed");
+  assert.equal(row.recipient_job_id, null);
+  assert.equal(row.delivery_attempts, 0);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS count FROM ai_jobs WHERE user_id=$1",
+        [owner],
+      )
+    ).rows[0].count,
+    1,
+  );
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, {
+      ...input,
+      instruction: "A different action.",
+    }),
+    status(409),
+  );
+});
+
+test("stale outcomes and wrong receiving lanes cannot mint proposals", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const input = await request(owner, job);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, {
+      ...input,
+      recipient_lane: "overnight",
+    }),
+    status(400),
+  );
+  await pool.query("UPDATE ai_jobs SET result=$2 WHERE id=$1", [
+    job,
+    { answer: "Updated outcome." },
+  ]);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, input),
+    status(409),
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS count FROM assistant_handoffs WHERE owner_id=$1",
+        [owner],
+      )
+    ).rows[0].count,
+    0,
+  );
+});
+
+test("current project exclusion, job source checks and owner revocation apply before replay", async () => {
+  const owner = await person();
+  const other = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Handoff source') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  const { job } = await producer(owner, project);
+  const input = await request(owner, job);
+  await createRequestedAssistantHandoff(owner, input);
+  await assert.rejects(
+    createRequestedAssistantHandoff(other, input),
+    status(404),
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, input),
+    status(404),
+  );
+  await pool.query("UPDATE projects SET assistant_off=false WHERE id=$1", [
+    project,
+  ]);
+  await pool.query("UPDATE ai_jobs SET sources_checked=false WHERE id=$1", [
+    job,
+  ]);
+  await assert.rejects(handoffProducerEvidence(pool, owner, job), status(404));
+  await pool.query("UPDATE ai_jobs SET sources_checked=true WHERE id=$1", [
+    job,
+  ]);
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [owner]);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, input),
+    status(404),
+  );
+});
+
+test("deleted source containers and interactive or incomplete jobs provide no evidence", async () => {
+  const owner = await person();
+  const { job, chat } = await producer(owner);
+  await pool.query("UPDATE ai_jobs SET state='waiting' WHERE id=$1", [job]);
+  await assert.rejects(handoffProducerEvidence(pool, owner, job), status(404));
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [job]);
+  await pool.query("DELETE FROM ai_chats WHERE id=$1", [chat]);
+  await assert.rejects(handoffProducerEvidence(pool, owner, job), status(404));
+  const interactive = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,state,sources_checked) VALUES($1,'done',true) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await assert.rejects(
+    handoffProducerEvidence(pool, owner, interactive),
+    status(404),
+  );
+});
+
+test("reciprocal follow-ups preserve their acknowledged chain and cannot reset its depth", async () => {
+  const owner = await person();
+  const original = await producer(owner);
+  const root = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, original.job),
+  );
+  let parent = root;
+  for (let depth = 1; depth <= 4; depth++) {
+    const row = (
+      await pool.query(
+        "SELECT recipient_lane FROM assistant_handoffs WHERE id=$1",
+        [parent],
+      )
+    ).rows[0];
+    const receiving = await producer(owner, null, row.recipient_lane, "queued");
+    await pool.query(
+      "UPDATE assistant_handoffs SET revision=revision+1,delivery_attempts=1 WHERE id=$1",
+      [parent],
+    );
+    await pool.query(
+      "UPDATE assistant_handoffs SET revision=revision+1,status='accepted',recipient_job_id=$2 WHERE id=$1",
+      [parent, receiving.job],
+    );
+    await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+      receiving.job,
+    ]);
+    const input = await request(owner, receiving.job);
+    await assert.rejects(
+      createRequestedAssistantHandoff(owner, input),
+      status(409),
+    );
+    assert.deepEqual(
+      await acknowledgeCompletedAssistantHandoff(owner, parent, 3),
+      {
+        kind: "job",
+        id: receiving.job,
+        revision: input.expected_producer_revision,
+      },
+    );
+    if (depth === 4) {
+      await assert.rejects(
+        createRequestedAssistantHandoff(owner, input),
+        status(409),
+      );
+    } else {
+      const child = await createRequestedAssistantHandoff(owner, input);
+      const receipt = (
+        await pool.query(
+          "SELECT root_id,parent_id,depth FROM assistant_handoffs WHERE id=$1",
+          [child],
+        )
+      ).rows[0];
+      assert.deepEqual(receipt, { root_id: root, parent_id: parent, depth });
+      parent = child;
+    }
+  }
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT receipt_count FROM assistant_handoff_chains WHERE id=$1",
+        [root],
+      )
+    ).rows[0].receipt_count,
+    4,
+  );
+});
+
+test("flattened source dependencies are rechecked even when the source chat remains visible", async () => {
+  const owner = await person();
+  const original = await producer(owner);
+  const before = await handoffProducerEvidence(pool, owner, original.job);
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Evidence project') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,project_id,title) VALUES($1,$2,'Source evidence') RETURNING id",
+      [owner, project],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [original.job, doc],
+  );
+  const input = await request(owner, original.job);
+  assert.notEqual(input.expected_producer_revision, before.source.revision);
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, input),
+    status(404),
+  );
+});
+
+for (const kind of ["doc", "task"] as const) {
+  test(`a changed ${kind} revision invalidates a reviewed handoff request`, async () => {
+    const owner = await person();
+    const { job } = await producer(owner);
+    const source = (
+      await pool.query(
+        kind === "doc"
+          ? "INSERT INTO docs(user_id,title) VALUES($1,'Reviewed evidence') RETURNING id"
+          : "INSERT INTO items(user_id,title) VALUES($1,'Reviewed evidence') RETURNING id",
+        [owner],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,$2,$3)",
+      [job, kind, source],
+    );
+    const input = await request(owner, job);
+    await pool.query(
+      `UPDATE ${kind === "doc" ? "docs" : "items"} SET title='Updated evidence',version=version+1 WHERE id=$1`,
+      [source],
+    );
+    await assert.rejects(
+      createRequestedAssistantHandoff(owner, input),
+      status(409),
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM assistant_handoffs WHERE owner_id=$1",
+          [owner],
+        )
+      ).rows[0].n,
+      0,
+    );
+    const current = await request(owner, job);
+    assert.notEqual(
+      current.expected_producer_revision,
+      input.expected_producer_revision,
+    );
+    await createRequestedAssistantHandoff(owner, current);
+  });
+}
+
+test("source changes fence acknowledgement without changing the producing result", async () => {
+  const owner = await person();
+  const original = await producer(owner);
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Reviewed evidence') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [original.job, doc],
+  );
+  const id = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, original.job),
+  );
+  const receiving = await producer(owner, null, "background", "queued");
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,delivery_attempts=1 WHERE id=$1",
+    [id],
+  );
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,status='accepted',recipient_job_id=$2 WHERE id=$1",
+    [id, receiving.job],
+  );
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query(
+    "UPDATE docs SET title='Changed since review',version=version+1 WHERE id=$1",
+    [doc],
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT status,revision,result FROM assistant_handoffs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    { status: "accepted", revision: 3, result: null },
+  );
+});
+
+test("non-versioned source changes also invalidate handoff evidence", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const team = (
+    await pool.query(
+      "INSERT INTO teams(name,created_by) VALUES('Reviewed team',$1) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  try {
+    await pool.query(
+      "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner')",
+      [team, owner],
+    );
+    await pool.query(
+      "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'team',$2)",
+      [job, team],
+    );
+    const input = await request(owner, job);
+    await pool.query("UPDATE teams SET name='Changed team' WHERE id=$1", [
+      team,
+    ]);
+    await assert.rejects(
+      createRequestedAssistantHandoff(owner, input),
+      status(409),
+    );
+  } finally {
+    await pool.query("DELETE FROM teams WHERE id=$1", [team]);
+  }
+});
+
+test("handoff source revision evidence holds the source against a concurrent edit", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES($1,'Locked evidence') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [job, doc],
+  );
+  const holder = await pool.connect();
+  const contender = await pool.connect();
+  try {
+    await holder.query("BEGIN");
+    await handoffProducerEvidence(holder, owner, job);
+    await contender.query("BEGIN");
+    await contender.query("SET LOCAL lock_timeout='100ms'");
+    await assert.rejects(
+      contender.query("UPDATE docs SET version=version+1 WHERE id=$1", [doc]),
+      (error: unknown) => (error as { code?: string }).code === "55P03",
+    );
+  } finally {
+    await contender.query("ROLLBACK");
+    await holder.query("ROLLBACK");
+    contender.release();
+    holder.release();
+  }
+  await pool.query("UPDATE docs SET version=version+1 WHERE id=$1", [doc]);
+});
+
+test("source transcript reads do not revise a handoff but transcript edits do", async () => {
+  const owner = await person();
+  const { job } = await producer(owner);
+  const chat = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Reviewed transcript')",
+    [chat, owner],
+  );
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'chat',$2)",
+    [job, chat],
+  );
+  const input = await request(owner, job);
+  await pool.query(
+    "UPDATE ai_chats SET last_used_at=clock_timestamp() WHERE id=$1",
+    [chat],
+  );
+  assert.equal(
+    (await request(owner, job)).expected_producer_revision,
+    input.expected_producer_revision,
+  );
+  await pool.query("UPDATE ai_chats SET turns=$2::jsonb WHERE id=$1", [
+    chat,
+    JSON.stringify([{ question: "Updated evidence", answer: "New result" }]),
+  ]);
+  await assert.rejects(
+    createRequestedAssistantHandoff(owner, input),
+    status(409),
+  );
+});

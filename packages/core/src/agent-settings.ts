@@ -33,6 +33,7 @@ export const NIGHT_SHIFT_KINDS = [
   "tidy",
   "handed",
   "follow_through",
+  "reflection",
 ] as const;
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const timezone = z
@@ -62,6 +63,7 @@ export const nightShiftInput = z
         tidy: z.boolean(),
         handed: z.boolean(),
         follow_through: z.boolean(),
+        reflection: z.boolean().default(false),
       })
       .strict(),
     wait_for_ok: z.boolean(),
@@ -95,6 +97,7 @@ export function defaultNightShift(
       tidy: true,
       handed: true,
       follow_through: true,
+      reflection: true,
     },
     wait_for_ok: true,
   };

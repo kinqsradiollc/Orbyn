@@ -963,8 +963,9 @@ export function RootScreen() {
       case "doc":
         return void act(async () => {
           // A link to one line of a page opens the page there (LNK-04).
+          const destination = await client.getDoc(link.id);
           setNoteBlockId(link.block ?? null);
-          setNote(await client.getDoc(link.id));
+          setNote(destination);
           present({ sheet: "note" });
         });
       case "project":
@@ -1386,6 +1387,29 @@ export function RootScreen() {
                   )}
                   {tab === "Today" && (
                     <TodayScreen
+                      canOpenAgentOutput={
+                        !busy &&
+                        !assistant.thinking &&
+                        !assistant.restoringChat &&
+                        !["queued", "running", "waiting"].includes(
+                          assistant.runProgress?.state ?? "",
+                        )
+                      }
+                      onOpenAgentOutput={(id) => {
+                        if (
+                          busy ||
+                          assistant.thinking ||
+                          assistant.restoringChat ||
+                          ["queued", "running", "waiting"].includes(
+                            assistant.runProgress?.state ?? "",
+                          )
+                        )
+                          return;
+                        setTab("AI");
+                        void assistant
+                          .openChat(id)
+                          .catch((e) => setError(errorText(e)));
+                      }}
                       items={items}
                       homeLayout={accountPrefs.prefs.home}
                       agentName={assistant.agentName}

@@ -382,6 +382,7 @@ export const COVERED: Record<string, string[]> = {
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /models": "credentials",
+  "GET /ai/connections/chatgpt/executors": "credentials",
   "PUT /models/default": "credentials",
   "POST /ai/connections/chatgpt/executors/challenges": "credentials",
   "POST /ai/connections/chatgpt/executors/complete": "credentials",
@@ -405,6 +406,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/assistant/reminder-actions/:id/undo": "people_only",
   "GET /me/assistant/nights/latest": "people_only",
   "GET /me/assistant/activity/:lane": "people_only",
+  "GET /me/assistant/profiles": "people_only",
   "POST /me/assistant/nights/runs/:id/keep": "people_only",
   "POST /me/assistant/nights/runs/:id/undo": "people_only",
   "POST /me/assistant/nights/:id/keep-all": "people_only",

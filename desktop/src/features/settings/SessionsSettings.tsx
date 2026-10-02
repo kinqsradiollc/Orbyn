@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import { LogOut, Monitor } from "lucide-react";
 import type { Session } from "@orbyn/core";
@@ -76,8 +77,7 @@ export function SessionsSettings({ report }: { report: (e: unknown) => void }) {
   const others = (sessions ?? []).filter((s) => !s.current).length;
 
   return (
-    <>
-      <hr />
+    <SettingsSection className="card settings-card">
       <h2>Signed-in devices</h2>
       {sessions === null ? (
         <p className="muted">Loading…</p>
@@ -116,6 +116,6 @@ export function SessionsSettings({ report }: { report: (e: unknown) => void }) {
         </button>
       )}
       <OutcomeNote outcome={action.outcome} />
-    </>
+    </SettingsSection>
   );
 }

@@ -98,7 +98,7 @@ function lineIn(
   const anchor = part.replace(/^\^/, "");
   const byId = blocks.find((b) => b.id === anchor);
   if (byId) return { id: byId.id!, heading: null };
-  const want = norm(part.replace(/^#{1,3}\s+/, ""));
+  const want = norm(part.replace(/^#{1,6}\s+/, ""));
   const heading = blocks.find(
     (b) => b.type === "heading" && b.id && norm(b.text) === want,
   );

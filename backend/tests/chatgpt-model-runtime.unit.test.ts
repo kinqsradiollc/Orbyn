@@ -120,6 +120,7 @@ function fixture() {
     revoked = false,
     models = ["fixture-model"],
     version = 0,
+    model: string | null = null,
     writes = 0,
     expiresAt = Date.now() + 120000;
   const options = {
@@ -131,9 +132,10 @@ function fixture() {
         revision: selection,
       }),
       connection: async () => binding,
-      modelPreference: async () => ({ binding, model: null, version }),
+      modelPreference: async () => ({ binding, model, version }),
       saveModelPreference: async (input: any) => {
         writes++;
+        model = input.model;
         return { ...input, version: ++version };
       },
     },
@@ -365,4 +367,97 @@ test("closing a runtime aborts an in-flight catalog and cannot publish a late re
   assert.equal(observed?.aborted, true);
   assert.equal(runtime.picker.snapshot().status, "idle");
   assert.deepEqual(runtime.picker.snapshot().models, []);
+});
+
+test("a default changed on mobile/web is read before a private turn without a paid fallback", async () => {
+  const f = fixture();
+  let remote = {
+    binding: f.options.binding,
+    model: "fixture-model" as string | null,
+    version: 1,
+  };
+  const posted: string[] = [];
+  const fetch = async (url: string, init: RequestInit) => {
+    if (url.endsWith("/models"))
+      return Response.json({
+        models: ["fixture-model", "remote-model"].map((slug) => ({
+          slug,
+          display_name: slug,
+          visibility: "list",
+        })),
+      });
+    posted.push(JSON.parse(String(init.body)).model);
+    return new Response(
+      'data: {"type":"response.output_text.delta","delta":"answer"}\n\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n',
+      { headers: { "content-type": "text/event-stream" } },
+    );
+  };
+  const runtime = await create({
+    ...f.options,
+    fetch,
+    preferenceStore: { read: async () => remote },
+  });
+  try {
+    await runtime.picker.load();
+    remote = { ...remote, model: "remote-model", version: 2 };
+    const request = { input: [{ role: "user", content: "hello" }] };
+    assert.equal(await runtime.completeDefault(request), "answer");
+    assert.deepEqual(posted, ["remote-model"]);
+    assert.equal(runtime.picker.snapshot().preference.model, "remote-model");
+    await Promise.all([
+      runtime.completeDefault(request),
+      runtime.completeDefault(request),
+    ]);
+    assert.deepEqual(posted, ["remote-model", "remote-model", "remote-model"]);
+    remote = { ...remote, model: null, version: 3 };
+    await assert.rejects(runtime.completeDefault(request), /default model/);
+    assert.equal(posted.length, 3);
+    remote = { ...remote, model: "remote-model", version: 2 };
+    await assert.rejects(runtime.completeDefault(request), /refreshed/);
+    assert.equal(
+      posted.length,
+      3,
+      "a regressed version cannot enable inference",
+    );
+  } finally {
+    runtime.close();
+  }
+});
+
+test("foreign or failed remote default refresh cannot fall back to the cached model", async () => {
+  for (const failure of ["foreign", "error"] as const) {
+    const f = fixture();
+    let fail = false,
+      inference = 0;
+    const original = f.options.fetch;
+    const runtime = await create({
+      ...f.options,
+      fetch: async (url: string, init: RequestInit) => {
+        if (url.endsWith("/models")) return original(url, init);
+        inference++;
+        throw new Error("must not start inference");
+      },
+      preferenceStore: {
+        read: async () => {
+          if (fail && failure === "error") throw new Error("Offline");
+          return {
+            binding: fail
+              ? { ...f.options.binding, connection_id: randomUUID() }
+              : f.options.binding,
+            model: "fixture-model",
+            version: 1,
+          };
+        },
+      },
+    });
+    try {
+      await runtime.picker.load();
+      fail = true;
+      await assert.rejects(runtime.completeDefault({ input: [] }), /refreshed/);
+      assert.equal(inference, 0);
+      assert.equal(runtime.picker.snapshot().status, "unavailable");
+    } finally {
+      runtime.close();
+    }
+  }
 });

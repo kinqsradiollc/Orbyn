@@ -18,7 +18,7 @@ import {
 
 /** The marker a line of each kind starts with, as the editor shows it. */
 const LINE_MARKER =
-  /^(#{1,3}\s+|[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d{1,9}[.)]\s+|>\s?\[![A-Za-z]+\][-+]?\s*|>\s?|\[\^[\w-]{1,24}\]:\s*)/;
+  /^(#{1,6}\s+|[-*]\s+\[[ xX]\]\s+|[-*]\s+|\d{1,9}[.)]\s+|>\s?\[![A-Za-z]+\][-+]?\s*|>\s?|\[\^[\w-]{1,24}\]:\s*)/;
 
 /**
  * Where the words of a line start in its Markdown: after "# ", "- [ ] ",

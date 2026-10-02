@@ -1186,6 +1186,28 @@ databases were recreated with the server-side test marker; existing orbyn_test
 and orbyn_runs_test were preserved. This is distinct from the reproduced ctid
 race and does not establish a database or Docker product fix.
 
+### Current source privacy checkpoints — 2 October 2026
+
+Production candidate PR #143 (**e58ed27**) passed **2,141/2,141** full local tests
+and workspace types/build/full formatting; its final CI backend job remains
+pending. It is not merged/deployed and does not complete A4.
+
+Separate source commits **977288c**, **866e4c0**, **411935e** fix a reproduced
+account/team deletion history-trigger failure, job-only notification dependencies
+(queue/inbox/delivery), and Review summary/badge/outcome visibility after producing
+source cleanup. Migration 213 preserves ordinary deleted-target history access
+and does not convert removed team history into personal access. Actual worker
+cancellation regression observed zero network sends after source exclusion.
+Fresh marked database migrated and passed **48/48** history/notices/project/night
+checks; Review/agent-write extended cohort passed **65/65**, backend types and
+scoped formatting passed. These qualify source cohorts, not a combined main tree.
+Extract and fully qualify on current main before production integration.
+
+The full existing scope, cross-client parity and current native/browser gates
+remain active. Typed notification/read/external rules, agent records/editor,
+revision snapshots, durable budgets and receiving collaboration are still needed;
+these privacy fixes are not their completion. No release or cleanup occurred.
+
 ### Reviewed action rules and producing-source checks — 2 October 2026
 
 Scoped candidate `codex/assistant-rule-review` is based on current main `9e1a2c8`.
@@ -1381,3 +1403,20 @@ real account-specific model defaults/execution, provider/embedding choices,
 plugin host acceptance, Docs/Mermaid or whole-app web/desktop/mobile UI gates.
 Preserve Orbyn palette/characters; no public rule editor, deployment or cleanup.
 The complete M1/D1/U1 and C1–C6 ADR acceptance remains active.
+
+### Home and web validation scope addition — 3 October 2026
+
+The user explicitly authorizes web UI implementation through code review and
+automated checks while local browser access remains blocked. Web visual
+validation moves to the user's test server; this is not proof of completed
+visual acceptance. Native screenshot requirements remain active. No alternate
+browser/port access is authorized by this change to validation ownership.
+
+Redesign both the public landing page and signed-in Home, including all canonical
+character presets. Preserve the existing character artwork, customization,
+animation/reduced-motion/hidden preferences and Orbyn palette. Keep dashboard
+browsing distinct from saving a person's appearance. Landing content should
+accurately describe current planning, Docs, delegated Background tasks and
+bounded Overnight work, without claiming unfinished collaboration, reflection
+or provider eligibility as delivered. Synchronize signed-in Home features with
+native mobile. The rest of the whole-application U1 ledger remains in scope.

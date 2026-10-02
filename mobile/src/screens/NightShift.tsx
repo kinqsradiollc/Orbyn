@@ -16,6 +16,7 @@ const labels = {
   tidy: "Tidy up",
   handed: "Tasks handed to me",
   follow_through: "Follow through",
+  reflection: "Reflect on recent work",
 };
 
 /** The phone's personal night-shift settings. */

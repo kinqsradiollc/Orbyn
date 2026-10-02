@@ -396,13 +396,16 @@
   letter-spacing: -0.01em;
   color: var(--color-text);
 }
+h1.doc-heading {
+  font-size: 18px;
+}
 h2.doc-heading {
   font-size: 18px;
 }
-h3.doc-heading {
-  font-size: 18px;
-}
-h4.doc-heading {
+h3.doc-heading,
+h4.doc-heading,
+h5.doc-heading,
+h6.doc-heading {
   font-size: 15px;
 }
 
@@ -2970,6 +2973,21 @@ h4.doc-heading {
   padding-left: 28px;
   font-size: 11px;
 }
+.doc-outline li.is-level-4 button,
+.page-info-outline li.is-level-4 button {
+  padding-left: 38px;
+  font-size: 11px;
+}
+.doc-outline li.is-level-5 button,
+.page-info-outline li.is-level-5 button {
+  padding-left: 48px;
+  font-size: 11px;
+}
+.doc-outline li.is-level-6 button,
+.page-info-outline li.is-level-6 button {
+  padding-left: 58px;
+  font-size: 11px;
+}
 .doc-outline li button:hover,
 .page-info-outline li button:hover {
   background: var(--color-hover);
@@ -4151,4 +4169,25 @@ input.doc-image-caption:focus {
 .docs-tree-path {
   color: var(--color-muted);
   font-size: 11px;
+}
+
+.doc-diagram-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  margin-bottom: 8px;
+}
+.doc-diagram-toolbar > span {
+  margin-right: 8px;
+  font-size: 13px;
+}
+.doc-diagram-canvas {
+  overflow: auto;
+  max-height: 480px;
+}
+.doc-diagram-canvas svg {
+  display: block;
+  margin: 0 auto;
 }

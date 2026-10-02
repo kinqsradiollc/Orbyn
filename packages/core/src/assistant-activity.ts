@@ -41,6 +41,18 @@ export const assistantActivityEvent = z
   })
   .strict();
 export type AssistantActivityEvent = z.output<typeof assistantActivityEvent>;
+export const ASSISTANT_ACTIVITY_LABELS: Record<
+  AssistantActivityEvent["kind"],
+  string
+> = {
+  queued: "Queued",
+  running: "Started work",
+  waiting: "Waiting for a decision",
+  done: "Completed",
+  failed: "Failed",
+  progress: "Made progress",
+  outcome: "Result updated",
+};
 
 export const assistantActivityPage = z
   .object({

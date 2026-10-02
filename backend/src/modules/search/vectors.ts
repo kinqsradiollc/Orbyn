@@ -35,19 +35,38 @@ export const forgetVectors = () => {
 export async function semanticModel(
   db: Queryable = pool,
 ): Promise<string | null> {
+  return (await semanticConfiguration(db))?.model ?? null;
+}
+
+/** The exact provider/model generation for which sending text was accepted. */
+export type EmbeddingConfiguration = {
+  model: string;
+  providerId: string;
+  providerRevision: string;
+  dimensions: number;
+  generation: string;
+};
+
+/** Resolve accepted embedding configuration without loading AI credentials. */
+export async function semanticConfiguration(
+  db: Queryable = pool,
+): Promise<EmbeddingConfiguration | null> {
   if (!(await hasVectors(db))) return null;
   const row = (
-    await db.query<{
-      on: boolean;
-      model: string;
-      accepted: Date | null;
-    }>(
-      `SELECT semantic_search AS on, embedding_model AS model,
-              semantic_accepted_at AS accepted
-         FROM ai_settings WHERE id`,
+    await db.query<EmbeddingConfiguration>(
+      `SELECT s.embedding_model AS model,
+              s.embedding_provider_id AS "providerId",
+              s.embedding_provider_revision::text AS "providerRevision",
+              s.embedding_dimensions AS dimensions,
+              s.embedding_generation AS generation
+         FROM ai_settings s JOIN ai_providers p ON p.id=s.embedding_provider_id
+        WHERE s.id AND s.embedding_search_enabled AND p.enabled
+          AND s.semantic_accepted_at IS NOT NULL AND s.embedding_model <> ''
+          AND s.embedding_dimensions IS NOT NULL
+          AND s.embedding_provider_revision = p.embedding_revision`,
     )
   ).rows[0];
-  return row?.on && row.model && row.accepted ? row.model : null;
+  return row ?? null;
 }
 
 /** Whether semantic search is both possible here and wanted. */

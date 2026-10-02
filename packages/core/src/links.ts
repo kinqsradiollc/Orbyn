@@ -13,7 +13,12 @@
  */
 import { z } from "zod";
 import { parseAppLink } from "./app-links.js";
-import { parseDocInline, plainText, type DocBlock } from "./docs.js";
+import {
+  parseDocInline,
+  plainText,
+  type DocBlock,
+  type DocHeadingLevel,
+} from "./docs.js";
 
 /** What a link can point to. An event is a task with a time. */
 export const LINK_KINDS = [
@@ -849,7 +854,7 @@ export type HeadingOption = {
   /** Null for a line that has no id yet: picking it names it first. */
   block_id: string | null;
   index: number;
-  level: 1 | 2 | 3 | null;
+  level: DocHeadingLevel | null;
   text: string;
 };
 

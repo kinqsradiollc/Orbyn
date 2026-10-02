@@ -295,7 +295,14 @@ const docBlock = z.discriminatedUnion("type", [
   z.object({
     ...named,
     type: z.literal("heading"),
-    level: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    level: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+      z.literal(6),
+    ]),
     text: z.string().max(2000),
   }),
   z.object({
@@ -1068,6 +1075,8 @@ export const semanticSetupInput = z
   .object({
     on: z.boolean(),
     embedding_model: z.string().trim().max(200).optional(),
+    embedding_provider_id: z.uuid().optional(),
+    expected_generation: z.uuid().optional(),
     accept: z.boolean().optional(),
   })
   .strict();

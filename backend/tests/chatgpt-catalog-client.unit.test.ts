@@ -119,3 +119,32 @@ test("executor publication client rejects credentials before sending and parses 
   );
   assert.equal(count, 1);
 });
+
+test("device discovery always reads fresh and rejects secret or malformed metadata", async () => {
+  const entry = {
+    executor_id: selection.executor_id,
+    connection_id: selection.connection_id,
+    host_id: randomUUID(),
+  };
+  let count = 0;
+  let body: unknown = [entry];
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    getToken: () => "orbyn-session",
+    fetch: async (input) => {
+      assert.equal(
+        new URL(String(input)).pathname,
+        "/ai/connections/chatgpt/executors",
+      );
+      count++;
+      return Response.json(body);
+    },
+  });
+  assert.deepEqual(await client.chatgptExecutors(), [entry]);
+  assert.deepEqual(await client.chatgptExecutors(), [entry]);
+  assert.equal(count, 2);
+  body = [{ ...entry, public_key: "must-not-be-returned" }];
+  await assert.rejects(client.chatgptExecutors());
+  body = [{ ...entry, executor_id: "invalid" }];
+  await assert.rejects(client.chatgptExecutors());
+});

@@ -147,6 +147,11 @@ must be constrained against re-enablement. The API can retain its public
 must receive an explicit setup conflict rather than silently authorizing the
 generation provider. Migration preserves selected metadata but requires renewed
 provider-bound consent before measuring resumes.
+The deployment must stop every old measure process before running migration 203.
+The legacy flag prevents old processes from starting new work, but cannot cancel
+a job that already read the old configuration; its unfenced queue delete is not
+safe alongside a newly enabled configuration. Keep measuring disabled until the
+new API and measure binaries are deployed, then validate and accept again.
 
 The configuration transaction must bind provider ID, provider revision, model,
 verified dimensions, acceptance actor/time and a new generation UUID. A provider
@@ -161,7 +166,7 @@ repeated migration runs produce the same schema. Persist generation and document
 version with each passage. Select the index strategy explicitly; storage support
 for 3,072 dimensions does not prove an HNSW `vector` index supports that size.
 
-Workers capture the queue's complete timestamp token and document version before
+Workers capture a distinct queue revision UUID and document version before
 calling the provider. Afterward, under a short transaction, they recheck enabled
 configuration, provider revision, document revision and assistant visibility.
 Writes and queue acknowledgement must be conditional on those captured values.
@@ -176,6 +181,132 @@ document edits during provider calls, disable during provider calls, malformed
 responses, and permission changes. Admin and client controls need explicit
 provider/model selection, validation status, consent destination and reindex
 progress. This contract is an implementation requirement, not completed evidence.
+
+## Independent schema and worker foundation (local, incomplete)
+
+Migration 203 now introduces separate enablement, provider revisions, verified
+dimensions and configuration generations. It replaces the repeatable vector
+setup with flexible-dimension exact-search storage and queue revision UUIDs;
+the legacy enable flag is constrained false. A UUID changes even when two edits
+share a transaction timestamp. Old consent is cleared and measuring stays off.
+
+The local worker resolves only the accepted embedding provider revision, buffers
+provider results before writes, rechecks configuration/document/queue revisions
+under a short transaction, and conditionally acknowledges the captured queue
+revision. Search filters configuration generation and current document version
+and rechecks active consent after provider inference. This does not yet complete
+the admin setup route or either client's configuration controls.
+
+Three explicit pgvector integration tests passed, covering repeated migration,
+legacy enable rejection, dimension bounds, provider revision changes, distinct
+queue tokens, independent provider selection, read-access filtering, document
+edit during inference, consent invalidation and disable during inference. Four
+stock-Postgres semantic checks passed against a separate fresh marked database.
+Backend typecheck passed. These changes remain local until the setup path,
+permission-change race coverage, later extension installation and full combined
+validation are complete; they must not be merged as a finished feature.
+
+## Setup API and client wiring (local)
+
+The setup contract now accepts an explicit embedding provider and expected
+configuration generation. After acceptance, it sends only fixed validation text,
+verifies dimensions, then commits under settings/provider revision checks.
+Successful replacement clears old measurements and rebuilds the eligible queue;
+off clears acceptance and measurements. The existing generation-settings route
+also honors an explicit semantic-disable request without changing the embedding
+destination when ordinary generation settings change. Setup uses the sensitive
+route rate limit.
+
+Both clients select an embedding provider independently of chat, identify that
+recipient in consent, display verified dimensions and invalidated acceptance,
+reset acceptance when inputs change, and refresh after conflicts. Native
+Anthropic providers are excluded from the embedding selector. The shared Privacy
+Policy draft now describes the independent recipient and non-personal probe;
+release must publish the revised policy with an appropriate agreement version.
+
+Seven combined pgvector service/API tests passed, including 401/403/400/429,
+missing/disabled provider, missing acceptance, stale setup, provider changes during
+probe, existing-route disable, independent resolution and worker races. Seventeen
+provider/stock-semantic/vector checks passed. Workspace typechecks and production
+build passed before the final pre-batch worker guard; that guard also passed the
+seven combined checks. Final backend typecheck and build also passed afterward.
+
+Pre-batch checks re-evaluate configuration and document eligibility before each
+provider request. They cannot retract text already sent by an in-flight request.
+Client rendered/interactive acceptance, permission-change races, configuration
+replacement/dimension tests, extension installation after an initial stock
+deployment, full combined tests and policy publication remain required. No live
+provider account or native UI interaction is claimed by these controlled tests.
+
+## Replacement, policy and upgrade acceptance (local)
+
+Nine combined integration checks passed against a new marked pgvector database
+`orbyn_embedding_acceptance_20261001_test` on port 55435. Added evidence covers:
+
+- A failed replacement probe preserves the accepted generation and measurements.
+- Ordinary generation settings leave embedding configuration unchanged.
+- Provider/model replacement validates 3,072 dimensions, clears old vectors and
+  queues fresh measurements; off removes the queued work.
+- A project keep-out change during a 64-passage response prevents a second batch
+  from being sent; a team keep-out change prevents final response storage.
+- A legacy `INSERT ... ON CONFLICT` without provenance is rejected and cannot
+  overwrite a current passage. Generation and document version are now NOT NULL.
+
+The late-install fixture was first migrated on stock PostgreSQL 17.11, where no
+vector queue existed. Its synthetic data and migration history were restored to
+the pgvector PostgreSQL 16.14 test container. The logical fixture transfer omitted
+the source dump's `SET transaction_timeout = 0` statement, unsupported by that
+target version; no production data was involved. The explicit late-install test
+then passed: previously recorded migrations stayed recorded, the repeatable
+function installed flexible-dimension tables, existing pages were queued once,
+and semantic search remained off without consent. This exposed and corrected
+the missing queue backfill. This fixture is upgrade-path evidence, not a general
+recommendation to downgrade PostgreSQL.
+
+Explicit tests (run against their matching marked fixture databases):
+
+```sh
+npx tsx --test --test-concurrency=1 backend/tests/embedding-schema.integration.ts backend/tests/embedding-setup.integration.ts
+npx tsx --test backend/tests/embedding-late-install.integration.ts
+```
+
+The first command requires `TEST_DATABASE_URL` for the fresh pgvector acceptance
+database. The second requires a fresh stock fixture restored onto a server with
+pgvector available but not installed in that database; it deliberately asserts
+those preconditions before migration and is not rerunnable on an already
+installed fixture. Both use the normal `_test` name and server-side marker guard.
+
+The late-install check preceded the final NOT NULL guards; the fresh acceptance
+run includes those guards. Full stock-Postgres validation is running separately
+on `orbyn_embedding_full_20261001_test`. UI interaction, policy publication and
+the remaining ADR requirements are still open.
+
+## Indexing status and actual control-handler checks (local)
+
+The admin response now reports eligible queued pages and pages with passages
+matching the current embedding generation/document version. Disabled or
+invalidated configurations do not report active-generation counts. Acceptance
+state is derived alongside its provider revision in one settings query, rather
+than combining metadata with a separate configuration read.
+
+Both clients display measured/waiting counts, identify an offline measuring
+service, and expose a status refresh action. Missing status remains explicitly
+unavailable instead of being presented as zero; absent dimensions do not receive
+a verified label. Web consent now resets before its conflict refresh, matching
+mobile behavior even if refresh fails.
+
+Nine pgvector API/service checks passed with progress assertions for failed
+replacement, successful replacement and off. Ten control tests passed using
+the actual web/mobile component source with controlled hooks and integration
+stubs: explicit provider/generation submission, input-change consent reset,
+conflict refresh, recipient/dimension/count rendering and missing-status copy.
+These tests do not prove native or browser layout. Workspace typechecks and
+the production build passed.
+
+The existing full run began before these status changes and before the new
+control-test file existed. Even a successful result from that run cannot by
+itself establish complete coverage for this later checkpoint; a stable-source
+rerun is required before integration.
 
 ## Azure checkpoint on main
 

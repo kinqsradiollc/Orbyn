@@ -4,6 +4,12 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
+    "build:diagrams": "node scripts/build-mermaid.mjs",
+    "check:diagrams": "node scripts/check-mermaid.mjs",
+    "prestart": "npm run build:diagrams",
+    "preandroid": "npm run build:diagrams",
+    "preios": "npm run build:diagrams",
+    "preexport": "npm run build:diagrams",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -35,15 +41,19 @@
     "expo-status-bar": "~57.0.1",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
+    "mermaid": "11.17.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-svg": "^15.15.4",
-    "react-native-web": "^0.21.2"
+    "react-native-web": "^0.21.2",
+    "react-native-webview": "13.16.1"
   },
   "devDependencies": {
     "@types/react": "~19.2.4",
+    "esbuild": "^0.28.2",
+    "jsdom": "26.1.0",
     "typescript": "~6.0.3"
   }
 }
