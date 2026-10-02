@@ -71,16 +71,28 @@ and styling when integrating the broader platform and UI changes. Qualification
 on an older main base does not qualify the combined version: integrate current
 main and rerun the affected checks before each application checkpoint.
 
-Assigned-source ownership candidate `b7bd994` on draft PR #139 adds a database
-guard across Background/Overnight lanes and shared-task members. Its focused
-tests, types, build and formatting passed; full local/CI qualification remains
-running. It is not merged and has not yet incorporated the latest character
-main. Handoff acknowledgment source `6fd43f4` derives receiving outcomes from
+Assigned-source ownership PR #139 is merged as main `76ec92b`, from candidate
+`51ce91b`, preserving the current character implementation. Its database guard
+serializes Background/Overnight ownership across shared-task members. It also
+corrects six off-scale character/assistant font sizes in both clients. Focused
+checks, all workspace types, production builds and formatting passed. The full
+local suite passed 2,103/2,103; CI passed all jobs with 2,102 backend passes,
+zero failures and one Tesseract skip. Separate compiled processes verified the
+guard; main has the same tree as the qualified source and CI merge commit.
+This is a merged checkpoint, not a deployment or whole-app UI completion.
+
+Handoff acknowledgment source `6fd43f4` derives receiving outcomes from
 current completed-job evidence, checks producer revision and both jobs' access,
 and serializes idempotent retries. The combined contract/storage/request checks
 passed 27/27, with backend types and formatting. It does not enable dispatch,
-grant receiving authority or prove separate-worker collaboration.
+grant receiving authority or prove separate-worker collaboration. Source
+`deb93cb`/`114bb2d` also derives durable failure reasons without copying provider
+error text or restricted outcomes; its 32 contract/storage/request checks and
+backend types passed. Handoff services remain unmerged and unwired.
 
-Docs PR #138 CI is now green on `25e1e6f`; web/mobile-web and native Android
-interaction gates remain open. The governing review and implementation handoff
+Docs PR #138 had green CI on `25e1e6f`; combined character candidate `788161e`
+passed 37 focused checks, all types/build/format, with new CI still running.
+Its fresh native verification is blocked by an iOS password-save prompt, pending
+the user's dismissal. Web/mobile-web and native Android interaction gates remain
+open. The governing review and implementation handoff
 retain the full remaining scope; these checkpoints do not complete the ADR.
