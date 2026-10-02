@@ -66,8 +66,10 @@ Exact source `0392e92` is frozen for the full suite in session **18328**, marked
 DB `orbyn_main_memory_0392e92_test`, log
 `/tmp/orbyn-main-memory-0392e92-full-tests.log`. Backend types/build then full
 formatting run sequentially in session **98107**, logs
-`/tmp/orbyn-main-memory-0392e92-{types,build,format}.log`. Both were still live at
-the last read. Poll these exact handles/logs before rerunning. Keep PR 136 draft
+`/tmp/orbyn-main-memory-0392e92-{types,build,format}.log`. Session 98107 is now
+terminal exit 0: backend types/build and full formatting passed. Full test session
+18328 remains live (188 passing tests at last log read). Poll that exact handle/log
+before rerunning. Keep PR 136 draft
 until full verification and exact-head CI pass. The model branch has merged main
 `c1b3ffa` without conflicts (`880beb5`).
 
