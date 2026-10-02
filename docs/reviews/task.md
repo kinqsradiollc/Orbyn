@@ -131,7 +131,9 @@ on PR 137. Exact candidate is frozen again for a full local suite in session
 **15253**, fresh marked DB `orbyn_main_reflection_b29f454_test`, log
 `/tmp/orbyn-main-reflection-b29f454-full-tests.log`. Full types/build/format sequence
 is session **78370**, logs `/tmp/orbyn-reflection-b29f454-{types,build,format}.log`.
-These are live at this update. Poll existing handles before repeating work.
+Full types/build/format session 78370 is terminal exit 0: all passed. Full test
+session 15253 is still live (358 tests passing at the latest check). Poll the
+existing handle before repeating work.
 Main remains `3677d53`; nothing from PR 137 is merged or deployed.
 
 Still required: focused/full verification on isolated current main, cancellation,
@@ -325,3 +327,18 @@ ChatGPT acceptance or evidence about OpenAI runtime architecture.
 Main native Docs relative links remain source-inspected gaps: raw `/app/...` and
 `#section` go to `Linking.openURL`; origin routing/local outline jumps need their
 own implementation and actual taps. Main `1a26644` records this gap only.
+
+## Latest continuation note
+
+The user replied that they will free disk space; latest available space is about
+4.7 GiB. Docker Desktop was recovered externally, and only test PostgreSQL was
+started by this task. Local web permission question remains pending: saved Browser
+Use denial for 127.0.0.1:5174 must be changed by the user before web inspection.
+
+Native navigation is proven for both source types. Repeated Simulator scroll
+commands return noWindowsAvailable or no visible movement, including after
+reacquiring the app. Do not count these attempts as scrolling acceptance. A
+separate compact synthetic summary was seeded into the same named QA night to
+inspect long source-button wrapping independently; the source conversation still
+contains the original four-section synthetic reflection. No real user data changed.
+Current native app is on the Overnight sheet; avoid app.paste entirely.
