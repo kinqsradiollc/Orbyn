@@ -20,23 +20,25 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote **9e1a2c8**,
-  checked this continuation. PR #141 independently schedules Overnight; exact
-  candidate full 2,120/2,120 and all CI jobs passed. Character changes remain
+- Main `/Users/anhdang/Documents/Github/Orbyn`: **456e01a**. PRs #143 and
+  #144 are merged; their exact qualification evidence is recorded below.
+  PR #141 independently schedules Overnight. Character changes remain
   published. User-owned `mobile/app.json` and unrelated untracked files remain
   preserved. Root `task.md` belongs to the character task.
 - Source `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch
-  `codex/devday-model-catalog`: **185a9d7** committed and pushed. Retains model,
+  `codex/devday-model-catalog`: **8bfcd48** before this documentation update,
+  committed and pushed. Retains model,
   Docs, settings, profiles, reflection and handoff work that must not be merged
   wholesale. Two untracked settings preview files remain preserved.
 - Scoped backend checkpoint `/Users/anhdang/.codex/worktrees/assistant-work-ownership/Orbyn`,
-  now branch `codex/assistant-rule-review`: **fc82170** frozen against main
-  **9e1a2c8**. Scheduler branch **9b87ce3** remains retained after its merge.
-  Rule/review/source safeguards cherry-picked cleanly; full combined qualification
-  running. No UI or public rule editor enabled; not merged or deployed.
+  now branch `codex/assistant-current-authority`: **04d1ff7** frozen against main
+  **456e01a**, draft PR #145. Full combined qualification **41477** and backend
+  CI **37000288172** are still running. Workspace types/build/full formatting
+  pipeline **11930** previously finished with exit zero. No UI or public rule
+  editor enabled; this candidate is not merged or deployed.
 - Plugin `/Users/anhdang/.codex/worktrees/devday-plugin-boundary/Orbyn`:
-  **9ce1961**, draft PR #142. Full 2,116/2,116 and types/build/format/CI passed on
-  base **2ba1ae2**; integrate/requalify newer main before promotion. Actual
+  **d2da6d8**, draft PR #142, reconciled with main **456e01a**. Full
+  2,155/2,155 and types/build/format/all CI passed for this candidate. Actual
   consent/host/gateway/provider/UI resources/events gates remain open.
 - Docs candidate **514679f**, draft PR #138, remains in
   `assistant-runtime-integration/Orbyn`; full 2,111/2,111 and CI passed on its
