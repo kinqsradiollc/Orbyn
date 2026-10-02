@@ -936,3 +936,29 @@ lacks a runtime lane predicate and needs a scoped regression before correction.
 Continue plugin reconciliation, real model executor/settings, full Docs D1/U1 and
 whole-app mobile parity. Existing browser denial and native password prompt remain
 open gates. Docker stays under user control. Cleanup remains at the end.
+
+## Independent night scheduling candidate — 2 October 2026
+
+Regression reproduced global scheduler coupling: queued/running interactive and
+Background jobs each prevented unrelated Overnight work (four failed cases).
+Waiting other-lane jobs and queued/running Overnight exclusion passed before the
+fix. Source `0ae3d05` limits the busy query to immutable `runtime_lane='overnight'`.
+Eight added cases cover three other-lane states and both Overnight blocking
+states, without changing provider/presence/pause/window/budget/source gates.
+The existing shared-task ownership guard still applies at claims.
+
+Source **64699** terminal zero: **53/53** night-shift/Overnight/runtime/ownership
+checks, no failures/skips/cancellations, 13,716 ms. Backend types **69776** and
+scoped formatting/diff passed. Logs `/tmp/orbyn-night-lane-{before,current-tests,
+source-types}.log`; the before log is intentionally failing reproduction evidence.
+
+Clean isolated candidate **9b87ce3**, branch **codex/overnight-scheduling**, based
+on main **2ba1ae2**, retains only these two files. Draft PR **#141** attached:
+https://github.com/kinqsradiollc/Orbyn/pull/141. Qualification is frozen/live:
+**75320** fresh marked `orbyn_night_9b87ce3_test` full backend suite;
+**76016** all workspace types, production builds and full formatting;
+CI **36990759723** currently in progress on that exact head. Logs
+`/tmp/orbyn-night-9b87ce3-{full-tests,types,build,format}.log`.
+Do not edit/restart the candidate while these handles are live. Poll the same
+handles; after terminal success inspect current main and the tested merge tree
+before merging. No main merge, deployment or goal completion is claimed here.

@@ -133,3 +133,11 @@ checks. Current corrected-source regression passed 19/19, with 21/21 character/
 style/catalog checks, all workspace types, production builds and scoped formatting.
 This is a source checkpoint, not a merged or visually qualified UI. The full
 governing review, including D1/U1 and whole-app mobile parity, remains required.
+
+The scheduler still used a global queued/running busy check after worker lanes
+were separated. Source `0ae3d05` scopes that check to Overnight: unrelated
+Background/interactive jobs no longer block it, while own-lane serialization and
+the shared-task ownership guard remain. Four regression cases failed before the
+fix; all 53 focused night/runtime/ownership checks passed afterward. Isolated
+main candidate `9b87ce3` is draft PR #141 with full qualification in progress.
+It does not enable handoff dispatch or complete agent collaboration.
