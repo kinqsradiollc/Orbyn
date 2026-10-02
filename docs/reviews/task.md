@@ -774,3 +774,8 @@ migrates the existing synthetic QA DB to include merged migration 209. Metro
 is still required before claiming current-head interaction. The iOS Save Password
 prompt remains pending the user's **Not Now** dismissal, and the saved browser
 preview denial remains unresolved. PR #138 is unmerged; keep its UI gates open.
+
+Pipeline **91141** is now terminal exit zero: all workspace types, production
+builds and full formatting passed on **514679f**. Suite **17106** and CI
+**36986507597** remain verified live in the final check. No source changes were
+made to that frozen candidate. Main remains **f7a3667**.
