@@ -2,6 +2,8 @@ import type { Queryable } from "../../db/pool.js";
 import { visibleItems } from "../../lib/visibility.js";
 
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
+import { assistantProposalSourcesVisible } from "../../lib/assistant-proposal-visibility.js";
+import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 
 /**
@@ -40,7 +42,10 @@ export async function listNotifications(
        WHERE n.user_id = $1 AND n.channel = 'inapp'
          AND (n.item_id IS NULL OR ${visibleItems()})
          AND (n.kind <> 'assistant' OR split_part(coalesce(n.ref,''), ':', 1) <> 'chat'
-           OR EXISTS(SELECT 1 FROM ai_chats c WHERE c.id::text=split_part(n.ref, ':', 2) AND ${assistantChatVisible()}))
+           OR EXISTS(SELECT 1 FROM ai_chats c JOIN ai_jobs j ON j.chat_id=c.id
+             WHERE c.id::text=split_part(n.ref, ':', 2) AND j.id::text=split_part(n.ref, ':', 3)
+               AND ${assistantChatVisible()} AND ${assistantJobSourcesVisible()}))
+         AND (n.kind <> 'review' OR ${assistantProposalSourcesVisible("p")})
          AND (n.kind <> 'reminder_nudge' OR EXISTS(SELECT 1 FROM assistant_nudges source_nudge WHERE source_nudge.id::text=split_part(n.ref, ':', array_length(string_to_array(n.ref, ':'), 1)) AND source_nudge.user_id=$1 AND ${assistantSourceVisible("source_nudge.entity_kind", "source_nudge.entity_id")}))
        ORDER BY n.created_at DESC LIMIT $2`,
       [userId, limit],

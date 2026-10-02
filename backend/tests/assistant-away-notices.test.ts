@@ -336,3 +336,132 @@ test("legacy human replies in a reminder chat migrate as personal runs", async (
     db.release();
   }
 });
+
+async function sourceOnlyNotice(restricted = false) {
+  const chat = randomUUID();
+  const id = randomUUID();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Job-only source',$2) RETURNING id",
+      [userId, restricted],
+    )
+  ).rows[0].id;
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,project_id,title) VALUES($1,$2,'Source evidence') RETURNING id",
+      [userId, project],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Job-only notice')",
+    [chat, userId],
+  );
+  await pool.query(
+    "INSERT INTO ai_jobs(id,user_id,chat_id,state,sources_checked,created_at) VALUES($1,$2,$3,'done',true,now()-interval '1 minute')",
+    [id, userId, chat],
+  );
+  await pool.query(
+    "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
+    [id, doc],
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM assistant_chat_sources WHERE chat_id=$1",
+        [chat],
+      )
+    ).rows[0].n,
+    0,
+  );
+  return { id, chat, project, doc, ref: `chat:${chat}:${id}:done` };
+}
+test("job-only restricted sources prevent queueing a notice even when its conversation is visible", async () => {
+  const fixture = await sourceOnlyNotice(true);
+  await notifyAssistantAway(pool, fixture.id, "done");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM notifications WHERE ref=$1",
+        [fixture.ref],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+test("job-only source revocation hides the inbox card and cancels the queued push without sending", async () => {
+  const { transaction } = await import("../src/db/pool.js");
+  const { assistantNoticeStale } = await import("../src/worker/delivery.js");
+  const { listNotifications } =
+    await import("../src/modules/notifications/service.js");
+  const fixture = await sourceOnlyNotice();
+  await notifyAssistantAway(pool, fixture.id, "done");
+  const notice = { user_id: userId, ref: fixture.ref };
+  assert.equal(
+    await transaction((db) => assistantNoticeStale(db, notice)),
+    false,
+  );
+  assert.ok(
+    (await listNotifications(pool, userId)).some((n) => n.ref === fixture.ref),
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    fixture.project,
+  ]);
+  assert.equal(
+    await transaction((db) => assistantNoticeStale(db, notice)),
+    true,
+  );
+  assert.equal(
+    (await listNotifications(pool, userId)).some((n) => n.ref === fixture.ref),
+    false,
+  );
+  await pool.query(
+    "UPDATE notifications SET available_at=now()+interval '1 day' WHERE user_id=$1",
+    [userId],
+  );
+  const push = (
+    await pool.query(
+      "UPDATE notifications SET available_at='1900-01-01' WHERE ref=$1 AND channel='push' RETURNING id",
+      [fixture.ref],
+    )
+  ).rows[0];
+  assert.ok(push);
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    throw new Error("Restricted source must never be sent");
+  };
+  try {
+    assert.equal(await deliverOne(), true);
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM notifications WHERE id=$1", [
+          push.id,
+        ])
+      ).rows[0].state,
+      "cancelled",
+    );
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+test("source cleanup leaves an existing job's saved notice inaccessible", async () => {
+  const { transaction } = await import("../src/db/pool.js");
+  const { assistantNoticeStale } = await import("../src/worker/delivery.js");
+  const { listNotifications } =
+    await import("../src/modules/notifications/service.js");
+  const fixture = await sourceOnlyNotice();
+  await notifyAssistantAway(pool, fixture.id, "done");
+  await pool.query("DELETE FROM docs WHERE id=$1", [fixture.doc]);
+  assert.equal(
+    await transaction((db) =>
+      assistantNoticeStale(db, { user_id: userId, ref: fixture.ref }),
+    ),
+    true,
+  );
+  assert.equal(
+    (await listNotifications(pool, userId)).some((n) => n.ref === fixture.ref),
+    false,
+  );
+});

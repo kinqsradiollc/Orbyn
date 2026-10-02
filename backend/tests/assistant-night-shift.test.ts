@@ -74,6 +74,77 @@ const queuedJob = async (userId: string) =>
       [userId],
     )
   ).rows[0];
+
+for (const lane of ["interactive", "background"] as const) {
+  for (const state of ["queued", "running", "waiting"] as const) {
+    test(`${state} ${lane} work does not occupy the Overnight scheduler`, async () => {
+      const me = await person();
+      const unrelated = (
+        await pool.query(
+          "INSERT INTO ai_jobs(user_id,state,run_state) VALUES($1,$2,$3) RETURNING id,runtime_lane",
+          [
+            me.id,
+            state,
+            {
+              version: 1,
+              request:
+                lane === "background"
+                  ? { automation: { kind: "task", id: randomUUID() } }
+                  : {},
+            },
+          ],
+        )
+      ).rows[0];
+      assert.equal(unrelated.runtime_lane, lane);
+      const now = new Date("2050-01-02T23:00:00Z");
+      const options = { only: [me.id], ai };
+      assert.equal(await scanNightShift(now, options), 1);
+      const jobs = (
+        await pool.query(
+          "SELECT id,runtime_lane FROM ai_jobs WHERE user_id=$1 AND runtime_lane='overnight'",
+          [me.id],
+        )
+      ).rows;
+      assert.equal(jobs.length, 1);
+      assert.notEqual(jobs[0].id, unrelated.id);
+      assert.equal(await scanNightShift(now, options), 0);
+      assert.equal((await night(me.id)).runs, 1);
+      assert.equal(
+        (
+          await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+            unrelated.id,
+          ])
+        ).rows[0].state,
+        state,
+      );
+    });
+  }
+}
+
+for (const state of ["queued", "running"] as const) {
+  test(`${state} Overnight work retains the scheduler's per-owner run limit`, async () => {
+    const me = await person();
+    const ownJob = (
+      await pool.query(
+        "INSERT INTO ai_jobs(user_id,state,run_state) VALUES($1,$2,$3) RETURNING id,runtime_lane",
+        [
+          me.id,
+          state,
+          { version: 1, request: { automation: { kind: "night" } } },
+        ],
+      )
+    ).rows[0];
+    assert.equal(ownJob.runtime_lane, "overnight");
+    const options = { only: [me.id], ai };
+    const now = new Date("2050-01-02T23:00:00Z");
+    assert.equal(await scanNightShift(now, options), 0);
+    assert.equal((await night(me.id)).runs, 0);
+    await complete(ownJob.id);
+    assert.equal(await scanNightShift(now, options), 1);
+    assert.equal((await night(me.id)).runs, 1);
+  });
+}
+
 async function complete(id: string, tokens = 100) {
   await pool.query(
     "UPDATE ai_jobs SET state = 'done', run_state = NULL, result = $2::jsonb WHERE id = $1",

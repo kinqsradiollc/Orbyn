@@ -1,4 +1,4 @@
-import { AGENT_TOOLSETS, type SystemRole } from "@orbyn/core";
+import { AGENT_TOOLSETS, type AgentAccess, type SystemRole } from "@orbyn/core";
 import { z } from "zod";
 import { pool } from "../../db/pool.js";
 import { reachableTeams, type Principal } from "../../capabilities/policy.js";
@@ -24,7 +24,12 @@ const approvalScopesInput = z
 type ApprovalScopes = z.output<typeof approvalScopesInput>;
 
 type AssistantGrantRow = {
+  access: AgentAccess;
+  personal: boolean;
+  team_ids: string[] | null;
+  flags: { hide_outside_content?: boolean };
   id: string;
+  assistant_rules_revision: number;
   trust: "full" | "ask" | "suggest";
   space_trust: Record<string, "full" | "ask" | "suggest">;
   acts_alone: string[];
@@ -76,7 +81,7 @@ export async function assistantPrincipal(
        ON CONFLICT (user_id) WHERE kind = 'assistant'
        DO UPDATE SET name = EXCLUDED.name, client_name = EXCLUDED.client_name,
                      last_used_at = now()
-       RETURNING id, trust, space_trust, acts_alone, toolsets, suspended_at`,
+       RETURNING id, access, personal, team_ids, flags, trust, space_trust, acts_alone, toolsets, suspended_at, assistant_rules_revision`,
       [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
     )
   ).rows[0];
@@ -86,11 +91,12 @@ export async function assistantPrincipal(
   return {
     user: { id: user.id, name: user.name, role: user.role },
     via: "assistant",
+    assistant_rules_revision: grant.assistant_rules_revision,
     grant_id: grant.id,
     client: { id: null, name },
-    access: "write",
-    team_ids: null,
-    personal: true,
+    access: grant.access,
+    team_ids: grant.team_ids,
+    personal: grant.personal,
     toolsets: AGENT_TOOLSETS.filter((toolset) =>
       (
         (grant.toolsets ?? DEFAULT_ASSISTANT_TOOLSETS) as readonly string[]
@@ -98,7 +104,7 @@ export async function assistantPrincipal(
     ),
     flags: {
       notify_teammates: false,
-      hide_outside_content: false,
+      hide_outside_content: !!grant.flags?.hide_outside_content,
       readonly: false,
     },
     trust: {
@@ -106,7 +112,7 @@ export async function assistantPrincipal(
       spaces: grant.space_trust ?? {},
       acts_alone: (grant.acts_alone ?? []) as Principal["trust"]["acts_alone"],
     },
-    teams: await reachableTeams(pool, user.id, null, "assistant"),
+    teams: await reachableTeams(pool, user.id, grant.team_ids, "assistant"),
   };
 }
 

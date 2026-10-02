@@ -1,3 +1,4 @@
+import { assistantJobSourcesVisible } from "../../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
 import { announceTo } from "../../presence/live.js";
 import { transaction, type Queryable } from "../../../db/pool.js";
@@ -55,6 +56,7 @@ async function emitPendingAssistantNotices(db: Queryable, jobId?: string) {
          UNION ALL SELECT 'push',token FROM devices WHERE user_id=u.id
        ) d
        WHERE j.id=$1 AND ${assistantChatVisible("c", "j.user_id")}
+         AND ${assistantJobSourcesVisible("j", "j.user_id")}
        ON CONFLICT DO NOTHING RETURNING user_id`,
       [
         event.job_id,

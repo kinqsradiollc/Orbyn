@@ -1,5 +1,22 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Latest qualified checkpoint — 2 October 2026
+
+PR #146 is merged as **c9b6c78** from **0033a96**, base **7c08aa6**. Cached
+assistant results bind current authority and recheck current producer/source and
+target access using the effective grant scope. Full local tests passed2,176/2,176,
+with all workspace types/build/full-format and all CI37003294826 jobs successful.
+CI backend passed2,175 with one Tesseract skip and zero failures. Candidate,
+CI mergecd57b95 and main have identical tree0d1f05994b7ed460131fe2e16ba9d3ad4ce59222.
+User changes and character work are preserved; no deployment or cleanup occurred.
+
+The complete C1–C6/M1/D1/U1 contract below remains active. Cached-result nested
+dependency closure, original provider-read revisions/concurrency and other
+persisted fast paths still require work. Source completed-draft replay follow-up
+is not included in this merge. Agent ownership/editor, read/effect/notice policy,
+budgets/collaboration, actual models/defaults/execution/providers/embeddings,
+plugin host acceptance and all Docs/Mermaid/whole-app/mobile gates remain open.
+
 ## Current checkpoint map — 2 October 2026
 
 This map updates delivery evidence without reducing the full contract below.
@@ -1155,3 +1172,199 @@ sweeper run failed connecting before any assertion. Only our named disposable
 databases were recreated with the server-side test marker; existing orbyn_test
 and orbyn_runs_test were preserved. This is distinct from the reproduced ctid
 race and does not establish a database or Docker product fix.
+
+### Reviewed action rules and producing-source checks — 2 October 2026
+
+Scoped candidate `codex/assistant-rule-review` is based on current main `9e1a2c8`.
+Three source checkpoints (`4ec8644`, `35d186f`, `185a9d7`) applied cleanly; no
+model/settings/profile/reflection UI changes are included. This is a candidate,
+not a completed A4 implementation or deployed change.
+
+Typed action rules are revision guarded and loaded under the source grant lock.
+Deny dominates ask/allow; existing permissions and unattended hard stops remain
+upper bounds. Question/approval waiting identities remain required, and rule edits
+invalidate prior approval cards and proposal reviews. Actual Review Inbox typed
+changes and whole plans retain server-selected runtime/rule/connection authority.
+The producing durable job and current job/chat dependencies are rechecked at
+creation and approval. Unknown source coverage, missing jobs, restricted projects,
+foreign owners and mismatched runtimes hold the suggestion without applying it.
+Whole-plan action arguments cannot substitute an assistant connection or producer.
+
+Source focused checks passed **43/43**, zero failure/skip/cancellation, and fresh
+marked `orbyn_proposal_job_test` migrated from empty then passed **14/14** dedicated
+checks. Source backend types and packages passed. Initial fixture-column errors
+were corrected and the cohort rerun. These results do not qualify the combined
+main candidate: its full tests, workspace types, production build and formatting
+must pass before promotion. First-party rule editing routes/UI remain disabled.
+
+Remaining scope includes typed agent ownership, permissions/rule editing on both
+clients, reviewed source revision snapshots, notification restrictions, read and
+external effects, durable budgets/reservations, receiving handoff authorization
+and dispatch/recovery, actual model/executor and plugin acceptance, full Docs
+parity, and whole-app web/mobile/native UI verification. The full ADR remains
+active; voice/computer-use product features and speculative Decisions stay excluded.
+
+The initial combined candidate **fc82170** completed its full local run:
+**2,130 passed / 11 failed**, zero skips/cancellations, 555,674 ms. Types, build
+and formatting passed; CI **36993742889** finished failed. All eleven local
+failures were legacy Overnight test fixtures constructing new built-in proposals
+without the required guard/job evidence. No qualification run was restarted or
+candidate changed before local and CI terminal results.
+
+Source **d8bf8d5** corrects those fixtures to create an owned chat and actual
+Overnight job before filing the proposal, with server-equivalent lane/rule/action
+checks and the producing identity. The protection stays intact. Source dedicated
+checks passed **27/27**; scoped candidate cherry-pick **a610406** applied cleanly
+and passed **55/55** combined Overnight/review/rules/whole-plan/agent-write checks,
+zero failure/skip/cancellation. The corrected combined tree must finish a fresh
+full local run and CI before merge. No release/deployment/cleanup occurred.
+
+### Qualified rule/review checkpoint merged — 2 October 2026
+
+PR **#143** merged to main as **9c344b8**. Exact frozen candidate **e58ed27**
+passed **2,141/2,141** full local tests, zero failures/skips/cancellations,
+549,434 ms, on a fresh marked database. Workspace types, production build and
+full formatting passed. CI **36995158096** finished success for all four jobs.
+Unchanged base **9e1a2c8**, fetched GitHub merge parents and resulting main were
+verified; candidate and merge trees match
+**a8f0bd5a54f60886e4b261378576f465b6daae70**. User mobile/app.json and unrelated
+local files remain preserved. This is a merged backend checkpoint, not deployment.
+
+Main now has typed rule persistence/current-write checks, stale approval fencing,
+server-held Review runtime/connection/rule evidence, and producing-job/source
+checks before proposal creation and approval. Public rule editor routes/UI remain
+disabled. This is not complete agent ownership/rules UX, notifications/read/external
+policy, budget reservations or collaboration. Source privacy follow-ups **977288c**,
+**866e4c0**, **411935e** still require extraction and full current-main qualification.
+The entire retained ADR, web/mobile parity, actual UI/model/plugin/Docs gates and
+end-of-goal cleanup remain active. No release/tag/deployment occurred.
+
+### Source privacy and parent deletion candidate — 2 October 2026
+
+`codex/assistant-source-privacy` is a scoped candidate based on main **dabb770**,
+after qualified PR #143. Source changes **977288c**, **866e4c0**, **411935e**
+applied without conflicts as **a3f6e33**, **90bd749**, **52b8d01**. No unmerged
+model/settings/profile/reflection UI is included; no public rule editor is enabled.
+
+Migration 213 keeps deleted-target history permissions while preventing recreated
+metadata for deleted owners/teams. Notification enqueue, inbox and delivery check
+job-only dependencies as well as conversations. Review item/inbox/badge/outcome
+and its saved in-app notification recheck separately stored producing-job sources.
+Missing source/producer or owner/runtime mismatch hides generated content; source
+cohorts preserve existing non-job behavior and actual worker cancellation sends
+nothing after source exclusion. Source tests/types passed as recorded in handoff;
+these do not yet qualify the combined main candidate.
+
+Freeze this candidate and run fresh full local tests, workspace types, production
+build, full formatting and exact-head CI before promotion. Full A4 policy/agent UX,
+source revision snapshots, budgets and receiving collaboration, model/executor,
+plugin, complete Docs and whole-app web/mobile/native UI gates remain required.
+No deployment/release/cleanup occurred. Voice/computer-use product features and
+speculative Decisions remain excluded.
+
+### Qualified source privacy and parent deletion checkpoint — 2 October 2026
+
+PR **#144** is merged as main **eccf338**, from frozen candidate **f79c852** on
+base **dabb770**. Migration 213 prevents account/team cascades from recreating
+history-access metadata for a disappearing parent; ordinary target deletion
+retains original owner/team history. Personal notice enqueue/inbox/push delivery
+checks job-only dependencies; Review summaries, counts, outcomes and saved
+notices omit unavailable producing-job sources. No production data was touched
+during reproduction. Current access protection does not prove source revisions.
+
+Fresh marked database full local suite passed **2,151/2,151**, no failures/skips/
+cancellations (563,046 ms); combined focused suite **69/69** passed. All workspace
+types, production builds and full formatting passed. Every CI job
+**36996647235** passed. Candidate, GitHub merge **2f1984a** and resulting main
+trees match **a903b6c7158871b05472e3afb54d824290df80fa**. No deployment occurred.
+
+The entire revised acceptance contract remains active: account-specific real
+model execution/defaults, provider/embedding options, separate plugin backend
+and supported host integration, full Docs Markdown/Mermaid parity, whole-app
+web/desktop/mobile UX, independent agent profiles and bounded authorized
+collaboration, typed ownership/rules/editor, reviewed source revisions and
+budget reservations. Public rule editor remains disabled. Preserve character
+work, Orbyn palette and mobile parity; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope.
+
+### Current assistant authority candidate gate — 2 October 2026
+
+Source **118f421** was extracted cleanly onto main **456e01a** as **d2484b5**.
+Built-in principal construction now respects stored access, Personal/team scope
+and outside-content restrictions. Every capability and generic read context
+reloads its active owned grant; disabled/paused/expired grants stop before the
+callback. Current and caller rights intersect, including team membership/role/
+agent policy, toolsets, trust and approval exceptions. Reads consult the primary;
+write checks hold the grant against changes. Typed rule revision fencing remains.
+
+Four valid baseline regressions failed before correction. Source extended suite
+passed **61/61**, backend types and scoped formatting/diff passed. These source
+results do not qualify the combined main candidate. Freeze current candidate for
+fresh full local tests, all workspace types/build/full format and current-head CI
+before promotion. No public rule editor or other unmerged feature is enabled.
+
+Receiving handoff identity/rules/connection/budget authorization, original
+provider-read snapshots and complete replay/outcome source-authorization proof
+remain open. Typed per-action read/external/notification policy and owner/editor
+UI are unfinished. Full real model/provider/embedding/plugin, Docs/Mermaid and
+whole-app web/desktop/mobile acceptance remains required. Saved web preview
+denial still blocks required visual QA; permission request is pending. Preserve
+character work and mobile parity. No deployment, cleanup or goal completion.
+
+### Qualified current assistant authority checkpoint — 2 October 2026
+
+PR #145 merged as main **3450e87**, from frozen candidate **04d1ff7** on
+base **456e01a**. Each capability reloads the current owned active assistant
+grant and intersects it with server-selected caller restrictions. Current
+Personal/team access, team role/policy, toolsets, trust, approval exceptions and
+outside-content restrictions cannot expand earlier authority. Reads use primary;
+writes serialize grant changes. Typed rule revision fences remain in place.
+
+Exact candidate full local suite passed **2,157/2,157**, zero failures, skips or
+cancellations,556,800ms, on fresh marked **orbyn_authority_04d1ff7_test**. Workspace
+types, production builds and full formatting passed. All CI **37000288172** jobs
+passed; backend passed2,156 with one Tesseract skip and zero failures. CI checked
+merge **a94a7c4**. Candidate, CI merge and resulting main trees are identical
+**94774365fcabd2b7d331d35a3d110880dce5a641**. Main fast-forward preserved user
+mobile/app.json and unrelated files. No deployment occurred.
+
+Source **c237cfb** additionally binds cached assistant results to effective
+authority and rechecks producing-job/container/current sources. Its72 focused
+checks and backend types/format passed, but it remains unmerged pending complete
+cached-target authorization, grant-scoped dependency closure and source revision/
+concurrency proof. Private receiving handoffs/budgets, typed read/effect/notice
+policy, agent ownership/editor, full real account models/providers/embeddings,
+plugin host acceptance, complete Docs/Mermaid and whole-app web/desktop/mobile
+UI gates remain required. Preserve Orbyn palette and characters. Saved web
+preview denial remains respected; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope; the full ADR goal remains active.
+
+### Cached assistant result authority and targets — reviewed candidate, 2 October 2026
+
+Extracted only backend replay and scoped visibility code/tests from source
+c237cfb/afd8160 onto main7c08aa6, preserving current character and application
+work. Cached assistant results bind effective owner/grant/lane/job/scope/team
+role/policy/toolset/flags/trust/rule evidence. Changed or legacy-unbound authority
+holds the answer without repeating the mutation. Current producing work/container
+and recorded dependencies use effective caller scope. Typed targets and structured
+resource links recheck current visibility across the32 produced receipt families;
+synthetic receipts retain their intended Personal/team behavior. Names and set
+ordering do not change the digest. Restored access permits the original retry.
+
+Seven initial authority/producing-source regressions and two later target/scope
+regressions failed before correction. Source focused cohort passed98/98, backend
+types and scoped formatting/diff passed. Combined-CASE diagnostic was stopped for
+measured planning cost; bounded per-family queries passed persistent positive/
+foreign-owner fixtures and synthetic/team/link cases. Candidate is frozen for
+fresh full local suite, all workspace types/build/full format and current-head CI.
+Source results alone do not qualify this candidate for promotion.
+
+Original provider-read versions, nested dependency closure, concurrent source
+fences and other persisted replay paths remain open. This does not complete
+read/effect/notice policy, ownership/editor, receiving handoffs/reservations,
+real account-specific model defaults/execution, provider/embedding choices,
+plugin host acceptance, Docs/Mermaid or whole-app web/desktop/mobile UI gates.
+Preserve Orbyn palette/characters; no public rule editor, deployment or cleanup.
+The complete M1/D1/U1 and C1–C6 ADR acceptance remains active.

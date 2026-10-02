@@ -96,3 +96,124 @@ Its fresh native verification is blocked by an iOS password-save prompt, pending
 the user's dismissal. Web/mobile-web and native Android interaction gates remain
 open. The governing review and implementation handoff
 retain the full remaining scope; these checkpoints do not complete the ADR.
+
+### Activity checkpoint and scope continuity — 2 October 2026
+
+PR #140 is merged as main `9e7e505`, from frozen candidate `01b8757`.
+Migration 210 records content-free job transitions in separate owner/runtime
+streams with monotonic replay cursors and 90-day event retention. The private
+read route and typed client recheck current source visibility. Polling,
+heartbeats and checkpoint-only writes do not fabricate work activity.
+The fresh marked database suite passed 2,112/2,112, with no failures, skips or
+cancellations. Workspace types, production builds and full formatting passed;
+all four CI jobs passed. Candidate, CI merge and resulting main trees are
+identical (`f62fdf5209f0dfb77b60ccb5788724c005742d04`). No deployment occurred.
+
+The governing revised implementation review remains the full acceptance
+contract. This checkpoint does not narrow it to assistant chat or activity:
+whole-app layout, Docs editing/rendering/export, views and settings, provider
+and embedding options, actual account-specific model execution, separate plugin
+integration, typed agent rules, durable budgets and bounded cross-runtime
+collaboration remain required. Web/desktop features require mobile parity.
+Preserve main's character work and Orbyn's palette. Unverified responsive/native
+behavior and external integration gates remain open. Related worktree cleanup
+comes after integration and qualification, without discarding retained work.
+
+### Independent Overnight scheduling checkpoint — 2 October 2026
+
+PR #141 is merged as main `7f3894f`, from frozen candidate `9b87ce3`.
+The scheduler's per-owner busy check now applies to Overnight jobs; unrelated
+queued/running Background or interactive jobs cannot starve its night work.
+Own-lane serialization and the shared-task ownership guard remain enforced.
+Four new regression cases failed before the correction. Afterward, the focused
+night/runtime/ownership suite passed 53/53 and the fresh full local suite passed
+2,120/2,120 with no failures, skips or cancellations. All workspace types,
+production builds and full formatting passed; every CI job passed. Candidate,
+GitHub merge and resulting main trees match
+`3e2d1b8410f139b625c88036679d62a77c08caca`. No deployment occurred.
+
+This completes a scheduler checkpoint, not bounded handoff dispatch or full A4.
+Typed rules, agent ownership records, durable budgets, receiving authorization
+and cross-runtime round trips still require integration. The whole-app D1/U1,
+provider/model, plugin and mobile parity deliverables remain in scope.
+
+### Qualified source privacy and parent deletion checkpoint — 2 October 2026
+
+PR **#144** is merged as main **eccf338**, from frozen candidate **f79c852** on
+base **dabb770**. Migration 213 prevents account/team cascades from recreating
+history-access metadata for a disappearing parent; ordinary target deletion
+retains original owner/team history. Personal notice enqueue/inbox/push delivery
+checks job-only dependencies; Review summaries, counts, outcomes and saved
+notices omit unavailable producing-job sources. No production data was touched
+during reproduction. Current access protection does not prove source revisions.
+
+Fresh marked database full local suite passed **2,151/2,151**, no failures/skips/
+cancellations (563,046 ms); combined focused suite **69/69** passed. All workspace
+types, production builds and full formatting passed. Every CI job
+**36996647235** passed. Candidate, GitHub merge **2f1984a** and resulting main
+trees match **a903b6c7158871b05472e3afb54d824290df80fa**. No deployment occurred.
+
+The entire revised acceptance contract remains active: account-specific real
+model execution/defaults, provider/embedding options, separate plugin backend
+and supported host integration, full Docs Markdown/Mermaid parity, whole-app
+web/desktop/mobile UX, independent agent profiles and bounded authorized
+collaboration, typed ownership/rules/editor, reviewed source revisions and
+budget reservations. Public rule editor remains disabled. Preserve character
+work, Orbyn palette and mobile parity; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope.
+
+### Qualified current assistant authority checkpoint — 2 October 2026
+
+PR #145 merged as main **3450e87**, from frozen candidate **04d1ff7** on
+base **456e01a**. Each capability reloads the current owned active assistant
+grant and intersects it with server-selected caller restrictions. Current
+Personal/team access, team role/policy, toolsets, trust, approval exceptions and
+outside-content restrictions cannot expand earlier authority. Reads use primary;
+writes serialize grant changes. Typed rule revision fences remain in place.
+
+Exact candidate full local suite passed **2,157/2,157**, zero failures, skips or
+cancellations,556,800ms, on fresh marked **orbyn_authority_04d1ff7_test**. Workspace
+types, production builds and full formatting passed. All CI **37000288172** jobs
+passed; backend passed2,156 with one Tesseract skip and zero failures. CI checked
+merge **a94a7c4**. Candidate, CI merge and resulting main trees are identical
+**94774365fcabd2b7d331d35a3d110880dce5a641**. Main fast-forward preserved user
+mobile/app.json and unrelated files. No deployment occurred.
+
+Source **c237cfb** additionally binds cached assistant results to effective
+authority and rechecks producing-job/container/current sources. Its72 focused
+checks and backend types/format passed, but it remains unmerged pending complete
+cached-target authorization, grant-scoped dependency closure and source revision/
+concurrency proof. Private receiving handoffs/budgets, typed read/effect/notice
+policy, agent ownership/editor, full real account models/providers/embeddings,
+plugin host acceptance, complete Docs/Mermaid and whole-app web/desktop/mobile
+UI gates remain required. Preserve Orbyn palette and characters. Saved web
+preview denial remains respected; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope; the full ADR goal remains active.
+
+### Qualified cached assistant result checkpoint — 2 October 2026
+
+PR #146 merged as main **c9b6c78**, from frozen **0033a96** on unchanged base
+**7c08aa6**. Assistant cached write results bind to current effective authority
+and recheck producing job/container/source access, grant-scoped source visibility
+and typed targets/structured links across the32 produced receipt families. A held
+result does not repeat the mutation; restoring target access can return the
+original answer. Ordinary connector replay remains unchanged.
+
+Exact candidate local full suite passed **2,176/2,176**, zero failures, skips or
+cancellations,556,169ms. All workspace types, production builds and full formatting
+passed. All CI **37003294826** jobs succeeded; backend passed2,175 with one
+Tesseract-dependent skip and zero failures. CI merge **cd57b95**, candidate and
+resulting main have identical tree **0d1f05994b7ed460131fe2e16ba9d3ad4ce59222**.
+Local main fast-forward preserved user mobile/app.json and unrelated files.
+
+This checkpoint does not complete replay security or the full ADR. Original
+provider-read revisions, nested dependency closure, concurrent source fences and
+other persisted result paths remain open. Completed document draft replay is a
+separate source follow-up, not in this merge. Receiving handoffs/budgets, typed
+read/effect/notice policy, owner/editor UX, actual models/defaults/execution,
+providers/embeddings, separate plugin host acceptance, complete Docs/Mermaid and
+whole-app web/desktop/mobile acceptance remain required. Preserve palette and
+characters. No deployment or cleanup occurred; voice/computer-use product
+features and the speculative Decisions adapter remain excluded.
