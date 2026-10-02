@@ -81,7 +81,10 @@ if (process.env.RUNNER_TEST_PAUSE_CHECKPOINT) {
   });
 }
 
-const stop = startAssistantRunner(Fastify({ logger: false }).log);
+const lane = process.env.RUNNER_TEST_LANE ?? "interactive";
+if (lane !== "interactive" && lane !== "background" && lane !== "overnight")
+  throw new Error("Invalid test runtime lane");
+const stop = startAssistantRunner(Fastify({ logger: false }).log, { lane });
 let stopping = false;
 const shutdown = async () => {
   if (stopping) return;

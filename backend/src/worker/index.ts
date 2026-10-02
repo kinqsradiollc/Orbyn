@@ -35,8 +35,6 @@ import { scanAssistantTasks } from "./assistant-tasks.js";
 import { scanNightShift } from "./night-shift.js";
 import { scanReminderNudges } from "./reminder-nudges.js";
 import { env } from "../config/env.js";
-import { startAssistantRunner } from "../modules/ai/agent/runner.js";
-import type { FastifyBaseLogger } from "fastify";
 
 /** Planner upkeep runs at most this often. */
 const PLANNING_MS = 60_000;
@@ -100,20 +98,14 @@ function startChatSweep() {
 }
 
 export async function runWorker() {
-  const stopRunner =
-    env.AI_RUNNER_IN_WORKER === "true"
-      ? startAssistantRunner(console as unknown as FastifyBaseLogger)
-      : undefined;
+  if (env.AI_RUNNER_IN_WORKER === "true")
+    throw new Error(
+      "AI_RUNNER_IN_WORKER is no longer supported. Run ai, assistant-background and assistant-overnight as separate services.",
+    );
   let stopping = false;
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => {
       stopping = true;
-      void stopRunner?.().catch((error) => {
-        console.error(
-          "Assistant runner shutdown failed",
-          error instanceof Error ? error.message : "unknown",
-        );
-      });
     });
   // Timed on the monotonic clock: when the wall clock is set right (by
   // hours, say), the loop's own rhythm doesn't stall or rush with it.
@@ -298,7 +290,6 @@ export async function runWorker() {
   }
   // A chat sweep still in flight is abandoned: its claims expire and the
   // next run takes those chats again.
-  await stopRunner?.();
   await closeDatabase();
   closeEmail();
 }

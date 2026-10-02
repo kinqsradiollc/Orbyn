@@ -79,10 +79,19 @@ Mobile has its own `mobile/.env.example`:
 ### AI providers
 
 Assistant chat and automation requests enqueue a database job. The AI service
-(and single-process local server) consumes up to eight jobs at once. If a
-deployment runs the notifier without an AI service, set
-`AI_RUNNER_IN_WORKER=true` to enable its queue consumer; the default is false.
-Each claim uses a sixty-second lease, renewed while the job runs.
+(and local API server) consumes interactive chats only, with four reserved slots.
+Run the other consumers in separate terminals for local automation:
+
+```bash
+PORT=8011 npm run dev:assistant-background -w backend
+PORT=8012 npm run dev:assistant-overnight -w backend
+```
+
+Each automation runtime has two reserved slots across its replicas and renews
+sixty-second job leases. Compose and Kubernetes deploy both services separately;
+their health ports stay private. `AI_RUNNER_IN_WORKER=true` is no longer supported:
+remove that override and run these services. The notifier continues scheduling
+jobs and delivering reminders. Restarting one runtime does not stop the other.
 
 The AI assistant is configured only in the app, never in `.env`. Sign in as an admin and open
 **Admin → AI** (on mobile: **Settings → Admin console → AI**), then:

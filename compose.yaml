@@ -21,8 +21,8 @@ x-backend: &backend
       required: false
   restart: unless-stopped
 
-x-backend-env: &backend-env
-  # Services reach Postgres through PgBouncer; migrations connect directly.
+x-backend-env:
+  &backend-env # Services reach Postgres through PgBouncer; migrations connect directly.
   DATABASE_URL: postgres://${POSTGRES_USER:-orbyn}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-orbyn}
   # Optional read replica, e.g. through PgBouncer's "<db>_read" route.
   DATABASE_READ_URL: ${DOCKER_DATABASE_READ_URL:-}
@@ -39,7 +39,13 @@ x-backend-env: &backend-env
   TRUST_PROXY: "true"
 
 x-http-health: &http-health
-  test: ["CMD", "node", "-e", "fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+  test:
+    [
+      "CMD",
+      "node",
+      "-e",
+      "fetch('http://localhost:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+    ]
   interval: 10s
   timeout: 5s
   retries: 10
@@ -89,7 +95,10 @@ services:
       POSTGRES_DB: orbyn_test
     ports: ["127.0.0.1:${TEST_POSTGRES_PORT:-55434}:5432"]
     tmpfs: ["/var/lib/postgresql/data"]
-    volumes: ["./backend/tests/db/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro"]
+    volumes:
+      [
+        "./backend/tests/db/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro",
+      ]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U orbyn -d orbyn_test"]
       interval: 3s
@@ -163,13 +172,57 @@ services:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
-  # The assistant; the only service that talks to AI providers.
+  # Interactive assistant and provider settings. Automation has separate processes.
   ai:
     <<: *backend
     environment: *backend-env
     command: ["node", "backend/dist/services/ai.js"]
     healthcheck: *http-health
     deploy: { replicas: "${AI_REPLICAS:-2}" }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Dedicated background runtime. No host or gateway port is exposed.
+  assistant-background:
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/assistant-background.js"]
+    healthcheck:
+      <<: *http-health
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+    deploy:
+      replicas: "${ASSISTANT_BACKGROUND_REPLICAS:-1}"
+      resources:
+        limits: { cpus: "1", memory: 512M }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
+  # Dedicated overnight runtime. No host or gateway port is exposed.
+  assistant-overnight:
+    <<: *backend
+    environment: *backend-env
+    command: ["node", "backend/dist/services/assistant-overnight.js"]
+    healthcheck:
+      <<: *http-health
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:8000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+    deploy:
+      replicas: "${ASSISTANT_OVERNIGHT_REPLICAS:-1}"
+      resources:
+        limits: { cpus: "1", memory: 512M }
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
@@ -275,7 +328,13 @@ services:
     mem_limit: ${FORMULA_MEMORY:-2g}
     cpus: ${FORMULA_CPUS:-2}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 5m
@@ -305,7 +364,13 @@ services:
     mem_limit: ${OCR_MEMORY:-16g}
     cpus: ${OCR_CPUS:-8}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)",
+        ]
       interval: 30s
       timeout: 10s
       start_period: 30m
@@ -384,7 +449,8 @@ services:
     # Served through the gateway's web port, so copies roll over without downtime.
     deploy: { replicas: "${WEB_REPLICAS:-2}" }
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      test:
+        ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10

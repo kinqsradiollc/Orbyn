@@ -14,7 +14,11 @@ export const STATUS_GROUPS: { id: string; name: string; ids: string[] }[] = [
     name: "Planner and sync",
     ids: ["gateway", "api", "realtime", "database"],
   },
-  { id: "ai", name: "Assistant and agents", ids: ["ai", "mcp"] },
+  {
+    id: "ai",
+    name: "Assistant and agents",
+    ids: ["ai", "assistant-background", "assistant-overnight", "mcp"],
+  },
   {
     id: "background",
     name: "Reminders and imports",
