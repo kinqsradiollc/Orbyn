@@ -389,3 +389,11 @@
   color: var(--color-text);
   font-weight: 500;
 }
+
+.home-companions-lanes small {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}

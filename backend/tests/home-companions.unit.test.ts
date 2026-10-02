@@ -155,9 +155,16 @@ for (const mobile of [false, true]) {
     const view = fixture(mobile);
     const html = renderToStaticMarkup(view.first);
     assert.match(html, /Background/);
-    assert.match(html, /delegated tasks, results, and questions/);
+    assert.match(html, /When you delegate a task/);
+    assert.match(html, /needs an answer or approval/);
+    assert.match(html, /Check its progress and return to the result/);
+    assert.match(html, /sources in agent activity/);
     assert.match(html, /Overnight/);
-    assert.match(html, /queued night work/);
+    assert.match(html, /Inside your chosen night window/);
+    assert.match(html, /work budget limit the run/);
+    assert.match(html, /Review what happened in the morning/);
+    assert.match(html, /unfinished tasks in Overnight/);
+    assert.match(html, /idle until they have authorized work/);
     assert.doesNotMatch(html, /Working now|Active now|Reflection complete/);
     view.cleanup();
   });

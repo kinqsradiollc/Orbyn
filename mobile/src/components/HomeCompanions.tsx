@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import { CHARACTER_PRESETS, type PersonalAgentSettings } from "@orbyn/core";
+import {
+  CHARACTER_PRESETS,
+  HOME_AGENT_GUIDE,
+  HOME_AGENT_IDLE_NOTE,
+  type PersonalAgentSettings,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { shared } from "../styles";
 import { Character } from "./Character";
@@ -70,14 +75,16 @@ export function HomeCompanions({
         </Text>
       </Pressable>
       <View style={{ gap: 10 }}>
-        <Text style={shared.small}>
-          <Text style={shared.sectionTitle}>Background</Text>
-          {"\n"}Check delegated tasks, results, and questions that need you.
-        </Text>
-        <Text style={shared.small}>
-          <Text style={shared.sectionTitle}>Overnight</Text>
-          {"\n"}Review queued night work and what’s still unfinished.
-        </Text>
+        {HOME_AGENT_GUIDE.map((agent) => (
+          <View key={agent.name} style={{ gap: 4 }}>
+            <Text style={shared.sectionTitle}>{agent.name}</Text>
+            <Text style={shared.small}>{agent.timing}</Text>
+            <Text style={shared.small}>{agent.summary}</Text>
+            <Text style={shared.small}>{agent.result}</Text>
+            <Text style={shared.small}>{agent.pause}</Text>
+          </View>
+        ))}
+        <Text style={shared.small}>{HOME_AGENT_IDLE_NOTE}</Text>
       </View>
       <Button
         title="View agent activity"

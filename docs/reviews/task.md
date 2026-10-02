@@ -2211,3 +2211,20 @@ is not yet reconciled with that main checkpoint. No deploy/cleanup.
 - Initial test used PATCH instead of the established PUT document route, then expected400 instead of existing schema422; corrected the fixtures.
 - This is foundation only. Next connect both editors' flush to explicit save success/offline failure, use content equality rather than native array identity, capture the version, and supply it on all file/share paths. Do not claim unsaved export correctness until those paths and concurrent typing/failure tests pass.
 - Source-preview checkpoint8e0db8f full suite remains running on its unchanged tree. Preserve preview helper files; no cleanup/deploy.
+
+Qualification update: local frozen8e0db8f suite completed2402/2402, no failures,
+skips or cancellations,575064ms; session40820 terminal. Later45f012d changes only
+formatting exclusion/handoff and a stronger negative window completion test,
+which passes4/4. Main80dff7a reconciled as51e9778; one append-only ADR conflict
+retained both sections. Export version foundation4f22304 applied asdb28cb3;
+resolved append-only ADR/task history and reconstructed both complete export
+regressions from their source commits. No conflict markers remain.
+Combined source: focused51/51 plus export API18/18; all workspace types and
+production builds pass ondb28cb3. Latest signed-in Home guide/timing/pause parity
+from verifiedc7d2114 is now in this candidate; web/mobile types pass. Full2402
+result predates API/version/Home additions; do not call it a full current-head
+pass. Main-isolated optional version checkpoint is nowcodex/docs-export-version;
+qualify and merge only after its exact CI passes. Preview45f012d CI may be
+superseded by the upcoming reconcile push. Continue editor save-failure and
+version capture integration, then PDF/publication/current-source/export/native
+and full U1 gates. Full goal remains active; no deployment/cleanup.
