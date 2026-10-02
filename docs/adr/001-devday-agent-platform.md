@@ -266,3 +266,14 @@ The user owns web visual validation on their test server for this increment.
 Code/build checks do not establish visual acceptance. Native screenshot and
 interaction acceptance remains required and the disposable account’s terms
 confirmation is still pending.
+
+### Home copy follow-up — 3 October 2026
+
+Replace vague first-screen metaphors with tasks, calendar, project notes and
+delegated work. Present Background and Overnight as separate work schedules,
+with an explicit review destination for each. Label illustrative requests as
+examples and keep idle behavior truthful. Muse informs visible activity and
+meaningful interruptions; Dots informs work between conversations. Their
+capabilities do not establish capabilities in Orbyn. Reflection and collaboration
+remain open acceptance gates. This follow-up changes copy only; the user’s web
+visual validation and native acceptance remain outstanding.
