@@ -12,6 +12,7 @@ import { visibleItems } from "../lib/visibility.js";
 import { reminderNudgeCandidates } from "./reminder-nudges.js";
 import { loadPrefs } from "../modules/planner/calendar.js";
 
+import { assistantJobSourcesVisible } from "../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../lib/assistant-visibility.js";
 
 const MAX_ATTEMPTS = 8;
@@ -202,6 +203,7 @@ export async function assistantNoticeStale(
                          AND EXISTS(SELECT 1 FROM ai_jobs j
                            WHERE j.id::text=split_part($2, ':', 3) AND j.user_id=$1 AND j.chat_id=c.id
                              AND j.run_origin='person' AND j.state=split_part($2, ':', 4)
+                             AND ${assistantJobSourcesVisible()}
                              AND (j.state<>'waiting' OR j.run_state->'state'->'waiting'->>'id'=split_part($2, ':', 5)))
                        UNION ALL SELECT 1 FROM assistant_nights n JOIN users u ON u.id = n.user_id
                        WHERE n.id::text = split_part($2, ':', 2) AND n.user_id = $1 AND NOT u.disabled
