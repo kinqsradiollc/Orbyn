@@ -58,6 +58,7 @@ export * from "./assistant-ideas.js";
 export * from "./goals.js";
 export * from "./assistant-workspace.js";
 export * from "./assistant-handoffs.js";
+export * from "./assistant-activity.js";
 export * from "./memory.js";
 export * from "./page-tags.js";
 export * from "./page-templates.js";

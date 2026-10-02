@@ -779,3 +779,58 @@ Pipeline **91141** is now terminal exit zero: all workspace types, production
 builds and full formatting passed on **514679f**. Suite **17106** and CI
 **36986507597** remain verified live in the final check. No source changes were
 made to that frozen candidate. Main remains **f7a3667**.
+
+## Current continuation — activity and related worktree audit
+
+Docs frozen head **514679f** full local suite **17106** is terminal exit zero:
+**2,111/2,111**, no failures, skips or cancellations, 516,972 ms. CI
+**36986507597** is terminal green in all jobs: backend **2,110 passed**, zero
+failed, one Tesseract skip. Logs `/tmp/orbyn-docs-514679f-{full-tests,ci}.log`.
+PR #138 remains draft/unmerged because current web/mobile-web/native gates
+remain open. No source edits or duplicated runs were made during qualification.
+
+Activity source adds migration **210**, core schemas, private
+`GET /me/assistant/activity/:lane`, current source filtering, typed fresh client
+replay and the central 90-day sweeper rule. Owner/lane counters survive event
+retention; deleted jobs retain no artifact link or copied content. Polling,
+heartbeats and checkpoint-only changes do not count as work; queue-only streams
+have no last-work timestamp. Imported historical terminal rows create no event.
+The fresh marked **orbyn_activity_210_test** applied all migrations. Latest serial
+regression **47370** passed **60/60**, no failures/skips/cancellations, 17,866 ms,
+covering actual trigger concurrency, source filtering, sweeper retention, cursor
+validation, fresh client response binding, 401/403/400/422/429 routes, handoffs,
+ownership and runtime lanes. Log `/tmp/orbyn-assistant-activity-regression.log`.
+Malformed cursor/page refinements now safely reject without BigInt exceptions.
+An intermediate run used old compiled core output and failed the new page guard
+check; rebuilding packages before the rerun proved the current guards. Do not
+claim the intermediate run as production evidence.
+
+Related worktrees checked by actual status/history/diff: character and ownership
+are clean and have no commits beyond main; retain until end-of-goal cleanup.
+Plan worktree has retained uncommitted Markdown/Mermaid and executor host work;
+model source has unmerged settings, provider/model, Markdown/Mermaid, reflection,
+handoff and activity work. Plugin has retained recipient/discovery/consent work.
+Reflection branch remains draft PR #137. Git merge-tree checks against main
+**f7a3667** found no conflicts for Docs, committed model or reflection; the older
+plugin branch has eight file conflicts (package/app, OAuth consent/tokens,
+plugin routes/test, HTTP service and review artifact). No actual merge was
+started and no conflict markers were installed. Reconcile plugin against current
+main deliberately; keep live route/issuer/recipient isolation and all newer main
+behavior. Uncommitted plan changes were not represented by those merge previews.
+No worktree/branch deleted. Main dirty mobile/app.json and other-task root task.md
+remain untouched. No deployment/release occurred. Cleanup comes after required
+integration and qualification, including character worktree retirement.
+
+Next: finish activity qualification/checkpoint, build receiving authorization,
+budget/dispatch and truthful profiles on both clients; resolve plugin overlaps;
+complete actual model executor/settings/Docs D1/U1 behavior. Preserve full ADR
+scope. Browser saved preview denial and owned native password prompt still need
+the user's existing pending actions; do not bypass them. Docker remains under
+user control. Full-format source scan found an existing untracked settings
+preview warning; scoped activity formatting passed without altering that file.
+
+Activity qualification **30525** is terminal exit zero: all workspace types
+passed on the current source, log `/tmp/orbyn-assistant-activity-all-types.log`.
+Current packages build **47370** and scoped formatting passed. The 60-test
+regression also includes actual sweeper execution against migration 210. This
+source checkpoint is not a qualified main merge or a completed profile UI.

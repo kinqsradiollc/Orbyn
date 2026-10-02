@@ -1,4 +1,8 @@
 import {
+  assistantActivityLane,
+  assistantActivityQuery,
+  assistantActivityPage,
+  type AssistantActivityLane,
   chatgptExecutorStart,
   chatgptExecutorList,
   chatgptExecutorFinish,
@@ -3514,6 +3518,29 @@ export class OrbynClient {
     };
   }
   // ---- The Review inbox ----
+  /** Recover authorized execution activity with an owner/lane-scoped cursor. */
+  async assistantActivity(
+    lane: AssistantActivityLane,
+    after = "0",
+    limit = 50,
+  ) {
+    lane = assistantActivityLane.parse(lane);
+    const query = assistantActivityQuery.parse({ after, limit });
+    const page = assistantActivityPage.parse(
+      await this.request<unknown>(
+        `/me/assistant/activity/${lane}?${new URLSearchParams({ after: query.after, limit: String(query.limit) })}`,
+        { fresh: true },
+      ),
+    );
+    if (
+      page.lane !== lane ||
+      page.events.length > query.limit ||
+      BigInt(page.cursor) < BigInt(after) ||
+      page.events.some((event) => BigInt(event.sequence) <= BigInt(after))
+    )
+      throw new Error("Activity response does not match the requested stream.");
+    return page;
+  }
   /** What waits for approval, and what was decided lately. */
   reviewInbox() {
     return this.request<ReviewInbox>("/proposals");

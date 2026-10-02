@@ -90,9 +90,21 @@ grant receiving authority or prove separate-worker collaboration. Source
 error text or restricted outcomes; its 32 contract/storage/request checks and
 backend types passed. Handoff services remain unmerged and unwired.
 
-Docs PR #138 had green CI on `25e1e6f`; combined character candidate `788161e`
-passed 37 focused checks, all types/build/format, with new CI still running.
+Docs PR #138 candidate `514679f` includes current main and characters, Unicode
+heading links and owning-page URLs. All 56 focused checks, workspace types,
+production builds and formatting passed. The full local suite passed 2,111/2,111;
+CI passed all jobs, with 2,110 backend passes, zero failures and one Tesseract skip.
 Its fresh native verification is blocked by an iOS password-save prompt, pending
 the user's dismissal. Web/mobile-web and native Android interaction gates remain
 open. The governing review and implementation handoff
 retain the full remaining scope; these checkpoints do not complete the ADR.
+
+Persisted activity source now implements migration 210, owner/runtime sequence
+counters, content-free job transition events, a private authorized replay route,
+typed client recovery and 90-day event retention. Heartbeats, polling and
+checkpoint-only writes create no activity. Imported historical jobs do not
+fabricate fresh completion timestamps. Current source visibility filters live
+job links; expired jobs retain only content-free historical events. Queuing alone
+does not set last-work activity. Sixty focused activity, handoff, sweep and runtime
+checks passed on a fresh marked test database. This remains unmerged source;
+profile UI, worker dispatch, budgets and separate-process collaboration are open.
