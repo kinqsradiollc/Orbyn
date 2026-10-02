@@ -2246,3 +2246,28 @@ and full U1 gates. Full goal remains active; no deployment/cleanup.
 - Scope cancellation uses layout teardown. Latest combined typecheck/build passed in /tmp/orbyn-home-muse-{types,build}.log; those checks include the save guards.
 - Commit this guard checkpoint, then run the full suite against an isolated marked test database on the frozen source. Do not call previous2402/2402 a current-head result. Reconcile mainba08edb after qualification; retain both append-only document histories.
 - Full ADR remains active: PDF math/diagrams, server/publication parity, native share/visual acceptance, complete D1/U1/model/plugin/runtime acceptance remain open. No deployment or cleanup.
+
+### Frozen save-guard qualification complete — 3 October 2026
+
+Source7cd75934175324892a22d151f0927adf21685c2b completed2437/2437 full local
+checks, zero failures/skips/cancellations, exit0,598241ms. Session37995 is
+terminal; do not restart that run. Evidence: evidence/doc-export-save.md.
+
+Separate main-based public Home checkpointd1b76545 PR157 has localtypes/build/
+format and3focused checks; Docker/mobile/mail CI37045908216 pass, backend/web
+remains live. Main stillba08edb. Merge only after exact-head CI passes and
+verify current main before reconciliation. Preserve primary user-owned files.
+
+New production bug found: raw file transport omits the JSON transport consistency
+header. Dedicated primary-read candidate8b48b1de, branchcodex/doc-export-primary
+in assistant-runtime-integration, PR158, fixes all document/task/link export reads
+and legacy Markdown to primary. Mocked actual-handler checks21/21 plus combined
+API/client39/39 pass; alltypes/build/format pass. Its frozen full suite is live
+on session43323, log /tmp/orbyn-export-primary-8b48b1de-full-tests.log, own marked
+DB name /tmp/orbyn-export-primary-full-test-db.txt. Do not edit its frozen tree
+or restart merely because observation times out. Wait for full local/CI before
+main promotion.
+
+Next: reconcile source with main, retaining appended ADR histories; apply primary
+fix after qualification, then continue rendered PDF/math/diagram parity and
+remaining actual UI/model/plugin/runtime gates. Full ADR active; no cleanup/deploy.
