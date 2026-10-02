@@ -540,6 +540,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "assistant_activity_events",
+    label: "Assistant work activity",
+    detail:
+      "Content-free execution events retained for 90 days; replay counters contain no content and remain scoped to the owner and runtime.",
+    table: "assistant_activity_events",
+    where: "created_at < now() - interval '90 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "assistant_nights",
     label: "Assistant nights",
     detail:
