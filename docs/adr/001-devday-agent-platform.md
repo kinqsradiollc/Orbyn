@@ -233,3 +233,29 @@ notice job-only source exposure and hide Review summaries after source loss.
 Actual generated runtime, providers, Docs, profile and whole-app UI/native/browser
 acceptance, typed agent records/editor, budgets and receiving collaboration remain
 required. Character work is preserved; no deployment or cleanup occurred.
+
+### Qualified source privacy and parent deletion checkpoint — 2 October 2026
+
+PR **#144** is merged as main **eccf338**, from frozen candidate **f79c852** on
+base **dabb770**. Migration 213 prevents account/team cascades from recreating
+history-access metadata for a disappearing parent; ordinary target deletion
+retains original owner/team history. Personal notice enqueue/inbox/push delivery
+checks job-only dependencies; Review summaries, counts, outcomes and saved
+notices omit unavailable producing-job sources. No production data was touched
+during reproduction. Current access protection does not prove source revisions.
+
+Fresh marked database full local suite passed **2,151/2,151**, no failures/skips/
+cancellations (563,046 ms); combined focused suite **69/69** passed. All workspace
+types, production builds and full formatting passed. Every CI job
+**36996647235** passed. Candidate, GitHub merge **2f1984a** and resulting main
+trees match **a903b6c7158871b05472e3afb54d824290df80fa**. No deployment occurred.
+
+The entire revised acceptance contract remains active: account-specific real
+model execution/defaults, provider/embedding options, separate plugin backend
+and supported host integration, full Docs Markdown/Mermaid parity, whole-app
+web/desktop/mobile UX, independent agent profiles and bounded authorized
+collaboration, typed ownership/rules/editor, reviewed source revisions and
+budget reservations. Public rule editor remains disabled. Preserve character
+work, Orbyn palette and mobile parity; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope.
