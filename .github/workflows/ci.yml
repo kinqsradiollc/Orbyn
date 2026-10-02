@@ -74,7 +74,7 @@ jobs:
           file: backend/Dockerfile
           push: false
           load: true
-          tags: orbyn-api:latest,orbyn-ai:latest,orbyn-status:latest,orbyn-notifier:latest,orbyn-migrate:latest
+          tags: orbyn-backend:ci
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
       - name: Build web image
@@ -99,6 +99,11 @@ jobs:
       - name: Start services and run the live API smoke test
         run: |
           cp .env.example .env
+          # Every backend service shares this image. Derive its Compose tag so
+          # new services cannot silently be omitted from the smoke deployment.
+          docker compose --profile '*' config --format json |
+            jq -r --arg project "$COMPOSE_PROJECT_NAME" '.services | to_entries[] | select(.value.build.dockerfile? == "backend/Dockerfile") | (.value.image // ($project + "-" + .key + ":latest"))' |
+            while IFS= read -r image; do docker tag orbyn-backend:ci "$image"; done
           docker compose up -d --no-build --wait --wait-timeout 120
           curl --fail --retry 5 --retry-all-errors http://localhost:8080/api/health
           SMOKE_AI=skip npm run smoke -w backend

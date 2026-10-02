@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import argon2 from "argon2";
-import katex from "katex";
+import { createMathHtml } from "../../lib/math-html.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
@@ -293,7 +293,7 @@ async function renderPage(
   const files = await pictures(doc.id);
   const bodyHtml = blocksHtml(content, {
     anchors: true,
-    math: typeset,
+    math: createMathHtml(),
     fileUrl: (id) => files.get(id) ?? null,
     linkUrl: (href) => {
       const ref = parseObjectHref(href);
@@ -350,26 +350,6 @@ async function renderPage(
         }
       : null,
   });
-}
-
-/**
- * Maths on a published page, as MathML: browsers draw it themselves, so
- * the page needs no script, stylesheet or font from anywhere.
- */
-function typeset(tex: string, display: boolean): string | null {
-  try {
-    const html = katex.renderToString(tex, {
-      output: "mathml",
-      displayMode: display,
-      throwOnError: false,
-      trust: false,
-      maxSize: 20,
-      maxExpand: 200,
-    });
-    return display ? `<div class="math">${html}</div>` : html;
-  } catch {
-    return null;
-  }
 }
 
 const DOC_COLUMNS = `d.id, d.title, d.content, d.updated_at, d.web_description,

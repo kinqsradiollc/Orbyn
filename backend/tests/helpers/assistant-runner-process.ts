@@ -3,6 +3,14 @@ import "../setup.js";
 import Fastify from "fastify";
 import { pool } from "../../src/db/pool.js";
 import { startAssistantRunner } from "../../src/modules/ai/agent/runner.js";
+import { assistantRunLimits } from "../../src/modules/ai/agent/run.js";
+
+if (process.env.RUNNER_TEST_MAX_RUN_MS) {
+  const max = Number(process.env.RUNNER_TEST_MAX_RUN_MS);
+  if (!Number.isInteger(max) || max < 1 || max > 600_000)
+    throw new Error("Invalid test runtime deadline");
+  assistantRunLimits.maxRunMs = max;
+}
 
 if (process.env.RUNNER_TEST_PAUSE_AFTER_APPLY === "true") {
   const wrapped = new WeakSet<object>();
@@ -81,7 +89,10 @@ if (process.env.RUNNER_TEST_PAUSE_CHECKPOINT) {
   });
 }
 
-const stop = startAssistantRunner(Fastify({ logger: false }).log);
+const lane = process.env.RUNNER_TEST_LANE ?? "interactive";
+if (lane !== "interactive" && lane !== "background" && lane !== "overnight")
+  throw new Error("Invalid test runtime lane");
+const stop = startAssistantRunner(Fastify({ logger: false }).log, { lane });
 let stopping = false;
 const shutdown = async () => {
   if (stopping) return;

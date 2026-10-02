@@ -1,7 +1,10 @@
+import { CharacterEditor } from "../../components/CharacterEditor";
 import { useEffect, useState, type FormEvent } from "react";
 import { FileText, Pencil } from "lucide-react";
 import {
   MAX_AGENT_INSTRUCTIONS,
+  characterAppearance,
+  CHARACTER_PERSONAS,
   type AgentContextSettings,
   type PersonalAgentSettings,
   type AgentInstructions,
@@ -25,6 +28,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
+  const [appearance, setAppearance] = useState(() => characterAppearance({}));
   const [editing, setEditing] = useState<{
     team_id: string | null;
     text: string;
@@ -42,6 +46,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
       setIdentity(value);
       setIdentityName(value.name);
       setIdentityPersona(value.persona);
+      setAppearance(characterAppearance(value.character));
     }, report);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -69,6 +74,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
       const value = await client.updateAgentSettings({
         name: identityName,
         persona: identityPersona,
+        character: appearance,
       });
       setIdentity(value);
     });
@@ -140,7 +146,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
       <h3>Your assistant</h3>
       <p className="muted">
         The name your built-in assistant goes by across Orbyn, and how it should
-        come across.
+        come across. Make its character your own.
       </p>
       <form className="agents-identity-form" onSubmit={saveIdentity}>
         <div className="settings-field">
@@ -167,6 +173,25 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
             How it should come across. Optional.
           </small>
         </div>
+        <div className="character-personas" aria-label="Communication presets">
+          {CHARACTER_PERSONAS.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              className="secondary"
+              disabled={action.pending}
+              onClick={() => setIdentityPersona(preset.persona)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        <CharacterEditor
+          value={appearance}
+          onChange={setAppearance}
+          name={identityName}
+          disabled={action.pending}
+        />
         <div className="button-row start">
           <button
             className="primary"

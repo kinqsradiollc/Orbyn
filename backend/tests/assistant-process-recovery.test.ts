@@ -125,7 +125,11 @@ function message(child: ChildProcess, kind: string) {
     child.on("exit", exited);
   });
 }
-async function start(pauseAfterApply = false, checkpointPause?: string) {
+async function start(
+  pauseAfterApply = false,
+  checkpointPause?: string,
+  lane: "interactive" | "background" | "overnight" = "interactive",
+) {
   const child = fork(
     new URL("./helpers/assistant-runner-process.ts", import.meta.url),
     [],
@@ -136,6 +140,7 @@ async function start(pauseAfterApply = false, checkpointPause?: string) {
         ...process.env,
         RUNNER_TEST_PAUSE_AFTER_APPLY: pauseAfterApply ? "true" : "false",
         RUNNER_TEST_PAUSE_CHECKPOINT: checkpointPause ?? "",
+        RUNNER_TEST_LANE: lane,
       },
     },
   );
@@ -165,7 +170,10 @@ async function until<T>(read: () => Promise<T>, ready: (value: T) => boolean) {
   } while (Date.now() < deadline);
   assert.fail(`Recovery state never arrived: ${JSON.stringify(value!)}`);
 }
-async function enqueue(text: string) {
+async function enqueue(
+  text: string,
+  automation?: import("../src/modules/ai/agent/run.js").AssistantAutomation,
+) {
   const chatId = randomUUID();
   const turnId = randomUUID();
   await beginChatTurn(user, {
@@ -182,6 +190,7 @@ async function enqueue(text: string) {
     scope: null,
     timezone: "UTC",
     history: [],
+    automation,
   });
   const id = (
     await pool.query(
@@ -268,6 +277,7 @@ test("SIGKILL mid-night resumes its specialist and continues the saved night lis
   };
   const run = await enqueue(
     "Add a task called Process survives and check its brief.",
+    { kind: "night" },
   );
   await pool.query(
     "INSERT INTO agent_settings(user_id, night_shift) VALUES($1, $2::jsonb)",
@@ -323,7 +333,7 @@ test("SIGKILL mid-night resumes its specialist and continues the saved night lis
     "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'tidy')",
     [nightId, run.id],
   );
-  const first = await start();
+  const first = await start(false, undefined, "overnight");
   try {
     await until(
       () => job(run.id),
@@ -335,7 +345,7 @@ test("SIGKILL mid-night resumes its specialist and continues the saved night lis
       "UPDATE ai_jobs SET lease_until = now() - interval '1 second' WHERE id = $1",
       [run.id],
     );
-    const second = await start();
+    const second = await start(false, undefined, "overnight");
     const finished = await until(
       () => job(run.id),
       (row) => row.state === "done" || row.state === "failed",
@@ -528,7 +538,7 @@ test("a night claim and its chat roll back together when queueing fails", async 
 test("night work waits in Review by default and ordinary private work applies when morning hold is off", async () => {
   for (const hold of [true, false]) {
     const title = `Night hold ${hold}-${randomUUID()}`;
-    const run = await enqueue(`Create ${title}`);
+    const run = await enqueue(`Create ${title}`, { kind: "night" });
     const nightId = (
       await pool.query(
         "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, $2) RETURNING id",
@@ -568,7 +578,7 @@ test("night work waits in Review by default and ordinary private work applies wh
       "INSERT INTO assistant_night_runs(night_id, job_id, kind) VALUES($1, $2, 'tidy')",
       [nightId, run.id],
     );
-    const runner = await start();
+    const runner = await start(false, undefined, "overnight");
     const completed = await until(
       () => job(run.id),
       (row) => row.state === "done" || row.state === "failed",
@@ -748,7 +758,9 @@ test("Stop from a separate API process interrupts the runner's blocked provider 
     ),
   ]);
   assert.ok(
-    String((await job(run.id)).claimed_by).startsWith(`${runner.pid}-`),
+    String((await job(run.id)).claimed_by).startsWith(
+      `interactive-${runner.pid}-`,
+    ),
   );
   const { buildApp } = await import("../src/app.js");
   const { issueSession } = await import("../src/lib/auth.js");
@@ -786,7 +798,7 @@ test("a full-trust night event with dynamic outside invites is staged in Review"
     [principal.grant_id],
   );
   const title = `Night invite ${randomUUID()}`;
-  const run = await enqueue(`Prepare ${title}`);
+  const run = await enqueue(`Prepare ${title}`, { kind: "night" });
   const nightId = (
     await pool.query(
       "INSERT INTO assistant_nights(user_id, local_day) VALUES($1, '2099-01-04') RETURNING id",
@@ -825,7 +837,7 @@ test("a full-trust night event with dynamic outside invites is staged in Review"
     "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'meetings')",
     [nightId, run.id],
   );
-  const runner = await start();
+  const runner = await start(false, undefined, "overnight");
   try {
     const completed = await until(
       () => job(run.id),
@@ -875,6 +887,7 @@ test("night planning moves a session at full trust when morning hold is off", as
   ).rows[0];
   const run = await enqueue(
     "Move my unfinished session into tomorrow's free time.",
+    { kind: "night" },
   );
   const nightId = (
     await pool.query(
@@ -913,7 +926,7 @@ test("night planning moves a session at full trust when morning hold is off", as
     "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'plan')",
     [nightId, run.id],
   );
-  const runner = await start();
+  const runner = await start(false, undefined, "overnight");
   try {
     const completed = await until(
       () => job(run.id),
@@ -936,7 +949,9 @@ test("night planning moves a session at full trust when morning hold is off", as
 
 test("a night plan with more than fifty private additions waits in Review even when bulk is allowed", async () => {
   const prefix = `Night bulk ${randomUUID()}`;
-  const run = await enqueue("Prepare seventy-five private tasks.");
+  const run = await enqueue("Prepare seventy-five private tasks.", {
+    kind: "night",
+  });
   const nightId = (
     await pool.query(
       "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-06') RETURNING id",
@@ -970,7 +985,7 @@ test("a night plan with more than fifty private additions waits in Review even w
     "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'tidy')",
     [nightId, run.id],
   );
-  const runner = await start();
+  const runner = await start(false, undefined, "overnight");
   try {
     const completed = await until(
       () => job(run.id),
@@ -1088,7 +1103,7 @@ for (const boundary of ["specialist", "delegate"])
 
 test("disabling Night shift after queueing holds its prepared writes", async () => {
   const title = `Revoked night ${randomUUID()}`;
-  const run = await enqueue(`Create ${title}`);
+  const run = await enqueue(`Create ${title}`, { kind: "night" });
   const nightId = (
     await pool.query(
       "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-09') RETURNING id",
@@ -1117,7 +1132,7 @@ test("disabling Night shift after queueing holds its prepared writes", async () 
     "UPDATE agent_settings SET night_shift=jsonb_set(night_shift,'{enabled}','false') WHERE user_id=$1",
     [user.id],
   );
-  const runner = await start();
+  const runner = await start(false, undefined, "overnight");
   const done = await until(
     () => job(run.id),
     (row) => ["done", "failed"].includes(row.state),
@@ -1134,4 +1149,107 @@ test("disabling Night shift after queueing holds its prepared writes", async () 
     0,
   );
   await end(runner, "SIGTERM");
+});
+
+test("background and overnight run in separate processes and recover independently", async () => {
+  await pool.query(
+    "UPDATE agent_settings SET night_shift=jsonb_set(night_shift,'{enabled}','true') WHERE user_id=$1",
+    [user.id],
+  );
+  const nightId = (
+    await pool.query(
+      "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-10') RETURNING id",
+      [user.id],
+    )
+  ).rows[0].id;
+  const background = await enqueue("BACKGROUND_RUNTIME_CHECK", {
+    kind: "idea",
+  });
+  const overnight = await enqueue("OVERNIGHT_RUNTIME_CHECK", {
+    kind: "night",
+    night_id: nightId,
+    night_kind: "tidy",
+    wait_for_ok: true,
+  });
+  await pool.query(
+    "INSERT INTO assistant_night_runs(night_id,job_id,kind) VALUES($1,$2,'tidy')",
+    [nightId, overnight.id],
+  );
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const called = new Set<string>();
+  let providerCalls = 0;
+  respond = async (request) => {
+    providerCalls++;
+    const text = request.messages.map((m) => m.content ?? "").join("\n");
+    called.add(
+      text.includes("BACKGROUND_RUNTIME_CHECK") ? "background" : "overnight",
+    );
+    await blocked;
+    return {
+      name: "finish",
+      arguments: { answer: "Runtime completed.", steps: [] },
+    };
+  };
+  const bg = await start(false, undefined, "background");
+  const night = await start(false, undefined, "overnight");
+  let replacement: ChildProcess | undefined;
+  try {
+    await until(
+      async () => called.size,
+      (count) => count === 2,
+    );
+    const bgOwner = (await job(background.id)).claimed_by;
+    const nightOwner = (await job(overnight.id)).claimed_by;
+    assert.ok(bgOwner.startsWith(`background-${bg.pid}-`));
+    assert.ok(nightOwner.startsWith(`overnight-${night.pid}-`));
+    assert.notEqual(bg.pid, night.pid);
+    await end(bg, "SIGKILL");
+    assert.equal((await job(overnight.id)).claimed_by, nightOwner);
+    assert.equal(night.exitCode, null);
+    release();
+    const nightDone = await until(
+      () => job(overnight.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(nightDone.state, "done", nightDone.error_message);
+    assert.equal(nightDone.resume_count, 0);
+    await pool.query(
+      "UPDATE ai_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",
+      [background.id],
+    );
+    // The overnight process may recover the expired checkpoint, but cannot
+    // claim or execute it. Only a replacement background process can do that.
+    await until(
+      () => job(background.id),
+      (row) => row.state === "queued",
+    );
+    assert.equal((await job(background.id)).runtime_lane, "background");
+    replacement = await start(false, undefined, "background");
+    const bgDone = await until(
+      () => job(background.id),
+      (row) => row.state === "done" || row.state === "failed",
+    );
+    assert.equal(bgDone.state, "done", bgDone.error_message);
+    assert.equal(bgDone.resume_count, 1);
+    const completedCalls = providerCalls;
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal(
+      providerCalls,
+      completedCalls,
+      "Idle consumers must not call a provider",
+    );
+    assert.ok(
+      String(bgDone.claimed_by ?? "").startsWith(
+        `background-${replacement.pid}-`,
+      ) || bgDone.claimed_by === null,
+    );
+  } finally {
+    release();
+    await end(bg, "SIGKILL");
+    await end(night, "SIGTERM");
+    if (replacement) await end(replacement, "SIGTERM");
+  }
 });

@@ -41,8 +41,12 @@ export function usePlanner() {
   const tokenRef = useRef(token);
   tokenRef.current = token;
   const refreshSeq = useRef(0);
+  const lastData = useRef("");
 
   const clearSession = useCallback(() => {
+    tokenRef.current = "";
+    refreshSeq.current++;
+    lastData.current = "";
     session.clear();
     setToken("");
     setUser(null);
@@ -58,7 +62,15 @@ export function usePlanner() {
       onSessionChange((next) => {
         if (next === tokenRef.current) return;
         if (next) {
+          tokenRef.current = next;
+          refreshSeq.current++;
+          lastData.current = "";
           setUser(null);
+          setItems([]);
+          setNotices([]);
+          setTeams([]);
+          setMaintenance(null);
+          setError("");
           setToken(next);
         } else clearSession();
       }),
@@ -112,7 +124,6 @@ export function usePlanner() {
     [clearSession, refreshMaintenance],
   );
 
-  const lastData = useRef("");
   useEffect(() => {
     void chatgptStore.syncSession(token || null);
   }, [token]);
@@ -193,12 +204,13 @@ export function usePlanner() {
   }, [refresh, report, refreshMaintenance]);
 
   const act = async (fn: () => Promise<void>) => {
+    const owner = tokenRef.current;
     setBusy(true);
     setError("");
     try {
       await fn();
     } catch (e) {
-      report(e);
+      if (tokenRef.current === owner) report(e);
     } finally {
       setBusy(false);
     }
@@ -207,12 +219,23 @@ export function usePlanner() {
   /** Adopt a session from a flow that returns one directly (password reset). */
   const adoptSession = (result: { token: string; user: User }) => {
     session.set(result.token);
+    tokenRef.current = result.token;
     setToken(result.token);
     setUser(result.user);
   };
 
   /** Re-read the signed-in user, e.g. after confirming their email. */
-  const refreshUser = () => act(async () => setUser(await client.me()));
+  const refreshUser = () =>
+    act(async () => {
+      const owner = tokenRef.current;
+      if (!owner) return;
+      try {
+        const profile = await client.me();
+        if (tokenRef.current === owner) setUser(profile);
+      } catch (error) {
+        if (tokenRef.current === owner) throw error;
+      }
+    });
 
   const authenticate = (mode: AuthMode, values: Record<string, string>) =>
     act(async () => {
@@ -242,6 +265,7 @@ export function usePlanner() {
       }
       setTwoFactorRequired(false);
       session.set(result.token);
+      tokenRef.current = result.token;
       setToken(result.token);
       setUser(result.user);
     });
@@ -259,6 +283,7 @@ export function usePlanner() {
       const result = await client.passkeyLogin(handle, response);
       setTwoFactorRequired(false);
       session.set(result.token);
+      tokenRef.current = result.token;
       setToken(result.token);
       setUser(result.user);
     });
@@ -298,7 +323,12 @@ export function usePlanner() {
 
   const setEmailReminders = (checked: boolean) =>
     act(async () => {
-      setUser(await client.updatePreferences({ email_reminders: checked }));
+      const owner = tokenRef.current;
+      if (!owner) return;
+      const profile = await client.updatePreferences({
+        email_reminders: checked,
+      });
+      if (tokenRef.current === owner) setUser(profile);
     });
 
   return {

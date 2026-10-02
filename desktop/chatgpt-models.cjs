@@ -116,6 +116,33 @@ async function createChatgptModelRuntime({
   return {
     picker,
     models,
+    /** Private executor adapter: resolve the saved default without a paid fallback. */
+    async completeDefault(request, options = {}) {
+      await live();
+      const state = picker.snapshot();
+      const chosen = picker.defaultStatus();
+      if (
+        state.status !== "ready" ||
+        state.saving ||
+        chosen.status !== "available"
+      )
+        throw new Error(
+          "Choose an available ChatGPT default model before continuing.",
+        );
+      const signals = [lifetime.signal, AbortSignal.timeout(120_000)];
+      if (options.signal) signals.push(options.signal);
+      // A per-turn model is immutable even if the default is changed later.
+      const result = await transport.complete(
+        {
+          model: chosen.model.slug,
+          input: request.input,
+          instructions: request.instructions,
+        },
+        { signal: AbortSignal.any(signals) },
+      );
+      await live();
+      return result;
+    },
     close() {
       closed = true;
       lifetime.abort();

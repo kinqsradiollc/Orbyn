@@ -140,6 +140,87 @@ test("executor controller enrolls, claims and publishes only metadata, then seri
   f.runtime.close();
 });
 
+test("private inference requires a lease and lets its heartbeat run while waiting", async () => {
+  const f = await fixture();
+  let entered!: () => void, release!: () => void;
+  const waiting = new Promise<void>((done) => {
+    entered = done;
+  });
+  const calls: any[] = [];
+  const runtime = await create({
+    ...f.options,
+    complete: async (request: any, options: any) => {
+      calls.push(request);
+      entered();
+      await new Promise<void>((done) => {
+        release = done;
+      });
+      assert.equal(options.signal.aborted, false);
+      return "leased answer";
+    },
+  });
+  try {
+    await assert.rejects(runtime.completeDefault({ input: [] }), /not ready/);
+    assert.equal(calls.length, 0);
+    await runtime.start();
+    const answer = runtime.completeDefault({
+      input: [{ role: "user", content: "hello" }],
+    });
+    await waiting;
+    await runtime.heartbeat();
+    assert.equal(f.heartbeats.length, 1);
+    release();
+    assert.equal(await answer, "leased answer");
+  } finally {
+    runtime.close();
+    f.runtime.close();
+  }
+});
+
+test("an executor lease replaced during inference cannot return output", async () => {
+  const f = await fixture();
+  const runtime = await create({
+    ...f.options,
+    complete: async () => {
+      f.lease.lease_epoch++;
+      await runtime.start();
+      return "superseded answer";
+    },
+  });
+  try {
+    await runtime.start();
+    await assert.rejects(
+      runtime.completeDefault({ input: [] }),
+      /lease changed/,
+    );
+  } finally {
+    runtime.close();
+    f.runtime.close();
+  }
+});
+test("an executor lease expiring during inference cannot return output", async () => {
+  const f = await fixture();
+  const now = Date.now;
+  const runtime = await create({
+    ...f.options,
+    complete: async () => {
+      Date.now = () => now() + 240_000;
+      return "expired answer";
+    },
+  });
+  try {
+    await runtime.start();
+    await assert.rejects(
+      runtime.completeDefault({ input: [] }),
+      /lease changed/,
+    );
+  } finally {
+    Date.now = now;
+    runtime.close();
+    f.runtime.close();
+  }
+});
+
 test("executor controller rejects wrong server account, lease epoch and catalog receipt", async () => {
   for (const changed of ["account", "epoch", "receipt"]) {
     const f = await fixture();

@@ -1,5 +1,5 @@
 import { Platform, Share } from "react-native";
-import { EXPORT_LABELS, type ExportFormat } from "@orbyn/core";
+import { EXPORT_FORMATS, EXPORT_LABELS, type ExportFormat } from "@orbyn/core";
 import { client } from "./api";
 
 /**
@@ -22,11 +22,14 @@ export async function saveFile(
     const blob =
       typeof data === "string" ? new Blob([data], { type: mimeType }) : data;
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
     return;
   }
   const [{ File, Paths }, Sharing] = await Promise.all([
@@ -42,23 +45,18 @@ export async function saveFile(
     await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: name });
   else if (typeof data === "string")
     await Share.share({ title: name, message: data });
+  else throw new Error("File sharing is unavailable on this device.");
 }
 
 /** Which formats can be taken away on this device: all of them now. */
-export const formatsHere = (): ExportFormat[] => [
-  "md",
-  "txt",
-  "html",
-  "docx",
-  "pdf",
-];
+export const formatsHere = (): ExportFormat[] => [...EXPORT_FORMATS];
 
 export async function downloadDoc(
   docId: string,
   format: ExportFormat,
 ): Promise<void> {
   const { blob, name } = await client.exportDoc(docId, format);
-  await saveFile(name, blob, blob.type || "application/octet-stream");
+  await saveFile(name, blob, blob.type || EXPORT_LABELS[format].type);
 }
 
 /** What the one control that reveals the shapes is called. */

@@ -62,3 +62,59 @@ New connection/executor, catalog/default, typed rule/agent ownership, activity, 
 ## Acceptance and current state
 
 This ADR is complete as an architectural decision. Product implementation remains open in C1–C6, with per-feature acceptance criteria in the governing artifact. No OAuth runtime, new `/models` route, typed rules, mobile Mermaid parity, plugin service or UI repair is claimed by this documentation checkpoint.
+
+### Integration constraint — 2 October 2026
+
+Main now includes companion wardrobe and assistant chat redesign (`7c96f70`) and
+companion editor save visibility (`e4370a3`). Preserve those characters, controls
+and styling when integrating the broader platform and UI changes. Qualification
+on an older main base does not qualify the combined version: integrate current
+main and rerun the affected checks before each application checkpoint.
+
+Assigned-source ownership PR #139 is merged as main `76ec92b`, from candidate
+`51ce91b`, preserving the current character implementation. Its database guard
+serializes Background/Overnight ownership across shared-task members. It also
+corrects six off-scale character/assistant font sizes in both clients. Focused
+checks, all workspace types, production builds and formatting passed. The full
+local suite passed 2,103/2,103; CI passed all jobs with 2,102 backend passes,
+zero failures and one Tesseract skip. Separate compiled processes verified the
+guard; main has the same tree as the qualified source and CI merge commit.
+This is a merged checkpoint, not a deployment or whole-app UI completion.
+
+Handoff acknowledgment source `6fd43f4` derives receiving outcomes from
+current completed-job evidence, checks producer revision and both jobs' access,
+and serializes idempotent retries. The combined contract/storage/request checks
+passed 27/27, with backend types and formatting. It does not enable dispatch,
+grant receiving authority or prove separate-worker collaboration. Source
+`deb93cb`/`114bb2d` also derives durable failure reasons without copying provider
+error text or restricted outcomes; its 32 contract/storage/request checks and
+backend types passed. Handoff services remain unmerged and unwired.
+
+Docs PR #138 had green CI on `25e1e6f`; combined character candidate `788161e`
+passed 37 focused checks, all types/build/format, with new CI still running.
+Its fresh native verification is blocked by an iOS password-save prompt, pending
+the user's dismissal. Web/mobile-web and native Android interaction gates remain
+open. The governing review and implementation handoff
+retain the full remaining scope; these checkpoints do not complete the ADR.
+
+### Activity checkpoint and scope continuity — 2 October 2026
+
+PR #140 is merged as main `9e7e505`, from frozen candidate `01b8757`.
+Migration 210 records content-free job transitions in separate owner/runtime
+streams with monotonic replay cursors and 90-day event retention. The private
+read route and typed client recheck current source visibility. Polling,
+heartbeats and checkpoint-only writes do not fabricate work activity.
+The fresh marked database suite passed 2,112/2,112, with no failures, skips or
+cancellations. Workspace types, production builds and full formatting passed;
+all four CI jobs passed. Candidate, CI merge and resulting main trees are
+identical (`f62fdf5209f0dfb77b60ccb5788724c005742d04`). No deployment occurred.
+
+The governing revised implementation review remains the full acceptance
+contract. This checkpoint does not narrow it to assistant chat or activity:
+whole-app layout, Docs editing/rendering/export, views and settings, provider
+and embedding options, actual account-specific model execution, separate plugin
+integration, typed agent rules, durable budgets and bounded cross-runtime
+collaboration remain required. Web/desktop features require mobile parity.
+Preserve main's character work and Orbyn's palette. Unverified responsive/native
+behavior and external integration gates remain open. Related worktree cleanup
+comes after integration and qualification, without discarding retained work.

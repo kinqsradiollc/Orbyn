@@ -1,3 +1,6 @@
+import { docInlineLiterals } from "./doc-inline-literals.js";
+import { parseObjectHref } from "./links.js";
+
 /**
  * Documents: notes, briefs and agendas that live beside the planner.
  *
@@ -765,57 +768,117 @@ export const isStyledRun = (run: DocInline): boolean =>
     run.source
   );
 
-// Inline maths first so `$x_1$` isn't mistaken for emphasis, then code (which
-// is literal), then footnote markers, links, highlights, strikes, then
-// emphasis. A highlight or a strike must hug its words (`==this==`), so
+// Code, maths and escaped punctuation are isolated before formatting. The
+// remaining patterns cover footnotes, links, highlights, strikes and emphasis.
+// A highlight or a strike must hug its words (`==this==`), so
 // "a == b" in a note about code stays text. A source marker (`[src: …]`)
 // is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|`([^`\n]+)`|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]/g;
+  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]/g;
+
+/** Only supported document and external protocols can become actionable links. */
+export function isDocLinkSafe(href: string): boolean {
+  if (/[\s\u0000-\u001f\u007f\\]/.test(href)) return false;
+  // App links and heading anchors stay on the current origin/document.
+  // A double slash would instead select a remote host.
+  if (/^\/(?!\/)/.test(href) || /^#[^#]/.test(href)) return true;
+  if (/^orbyn:/i.test(href)) return parseObjectHref(href) !== null;
+  try {
+    const url = new URL(href);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? !!url.hostname
+      : url.protocol === "mailto:" && !!url.pathname;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Split one line into styled runs. Unmatched text passes through unchanged, so
  * a stray `*` or `$` shows as typed rather than swallowing the rest of a line.
  */
 export function parseDocInline(text: string): DocInline[] {
+  const literals = docInlineLiterals(text);
+  if (literals.length) {
+    const masked: string[] = [];
+    let at = 0;
+    for (const literal of literals) {
+      masked.push(
+        text.slice(at, literal.start),
+        "\uE000".repeat(literal.end - literal.start),
+      );
+      at = literal.end;
+    }
+    masked.push(text.slice(at));
+    const out: DocInline[] = [];
+    let index = 0;
+    for (const run of parseFormattedInline(masked.join(""), text)) {
+      let cursor = run.start;
+      const end = run.start + run.text.length;
+      while (index < literals.length && literals[index].end <= cursor) index++;
+      while (index < literals.length && literals[index].start < end) {
+        const literal = literals[index++];
+        if (literal.start > cursor)
+          out.push({
+            ...run,
+            text: text.slice(cursor, literal.start),
+            start: cursor,
+          });
+        out.push({ ...run, ...literal.run });
+        cursor = literal.end;
+      }
+      if (cursor < end || !run.text)
+        out.push({ ...run, text: text.slice(cursor, end), start: cursor });
+    }
+    return out;
+  }
+  return parseFormattedInline(text);
+}
+
+function parseFormattedInline(text: string, source = text): DocInline[] {
   const out: DocInline[] = [];
   let at = 0;
   for (const m of text.matchAll(INLINE_RE)) {
     const start = m.index ?? 0;
-    if (start > at) out.push({ text: text.slice(at, start), start: at });
+    if (start > at) out.push({ text: source.slice(at, start), start: at });
+    const words = (group: number, offset: number) =>
+      source.slice(start + offset, start + offset + m[group].length);
     // Each run's `start` skips its opening marker, so it points at the
     // first character its `text` actually holds.
     if (m[1] !== undefined)
-      out.push({ text: m[1], start: start + 1, math: true });
+      out.push({ text: words(1, 1), start: start + 1, math: true });
     else if (m[2] !== undefined)
-      out.push({ text: m[2], start: start + 1, code: true });
-    else if (m[3] !== undefined)
-      out.push({ text: m[3], start: start + 2, footnote: m[3] });
-    else if (m[4] !== undefined)
-      out.push({ text: m[4], start: start + 1, link: m[5] });
-    else if (m[7] !== undefined) {
-      const tint = m[6] ? (m[6].slice(1, -1) as "green" | "rose") : undefined;
+      out.push({ text: words(2, 2), start: start + 2, footnote: words(2, 2) });
+    else if (m[3] !== undefined) {
+      const href = words(4, m[0].indexOf("](") + 2);
+      out.push(
+        isDocLinkSafe(href)
+          ? { text: words(3, 1), start: start + 1, link: href }
+          : { text: source.slice(start, start + m[0].length), start },
+      );
+    } else if (m[6] !== undefined) {
+      const tint = m[5] ? (m[5].slice(1, -1) as "green" | "rose") : undefined;
       out.push({
-        text: m[7],
-        start: start + 2 + (m[6]?.length ?? 0),
+        text: words(6, 2 + (m[5]?.length ?? 0)),
+        start: start + 2 + (m[5]?.length ?? 0),
         highlight: true,
         ...(tint ? { tint } : {}),
       });
-    } else if (m[8] !== undefined)
-      out.push({ text: m[8], start: start + 2, strike: true });
+    } else if (m[7] !== undefined)
+      out.push({ text: words(7, 2), start: start + 2, strike: true });
+    else if (m[8] !== undefined)
+      out.push({ text: words(8, 2), start: start + 2, bold: true });
     else if (m[9] !== undefined)
-      out.push({ text: m[9], start: start + 2, bold: true });
+      out.push({ text: words(9, 1), start: start + 1, italic: true });
     else if (m[10] !== undefined)
-      out.push({ text: m[10], start: start + 1, italic: true });
-    else if (m[11] !== undefined)
       out.push({
-        text: m[11],
-        start: start + m[0].indexOf(m[11], 5),
+        text: words(10, m[0].indexOf(m[10], 5)),
+        start: start + m[0].indexOf(m[10], 5),
         source: true,
       });
     at = start + m[0].length;
   }
-  if (at < text.length) out.push({ text: text.slice(at), start: at });
+  if (at < text.length) out.push({ text: source.slice(at), start: at });
   return out.length ? out : [{ text: "", start: 0 }];
 }
 

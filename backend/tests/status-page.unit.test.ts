@@ -155,3 +155,18 @@ test("an incident's updates run newest first", () => {
     ],
   );
 });
+
+test("background and overnight availability remain individually visible in the shared agent group", () => {
+  const groups = groupStatusComponents([
+    component("ai", "operational"),
+    component("assistant-background", "operational"),
+    component("assistant-overnight", "outage"),
+  ]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].id, "ai");
+  assert.deepEqual(
+    groups[0].problems.map((c) => c.id),
+    ["assistant-overnight"],
+  );
+  assert.equal(groups[0].components.length, 3);
+});

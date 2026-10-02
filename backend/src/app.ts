@@ -18,6 +18,7 @@ import { assistantIdeasRoutes } from "./modules/assistant-ideas/routes.js";
 import { assistantGoalRoutes } from "./modules/assistant-workspace/goals.js";
 import { assistantRoutineRoutes } from "./modules/assistant-workspace/routines.js";
 import { overnightRoutes } from "./modules/assistant-workspace/overnight.js";
+import { assistantActivityRoutes } from "./modules/assistant-workspace/activity.js";
 import { memoryRoutes } from "./modules/memory/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
@@ -115,6 +116,7 @@ export const serviceModules: Record<
     // Scheduled routines and approval scopes for the built-in assistant (Muse M9).
     assistantRoutineRoutes,
     overnightRoutes,
+    assistantActivityRoutes,
     reminderActionRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents
@@ -240,7 +242,8 @@ export const buildPluginService = () =>
   createService("plugin", serviceModules.plugin);
 
 /**
- * Every module in one process: tests and quick local development. `first`
+ * First-party and portable MCP modules in one process for tests and local development.
+ * Plugin integration remains a separate service. `first`
  * plugins register before the modules (the route inventory test uses one to
  * hook every route as it is added).
  */

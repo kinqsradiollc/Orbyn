@@ -67,6 +67,11 @@ before(async () => {
             id: "c1",
           },
           { type: "math", text: "x^2 + y^2", id: "m1" },
+          {
+            type: "paragraph",
+            text: "Inline $\\frac{a}{b}$ equation.",
+            id: "pm1",
+          },
           { type: "divider", id: "d1" },
           {
             type: "paragraph",
@@ -124,7 +129,92 @@ test("the web page stands on its own and escapes what it should", async () => {
   assert.match(res.body, /<ul>[\s\S]*<li>Beta on 8 September<\/li>/);
   assert.match(res.body, /<ol>[\s\S]*<li>Then general release<\/li>/);
   assert.doesNotMatch(res.body, /<script/i);
-  assert.doesNotMatch(res.body, /https?:\/\/(?!x\.test)/, "nothing to fetch");
+  assert.doesNotMatch(
+    res.body,
+    /(?:src|href)=["']https?:\/\/(?!x\.test)/,
+    "no external assets",
+  );
+  assert.match(res.body, /<math[ >]/, "equations retain mathematical markup");
+  assert.match(res.body, /<mfrac>/, "inline fractions are typeset");
+  assert.match(
+    res.body,
+    /display="block"/,
+    "display equations retain their mode",
+  );
+});
+
+test("HTML export keeps malformed math readable and refuses external commands", async () => {
+  const created = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Math export safety",
+      content: [
+        { type: "math", text: "\\frac{<script>bad</script>", id: "bad" },
+        {
+          type: "math",
+          text: "\\includegraphics{https://outside.test/private}",
+          id: "remote",
+        },
+        { type: "math", text: "\\href{javascript:run}{click}", id: "link" },
+      ],
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  const result = await get(`/docs/${created.json().id}/export?format=html`);
+  assert.equal(result.statusCode, 200);
+  assert.match(result.body, /katex-error/);
+  assert.match(result.body, /&lt;script&gt;/);
+  assert.doesNotMatch(result.body, /<(?:script|img|iframe|a)\b/i);
+});
+
+test("export keeps authentication, account disabling and malformed-path guards", async () => {
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url: `/docs/${docId}/export?format=html`,
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal((await get("/docs/%ZZ/export?format=html")).statusCode, 400);
+  const user = (await get("/me", () => strangerToken)).json();
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [user.id]);
+  try {
+    assert.equal(
+      (await get(`/docs/${docId}/export?format=html`, () => strangerToken))
+        .statusCode,
+      403,
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [user.id]);
+  }
+});
+
+test("HTML export applies the live rate limit and Retry-After", async () => {
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  await settings();
+  const live = cachedSettings(),
+    previous = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 2;
+  const request = () =>
+    app.inject({
+      method: "GET",
+      url: `/docs/${docId}/export?format=html`,
+      headers: { authorization: `Bearer ${token}` },
+      remoteAddress: "10.74.1.97",
+    });
+  try {
+    assert.equal((await request()).statusCode, 200);
+    assert.equal((await request()).statusCode, 200);
+    const limited = await request();
+    assert.equal(limited.statusCode, 429);
+    assert.ok(Number(limited.headers["retry-after"]) > 0);
+  } finally {
+    live.rate_limit_per_minute = previous;
+  }
 });
 
 test("a title that would break a file name is made safe", () => {

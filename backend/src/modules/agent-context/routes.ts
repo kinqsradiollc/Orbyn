@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
-  agentSettingsInput,
+  personalAgentSettingsInput,
+  characterAppearance,
   defaultNightShift,
   nightShiftInput,
   type NightShiftSettings,
@@ -168,58 +169,69 @@ export async function agentContextRoutes(app: FastifyInstance) {
     const u = await firstParty(r);
     const row = (
       await reader(r.headers).query<PersonalAgentSettings>(
-        `SELECT name, persona, named_at, updated_at FROM agent_settings WHERE user_id = $1`,
+        `SELECT name, persona, character, named_at, updated_at FROM agent_settings WHERE user_id = $1`,
         [u.id],
       )
     ).rows[0];
-    return (
-      row ?? {
-        name: "Orbyn",
-        persona: "",
-        named_at: null,
-        updated_at: new Date().toISOString(),
-      }
-    );
+    return row
+      ? { ...row, character: characterAppearance(row.character) }
+      : {
+          name: "Orbyn",
+          persona: "",
+          character: characterAppearance({}),
+          named_at: null,
+          updated_at: new Date().toISOString(),
+        };
   });
 
-  app.put("/me/agent", async (r): Promise<PersonalAgentSettings> => {
-    const u = await firstParty(r);
-    const input = agentSettingsInput.parse(r.body);
-    const row = await transaction(async (db) => {
-      const saved = (
-        await db.query<PersonalAgentSettings>(
-          `INSERT INTO agent_settings (user_id, name, persona, named_at)
-       VALUES ($1, $2, $3, now())
+  app.put(
+    "/me/agent",
+    writeRateLimit,
+    async (r): Promise<PersonalAgentSettings> => {
+      const u = await firstParty(r);
+      const input = personalAgentSettingsInput.parse(r.body);
+      const row = await transaction(async (db) => {
+        const saved = (
+          await db.query<PersonalAgentSettings>(
+            `INSERT INTO agent_settings (user_id, name, persona, character, named_at)
+       VALUES ($1, $2, $3, coalesce($4::jsonb, '{}'::jsonb), now())
        ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name,
-         persona = EXCLUDED.persona, named_at = coalesce(agent_settings.named_at, now()), updated_at = now()
-       RETURNING name, persona, named_at, updated_at`,
-          [u.id, input.name, input.persona],
-        )
-      ).rows[0];
-      await db.query(
-        `UPDATE agent_grants SET name = $2, client_name = $2
+         persona = EXCLUDED.persona, character = coalesce($4::jsonb, agent_settings.character),
+         named_at = coalesce(agent_settings.named_at, now()), updated_at = now()
+       RETURNING name, persona, character, named_at, updated_at`,
+            [
+              u.id,
+              input.name,
+              input.persona,
+              input.character ? JSON.stringify(input.character) : null,
+            ],
+          )
+        ).rows[0];
+        await db.query(
+          `UPDATE agent_grants SET name = $2, client_name = $2
           WHERE user_id = $1 AND kind = 'assistant' AND revoked_at IS NULL`,
-        [u.id, saved.name],
-      );
-      await audit(
-        {
-          actorId: u.id,
-          action: "agent_identity.set",
-          targetType: "user",
-          targetId: u.id,
-          details: { name: input.name, persona_length: input.persona.length },
-          requestId: r.id,
-        },
-        db,
-      );
-      return saved;
-    });
-    return {
-      ...row,
-      named_at: row.named_at ? new Date(row.named_at).toISOString() : null,
-      updated_at: new Date(row.updated_at).toISOString(),
-    };
-  });
+          [u.id, saved.name],
+        );
+        await audit(
+          {
+            actorId: u.id,
+            action: "agent_identity.set",
+            targetType: "user",
+            targetId: u.id,
+            details: { name: input.name, persona_length: input.persona.length },
+            requestId: r.id,
+          },
+          db,
+        );
+        return { ...saved, character: characterAppearance(saved.character) };
+      });
+      return {
+        ...row,
+        named_at: row.named_at ? new Date(row.named_at).toISOString() : null,
+        updated_at: new Date(row.updated_at).toISOString(),
+      };
+    },
+  );
 
   app.get("/me/agent-context", async (r): Promise<AgentContextSettings> => {
     const u = await firstParty(r);

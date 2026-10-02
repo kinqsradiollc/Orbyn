@@ -1,5 +1,105 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Current checkpoint map — 2 October 2026
+
+This map updates delivery evidence without reducing the full contract below.
+Voice, computer use and speculative removed rows remain excluded. Backend,
+web/desktop and mobile remain in scope.
+
+| Area                                                     | Authoritative checkpoint                                                                      | Evidence and remaining gates                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Main session/profile work                                | Pushed through `60de59c`                                                                      | Profile, mutation errors and preference results are session-bound; web tab account changes clear root planner data. Focused checks and workspace typecheck passed on main. Nested caches, other callbacks and visual/native interaction remain open.                                                                                              |
+| Main Docs literals/math exports and mobile file handling | Integrated through `b6096c8`                                                                  | Shared code spans, escaped literals and safe links; bounded MathML HTML export; 13 real mobile utility checks with platform/share mocks and workspace types passed. The exact main full suite passed 2,078/2,078. Native bundles passed on corresponding local source. Browser/native visual interaction and broader Markdown parity remain open. |
+| Main ChatGPT private inference                           | Pushed `fef8f7c`, `76fb218`, `3f5ae6f`                                                        | Saved-default adapter and executor lease fencing are private; 26 model/transport checks and 25 lease/runtime checks passed on main. No new inference IPC command exists. Signed job assignment/results, composer routing and real-account acceptance remain open.                                                                                 |
+| Plugin recipient/discovery                               | Local `codex/devday-plugin-boundary`, proof `c6f4b03`                                         | Frozen source `e60fb32` passed 1,995/1,995 backend tests after fixture and runner fixes. Recipient consent, isolated grants/tokens, service discovery and challenges are not merged. Browser consent, gateway, host, provider and deployment gates remain open.                                                                                   |
+| Docs mobile Mermaid                                      | Local `codex/devday-model-catalog`, source `ca21820` and `b1df2ef`, packaging proof `4717551` | Ten families pass the actual strict parser; nine source/runtime checks, workspace types and iOS/Android exports passed. Parsing and packaging do not prove diagram appearance, export interaction or native navigation.                                                                                                                           |
+| Settings/embedding/Docs source                           | Local model/Docs worktree                                                                     | Settings redesign, headings/fences and embedding lifecycle work remain distinct unmerged checkpoints. Web build passed locally; preview permission still blocks visual acceptance. Earlier frozen embedding suite evidence remains scoped to its own source.                                                                                      |
+| Broad ADR                                                | Active, incomplete                                                                            | Agent rules/ownership/activity/budgets, bound and published pages, Slack/Teams, full Markdown parity, composer/actual inference and cross-client UI acceptance remain deliverables. Existing foundations do not prove these complete.                                                                                                             |
+
+### Runtime and reflection update — 2 October 2026
+
+- **Merged runtime isolation:** PR #135, main `c1b3ffa`. Migration 206 assigns
+  immutable interactive/background/overnight lanes; separate Background and
+  Overnight services own their claims, concurrency, readiness and shutdown.
+  Notifier fallback rejects automation instead of collapsing both into one
+  process. Exact candidate `e6f6376` passed 2,091/2,091 full local tests and all
+  CI jobs. Process tests exercised independent restart/recovery and idle workers.
+- **Merged Memory safeguard:** PR #136, main `3677d53`. Generated automation
+  conversations cannot enter automatic personal Memory extraction. Source owner,
+  person origin and access are checked at enqueue/extraction/write boundaries.
+  Exact candidate `0392e92` passed 2,094/2,094 full local tests and all CI jobs.
+- **Reflection candidate:** draft PR #137, `codex/overnight-reflection`, current
+  head `061a501`, based on main `3677d53`. Explicit consent, bounded current source
+  evidence, durable revision receipts, read-only reflection and numbered source
+  links exist on both clients. Initial candidate `8535357` passed 2,104/2,104 full
+  local tests and production build/types/format. Follow-up removes misleading
+  change-review controls from reflections, rejects their keep/undo operations,
+  and distinguishes Queued from Working. Focused review tests passed 13/13;
+  full types/build/format passed and b29f454 passed 2,105/2,105 full local tests.
+  Test-only 061a501 fixes same-tick fixture timestamps and adds a scan-cutoff
+  regression (10/10 focused). All four CI jobs passed; backend reported 2,105
+  passed, zero failed and one Tesseract-dependent skip out of 2,106.
+  Native source navigation and compact long-label wrapping were observed with
+  synthetic fixtures. Long-content scrolling and web/mobile-web visual gates
+  remain open. This is not merged or deployed.
+- **Docs navigation candidate:** source `77b7d5b`, isolated main candidate
+  `25e1e6f` on draft PR #138, `codex/docs-navigation`. Both editors resolve heading fragments
+  and own-origin app links inside the app, preserving drafts and unrelated folds.
+  Mobile measures outer heading rows and applies destination pages/fragments
+  together after loading; HTML preserves heading levels and working local heading
+  links with private-resource filtering. Source and isolated main candidate f96264e passed 53 focused checks,
+  workspace types, production build and formatting. Native iOS taps on a fresh
+  candidate bundle proved relative app navigation, a folded same-page heading
+  jump, outline navigation into a folded section and a cross-page heading link
+  after correcting a stale-page race. CI 36979623013 found one stale rich-copy
+  heading assertion; 25e1e6f corrects it and adds clipboard level coverage (20/20
+  focused checks). CI 36980902473 passed all jobs: backend 2,098 passed, zero
+  failed and one known Tesseract-dependent skip. Web/mobile-web/native Android
+  interaction gates remain open. This is unmerged and does not
+  complete D1.
+- **Handoff foundation:** local source `98ff22a`, `0c8f832` and `4eaa652` defines
+  bounded receipts, durable chain counters and explicit follow-up requests.
+  Current owner, source visibility, completed producer, outcome/review revision
+  and container/dependency bindings are rechecked before creation or replay.
+  Reciprocal follow-ups preserve acknowledged ancestry and cannot reset depth;
+  UUID case variants deduplicate. Exact storage migration and full fresh-database
+  migrations were exercised. Combined focused tests passed 23/23, with no skips
+  or failures; backend types and focused formatting passed. Receiving jobs and
+  acknowledgments were simulated for these tests. No endpoints or dispatch loop
+  are enabled. Receiving-side rules/connections/budgets, cross-lane source
+  reservations, separate-worker round trips and client controls remain required.
+  This source foundation is unmerged and does not deliver collaboration.
+- **Assigned source ownership:** PR #139 is merged on main as `76ec92b`, from
+  qualified candidate `51ce91b`. It serializes task/goal/routine ownership across Background/Overnight and
+  across members of shared tasks. Waiting or expired leases retain ownership;
+  explicit completion releases it. Migration 209 preserves existing active
+  overlaps on upgrade and rejects new overlapping claims and identity changes.
+  It preserves main's character updates and corrects six off-scale font sizes on
+  both clients without changing the shared scale. Current candidate checks passed
+  13/13 ownership/runtime and 17/17 character/style checks, all workspace types,
+  production builds and formatting. Full local suite passed 2,103/2,103; CI
+  36984587146 passed all four jobs, with 2,102 backend passes, zero failures and
+  one known Tesseract skip. Independent compiled processes proved ownership,
+  waiting and release behavior. Main's tree matches the tested candidate and CI
+  merge tree. This does not enable handoff dispatch or establish whole-app UI acceptance.
+- **Remaining agent scope:** truthful separate profiles/workspaces, durable
+  authorized Daytime/Overnight handoffs, typed rules, receiving source inheritance,
+  activity/budgets
+  and the complete cross-client surface ledger remain required. Shared storage
+  and a saved reflection do not prove collaboration is implemented.
+
+Latest precise process handles, logs and outstanding gates are recorded in
+`docs/reviews/task.md` on the model/Docs implementation branch. No passing subset
+or historical result completes the broader delivery contract.
+
+A main full-suite run on frozen code `986e77f` passed all 2,014 tests, with no
+failures, skips or cancellations, and exited successfully. It used only the
+marked disposable test database. Evidence:
+`/tmp/orbyn-main-session-inference-full-tests.log`. This verifies that main source;
+the separate local plugin suite remains scoped to its own checkpoint. User changes to
+`mobile/app.json` and unrelated untracked files are preserved and are not part
+of these checkpoints.
+
 **Status: revised implementation contract; user authorized tested production checkpoints.** Prepared 30 September 2026 against `main` at `b91ced2`. Worktree: `/Users/anhdang/.codex/worktrees/devday-2026-plan/Orbyn`; branch `codex/devday-2026-plan`. This document supersedes the implementation assumptions in `docs/openai-devday-2026.md`; the original is preserved beside it. Backend, desktop/web and mobile remain in scope.
 
 ## 1. What changed after research
@@ -65,7 +165,7 @@ Each row is part of the eventual scope. “Gate/spike” preserves the feature f
 | A1 / P0: SIWC             | Separate identity linking from plan credentials. Electron system-browser PKCE/state/nonce and validated ID token; secure OS storage; atomic refresh; first-option branding. Web partner flow and mobile callback/storage are separate eligibility spikes. Device executor, account model picker and dedicated SSE adapter in shared contracts + Electron/mobile modules. | State/nonce/replay/issuer/audience/account-link attacks rejected; no email-only account merge; actual eligible plan call; logout/revoke/account-switch tests; no tokens in server logs/DB; web and native callback proof. Unsupported deployment remains clearly unavailable, not a decorative sign-in button. |
 | A2 / P0: managed AI       | Add connection-kind discriminator while keeping provider resolution, budgets, team/MCP flows and managed automations. Plan transport cannot leak into managed credentials or vice versa.                                                                                                                                                                                 | Existing provider suite passes; same managed conversation and automation behavior; explicit model/connection preserved; no silent paid fallback.                                                                                                                                                               |
 | A3 / P0: Sol + caching    | Add catalog entry and capability validation; Responses tool path; supported reasoning values. Cache stable instruction/tool prefixes with documented controls, measure hits/write/input/output usage. Keep selected model rather than forcing a default.                                                                                                                 | Managed mock payload tests and real permitted probe; cost/latency quality evaluation against current baseline; unsupported settings fail clearly. API price is not an end-user plan bill.                                                                                                                      |
-| A4 / P1: agent platform   | Typed per-action rules; adapt named assistant into multi-agent identity/owner/scope; link routines/goals, memory and channel settings; proactive read-only profile; persisted activity events; work/speed budgets; non-overridable hard stops; specialist agent ownership.                                                                                               | Every write path enforces rules; revocation during execution; impersonation/source leakage tests; job recovery with changed identity/scope; resumable activity; budget reservation races and accounting reconciliation; both clients render ownership/rules/activity.                                          |
+| A4: agent platform        | Typed per-action rules; adapt named assistant into multi-agent identity/owner/scope; link routines/goals, memory and channel settings; proactive read-only profile; persisted activity events; work/speed budgets; non-overridable hard stops; specialist agent ownership.                                                                                               | Every write path enforces rules; revocation during execution; impersonation/source leakage tests; job recovery with changed identity/scope; resumable activity; budget reservation races and accounting reconciliation; both clients render ownership/rules/activity.                                          |
 | A5 / P2: maintained pages | Bind exact block IDs to agent + schedule; preserve human blocks; `@orbyn` comments create scoped jobs and replies; page UI creates routines; authorization intersection; mobile reading/sharing and editing remain planned.                                                                                                                                              | Concurrent human edit produces conflict, not overwrite; deleted/moved blocks invalidate bindings; revoked page access stops work/delivery; mention edit/delete/retry dedup; private comments never enter shared results; desktop and mobile flows exercised.                                                   |
 | A6 / P2: Slack then Teams | OAuth installation, workspace/account mapping, opt-in DM delivery, durable outbox, signed callback validation, dedup, unsubscribe/revocation; replies map to exact waiting ID.                                                                                                                                                                                           | Provider mock contracts; verified signatures/replay/rate limits; real authorized test workspace delivery and stale reply rejection; titles rechecked for current visibility. Nothing sent without explicit connection consent.                                                                                 |
 | A7 / P2: published pages  | Read-only publication record, explicit content selection, scoped revocable token, expiry and audit; distinguish pinned snapshot from live refresh. Reuse links/privacy modules.                                                                                                                                                                                          | Anonymous boundary tests; unpublished/private/source-excluded data absent; revocation immediate; updates don't silently broaden published scope; responsive viewer proof.                                                                                                                                      |
@@ -113,6 +213,32 @@ The user removed voice and computer use. A8, A9 and speculative A12 are not impl
 
 Add a plugin integration module and explicit service boundary alongside the existing MCP process. Plugin resource/UI/event handlers use the same typed capabilities but an independently authenticated connector principal; they do not call the browser's assistant session or impersonate first-party routes. Host-provided metadata is untrusted. Plugin backend provider calls use authorized managed/BYO connections only. User-controlled plan tokens never enter this integration. Apply trust, scopes, revisions and durable receipts before writes. Share domain services rather than duplicating tool mutations. Define explicit schemas for launch context, UI resource reads, tool calls, asynchronous job/result events and reconnect cursors. Retain the existing portable MCP surface. Test separate issuer/resource/audience and account-switch behavior, inaccessible tools, rate limiting, duplicate callbacks and tenant isolation.
 
+#### P1 checkpoint evidence — 1 October 2026
+
+The separate backend is now implemented through scoped connector grants,
+recipient-bound token guards, a live plugin principal, a standalone HTTP
+service, and shared capability execution. Authentication/service foundations
+are pushed to main through 751cba8; execution and the calendar-fixture correction are validated through
+8f7836d, with 1,991 full-suite tests passing and zero failures or skips. The integration is disabled by
+default and OAuth consent still accepts MCP only.
+
+Execution passed 74 focused regressions on main plus workspace typecheck and
+build. Image orbyn-plugin-execution:dda1804 built successfully; compiled smoke
+checks against a separately marked disposable test database proved plugin
+identity, shared reads, session rejection, first-party route isolation, disabled
+routes, and concurrent requests producing one task with a replayed receipt.
+These checks seed OAuth credentials directly and do not prove an authorization
+flow or host launch. See [plugin boundary evidence](plugin-boundary-review-2026-10-01.md).
+
+P1 remains unfinished: resource-aware OAuth consent/metadata and account-switch
+proof; bounded launch/resource schemas; CSP-protected UI resources; asynchronous
+job/event results and reconnect cursors; provider execution with managed/BYO
+credentials; tenant/host acceptance; deployment wiring. P2 host entry points and
+external approval also remain open. A4 agent rules/ownership/activity/budgets is
+a separate retained ledger row and is not completed by this plugin checkpoint.
+The UI preview remains blocked by a saved Browser Use permission despite user
+authorization; source/control tests are not visual or native interaction proof.
+
 ### M1 — Account model catalog and defaults
 
 Expose a first-party `/models` experience for ChatGPT-connected users. The credential-owning runtime fetches `GET https://api.openai.com/v1/models` with that account's token, normalizes `models[]` using list visibility, slug and display name, and preserves upstream ordering. Backend GET `/models` requires an Orbyn session and returns only sanitized catalog metadata for the selected user-owned connection/executor; it never proxies arbitrary URLs or accepts a plan token. A device publishes an account-bound catalog snapshot through its authenticated executor channel. A missing/offline/expired snapshot is explicitly unavailable/stale, not a managed catalog mislabeled as ChatGPT. Persist default model by user + connection + ChatGPT account/workspace. Changing the account refreshes its catalog and restores that account's default. An unavailable saved model is shown as unavailable and requires a new choice; never silently replace it. Inference rechecks current model availability in the credential-owning runtime. Plugin calls cannot access this first-party preference API. Settings and composer share one selected/default state; model and connection switch cancel old loads. Tests include cross-user snapshots, invalid defaults, stale/offline catalog, account switching, revocation, reconnect and concurrent preference edits. [Official catalog contract](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
@@ -135,6 +261,248 @@ Use the VS Code built-in Markdown experience as a concrete baseline, with docume
 Existing desktop Mermaid and rich blocks are reused. Mobile's current flowchart-only renderer is insufficient for D1. Choose a bundled isolated rendering surface or authorized generated SVG with sanitized bounded output; validate Expo/native support before selecting the implementation. No renderer choice may turn private diagrams into publicly accessible assets. [VS Code baseline](https://code.visualstudio.com/docs/languages/markdown), [Mermaid security](https://mermaid.js.org/config/schema-docs/config-properties-securitylevel.html).
 
 ### U1 — UI synchronization and regression gate
+
+#### ChatGPT reference and separate agent runtimes — user scope addition, 2 October 2026
+
+**Agent profile and truthful availability — reference supplied 2 October:**
+give Daytime/Background and Overnight separate profile panels built around the
+person's existing Orbyn companion. Each shows its name, current state, last actual
+activity, next scheduled run or trigger, recent work and outputs. Use the supplied
+compact profile card as an information-hierarchy reference, expressed through
+Orbyn's colors and controls. Provide equivalent entry points and actions on
+web/Electron, iOS and Android, including narrow layouts and large text.
+
+- Idle means no model run is in progress. An available worker may poll the queue
+  without calling a model. Only a task, enabled schedule, or authorized automatic
+  trigger begins a run; a continuously available service must not be presented
+  as continuously thinking or working.
+- Distinguish Idle/Ready, Scheduled, Working, Waiting for you, Paused/Disabled,
+  Unavailable and Failed. Resolve status from persisted jobs, enabled schedules,
+  approvals and fresh runtime health. A stale/offline worker cannot report Ready.
+- "Active 18 minutes ago" must come from the person's actual job activity, never
+  a worker heartbeat, page visit, polling request or animation. Show a truthful
+  empty state before the first run and explicit scheduled times with timezones.
+- Activity and outputs are permission-filtered, associated with the correct
+  runtime and linked to the original task, run, review or artifact. Refresh,
+  restart, completion, cancellation and permission loss must update both clients.
+- Let people inspect the current task, answer an outstanding approval/question,
+  stop a run, manage its schedule and open its outputs. Preserve the existing
+  companion configuration and reduced-motion/static/hidden choices; idle agents
+  should not animate as if they were processing work.
+- Keep service availability, execution-device availability and agent activity
+  distinct. Show an execution device only when Orbyn actually uses it. The
+  reference's Call/computer controls do not add voice or computer-use features;
+  connection actions appear only for working authorized integrations.
+
+Acceptance requires real idle-to-running-to-completed and waiting/stop/recovery
+transitions for both independent runtimes, persisted last-activity timestamps,
+no provider calls while idle, permission-safe activity/output links, and actual
+profile interactions on web and native mobile. A styled card or heartbeat alone
+does not complete this requirement.
+
+**Overnight reflection — explicit user addition, 2 October:** Overnight must be
+able to reflect on recent work as a bounded, scheduled part of the night. Review
+completed and unfinished tasks, failed/cancelled runs, questions and approvals,
+and changes the person kept or undid. Produce a concise private reflection with
+evidence links, lessons, unresolved questions and suggested next actions, visible
+in the morning review and the Overnight profile's outputs on both clients.
+
+Reflection uses the same per-night token/time budget, cancellation, checkpoint
+recovery and permission checks as other night work. It must reach completion and
+return to idle, with no unbounded self-triggering loop. Avoid repeated reflection
+of the same source revisions through a durable receipt. Distinguish observed
+facts from interpretations, and do not silently change agent rules, approvals,
+source tasks or long-term memory on the strength of an inferred lesson. Proposed
+durable changes follow their existing consent/review policy.
+
+Useful findings may be handed to the Daytime agent through the durable bounded
+collaboration channel, carrying source references, scope and provenance. The
+receiving agent rechecks permissions and applicability before acting; a reflection
+is not blanket authorization for follow-up writes. Test denied/deleted sources,
+no new evidence, budget exhaustion, retries, restart without duplicate outputs,
+and actual mobile/web access to the saved reflection and proposed follow-ups.
+
+The user explicitly authorizes inspecting [ChatGPT](https://chatgpt.com/) on laptop
+and mobile as a UI/UX reference and requires this direction to be part of the ADR.
+Improve the whole Orbyn application to that level of visual consistency while
+retaining Orbyn's palette, typefaces, identity and distinct character. Every
+shipped behavior remains required on web/Electron and mobile. This addition
+updates the earlier mobile-design preference: mobile may receive coordinated
+layout improvements, with its existing useful interactions preserved.
+
+**Observed reference, 2 October:** the actual desktop and 390 × 844 mobile web
+interfaces were inspected, including navigation, composer and Settings. Desktop
+uses a restrained navigation rail/sidebar, a clear content heading and generous
+content spacing. Mobile collapses navigation into a drawer and places the composer
+near the bottom. Settings has search, grouped destinations and a focused content
+pane; on mobile, navigation and selected content occupy separate views. These
+are observed layout patterns, not evidence about OpenAI's backend architecture
+or native iOS/Android behavior. No ChatGPT preference or conversation was changed.
+
+**Whole-application scope — explicit user clarification, 2 October:** this is
+an application-wide UI/UX redesign. Assistant/chat improvements alone cannot
+satisfy it. Apply the shared visual system and behavior requirements to every
+user-facing surface and its native/mobile equivalent, including secondary flows,
+empty/error/loading states, detail screens and overlays. Keep a per-surface
+acceptance ledger rather than extrapolating from one redesigned screen.
+
+| Surface group               | Required coverage                                                                                                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shell and account           | Navigation/sidebar/drawer/tabs, search, profile/session loading, sign-in/onboarding, notifications, deep links and menus                                                                      |
+| Daily planning              | Home, Agenda, My tasks, task/event details, Calendar, planning/focus/time tracking, goals, routines and lists                                                                                 |
+| Workspace                   | Projects/stages, saved Views, Memory, Agent notes, Docs library/editor/comments/import/export and Study                                                                                       |
+| Agent work                  | Interactive assistant, separate Background workspace, Overnight history/morning review, activity, approvals, rules, collaboration and companion customization                                 |
+| Shared work                 | Teams/members/permissions, shared projects/pages, Booking, review/change history and published viewers                                                                                        |
+| Settings and administration | Personal preferences, appearance, account/security/privacy/devices, connections/model defaults, workspace providers/embeddings, connected agents/plugins and every existing Admin destination |
+
+Each group must pass a feature inventory, backend/client wiring and persistence
+checks, layout/accessibility review and actual interactions on its supported
+surfaces. Every shipped web/desktop behavior needs a functional mobile entry point.
+Responsive web screenshots do not establish native acceptance. Existing rare
+actions and error recovery must remain discoverable after simplifying the layout.
+The whole-app scope does not reintroduce the explicitly excluded product features.
+
+**Experience-level coverage — further user clarification, 2 October:** the
+redesign includes Docs design and typing, Views, and all layouts and interactions.
+Changing surface styling without improving these workflows is insufficient.
+
+- **Docs:** library/search/create/open, reading and editing, typography and line
+  spacing, title/body typing, formatting and Markdown/source/preview affordances,
+  code/tables/math/Mermaid, comments, links, outline, import/export and sharing.
+  Preserve stable block IDs, caret/selection, undo/redo, composition/IME and dirty
+  drafts during refresh, collaboration, navigation and failed saves. Verify save
+  status, retry/close flushing, long-document responsiveness, keyboard shortcuts
+  and native keyboard/toolbar/sheet containment. Test actual typing/editing and
+  persisted results; parser/export checks alone do not establish this experience.
+- **Views:** discovery, creation/editing, saved filter/sort/grouping controls,
+  columns/visibility, layout switching, row/card actions, selection and detail
+  navigation across every supported list/table/board/calendar layout. Check long
+  content, empty/error/loading states, density, horizontal/vertical scrolling,
+  responsive equivalents and persisted view settings. Do not remove supported
+  functionality to make a cleaner screenshot.
+- **Every layout:** shell/content sizing, panes, headers/toolbars, form/list/detail
+  alignment, resizing/collapse, sticky elements, menus/modals/sheets, focus return,
+  touch targets, keyboard access and transitions between surfaces. Exercise both
+  themes, narrow/wide screens and native large text/software keyboard.
+
+Record visual quality, workflow behavior and persistence separately in each
+surface's acceptance ledger, including defects reproduced and evidence after
+the correction. This remains part of the full application deliverable.
+
+**Orbyn design requirements:**
+
+- Apply one hierarchy and spacing system across the shell and all U1 surfaces:
+  navigation, headings, toolbars, forms, lists, cards, empty/error/loading states
+  and overlays. Retain theme tokens, the radius scale and Orbyn controls.
+- Keep primary content readable and give it room; align repeated controls and
+  move secondary management actions into the established ⋯ menus.
+- Desktop Settings uses a searchable category rail and a focused detail pane.
+  Narrow web and native mobile use a category list with a clear return path,
+  bounded scrolling and keyboard-safe detail screens. Replace long, competing
+  accordion stacks where they obscure the current task.
+- Make profile/session loading, refresh recovery, provider availability and
+  retry states explicit. Preserve drafts and selections through failures.
+- Preserve the new companion implementation on local main (`2eb34a5`, validation
+  note `0749e6e`), including account-bound customization, assistant state and
+  reduced/static/hidden motion. Reconcile it with the redesign; do not replace
+  that work with an older branch's assistant or settings implementation.
+- Distinct agent destinations use compact, accessible identity/presence marks
+  inspired by the reference's simple dot vocabulary, expressed in Orbyn's own
+  visual language. Labels, activity and status must remain understandable without
+  color or animation. The character and presence marks have consistent roles.
+
+**A4 runtime requirement:** Overnight and background agents collaborate, but must
+not execute in the same runtime. UI separation alone does not meet this requirement.
+The intended execution boundaries are:
+
+| Destination | Responsibility                                                      | Runtime boundary                            | Web/mobile UI boundary                                              |
+| ----------- | ------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
+| Chat        | Person-initiated conversation and its exact approval/question state | Interactive runner                          | Conversation, composer and current-turn controls                    |
+| Background  | Agent tasks, ideas, goal check-ins and routines outside a night run | Dedicated background worker process/service | Background activity, queue, results, waiting decisions and controls |
+| Overnight   | Jobs belonging to a night, including night tasks/goals/routines     | Dedicated Overnight worker process/service  | Tonight's status, history, morning review and unfinished work       |
+
+Shared libraries, durable storage and authorized capabilities may be reused.
+Each worker has its own claim filter, concurrency and resource limits, lifecycle,
+health and shutdown path. Interactive capacity must remain available while either
+automation lane is saturated. Restarting or stopping one automation runtime must
+not stop the other. Production must not silently collapse them into the current
+all-jobs runner or notifier fallback. Show when the required worker is unavailable
+rather than presenting queued work as an active run.
+
+**Current source evidence:** main `c1b3ffa` (PR #135) now classifies jobs into
+immutable interactive/background/overnight lanes and starts dedicated automation
+services. The original single-loop/eight-slot and notifier-fallback gap is closed
+by that checkpoint, with independent-process recovery tests. Existing web
+`OvernightView` and native `OvernightSheet` remain the morning review surfaces.
+Separate background workspaces/profiles and durable collaboration are still
+implementation gaps; runtime isolation alone does not complete their UI or
+handoff contract.
+
+**Collaboration contract:**
+
+- Exchange durable handoffs/results through explicit references and recorded
+  producer/recipient, parent work, owner, scope, revisions, status and provenance.
+  Do not rely on shared process memory or inject automated runs into a person's
+  current conversation. Each accepted handoff creates or associates distinct work
+  for the receiving runtime; it does not transfer one active execution between them.
+- Recheck current access, kept-out projects, agent rules, connection validity and
+  budgets before accepting or consuming a handoff. Sharing results never grants
+  new permissions or turns an unattended proposal into approval.
+- Use idempotent receipts, finite handoff depth/count and bounded retries so
+  duplicate delivery, a restart or reciprocal handoffs cannot create loops or
+  duplicate changes. Completion acknowledgement and failure are durable.
+- Coordinate source ownership so a task/routine/goal cannot run concurrently in
+  background and Overnight. Preserve the existing lease fencing, checkpoint
+  recovery, exact waiting IDs, approved mutations and undo history.
+- Link both activity views to the same authorized handoff and result trail while
+  keeping their run lists and controls separate. Morning review summarizes the
+  collaboration without creating a push for every unattended job.
+
+**Implementation order and completion gates:**
+
+1. Preserve and qualify the current main UI plus pending parity checkpoints.
+   Update the surface ledger from actual source and interaction evidence.
+2. Implement shared lane classification and immutable job ownership, dedicated
+   service entry points/deployment configuration, per-lane bounded claims and
+   health/recovery/shutdown. Cover upgrades and queued legacy jobs explicitly.
+3. Implement the durable collaboration/ownership contract and backend access,
+   duplication, failure and budget checks.
+4. Implement distinct Background and Overnight navigation/workspaces in both
+   clients; then apply the unified shell and Settings patterns across U1.
+5. Exercise actual desktop/web, mobile web and native iOS/Android interactions:
+   separate views, long labels, both themes, large text, software keyboard, focus
+   restoration, deep links, offline workers and nested overlays.
+6. Prove runtime isolation with two real worker processes: competing claims,
+   saturation, recovery after killing only one worker, a collaboration round trip,
+   duplicate handoff, stale approval, access revocation and absence of duplicate
+   writes or night pushes. Include service health and production configuration.
+7. Run focused/full tests, workspace types/builds, migrations and exact compiled
+   service smoke checks on stable source; commit and integrate ready checkpoints
+   to main. A screenshot, passing unit subset or UI-only lane selector is not
+   runtime delivery. Keep remaining provider/platform and preview gates explicit.
+
+The broad ADR remains active and incomplete. Voice, computer-use product features
+and the speculative Decisions adapter remain excluded; using browser/simulator
+tools to inspect and validate this work does not add those product features.
+
+#### Mandatory mobile parity — user scope clarification, 2 October 2026
+
+Every feature implemented and shipped on web/desktop must also be implemented
+on mobile. Track backend/shared behavior, web/desktop entry points, mobile entry
+points, persistence and failure states, and acceptance evidence together for
+each feature. Retaining mobile's visual design does not exclude any functionality
+from this requirement. A shared helper, typecheck or Expo export is not native
+interaction proof. Verify iOS and Android behavior as well as mobile web.
+
+Platform eligibility and native callback limitations remain genuine release
+gates; they do not remove mobile from the contract. Mark the affected feature
+incomplete until an appropriate mobile flow and its acceptance evidence exist.
+The private desktop ChatGPT executor, unmerged settings redesign and isolated
+Mermaid source are foundations rather than completed cross-client features.
+
+Current Docs HTML exports use one server renderer and the existing mobile
+Download/Share menu already includes HTML. Source and automated save/share checks
+must still be distinguished from actual mobile interaction and visual fidelity.
 
 #### Web redesign and settings acceptance — user scope addition, 1 October 2026
 
@@ -614,7 +982,6 @@ not evidence of a retention fix. Production deployment of this checkpoint is
 unverified. Enrollment/catalog proof work is starting a fresh stable-source full
 validation before integration.
 
-
 ### Validation follow-up and D1 dependency audit — 1 October 2026
 
 The current enrollment/expiry full-suite run has reported a failed MCP matrix
@@ -640,7 +1007,6 @@ and rendered exports. Existing tests and build success do not establish this
 parity. Keep source/preview synchronization, reference links, frontmatter,
 math, code coloring, security and ten-family Mermaid verification in scope.
 
-
 The completed main validation passed all 1,808 tests with no failures or skips;
 workspace typechecks and build also passed. The worktree validation completed
 with 1,881 of 1,882 tests passing, with the settings transaction guard as its
@@ -657,7 +1023,6 @@ running in separate disposable databases. Neither pending pipeline is recorded
 as passed, and fc3bc53 has not been pushed as a production checkpoint yet.
 Executor enrollment and its expiry corrections remain unmerged. The full ADR,
 including model routes and UI, plugin separation and Docs parity, remains open.
-
 
 ### M1 next integration contract: executor leases and catalog publication
 
@@ -706,9 +1071,7 @@ private fixture helpers are not evidence of this packaged integration. Cover
 real app interactions and an authorized eligible provider account before
 claiming the end-to-end model experience complete.
 
-
 M1 lease/catalog implementation continues in managed worktree `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`, branch `codex/devday-model-catalog`, based on main 6bdc26e. This checkout has independent workspace package outputs; it does not alter either running validation checkout. Shared external dependencies are linked without reinstalling or modifying their contents. The earlier implementation worktree retains private runtime helpers and Mermaid work. No host/provider feature is claimed complete by this split.
-
 
 ### Enrollment release and isolated lease service — 1 October 2026
 
@@ -739,7 +1102,6 @@ and /tmp/orbyn-model-lease-service-tests-after.log. This proves these controlled
 service cases, not provider entitlement, public /models, default mutation,
 UI or real executor availability. Those requirements remain open.
 
-
 M1 now has first-party GET /models and PUT /models/default routes, exact-session
 executor enrollment/lease/publication routes, shared strict public schemas and
 typed client methods. API routes are registered in the planner API service;
@@ -761,7 +1123,6 @@ local database; imports were made dynamic after setup, and the real disposable
 route tests pass. This fixture correction does not constitute a production
 connection fix. The packaged executor controller, account/default UI, native
 interaction and authorized provider flow remain open.
-
 
 ### Retention concurrency correction and catalog inventory — 1 October 2026
 

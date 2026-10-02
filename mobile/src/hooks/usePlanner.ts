@@ -99,6 +99,7 @@ export function usePlanner() {
   }, [setMaintenance]);
 
   const resetSession = () => {
+    tokenRef.current = "";
     void clearCache();
     void clearPageCache();
     clearGlance();
@@ -117,11 +118,13 @@ export function usePlanner() {
 
   /** Run a mutation with busy/error handling; a 401 clears the session. */
   const act = async (fn: () => Promise<void>) => {
+    const owner = tokenRef.current;
     setBusy(true);
     setError("");
     try {
       await fn();
     } catch (e) {
+      if (tokenRef.current !== owner) return;
       const status = (e as { status?: number }).status;
       // A 503 during maintenance carries the admin's message; show it as is
       // and bring the banner up without waiting for the next poll.
@@ -133,7 +136,7 @@ export function usePlanner() {
       if (status === 503) void checkMaintenance();
       if (status === 401) {
         await clearSession();
-        resetSession();
+        if (tokenRef.current === owner) resetSession();
       }
     } finally {
       setBusy(false);
@@ -379,6 +382,7 @@ export function usePlanner() {
     }
     setTwoFactorRequired(false);
     await saveSession(result.token);
+    tokenRef.current = result.token;
     setToken(result.token);
     setUser(result.user);
     return true;
@@ -415,7 +419,17 @@ export function usePlanner() {
     });
 
   /** Re-read the signed-in user, e.g. after confirming their email. */
-  const refreshUser = () => act(async () => setUser(await client.me()));
+  const refreshUser = () =>
+    act(async () => {
+      const owner = tokenRef.current;
+      if (!owner) return;
+      try {
+        const profile = await client.me();
+        if (tokenRef.current === owner) setUser(profile);
+      } catch (error) {
+        if (tokenRef.current === owner) throw error;
+      }
+    });
 
   const shownItems = useMemo(
     () => applyOutbox(items, outbox.entries),

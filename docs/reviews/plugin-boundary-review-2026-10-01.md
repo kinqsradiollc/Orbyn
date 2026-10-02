@@ -78,7 +78,28 @@ authorization code also creates no pair. Plugin authorization remains disabled
 because only the configured MCP resource is accepted by the live token path.
 This is backend isolation/hardening evidence, not delivery of a plugin service.
 
-## Principal policy foundation (local)
+## Main checkpoint validation
+
+The resource helper, grant discriminator and token binding guards are integrated
+and pushed to main at `7f264a5`. The unchanged checkpoint completed the full
+repository suite: **1,975 passed**, zero failures, cancellations or skips. The
+run used the marked local `orbyn_plugin_20261001_test` database. A short focused
+policy test also used that database during this run; this was not an isolated
+database run. No production database or provider credentials were used.
+
+Workspace typecheck and build completed successfully. The backend Docker image
+`orbyn-connector-isolation:7f264a5` built successfully; a network-disabled smoke
+check of its compiled resource helper preserved plugin bindings and rejected
+cross-service recipients. This does not prove a plugin endpoint or host launch.
+
+Evidence: `/tmp/orbyn-plugin-main-full-tests.log`,
+`/tmp/orbyn-plugin-main-types.log`, `/tmp/orbyn-plugin-main-build.log`,
+`/tmp/orbyn-plugin-main-docker-build.log`, and
+`/tmp/orbyn-plugin-main-docker-smoke.log`. These local logs are not repository
+artifacts. The settings redesign and embedding feature remain separate local
+checkpoints; these results do not validate their browser layout or deployment.
+
+## Principal policy foundation (integrated)
 
 `Principal.via` now has an explicit `plugin` identity. Both policy ceilings and
 live reachable-team filtering classify it as an outside agent. A linked system
@@ -87,19 +108,10 @@ read-only narrowing and personal-space restrictions still apply. Structured
 connection context labels this identity as plugin rather than session.
 
 Two new policy unit tests and seven existing visibility checks passed together
-(nine passed, zero failed or skipped). Backend typecheck passed. This foundation
-does not yet authenticate or construct a real plugin principal; that resolver
-and the plugin service remain required before plugin authorization is enabled.
+(nine passed, zero failed or skipped). Backend typecheck passed. The resolver below now constructs the plugin principal. The service remains
+required before plugin authorization is enabled.
 
-The resource/grant/token hardening was integrated into local main as `7f264a5`.
-Workspace typechecks/build passed there. Image
-`orbyn-connector-isolation:7f264a5` rebuilt successfully and its compiled resource
-guards preserved a bound plugin recipient and rejected cross-resource selection
-with networking disabled. Main's full suite completed with 1,975 passing tests and the code was pushed.
-Principal-policy changes are separate local work and are not covered by that
-main image or suite.
-
-## Plugin principal resolver (local)
+## Plugin principal resolver (integrated, validation pending)
 
 A separate plugin resolver now accepts only opaque OAuth access credentials
 whose live grant is OAuth/plugin and whose token is bound exactly to the
@@ -121,6 +133,16 @@ scope and then revoking it takes effect on the next call. Backend typecheck
 and build passed. Logs: /tmp/orbyn-plugin-resolver-final-regressions.log,
 /tmp/orbyn-plugin-resolver-final-types.log, /tmp/orbyn-plugin-resolver-build.log.
 
+Main integration at `f14014c` passed the same 59 focused regressions, then the
+unchanged checkpoint completed the full repository suite: **1,982 passed**,
+zero failed, cancelled or skipped. This run used the marked local plugin test
+database; the separate service tests ran against a different marked database.
+Workspace typecheck and build completed successfully. Logs:
+`/tmp/orbyn-plugin-resolver-main-full-tests.log`,
+`/tmp/orbyn-plugin-resolver-main-regressions.log`,
+`/tmp/orbyn-plugin-resolver-main-types.log`, and
+`/tmp/orbyn-plugin-resolver-main-build.log`.
+
 This is a callable backend resolver foundation. No plugin HTTP service, OAuth
 consent enablement, provider inference, host launch or UI delivery is claimed.
 The service remains disabled until those contracts and acceptance gates exist.
@@ -139,7 +161,18 @@ The isolated marked orbyn_plugin_service_20261001_test database was used for
 three new service tests plus existing service/path checks: ten passed, zero
 failed or skipped. Cases include 401, disabled-user 403, malformed catalog
 query 400, rate-limit 429 with Retry-After, wrong-recipient tokens, disabled
-routes, and absence of first-party/MCP paths. Backend typecheck passed.
+routes, and absence of first-party/MCP paths. Main integration repeated all ten
+tests successfully. Workspace typecheck and build passed there. Logs:
+`/tmp/orbyn-plugin-service-main-tests.log`,
+`/tmp/orbyn-plugin-service-main-types.log`, and
+`/tmp/orbyn-plugin-service-main-build.log`.
+
+The unchanged main checkpoint `e75abcf` completed the full rerun with
+**1,985 passed**, zero failures, cancellations or skips. Its earlier process
+was interrupted and vanished without a final result; that partial run is not
+counted as a pass. The successful run used the marked service test database;
+execution work in the other checkout used a different marked database.
+Evidence: `/tmp/orbyn-plugin-service-main-full-rerun.log`.
 
 This foundation does not yet expose tool execution, UI resources, launch
 contexts or resumable events. OAuth consent remains MCP-only, and plugin
@@ -170,13 +203,85 @@ fixture now uses the real ask value and all checks were rerun. Backend typecheck
 and build passed. Evidence: /tmp/orbyn-plugin-execute-regressions.log,
 /tmp/orbyn-plugin-execute-final-types.log, /tmp/orbyn-plugin-execute-build.log.
 
+Main integration repeated all 74 checks successfully, and workspace typecheck
+and build passed. Evidence: `/tmp/orbyn-plugin-execute-main-regressions.log`,
+`/tmp/orbyn-plugin-execute-main-types.log`, and
+`/tmp/orbyn-plugin-execute-main-build.log`. Full-suite validation subsequently passed after the calendar fixture correction: 1,991 passed, zero failed, cancelled or skipped. Image orbyn-plugin-execution:dda1804 built
+successfully. Its compiled service passed health/disabled-route/first-party
+isolation checks and an enabled smoke check of plugin OAuth identity, shared
+get_context reads, rejection of session credentials and two concurrent writes
+creating one task with a replayed receipt. The enabled check verified the test
+marker before seeding fixtures, then removed them. It used a separate marked
+database from the full suite. It did not contact a provider or prove OAuth
+issuance. Logs: /tmp/orbyn-plugin-execute-docker-build.log,
+/tmp/orbyn-plugin-execute-docker-smoke.log, and
+/tmp/orbyn-plugin-execute-docker-enabled-smoke.log.
+
 OAuth issuance remains MCP-only. This does not deliver plugin launch/resource
 UI, asynchronous events/reconnect cursors, host approval or provider inference.
 Those contracts and their security evidence remain open before enabling the
 plugin recipient in production. The UI preview permission is still denied by
 Browser Use despite the user authorizing a retry; it has not been bypassed.
 
+### Full-suite follow-up: calendar fixture
+
+The first full execution-checkpoint run completed with 1,989 passing tests and
+one failure (1,990 total), not a green result. The agenda-days fixture advanced
+Melbourne calendar dates by fixed 24-hour durations; a three-day jump from late
+evening crossed the daylight-saving change and landed on the next local date.
+The fixture now constructs noon on its requested date via zonedInstant. An
+explicit late-night DST regression demonstrates the former mismatch; all 13
+agenda checks passed after the correction. Agenda production code is unchanged.
+Evidence: /tmp/orbyn-plugin-execute-main-full-tests.log and
+/tmp/orbyn-agenda-calendar-fixture-final-tests.log. The unchanged corrected checkpoint 8f7836d completed its full rerun with 1,991 passed, zero failed, cancelled or skipped. Evidence: /tmp/orbyn-plugin-execute-main-full-rerun.log.
+
 ## Required next work and acceptance
+
+### Plugin authorization discovery contract
+
+The dedicated plugin service needs protected-resource discovery before host
+integration can be called delivered. Follow
+[RFC 9728 sections 3 and 5](https://www.rfc-editor.org/rfc/rfc9728.html):
+
+- Derive the well-known metadata path from the configured plugin resource URL,
+  inserting `/.well-known/oauth-protected-resource` before its path. For a
+  resource ending in `/plugin`, publish the document at
+  `/.well-known/oauth-protected-resource/plugin` on that resource's origin.
+- Return the configured plugin recipient exactly as `resource`, the configured
+  OAuth issuer in `authorization_servers`, supported Orbyn scopes, and only
+  `header` in `bearer_methods_supported`. Never derive these values from request
+  Host, forwarded headers, query parameters or supplied credentials.
+- Discovery is public and must run outside the plugin token preHandler. Blank
+  plugin configuration must return 404 and must not advertise an enabled plugin.
+- A protected plugin endpoint's 401 must provide its own Bearer challenge with
+  the plugin metadata URL. It must not point to portable MCP metadata. A disabled
+  policy or forbidden connection remains 403; metadata cannot grant authority.
+- Test path-bearing and root recipients, exact issuer/resource values, public
+  discovery without credentials, blank configuration, wrong-recipient tokens,
+  malicious forwarded-host inputs and preserved MCP challenges. Test the actual
+  dedicated service and gateway route; helper tests alone do not prove delivery.
+
+Local recipient issuance work has passed focused service-boundary tests, but it
+is not merged or deployed. Browser consent/host proof and full-suite evidence
+remain separate gates. Provider inference, launch contexts, UI resource CSP and
+events are not implied by protected-resource discovery.
+
+### Consent diagnostic checkpoint
+
+Main checkpoint `3f81036` replaces rejected-resource URL echoes with a static
+consent diagnostic. Both authorize and authorize/check reject the resource
+without reflecting URL credentials, query values, host names or fragments.
+The OAuth suite passed 28/28 on main, backend typecheck and diff checks passed,
+and the checkpoint was pushed. Evidence:
+`/tmp/orbyn-consent-static-diagnostic-main-tests.log` and
+`/tmp/orbyn-consent-static-diagnostic-main-types.log`. This is focused evidence;
+the earlier 1,991-test full run predates this change.
+
+Local plugin-worktree checkpoint `6143d30` adds server-selected recipient metadata
+and consent labels, with workspace typecheck, 28 OAuth tests and two component
+source-control tests passing. It is not merged: browser layout review remains
+blocked by the saved preview permission. Neither checkpoint enables plugin OAuth
+issuance. The following acceptance requirements remain open.
 
 1. Add a configured plugin resource and disabled-by-default service boundary;
    advertise only enabled services. Never derive recipients from host headers.
@@ -193,3 +298,15 @@ Browser Use despite the user authorizing a retry; it has not been bypassed.
    durable write receipts and maintenance controls. Preserve portable MCP tests.
 6. Validate actual supported host/plugin surfaces and record external approval
    gates. Unit helper checks are not authorization or host-delivery evidence.
+
+## Recipient/discovery reconciliation — 2 October 2026
+
+The retained plugin branch is being reconciled with current main `2ba1ae2`.
+Preserve main's integrated resolver/execution and all runtime/character changes;
+add the separately retained plugin recipient consent, token issuance, discovery
+and authentication challenge. Resource kind remains server-selected and grants
+remain separated by recipient. Current combined qualification is pending; older
+results above do not qualify this combination. The recipient checkpoint details
+remain in `consent-recipient-checkpoint.md`. Browser/native consent, host launch,
+UI resources, gateway/deployment and actual provider inference gates remain open.
+No production recipient is enabled by this merge preparation.
