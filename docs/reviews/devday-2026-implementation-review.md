@@ -1,5 +1,18 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Completed draft result qualification — 2 October 2026
+
+PR #147 merged as **4bbcfec** from frozen **53089fd** on base **e1d46af**.
+Completed append_doc results recheck producing evidence and destination access
+before replaying saved titles, identities or links under a new client_ref.
+Unchanged/restored access returns the original answer without another mutation.
+Five focused regressions and the source seven-file cohort (103/103) passed.
+Exact candidate full local tests passed **2,181/2,181**, zero failures/skips, with
+all workspace types/build/full-format passing. All CI **37004911014** jobs
+succeeded; backend passed 2,180 with one Tesseract skip. Candidate, CI merge
+94006ee and resulting main share tree ab575239dd8e10fab7a52d32946a75a1229ab95f.
+This is a qualified checkpoint, not deployment or completion of the full ADR.
+
 ## Latest qualified checkpoint — 2 October 2026
 
 PR #146 is merged as **c9b6c78** from **0033a96**, base **7c08aa6**. Cached
