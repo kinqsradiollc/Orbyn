@@ -1155,3 +1155,25 @@ sweeper run failed connecting before any assertion. Only our named disposable
 databases were recreated with the server-side test marker; existing orbyn_test
 and orbyn_runs_test were preserved. This is distinct from the reproduced ctid
 race and does not establish a database or Docker product fix.
+
+### Current source privacy checkpoints — 2 October 2026
+
+Production candidate PR #143 (**e58ed27**) passed **2,141/2,141** full local tests
+and workspace types/build/full formatting; its final CI backend job remains
+pending. It is not merged/deployed and does not complete A4.
+
+Separate source commits **977288c**, **866e4c0**, **411935e** fix a reproduced
+account/team deletion history-trigger failure, job-only notification dependencies
+(queue/inbox/delivery), and Review summary/badge/outcome visibility after producing
+source cleanup. Migration 213 preserves ordinary deleted-target history access
+and does not convert removed team history into personal access. Actual worker
+cancellation regression observed zero network sends after source exclusion.
+Fresh marked database migrated and passed **48/48** history/notices/project/night
+checks; Review/agent-write extended cohort passed **65/65**, backend types and
+scoped formatting passed. These qualify source cohorts, not a combined main tree.
+Extract and fully qualify on current main before production integration.
+
+The full existing scope, cross-client parity and current native/browser gates
+remain active. Typed notification/read/external rules, agent records/editor,
+revision snapshots, durable budgets and receiving collaboration are still needed;
+these privacy fixes are not their completion. No release or cleanup occurred.

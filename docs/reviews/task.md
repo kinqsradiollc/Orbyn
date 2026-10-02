@@ -1164,3 +1164,56 @@ No clipboard/paste/typing workaround used and no save proof claimed. Simulator s
 on synthetic empty-block editing. Web saved denial remains respected. Actual
 heading navigation, typing/saving, mobile-web/web, Android and wider UI remain open.
 Full ADR active, no cleanup/deployment, preserved main/character changes untouched.
+
+## Notification/source privacy and deletion regression — 2 October 2026
+
+Corrected main candidate **e58ed27**, PR **#143**, remains frozen and clean.
+Full **74503** terminal zero: **2,141/2,141**, no failures/skips/cancellations,
+549,434 ms. Pipeline **51246** terminal zero: all workspace types, root production
+build and full formatting. Current CI **36995158096** mobile/Docker/mail passed;
+backend-and-web job **110800092803** was verified live. Current remote base remains
+**9e1a2c8**; tree **a8f0bd5a54f60886e4b261378576f465b6daae70**. PR body updated.
+No merge until terminal CI and exact head/base/tree checks; no local run remains live.
+
+Source **866e4c0** applies job source visibility to personal notice enqueue, inbox
+and delivery, in addition to conversation access. A job-only dependency did not
+previously protect queued pushes or saved inbox text. Real worker regression
+revokes project source access after queueing and observes cancellation with zero
+network calls; unknown/deleted dependencies hide the saved card.
+
+This exposed real account cascade failure in the history metadata trigger during
+test teardown. Source **977288c**, migration **213**, skips recreating history
+access when its owner/team parent is being deleted; ordinary target deletion
+retains original owner/team metadata. New tests run the former migration-084
+function inside a rolled-back transaction and reproduce its foreign-key failure.
+The reproducible INSERT path explicitly removes access metadata first, avoiding
+foreign-key cascade-order dependence. Tested personal/team account cascades,
+team deletion without conversion to Personal history, and ordinary task/page/
+record removal. No production data or trigger was touched while reproducing.
+
+Initial notice assertions all eleven passed but **95176** terminal failed its
+teardown. First fresh combined run **35056** failed only the nondeterministic old
+trigger reproduction; corrected before rerun. Current fresh marked
+**orbyn_notice_history_213_test**, **75933** terminal zero: **48/48**, no failure/
+skip/cancel, 8,798 ms (all migrations, notices, history, project time machine and
+night scheduling). Types **82594** terminal zero and scoped format/diff passed.
+Logs `/tmp/orbyn-notice-history-213-{fresh-2,types}.log`.
+
+Source **411935e** adds a shared producing-job visibility predicate for Review
+item/inbox/pending badge, agent proposal outcome and its saved in-app notification.
+Approval was already fenced, but reads could still expose saved generated summary
+when an independent source vanished. Missing producer/evidence, owner mismatch
+and runtime mismatch now omit it; unchanged legacy non-job behavior stays covered.
+Current **38283** terminal zero: **65/65**, no failure/skip/cancel, 20,959 ms;
+Review/rules/notifications/Overnight/muse/project/agent-write regression cohort.
+Backend types **59240** terminal zero. Logs
+`/tmp/orbyn-proposal-read-sources-{extended,types}.log`. Initial 40-check run used
+an absent review.test.ts path; extended run uses actual muse/project/agent files.
+
+All three new source checkpoints committed and pushed; not yet qualified on main.
+After #143 merges, extract these changes onto its combined current main and run
+fresh full qualification. Do not merge the full model/Docs/settings source branch.
+Then continue typed notification/read/external restrictions, per-agent ownership,
+first-party web/mobile editor, source revisions, budgets/reservations and handoff
+receiving authorization/dispatch/recovery, plus the complete model/plugin/Docs and
+whole-app UI gates. No cleanup/deployment or goal completion occurred.
