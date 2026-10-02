@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   assistantHandoffInput,
   ASSISTANT_HANDOFF_LIMITS,
@@ -166,5 +167,81 @@ export async function createRequestedAssistantHandoff(
       ],
     );
     return id;
+  });
+}
+
+/**
+ * Acknowledge actual completed receiving work. This grants no authority and
+ * takes no caller-supplied result: both revisions come from current evidence.
+ * Replaying the same completed transition is safe while its evidence is current.
+ */
+export async function acknowledgeCompletedAssistantHandoff(
+  ownerId: string,
+  handoffId: string,
+  expectedRevision: number,
+): Promise<AssistantHandoffSource> {
+  z.uuid().parse(ownerId);
+  z.uuid().parse(handoffId);
+  z.number().int().positive().parse(expectedRevision);
+  return transaction(async (db) => {
+    const receipt = (
+      await db.query<{
+        revision: number;
+        status: string;
+        producer_job_id: string;
+        producer_revision: string;
+        producer_lane: "background" | "overnight";
+        recipient_job_id: string | null;
+        recipient_lane: "background" | "overnight";
+        result: AssistantHandoffSource | null;
+      }>(
+        `SELECT h.revision,h.status,h.producer_job_id,h.producer_revision,
+          h.producer_lane,h.recipient_job_id,h.recipient_lane,h.result
+         FROM assistant_handoffs h JOIN users u ON u.id=h.owner_id AND NOT u.disabled
+         WHERE h.id=$2 AND h.owner_id=$1 FOR UPDATE OF h`,
+        [ownerId, handoffId],
+      )
+    ).rows[0];
+    if (!receipt) fail(404, "That handoff is not available.");
+    const replay =
+      receipt.status === "completed" &&
+      receipt.revision === expectedRevision + 1;
+    if (!replay && receipt.revision !== expectedRevision)
+      fail(409, "That handoff changed. Reload before acknowledging it.");
+    if (!receipt.recipient_job_id || (!replay && receipt.status !== "accepted"))
+      fail(409, "Only accepted receiving work can be acknowledged.");
+    const producer = await handoffProducerEvidence(
+      db,
+      ownerId,
+      receipt.producer_job_id,
+    );
+    if (
+      producer.lane !== receipt.producer_lane ||
+      producer.source.revision !== receipt.producer_revision
+    )
+      fail(409, "The producing evidence changed before acknowledgment.");
+    const receiving = await handoffProducerEvidence(
+      db,
+      ownerId,
+      receipt.recipient_job_id,
+    );
+    if (receiving.lane !== receipt.recipient_lane)
+      fail(409, "The receiving runtime no longer matches this handoff.");
+    if (replay) {
+      if (
+        receipt.result?.kind !== "job" ||
+        receipt.result.id !== receiving.source.id ||
+        receipt.result.revision !== receiving.source.revision
+      )
+        fail(409, "The acknowledged result changed. Review the new outcome.");
+      return receiving.source;
+    }
+    await db.query(
+      `UPDATE assistant_handoffs SET status='completed',revision=revision+1,
+        result=$3::jsonb,updated_at=greatest(updated_at,clock_timestamp())
+       WHERE id=$1 AND revision=$2`,
+      [handoffId, expectedRevision, JSON.stringify(receiving.source)],
+    );
+    return receiving.source;
   });
 }

@@ -5,8 +5,11 @@ import { randomUUID } from "node:crypto";
 import { HttpError } from "@orbyn/core";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { handoffProducerEvidence, createRequestedAssistantHandoff } =
-  await import("../src/modules/assistant-workspace/handoffs.js");
+const {
+  handoffProducerEvidence,
+  createRequestedAssistantHandoff,
+  acknowledgeCompletedAssistantHandoff,
+} = await import("../src/modules/assistant-workspace/handoffs.js");
 const owners: string[] = [];
 before(() => migrate());
 after(async () => {
@@ -63,6 +66,172 @@ async function request(owner: string, job: string) {
 }
 const status = (expected: number) => (error: unknown) =>
   error instanceof HttpError && error.statusCode === expected;
+
+async function accepted(owner: string, project: string | null = null) {
+  const producing = await producer(owner);
+  const id = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, producing.job),
+  );
+  const receiving = await producer(owner, project, "background", "queued");
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,delivery_attempts=1 WHERE id=$1",
+    [id],
+  );
+  await pool.query(
+    "UPDATE assistant_handoffs SET revision=revision+1,status='accepted',recipient_job_id=$2 WHERE id=$1",
+    [id, receiving.job],
+  );
+  return { id, producing, receiving };
+}
+
+test("completion derives current receiving evidence and concurrent retries acknowledge once", async () => {
+  const owner = await person();
+  const { id, receiving } = await accepted(owner);
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  const results = await Promise.all([
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    acknowledgeCompletedAssistantHandoff(
+      owner.toUpperCase(),
+      id.toUpperCase(),
+      3,
+    ),
+  ]);
+  const evidence = await handoffProducerEvidence(pool, owner, receiving.job);
+  assert.deepEqual(results, [evidence.source, evidence.source]);
+  const receipt = (
+    await pool.query(
+      "SELECT status,revision,result FROM assistant_handoffs WHERE id=$1",
+      [id],
+    )
+  ).rows[0];
+  assert.deepEqual(receipt, {
+    status: "completed",
+    revision: 4,
+    result: evidence.source,
+  });
+  const followup = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, receiving.job),
+  );
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT parent_id,root_id,depth FROM assistant_handoffs WHERE id=$1",
+        [followup],
+      )
+    ).rows[0],
+    { parent_id: id, root_id: id, depth: 1 },
+  );
+  await pool.query("UPDATE ai_jobs SET result=$2 WHERE id=$1", [
+    receiving.job,
+    { answer: "Changed after acknowledgment." },
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+});
+
+test("acknowledgment rejects stale receipts, incomplete work and changed producing evidence", async () => {
+  const owner = await person();
+  const { id, producing, receiving } = await accepted(owner);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 2),
+    status(409),
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query("UPDATE ai_jobs SET apply_result=$2 WHERE id=$1", [
+    producing.job,
+    { changed: true },
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(409),
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT revision FROM assistant_handoffs WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].revision,
+    3,
+  );
+});
+
+test("acknowledgment checks owner and current receiving visibility before completion or replay", async () => {
+  const owner = await person();
+  const other = await person();
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name) VALUES($1,'Receiving evidence') RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  const { id, receiving } = await accepted(owner, project);
+  await pool.query("UPDATE ai_jobs SET state='done' WHERE id=$1", [
+    receiving.job,
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(other, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    project,
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE projects SET assistant_off=false WHERE id=$1", [
+    project,
+  ]);
+  await acknowledgeCompletedAssistantHandoff(owner, id, 3);
+  await pool.query("UPDATE ai_jobs SET sources_checked=false WHERE id=$1", [
+    receiving.job,
+  ]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+  await pool.query("UPDATE ai_jobs SET sources_checked=true WHERE id=$1", [
+    receiving.job,
+  ]);
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [owner]);
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 3),
+    status(404),
+  );
+});
+
+test("unaccepted and cancelled handoffs cannot acknowledge work", async () => {
+  const owner = await person();
+  const producing = await producer(owner);
+  const id = await createRequestedAssistantHandoff(
+    owner,
+    await request(owner, producing.job),
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 1),
+    status(409),
+  );
+  await pool.query(
+    "UPDATE assistant_handoffs SET status='cancelled',revision=revision+1 WHERE id=$1",
+    [id],
+  );
+  await assert.rejects(
+    acknowledgeCompletedAssistantHandoff(owner, id, 2),
+    status(409),
+  );
+});
 
 test("producer revision includes outcome changes but excludes presence writes", async () => {
   const owner = await person();
@@ -241,16 +410,13 @@ test("reciprocal follow-ups preserve their acknowledged chain and cannot reset i
       createRequestedAssistantHandoff(owner, input),
       status(409),
     );
-    await pool.query(
-      "UPDATE assistant_handoffs SET revision=revision+1,status='completed',result=$2 WHERE id=$1",
-      [
-        parent,
-        {
-          kind: "job",
-          id: receiving.job,
-          revision: input.expected_producer_revision,
-        },
-      ],
+    assert.deepEqual(
+      await acknowledgeCompletedAssistantHandoff(owner, parent, 3),
+      {
+        kind: "job",
+        id: receiving.job,
+        revision: input.expected_producer_revision,
+      },
     );
     if (depth === 4) {
       await assert.rejects(
