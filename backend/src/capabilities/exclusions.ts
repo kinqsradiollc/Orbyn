@@ -404,6 +404,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/assistant/reminder-actions": "people_only",
   "POST /me/assistant/reminder-actions/:id/undo": "people_only",
   "GET /me/assistant/nights/latest": "people_only",
+  "GET /me/assistant/activity/:lane": "people_only",
   "POST /me/assistant/nights/runs/:id/keep": "people_only",
   "POST /me/assistant/nights/runs/:id/undo": "people_only",
   "POST /me/assistant/nights/:id/keep-all": "people_only",
