@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useContext, type CSSProperties, type ReactNode } from "react";
 import {
   mentionedPerson,
   EMBED_LANG,
@@ -21,6 +21,7 @@ import {
   Diagram,
   EmbedBlock,
   FileCard,
+  FootnoteContext,
   FootnoteLine,
   FootnoteRef,
   ImageBlock,
@@ -67,7 +68,8 @@ function Pieces({ run, marks }: { run: DocInline; marks: Mark[] }) {
  */
 export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
   // A #tag stands apart from the words around it, drawn as a quiet chip.
-  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
+  const { references } = useContext(FootnoteContext);
+  const runs: TaggedRun[] = parseDocInline(text, references).flatMap((run) =>
     tagRuns(run, text),
   );
   return (
@@ -229,7 +231,9 @@ export function BlockView({
   const nest = depth ? ({ "--depth": depth } as CSSProperties) : undefined;
   switch (block.type) {
     case "heading": {
-      const H = (["h2", "h3", "h4"] as const)[block.level - 1];
+      const H = (["h1", "h2", "h3", "h4", "h5", "h6"] as const)[
+        block.level - 1
+      ];
       return (
         <H className="doc-heading" dir="auto">
           {<Inline text={block.text} marks={marks} />}

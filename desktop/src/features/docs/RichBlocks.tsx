@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import {
   CALLOUT_LABELS,
+  docReferenceLinks,
   colourCode,
   colourable,
   diagramKind,
@@ -74,6 +75,7 @@ import { openObject, pillKey, shortDue, usePageActions } from "./DocLinks";
 export const FootnoteContext = createContext<{
   numbers: Map<string, number>;
   texts: Map<string, string>;
+  references?: ReadonlyMap<string, string>;
 }>({ numbers: new Map(), texts: new Map() });
 
 /** A footnote marker in a line: its number, and its words on hover. */
@@ -1147,7 +1149,13 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           The part of the page this showed has gone.
         </p>
       ) : (
-        <FootnoteContext.Provider value={{ numbers, texts }}>
+        <FootnoteContext.Provider
+          value={{
+            numbers,
+            texts,
+            references: docReferenceLinks(section.blocks),
+          }}
+        >
           <div className="doc-embed-body">
             {section.blocks.map((b, i) => (
               <BlockView key={b.id ?? i} block={b} />

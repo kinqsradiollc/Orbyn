@@ -30,7 +30,7 @@ export type LinkPrivacy = {
   /** A value (page lines, a comment, a hit) with hidden links' words swapped. */
   value<T>(value: T): T;
   /** One line as the reader sees it, with places carried both ways. */
-  line(text: string): RedactedLine;
+  line(text: string, references?: ReadonlyMap<string, string>): RedactedLine;
 };
 
 const NOTHING_HIDDEN: LinkPrivacy = {
@@ -122,7 +122,7 @@ export function privacyFrom(
   return {
     hidden,
     value: (v) => redactValue(v, hidden),
-    line: (text) => redactLine(text, hidden),
+    line: (text, references) => redactLine(text, hidden, references),
   };
 }
 

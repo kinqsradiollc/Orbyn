@@ -396,13 +396,14 @@
   letter-spacing: -0.01em;
   color: var(--color-text);
 }
+h1.doc-heading,
 h2.doc-heading {
   font-size: 18px;
 }
-h3.doc-heading {
-  font-size: 18px;
-}
-h4.doc-heading {
+h3.doc-heading,
+h4.doc-heading,
+h5.doc-heading,
+h6.doc-heading {
   font-size: 15px;
 }
 

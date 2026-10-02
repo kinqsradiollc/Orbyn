@@ -77,9 +77,12 @@ type Nested = { depth?: number };
 /** The deepest a list line can be tucked in. */
 export const MAX_DEPTH = 3;
 
+/** Markdown heading depth, independent of list nesting. */
+export type DocHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
 export type DocBlock = Named &
   (
-    | { type: "heading"; level: 1 | 2 | 3; text: string }
+    | { type: "heading"; level: DocHeadingLevel; text: string }
     | { type: "paragraph"; text: string }
     | ({ type: "bullet"; text: string } & Nested)
     /**
@@ -774,7 +777,7 @@ export const isStyledRun = (run: DocInline): boolean =>
 // "a == b" in a note about code stays text. A source marker (`[src: …]`)
 // is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]/g;
+  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g;
 
 /** Only supported document and external protocols can become actionable links. */
 export function isDocLinkSafe(href: string): boolean {
@@ -793,11 +796,90 @@ export function isDocLinkSafe(href: string): boolean {
   }
 }
 
+/** Reference labels are case-insensitive and collapse whitespace. */
+function referenceLabel(label: string): string {
+  return label.trim().replace(/\s+/g, " ").toUpperCase().toLowerCase();
+}
+
+/** A single editable reference definition; its source is never evaluated. */
+export function docReferenceDefinition(
+  text: string,
+): { label: string; href: string; title?: string } | null {
+  const match =
+    /^ {0,3}\[([^\]\n]{1,999})\]:[ \t]*(?:<([^<>\n]+)>|(\S+))(?:[ \t]+(?:"([^"\n]*)"|'([^'\n]*)'|\(([^()\n]*)\)))?[ \t]*$/.exec(
+      text,
+    );
+  return match && !match[1].startsWith("^")
+    ? {
+        label: match[1],
+        href: match[2] ?? match[3],
+        ...((match[4] ?? match[5] ?? match[6])
+          ? { title: match[4] ?? match[5] ?? match[6] }
+          : {}),
+      }
+    : null;
+}
+
+/** Safe reference destinations in document order; definitions stay editable source. */
+export function docReferenceLinks(blocks: DocBlock[]): Map<string, string> {
+  const references = new Map<string, string>();
+  const defined = new Set<string>();
+  for (const block of blocks) {
+    if (block.type !== "paragraph") continue;
+    const definition = docReferenceDefinition(block.text);
+    if (!definition) continue;
+    const label = referenceLabel(definition.label);
+    if (!label || defined.has(label)) continue;
+    defined.add(label);
+    if (isDocLinkSafe(definition.href)) references.set(label, definition.href);
+  }
+  return references;
+}
+
+/** Source ranges of resolved references, excluding inline links and literal code/math. */
+export function docReferenceSpans(
+  text: string,
+  references: ReadonlyMap<string, string>,
+): {
+  start: number;
+  end: number;
+  href: string;
+  label: string;
+  reference: string;
+}[] {
+  const resolved = new Map(
+    parseDocInline(text, references)
+      .filter((run) => run.link && !run.code && !run.math)
+      .map((run) => [run.start, run.link!]),
+  );
+  const spans = [];
+  for (const match of text.matchAll(
+    /\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g,
+  )) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (text[start - 1] === "!" || text[end] === "(") continue;
+    const href = resolved.get(start + 1);
+    if (href)
+      spans.push({
+        start,
+        end,
+        href,
+        label: match[1],
+        reference: referenceLabel(match[2] || match[1]),
+      });
+  }
+  return spans;
+}
+
 /**
  * Split one line into styled runs. Unmatched text passes through unchanged, so
  * a stray `*` or `$` shows as typed rather than swallowing the rest of a line.
  */
-export function parseDocInline(text: string): DocInline[] {
+export function parseDocInline(
+  text: string,
+  references?: ReadonlyMap<string, string>,
+): DocInline[] {
   const literals = docInlineLiterals(text);
   if (literals.length) {
     const masked: string[] = [];
@@ -812,7 +894,7 @@ export function parseDocInline(text: string): DocInline[] {
     masked.push(text.slice(at));
     const out: DocInline[] = [];
     let index = 0;
-    for (const run of parseFormattedInline(masked.join(""), text)) {
+    for (const run of parseFormattedInline(masked.join(""), text, references)) {
       let cursor = run.start;
       const end = run.start + run.text.length;
       while (index < literals.length && literals[index].end <= cursor) index++;
@@ -832,10 +914,14 @@ export function parseDocInline(text: string): DocInline[] {
     }
     return out;
   }
-  return parseFormattedInline(text);
+  return parseFormattedInline(text, text, references);
 }
 
-function parseFormattedInline(text: string, source = text): DocInline[] {
+function parseFormattedInline(
+  text: string,
+  source = text,
+  references?: ReadonlyMap<string, string>,
+): DocInline[] {
   const out: DocInline[] = [];
   let at = 0;
   for (const m of text.matchAll(INLINE_RE)) {
@@ -876,6 +962,15 @@ function parseFormattedInline(text: string, source = text): DocInline[] {
         start: start + m[0].indexOf(m[10], 5),
         source: true,
       });
+    if (m[11] !== undefined) {
+      const label = referenceLabel(m[12] || m[11]);
+      const href = references?.get(label);
+      out.push(
+        href && isDocLinkSafe(href) && source[start - 1] !== "!"
+          ? { text: words(11, 1), start: start + 1, link: href }
+          : { text: source.slice(start, start + m[0].length), start },
+      );
+    }
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: source.slice(at), start: at });
@@ -986,6 +1081,28 @@ function paragraphNeedsEscape(text: string, anchors: boolean): boolean {
   return !same(t) || (anchors && !same(`${t} `));
 }
 
+/** Preserve literal closing hashes without creating an ATX closing delimiter. */
+function headingSource(text: string): string {
+  return text
+    .replace(/&/g, "&#38;")
+    .replace(
+      /(^|[ \t])(#+)(?=[ \t]*$)/,
+      (_match, before: string, hashes: string) =>
+        before + "&#35;".repeat(hashes.length),
+    );
+}
+
+/** Closing delimiters are syntax; encoded literal hashes remain heading content. */
+function headingWords(source: string): string {
+  const text = source.replace(/(?:^[#]+|[ \t]+[#]+)[ \t]*$/, "").trim();
+  return text
+    .replace(/(?:&#35;)+$/, (entities, offset: number) => {
+      const slashes = /\\+$/.exec(text.slice(0, offset))?.[0].length ?? 0;
+      return slashes % 2 ? entities : "#".repeat(entities.length / 5);
+    })
+    .replace(/&#38;/g, "&");
+}
+
 /** A bullet's words that would read as a checklist box. */
 const TICK_LIKE = /^\\*\[( |x|X)\](\s|$)/;
 const ESCAPED_TICK = /^\\+\[( |x|X)\](\s|$)/;
@@ -1002,7 +1119,7 @@ function calloutLike(text: string, escaped: boolean): boolean {
 function codeFence(text: string): string {
   let ticks = 3;
   for (const l of text.split("\n")) {
-    const m = /^(`{3,})\s*$/.exec(l);
+    const m = /^ {0,3}(`{3,})[ \t]*$/.exec(l);
     if (m && m[1].length >= ticks) ticks = m[1].length + 1;
   }
   return "`".repeat(ticks);
@@ -1013,6 +1130,22 @@ function codeFence(text: string): string {
 /** How wide a run of leading spaces and tabs is, a tab counting as four. */
 const indentWidth = (lead: string) =>
   [...lead].reduce((n, ch) => n + (ch === "\t" ? 4 : 1), 0);
+
+/** Reserved source-only code language for unevaluated YAML metadata. */
+export const FRONTMATTER_LANG = "orbyn-frontmatter";
+
+/** A complete frontmatter envelope; edited or moved metadata falls back to a fence. */
+function isFrontmatterSource(source: string): boolean {
+  const lines = source.split("\n");
+  return (
+    /^\uFEFF?---$/.test(lines[0]) &&
+    lines.length >= 2 &&
+    lines.findIndex(
+      (line, index) => index > 0 && /^(---|\.\.\.)$/.test(line),
+    ) ===
+      lines.length - 1
+  );
+}
 
 /**
  * Read Markdown into blocks. Unknown syntax becomes a paragraph, never an error.
@@ -1080,6 +1213,25 @@ export function parseDoc(
     return line.replace(ESCAPED_ANCHOR, "$1$2$3");
   };
 
+  // YAML is retained verbatim, never parsed/evaluated or fed through Markdown.
+  // Only a closed envelope at the start of the document is metadata.
+  if (
+    /^\uFEFF?---$/.test(lines[0]) &&
+    !(anchors && OWN_ANCHOR.test(lines[1]?.trim() ?? ""))
+  ) {
+    const end = lines.findIndex(
+      (line, index) => index > 0 && /^(---|\.\.\.)$/.test(line),
+    );
+    if (end > 0) {
+      push({
+        type: "code",
+        lang: FRONTMATTER_LANG,
+        text: lines.slice(0, end + 1).join("\n"),
+      });
+      i = end + 1;
+    }
+  }
+
   while (i < lines.length) {
     let line = lines[i];
     pending = null;
@@ -1100,17 +1252,22 @@ export function parseDoc(
     // Anything but a list item (or a blank line between items) ends a list.
     if (line.trim() && !/^\s*([-*]|\d+[.)])\s/.test(line)) indents = [];
 
-    // Fenced code: ```lang … ```, closed by a fence at least as long.
-    const fence = /^(`{3,})([\w+#.-]*)\s*$/.exec(line);
+    // CommonMark fences: one delimiter kind, optional indentation, and a closing
+    // fence at least as long. Contents never re-enter the block parser.
+    const fence = /^( {0,3})(`{3,}|~{3,})[ \t]*([\w+#.-]*)[ \t]*$/.exec(line);
     if (fence) {
-      const ticks = fence[1].length;
-      const lang = fence[2] ?? "";
+      const indent = fence[1].length;
+      const closing = new RegExp(
+        `^ {0,3}${fence[2][0]}{${fence[2].length},}[ \\t]*$`,
+      );
+      const lang = fence[3] ?? "";
       const body: string[] = [];
       i++;
       while (i < lines.length) {
-        const close = /^(`{3,})\s*$/.exec(lines[i]);
-        if (close && close[1].length >= ticks) break;
-        body.push(lines[i++]);
+        if (closing.test(lines[i])) break;
+        body.push(
+          lines[i++].replace(/^ {0,3}/, (spaces) => spaces.slice(indent)),
+        );
       }
       i++; // closing fence (or end of input)
       push({ type: "code", text: body.join("\n"), lang });
@@ -1150,12 +1307,12 @@ export function parseDoc(
       continue;
     }
 
-    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+    const heading = /^ {0,3}(#{1,6})(?:[ \t]+(.*?)|[ \t]*)$/.exec(line);
     if (heading) {
       push({
         type: "heading",
-        level: heading[1].length as 1 | 2 | 3,
-        text: heading[2].trim(),
+        level: heading[1].length as DocHeadingLevel,
+        text: headingWords(heading[2] ?? ""),
       });
       i++;
       continue;
@@ -1302,6 +1459,16 @@ export function parseDoc(
     // A paragraph; a backslash before words that would read as something
     // else keeps them words.
     const t = line.trim();
+    const underline = /^ {0,3}(=+|-+)[ \t]*$/.exec(lines[i + 1] ?? "");
+    if (t && underline && !/^ {4}|^\t/.test(line)) {
+      push({
+        type: "heading",
+        level: underline[1][0] === "=" ? 1 : 2,
+        text: t,
+      });
+      i += 2;
+      continue;
+    }
     push({
       type: "paragraph",
       text:
@@ -1338,6 +1505,12 @@ export function parseDoc(
  * with, when the caller knows where it sits in its list.
  */
 export function serializeBlock(b: DocBlock, number?: number | null): string {
+  if (
+    b.type === "code" &&
+    b.lang === FRONTMATTER_LANG &&
+    isFrontmatterSource(b.text)
+  )
+    return b.text;
   return blockMarkdown(b, number, false);
 }
 
@@ -1348,7 +1521,7 @@ function blockMarkdown(
 ): string {
   switch (b.type) {
     case "heading":
-      return `${"#".repeat(b.level)} ${b.text}`;
+      return `${"#".repeat(b.level)} ${headingSource(b.text)}`;
     case "paragraph":
       return paragraphNeedsEscape(b.text, anchors) ? `\\${b.text}` : b.text;
     case "bullet":
@@ -1393,8 +1566,15 @@ export function docLines(
   const layout = listLayout(blocks);
   return blocks.map((b, i) => {
     let line =
-      "    ".repeat(layout[i].depth) +
-      blockMarkdown(b, layout[i].number, anchors);
+      i === 0 &&
+      b.type === "code" &&
+      b.lang === FRONTMATTER_LANG &&
+      isFrontmatterSource(b.text)
+        ? b.text
+        : "    ".repeat(layout[i].depth) +
+          blockMarkdown(b, layout[i].number, anchors);
+    // A leading thematic rule must not become metadata when another rule follows.
+    if (i === 0 && b.type === "divider") line = "***";
     if (!anchors) return line;
     const own = ownLineAnchor(b);
     if (!own) line = line.replace(ANCHOR_LIKE, "$1\\$2");
@@ -2063,7 +2243,7 @@ export function setTodoSource(source: string, done: boolean): string {
  */
 export const BLOCK_KINDS: {
   type: DocBlockType;
-  level?: 1 | 2 | 3;
+  level?: DocHeadingLevel;
   label: string;
   hint: string;
   shorthand: string;
@@ -2090,6 +2270,13 @@ export const BLOCK_KINDS: {
     hint: "Small title",
     shorthand: "### ",
   },
+  ...([4, 5, 6] as const).map((level) => ({
+    type: "heading" as const,
+    level,
+    label: `Heading ${level}`,
+    hint: "Nested section title",
+    shorthand: `${"#".repeat(level)} `,
+  })),
   {
     type: "bullet",
     label: "Bulleted list",
@@ -2152,7 +2339,7 @@ export const blockText = (block: DocBlock): string =>
 export function blockToType(
   block: DocBlock,
   type: DocBlockType,
-  level: 1 | 2 | 3 = 2,
+  level: DocHeadingLevel = 2,
 ): DocBlock {
   const text = blockText(block);
   // A list line turned into another kind of list line stays where it was.
@@ -2502,8 +2689,11 @@ export type AssistantSource = (
  * is plain text in a small box, and there `**unchanged**` reads as two stars,
  * a word and two more stars. This is what to show there.
  */
-export const plainText = (text: string): string =>
-  parseDocInline(text)
+export const plainText = (
+  text: string,
+  references?: ReadonlyMap<string, string>,
+): string =>
+  parseDocInline(text, references)
     .map((run) =>
       run.footnote ? "" : run.math ? mathToText(run.text) : run.text,
     )

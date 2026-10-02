@@ -20,6 +20,7 @@ import {
   embedText,
   emptyTable,
   foldableHeadings,
+  docReferenceLinks,
   footnoteNumbers,
   footnoteTexts,
   highlightCards,
@@ -2472,6 +2473,7 @@ export function DocEditor({
   /** Footnote numbers and words; a marker's words show when tapped. */
   const footnotes = useMemo(
     () => ({
+      references: docReferenceLinks(blocks),
       numbers: footnoteNumbers(blocks),
       texts: footnoteTexts(blocks),
       onShow: (n: string, words: string) =>

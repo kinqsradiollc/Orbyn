@@ -472,3 +472,13 @@ fixture and real PDF font/bounds checks are recorded in
 `docs/reviews/evidence/diagram-readability.md`. Both clients' exports use this
 server rendering path. Editor/native preview parity and complete D1/U1 remain
 open; candidate needs full exact-head qualification before main promotion.
+
+### Scoped Markdown parity qualification — 3 October 2026
+
+Six-level headings and page-scoped references must work across schemas, saved
+pages, private read projections, comment positions, Word/clipboard exports and
+both clients. Reference definitions remain editable Markdown; HTML does not
+show them as page text. The scoped candidate preserves the existing publication
+and diagram changes on main1100ca98. See
+`docs/reviews/evidence/markdown-parity.md` for evidence and remaining acceptance
+gates. This does not close D1 or the wider UI scope.

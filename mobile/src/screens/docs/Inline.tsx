@@ -47,7 +47,8 @@ export function Inline({
   marks?: Mark[];
 }) {
   // A #tag stands apart from the words around it, on a quiet ground.
-  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
+  const { references } = useContext(FootnoteContext);
+  const runs: TaggedRun[] = parseDocInline(text, references).flatMap((run) =>
     tagRuns(run, text),
   );
   const notes = useContext(FootnoteContext);

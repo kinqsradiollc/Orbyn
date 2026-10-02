@@ -42,6 +42,7 @@ import {
   emptyTable,
   foldableHeadings,
   foldedLines,
+  docReferenceLinks,
   footnoteNumbers,
   footnoteTexts,
   highlightCards,
@@ -2469,7 +2470,11 @@ export function DocEditor({
   const markdown = useMemo(() => serializeDoc(blocks), [blocks]);
   /** Footnote numbers and words, for markers and the notes' lines. */
   const footnotes = useMemo(
-    () => ({ numbers: footnoteNumbers(blocks), texts: footnoteTexts(blocks) }),
+    () => ({
+      references: docReferenceLinks(blocks),
+      numbers: footnoteNumbers(blocks),
+      texts: footnoteTexts(blocks),
+    }),
     [blocks],
   );
   /** Lines hidden under folded headings. */
