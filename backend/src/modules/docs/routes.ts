@@ -70,7 +70,7 @@ import {
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { syncSavedPages } from "../study/service.js";
 import { docToDocx } from "./docx.js";
-import { exportRenderedPdf } from "./pdf-client.js";
+import { exportRenderedPdf, exportRenderedHtml } from "./pdf-client.js";
 import { exportImages } from "./export-images.js";
 import { claimToken } from "../imports/tokens.js";
 import { visibleItems } from "../../lib/visibility.js";
@@ -292,7 +292,7 @@ export async function docRoutes(app: FastifyInstance) {
           : format === "pdf"
             ? await exportRenderedPdf(html!, r, reply)
             : format === "html"
-              ? html!
+              ? await exportRenderedHtml(html!, r, reply)
               : format === "txt"
                 ? docToText(title, blocks)
                 : docToMarkdown(title, blocks);

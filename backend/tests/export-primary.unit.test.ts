@@ -105,6 +105,7 @@ function fixture({
       env: { APP_URL: "https://fixture.invalid" },
       docToDocx: render,
       exportRenderedPdf: render,
+      exportRenderedHtml: render,
       exportImages: async (db: unknown) => {
         dependencies.push(db);
         return { fileUrl: () => null, revalidate: async () => {} };

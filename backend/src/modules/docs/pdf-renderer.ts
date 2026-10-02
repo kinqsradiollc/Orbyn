@@ -20,7 +20,7 @@ figure { break-inside: avoid; margin: 16px 0; } figure img { max-width: 100%; ma
 `;
 
 /** Add print-only bounds and deny resource loads before any document content is parsed. */
-export function pdfPrintHtml(html: string): string {
+function snapshotHtml(html: string, print: boolean): string {
   if (Buffer.byteLength(html, "utf8") > MAX_HTML_BYTES)
     throw new Error("This document is too large to print.");
   const start = /<html\b[^>]*>/i.exec(html);
@@ -28,9 +28,42 @@ export function pdfPrintHtml(html: string): string {
   const at = start.index + start[0].length;
   return (
     html.slice(0, at) +
-    `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}"><style>${PRINT_STYLE}</style>` +
+    `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}"><style>${print ? PRINT_STYLE : `figure img { max-width: 100%; height: auto; } @media print { ${PRINT_STYLE} }`}</style>` +
     html.slice(at)
   );
+}
+
+/** Bound the PDF print layout and deny resource loads before parsing content. */
+export const pdfPrintHtml = (html: string): string => snapshotHtml(html, true);
+/** Portable script-free HTML preserves its screen layout and adds bounded print styles. */
+export const portableSnapshotHtml = (html: string): string =>
+  snapshotHtml(html, false);
+
+export type DocumentRendererOptions = {
+  html: string;
+  executable: string;
+  signal?: AbortSignal;
+  open?: (executable: string, signal: AbortSignal) => Promise<PdfBrowser>;
+  runtime?: () => Promise<string>;
+};
+
+/** Print only a server-authorized snapshot with current permission/revision fences. */
+export async function renderPdfSnapshot(
+  options: DocumentRendererOptions,
+): Promise<Buffer> {
+  const result = await renderDocumentSnapshot(options, "pdf");
+  if (!Buffer.isBuffer(result)) throw new Error("Invalid document PDF result.");
+  return result;
+}
+
+/** Return inert rendered HTML; the caller must recheck current authority before delivery. */
+export async function renderHtmlSnapshot(
+  options: DocumentRendererOptions,
+): Promise<string> {
+  const result = await renderDocumentSnapshot(options, "html");
+  if (typeof result !== "string")
+    throw new Error("Invalid document HTML result.");
+  return result;
 }
 
 const active = (signal: AbortSignal) => {
@@ -75,23 +108,20 @@ async function document(
 }
 
 /** Print only a server-authorized HTML snapshot; callers must enforce document permissions/revision first. */
-export async function renderPdfSnapshot({
-  html,
-  executable,
-  signal = new AbortController().signal,
-  open = openPdfBrowser,
-  runtime = () =>
-    readFile(
-      new URL("../../../assets/mermaid-runtime.json", import.meta.url),
-      "utf8",
-    ).then((value) => JSON.parse(value).html as string),
-}: {
-  html: string;
-  executable: string;
-  signal?: AbortSignal;
-  open?: (executable: string, signal: AbortSignal) => Promise<PdfBrowser>;
-  runtime?: () => Promise<string>;
-}): Promise<Buffer> {
+async function renderDocumentSnapshot(
+  {
+    html,
+    executable,
+    signal = new AbortController().signal,
+    open = openPdfBrowser,
+    runtime = () =>
+      readFile(
+        new URL("../../../assets/mermaid-runtime.json", import.meta.url),
+        "utf8",
+      ).then((value) => JSON.parse(value).html as string),
+  }: DocumentRendererOptions,
+  format: "pdf" | "html",
+): Promise<Buffer | string> {
   active(signal);
   if (Buffer.byteLength(html, "utf8") > MAX_HTML_BYTES)
     throw new Error("This document is too large to print.");
@@ -173,16 +203,18 @@ export async function renderPdfSnapshot({
     active(signal);
     active(controller.signal);
     const output = await page(browser);
-    await document(
-      browser,
-      output,
-      pdfPrintHtml(
-        html.replace(
-          /<details><summary>Diagram source<\/summary>/g,
-          "<details open><summary>Diagram source</summary>",
-        ),
-      ),
-    );
+    const snapshot =
+      format === "pdf"
+        ? pdfPrintHtml(
+            html.replace(
+              /<details><summary>Diagram source<\/summary>/g,
+              "<details open><summary>Diagram source</summary>",
+            ),
+          )
+        : portableSnapshotHtml(html);
+    if (Buffer.byteLength(snapshot, "utf8") > MAX_HTML_BYTES)
+      throw new Error("The rendered document is too large.");
+    await document(browser, output, snapshot);
     const ready = await browser.command<{
       result?: { value?: boolean };
       exceptionDetails?: unknown;
@@ -199,6 +231,7 @@ export async function renderPdfSnapshot({
       throw new Error("A document image could not be printed.");
     active(signal);
     active(controller.signal);
+    if (format === "html") return snapshot;
     const result = await browser.command<{ data: string }>(
       "Page.printToPDF",
       {
