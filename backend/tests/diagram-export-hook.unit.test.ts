@@ -42,6 +42,9 @@ function fixture(native: boolean) {
       index++;
       return callback;
     },
+    useLayoutEffect(effect: () => (() => void) | undefined, deps: unknown[]) {
+      hooks.useEffect(effect, deps);
+    },
     useEffect(effect: () => (() => void) | undefined, deps: unknown[]) {
       const slot = index++;
       if (!slots[slot] || deps.some((value, i) => value !== slots[slot][i])) {

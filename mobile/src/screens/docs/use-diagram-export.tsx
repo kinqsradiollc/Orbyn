@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { createDiagramExportBridge } from "@orbyn/core";
 import { DiagramSurface } from "../../components/DiagramSurface";
@@ -9,7 +9,8 @@ export function useDiagramExport(scope: string) {
   const bridge = useRef<ReturnType<typeof createDiagramExportBridge> | null>(
     null,
   );
-  useEffect(() => {
+  // Cancel the old scope before a new document/account can paint or hand off a file.
+  useLayoutEffect(() => {
     setRequest(undefined);
     // Keep the isolated engine mounted between diagrams in a batch.
     const current = createDiagramExportBridge((next) => {

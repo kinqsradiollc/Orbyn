@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createDiagramExportBridge } from "@orbyn/core";
 
 /** Export through an opaque local frame; closing the editor cancels active and queued work. */
@@ -11,7 +17,8 @@ export function useDiagramExport(scope: string) {
   );
   const latest = useRef(request);
   latest.current = request;
-  useEffect(() => {
+  // Cancel the old scope before a new document/account can paint or hand off a file.
+  useLayoutEffect(() => {
     setRequest(undefined);
     // Keep the isolated engine mounted between diagrams in a batch.
     const current = createDiagramExportBridge((next) => {

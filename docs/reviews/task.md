@@ -2236,3 +2236,13 @@ and full U1 gates. Full goal remains active; no deployment/cleanup.
 - Research and presentation decisions recorded in ADR; reflection/collaboration remain open acceptance gates.
 - Home checks13/13 pass. Web test-server visual review and native screenshot/interaction acceptance remain outstanding.
 - Docs export save guards are separate uncommitted work; do not stage them with this Home checkpoint. Full ADR remains active; no deployment or cleanup.
+
+### Save-confirmed file exports — 3 October 2026
+
+- Main is ba08edb: optional export version API PR156 merged after all four exact-head CI jobs passed. Main user-owned changes remain preserved.
+- Source Home checkpoint5b5db78 is pushed; CI37045309733 is pending. Home13/13, all workspace types and production build pass.
+- Both editors now require a dedicated confirmed save receipt before all editable file/share actions. Structural equality allows server-assigned IDs and avoids native array-identity false failures. Suggesting/read-only actions use the confirmed page.
+- Guard tests49/49 pass in /tmp/orbyn-doc-export-current-focused.log. Actual functions cover save failure/offline/CRDT, typing during save, stale page completions, close cancellation and all formats. Native byte conversion and share availability cancellation, web NotAllowedError fallback cancellation and both share menu paths are covered.
+- Scope cancellation uses layout teardown. Latest combined typecheck/build passed in /tmp/orbyn-home-muse-{types,build}.log; those checks include the save guards.
+- Commit this guard checkpoint, then run the full suite against an isolated marked test database on the frozen source. Do not call previous2402/2402 a current-head result. Reconcile mainba08edb after qualification; retain both append-only document histories.
+- Full ADR remains active: PDF math/diagrams, server/publication parity, native share/visual acceptance, complete D1/U1/model/plugin/runtime acceptance remain open. No deployment or cleanup.

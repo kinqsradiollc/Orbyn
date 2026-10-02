@@ -118,12 +118,13 @@ import {
   ticksTakenFrom,
   type Doc,
   type DocBlock,
+  prepareDocExport,
   type Favourite,
 } from "@orbyn/core";
 import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
 import { useConfirm } from "../../components/Confirm";
-import { SharePageButton } from "../../components/ShareButton";
+import { SharePageButton, sharePageFile } from "../../components/ShareButton";
 import { usePageCommands } from "../../app/page-commands";
 import { copyLink } from "../../lib/links";
 import type { DocNews } from "@orbyn/api-client";
@@ -432,6 +433,14 @@ export function DocEditor({
    * tells an edit made here apart from one that arrived from somewhere else.
    */
   const base = useRef<DocBlock[]>(doc.content);
+  const exportDocId = useRef(doc.id);
+  exportDocId.current = doc.id;
+  const exportSaved = useRef({
+    id: doc.id,
+    title: doc.title,
+    content: doc.content,
+    version: doc.version,
+  });
   /** Current state, readable from callbacks that were made earlier. */
   const live = useRef({ title: doc.title, blocks: [] as DocBlock[] });
   /**
@@ -666,6 +675,13 @@ export function DocEditor({
     version.current = doc.version;
     ticksFrom.current = doc.version;
     base.current = doc.content;
+    if (doc.id === exportDocId.current)
+      exportSaved.current = {
+        id: doc.id,
+        title: doc.title,
+        content: doc.content,
+        version: doc.version,
+      };
     dirty.current = false;
     setSave("idle");
     setNote("");
@@ -728,6 +744,13 @@ export function DocEditor({
       : [{ type: "paragraph", text: "" } as DocBlock];
     version.current = theirs.version;
     base.current = theirs.content;
+    if (theirs.id === exportDocId.current)
+      exportSaved.current = {
+        id: theirs.id,
+        title: theirs.title,
+        content: theirs.content,
+        version: theirs.version,
+      };
     setBlocks(next);
     // The title is one field; whoever saved last has it.
     if (theirs.title !== live.current.title) setTitle(theirs.title);
@@ -826,6 +849,13 @@ export function DocEditor({
           );
           version.current = saved.version;
           base.current = saved.content;
+          if (saved.id === exportDocId.current)
+            exportSaved.current = {
+              id: saved.id,
+              title: saved.title,
+              content: saved.content,
+              version: saved.version,
+            };
           dirty.current =
             live.current.title !== nextTitle ||
             live.current.blocks !== nextBlocks;
@@ -855,6 +885,13 @@ export function DocEditor({
               );
               version.current = saved.version;
               base.current = saved.content;
+              if (saved.id === exportDocId.current)
+                exportSaved.current = {
+                  id: saved.id,
+                  title: saved.title,
+                  content: saved.content,
+                  version: saved.version,
+                };
               dirty.current =
                 live.current.title !== mergedTitle ||
                 live.current.blocks !== merged;
@@ -1004,6 +1041,13 @@ export function DocEditor({
         version.current = theirs.version;
         ticksFrom.current = theirs.version;
         base.current = theirs.content;
+        if (theirs.id === exportDocId.current)
+          exportSaved.current = {
+            id: theirs.id,
+            title: theirs.title,
+            content: theirs.content,
+            version: theirs.version,
+          };
         tagBase.current = theirs.content;
         setTags(theirs.tags ?? []);
         setTitle(theirs.title);
@@ -1218,6 +1262,13 @@ export function DocEditor({
           version.current = saved.version;
           ticksFrom.current = saved.version;
           base.current = saved.content;
+          if (saved.id === exportDocId.current)
+            exportSaved.current = {
+              id: saved.id,
+              title: saved.title,
+              content: saved.content,
+              version: saved.version,
+            };
           setBlocks(saved.content);
           onChanged(saved);
         }
@@ -1533,6 +1584,13 @@ export function DocEditor({
       version.current = updated.version;
       ticksFrom.current = updated.version;
       base.current = updated.content;
+      if (updated.id === exportDocId.current)
+        exportSaved.current = {
+          id: updated.id,
+          title: updated.title,
+          content: updated.content,
+          version: updated.version,
+        };
       setSavedAt(updated.updated_at);
       onChanged(updated);
       if (!dirty.current && live.current.blocks === sent) {
@@ -2106,6 +2164,13 @@ export function DocEditor({
       version.current = source.version;
       ticksFrom.current = source.version;
       base.current = source.content;
+      if (source.id === exportDocId.current)
+        exportSaved.current = {
+          id: source.id,
+          title: source.title,
+          content: source.content,
+          version: source.version,
+        };
       dirty.current = false;
       setFocused(null);
       setBlocks(source.content);
@@ -2697,12 +2762,41 @@ export function DocEditor({
    * from here are the same file.
    */
   const diagramExport = useDiagramExport(`${userId ?? ""}:${doc.id}`);
+  const prepareFileExport = (signal: AbortSignal) =>
+    prepareDocExport({
+      signal,
+      editable: canWrite && !suggesting,
+      flush: async () => {
+        if (canWrite && !suggesting) await flush();
+        else await saveQueue.current;
+      },
+      current: () => ({
+        id: exportDocId.current,
+        title: live.current.title,
+        content: live.current.blocks,
+      }),
+      saved: () => exportSaved.current,
+    });
+  const shareFile = async (format: "md" | "pdf") => {
+    const signal = diagramExport.signal();
+    const expectedVersion = await prepareFileExport(signal);
+    await sharePageFile(
+      doc.id,
+      format,
+      exportSaved.current.title || "Untitled",
+      { version: expectedVersion, signal },
+    );
+  };
+
   const download = async (format: ExportFormat) => {
     setDownloadMenu(false);
     toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
     try {
       const signal = diagramExport.signal();
-      const { blob, name } = await client.exportDoc(doc.id, format);
+      const expectedVersion = await prepareFileExport(signal);
+      const { blob, name } = await client.exportDoc(doc.id, format, {
+        version: expectedVersion,
+      });
       const exported =
         format === "html"
           ? new Blob(
@@ -3033,6 +3127,7 @@ export function DocEditor({
               docId={doc.id}
               title={title || "Untitled"}
               onError={report}
+              onShareFile={shareFile}
             />
             <span className="doc-download">
               <button
@@ -4112,6 +4207,13 @@ export function DocEditor({
                 version.current = restored.version;
                 ticksFrom.current = restored.version;
                 base.current = restored.content;
+                if (restored.id === exportDocId.current)
+                  exportSaved.current = {
+                    id: restored.id,
+                    title: restored.title,
+                    content: restored.content,
+                    version: restored.version,
+                  };
                 dirty.current = false;
                 setTitle(restored.title);
                 setBlocks(

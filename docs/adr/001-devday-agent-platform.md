@@ -611,3 +611,23 @@ Thirteen Home content/interaction checks pass, including opening/closing the gui
 on both clients, separate profile access and preserving all character presets.
 These checks do not establish visual acceptance: the user will review web on the
 test server; native screenshots/interaction acceptance still remain required.
+
+### Confirmed revision on editor file actions — 3 October 2026
+
+Both editors keep a dedicated server-confirmed export snapshot, separate from the
+optimistic CRDT merge baseline. Editable file actions flush once, then compare
+the current title/content structurally with that receipt. Offline-only or caught
+save failures, newer typing during the save, invalid revisions and changed page
+identity stop the export. A successful action sends the confirmed version to the
+permission-filtered API; it never silently exports a newer remote revision.
+Readers and suggestion mode export the saved page without applying an unapproved
+draft. Every format and Markdown/PDF share entry uses this guard.
+
+Editor/account scope teardown cancels before a new scope paints; native file
+conversion and sharing availability recheck cancellation before creating or
+handing off files. Web sharing rechecks before its download fallback.
+Forty-nine focused checks exercise shared equality, actual editor save/export
+functions, share menus, native file actions and renderer scope teardown. Workspace
+types and production build pass on the combined source. Full current-head local
+qualification, PDF rendered math/diagrams, publication/server rendering and actual
+native file/share interaction remain required. No full D1/U1 acceptance is claimed.

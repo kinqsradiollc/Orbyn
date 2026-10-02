@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import * as core from "@orbyn/core";
 import {
   EXPORT_FORMATS,
   EXPORT_LABELS,
@@ -35,6 +36,7 @@ function mount(
   platform: string,
   options: {
     available?: boolean;
+    availability?: Promise<boolean>;
     blob?: Blob;
     exportError?: Error;
     clickError?: Error;
@@ -45,12 +47,25 @@ function mount(
 ) {
   const exports: {
     formatsHere(): ExportFormat[];
-    downloadDoc(id: string, format: ExportFormat): Promise<void>;
-    saveFile(name: string, data: Blob | string, type: string): Promise<void>;
+    downloadDoc(
+      id: string,
+      format: ExportFormat,
+      options?: {
+        version?: number;
+        signal?: AbortSignal;
+        render?: (source: string) => Promise<string>;
+      },
+    ): Promise<void>;
+    saveFile(
+      name: string,
+      data: Blob | string,
+      type: string,
+      signal?: AbortSignal,
+    ): Promise<void>;
     downloadLabel(format: ExportFormat): string;
     takeAwayLabel(): string;
   } = {} as never;
-  const requests: { id: string; format: ExportFormat }[] = [];
+  const requests: { id: string; format: ExportFormat; version?: number }[] = [];
   const files: {
     name: string;
     bytes?: Uint8Array | string;
@@ -123,12 +138,22 @@ function mount(
             },
           },
         };
-      if (id === "@orbyn/core") return { EXPORT_FORMATS, EXPORT_LABELS };
+      if (id === "@orbyn/core") return core;
       if (id === "./api")
         return {
           client: {
-            async exportDoc(id: string, format: ExportFormat) {
-              requests.push({ id, format });
+            async exportDoc(
+              id: string,
+              format: ExportFormat,
+              revision?: { version?: number },
+            ) {
+              requests.push({
+                id,
+                format,
+                ...(revision?.version === undefined
+                  ? {}
+                  : { version: revision.version }),
+              });
               if (options.exportError) throw options.exportError;
               return {
                 name: `Page.${format}`,
@@ -145,7 +170,7 @@ function mount(
       if (id === "expo-sharing")
         return {
           async isAvailableAsync() {
-            return options.available ?? true;
+            return options.availability ?? options.available ?? true;
           },
           async shareAsync(
             uri: string,
@@ -236,7 +261,7 @@ test("native cache file names cannot contain path separators", async () => {
 });
 
 test("API authorization and rate-limit errors reach the caller without saving a file", async () => {
-  for (const status of [400, 401, 403, 404, 429]) {
+  for (const status of [400, 401, 403, 404, 409, 429]) {
     const error = Object.assign(new Error("Export failed"), { status });
     const f = mount("ios", { exportError: error });
     await assert.rejects(
@@ -285,4 +310,64 @@ test("native string exports keep the text-share fallback when file sharing is un
   await f.api.saveFile("Page.md", "# A page", "text/markdown");
   assert.equal(f.texts[0].message, "# A page");
   assert.equal(f.texts[0].title, "Page.md");
+});
+
+test("native HTML export carries the confirmed version and shares inert rendered diagrams", async () => {
+  const html = docToHtml(
+    "Page",
+    [{ type: "code", lang: "mermaid", text: "graph TD; A-->B" }],
+    { diagramSources: true },
+  );
+  const f = mount("ios", { blob: new Blob([html], { type: "text/html" }) });
+  await f.api.downloadDoc("page-id", "html", {
+    version: 7,
+    signal: new AbortController().signal,
+    render: async () => '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+  });
+  assert.equal(f.requests[0].version, 7);
+  assert.match(String(f.files[0].bytes), /data:image\/svg\+xml/);
+  assert.match(String(f.files[0].bytes), /Diagram source/);
+  assert.equal(f.shared.length, 1);
+});
+
+test("native cancellation during blob conversion creates no stale file", async () => {
+  let complete!: (value: ArrayBuffer) => void;
+  const blob = new Blob(["PDF"]);
+  blob.arrayBuffer = () =>
+    new Promise<ArrayBuffer>((resolve) => {
+      complete = resolve;
+    });
+  const controller = new AbortController();
+  const f = mount("ios");
+  const pending = f.api.saveFile(
+    "Page.pdf",
+    blob,
+    "application/pdf",
+    controller.signal,
+  );
+  controller.abort();
+  complete(new ArrayBuffer(3));
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(f.files.length, 0);
+  assert.equal(f.shared.length, 0);
+});
+
+test("native cancellation while checking share availability opens no share sheet", async () => {
+  let complete!: (value: boolean) => void;
+  const availability = new Promise<boolean>((resolve) => {
+    complete = resolve;
+  });
+  const controller = new AbortController();
+  const f = mount("android", { availability });
+  const pending = f.api.saveFile(
+    "Page.html",
+    "Saved page",
+    "text/html",
+    controller.signal,
+  );
+  controller.abort();
+  complete(true);
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(f.shared.length, 0);
+  assert.equal(f.texts.length, 0);
 });

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FileDown, FileText, Link2, Share2 } from "lucide-react";
 import {
   appUrl,
+  assertDocExportActive,
   EXPORT_LABELS,
   type ExportFormat,
   type LinkTarget,
@@ -34,8 +35,13 @@ export async function sharePageFile(
   docId: string,
   format: ExportFormat,
   title: string,
+  options: { version?: number; signal?: AbortSignal } = {},
 ) {
-  const { blob, name } = await client.exportDoc(docId, format);
+  assertDocExportActive(options.signal);
+  const { blob, name } = await client.exportDoc(docId, format, {
+    version: options.version,
+  });
+  assertDocExportActive(options.signal);
   const file = new File([blob], name, {
     type: blob.type || EXPORT_LABELS[format].type,
   });
@@ -50,6 +56,7 @@ export async function sharePageFile(
       if ((e as Error)?.name !== "NotAllowedError") throw e;
     }
   }
+  assertDocExportActive(options.signal);
   const url = URL.createObjectURL(file);
   const a = document.createElement("a");
   a.href = url;
@@ -88,16 +95,20 @@ export function SharePageButton({
   docId,
   title,
   onError,
+  onShareFile,
 }: {
   docId: string;
   title: string;
   onError: (e: unknown) => void;
+  onShareFile?: (format: "md" | "pdf") => Promise<void>;
 }) {
   const [menu, setMenu] = useState<DOMRect | null>(null);
   if (!canShareHere()) return null;
   const run = (go: () => Promise<void>) => {
     setMenu(null);
-    void go().catch(onError);
+    void go().catch((error) => {
+      if (!closed(error)) onError(error);
+    });
   };
   return (
     <>
@@ -133,14 +144,26 @@ export function SharePageButton({
             <button
               className="doc-menu-item"
               role="menuitem"
-              onClick={() => run(() => sharePageFile(docId, "md", title))}
+              onClick={() =>
+                run(() =>
+                  onShareFile
+                    ? onShareFile("md")
+                    : sharePageFile(docId, "md", title),
+                )
+              }
             >
               <FileText size={15} aria-hidden="true" /> Markdown file
             </button>
             <button
               className="doc-menu-item"
               role="menuitem"
-              onClick={() => run(() => sharePageFile(docId, "pdf", title))}
+              onClick={() =>
+                run(() =>
+                  onShareFile
+                    ? onShareFile("pdf")
+                    : sharePageFile(docId, "pdf", title),
+                )
+              }
             >
               <FileDown size={15} aria-hidden="true" /> PDF file
             </button>

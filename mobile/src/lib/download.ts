@@ -3,6 +3,7 @@ import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import {
   EXPORT_FORMATS,
+  assertDocExportActive,
   EXPORT_LABELS,
   renderHtmlDiagrams,
   type ExportFormat,
@@ -24,7 +25,9 @@ export async function saveFile(
   name: string,
   data: Blob | string,
   mimeType: string,
+  signal?: AbortSignal,
 ): Promise<void> {
+  assertDocExportActive(signal);
   if (Platform.OS === "web") {
     const blob =
       typeof data === "string" ? new Blob([data], { type: mimeType }) : data;
@@ -41,12 +44,15 @@ export async function saveFile(
   }
   // Keep native dependencies in Metro's initial module graph; deferred
   // dependency URLs can resolve incorrectly in a linked workspace preview.
+  const bytes =
+    typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer());
+  assertDocExportActive(signal);
   const file = new File(Paths.cache, name.replace(/[\\/:*?"<>|]+/g, "-"));
   file.create({ overwrite: true });
-  file.write(
-    typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer()),
-  );
-  if (await Sharing.isAvailableAsync())
+  file.write(bytes);
+  const available = await Sharing.isAvailableAsync();
+  assertDocExportActive(signal);
+  if (available)
     await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: name });
   else if (typeof data === "string")
     await Share.share({ title: name, message: data });
@@ -60,24 +66,30 @@ export async function downloadDoc(
   docId: string,
   format: ExportFormat,
   diagram?: {
-    render: (source: string) => Promise<string>;
-    signal: AbortSignal;
+    render?: (source: string) => Promise<string>;
+    signal?: AbortSignal;
+    version?: number;
   },
 ): Promise<void> {
-  const { blob, name } = await client.exportDoc(docId, format);
+  assertDocExportActive(diagram?.signal);
+  const { blob, name } = await client.exportDoc(docId, format, {
+    version: diagram?.version,
+  });
   const exported =
-    format === "html" && diagram
+    format === "html" && diagram?.render
       ? await renderHtmlDiagrams(
           await blob.text(),
           diagram.render,
           diagram.signal,
         )
       : blob;
-  if (diagram?.signal.aborted)
-    throw Object.assign(new Error("Document export was cancelled."), {
-      name: "AbortError",
-    });
-  await saveFile(name, exported, blob.type || EXPORT_LABELS[format].type);
+  assertDocExportActive(diagram?.signal);
+  await saveFile(
+    name,
+    exported,
+    blob.type || EXPORT_LABELS[format].type,
+    diagram?.signal,
+  );
 }
 
 /** What the one control that reveals the shapes is called. */
