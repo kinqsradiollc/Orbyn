@@ -962,3 +962,38 @@ CI **36990759723** currently in progress on that exact head. Logs
 Do not edit/restart the candidate while these handles are live. Poll the same
 handles; after terminal success inspect current main and the tested merge tree
 before merging. No main merge, deployment or goal completion is claimed here.
+
+## Plugin recipient reconciliation — 2 October 2026
+
+Related plugin worktree `/Users/anhdang/.codex/worktrees/devday-plugin-boundary/Orbyn`
+is now on **9ce1961**, merged with current main **2ba1ae2**. Resolved all eight
+overlaps: package scripts and HTTP service names retain main's separate runtime
+services; app mounts retained public plugin discovery; consent/tokens retain
+server-selected plugin recipients and recipient-specific grant lookup; plugin
+routes retain configured authentication challenges; tests retain discovery cases;
+review artifact retains main's historical integration evidence plus current gate.
+No unresolved merge entries or conflict markers remain. Root untracked node_modules
+link is preserved; backend/desktop/API-client local aliases resolve this checkout's
+own packages. Main character and all newer main code are retained.
+
+Combined diff vs main is 14 files, 508 additions/24 deletions, scoped to recipient/
+discovery, consent UI/contract, tests and review artifacts. Draft PR **#142**
+attached: https://github.com/kinqsradiollc/Orbyn/pull/142. Current **94215** terminal
+zero: **62/62** focused connector/OAuth/plugin/service/consent checks, no failures,
+skips/cancellations, 21,103 ms. Packages **8673** terminal zero. Older branch
+results are historical only and do not qualify the current combination.
+
+Exact candidate frozen while **75235** types/build/full-format pipeline and
+**19850** full backend suite run. The full suite uses a separately created fresh
+marked **orbyn_plugin_9ce1961_full_test** database, separate from focused checks
+and live scheduler qualification. CI **36991179849** verified in progress on
+**9ce1961**. Logs `/tmp/orbyn-plugin-9ce1961-{focused,types,build,format,full-tests}.log`.
+Poll the same handles; do not restart live runs or edit the plugin candidate.
+
+Scheduler **76016** is now terminal zero: all workspace types, production builds
+and full formatting passed. **75320** full suite and CI **36990759723** remain
+verified live on **9b87ce3**. Both candidates remain unmerged. Browser/native consent,
+host launch, gateway, UI resources/events and actual provider inference remain
+open plugin gates. This turn does not wire receiving authorization: typed rules,
+agent identities, reservation/dispatch and separate-worker handoff round trips
+remain next dependencies. Preserve the entire ADR and mobile parity scope.

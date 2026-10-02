@@ -141,3 +141,12 @@ the shared-task ownership guard remain. Four regression cases failed before the
 fix; all 53 focused night/runtime/ownership checks passed afterward. Isolated
 main candidate `9b87ce3` is draft PR #141 with full qualification in progress.
 It does not enable handoff dispatch or complete agent collaboration.
+
+Retained plugin recipient/discovery work is reconciled with main `2ba1ae2` in
+`9ce1961`, draft PR #142, preserving newer runtime and character changes.
+Recipient-specific consent/grant lookup, code/refresh binding, public configured
+discovery and authentication challenges remain separate from portable MCP and
+first-party sessions. All eight overlaps are resolved; 62 current focused checks
+passed. Combined full qualification is running; previous branch results do not
+qualify this tree. Actual consent/host launch, provider calls, gateway/deployment
+and plugin UI/resources/events remain required, and the candidate is unmerged.
