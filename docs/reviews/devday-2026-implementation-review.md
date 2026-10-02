@@ -1155,3 +1155,34 @@ sweeper run failed connecting before any assertion. Only our named disposable
 databases were recreated with the server-side test marker; existing orbyn_test
 and orbyn_runs_test were preserved. This is distinct from the reproduced ctid
 race and does not establish a database or Docker product fix.
+
+### Reviewed action rules and producing-source checks — 2 October 2026
+
+Scoped candidate `codex/assistant-rule-review` is based on current main `9e1a2c8`.
+Three source checkpoints (`4ec8644`, `35d186f`, `185a9d7`) applied cleanly; no
+model/settings/profile/reflection UI changes are included. This is a candidate,
+not a completed A4 implementation or deployed change.
+
+Typed action rules are revision guarded and loaded under the source grant lock.
+Deny dominates ask/allow; existing permissions and unattended hard stops remain
+upper bounds. Question/approval waiting identities remain required, and rule edits
+invalidate prior approval cards and proposal reviews. Actual Review Inbox typed
+changes and whole plans retain server-selected runtime/rule/connection authority.
+The producing durable job and current job/chat dependencies are rechecked at
+creation and approval. Unknown source coverage, missing jobs, restricted projects,
+foreign owners and mismatched runtimes hold the suggestion without applying it.
+Whole-plan action arguments cannot substitute an assistant connection or producer.
+
+Source focused checks passed **43/43**, zero failure/skip/cancellation, and fresh
+marked `orbyn_proposal_job_test` migrated from empty then passed **14/14** dedicated
+checks. Source backend types and packages passed. Initial fixture-column errors
+were corrected and the cohort rerun. These results do not qualify the combined
+main candidate: its full tests, workspace types, production build and formatting
+must pass before promotion. First-party rule editing routes/UI remain disabled.
+
+Remaining scope includes typed agent ownership, permissions/rule editing on both
+clients, reviewed source revision snapshots, notification restrictions, read and
+external effects, durable budgets/reservations, receiving handoff authorization
+and dispatch/recovery, actual model/executor and plugin acceptance, full Docs
+parity, and whole-app web/mobile/native UI verification. The full ADR remains
+active; voice/computer-use product features and speculative Decisions stay excluded.
