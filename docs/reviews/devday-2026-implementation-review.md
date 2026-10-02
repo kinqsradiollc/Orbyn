@@ -1323,3 +1323,31 @@ UI gates remain required. Preserve Orbyn palette and characters. Saved web
 preview denial remains respected; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope; the full ADR goal remains active.
+
+### Cached assistant result authority and targets — reviewed candidate, 2 October 2026
+
+Extracted only backend replay and scoped visibility code/tests from source
+c237cfb/afd8160 onto main7c08aa6, preserving current character and application
+work. Cached assistant results bind effective owner/grant/lane/job/scope/team
+role/policy/toolset/flags/trust/rule evidence. Changed or legacy-unbound authority
+holds the answer without repeating the mutation. Current producing work/container
+and recorded dependencies use effective caller scope. Typed targets and structured
+resource links recheck current visibility across the32 produced receipt families;
+synthetic receipts retain their intended Personal/team behavior. Names and set
+ordering do not change the digest. Restored access permits the original retry.
+
+Seven initial authority/producing-source regressions and two later target/scope
+regressions failed before correction. Source focused cohort passed98/98, backend
+types and scoped formatting/diff passed. Combined-CASE diagnostic was stopped for
+measured planning cost; bounded per-family queries passed persistent positive/
+foreign-owner fixtures and synthetic/team/link cases. Candidate is frozen for
+fresh full local suite, all workspace types/build/full format and current-head CI.
+Source results alone do not qualify this candidate for promotion.
+
+Original provider-read versions, nested dependency closure, concurrent source
+fences and other persisted replay paths remain open. This does not complete
+read/effect/notice policy, ownership/editor, receiving handoffs/reservations,
+real account-specific model defaults/execution, provider/embedding choices,
+plugin host acceptance, Docs/Mermaid or whole-app web/desktop/mobile UI gates.
+Preserve Orbyn palette/characters; no public rule editor, deployment or cleanup.
+The complete M1/D1/U1 and C1–C6 ADR acceptance remains active.
