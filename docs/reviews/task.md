@@ -14,14 +14,17 @@ authorized durable collaboration. Preserve the new main companion feature.
 Voice/computer-use product features and the speculative Decisions adapter stay
 excluded. Using browser/simulator tools for validation does not add them.
 No subagents are authorized. Ready tested checkpoint commits/main integration
-and pushes have general authorization; preserve concurrent ownership and do not
-accidentally publish another task's expressly unpublished companion commits.
+and pushes have explicit current authorization. The user requires checking the
+combined main state and avoiding conflicts with concurrent work. Main companion
+commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local `f875c8d`, remote last verified
-  `1a26644`. Companion `2eb34a5`/`0749e6e` is integrated locally but unpublished.
-  ADR additions are local main `454e957`, `d4db69d`, `f875c8d`. Main's user-owned
+- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `8f2e7b3`.
+  Companion and whole-app ADR updates are published. Main `f875c8d` passed
+  2,083/2,083 ordinary tests (zero fail/skip/cancel), workspace types and production
+  build. `495a359` fixes CI's missing per-service backend image tags and ADR
+  formatting; `8f2e7b3` adds the user's truthful agent availability/profile scope. Main's user-owned
   `mobile/app.json` and unrelated untracked files remain unchanged. Root `task.md`
   belongs to the companion task; do not overwrite it.
 - Model/Docs/settings worktree `/Users/anhdang/.codex/worktrees/devday-model-catalog/Orbyn`,
@@ -36,6 +39,42 @@ accidentally publish another task's expressly unpublished companion commits.
 - Plugin worktree `devday-plugin-boundary`: preserved `c6f4b03`; recipient
   OAuth/discovery UI still unmerged. Earlier frozen source `e60fb32` full 1,995
   green is scoped to that source. Main has disabled service/auth foundations.
+
+## Current runtime work — 2 October, latest
+
+Runtime foundation `69ff2d6` is committed on the model branch, not yet on main.
+Migration 206 adds immutable job lane ownership, with four interactive slots and
+separate two-slot Background/Overnight consumers. Dedicated service entry points,
+Compose/Kubernetes deployment, private readiness, shared status groups and
+notifier fallback rejection are wired. Actual worker-process tests prove one
+runtime can be killed/recovered while the other continues; idle loops make no
+provider calls. Focused 28/28 passed, log `/tmp/orbyn-runtime-focused-tests-3.log`,
+marked DB `orbyn_runtime_lanes_206_retry_test`. Separate shared status tests pass,
+workspace types pass, Compose config/Kubernetes render and shell syntax pass.
+
+Earlier focused runs failed from two test-fixture assumptions (old claim-token
+prefix, a recovery helper accidentally selecting the wrong lane). Those are
+corrected. The second failed run was stopped after its failure contaminated later
+checkpoint fixtures; it is not a passing result. No product fallback was added.
+
+Main full test log `/tmp/orbyn-main-f875c8d-release-full-tests.log`; types/build
+logs `/tmp/orbyn-main-f875c8d-types.log` and `-build.log`. Main CI `36971290485`
+for `8f2e7b3`: Docker live smoke, mobile exports and mail passed; backend/web was
+still running at last read. Production auto-deployment is disabled; pushing main
+is not production deployment. Do not claim a release or live production version.
+
+A managed worktree creation is pending for exact-main runtime qualification:
+operation `3bfb510a-1c04-4809-9f88-39cf578c62f9`, name
+`assistant-runtime-integration`, starting at main. Check its existing operation;
+do not create another. Cherry-pick `69ff2d6`, isolate package build outputs, then
+qualify that combined source before promoting it to main.
+
+Newest UI requirement is now canonical: each Daytime/Overnight profile must show
+truthful Idle/Ready/Scheduled/Working/Waiting/Paused/Unavailable/Failed state,
+last actual job activity, next trigger, recent work and outputs using the existing
+companion. Heartbeats are service availability, never last user activity. Both
+clients and native surfaces are required. No voice/computer-use features added.
+Profiles, collaboration handoffs and whole-app UX remain implementation work.
 
 ## Current qualification
 
