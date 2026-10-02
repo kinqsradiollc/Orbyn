@@ -7,10 +7,77 @@ import {
   docFoldsForTarget,
   blocksHtml,
   docToHtml,
+  appPath,
+  appLinkFragment,
+  parseAppLink,
   type DocBlock,
 } from "@orbyn/core";
+import {
+  deepLinkOf,
+  deepLinkOfUrl,
+  deepLinkPath,
+  fromAppLink,
+} from "../../desktop/src/app/deep-link.js";
 
 const id = "0b7f6d1e-3c1a-4f7e-9d59-2f0a4b6c8e11";
+
+test("Unicode and long heading fragments round-trip through mobile and desktop app links", () => {
+  for (const block of [
+    "résumé",
+    "研究结果",
+    "re\u0301sume\u0301",
+    "heading-" + "a".repeat(100),
+  ]) {
+    const path = appPath({ kind: "doc", id, block });
+    const url = new URL(path, "https://notes.example.test");
+    const mobile = { kind: "doc" as const, id, block };
+    const desktop = { kind: "doc" as const, id, block };
+    assert.equal(appLinkFragment(url.hash), block);
+    assert.deepEqual(parseAppLink(url.href), mobile);
+    assert.deepEqual(parseAppLink(`orbyn://doc/${id}${url.hash}`), mobile);
+    assert.deepEqual(deepLinkOf(url.pathname, url.hash), desktop);
+    assert.deepEqual(deepLinkOfUrl(url.href), desktop);
+    assert.deepEqual(fromAppLink(mobile), desktop);
+    assert.equal(deepLinkPath(desktop), path);
+    const destination = docLinkDestination(path, url.origin);
+    assert.equal(destination?.kind, "app");
+    assert.deepEqual(
+      parseAppLink(destination?.kind === "app" ? destination.url : ""),
+      mobile,
+    );
+  }
+});
+
+test("app heading fragments remain bounded and reject malformed or unsafe forms", () => {
+  for (const hash of [
+    "#",
+    "#%ZZ",
+    "#%00",
+    "#not%20a%20line",
+    "#%2Fpath",
+    "#" + "a".repeat(513),
+    "#%ED%A0%80",
+  ]) {
+    assert.equal(appLinkFragment(hash), null, hash);
+    assert.deepEqual(deepLinkOf(`/app/doc/${id}`, hash), {
+      kind: "doc",
+      id,
+      block: null,
+    });
+    assert.deepEqual(
+      parseAppLink(`https://notes.example.test/app/doc/${id}${hash}`),
+      { kind: "doc", id },
+    );
+  }
+  for (const block of [
+    "not a line",
+    "a".repeat(513),
+    "bad\nheading",
+    "unsafe#fragment",
+  ]) {
+    assert.equal(appPath({ kind: "doc", id, block }), `/app/doc/${id}`);
+  }
+});
 test("document links resolve local app routes and external relative resources safely", () => {
   const origin = "https://notes.example.test";
   assert.deepEqual(docLinkDestination(`/app/doc/${id}#b1`, origin), {
