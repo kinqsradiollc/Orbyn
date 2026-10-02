@@ -248,3 +248,91 @@ test("a future-dated signature remains replay-protected for its entire validity 
     await app.close();
   }
 });
+
+test("HTML service binds signatures to output format and protects query-string routes", async () => {
+  const portable =
+    '<!doctype html><html><meta http-equiv="Content-Security-Policy" content="default-src none"><p>Rendered output</p></html>';
+  let runs = 0;
+  const app = buildPdfService({
+    key,
+    executable: "fixture",
+    render: async () => pdf,
+    renderHtml: async ({ html: value }) => {
+      assert.equal(value, html);
+      runs++;
+      return portable;
+    },
+  });
+  const send = (url: string, headers: ReturnType<typeof pdfRequestHeaders>) =>
+    app.inject({ method: "POST", url, payload: html, headers });
+  try {
+    assert.equal(
+      (await send("/render/html", {} as ReturnType<typeof pdfRequestHeaders>))
+        .statusCode,
+      401,
+    );
+    assert.equal(
+      (await send("/render/html", pdfRequestHeaders(html, key))).statusCode,
+      401,
+    );
+    const htmlSignature = pdfRequestHeaders(
+      html,
+      key,
+      Date.now(),
+      undefined,
+      "html",
+    );
+    assert.equal((await send("/render", htmlSignature)).statusCode, 401);
+    const good = await send("/render/html?extra=ignored", htmlSignature);
+    assert.equal(good.statusCode, 200, good.body);
+    assert.match(String(good.headers["content-type"]), /text\/html/);
+    assert.equal(good.body, portable);
+    assert.equal((await send("/render/html", htmlSignature)).statusCode, 409);
+    assert.equal(runs, 1);
+  } finally {
+    await app.close();
+  }
+});
+
+test("PDF and HTML share one bounded service concurrency pool", async () => {
+  let finish: (value: Buffer) => void = () => {};
+  let began: () => void = () => {};
+  const started = new Promise<void>((resolve) => {
+    began = resolve;
+  });
+  let htmlRuns = 0;
+  const app = buildPdfService({
+    key,
+    executable: "fixture",
+    limit: 1,
+    render: async () => {
+      began();
+      return new Promise<Buffer>((resolve) => {
+        finish = resolve;
+      });
+    },
+    renderHtml: async () => {
+      htmlRuns++;
+      return html;
+    },
+  });
+  const pending = inject(app).then((value) => value);
+  try {
+    await started;
+    const busy = await app.inject({
+      method: "POST",
+      url: "/render/html",
+      payload: html,
+      headers: pdfRequestHeaders(html, key, Date.now(), undefined, "html"),
+    });
+    assert.equal(busy.statusCode, 503);
+    assert.equal(busy.headers["retry-after"], "5");
+    assert.equal(htmlRuns, 0);
+    finish(pdf);
+    assert.equal((await pending).statusCode, 200);
+  } finally {
+    finish(pdf);
+    await pending;
+    await app.close();
+  }
+});

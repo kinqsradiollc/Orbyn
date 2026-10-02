@@ -407,7 +407,7 @@ test("bold, italic and code are drawn in the fonts they claim", async () => {
   assert.match(body, /\/BaseFont \/Courier/);
 });
 
-test("HTML export marks only authorized Mermaid source and preserves standalone math", async () => {
+test("HTML export renders authorized Mermaid source and preserves inert standalone math", async () => {
   const created = await app.inject({
     method: "POST",
     url: "/docs",
@@ -435,10 +435,17 @@ test("HTML export marks only authorized Mermaid source and preserves standalone 
   const result = await get(`/docs/${created.json().id}/export?format=html`);
   assert.equal(result.statusCode, 200);
   assert.equal(
-    (result.body.match(/data-orbyn-diagram="mermaid"/g) ?? []).length,
+    (result.body.match(/<figure class="export-diagram">/g) ?? []).length,
     1,
   );
   assert.match(result.body, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.match(result.body, /Content-Security-Policy/);
+  assert.match(result.body, /script-src 'none'/);
+  const image = /src="data:image\/svg\+xml;charset=utf-8,([^"]+)"/.exec(
+    result.body,
+  );
+  assert.ok(image, "The authorized diagram must render as an inert SVG image");
+  assert.doesNotMatch(decodeURIComponent(image[1]), /<script|<iframe/i);
   assert.match(result.body, /<pre><code>const ordinary = true<\/code><\/pre>/);
   assert.match(result.body, /<math[ >]/);
   assert.doesNotMatch(result.body, /<script|<iframe/i);
@@ -588,4 +595,55 @@ test("PDF delivery rejects revisions changed during rendering and pages deleted 
     assert.equal(result.statusCode, deleted ? 404 : 409);
     assert.doesNotMatch(result.body, /^%PDF|Original authorized content/);
   }
+});
+
+test("standalone HTML renders all ten families with inert SVG, math and retained source", async () => {
+  const { mermaidFixtures } = await import("./helpers/mermaid-fixtures.js");
+  const created = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Portable HTML renderer QA",
+      content: [
+        { type: "math", text: "\\frac{a}{b}" },
+        ...mermaidFixtures.flatMap((item) => [
+          { type: "heading", level: 2, text: item.kind },
+          { type: "code", lang: "mermaid", text: item.source },
+        ]),
+      ],
+    },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const result = await get(`/docs/${created.json().id}/export?format=html`);
+  assert.equal(result.statusCode, 200, result.body.slice(0, 200));
+  const svgs = [
+    ...result.body.matchAll(
+      /src="data:image\/svg\+xml;charset=utf-8,([^"]+)"/g,
+    ),
+  ].map((match) => decodeURIComponent(match[1]));
+  assert.equal(svgs.length, 10);
+  assert.match(result.body, /name="viewport" content="width=device-width/);
+  assert.equal(
+    (result.body.match(/<details><summary>Diagram source/g) ?? []).length,
+    10,
+  );
+  assert.match(result.body, /<math[ >]/);
+  assert.match(result.body, /script-src 'none'/);
+  assert.doesNotMatch(
+    result.body,
+    /<script|<iframe|Diagram rendering unavailable/i,
+  );
+  for (const label of [
+    "Start",
+    "Finish",
+    "Review tasks",
+    "Plan work",
+    "Task status",
+    "Release history",
+  ])
+    assert.ok(svgs.join(" ").includes(label), label);
+  for (const svg of svgs) assert.doesNotMatch(svg, /<script|<iframe/i);
+  if (process.env.HTML_TEST_OUTPUT)
+    writeFileSync(process.env.HTML_TEST_OUTPUT, result.body);
 });

@@ -5,7 +5,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import { renderPdfSnapshot } from "./pdf-renderer.js";
+import { renderPdfSnapshot, renderHtmlSnapshot } from "./pdf-renderer.js";
 
 const MAX_HTML = 20 * 1024 * 1024;
 const MAX_PDF = 24 * 1024 * 1024;
@@ -17,11 +17,12 @@ export function pdfRequestHeaders(
   key: string,
   now = Date.now(),
   nonce: string = randomUUID(),
+  format: "pdf" | "html" = "pdf",
 ) {
   const stamp = String(now);
   const digest = createHash("sha256").update(html).digest("hex");
   const signature = createHmac("sha256", key)
-    .update(`orbyn-document-pdf-v1\n${stamp}\n${nonce}\n${digest}`)
+    .update(`orbyn-document-${format}-v1\n${stamp}\n${nonce}\n${digest}`)
     .digest("base64url");
   return {
     "content-type": "text/html; charset=utf-8",
@@ -38,11 +39,13 @@ export function buildPdfService({
   executable,
   limit = 2,
   render = renderPdfSnapshot,
+  renderHtml = renderHtmlSnapshot,
 }: {
   key: string;
   executable: string;
   limit?: number;
   render?: typeof renderPdfSnapshot;
+  renderHtml?: typeof renderHtmlSnapshot;
 }) {
   if (
     key.length < 32 ||
@@ -65,7 +68,8 @@ export function buildPdfService({
     if (reserved.delete(request)) working--;
   };
   app.addHook("onRequest", async (request, reply) => {
-    if (request.routeOptions.url !== "/render") return;
+    if (!["/render", "/render/html"].includes(request.routeOptions.url ?? ""))
+      return;
     const stamp = request.headers["x-orbyn-pdf-time"];
     const nonce = request.headers["x-orbyn-pdf-nonce"];
     const digest = request.headers["x-orbyn-pdf-digest"];
@@ -84,8 +88,9 @@ export function buildPdfService({
       return reply
         .code(401)
         .send({ message: "PDF request authentication failed." });
+    const format = request.routeOptions.url === "/render/html" ? "html" : "pdf";
     const expected = createHmac("sha256", key)
-      .update(`orbyn-document-pdf-v1\n${stamp}\n${nonce}\n${digest}`)
+      .update(`orbyn-document-${format}-v1\n${stamp}\n${nonce}\n${digest}`)
       .digest("base64url");
     if (!timingSafeEqual(Buffer.from(expected), Buffer.from(signature)))
       return reply
@@ -122,38 +127,61 @@ export function buildPdfService({
     (_r, body, done) => done(null, body),
   );
   app.get("/health", async () => ({ ok: true }));
-  app.post("/render", async (request, reply) => {
-    const html = request.body;
-    if (
-      typeof html !== "string" ||
-      createHash("sha256").update(html).digest("hex") !==
-        request.headers["x-orbyn-pdf-digest"]
-    )
-      return reply
-        .code(401)
-        .send({ message: "PDF request authentication failed." });
-    started.add(request);
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    request.raw.once("aborted", abort);
-    reply.raw.once("close", abort);
-    try {
-      const pdf = await render({ html, executable, signal: controller.signal });
-      if (controller.signal.aborted) return reply.hijack();
-      if (pdf.length > MAX_PDF || pdf.subarray(0, 5).toString() !== "%PDF-")
-        throw new Error("Invalid document PDF result.");
-      return reply.type("application/pdf").send(pdf);
-    } catch {
-      if (controller.signal.aborted) return reply.hijack();
-      return reply.code(503).send({
-        message: "Document PDF rendering is unavailable. Try again shortly.",
-      });
-    } finally {
-      started.delete(request);
-      release(request);
-      request.raw.removeListener("aborted", abort);
-      reply.raw.removeListener("close", abort);
-    }
-  });
+  for (const format of ["pdf", "html"] as const) {
+    app.post(
+      format === "pdf" ? "/render" : "/render/html",
+      async (request, reply) => {
+        const html = request.body;
+        if (
+          typeof html !== "string" ||
+          createHash("sha256").update(html).digest("hex") !==
+            request.headers["x-orbyn-pdf-digest"]
+        )
+          return reply
+            .code(401)
+            .send({ message: "PDF request authentication failed." });
+        started.add(request);
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        request.raw.once("aborted", abort);
+        reply.raw.once("close", abort);
+        try {
+          const options = { html, executable, signal: controller.signal };
+          const result =
+            format === "pdf"
+              ? await render(options)
+              : await renderHtml(options);
+          if (controller.signal.aborted) return reply.hijack();
+          if (format === "pdf") {
+            if (
+              !Buffer.isBuffer(result) ||
+              result.length > MAX_PDF ||
+              result.subarray(0, 5).toString() !== "%PDF-"
+            )
+              throw new Error("Invalid document PDF result.");
+            return reply.type("application/pdf").send(result);
+          }
+          if (
+            typeof result !== "string" ||
+            Buffer.byteLength(result) > MAX_HTML ||
+            !/^<!doctype html>/i.test(result)
+          )
+            throw new Error("Invalid document HTML result.");
+          return reply.type("text/html; charset=utf-8").send(result);
+        } catch {
+          if (controller.signal.aborted) return reply.hijack();
+          return reply.code(503).send({
+            message:
+              "Document PDF rendering is unavailable. Try again shortly.",
+          });
+        } finally {
+          started.delete(request);
+          release(request);
+          request.raw.removeListener("aborted", abort);
+          reply.raw.removeListener("close", abort);
+        }
+      },
+    );
+  }
   return app;
 }
