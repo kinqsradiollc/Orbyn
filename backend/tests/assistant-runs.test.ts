@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { AGENT_TOOLSETS } from "@orbyn/core";
 import "./setup.js";
+import { startTestAssistantRuntime } from "./helpers/assistant-runtime.js";
 
 type Reply = { name: string; arguments: Record<string, unknown> };
 type Request = {
@@ -78,6 +79,7 @@ const { assistantRunLimits, failStaleAssistantJobs, startAssistantAutomation } =
   await import("../src/modules/ai/agent/run.js");
 const app = await buildApp();
 const users: string[] = [];
+let stopBackground: (() => Promise<void>) | undefined;
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
 async function register() {
@@ -173,6 +175,7 @@ before(async () => {
     "UPDATE ai_settings SET provider_id=$1, model='assistant-run-test' WHERE id",
     [providerId],
   );
+  stopBackground = await startTestAssistantRuntime("background");
 });
 
 test("assistant chat requires a signed-in person and a valid timezone", async () => {
@@ -194,6 +197,7 @@ test("assistant chat requires a signed-in person and a valid timezone", async ()
 });
 
 after(async () => {
+  await stopBackground?.();
   await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [users]);
   await pool.query(
     "UPDATE ai_settings SET provider_id=NULL, model='' WHERE id",
@@ -2179,6 +2183,10 @@ test("an idea run that hits the time limit drops its staged work: nobody watches
   requests.length = 0;
   respond = stageTask("Idea deadline task", () => hold());
   assistantRunLimits.maxRunMs = 2000;
+  await stopBackground?.();
+  stopBackground = await startTestAssistantRuntime("background", {
+    maxRunMs: 2000,
+  });
   try {
     const user = await register();
     const jobId = await startAssistantAutomation({
@@ -2204,6 +2212,8 @@ test("an idea run that hits the time limit drops its staged work: nobody watches
   } finally {
     assistantRunLimits.maxRunMs = 600_000;
     releaseHeld();
+    await stopBackground?.();
+    stopBackground = await startTestAssistantRuntime("background");
   }
 });
 
