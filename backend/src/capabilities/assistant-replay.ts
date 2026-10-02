@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { Principal } from "./policy.js";
+import { policy, type Principal } from "./policy.js";
+import { Params, scopeFor } from "../lib/visibility.js";
 import type { Queryable } from "../db/pool.js";
 import { assistantJobSourcesVisible } from "../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../lib/assistant-visibility.js";
@@ -51,13 +52,18 @@ export async function assertAssistantReplaySources(
   p: Principal,
 ) {
   if (p.via !== "assistant" || !p.assistant_job_id) return;
+  const params = new Params(
+    p.assistant_job_id,
+    p.assistant_lane ?? "interactive",
+  );
+  const scope = scopeFor(policy.spaces(p), params);
   const source = await db.query(
     `SELECT j.id FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
-     WHERE j.id=$2 AND j.runtime_lane=$3
-       AND ${assistantChatVisible("c", "$1")}
-       AND ${assistantJobSourcesVisible("j", "$1", false)}
+     WHERE j.id=$1 AND j.runtime_lane=$2
+       AND ${assistantChatVisible("c", scope.user, scope)}
+       AND ${assistantJobSourcesVisible("j", scope.user, false, scope)}
      FOR SHARE OF j,c`,
-    [p.user.id, p.assistant_job_id, p.assistant_lane ?? "interactive"],
+    params.values,
   );
   if (!source.rowCount)
     throw new CapabilityError(

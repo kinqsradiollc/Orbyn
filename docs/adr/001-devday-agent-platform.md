@@ -322,3 +322,28 @@ UI gates remain required. Preserve Orbyn palette and characters. Saved web
 preview denial remains respected; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope; the full ADR goal remains active.
+
+### Current cached target and effective source scope — source checkpoint, 2 October 2026
+
+Cached assistant result targets and structured resource links now recheck current
+effective grant scope. This covers the32 receipt families currently produced by
+write capabilities, including persisted resources and synthetic settings/focus
+receipts. A foreign owner, excluded project, removed/off team or source moved
+beyond the earlier caller's teams cannot expose the stored private answer.
+Scoped source helpers preserve the existing owner-wide projections when no
+restriction is supplied. Identity/reference parsing never treats prose or plan
+step labels as authorization evidence. Holds do not rerun the original mutation;
+restoring target access can return that original answer with the same client_ref.
+
+Two real regressions failed before correction. Current focused rules/Review/
+handoff/notices/visibility/replay suite passed98/98. Positive/foreign-owner tests
+exercise persistent receipt families against PostgreSQL; synthetic Personal and
+team receipts, disabled team policy and linked focus destinations are covered.
+Family-specific bounded queries replaced a costly combined CASE: observed local
+task check fell from3,327ms to34ms. This is not a production latency benchmark.
+
+Original provider-read versions, complete nested dependency closure, concurrent
+source fences, other persisted replay paths, receiving handoffs and budgets,
+typed read/effect/notice policy and owner/editor UI remain required. This source
+needs current-main full qualification before scoped promotion; it does not
+complete cached-result security or the full M1/D1/U1 and C1–C6 ADR acceptance.

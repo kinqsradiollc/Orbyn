@@ -1,3 +1,4 @@
+import type { Scope } from "./visibility.js";
 import type { Queryable } from "../db/pool.js";
 import { transaction } from "../db/pool.js";
 import { assistantSourceVisible } from "./assistant-source-visibility.js";
@@ -7,9 +8,10 @@ export function assistantJobSourcesVisible(
   job = "j",
   user = "$1",
   allowLegacyPerson = true,
+  scope?: Scope,
 ): string {
   return `(${job}.user_id=${user} AND (${job}.sources_checked${allowLegacyPerson ? ` OR ${job}.run_origin='person'` : ""})
-    AND NOT EXISTS(SELECT 1 FROM assistant_job_sources dependency WHERE dependency.job_id=${job}.id AND NOT ${assistantSourceVisible("dependency.source_kind", "dependency.source_id", user, false)}))`;
+    AND NOT EXISTS(SELECT 1 FROM assistant_job_sources dependency WHERE dependency.job_id=${job}.id AND NOT ${assistantSourceVisible("dependency.source_kind", "dependency.source_id", user, false, scope)}))`;
 }
 const kinds: Record<string, string> = {
   chat: "chat",

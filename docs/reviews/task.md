@@ -1483,3 +1483,40 @@ all automated proof green but actual consent/host/gateway/UI gates remain open;
 Docs138/reflection137 require current-main integration and actual interaction.
 Saved web denial pending explicit settings clearance; never bypass. Cleanup only
 after integration/qualification. Goal remains active, no deployment.
+
+## Current cached target/source-scope checkpoint — 2 October 2026
+
+Prior goal turn made authoritative progress: PR145 merged3450e87, main docs7c08aa6
+pushed; replay sourcec237cfb and reconciled source8ad41a9 pushed. No active local
+qualification processes remained at the start of this continuation.
+
+New baseline97175 terminal failed two actual regressions: cached task moved into
+AI-excluded project, producing dependency moved into newly joined team outside
+earlier caller scope. Optional effective scopes now flow through source/chat/job/
+proposal visibility helpers; default owner-wide projections remain unchanged.
+Cached target/result-link checks cover all32 produced receipt families, including
+synthetic timer/settings/instructions, study key/id forms, drafts, inbox, changes,
+imports, bookings and Review. References are bounded and parsed only from typed
+targets and structured link fields, never prose or step labels.
+
+Initial79141 failed five job-bound checks from an unused SQL parameter after scope
+binding; fixed parameter numbering. Corrected65883 terminal zero13/13. First
+all-family diagnostic17534 was deliberately stopped after measured combined-CASE
+planning cost (one task took3,327ms), not because an observation timeout expired.
+After per-family queries35482 terminal zero16/16,8,040ms (all persistent positive/
+foreign-owner pairs6556ms combined; task34ms). Latest75473 terminal zero98/98,
+21,300ms covering replay/rules/Review/trust/handoff/notices/visibility and three
+additional team/restoration/focus-link cases. Types42573 terminal zero before the
+latest three tests; rerun current types before extraction. Logs
+/tmp/orbyn-replay-target-{scope-before,scope-after,scope-corrected,families,
+families-fast,scope-final,families-fast-types}.log. Do not claim stopped diagnostic
+as a passing run. All current source tests use markedorbyn_replay_authority_test.
+
+Next extract only replay/scoped-visibility code and its tests onto main7c08aa6
+in the owned clean assistant-work-ownership checkout; retain all source settings,
+models/Docs/profile/handoff work. Freeze exact candidate for fresh full tests,
+all workspace types/build/format and CI. Preserve current main user files and
+character work. Original provider-read snapshots/nested closure/source concurrency
+and other persistent cached paths remain required, alongside full ADR model/
+provider/plugin/Docs/Mermaid/whole-app/mobile/agent scope. No UI completion or
+deployment/cleanup claimed. Saved local preview denial remains respected.

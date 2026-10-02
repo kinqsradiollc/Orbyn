@@ -10,6 +10,7 @@ import {
   assistantReplayAuthority,
   assertAssistantReplaySources,
 } from "./assistant-replay.js";
+import { assertAssistantReplayTargets } from "./assistant-replay-targets.js";
 import {
   keepAnswer,
   priorAnswer,
@@ -356,6 +357,7 @@ export async function execute(
             "Read the current work or ask the person to review it. Do not repeat the change with a new client_ref.",
           );
         await assertAssistantReplaySources(db, currentPrincipal);
+        await assertAssistantReplayTargets(db, currentPrincipal, replayed);
         return {
           structured: replayed.structured,
           markdown: replayed.markdown,
