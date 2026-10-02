@@ -1803,3 +1803,29 @@ still rejected by the saved Block/Deny preference; no bypass attempted. Asked
 for saved setting change. Follow-up answer did not establish a setting change;
 asked whether changed to Allow, pending. Native work continues independently.
 Full ADR remains active/incomplete, main remainsc30c5fc, no cleanup/deployment.
+
+## Embedding readiness and permission enforcement — 2 October 2026
+
+Both SemanticSetup clients now describe actual missing prerequisites: database
+measurements unavailable, measuring service offline, and select an embedding
+provider. Ready-state language is shown only when the corresponding prerequisite
+holds. Authorization, consent and activation gating are unchanged.
+
+The regression suite renders the actual web and mobile components. Before the
+fix, the two new missing-state cases failed; after the fix, all12 cases passed.
+Desktop and mobile typechecks passed. Native Admin AI accessibility inspection
+confirms the missing-state text and disabled activation. The card screenshot
+remains pending: Simulator capture failed with ScreenCaptureKit audio/video
+stream failure after a touch-scroll attempt. Do not infer visual acceptance from
+the accessibility tree or component tests.
+
+Plugin CI37012184719 is now completed/success for exact heada74ad26, verified
+through GitHub. Its full local2186-test qualification remains recorded above.
+Browser consent and external-host routing still need qualification; PR142
+remains draft.
+
+The user supplied a settings screenshot showing Always allow for preview5174
+and restarted Codex. Binding that exact URL after restart still receives a saved
+permission denial. No alternate port, browser, raw CDP or indirect access was
+used. Browser screenshots remain pending. Continue independent native/backend
+work; the full ADR remains active and incomplete.

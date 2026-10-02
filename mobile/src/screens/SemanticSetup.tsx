@@ -57,15 +57,21 @@ export function SemanticSetup({
   const steps = [
     {
       done: settings.semantic_possible,
-      text: "The database can store measurements (the pgvector image).",
+      text: settings.semantic_possible
+        ? "The database can store measurements."
+        : "Database measurements are unavailable.",
     },
     {
       done: !!settings.measure_running,
-      text: "The measuring service is running.",
+      text: settings.measure_running
+        ? "The measuring service is running."
+        : "The measuring service is offline.",
     },
     {
       done: !!selected,
-      text: "An independent embedding provider is selected.",
+      text: selected
+        ? "An independent embedding provider is selected."
+        : "Select an embedding provider.",
     },
   ];
   const ready = steps.every((x) => x.done);
