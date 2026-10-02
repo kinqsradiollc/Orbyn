@@ -40,6 +40,47 @@ commits were already published by the time of the latest fetch.
   OAuth/discovery UI still unmerged. Earlier frozen source `e60fb32` full 1,995
   green is scoped to that source. Main has disabled service/auth foundations.
 
+## Overnight reflection — implementation started
+
+The user requires reflection, not only an agent status card. The ADR acceptance
+requirements remain in `devday-2026-implementation-review.md`.
+
+Prerequisite commit `620ed63` prevents generated automation conversations from
+entering personal Memory extraction. Both chat completion and the shared enqueue
+helper require a persisted, same-owner `person` chat. The extractor rejects old
+automation backlog before a provider call and rechecks the source at the write
+boundary. Generated answers remain saved. Explicit reviewed memory edits remain
+available. This deliberately does not automatically learn even from a person's
+later reply inside a chat whose origin is automation.
+
+Verification: 10/10 focused Memory/chat-sweep tests, zero fail/skip/cancel,
+`/tmp/orbyn-reflection-memory-tests-2.log`; marked disposable database
+`orbyn_reflection_memory_20261002_test`. Backend typecheck exit 0,
+`/tmp/orbyn-reflection-memory-types.log`. Committed on the model branch; not yet
+integrated into main. No UI completion is claimed for this backend safeguard.
+
+Next implementation sequence:
+
+1. Add explicit reflection consent to shared Night Shift settings and both clients.
+   Older saved settings must parse safely; an older client's PUT must preserve the
+   saved reflection choice instead of resetting it through a schema default.
+2. Capture bounded recent work evidence at execution time using current job/chat
+   source visibility. Include failures, waiting questions, approvals and actual
+   kept/undone decisions. Carry all source dependencies into the reflection job.
+   Never bake private summaries into a queued prompt before permission rechecks.
+3. Persist a receipt keyed by source identities and revisions, exclude prior
+   reflections as fresh evidence, and do no provider work when nothing changed.
+   Serialize claiming; retain recovery/cancellation and night time/token/run caps.
+   Reserve bounded reflection capacity after useful work without hiding skipped
+   work. Add a retention rule for any new growing receipt table.
+4. Enforce reflection's review boundary in code, even with full trust. Clearly
+   separate observed facts, interpretations, questions and proposed follow-ups.
+   Keep its output in morning review and both agent profiles. No automatic memory,
+   rules or permission changes. Daytime collaboration still needs the separate
+   durable authorized handoff channel; a saved reflection alone does not deliver it.
+5. Test no new evidence, deleted/denied sources, duplicate claims/restarts,
+   cancellation and budget exhaustion, then actual web/native output access.
+
 ## Current runtime work — 2 October, latest
 
 Runtime foundation `69ff2d6` is committed on the model branch, not yet on main.
