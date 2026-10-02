@@ -20,7 +20,7 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `8f2e7b3`.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `bb78cdf`.
   Companion and whole-app ADR updates are published. Main `f875c8d` passed
   2,083/2,083 ordinary tests (zero fail/skip/cancel), workspace types and production
   build. `495a359` fixes CI's missing per-service backend image tags and ADR
@@ -63,11 +63,41 @@ for `8f2e7b3`: Docker live smoke, mobile exports and mail passed; backend/web wa
 still running at last read. Production auto-deployment is disabled; pushing main
 is not production deployment. Do not claim a release or live production version.
 
-A managed worktree creation is pending for exact-main runtime qualification:
-operation `3bfb510a-1c04-4809-9f88-39cf578c62f9`, name
-`assistant-runtime-integration`, starting at main. Check its existing operation;
-do not create another. Cherry-pick `69ff2d6`, isolate package build outputs, then
-qualify that combined source before promoting it to main.
+Exact-main integration worktree is now
+`/Users/anhdang/.codex/worktrees/assistant-runtime-integration/Orbyn`, branch
+`codex/assistant-runtime-isolation`, HEAD `e6f6376`. Runtime `fc4a55c`, historical
+migration fixture `e1746d0`, separate automation test consumers `bd79124`, and
+main reflection ADR are integrated with no unresolved conflicts. The branch is
+pushed; draft PR https://github.com/kinqsradiollc/Orbyn/pull/135 is attached. CI
+runs on the PR before promotion. Do not merge it until its required checks and
+a complete corrected local suite pass.
+
+Initial full suite session 44256 is still running at last check on marked DB
+`orbyn_main_runtime_fc4a55c_test`, log
+`/tmp/orbyn-main-runtime-fc4a55c-full-tests.log`. It has eight known failures:
+one historical schema clone omitted new insert triggers, and old automation
+fixtures assumed that the API process still executed background jobs. Corrected
+fixtures are already integrated above. Later edits change tests/docs only;
+application source stayed frozen. This initial run is not acceptance evidence.
+After its terminal result, run a fresh complete suite on a new marked DB against
+`e6f6376`; do not restart because of an observation timeout.
+
+The fixes pass 8/8 notice/migration tests and 49/49 automation/task tests. Logs:
+`/tmp/orbyn-runtime-legacy-notice-tests.log`,
+`/tmp/orbyn-runtime-automation-tests-2.log`. A test-only child deadline preserves
+the original 2-second idea timeout assertion across the process boundary.
+The earlier automation run was 48/49 before that fixture fix. Main-based workspace
+types, production build and format check passed on application source `fc4a55c`;
+logs `/tmp/orbyn-main-runtime-fc4a55c-{types,build,format}.log`. Kustomize and
+Compose validate. Root dependencies link to existing installations, and core/API
+outputs resolve inside the integration worktree. Its untracked
+`desktop/node_modules` and `mobile/node_modules` are task-owned dependency links;
+do not stage them or confuse them with product edits. No npm install was run.
+
+CI run 36971290485 on main `8f2e7b3` completed successfully in all four jobs:
+backend/web, mobile exports, Docker live smoke and mail. `bb78cdf` is a subsequent
+ADR-only commit for bounded Overnight reflection, pushed to main. Production
+auto-deployment remains disabled and no deployment/release was performed.
 
 Newest UI requirement is now canonical: each Daytime/Overnight profile must show
 truthful Idle/Ready/Scheduled/Working/Waiting/Paused/Unavailable/Failed state,
@@ -75,6 +105,10 @@ last actual job activity, next trigger, recent work and outputs using the existi
 companion. Heartbeats are service availability, never last user activity. Both
 clients and native surfaces are required. No voice/computer-use features added.
 Profiles, collaboration handoffs and whole-app UX remain implementation work.
+Overnight reflection is also explicitly required: bounded source-grounded review
+of work/outcomes/approvals/undo/failures, saved morning output, no duplicate loops,
+reviewed proposed memory/rule changes and authorized handoffs to Daytime. This is
+recorded in main `bb78cdf`; reflection execution/UI is not implemented yet.
 
 ## Current qualification
 
@@ -152,12 +186,10 @@ ChatGPT acceptance or evidence about OpenAI runtime architecture.
 1. Use the complete ADR as scope. Keep all surface and parity gates explicit.
 2. Rebuild exact compiled artifacts when disk permits and finish remaining model
    settings native/web acceptance before promoting pending source checkpoints.
-3. Implement shared immutable runtime lane ownership, per-lane bounded claims and
-   dedicated background/night service entry points, deployment, health, shutdown
-   and recovery. Existing `runner.ts` claims every queued job under one global
-   eight-slot budget; AI routes and optional notifier fallback share that loop.
-   Night jobs carry kind/night_id/source_kind. Existing Overnight views prove
-   review UI only. Test separate real worker processes and upgrade/legacy queues.
+3. Complete runtime PR 135 qualification described above, then integrate ready
+   code to main after a fresh fetch and conflict check. The implementation now
+   has independent lanes/processes; current main still uses the old mixed runner
+   until that PR is promoted. Existing Overnight views prove review UI only.
 4. Implement durable collaboration receipts, permission/source/budget rechecks,
    idempotence and finite handoff depth; prevent concurrent source ownership or
    duplicate changes and unattended per-job pushes.
