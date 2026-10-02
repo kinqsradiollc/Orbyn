@@ -217,3 +217,28 @@ providers/embeddings, separate plugin host acceptance, complete Docs/Mermaid and
 whole-app web/desktop/mobile acceptance remain required. Preserve palette and
 characters. No deployment or cleanup occurred; voice/computer-use product
 features and the speculative Decisions adapter remain excluded.
+
+### Qualified completed document draft checkpoint — 2 October 2026
+
+PR #147 merged as main **4bbcfec**, from frozen **53089fd** on base
+**e1d46af**, at 12:25:15 UTC. Completed append_doc answers replayed under a
+new client_ref now recheck producing evidence and destination access before
+returning saved titles, identities or links. Restored access returns the saved
+answer without another page mutation. Five focused regressions cover unchanged
+access, excluded projects, deleted destinations, narrowed personal access and
+restored access. Ordinary connector guards remain unchanged.
+
+Exact candidate local full suite passed **2,181/2,181**, zero failures, skips or
+cancellations, 590,567 ms, on fresh marked orbyn_draft_candidate_test. All
+workspace types, production builds and full formatting passed. All CI
+**37004911014** jobs succeeded; backend passed 2,180 with one Tesseract skip.
+CI merge **94006ee**, candidate and resulting main have identical tree
+**ab575239dd8e10fab7a52d32946a75a1229ab95f**. Local main fast-forward preserved
+user mobile/app.json and unrelated files.
+
+This closes the completed-draft fast path only. Original provider-read revisions,
+nested dependency closure and concurrent source fences remain open, alongside
+models/defaults/execution, providers/embeddings, separate plugin integration,
+agent collaboration/reflection and whole-app Docs/UI acceptance. Preserve palette
+and characters; voice/computer-use product features remain excluded. No
+deployment or cleanup occurred. The full ADR remains active.
