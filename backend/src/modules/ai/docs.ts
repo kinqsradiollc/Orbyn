@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import {
+  docReferenceLinks,
   docAskRequest,
   docAssistRequest,
   DOC_AI_LABELS,
@@ -139,7 +140,7 @@ passage should be removed entirely, reply with an empty line.`;
 
     // Places and words as the page keeps them, not as they were shown.
     const kept = blockText(doc.stored[at]);
-    const line = doc.links.line(kept);
+    const line = doc.links.line(kept, docReferenceLinks(doc.stored));
     const stored = line.changed
       ? (() => {
           const start = line.toStored(d.range_start);
@@ -159,7 +160,12 @@ passage should be removed entirely, reply with an empty line.`;
             kind: answer ? "replace" : "delete",
             range_start: stored.start,
             range_end: stored.end,
-            text: keepLinkLabels(answer, doc.stored, doc.links.hidden),
+            text: keepLinkLabels(
+              answer,
+              doc.stored,
+              doc.links.hidden,
+              d.block_id,
+            ),
             quote: stored.quote,
           },
         ],

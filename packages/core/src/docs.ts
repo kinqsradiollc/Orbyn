@@ -777,7 +777,7 @@ export const isStyledRun = (run: DocInline): boolean =>
 // "a == b" in a note about code stays text. A source marker (`[src: …]`)
 // is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]/g;
+  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g;
 
 /** Only supported document and external protocols can become actionable links. */
 export function isDocLinkSafe(href: string): boolean {
@@ -796,11 +796,90 @@ export function isDocLinkSafe(href: string): boolean {
   }
 }
 
+/** Reference labels are case-insensitive and collapse whitespace. */
+function referenceLabel(label: string): string {
+  return label.trim().replace(/\s+/g, " ").toUpperCase().toLowerCase();
+}
+
+/** A single editable reference definition; its source is never evaluated. */
+export function docReferenceDefinition(
+  text: string,
+): { label: string; href: string; title?: string } | null {
+  const match =
+    /^ {0,3}\[([^\]\n]{1,999})\]:[ \t]*(?:<([^<>\n]+)>|(\S+))(?:[ \t]+(?:"([^"\n]*)"|'([^'\n]*)'|\(([^()\n]*)\)))?[ \t]*$/.exec(
+      text,
+    );
+  return match && !match[1].startsWith("^")
+    ? {
+        label: match[1],
+        href: match[2] ?? match[3],
+        ...((match[4] ?? match[5] ?? match[6])
+          ? { title: match[4] ?? match[5] ?? match[6] }
+          : {}),
+      }
+    : null;
+}
+
+/** Safe reference destinations in document order; definitions stay editable source. */
+export function docReferenceLinks(blocks: DocBlock[]): Map<string, string> {
+  const references = new Map<string, string>();
+  const defined = new Set<string>();
+  for (const block of blocks) {
+    if (block.type !== "paragraph") continue;
+    const definition = docReferenceDefinition(block.text);
+    if (!definition) continue;
+    const label = referenceLabel(definition.label);
+    if (!label || defined.has(label)) continue;
+    defined.add(label);
+    if (isDocLinkSafe(definition.href)) references.set(label, definition.href);
+  }
+  return references;
+}
+
+/** Source ranges of resolved references, excluding inline links and literal code/math. */
+export function docReferenceSpans(
+  text: string,
+  references: ReadonlyMap<string, string>,
+): {
+  start: number;
+  end: number;
+  href: string;
+  label: string;
+  reference: string;
+}[] {
+  const resolved = new Map(
+    parseDocInline(text, references)
+      .filter((run) => run.link && !run.code && !run.math)
+      .map((run) => [run.start, run.link!]),
+  );
+  const spans = [];
+  for (const match of text.matchAll(
+    /\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g,
+  )) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (text[start - 1] === "!" || text[end] === "(") continue;
+    const href = resolved.get(start + 1);
+    if (href)
+      spans.push({
+        start,
+        end,
+        href,
+        label: match[1],
+        reference: referenceLabel(match[2] || match[1]),
+      });
+  }
+  return spans;
+}
+
 /**
  * Split one line into styled runs. Unmatched text passes through unchanged, so
  * a stray `*` or `$` shows as typed rather than swallowing the rest of a line.
  */
-export function parseDocInline(text: string): DocInline[] {
+export function parseDocInline(
+  text: string,
+  references?: ReadonlyMap<string, string>,
+): DocInline[] {
   const literals = docInlineLiterals(text);
   if (literals.length) {
     const masked: string[] = [];
@@ -815,7 +894,7 @@ export function parseDocInline(text: string): DocInline[] {
     masked.push(text.slice(at));
     const out: DocInline[] = [];
     let index = 0;
-    for (const run of parseFormattedInline(masked.join(""), text)) {
+    for (const run of parseFormattedInline(masked.join(""), text, references)) {
       let cursor = run.start;
       const end = run.start + run.text.length;
       while (index < literals.length && literals[index].end <= cursor) index++;
@@ -835,10 +914,14 @@ export function parseDocInline(text: string): DocInline[] {
     }
     return out;
   }
-  return parseFormattedInline(text);
+  return parseFormattedInline(text, text, references);
 }
 
-function parseFormattedInline(text: string, source = text): DocInline[] {
+function parseFormattedInline(
+  text: string,
+  source = text,
+  references?: ReadonlyMap<string, string>,
+): DocInline[] {
   const out: DocInline[] = [];
   let at = 0;
   for (const m of text.matchAll(INLINE_RE)) {
@@ -879,6 +962,15 @@ function parseFormattedInline(text: string, source = text): DocInline[] {
         start: start + m[0].indexOf(m[10], 5),
         source: true,
       });
+    if (m[11] !== undefined) {
+      const label = referenceLabel(m[12] || m[11]);
+      const href = references?.get(label);
+      out.push(
+        href && isDocLinkSafe(href) && source[start - 1] !== "!"
+          ? { text: words(11, 1), start: start + 1, link: href }
+          : { text: source.slice(start, start + m[0].length), start },
+      );
+    }
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: source.slice(at), start: at });
@@ -2597,8 +2689,11 @@ export type AssistantSource = (
  * is plain text in a small box, and there `**unchanged**` reads as two stars,
  * a word and two more stars. This is what to show there.
  */
-export const plainText = (text: string): string =>
-  parseDocInline(text)
+export const plainText = (
+  text: string,
+  references?: ReadonlyMap<string, string>,
+): string =>
+  parseDocInline(text, references)
     .map((run) =>
       run.footnote ? "" : run.math ? mathToText(run.text) : run.text,
     )

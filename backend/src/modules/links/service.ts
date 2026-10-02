@@ -1,5 +1,6 @@
 import {
   blockText,
+  docReferenceLinks,
   dateTitle,
   fail,
   plainText,
@@ -90,6 +91,7 @@ export async function linksHere(
                    THEN coalesce(dp.name, ${DOC_HINT})
                    ELSE coalesce(ip.name, CASE WHEN i.kind = 'event' THEN 'Event'
                                                ELSE 'Task' END) END AS hint,
+              d.content AS doc_content,
               coalesce(d.updated_at, i.updated_at) AS updated_at
          FROM object_links l
          LEFT JOIN docs d ON l.source_kind = 'doc' AND d.id = l.source_id
@@ -107,7 +109,7 @@ export async function linksHere(
                  l.source_block`,
       [userId, kind, target.id.toLowerCase()],
     )
-  ).rows as (HereRow & { updated_at: Date })[];
+  ).rows as (HereRow & { updated_at: Date; doc_content?: DocBlock[] })[];
   rows.sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
   const shown = rows.slice(0, HERE_LIMIT);
   // The line around each link names other things too: only those this
@@ -115,8 +117,19 @@ export async function linksHere(
   const links = await linkPrivacy(
     db,
     userId,
-    shown.map((r) => r.context),
+    shown.map((r) => [r.context, r.doc_content]),
   );
+  const sourceText = (row: (typeof shown)[number]): string => {
+    const blocks = row.doc_content;
+    if (blocks && row.source_block) {
+      const block = /^#\d+$/.test(row.source_block)
+        ? blocks[Number(row.source_block.slice(1))]
+        : blocks.find((block) => block.id === row.source_block);
+      // Resolve and redact before clipping; a clipped reference may lose its key.
+      if (block) return blockText(block);
+    }
+    return row.context ?? "";
+  };
   const items: LinkedHere[] = shown.map((r) => ({
     kind: r.source_kind,
     id: r.source_id,
@@ -130,8 +143,10 @@ export async function linksHere(
         ? r.source_block
         : null,
     context: linkContext(
-      links.line(r.context ?? "").text,
+      links.line(sourceText(r), docReferenceLinks(r.doc_content ?? [])).text,
       r.link_kind === "link" ? target : null,
+      140,
+      docReferenceLinks(links.value(r.doc_content ?? [])),
     ),
   }));
   return { count: rows.length, items };

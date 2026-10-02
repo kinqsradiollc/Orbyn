@@ -49,6 +49,7 @@ import {
   diagramLabelTranslation,
   diagramDisplayScale,
   docObjectLinks,
+  docReferenceLinks,
   fileSize,
   isAudio,
   isPageImage,
@@ -78,6 +79,7 @@ import { openObject, pillKey, shortDue, usePageActions } from "./DocLinks";
 
 /** The page's footnotes: each marker's number and each note's words. */
 export const FootnoteContext = createContext<{
+  references?: ReadonlyMap<string, string>;
   numbers: Map<string, number>;
   texts: Map<string, string>;
 }>({ numbers: new Map(), texts: new Map() });
@@ -1325,7 +1327,13 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           The part of the page this showed has gone.
         </p>
       ) : (
-        <FootnoteContext.Provider value={{ numbers, texts }}>
+        <FootnoteContext.Provider
+          value={{
+            numbers,
+            texts,
+            references: docReferenceLinks(section.blocks),
+          }}
+        >
           <div className="doc-embed-body">
             {section.blocks.map((b, i) => (
               <BlockView key={b.id ?? i} block={b} />

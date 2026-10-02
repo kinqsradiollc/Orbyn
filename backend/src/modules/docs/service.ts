@@ -16,6 +16,9 @@ import {
   type DocSuggestion,
   type Item,
   blockText,
+  docReferenceLinks,
+  docReferenceSpans,
+  plainText,
   keepLinkLabels,
 } from "@orbyn/core";
 import {
@@ -626,15 +629,18 @@ export async function makeLineTasks(
   const ids = new Map(lines.map((b) => [b, b.id ?? randomUUID()]));
   const out: Item[] = [];
   // A task is named from its line as its maker reads it (D3aF).
-  const links = await linkPrivacy(
-    db,
-    u.id,
-    lines.map((b) => b.text),
-  );
+  const links = await linkPrivacy(db, u.id, content);
+  const references = docReferenceLinks(content);
+  const shownReferences = docReferenceLinks(links.value(content));
   for (const line of lines) {
     const item = await mutate(db, u, {
       operation: "create",
-      data: itemFromLine(links.line(line.text).text, doc.team_id),
+      data: itemFromLine(
+        docReferenceSpans(line.text, references).length
+          ? plainText(links.line(line.text, references).text, shownReferences)
+          : links.line(line.text).text,
+        doc.team_id,
+      ),
     });
     if (!item) continue;
     if (options.projectId) {
