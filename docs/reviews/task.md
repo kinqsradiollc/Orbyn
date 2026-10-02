@@ -1763,3 +1763,23 @@ Pipeline31971 terminated zero:33/33 focused Mermaid/runtime/download tests and
 all workspace typechecks. Saved browser denial remains respected. Do not merge
 the UI checkpoint until web/desktop visual gates and combined qualification pass.
 Main remainsc30c5fc; full ADR remains active and incomplete.
+
+## Plugin current-main qualification continuation — 2 October 2026
+
+Plugin brancha74ad26 reconciles mainc30c5fc without conflicts, pushed to draft
+PR142. Added opt-in Compose plugin profile, separate compiled process with
+blank recipient and loopback publication default8040. Default Compose excludes
+it; synthetic-config validation of the enabled profile succeeds. Focused41/41,
+all workspace types/build/full formatting passed. Full suite remains live in
+unified session47503, log /tmp/orbyn-plugin-profile-full-tests.log, using
+marked orbyn_plugin_current_test. Do not restart or modify the frozen candidate.
+CI37012184719: mobile/docker/mail passed; backend-and-web pending last observed.
+
+Independent compiled-process HTTP proof used owned port8030 and separate marked
+orbyn_plugin_runtime_test. Health200, public configured discovery/CORS200 with
+spoofed host ignored, missing/cookie/invalid auth401 with plugin challenge,
+browser/API/MCP paths404. Synthetic read grant connection/catalog/get_context200,
+read-only catalog, revocation401. Synthetic owner/client removed; only the owned
+node PID95267 received TERM. Evidence: evidence/plugin-profile-runtime.txt.
+No OAuth browser consent, external host, gateway exposure or production enablement
+is claimed; full ADR and UI gates remain incomplete.

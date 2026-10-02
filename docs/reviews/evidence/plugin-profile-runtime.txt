@@ -1,0 +1,12 @@
+compiled dedicated process: plugin health 200
+public discovery: configured recipient and approved CORS, spoofed host ignored
+missing credentials, cookie and invalid bearer: 401 with plugin challenge
+browser/API/MCP routes: 404
+authenticated synthetic read grant: connection/catalog/get_context 200; only read tools; revocation 401
+
+Candidate: a74ad26, reconciled current main c30c5fc without conflicts.
+Compiled backend/dist/services/plugin.js, owned local port8030.
+Database: orbyn_plugin_runtime_test, verified server marker test.
+Synthetic account/client/read grant created and removed for this check.
+No actual user credentials, production recipient or external host used.
+This does not prove browser consent, public proxy routing or host installation.
