@@ -71,3 +71,9 @@ not a later main combination. Integrated publication main86ccd4f8; one append-on
 ADR conflict was resolved by retaining both decisions. No code conflicts or
 remaining markers. New combined-head full/CI qualification still required, and
 native acceptance remains waiting on the human sign-in action.
+
+## Combined-main qualification and recovery fixture — 3 October 2026
+
+Head0d6d307a passed2340/2340 local tests, zero skips/cancellations (session77462). CI37075657142 failed the unchanged heartbeat/activity assertion: the all-service app started a recovery worker that changed an intentionally incomplete expired fixture mid-read. The profile test now builds the actual API service, retaining all lease/state/activity/permission assertions. Main1100ca98 integrated without conflicts. A new matching-head full/CI run is required; native human sign-in remains pending.
+
+Recovery fixture repair plus main110 integration: current five-file focused group passed18/18, zero skips/cancellations, including real API profile routes and inventory. All workspace types/build/format passed. The narrower API file passed8/8. These qualify the repair checkpoint, not the still-pending full matching-head run or native UI acceptance.

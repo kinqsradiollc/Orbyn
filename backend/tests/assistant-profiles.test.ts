@@ -8,8 +8,10 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { readAssistantProfiles, assistantProfileWindow } =
   await import("../src/modules/assistant-workspace/profiles.js");
-const { buildApp } = await import("../src/app.js");
-const app = await buildApp();
+// Profiles belong to the API service. A full-app runner would recover the
+// synthetic expired leases while these read-only assertions inspect them.
+const { buildApiService } = await import("../src/app.js");
+const app = await buildApiService();
 const h = helpers(app);
 const network = await trapNetwork();
 const users: string[] = [];
