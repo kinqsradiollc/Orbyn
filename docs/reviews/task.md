@@ -643,3 +643,48 @@ source identity. Synthetic users/jobs were removed afterward. Script/log:
 not provider execution, dispatch, reflection or a complete handoff round trip.
 Process **25651** exited zero. CI watch **90866** remains live for run
 **36983314493**; do not duplicate/restart the run or edit the frozen candidate.
+
+## Character integration qualification and durable failure outcomes
+
+CI **36983314493** and watch **90866** are terminal failed. Backend reported
+2,100 passed, two failed and one known Tesseract skip, 2,103 total. Both failures
+were the type-scale ratchets: six sizes introduced by main's character changes
+were outside the existing shared scale. CI's checkout log proves it used GitHub
+merge commit **07b2853**, combining b7bd994 with character main **e4370a3**;
+its `headSha` alone did not identify the tested combined tree. This corrects the
+earlier inference that CI tested only the older b7bd994 base. Full log:
+`/tmp/orbyn-work-ownership-b7bd994-ci.log`; failure log has the same prefix plus
+`-failed.log`. Do not report that run as green.
+
+The ownership candidate merged current main **5559758** without conflicts,
+merge **f1dfdef**, preserving the complete character implementation and editor
+save fix. Follow-up **51ce91b** changes only six off-scale sizes in web/mobile to
+the nearest shared scale values: 12→13, 16→15 and 20→18. No test exemptions or
+scale changes were added. Character/style checks passed **17/17**, and all
+workspace types, production builds and full formatting passed (pipeline **37675**
+terminal zero). Logs: `/tmp/orbyn-work-ownership-character-{focused,types,build,format}.log`.
+The candidate is pushed and frozen on **51ce91b**. Full local backend suite
+**81622** runs on newly created marked `orbyn_work_ownership_character_test`, log
+`/tmp/orbyn-work-ownership-51ce91b-full-tests.log`. New CI **36984587146** is live;
+mail/mobile passed, backend/web and Docker still running in the latest check.
+
+Compiled independent-process proof also passed on **51ce91b**; log
+`/tmp/orbyn-work-ownership-51ce91b-process-proof.log`. A combined focused command
+initially omitted the repository's required `--test-concurrency=1`, allowing one
+global-queue test file to claim another file's fixture (12/13 passed). With the
+canonical serial invocation, **13/13** passed, zero fail/skip/cancel, 2,731 ms;
+log `/tmp/orbyn-work-ownership-51ce91b-focused-2.log`. This was test invocation
+interference, not a source guard failure; the full suite uses serial concurrency.
+
+Source **deb93cb** and follow-up **114bb2d** add failure acknowledgment for actual
+failed receiving jobs. The service locks receipts, enforces owner/revision and
+accepted status, and derives execution/access/revision reasons from current
+receiving state and producing evidence. Concurrent retries acknowledge once;
+provider error strings and restricted outcomes are never copied to the receipt.
+It rejects premature completion, stale requests, unaccepted/cancelled receipts
+and disabled/foreign owners. Additional tests cover lost producing access and
+unchecked receiving dependencies. **32/32** contract/storage/request checks
+passed, zero fail/skip/cancel, 3,083 ms; log `/tmp/orbyn-handoff-failure-tests-2.log`.
+Backend types passed (`/tmp/orbyn-handoff-failure-types.log`), focused format and
+diff checks passed. No routes, worker dispatch or runtime acknowledgment hooks
+are enabled yet. The full collaboration and cross-client goals remain active.
