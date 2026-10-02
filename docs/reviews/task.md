@@ -688,3 +688,60 @@ passed, zero fail/skip/cancel, 3,083 ms; log `/tmp/orbyn-handoff-failure-tests-2
 Backend types passed (`/tmp/orbyn-handoff-failure-types.log`), focused format and
 diff checks passed. No routes, worker dispatch or runtime acknowledgment hooks
 are enabled yet. The full collaboration and cross-client goals remain active.
+
+## Ownership merged; Docs integration and native recovery
+
+Local ownership suite **81622** is terminal zero: **2,103/2,103** passed, no
+failures/skips/cancellations, 551,423 ms. CI **36984587146** passed all four jobs:
+backend 2,102 passed, zero failed and one Tesseract skip. Log:
+`/tmp/orbyn-work-ownership-51ce91b-ci.log`. CI merge **a5e314d** and candidate
+**51ce91b** share tree `65f2bd0bc2cc50d9a146701b52635ef84d0abed7`. PR #139 was
+marked ready and merged with a head-match guard. Main/origin/main **76ec92b** has
+that same tested tree, with dirty mobile configuration and unrelated files
+preserved. No tag, deployment or release was created.
+
+Docs PR #138 synced main **5559758** via **c8904f3** and font fix **788161e**,
+pushed. **37/37** navigation/rich-copy/character/style checks and all workspace
+types/build/format passed, pipeline **75428** zero. Logs:
+`/tmp/orbyn-docs-788161e-{focused,types,build,format}.log`. CI **36985225329** is
+live; mobile/mail/Docker passed, backend/web testing. Freeze **788161e** until
+terminal; then integrate main **76ec92b** and the Docs follow-ups below and
+requalify. Earlier native proof remains scoped to its earlier source. Current
+iOS, web/mobile-web and Android interaction gates remain incomplete.
+
+Fresh native QA uses marked `orbyn_docs_788161e_native_test`. API **76558** serves
+8027; Metro **71570** serves 8087 with a fresh bundle. Only old owned Metro PID
+**93132** was stopped; user previews and Docker Desktop were untouched. Synthetic
+account/docs/folds were recreated. Legal version and analytics opt-out were
+seeded fixtures, not real legal consent. Script/logs:
+`/tmp/orbyn-docs-788161e-native-fixture.mts`, same-prefix fixture/API/Metro logs.
+IDs: `/tmp/orbyn-doc-navigation-native-fixture.json` (mode 600).
+
+Native binding initially selected the user's iPhone 17. Inventory confirmed owned
+simulator **A166A84A-7389-4FAB-9EA8-8EADAD1D54E3** still booted; Window menu selected
+its exact QA name. No user device was modified. Device→Shake→Expo Reload loaded
+the fresh candidate; setValue entered the verified synthetic account without
+clipboard use. iOS Save Password hides the accessibility controls; coordinate
+input fails with noWindowsAvailable, and Escape/Raise did not dismiss it. Async
+request asks the user to tap **Not Now** in the owned QA simulator. Screenshot:
+`/tmp/orbyn-docs-788161e-native-password-prompt.png`. No fresh Docs interaction
+is claimed while blocked. Browser preview saved denial remains in force; never
+bypass it through another browser/address/port or native UI.
+
+Model/settings source merged character main **5559758** without conflicts, plus
+font fix **cc04be0**. **62/62** handoff/storage/contracts, ownership/runtime and
+character/style checks passed, no fail/skip/cancel, 6,960 ms. Workspace types
+passed, **6996** zero. Logs: `/tmp/orbyn-model-character-integration-{focused,types}.log`.
+After PR #139, source merged main **76ec92b** as **430490b** without conflicts.
+
+Docs source follow-up **c608f54** preserves Unicode and long heading fragments
+through shared/desktop app-link parsers. It bounds fragments and rejects malformed
+escapes, controls, spaces and path separators, preserving decomposed Unicode.
+**5e1da8d** gives rendered heading links their owning document URL, so modified
+or middle-button clicks do not resolve against the shell's stale route. Normal
+clicks retain draft-preserving navigation. Actual isolated Inline renderer tests
+check URLs and normal/modified handlers. **39/39** navigation/renderer/rich-copy/
+mobile-toolbar checks passed, no fail/skip/cancel, 1,759 ms; all workspace types
+passed, **33840** zero. Logs: `/tmp/orbyn-doc-fragment-renderer-{tests,types}.log`.
+Both follow-ups remain unmerged and require runtime acceptance. Disk about
+**2.1 GiB**; avoid unnecessary large builds. Full ADR remains active.
