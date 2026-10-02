@@ -1347,3 +1347,43 @@ html.js .reveal.is-visible {
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
+
+.home-agent-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  list-style: none;
+  counter-reset: work-step;
+  padding: 24px 0;
+  margin: 0;
+}
+.home-agent-steps li {
+  min-width: 0;
+  counter-increment: work-step;
+  overflow-wrap: anywhere;
+}
+.home-agent-steps li::before {
+  content: "0" counter(work-step);
+  display: block;
+  margin-bottom: 12px;
+  color: var(--color-accent);
+  font-size: 13px;
+}
+.home-agent-steps strong {
+  font-weight: 500;
+  font-size: 15px;
+}
+.home-agent-steps li p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 760px) {
+  .home-agent-steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .home-agent-steps li::before {
+    margin-bottom: 6px;
+  }
+}

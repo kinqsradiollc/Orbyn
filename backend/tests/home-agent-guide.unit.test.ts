@@ -16,6 +16,11 @@ test("Home explains distinct work triggers, review destinations and pauses", () 
   assert.match(HOME_AGENT_IDLE_NOTE, /idle until.*authorized/);
   for (const agent of HOME_AGENT_GUIDE) {
     assert.ok(agent.request.length > 0);
+    assert.equal(agent.steps.length, 3);
+    for (const step of agent.steps) {
+      assert.ok(step.title.length > 0);
+      assert.ok(step.body.length > 0);
+    }
     assert.doesNotMatch(
       JSON.stringify(agent),
       /always.on|cloud computer|reflection/i,

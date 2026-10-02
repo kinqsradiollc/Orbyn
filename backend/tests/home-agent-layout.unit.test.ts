@@ -61,10 +61,16 @@ for (const signedIn of [false, true]) {
       assert.ok(work.includes(guide.name));
       assert.ok(work.includes(guide.result));
       assert.ok(work.includes(guide.pause));
+      for (const step of guide.steps) {
+        assert.ok(work.includes(step.title));
+        assert.ok(work.includes(step.body));
+      }
     }
     assert.match(work, /Example request/);
+    assert.equal((work.match(/<ol /g) ?? []).length, 2);
+    assert.equal((work.match(/<li>/g) ?? []).length, 6);
     assert.equal((work.match(/<blockquote>/g) ?? []).length, 2);
-    assert.match(work, /Work you can come back to/);
+    assert.match(work, /Hand off a task. Pick up the result/);
     assert.match(work, /idle until they have authorized work/);
     assert.doesNotMatch(work, /Working now|Active now|Reflection complete/);
     for (const character of core.CHARACTER_PRESETS)
