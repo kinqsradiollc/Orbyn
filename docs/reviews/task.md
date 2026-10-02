@@ -129,3 +129,58 @@ Screenshot `/tmp/orbyn-native-model-clear-default-20261002.png`; logs
 freeze it, run the full suite sequentially on the marked full-test DB, then rebuild
 exact artifacts when disk permits. Large text/software keyboard/dark/offline native
 checks and web permission gate remain open.
+
+## Latest user scope and combined main verification — 2 October
+
+The user explicitly authorizes ChatGPT desktop/mobile UI reference inspection and
+requires the entire app (not only Assistant/chat) to use a coherent visual system
+while keeping Orbyn colors/identity. Background and Overnight must have separate
+worker runtimes and separate UI workspaces, with durable, bounded, authorized
+collaboration. This is now in the canonical ADR on local main: `454e957` and
+`d4db69d`. Those documentation checkpoints are not pushed. Main also contains
+the unpublished companion commits; do not accidentally push them. User dirty
+files remain unchanged. No new subagent authorization was given.
+
+This worktree now merges main `0749e6e` as `aa419b8`, preserving the companion
+files byte-for-byte and integrating the prior CRDT/plugin foundations. Merge
+conflicts retained newer model-discovery/default-refresh fixes and both relevant
+main/local evidence. Existing Yjs/lib0/Expo Crypto dependencies were linked from
+main; nothing was installed or changed in main's dependency tree.
+
+The combined full suite exited 0: 2,148/2,148, zero failures/skips/cancelled, log
+`/tmp/orbyn-companion-model-aa419b8-full-tests.log`. Native startup regenerated the
+diagram asset digest after the package-lock merge; its HTML is byte-identical,
+and only the source checksum changed. This was committed as `9e0aeb1`. A fresh
+complete rerun started on that exact committed application/asset source, own
+marked database `orbyn_companion_models_9e0aeb1_test`, session 80335, log
+`/tmp/orbyn-companion-model-9e0aeb1-full-tests.log`. Wait for terminal passing totals
+before claiming final frozen acceptance. Only ADR documentation changed afterward
+(`023e0e7`, `47f0482`). Workspace types and root production build passed after
+combining main, logs `/tmp/orbyn-companion-model-aa419b8-types.log` and
+`/tmp/orbyn-companion-model-aa419b8-build.log`. Do not edit application source
+until this full rerun terminates.
+
+Actual combined-source native interactions now confirm companion onboarding,
+name/body/glasses/static choices, save, reopen and persistence across reload.
+Backend read: Native Nova/pebble/glasses/static. Screenshot:
+`/tmp/orbyn-native-main-companion-persisted-20261002.png`. No real account or
+provider calls were involved. A transient CUA observation/window failure was
+recovered through the actual Expo reload menu; the companion sheet could be
+observed after reopening, but its failed Cancel attempt is not acceptance.
+Native model settings coexist with the new UI; after the controlled executor
+heartbeat stopped, selecting that expired device shows offline and disabled
+model/default controls, including a search reaching model 65. Dark theme persists
+across reload. Screenshot `/tmp/orbyn-native-model-offline-dark-20261002.png`.
+Large text/software-keyboard and complete live model-save recheck after the main
+merge remain open. Earlier save/clear proof is on portable-abort source `dda31cd`.
+
+Current own QA: API session 82920 and Metro 70797, synthetic fixture stopped.
+Only the named QA DB was migrated to include main's new schema. Preserve existing
+character previews at 8018/8083. Disk remains ~3.3 GiB. Docker was externally
+recovered; no agent restart. Browser reference viewport was restored; user-owned
+ChatGPT tab remains open. The local 5174 saved permission gate is unchanged.
+
+Next implementation checkpoint after exact-source qualification: implement the
+ADR's shared runtime lane classification/ownership and distinct background/night
+service claims/lifecycle/deployment; test recovery/isolation with separate real
+processes. Keep collaboration and whole-app UI rows incomplete until delivered.

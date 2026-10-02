@@ -173,3 +173,28 @@ Screenshot: `/tmp/orbyn-native-model-clear-default-20261002.png`. Fixture log:
 behavior, not upstream OAuth eligibility or provider inference. Large text, software
 keyboard, dark theme and offline interaction remain pending. Earlier image/export
 results predate this correction; a fresh frozen full suite is still required.
+
+## Integration with new main UI
+
+Local main companion source `2eb34a5`/`0749e6e` was merged as `aa419b8`, preserving
+its web/native components and account settings. Combined workspace types and
+production build pass. The full suite exited successfully with 2,148/2,148 and no
+failures/skips/cancellations, log `/tmp/orbyn-companion-model-aa419b8-full-tests.log`.
+After dependency metadata changed, native startup refreshed the diagram source
+digest; HTML remained byte-identical. That artifact is committed in `9e0aeb1`,
+whose fresh full rerun is pending in `/tmp/orbyn-companion-model-9e0aeb1-full-tests.log`.
+The first combined run is not described as a pre-start frozen `9e0aeb1` run.
+
+Actual native companion customization persisted through a reload and reopened
+with its saved name/body/accessory/static state. The model section still opens
+and correctly disables changes for the controlled expired device; model-65
+search and dark-theme persistence were exercised on combined source. Screenshots:
+`/tmp/orbyn-native-main-companion-persisted-20261002.png` and
+`/tmp/orbyn-native-model-offline-dark-20261002.png`.
+
+The canonical ADR on local main now explicitly includes the user-authorized
+ChatGPT desktop/mobile visual reference, whole-application redesign, preservation
+of the companion, separate Background/Overnight UI and worker processes, and
+durable collaboration acceptance. The original native abort fix is local
+`dda31cd`; feature code has not been promoted to main. These new documentation
+checkpoints are also local, without pushing unpublished companion work.
