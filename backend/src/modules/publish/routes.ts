@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import argon2 from "argon2";
 import { createMathHtml } from "../../lib/math-html.js";
+import { contentDisposition } from "../../lib/disposition.js";
+import { loadPublishedMedia, PUBLISHED_MEDIA_MAX_BYTES } from "./media.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
@@ -29,7 +31,7 @@ import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { privacyFrom } from "../links/privacy.js";
-import { PAGE_FILE_COLUMNS, readLink } from "../page-files/service.js";
+import { PAGE_FILE_COLUMNS } from "../page-files/service.js";
 import { importsEnabled } from "../imports/tokens.js";
 import { visibleOwned } from "../../lib/visibility.js";
 
@@ -257,8 +259,11 @@ const linkedIds = (blocks: DocBlock[]) => {
 const visitorView = (paths: Map<string, string>) =>
   privacyFrom((ref) => !(ref.kind === "doc" && paths.has(ref.id)));
 
-/** A page's pictures, as links a reader can load for the next hour. */
-async function pictures(docId: string): Promise<Map<string, string>> {
+/** Publication-scoped URLs recheck current access on every request. */
+async function pictures(
+  docId: string,
+  slug: string,
+): Promise<Map<string, string>> {
   if (!importsEnabled()) return new Map();
   const files = (
     await pool.query<PageFile>(
@@ -268,12 +273,7 @@ async function pictures(docId: string): Promise<Map<string, string>> {
       [docId],
     )
   ).rows;
-  return new Map(
-    files.map((f) => [
-      f.id,
-      `/api${readLink({ ...f, bytes: Number(f.bytes) }).url_path}`,
-    ]),
-  );
+  return new Map(files.map((f) => [f.id, `/p/${slug}/media/${docId}/${f.id}`]));
 }
 
 async function renderPage(
@@ -290,11 +290,11 @@ async function renderPage(
   // A visitor can open only published pages: every other link's words are
   // hidden, so a private title never reaches the web (D3aF).
   const content = visitorView(links).value(doc.content);
-  const files = await pictures(doc.id);
+  const files = await pictures(doc.id, row.slug);
   const bodyHtml = blocksHtml(content, {
     anchors: true,
     math: createMathHtml(),
-    fileUrl: (id) => files.get(id) ?? null,
+    fileUrl: (id) => files.get(id.toLowerCase()) ?? null,
     linkUrl: (href) => {
       const ref = parseObjectHref(href);
       if (!ref) return /^https?:\/\//i.test(href) ? href : null;
@@ -319,7 +319,9 @@ async function renderPage(
   const firstPicture = content.find(
     (b): b is Extract<DocBlock, { type: "image" }> => b.type === "image",
   );
-  const image = firstPicture ? files.get(firstPicture.file) : undefined;
+  const image = firstPicture
+    ? files.get(firstPicture.file.toLowerCase())
+    : undefined;
   return publishedPageHtml({
     title: doc.title,
     bodyHtml,
@@ -599,6 +601,111 @@ export async function publishRoutes(app: FastifyInstance) {
     await send(reply, 401, publishedLockHtml({ title, action, wrong: false }));
     return true;
   };
+
+  let mediaWorking = 0;
+  let mediaBytes = 0;
+  app.get(
+    "/p/:slug/media/:doc/:file",
+    { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } },
+    async (r, reply) => {
+      reply.header("cache-control", "no-store");
+      const params = r.params as { slug: string; doc: string; file: string };
+      const docId = z.uuid().safeParse(params.doc);
+      const fileId = z.uuid().safeParse(params.file);
+      if (!docId.success || !fileId.success)
+        fail(404, "Published file not found");
+      const authorize = async () => {
+        const row = await rowAt(String(params.slug).toLowerCase());
+        if (!row) fail(404, "Published file not found");
+        if (!unlocked(r, row))
+          fail(401, "Enter the page password to read this file.");
+        const doc = (
+          await pool.query<{ id: string }>(
+            `SELECT d.id FROM docs d WHERE d.id = $1 AND d.deleted_at IS NULL
+          AND (d.id = $2 OR (d.folder_id = $3 AND d.kind <> 'agenda'
+             AND EXISTS(SELECT 1 FROM folders pf WHERE pf.id = $3
+                        AND d.team_id IS NOT DISTINCT FROM pf.team_id)))`,
+            [docId.data, row.doc_id, row.folder_id],
+          )
+        ).rows[0];
+        if (!doc) fail(404, "Published file not found");
+        const file = (
+          await pool.query<PageFile>(
+            `SELECT ${PAGE_FILE_COLUMNS} FROM page_files f
+          JOIN page_file_refs pr ON pr.file_id = f.id
+         WHERE pr.doc_id = $1 AND f.id = $2 AND f.status = 'ready'`,
+            [docId.data, fileId.data],
+          )
+        ).rows[0];
+        if (!file) fail(404, "Published file not found");
+        return { ...file, bytes: Number(file.bytes) };
+      };
+      const file = await authorize();
+      if (
+        !Number.isSafeInteger(file.bytes) ||
+        file.bytes < 1 ||
+        file.bytes > PUBLISHED_MEDIA_MAX_BYTES
+      )
+        fail(413, "This published file is too large to read.");
+      if (
+        mediaWorking >= 4 ||
+        mediaBytes + file.bytes > PUBLISHED_MEDIA_MAX_BYTES
+      )
+        return reply.code(503).header("retry-after", "5").send({
+          message: "Published file loading is busy. Try again shortly.",
+        });
+      mediaWorking++;
+      mediaBytes += file.bytes;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      let handedOff = false,
+        released = false,
+        operationActive = true;
+      const release = () => {
+        controller.abort();
+        if (operationActive || released) return;
+        released = true;
+        mediaWorking--;
+        mediaBytes -= file.bytes;
+        controller.abort();
+        r.raw.removeListener("aborted", abort);
+        reply.raw.removeListener("close", release);
+        reply.raw.removeListener("finish", release);
+      };
+      r.raw.once("aborted", abort);
+      reply.raw.once("close", release);
+      reply.raw.once("finish", release);
+      if (r.raw.aborted || reply.raw.destroyed) abort();
+      try {
+        const body = await loadPublishedMedia(file, controller.signal);
+        const current = await authorize();
+        if (
+          current.mime !== file.mime ||
+          current.bytes !== file.bytes ||
+          current.name !== file.name
+        )
+          fail(409, "This published file changed. Refresh the page.");
+        if (controller.signal.aborted) return reply.hijack();
+        handedOff = true;
+        return reply
+          .type(file.mime)
+          .header(
+            "content-disposition",
+            contentDisposition(
+              file.kind === "image" ? "inline" : "attachment",
+              file.name,
+            ),
+          )
+          .header("cache-control", "no-store")
+          .header("x-content-type-options", "nosniff")
+          .header("content-security-policy", "default-src 'none'; sandbox")
+          .send(body);
+      } finally {
+        operationActive = false;
+        if (!handedOff || controller.signal.aborted) release();
+      }
+    },
+  );
 
   app.get("/p/:slug", async (r, reply) => {
     const slug = String((r.params as { slug: string }).slug).toLowerCase();
