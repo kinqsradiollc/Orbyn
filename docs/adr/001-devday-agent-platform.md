@@ -414,3 +414,24 @@ models/defaults/execution, providers/embeddings, separate plugin integration,
 agent collaboration/reflection and whole-app Docs/UI acceptance. Preserve palette
 and characters; voice/computer-use product features remain excluded. No
 deployment or cleanup occurred. The full ADR remains active.
+
+### Native Mermaid correctness checkpoint — 2 October 2026
+
+Source dc5a2c8 fixes failures reproduced on the actual bundled engine in the
+owned narrow iOS preview: static diagrams rejected by unconditional stock CSS
+keyframes, initial horizontal clipping, omitted vertical padding, unreadable
+dark ER attribute rows and failed deferred native export dependency loading.
+Only exact inert stock keyframe bodies are stripped; unknown CSS at-rules,
+escapes and external resources remain rejected. Width is measured and diagrams
+fit initially, with relative zoom and Fit reset. Height includes host padding;
+ER row colors come from validated Orbyn surface tokens. Expo export dependencies
+are loaded in the initial module graph. No new permissions or network access.
+
+Corrected before-fix regressions failed; combined final cohort passed26/26 with
+mobile/backend types passing. Native flowchart/sequence/state/ER rendering,
+sequence zoom/refit/source and SVG file creation/system handoff are proven in
+docs/reviews/evidence/mermaid-native/. No recipient or save destination selected.
+Six remaining diagram families, malformed/large fixtures, light theme, Android,
+web/mobile-web and complete Docs/UI acceptance remain open. Source7026041
+reconciles current mainc30c5fc; its sole conflict was a test blank line, with all
+regressions preserved. This source checkpoint is not merged or deployed.
