@@ -152,7 +152,12 @@ kind: NetworkPolicy
 metadata:
   name: allow-dns-egress
 spec:
-  podSelector: {}
+  # Printing uses only local resources and has no DNS/other egress.
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: NotIn
+        values: [pdf]
   policyTypes: [Egress]
   egress:
     - to:

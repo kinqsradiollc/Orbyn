@@ -2311,3 +2311,34 @@ exact-head full-suite/CI remain separate open gates.
   -53focused checks, all workspace types/production builds and scoped formatting pass. Evidence: evidence/doc-pdf-renderer.md. No localhost app inspection or terms acceptance occurred.
 - API still uses old PDF writer. Next implement authorized primary/revision-fenced API integration, bounded work/cancellation and container Chromium sandbox qualification, then real native sharing/publication/full D1/U1 gates.
 - Commit this renderer foundation, reconcile main9702f19e preserving both ADR histories and all export regressions, then run full exact-head qualification without editing that frozen runtime tree. Full goal stays active; no cleanup/deploy.
+
+### Rendered PDF service candidate — 3 October 2026
+
+The export API now sends its authorized, primary-read HTML snapshot to a separate
+PDF process. Requests use an independent HMAC key, signed body digest, one-minute
+window and replay protection. Authentication and a bounded reservation precede
+body parsing, including requests with query strings. The renderer has no database
+or provider credentials. Work is capped at 1–4 concurrent jobs, 20 MiB input,
+24 MiB output and a 35-second request deadline; cancellation closes owned browser
+processes. Errors return no partial PDF and there is no plain-writer fallback.
+
+Before delivery, the API checks access and revision on primary again: revoked or
+deleted pages return 404 and changed pages return 409. Docker has a dedicated PDF
+image, nonroot user, enabled Chromium sandbox, dropped capabilities, read-only
+root and private temporary storage. Kubernetes additionally requires the documented
+node seccomp profile; Kubernetes runtime qualification remains open.
+
+Evidence before final commit: 45 actual export/primary/service checks passed;
+9 current client/service checks pass after the query-string authentication fix.
+Sandboxed Linux container fixtures rendered all ten Mermaid families and math
+into an 11-page tagged PDF. That container image predates the latest service
+authentication change and is not exact-head production qualification. Fresh all
+workspace typechecks, production builds and formatting pass. Full current-head
+suite, exact image/CI and real native export/publication acceptance remain open.
+
+Public Home PR159 passed 2,209 local tests and all four exact-head CI jobs and
+merged to main as bdc4035b. Its Muse/Dots references and concrete agent workflow
+copy are retained. Broader source head0044a294 passed 2,474 tests. Neither result
+qualifies this new renderer integration. Full ADR remains active; no deployment.
+
+Next: freeze/qualify the renderer service candidate; preserve character work and main user changes. Continue remaining C1–C6/M1/D1/U1 gates after this checkpoint.

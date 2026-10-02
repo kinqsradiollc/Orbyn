@@ -27,6 +27,7 @@ resources:
   - status.yaml
   - notifier.yaml
   - imports.yaml
+  - pdf.yaml
   - web.yaml
   - autoscaling.yaml
   - ingress.yaml
@@ -38,6 +39,8 @@ resources:
 #   (cd deploy/k8s && kustomize edit set image ghcr.io/your-org/orbyn-backend=ghcr.io/acme/orbyn-backend:1.4.2)
 images:
   - name: ghcr.io/your-org/orbyn-backend
+    newTag: TAG
+  - name: ghcr.io/your-org/orbyn-pdf
     newTag: TAG
   - name: ghcr.io/your-org/orbyn-web
     newTag: TAG

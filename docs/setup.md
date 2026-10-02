@@ -327,3 +327,30 @@ model configured, the AI checks report that and pass; set `SMOKE_AI=skip` to ski
 npm run format        # write
 npm run format:check  # verify (CI runs this)
 ```
+
+### Rendered document PDFs
+
+Compose runs the private `pdf` service from the backend Dockerfile's `pdf` target.
+Set an independent `DOC_PDF_KEY` (at least32 characters; generate with
+`openssl rand -hex 32`) shared only by API and renderer. Compose configures the
+API's `DOC_PDF_URL=http://pdf:8000`; native local development must set its renderer
+URL explicitly. `DOC_PDF_CONCURRENCY` defaults to2 and is bounded1–4.
+
+The renderer uses `/usr/bin/chromium` by default (`DOC_PDF_EXECUTABLE` can point
+at a local sandboxed Chrome executable). The ordinary API/worker image retains
+its existing system dependencies. The renderer receives no database/provider
+credentials and has no published port. See [sandbox configuration](../deploy/pdf/README.md).
+
+For Kubernetes, build/publish the Dockerfile's `pdf` target as the separate
+`orbyn-pdf` image and provision `deploy/pdf/seccomp.json` at
+`orbyn/pdf-seccomp.json` under each eligible node's kubelet seccomp directory.
+The PDF pod uses a Localhost profile, read-only root, dropped capabilities and
+bounded temporary memory; its NetworkPolicy permits only API ingress and no
+egress. The renderer Secret selects only `DOC_PDF_KEY`, never the whole backend
+Secret. A missing host profile must be corrected before rollout; do not disable
+Chromium sandboxing. A real cluster rollout is a separate acceptance gate.
+
+Export integration checks require sandboxed Chromium. Set `PDF_TEST_CHROME`
+when it is outside the usual Chrome/Chromium paths. They start their own private
+renderer on a temporary loopback port, print through the actual API, and inspect
+PDF contents with the existing PDF reader; they never use the production renderer.

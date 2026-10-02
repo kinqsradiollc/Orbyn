@@ -54,6 +54,7 @@ const html = docToHtml("Document export renderer QA", blocks, {
   "h2 { break-before: page; } h1 + h2 { break-before: auto; }</style>",
 );
 await mkdir(output, { recursive: true });
+await writeFile(join(output, "source-snapshot.html"), html);
 const pdf = await renderPdfSnapshot({
   html,
   executable,

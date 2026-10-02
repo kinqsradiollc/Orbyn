@@ -12,6 +12,7 @@ metadata:
     app.kubernetes.io/name: orbyn
 data:
   PORT: "8000"
+  DOC_PDF_URL: "http://pdf:8000"
   # Services sit behind the ingress controller (and, for /api, the web nginx),
   # so they read the client address from X-Forwarded-For. Safe only because a
   # NetworkPolicy stops anything else from reaching them (networkpolicy.yaml).

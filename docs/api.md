@@ -1028,10 +1028,14 @@ File exports and the legacy Markdown export read document visibility, content, l
 state and link visibility from the primary database. They do not depend on a client consistency
 header or a read replica catching up after a save or permission change.
 
-`docx` and `pdf` are written directly: `.docx` is a zip of XML using Node's `zlib`, and PDF uses
-standard fonts. PDF carries headings, lists, checklists, quotes, code, rules, and bold and italic
-within a line. It currently writes image captions and plain math symbols; rendered diagram and
-formula PDF export remains unsupported.
+`docx` remains a zip of XML using Node's `zlib`. `pdf` prints the authorized HTML snapshot
+through a private, authenticated Chromium service with bundled strict Mermaid rendering and
+self-contained typeset MathML. The renderer has no database/provider credentials and does not
+fetch document resources. Source, file size, time and concurrency are bounded. Unavailable or
+busy rendering returns `503`; an oversized snapshot returns `413`. There is no silent downgrade
+to plain math or a different document revision. Visibility and revision are checked again before
+PDF delivery: deletion/lost access returns `404`, and changes during printing return `409`.
+Clients cancel printing when the export is abandoned.
 
 ### `GET /docs/:id/markdown` (auth)
 

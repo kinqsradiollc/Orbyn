@@ -32,7 +32,7 @@ RUN npm run build -w @orbyn/core && npm run build -w @orbyn/api-client && npm ru
 FROM manifests AS prod-deps
 RUN npm ci --omit=dev --workspace=@orbyn/core --workspace=@orbyn/api-client --workspace=@orbyn/backend --include-workspace-root=false
 
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim AS runtime
 # Reading scanned pages and photos (the converter): Tesseract with English and
 # page orientation, and poppler's pdftoppm to draw a PDF page as an image.
 # About 60 MB; no model to download and nothing to turn on.
@@ -66,3 +66,15 @@ RUN mkdir -p /data/files && chown node:node /data/files && chmod 700 /data/files
 USER node
 EXPOSE 8000
 CMD ["node", "backend/dist/services/api.js"]
+
+# Only the dedicated PDF service needs Chromium and document fonts.
+FROM runtime AS pdf
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium fonts-noto-core fonts-noto-cjk fonts-stix \
+  && rm -rf /var/lib/apt/lists/*
+USER node
+CMD ["node", "backend/dist/services/pdf.js"]
+
+# The default API/worker image retains its existing system dependencies.
+FROM runtime AS backend
