@@ -5,6 +5,8 @@ import { readFileSync } from "node:fs";
 import {
   prepareMermaidSource,
   mermaidThemeVariables,
+  mermaidDiagramCss,
+  DIAGRAM_EXPORT_PALETTE,
   visibleDiagramTicks,
   diagramLabelTranslation,
   diagramDisplayScale,
@@ -21,10 +23,20 @@ test("the bundled renderer matches the current security source", () => {
       "utf8",
     ),
   );
+  for (const file of [
+    "../../desktop/src/assets/mermaid-runtime.json",
+    "../assets/mermaid-runtime.json",
+  ]) {
+    const other = JSON.parse(
+      readFileSync(new URL(file, import.meta.url), "utf8"),
+    );
+    assert.equal(other.html, asset.html);
+    assert.equal(other.sourceDigest, asset.sourceDigest);
+  }
   const digest = createHash("sha256")
     .update(
       readFileSync(
-        new URL("../../mobile/scripts/mermaid-runtime.mjs", import.meta.url),
+        new URL("../../scripts/mermaid-runtime.mjs", import.meta.url),
       ),
     )
     .update(
@@ -33,9 +45,7 @@ test("the bundled renderer matches the current security source", () => {
       ),
     )
     .update(
-      readFileSync(
-        new URL("../../mobile/scripts/build-mermaid.mjs", import.meta.url),
-      ),
+      readFileSync(new URL("../../scripts/build-mermaid.mjs", import.meta.url)),
     )
     .update(readFileSync(new URL("../../mobile/package.json", import.meta.url)))
     .update(readFileSync(new URL("../../package-lock.json", import.meta.url)))
@@ -164,4 +174,48 @@ test("actual size keeps wide diagrams readable while fit restores containment", 
   assert.equal(diagramDisplayScale(2000, 320, 2, true), 2);
   assert.equal(diagramDisplayScale(2000, 320, 20, true), 3);
   assert.equal(diagramDisplayScale(NaN, NaN, NaN), 1);
+});
+
+test("bounded rendering rejects directives and size limits before calling the engine", async () => {
+  const { renderBoundedMermaid, MERMAID_MAX_SOURCE, MERMAID_MAX_SVG } =
+    await import("@orbyn/core");
+  const calls: string[] = [];
+  const renderer = {
+    render: async (_id: string, source: string) => {
+      calls.push(source);
+      return { svg: "<svg />" };
+    },
+  };
+  for (const source of [
+    "%%{init: {securityLevel: 'loose'}}%%\nflowchart LR\nA --> B",
+    "x".repeat(MERMAID_MAX_SOURCE + 1),
+    "x\n".repeat(2049),
+  ])
+    await assert.rejects(renderBoundedMermaid(renderer, "test", source));
+  assert.equal(calls.length, 0);
+  assert.equal(
+    await renderBoundedMermaid(
+      renderer,
+      "test",
+      "\ufeffflowchart LR\r\nA --> B",
+    ),
+    "<svg />",
+  );
+  assert.deepEqual(calls, ["flowchart LR\nA --> B"]);
+  await assert.rejects(
+    renderBoundedMermaid(
+      { render: async () => ({ svg: "x".repeat(MERMAID_MAX_SVG + 1) }) },
+      "test",
+      "flowchart LR\nA --> B",
+    ),
+    /too large/,
+  );
+});
+
+test("journey task labels use readable theme text beside section labels", () => {
+  const css = mermaidDiagramCss(DIAGRAM_EXPORT_PALETTE);
+  assert.match(
+    css,
+    /text\.task, text\.task tspan \{ fill: #27382f !important;/,
+  );
 });

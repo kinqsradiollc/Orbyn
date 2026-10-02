@@ -65,7 +65,7 @@ function fixture(mobile: boolean) {
         React.createElement("span", null, name),
     },
     "../styles": { shared: {} },
-    "../theme": { controls: { tap: 44 } },
+    "../theme": { controls: { tap: 44 }, colors: { border: "border" } },
     "../motion": { Pressable: container },
     "./Button": {
       Button: ({ title }: { title: string }) =>
@@ -149,16 +149,62 @@ function profileAction(node: React.ReactNode): (() => void) | undefined {
     .map(profileAction)
     .find(Boolean);
 }
+function guideAction(node: React.ReactNode): (() => void) | undefined {
+  if (!React.isValidElement(node)) return;
+  const props = node.props as {
+    onClick?: () => void;
+    onPress?: () => void;
+    children?: React.ReactNode;
+  };
+  if (props.children === "How agents work" || props.children === "Hide guide")
+    return props.onClick ?? props.onPress;
+  const labels = React.Children.toArray(props.children);
+  if (
+    (props.onClick || props.onPress) &&
+    labels.some(
+      (child) =>
+        React.isValidElement(child) &&
+        ["How agents work", "Hide guide"].includes(
+          (child.props as { children: string }).children,
+        ),
+    )
+  )
+    return props.onClick ?? props.onPress;
+  return labels.map(guideAction).find(Boolean);
+}
 for (const mobile of [false, true]) {
   const platform = mobile ? "native" : "web";
   test(`${platform} Home describes results and morning review without fabricated activity`, () => {
     const view = fixture(mobile);
-    const html = renderToStaticMarkup(view.first);
+    const compact = renderToStaticMarkup(view.first);
+    assert.match(compact, /Background/);
+    assert.match(compact, /Overnight/);
+    assert.match(compact, /How agents work/);
+    assert.doesNotMatch(compact, /Example request|sources in agent activity/);
+    guideAction(view.first)!();
+    const html = renderToStaticMarkup(view.render());
+    assert.match(html, /Example request/);
+    for (const agent of core.HOME_AGENT_GUIDE)
+      for (const step of agent.steps) {
+        assert.ok(html.includes(step.title));
+        assert.ok(html.includes(step.body));
+      }
+    assert.match(html, /Hide guide/);
     assert.match(html, /Background/);
-    assert.match(html, /delegated tasks, results, and questions/);
+    assert.match(html, /When you delegate a task/);
+    assert.match(html, /needs an answer or approval/);
+    assert.match(html, /Turn project notes into a draft/);
+    assert.match(html, /sources in agent activity/);
     assert.match(html, /Overnight/);
-    assert.match(html, /queued night work/);
+    assert.match(html, /Inside your chosen night window/);
+    assert.match(html, /work budget limit the run/);
+    assert.match(html, /wake up to results/);
+    assert.match(html, /unfinished tasks in Overnight/);
+    assert.match(html, /idle until they have authorized work/);
     assert.doesNotMatch(html, /Working now|Active now|Reflection complete/);
+    guideAction(view.render())!();
+    assert.doesNotMatch(renderToStaticMarkup(view.render()), /Example request/);
+    assert.equal(view.reads(), 1);
     view.cleanup();
   });
   test(`${platform} Home exposes the separate profiles on explicit request`, () => {

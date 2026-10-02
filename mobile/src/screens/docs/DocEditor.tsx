@@ -86,6 +86,7 @@ import {
   mentionQuery,
   type Doc,
   type DocBlock,
+  prepareDocExport,
   type Favourite,
   type DocMode,
   type DocAiAction,
@@ -93,6 +94,8 @@ import {
   type ExportFormat,
   type UndoStack,
 } from "@orbyn/core";
+import { DocSourcePreview } from "./DocSourcePreview";
+import { useDiagramExport } from "./use-diagram-export";
 import { DocBody } from "./DocBody";
 import { DocNavigationContext } from "./doc-navigation";
 import { openAppUrl } from "../../hooks/useAppLinks";
@@ -109,7 +112,7 @@ import { forgetPage, rememberPage } from "../../lib/pageCache";
 import { savePageOffline } from "../../lib/outbox";
 import { PublishSheet } from "./PublishSheet";
 import { downloadDoc, formatsHere } from "../../lib/download";
-import { copyLink, shareLink, sharePageFile } from "../../lib/share";
+import { copyLink, shareLink } from "../../lib/share";
 import { setOpenDoc } from "../../lib/live";
 import { SmallAction } from "../../components/SmallAction";
 import { ActionSheet, type MoreAction } from "../../components/MoreMenu";
@@ -281,6 +284,7 @@ export function DocEditor({
   /** Where each line sits in the body, and where "Linked here" is. */
   const lineYs = useRef(new Map<number, number>());
   const linkedY = useRef<number | null>(null);
+  const [sourcePreview, setSourcePreview] = useState(false);
   const [contentsOpen, setContentsOpen] = useState(false);
   useEffect(() => {
     bodyOffset.current = null;
@@ -493,6 +497,14 @@ export function DocEditor({
   /** Which line is open, readable from the live subscription. */
   const focusedRef = useRef<number | null>(null);
   const base = useRef<DocBlock[]>(doc.content);
+  const exportDocId = useRef(doc.id);
+  exportDocId.current = doc.id;
+  const exportSaved = useRef({
+    id: doc.id,
+    title: doc.title,
+    content: doc.content,
+    version: doc.version,
+  });
   /** The title as last saved: what an offline edit's title is measured from. */
   const baseTitle = useRef(doc.title);
   /** An edit is kept on this phone, waiting for a connection (SHR-03). */
@@ -539,6 +551,13 @@ export function DocEditor({
     version.current = doc.version;
     ticksFrom.current = doc.version;
     base.current = doc.content;
+    if (doc.id === exportDocId.current)
+      exportSaved.current = {
+        id: doc.id,
+        title: doc.title,
+        content: doc.content,
+        version: doc.version,
+      };
     dirty.current = false;
     setFocused(null);
     setNote("");
@@ -592,6 +611,13 @@ export function DocEditor({
     version.current = doc.version;
     ticksFrom.current = doc.version;
     base.current = doc.content;
+    if (doc.id === exportDocId.current)
+      exportSaved.current = {
+        id: doc.id,
+        title: doc.title,
+        content: doc.content,
+        version: doc.version,
+      };
     dirty.current = false;
     setTitle(doc.title);
     setBlocks(doc.content.length ? doc.content : [EMPTY]);
@@ -625,6 +651,13 @@ export function DocEditor({
       const next = merge.blocks.length ? merge.blocks : [EMPTY];
       version.current = theirs.version;
       base.current = theirs.content;
+      if (theirs.id === exportDocId.current)
+        exportSaved.current = {
+          id: theirs.id,
+          title: theirs.title,
+          content: theirs.content,
+          version: theirs.version,
+        };
       // Stepping back past someone else's edits would take them away.
       history.current = emptyUndo();
       setBlocks(next);
@@ -720,6 +753,13 @@ export function DocEditor({
           );
           version.current = saved.version;
           base.current = saved.content;
+          if (saved.id === exportDocId.current)
+            exportSaved.current = {
+              id: saved.id,
+              title: saved.title,
+              content: saved.content,
+              version: saved.version,
+            };
           baseTitle.current = saved.title;
           dirty.current =
             live.current.title !== nextTitle ||
@@ -771,6 +811,13 @@ export function DocEditor({
               );
               version.current = saved.version;
               base.current = saved.content;
+              if (saved.id === exportDocId.current)
+                exportSaved.current = {
+                  id: saved.id,
+                  title: saved.title,
+                  content: saved.content,
+                  version: saved.version,
+                };
               dirty.current =
                 live.current.title !== mergedTitle ||
                 live.current.blocks !== merged;
@@ -809,6 +856,16 @@ export function DocEditor({
     }
     return next;
   };
+  const exportCurrent = useRef(() => ({
+    id: doc.id,
+    title: live.current.title,
+    content: pageWithDraft(),
+  }));
+  exportCurrent.current = () => ({
+    id: doc.id,
+    title: live.current.title,
+    content: pageWithDraft(),
+  });
   const unsaved = (next: DocBlock[]) =>
     dirty.current || JSON.stringify(next) !== JSON.stringify(base.current);
 
@@ -895,6 +952,13 @@ export function DocEditor({
         version.current = theirs.version;
         ticksFrom.current = theirs.version;
         base.current = theirs.content;
+        if (theirs.id === exportDocId.current)
+          exportSaved.current = {
+            id: theirs.id,
+            title: theirs.title,
+            content: theirs.content,
+            version: theirs.version,
+          };
         tagBase.current = theirs.content;
         setTags(theirs.tags ?? []);
         setTitle(theirs.title);
@@ -1461,6 +1525,13 @@ export function DocEditor({
         version.current = source.version;
         ticksFrom.current = source.version;
         base.current = source.content;
+        if (source.id === exportDocId.current)
+          exportSaved.current = {
+            id: source.id,
+            title: source.title,
+            content: source.content,
+            version: source.version,
+          };
         dirty.current = false;
         setBlocks(source.content);
         live.current = { ...live.current, blocks: source.content };
@@ -1863,6 +1934,13 @@ export function DocEditor({
           version.current = saved.version;
           ticksFrom.current = saved.version;
           base.current = saved.content;
+          if (saved.id === exportDocId.current)
+            exportSaved.current = {
+              id: saved.id,
+              title: saved.title,
+              content: saved.content,
+              version: saved.version,
+            };
           setBlocks(saved.content);
           onChanged(saved);
         }
@@ -1940,6 +2018,13 @@ export function DocEditor({
           version.current = updated.version;
           ticksFrom.current = updated.version;
           base.current = updated.content;
+          if (updated.id === exportDocId.current)
+            exportSaved.current = {
+              id: updated.id,
+              title: updated.title,
+              content: updated.content,
+              version: updated.version,
+            };
           onChanged(updated);
           if (!dirty.current && live.current.blocks === sent)
             setBlocks(updated.content);
@@ -2363,6 +2448,28 @@ export function DocEditor({
     showToast({ text: "Added the summary under the recording" });
   };
 
+  const diagramExport = useDiagramExport(`${userId ?? ""}:${doc.id}`);
+  const prepareFileExport = (signal: AbortSignal) =>
+    prepareDocExport({
+      signal,
+      editable: canWrite && !suggesting,
+      flush,
+      current: () => exportCurrent.current(),
+      saved: () => exportSaved.current,
+    });
+  const exportFile = async (format: ExportFormat) => {
+    const signal = diagramExport.signal();
+    const expectedVersion = await prepareFileExport(signal);
+    await downloadDoc(doc.id, format, {
+      version: expectedVersion,
+      render: diagramExport.render,
+      signal,
+    });
+  };
+  const reportExportError = (error: unknown) => {
+    if (!(error instanceof Error && error.name === "AbortError")) report(error);
+  };
+
   /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
     // Reading and editing (EDT-10): the same switch as Info's, a tap away.
@@ -2380,6 +2487,13 @@ export function DocEditor({
       : []),
     { label: "Ask about this page", onPress: () => setTalking(true) },
     { label: "Present", onPress: () => setPresenting(true) },
+    {
+      label: "Source / preview",
+      onPress: () => {
+        syncDraft();
+        setSourcePreview(true);
+      },
+    },
     {
       label: pageStarred ? "Unstar" : "Star",
       onPress: () => toggleStar(),
@@ -2464,17 +2578,17 @@ export function DocEditor({
     },
     {
       label: "Markdown file",
-      onPress: () => void sharePageFile(doc.id, "md").catch(report),
+      onPress: () => void exportFile("md").catch(reportExportError),
     },
     {
       label: "PDF file",
-      onPress: () => void sharePageFile(doc.id, "pdf").catch(report),
+      onPress: () => void exportFile("pdf").catch(reportExportError),
     },
   ];
   const exportActions: MoreAction[] = formatsHere().map(
     (format: ExportFormat) => ({
       label: EXPORT_LABELS[format].name,
-      onPress: () => void downloadDoc(doc.id, format).catch(report),
+      onPress: () => void exportFile(format).catch(reportExportError),
     }),
   );
   // ---- contents (NAV-03) ----
@@ -2521,6 +2635,16 @@ export function DocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <View style={styles.page}>
+        {diagramExport.surface}
+        {sourcePreview && (
+          <DocSourcePreview
+            blocks={blocks}
+            docId={doc.id}
+            onAppLink={openAppUrl}
+            report={report}
+            onClose={() => setSourcePreview(false)}
+          />
+        )}
         {/* The page's header holds only Back, its title, Info and ⋯. */}
         {headerSlot && (
           <SlotFill slot={headerSlot}>

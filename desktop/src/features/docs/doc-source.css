@@ -1,0 +1,54 @@
+.doc-source-dialog {
+  width: min(1100px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  overflow: auto;
+}
+.doc-source-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.doc-source-columns textarea,
+.doc-source-rendered {
+  min-width: 0;
+  height: min(65dvh, 650px);
+  overflow: auto;
+}
+.doc-source-columns textarea {
+  resize: none;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 20px;
+  padding: 16px;
+}
+.doc-source-rendered {
+  overflow-wrap: anywhere;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.doc-source-rendered > div {
+  padding: 12px;
+  border-left: 2px solid transparent;
+}
+.doc-source-rendered > div.is-selected {
+  border-left-color: var(--color-accent);
+}
+.doc-source-jump {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .doc-source-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .doc-source-columns textarea,
+  .doc-source-rendered {
+    height: 35dvh;
+  }
+}

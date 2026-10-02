@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { CHARACTER_PRESETS, type PersonalAgentSettings } from "@orbyn/core";
+import {
+  CHARACTER_PRESETS,
+  HOME_AGENT_GUIDE,
+  HOME_AGENT_IDLE_NOTE,
+  type PersonalAgentSettings,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Character } from "../../components/Character";
 import { AssistantAgents } from "../assistant/AssistantAgents";
@@ -12,6 +17,7 @@ export function HomeCompanions({
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
     let updated = false;
@@ -48,7 +54,7 @@ export function HomeCompanions({
         )}
         <div>
           <h2>{identity?.name ?? "Your companion"}</h2>
-          <p>Choose its name and appearance in assistant settings.</p>
+          <p>Your tasks, with a place to review the work.</p>
         </div>
         <button
           className="text-button"
@@ -61,17 +67,41 @@ export function HomeCompanions({
       </div>
       <div className="home-companions-work">
         <div className="home-companions-lanes">
-          <p>
-            <strong>Background</strong> Check delegated tasks, results, and
-            questions that need you.
-          </p>
-          <p>
-            <strong>Overnight</strong> Review queued night work and what’s still
-            unfinished.
-          </p>
+          {HOME_AGENT_GUIDE.map((agent) => (
+            <article key={agent.name}>
+              <strong>{agent.name}</strong>
+              <small>{agent.timing}</small>
+              <p>{agent.summary}</p>
+              {guideOpen && (
+                <div className="home-companions-guide">
+                  <p>Example request: “{agent.request}”</p>
+                  <ol className="home-companions-steps">
+                    {agent.steps.map((step) => (
+                      <li key={step.title}>
+                        <strong>{step.title}</strong>
+                        <p>{step.body}</p>
+                      </li>
+                    ))}
+                  </ol>
+                  <p>{agent.result}</p>
+                  <p>{agent.pause}</p>
+                </div>
+              )}
+            </article>
+          ))}
         </div>
+      </div>
+      <p className="home-companions-idle">{HOME_AGENT_IDLE_NOTE}</p>
+      <div className="home-companions-actions">
         <button className="secondary" onClick={() => setAgentsOpen(true)}>
           View agent activity
+        </button>
+        <button
+          className="text-button"
+          aria-expanded={guideOpen}
+          onClick={() => setGuideOpen(!guideOpen)}
+        >
+          {guideOpen ? "Hide guide" : "How agents work"}
         </button>
       </div>
       {expanded && (

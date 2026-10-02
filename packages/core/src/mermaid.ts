@@ -18,7 +18,26 @@ export function prepareMermaidSource(source: string): string {
     throw new Error(
       "Diagram configuration directives are not supported. Keep the diagram source without its configuration header.",
     );
+  // Image/icon packs and CSS resources can fetch before SVG sanitization.
+  // Preserve the rejected source, rather than granting diagrams network access.
+  if (/@\{[^}]*\b(?:img|icon)\s*:/i.test(text) || /url\s*\(/i.test(text))
+    throw new Error("External diagram resources are not supported.");
   return text;
+}
+
+/** Render bounded source through an application-owned engine; never bind diagram scripts. */
+export async function renderBoundedMermaid(
+  renderer: {
+    render: (id: string, source: string) => Promise<{ svg: string }>;
+  },
+  id: string,
+  source: string,
+): Promise<string> {
+  const prepared = prepareMermaidSource(source);
+  const { svg } = await renderer.render(id, prepared);
+  if (typeof svg !== "string" || svg.length > MERMAID_MAX_SVG)
+    throw new Error("The rendered diagram is too large.");
+  return svg;
 }
 
 /** Pin diagram families to the application's palette rather than Mermaid defaults. */
@@ -102,7 +121,7 @@ export function visibleDiagramTicks(
 /** Family-specific fixes for Mermaid selectors that style both boxes and text. */
 export function mermaidDiagramCss(palette: Record<string, string>): string {
   const vars = mermaidThemeVariables(palette);
-  return `text.journey-section, text.journey-section tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
+  return `text.journey-section, text.journey-section tspan, text.task, text.task tspan { fill: ${vars.textColor} !important; } .mindmap-node rect, .mindmap-node circle, .mindmap-node polygon, .mindmap-node path { stroke: ${vars.primaryBorderColor}; stroke-width: 1.5px; } [class*="section-edge-"] { stroke: ${vars.primaryBorderColor} !important; stroke-width: 2px !important; }`;
 }
 
 /** Center a measured SVG label without assuming that its local origin is zero. */

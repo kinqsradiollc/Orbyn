@@ -44,6 +44,9 @@ import {
   colourable,
   diagramKind,
   mermaidThemeVariables,
+  prepareMermaidSource,
+  renderBoundedMermaid,
+  MERMAID_MAX_SOURCE,
   mermaidDiagramCss,
   visibleDiagramTicks,
   diagramLabelTranslation,
@@ -1019,11 +1022,11 @@ async function loadMermaid(): Promise<Mermaid> {
   const theme = JSON.stringify(vars);
   if (theme !== mermaidTheme) {
     mermaidTheme = theme;
-    mermaid.initialize({
+    const config = {
       startOnLoad: false,
       // No scripts or raw HTML from a diagram's text.
-      securityLevel: "strict",
-      theme: "base",
+      securityLevel: "strict" as const,
+      theme: "base" as const,
       themeVariables: vars,
       themeCSS: mermaidDiagramCss(vars),
       journey: {
@@ -1031,7 +1034,16 @@ async function loadMermaid(): Promise<Mermaid> {
         sectionFills: [vars.secondaryColor],
         sectionColours: [vars.textColor],
       },
-    });
+      suppressErrorRendering: true,
+      fontFamily: "system-ui, sans-serif",
+      maxTextSize: MERMAID_MAX_SOURCE,
+      maxEdges: 512,
+      htmlLabels: false,
+      flowchart: { htmlLabels: false },
+      secure: [] as string[],
+    };
+    config.secure = Object.keys(config);
+    mermaid.initialize(config);
   }
   return mermaid;
 }
@@ -1057,14 +1069,20 @@ export function Diagram({ text }: { text: string }) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  const chart = useMemo(() => parseFlowchart(text), [text]);
+  const chart = useMemo(() => {
+    try {
+      return parseFlowchart(prepareMermaidSource(text));
+    } catch {
+      return null;
+    }
+  }, [text]);
   useEffect(() => {
     let live = true;
     setFailed(false);
     setReady(false);
     loadMermaid()
-      .then((mermaid) => mermaid.render(`diagram-${id}`, text))
-      .then(({ svg }) => {
+      .then((mermaid) => renderBoundedMermaid(mermaid, `diagram-${id}`, text))
+      .then((svg) => {
         if (!live || !box.current) return;
         box.current.innerHTML = svg;
         const drawing = box.current.querySelector("svg");

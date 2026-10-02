@@ -2059,3 +2059,264 @@ marker; it was marked only because this task created it explicitly for tests.
 The baseline full suite does not qualify this later SQL optimization; exact-head
 CI/full qualification remains required. Do not merge the larger inherited ADR
 candidate solely because a reference-link cohort passes.
+
+Latest baseline qualification: session83262 is terminalFAIL2364/2366, no skips,
+582927ms. Failures: calendar-wiring newly registered token was classified as
+invalid API key; estimates three-day horizon did not have enough working time
+around the weekend. Reference-specific tests passed, but full success is NOT
+claimed. Estimate fixture now uses7 days and focused3/3 passes; committed
+13e7e8a on Home PR150, cherry-picked9398f40 on source and5a058be on reference.
+PR151 is attached draft stacked on PR148; latest5a058be CI37029825552 is live.
+
+Separate main-based authentication checkpoint2c4e4d4 on
+codex/session-token-namespace in the assistant-work-ownership checkout is pushed
+as attached PR152. New sessions use os_ plus unchanged48 random bytes so their
+leading bytes cannot collide with credential namespaces. Ordinary legacy
+unprefixed sessions retain hash authentication; fake API/agent tokens rejected.
+Main-based session/calendar/email verification20/20 and API/passkey13/13 pass,
+no skips; backend types/format pass. Current PR152 CI is pending before merge.
+The original Home branch13e7e8a remains on remote in PR150, fresh CI pending.
+Main remainsad90e4b; no merge/release/deployment this turn. No source branches
+were discarded; reference/source reconciled without conflict. The overall ADR
+remains incomplete. This handoff update is uncommitted while exact-head CI runs.
+
+Source/preview continuation: reused reference checkout on new branch
+codex/docs-source-preview at5a058be, preserving the reference branch and its
+CI. Uncommitted core doc-source.ts exports exact serializer-based block/source
+ranges and caret lookup; handles stable anchors, multiline Mermaid/math, YAML,
+Unicode, numbered lists, blank blocks and separators without mutating content.
+Three new mapping unit tests and package build pass. Next: integrate desktop
+source/rendered layout and native toggle using the same editor revision/save
+state; wire caret/block navigation and scroll mapping; add actual component
+coverage and screenshot/interaction acceptance. Foundation is NOT D1 completion.
+Home13e7e8a CI37029683489 remains live with three successful jobs and backend
+full tests pending. Session PR152 also needs the known full-week estimate
+fixture cherry-pick so its main-based full CI can qualify deterministically.
+Do not forget qualified main checkpoints once CI is green.
+
+Source/preview UI increment: desktop DocSourcePreview uses a focus-contained
+native dialog with responsive source/rendered columns, live parent blocks,
+read-only source and mapped caret/block selection. Escape closes only this
+view and restores the opener. Mobile uses the shared Sheet and a source/preview
+toggle; selecting source opens the corresponding rendered block. Opening it
+flushes the current native line through existing syncDraft, never a second
+save path. This is inspection, not a raw-source editing implementation.
+Seven mapping/actual component tests pass; both clients' typechecks and the
+production desktop build pass. No web screenshot or native interaction
+acceptance is claimed. Full automatic scroll synchronization, source editing
+semantics and source/preview external/heading-link interactions still need
+qualification; D1 and whole U1 remain incomplete.
+
+Home13e7e8a CI37029683489 failed agent-writes.test.ts's plan_schedule fixture:
+its UPDATE planner_prefs affected zero rows for a new user, leaving weekday
+capacity in effect. Fixture now INSERTs/UPSERTs the intended all-week hours.
+Focused agent-write13/13 passes. Committed03d7cbc on session PR152,
+1eebf04 on Home PR150,195db39 on source PR148,5b6d9e9 on reference PR151,
+ad658be on preview branch. All source reconciliation was conflict-free.
+Remote reference pushes were transiently rejected twice; retry succeeded and
+latest remote5b6d9e9 must be inspected for new CI. Earlier5a058be CI also failed;
+read its failure log/tmp/orbyn-reference-first-ci-failed.log before concluding
+this fixture was its only cause. Main remainsad90e4b. No merge/deploy/cleanup.
+
+3 October source/preview follow-up: added shared fractional line/block mapping,
+web bidirectional scroll sync using rendered geometry with reciprocal event
+fencing, and native scroll-position preservation on source toggle. Added local
+heading/stable-block navigation contexts on both surfaces; same-page links keep
+the draft and cross-page links close preview before existing app routing.
+Focused source/component cohort passes12/12, no skips. Initial navigation tests
+used an unsupported /app/docs relative URL; corrected fixtures use supported
+orbyn://doc links. The tests also caught missing null guards for unknown headings;
+fixed in both clients, with typechecks catching the same defect. VM transpilation
+uses ES2022 so Map iteration matches the app runtime.
+Current mobile types and desktop typecheck/build pass; all workspace typecheck
+prior handle34956 completed successfully before navigation additions. Logs:
+/tmp/orbyn-source-sync-navigation-{tests,types,build}.log. No screenshot or
+native geometry/interaction acceptance is claimed. Read-only source remains
+inspection, with parent-owned draft/save. Source PR153 stays draft.
+
+Main now63f4a13: Home PR150 and exact-head auth PR152 merged after four CI jobs
+passed. Public Home editorial PR154 head4e23899 awaits backend CI; three other
+jobs pass. Signed-in Home web/mobile shared copy is committed9f0c398 in PR148.
+Reference PR151 head5b6d9e9 and prior preview db94738 have all four CI jobs passing,
+but inherit larger unqualified scope and must not merge wholesale to main.
+Current primary user's dirty files, preview files and original source branches
+remain preserved. No deployment or worktree/branch cleanup.
+
+3 October Mermaid desktop security follow-up: found desktop bypassed native's
+prepareMermaidSource bounds and directive ban. RichBlocks now uses bounded
+rendering, strict locked config, inert labels, max512 edges and bounded output.
+Shared preparation also rejects image/icon packs and CSS resource URLs before
+rendering on both clients. Source fallback remains intact. Native asset rebuilt
+and digest regression passes. Actual desktop effect harness proves rejected
+inputs never reach the engine and oversized engine output fails. Cohort23/23
+passes; real engine parses all ten families; desktop build/mobile types pass.
+Initial harness lacked React global (corrected); actual-engine check initially
+could not resolve jsdom, restored only the missing declared dependency symlink
+to existing /private/tmp/orbyn-mermaid-parse-check/node_modules/jsdom. No install
+or dependency/lockfile change. Logs /tmp/orbyn-mermaid-web-bounds-*.log.
+
+Export investigation: backend docs/routes.ts's HTML export calls docToHtml with
+math only. Core export.ts's code case writes all Mermaid blocks as source.
+Standalone SVG export exists in both renderers; whole-page rendered HTML/PDF
+parity is still open. Next implement an authorized export-snapshot batch diagram
+render pipeline using the strict local renderer on both clients, embedding
+self-contained inert images and retaining source/error details. Keep backend
+visibility projection authoritative, no re-fetch of raw blocks or external
+renderer/network calls. A partial source fallback must not close D1. Desktop
+SVG resource sanitation, browser/native export and visual acceptance remain open.
+
+Latest main checkpoint: public Home PR154 exact4e23899 passed all four jobs in
+CI37034443999 and merged as4e5a3f6. Local main fast-forwarded while preserving
+user changes. Current Docs source reconciles main4e5a3f6, including auth/session
+namespace and new public Home shared guide. Two append-only ADR/export-list
+conflicts were resolved by retaining both sets of sections and exports; no
+feature or acceptance requirement was discarded. Re-run combined checks before
+relying on earlier candidate qualification. No deployment or cleanup.
+
+3 October HTML export checkpoint: implemented backend-authorized marked HTML
+snapshot enrichment using one strict local engine shared as separately bundled
+app assets. Inert SVG images, escaped source fallback, 100-diagram/size limits,
+queued bridge requests, unique scope IDs, cancellation and persistent batch
+engine on web/native. Source/editor save path unchanged. Types/build pass;
+37/37 focused export/hook/engine/Mermaid tests, 17/17 API exports, real parse and
+render all ten families pass. Engine JSDOM harness now sets zero-valued missing
+padding/border geometry; actual offline Chrome also rendered all ten. Stopped
+only the owned completed fixture Chrome process61087 after verifying results.
+Evidence: docs/reviews/evidence/diagram-html-export.md. No local app screenshot
+or native share acceptance claimed. Next: latest unsaved revision/failure guard,
+PDF rendered images, server/publication parity, full D1/U1/external model gates.
+Home PR155 is still waiting only backend CI; Docker/mobile/mail pass. Preview's
+prior9ae961d all four CI jobs pass; qualification does not cover this new export.
+Full goal active. No deployment or cleanup of repository branches/worktrees.
+
+Source8e0db8f CI37040583868 stopped at formatting only: generated desktop
+Mermaid JSON lives under desktop/src, unlike mobile/assets, and was checked as
+handwritten source. Added a narrow .prettierignore entry for that generated
+first-party engine. Bundle equality/digest checks still own its integrity;
+no runtime change or test exclusion. Full8e0db8f local suite remains live on
+session40820; do not restart. Home PR155 passed all four jobs and merged as
+main80dff7a; local main fast-forwarded preserving user changes. Source candidate
+is not yet reconciled with that main checkpoint. No deploy/cleanup.
+
+- Added shared Background/Overnight timing and pause details to signed-in web and native Home, alongside the existing descriptions and activity entry.
+- Home companion/guide tests: 11/11. Desktop and mobile typechecks pass.
+- Public Home is being qualified separately on `codex/home-agent-responsibilities`: agents before the catalog/character gallery, concrete supporting copy, research retained in ADR.
+- No runtime capability or character identity changes. Web test-server visual review and native screenshot/interaction acceptance remain open; full ADR stays active.
+
+### Export revision fence foundation — 3 October 2026
+
+- Export route accepts an optional positive safe integer document version. After permission filtering, a mismatch returns409 for every format; inaccessible pages remain404 without exposing revision existence. Invalid versions use the existing schema422 response.
+- Shared client can pass the expected revision; raw export does not retry a conflict against a newer snapshot. Existing unversioned callers keep their behavior.
+- Candidate export integration17/17 and client1/1 pass; all workspace typechecks pass. Disposable marked database name is in /tmp/orbyn-export-version-test-db.txt, distinct from the frozen Docs full-suite database.
+- Initial test used PATCH instead of the established PUT document route, then expected400 instead of existing schema422; corrected the fixtures.
+- This is foundation only. Next connect both editors' flush to explicit save success/offline failure, use content equality rather than native array identity, capture the version, and supply it on all file/share paths. Do not claim unsaved export correctness until those paths and concurrent typing/failure tests pass.
+- Source-preview checkpoint8e0db8f full suite remains running on its unchanged tree. Preserve preview helper files; no cleanup/deploy.
+
+Qualification update: local frozen8e0db8f suite completed2402/2402, no failures,
+skips or cancellations,575064ms; session40820 terminal. Later45f012d changes only
+formatting exclusion/handoff and a stronger negative window completion test,
+which passes4/4. Main80dff7a reconciled as51e9778; one append-only ADR conflict
+retained both sections. Export version foundation4f22304 applied asdb28cb3;
+resolved append-only ADR/task history and reconstructed both complete export
+regressions from their source commits. No conflict markers remain.
+Combined source: focused51/51 plus export API18/18; all workspace types and
+production builds pass ondb28cb3. Latest signed-in Home guide/timing/pause parity
+from verifiedc7d2114 is now in this candidate; web/mobile types pass. Full2402
+result predates API/version/Home additions; do not call it a full current-head
+pass. Main-isolated optional version checkpoint is nowcodex/docs-export-version;
+qualify and merge only after its exact CI passes. Preview45f012d CI may be
+superseded by the upcoming reconcile push. Continue editor save-failure and
+version capture integration, then PDF/publication/current-source/export/native
+and full U1 gates. Full goal remains active; no deployment/cleanup.
+
+### Home refinement after Muse/Dots research — 3 October 2026
+
+- Public Home: separate example request quotation from review destination and pause conditions.
+- Signed-in web/desktop/native: compact Background/Overnight summaries, optional “How agents work” guidance, primary activity action and separate character browsing.
+- Research and presentation decisions recorded in ADR; reflection/collaboration remain open acceptance gates.
+- Home checks13/13 pass. Web test-server visual review and native screenshot/interaction acceptance remain outstanding.
+- Docs export save guards are separate uncommitted work; do not stage them with this Home checkpoint. Full ADR remains active; no deployment or cleanup.
+
+### Save-confirmed file exports — 3 October 2026
+
+- Main is ba08edb: optional export version API PR156 merged after all four exact-head CI jobs passed. Main user-owned changes remain preserved.
+- Source Home checkpoint5b5db78 is pushed; CI37045309733 is pending. Home13/13, all workspace types and production build pass.
+- Both editors now require a dedicated confirmed save receipt before all editable file/share actions. Structural equality allows server-assigned IDs and avoids native array-identity false failures. Suggesting/read-only actions use the confirmed page.
+- Guard tests49/49 pass in /tmp/orbyn-doc-export-current-focused.log. Actual functions cover save failure/offline/CRDT, typing during save, stale page completions, close cancellation and all formats. Native byte conversion and share availability cancellation, web NotAllowedError fallback cancellation and both share menu paths are covered.
+- Scope cancellation uses layout teardown. Latest combined typecheck/build passed in /tmp/orbyn-home-muse-{types,build}.log; those checks include the save guards.
+- Commit this guard checkpoint, then run the full suite against an isolated marked test database on the frozen source. Do not call previous2402/2402 a current-head result. Reconcile mainba08edb after qualification; retain both append-only document histories.
+- Full ADR remains active: PDF math/diagrams, server/publication parity, native share/visual acceptance, complete D1/U1/model/plugin/runtime acceptance remain open. No deployment or cleanup.
+
+### Frozen save-guard qualification complete — 3 October 2026
+
+Source7cd75934175324892a22d151f0927adf21685c2b completed2437/2437 full local
+checks, zero failures/skips/cancellations, exit0,598241ms. Session37995 is
+terminal; do not restart that run. Evidence: evidence/doc-export-save.md.
+
+Separate main-based public Home checkpointd1b76545 PR157 has localtypes/build/
+format and3focused checks; Docker/mobile/mail CI37045908216 pass, backend/web
+remains live. Main stillba08edb. Merge only after exact-head CI passes and
+verify current main before reconciliation. Preserve primary user-owned files.
+
+New production bug found: raw file transport omits the JSON transport consistency
+header. Dedicated primary-read candidate8b48b1de, branchcodex/doc-export-primary
+in assistant-runtime-integration, PR158, fixes all document/task/link export reads
+and legacy Markdown to primary. Mocked actual-handler checks21/21 plus combined
+API/client39/39 pass; alltypes/build/format pass. Its frozen full suite is live
+on session43323, log /tmp/orbyn-export-primary-8b48b1de-full-tests.log, own marked
+DB name /tmp/orbyn-export-primary-full-test-db.txt. Do not edit its frozen tree
+or restart merely because observation times out. Wait for full local/CI before
+main promotion.
+
+Next: reconcile source with main, retaining appended ADR histories; apply primary
+fix after qualification, then continue rendered PDF/math/diagram parity and
+remaining actual UI/model/plugin/runtime gates. Full ADR active; no cleanup/deploy.
+
+Mainba08edb reconciliation completed asac0488da. Overlaps in export.test.ts and
+the ADR were resolved by retaining the complete authorized diagram and revision
+regressions and both appended histories. Relative toc928b25d the result changes
+only docs/adr and docs/api; no runtime source changed. All81 combined current
+export/save/share/scope/Home/API/client checks pass. No conflict markers remain,
+formatting passes. The frozen2437/2437 evidence remains tied to7cd75934.
+PR157 is still running its backend test job; do not merge yet. PR158 full local
+suite43323 and CI37046563935 remain live; Docker/mobile/mail already pass.
+
+### Main checkpoint and exact-head freshness qualification — 3 October 2026
+
+- Public Home PR157 passed all four CI37045908216 jobs and merged asmainb00c736ac73ed2c99540fa81022fc66a1432d578. Local main fast-forwarded; mobile/app.json and all unrelated untracked files remain preserved. No deploy.
+- Docs source reconciled that main as18725980; only two Home test assertions and appended ADR text changed. Runtime source still matches frozen7cd75934, whose full2437/2437 passed. Latest Home13/13 pass; prior combined81/81 passed before these two assertions. No unresolved conflicts. Larger PR153 remains draft.
+- Export primary-read8b48b1de full local2209/2209 passed, zero failures/skips/cancellations, exit0,520675ms. Session43323 terminal; evidence in PR158's docs/reviews/evidence/doc-export-primary.md.
+- Primary candidate reconciled mainb00c736 ascac22362b6bbfe84ce2bdb96e88ea89e9bdca511. Both ADR sections retained. Current42/42 combined checks, alltypes/build/fullformat PASS in /tmp/orbyn-export-primary-cac22362-{focused,types,build,format}.log.
+- Currentcac22362 FULL LOCAL SUITE LIVE on session6346, /tmp/orbyn-export-primary-cac22362-full-tests.log, dedicated marked database /tmp/orbyn-export-primary-current-test-db.txt. Do not edit that frozen tree, duplicate or restart the run. Its new exact-head CI is required; old8b CI is superseded. PR158 mergeState CLEAN as observed.
+- Wait for exact local/full CI qualification, then merge PR158 with matching head and verify main. Reconcile Docs afterward. Next implementation: rendered PDF/math/diagrams and remaining real native sharing/screenshots, publication and whole U1/model/plugin/runtime gates. Full ADR ACTIVE; no cleanup/deployment.
+
+### Home responsibility copy — 3 October 2026
+
+- Rechecked primary Muse design and official Dots product/task references. Updated public Home and signed-in web/desktop/native Home together: concrete project checklist/night research requests, three-step workflows, review destinations, truthful idle/approval/window boundaries. Shared core copy prevents platform drift.
+- Recorded reflection, authorized collaboration, separate runtimes and meaningful notification requirements in ADR, with existing incomplete implementation gates. Home does not advertise those as completed capabilities.
+- Focused Home13/13 pass. Workspace typecheck/production build running in /tmp/orbyn-home-responsibilities-{types,build}.log. Web visual acceptance remains user test-server-owned; native screenshot/interaction acceptance remains open.
+- Preserve unrelated uncommitted PDF renderer/asset-generator work; stage only the explicit Home files and this ADR/task record. Separate main-based public checkpoint can ship after exact-head qualification; signed-in Home/profile changes remain in the broader source candidate.
+- Main PR158 primary-read exports merged as9702f19e after exact-head2209/2209 local checks and all four CI jobs; source still needs that main reconciliation.
+- Full ADR remains active, including D1/PDF integration and visual QA, model/plugin/runtime and full U1 gates. No cleanup/deployment.
+
+Home responsibility qualification: all workspace typechecks and production builds
+passed, as did formatting of all eleven scoped files and git diff --check. These
+are code/content checks; visual/native acceptance and the broader candidate's
+exact-head full-suite/CI remain separate open gates.
+
+### Offline PDF rendering and shared diagram corrections — 3 October 2026
+
+- Added bounded private-pipe sandboxed Chromium printing helper and backend-owned generated Mermaid asset. Root generator preserves mobile wrapper; no runtime app/backend import crossing.
+- Actual synthetic offline PDF contains all ten families and typeset inline/display math. Visual review fixed intrinsic-size upscaling/15-to11-page splits and invisible journey task labels. Shared theme/image changes apply to web/native exports as well.
+  -53focused checks, all workspace types/production builds and scoped formatting pass. Evidence: evidence/doc-pdf-renderer.md. No localhost app inspection or terms acceptance occurred.
+- API still uses old PDF writer. Next implement authorized primary/revision-fenced API integration, bounded work/cancellation and container Chromium sandbox qualification, then real native sharing/publication/full D1/U1 gates.
+- Commit this renderer foundation, reconcile main9702f19e preserving both ADR histories and all export regressions, then run full exact-head qualification without editing that frozen runtime tree. Full goal stays active; no cleanup/deploy.
+
+### Qualification handoff — 3 October 2026
+
+- Source head0044a294 full local suite passed 2,474/2,474, no failures/skips/cancellations, exit0; /tmp/orbyn-pdf-scale-full-tests.log. Earlier1b1efec8 run had one Home font-scale failure, corrected from14px to15px. This evidence qualifies that frozen head. Main reconciliation changes only appended ADR history.
+- Public Home head1c768a08 passed 2,209/2,209 locally and all four CI37053040841 jobs; PR159 merged asmainbdc4035b. Primary checkout fast-forwarded; user mobile/app.json/untracked files preserved. Web visual acceptance remains on user's test server.
+- PDF service integration is separate branchcodex/docs-rendered-pdf, commit6f43fc92, draftPR160 stacked on this branch. Its frozen full local suite is running session17358, /tmp/orbyn-pdf-service-6f43fc92-full-tests.log, dedicated marked DBnamefile /tmp/orbyn-pdf-service-full-test-db.txt. CI37055656461 running. Do not edit/restart the frozen runtime.
+- Integration has nine current service/client checks, prior45 API/primary/service checks, fresh types/build/format. Prior sandboxed Linux container proof predates latest authentication changes, so exact image/CI are still required. No main promotion of the broad Docs branch or renderer service.
+- Review found future-dated signatures can outlive current nonce retention. Fix retention through signed timestamp expiry and add a clock-controlled replay regression after the frozen run terminates; then requalify the new head. Never merge6f43fc92 as production-ready.
+- Full ADR active: signed-in Home/mobile screenshots, native export/share, publication, model/plugin/runtime/collaboration and complete C1–C6/M1/D1/U1 gates remain open. No deployment/cleanup; preserve character and user work.

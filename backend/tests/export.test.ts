@@ -408,3 +408,108 @@ test("bold, italic and code are drawn in the fonts they claim", async () => {
   assert.match(body, /\/BaseFont \/Helvetica-Oblique/);
   assert.match(body, /\/BaseFont \/Courier/);
 });
+
+test("HTML export marks only authorized Mermaid source and preserves standalone math", async () => {
+  const created = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Rendered export",
+      content: [
+        {
+          type: "code",
+          lang: "mermaid",
+          text: 'flowchart LR\nA["<script>bad</script>"] --> B',
+          id: "diagram",
+        },
+        {
+          type: "code",
+          lang: "js",
+          text: "const ordinary = true",
+          id: "ordinary",
+        },
+        { type: "math", text: "\\frac{a}{b}", id: "math" },
+      ],
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  const result = await get(`/docs/${created.json().id}/export?format=html`);
+  assert.equal(result.statusCode, 200);
+  assert.equal(
+    (result.body.match(/data-orbyn-diagram="mermaid"/g) ?? []).length,
+    1,
+  );
+  assert.match(result.body, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.match(result.body, /<pre><code>const ordinary = true<\/code><\/pre>/);
+  assert.match(result.body, /<math[ >]/);
+  assert.doesNotMatch(result.body, /<script|<iframe/i);
+  assert.equal(
+    (
+      await get(
+        `/docs/${created.json().id}/export?format=html`,
+        () => strangerToken,
+      )
+    ).statusCode,
+    404,
+  );
+  const markdown = await get(`/docs/${created.json().id}/export?format=md`);
+  assert.match(markdown.body, /```mermaid/);
+  assert.match(markdown.body, /<script>bad<\/script>/);
+});
+
+test("export revision checks reject changed pages without disclosing inaccessible versions", async () => {
+  const original = (await get(`/docs/${docId}`)).json();
+  assert.equal(
+    (await get(`/docs/${docId}/export?format=html&version=${original.version}`))
+      .statusCode,
+    200,
+  );
+  const changed = await app.inject({
+    method: "PUT",
+    url: `/docs/${docId}`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Updated export revision",
+      content: original.content,
+      version: original.version,
+    },
+  });
+  assert.equal(changed.statusCode, 200, changed.body);
+  const stale = await get(
+    `/docs/${docId}/export?format=html&version=${original.version}`,
+  );
+  assert.equal(stale.statusCode, 409, stale.body);
+  for (const format of ["md", "txt", "pdf", "docx"])
+    assert.equal(
+      (
+        await get(
+          `/docs/${docId}/export?format=${format}&version=${original.version}`,
+        )
+      ).statusCode,
+      409,
+    );
+  assert.equal(
+    (
+      await get(
+        `/docs/${docId}/export?format=html&version=${changed.json().version}`,
+      )
+    ).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await get(
+        `/docs/${docId}/export?format=html&version=${original.version}`,
+        () => strangerToken,
+      )
+    ).statusCode,
+    404,
+  );
+  for (const invalid of ["0", "-1", "1.5", "abc", "9007199254740992"])
+    assert.equal(
+      (await get(`/docs/${docId}/export?format=html&version=${invalid}`))
+        .statusCode,
+      422,
+    );
+});

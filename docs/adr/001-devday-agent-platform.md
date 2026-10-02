@@ -487,3 +487,229 @@ and legacy anchored rules remain rules. Markdown and HTML export regressions
 cover source retention and script escaping. This does not complete reference
 links, synchronized source/preview, D1 export coverage or whole-app U1. Native
 visual acceptance remains pending, with the explicit terms confirmation gate.
+
+### D1 source and preview synchronization — 3 October 2026
+
+The candidate now maps the existing anchored serializer to exact block offsets
+and lines. Web source and rendered panes synchronize scrolling from actual
+block geometry, suppress reciprocal programmatic scroll events, and share the
+parent editor's live blocks. Native preview scrolling retains the corresponding
+source block when toggling. Both previews own heading/stable-block navigation;
+opening a different page dismisses the preview and uses existing app routing.
+No separate draft, revision or save request is introduced. Source is read-only.
+
+Mapping and actual component regressions pass 12/12. Current mobile types and
+desktop production build qualify code paths only. Real browser/native geometry,
+link interactions, screenshots, keyboard and theme acceptance remain unproven.
+Raw-source editing is not introduced or claimed; the editor continues to own
+changes. Full D1 and U1 remain incomplete.
+
+### D1 Mermaid rendering bounds — 3 October 2026
+
+Desktop now applies the same 65,536-character/2,048-line input and 2 MiB output
+bounds as native. Diagram configuration is locked, with strict security, inert
+labels, 512-edge limit and suppressed engine error drawings. Shared preparation
+rejects configuration headers/directives and image/icon pack or CSS resource
+URLs before rendering; unsupported source remains available. Native's bundled
+asset is regenerated from that shared source.
+
+Twenty-three bounds/runtime/actual desktop effect regressions pass, all ten
+diagram family fixtures parse under the real strict engine, desktop build and
+mobile types pass. These checks establish neither visual acceptance nor complete
+SVG resource sanitization on desktop. Current whole-page HTML export emits
+Mermaid source, while standalone diagram SVG export exists; rendered whole-page
+HTML/PDF parity remains an explicit D1 gap, not closed by source fallback.
+
+### Home copy follow-up — 3 October 2026
+
+Replace vague first-screen metaphors with tasks, calendar, project notes and
+delegated work. Present Background and Overnight as separate work schedules,
+with an explicit review destination for each. Label illustrative requests as
+examples and keep idle behavior truthful. Muse informs visible activity and
+meaningful interruptions; Dots informs work between conversations. Their
+capabilities do not establish capabilities in Orbyn. Reflection and collaboration
+remain open acceptance gates. This follow-up changes copy only; the user’s web
+visual validation and native acceptance remain outstanding.
+
+### Home responsibility and review layout — 3 October 2026
+
+Follow-up research confirms the useful presentation patterns: Muse puts activity
+and approved permissions behind the avatar; Dots brings back results and asks
+for decisions between conversations. Use the primary sources linked above.
+Orbyn adopts visible responsibility, review destinations and pause conditions.
+It does not inherit their cloud computers, app access or always-on execution.
+
+Public Home uses a straight, in-flow planner example and two editorial agent rows
+with labeled requests, review destinations and stopping conditions. Shared core
+copy keeps the web and native signed-in Home descriptions consistent. No status
+or output is fabricated. Reflection and collaboration remain open acceptance
+gates. All character presets remain available; browsing never changes identity.
+Web visual acceptance belongs to the user's test-server review for this increment;
+native screenshot and interaction acceptance remains open.
+
+### Whole-page HTML diagrams — 3 October 2026
+
+Render only Mermaid regions in the existing permission-filtered export snapshot.
+Both clients use the same bounded, strict first-party isolated engine, deny network
+access, and embed sanitized SVG as inert image data URIs. Escaped source remains
+available. Failure gives a generic caption with source; scope change or editor
+close cancels the file. Serial bridge requests retain a live engine through a
+batch and reject stale replies. Desktop loads the engine lazily.
+
+Evidence: `docs/reviews/evidence/diagram-html-export.md`; 37 focused checks,
+17 export API checks, all ten real engine parse/render families, workspace types
+and production build pass. DOM geometry is synthetic; offline Chrome checks are
+engine evidence, not app screenshots. Native sharing, user web visual review,
+PDF/publication/server-direct rendering, latest-unsaved-revision export and full
+D1/U1 acceptance remain open. This does not close the ADR.
+
+### Home responsibilities before decoration — 3 October 2026
+
+Rechecked primary product references: [Muse's design account](https://introducing.muse.ai/)
+puts work status, activity and approved permissions behind the avatar, and describes
+notifications for meaningful results or input. [Dots documentation](https://learn.chatgpt.com/docs/dots)
+describes ongoing responsibilities between conversations. Use those interaction
+patterns to explain Orbyn's existing work; they do not prove Orbyn has the same tools.
+
+Public Home now gives Background and Overnight their own section before the feature
+catalog and character gallery. Navigation opens the agents section. Each has a timing,
+a labeled example request, a review destination and a stopping condition. Replace
+vague supporting slogans with specific task, calendar, project and review copy.
+Character presets stay available in their own section. Signed-in web/native Home
+must show the same timing and pause details alongside their existing activity entry.
+No fake running states, always-on promise or completed reflection claim is introduced.
+Code tests establish content and ordering, not screenshot acceptance. The user's
+test-server web review and native visual acceptance remain open.
+
+### Export revision fence — 3 October 2026
+
+An editor may bind file export to its last confirmed saved document revision.
+The API checks visibility before the revision and returns409 on a mismatch for
+all formats. The shared client carries the optional version and never silently
+retries a conflict against a newer revision. Existing unversioned callers remain
+compatible. Candidate API/client checks pass; editor save-success and offline
+failure integration, revision capture during concurrent typing, and every share
+path remain required before current-source export acceptance can close.
+
+### Home density follow-up — 3 October 2026
+
+Rechecked [Muse's design account](https://introducing.muse.ai/) and
+[Dots' profile and task controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot).
+Muse explains task-shaped outputs and updates worth interrupting for; Dots exposes
+work through activity, schedules and profile controls. Apply those presentation
+patterns to Orbyn's verified responsibilities, retaining its palette and characters.
+
+Public Home gives example requests their own readable quotation and keeps results
+and stopping conditions alongside them. Signed-in web/desktop and native Home
+show two compact responsibilities first, with detailed requests, review destinations
+and pause conditions behind an accessible “How agents work” toggle. Agent activity
+remains the primary action; character browsing remains a separate action.
+No invented activity or outputs appear. Reflection, shared handoffs and full agent
+runtime acceptance remain open; this change does not advertise them as delivered.
+
+Thirteen Home content/interaction checks pass, including opening/closing the guide
+on both clients, separate profile access and preserving all character presets.
+These checks do not establish visual acceptance: the user will review web on the
+test server; native screenshots/interaction acceptance still remain required.
+
+### Confirmed revision on editor file actions — 3 October 2026
+
+Both editors keep a dedicated server-confirmed export snapshot, separate from the
+optimistic CRDT merge baseline. Editable file actions flush once, then compare
+the current title/content structurally with that receipt. Offline-only or caught
+save failures, newer typing during the save, invalid revisions and changed page
+identity stop the export. A successful action sends the confirmed version to the
+permission-filtered API; it never silently exports a newer remote revision.
+Readers and suggestion mode export the saved page without applying an unapproved
+draft. Every format and Markdown/PDF share entry uses this guard.
+
+Editor/account scope teardown cancels before a new scope paints; native file
+conversion and sharing availability recheck cancellation before creating or
+handing off files. Web sharing rechecks before its download fallback.
+Forty-nine focused checks exercise shared equality, actual editor save/export
+functions, share menus, native file actions and renderer scope teardown. Workspace
+types and production build pass on the combined source. Full current-head local
+qualification, PDF rendered math/diagrams, publication/server rendering and actual
+native file/share interaction remain required. No full D1/U1 acceptance is claimed.
+
+### Saved-revision export API checkpoint — 3 October 2026
+
+Optional expected document versions protect file exports against concurrent
+changes. Check visibility first, then return409 for any format at a different
+saved revision. Invalid versions use the established422 schema response. Shared
+clients carry the revision and never silently retry against a newer one.
+Unversioned callers keep their existing behavior. The isolated candidate passes
+17 export API checks, one real client check, all workspace types and production
+builds. Exact-head CI remains required before merging this checkpoint.
+
+This is API foundation only: both editors still need explicit save-success and
+offline/failure handling, revision capture and all share-path integration.
+Rendered PDF, publication, native sharing and whole D1/U1 acceptance remain open.
+
+### Primary reads for file actions — 3 October 2026
+
+Export file transport does not carry the ordinary JSON transport's read-after-write
+header. Lag-tolerant replica reads could falsely reject a newly saved revision or
+return older content/visibility. Both the file export route and its legacy Markdown
+route now use the primary for the document and task/link permission enrichment.
+This gives file actions current primary state even for existing unversioned callers.
+Current-version conflicts and visibility-first404 behavior remain unchanged.
+Regression checks execute the actual handlers with distinct primary and replica
+dependencies; no export query or helper may use the stale replica. This is a
+backend freshness checkpoint; PDF visual rendering and full D1/U1 remain open.
+
+### Public Home request examples — 3 October 2026
+
+[Muse's design account](https://introducing.muse.ai/) describes task-shaped outputs
+and meaningful updates. [Dots' profile documentation](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
+exposes activity and task controls. Use those presentation patterns to make
+Orbyn's existing responsibilities easier to understand. Public Home now gives
+each agent a labeled example quotation, followed by where to review the work
+and when it pauses. Preserve all character presets, Orbyn tokens and truthful
+idle behavior. This checkpoint changes public presentation only; signed-in/native
+Home refinements remain in the larger candidate. Reflection/collaboration and
+the full ADR acceptance gates remain open. User test-server visual review is
+still outstanding; automated content checks do not prove visual acceptance.
+
+### Home responsibilities and product copy — 3 October 2026
+
+Latest user direction: Background and Overnight should feel like personal agents
+with ongoing responsibilities, informed by Muse and Dots. Both public Home and
+signed-in Home must explain the product in concrete language and preserve mobile
+parity. Avoid invented live status, generic AI slogans and capability claims that
+have not passed the governing acceptance contract.
+
+Primary references rechecked:
+
+- [Muse's design account](https://introducing.muse.ai/): task-shaped outputs,
+  visible activity and notifications worth interrupting for.
+- [Meet dots](https://learn.chatgpt.com/docs/dots): work between conversations,
+  continued responsibilities and decisions brought back for human review.
+- [Dots tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory):
+  distinct task context, reviewable outputs and explicit recurring work.
+
+These are product references; Orbyn does not inherit their computer, browser,
+voice, messaging, account access or arbitrary action capabilities.
+
+| Surface or behavior               | Decision                                                                                                                                    | Current implementation boundary                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Public Home                       | Show a project-notes-to-checklist request and a night research queue, each with three concrete steps.                                       | Examples are labeled; no fabricated tasks or activity.                                                                            |
+| Signed-in web/desktop/mobile Home | Use the same responsibilities and optional step-by-step guide; retain real profile activity behind the existing action.                     | Character browsing does not mutate settings. Status comes from authorized profile evidence, never avatar animation or local time. |
+| Background                        | Delegated work has progress, sources, an output and a place for decisions.                                                                  | Existing task/profile behavior; full ongoing-goal and routine qualification remains open.                                         |
+| Overnight                         | Explicit queue, chosen window, bounded budget and morning review of completed and unfinished work.                                          | Window/budget constraints remain visible; no promise that every queued task finishes.                                             |
+| Reflection                        | With explicit consent, review evidence from prior work and propose lessons with sources.                                                    | Existing reflection candidate remains an acceptance gate. Home must not describe it as shipped.                                   |
+| Collaboration                     | Keep separate processes, runs, budgets and activity; exchange bounded, authorized handoffs with acknowledgments and source revision checks. | Complete receiving-worker dispatch and separate-process runtime proof remain open. UI copy cannot substitute for this work.       |
+| Notifications                     | Surface meaningful results or decisions; preserve the morning review destination and quiet behavior.                                        | Delivery-policy acceptance remains part of the governing contract.                                                                |
+
+This increment changes Home content and layout, not worker capabilities. The
+public workflow collapses to one column at narrow widths; signed-in guide content
+wraps and native content grows naturally. Web visual acceptance remains with the
+user's test server for this increment. Native screenshot/interaction acceptance
+and the complete U1 gates remain open. Retain current character work and palette.
+
+Public Home promotion candidate: based on main9702f19e, includes only shared
+copy, the public page's workflow layout, its focused checks and this ADR section.
+Signed-in Home/profile and renderer work remain in the larger draft. Local Home
+checks3/3, all workspace typechecks/builds and full formatting pass. Web visual
+acceptance is still delegated to the user's test server for this increment;
+full exact-head local and CI qualification is required before main merge.

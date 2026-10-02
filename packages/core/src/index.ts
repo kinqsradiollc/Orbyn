@@ -113,3 +113,11 @@ export * from "./doc-tree.js";
 export * from "./chatgpt-models.js";
 export * from "./chatgpt-connections.js";
 export * from "./mermaid.js";
+
+export * from "./doc-source.js";
+
+export * from "./home-agent-guide.js";
+
+export * from "./diagram-export.js";
+
+export * from "./doc-export-revision.js";

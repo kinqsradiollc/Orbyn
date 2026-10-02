@@ -214,25 +214,41 @@ export async function docRoutes(app: FastifyInstance) {
   app.get("/docs/:id/export", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const { format } = z
-      .object({ format: z.enum(EXPORT_FORMATS).default("md") })
+    const { format, version: expectedVersion } = z
+      .object({
+        format: z.enum(EXPORT_FORMATS).default("md"),
+        version: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(Number.MAX_SAFE_INTEGER)
+          .optional(),
+      })
       .strict()
       .parse(r.query ?? {});
+    // File actions require current revisions and visibility even without a
+    // client read-your-writes header; a replica can still hold the old page.
     const doc = (
-      await reader(r.headers).query<{ title: string; content: DocBlock[] }>(
-        `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+      await pool.query<{
+        title: string;
+        content: DocBlock[];
+        version: number;
+      }>(
+        `SELECT d.title, d.content, d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
+    if (expectedVersion !== undefined && doc.version !== expectedVersion)
+      fail(409, "This page changed. Refresh it before exporting.");
     const title = doc.title || "Untitled";
     // Ticks as the tasks stand, the same as the page reads, and links to
     // pages, tasks and projects as web links anyone with access can open.
     const blocks = blocksWithWebLinks(
       await readableLinks(
-        reader(r.headers),
+        pool,
         u.id,
-        await withTaskState(reader(r.headers), id, doc.content ?? []),
+        await withTaskState(pool, id, doc.content ?? []),
       ),
       env.APP_URL,
     );
@@ -242,7 +258,10 @@ export async function docRoutes(app: FastifyInstance) {
         : format === "pdf"
           ? docToPdf(title, blocks)
           : format === "html"
-            ? docToHtml(title, blocks, { math: createMathHtml() })
+            ? docToHtml(title, blocks, {
+                math: createMathHtml(),
+                diagramSources: true,
+              })
             : format === "txt"
               ? docToText(title, blocks)
               : docToMarkdown(title, blocks);
@@ -264,7 +283,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const doc = (
-      await reader(r.headers).query<{ title: string; content: DocBlock[] }>(
+      await pool.query<{ title: string; content: DocBlock[] }>(
         `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
@@ -272,9 +291,9 @@ export async function docRoutes(app: FastifyInstance) {
     if (!doc) fail(404, "Document not found");
     const blocks = blocksWithWebLinks(
       await readableLinks(
-        reader(r.headers),
+        pool,
         u.id,
-        await withTaskState(reader(r.headers), id, doc.content ?? []),
+        await withTaskState(pool, id, doc.content ?? []),
       ),
       env.APP_URL,
     );

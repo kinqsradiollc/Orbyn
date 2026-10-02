@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import { CHARACTER_PRESETS, type PersonalAgentSettings } from "@orbyn/core";
+import {
+  CHARACTER_PRESETS,
+  HOME_AGENT_GUIDE,
+  HOME_AGENT_IDLE_NOTE,
+  type PersonalAgentSettings,
+} from "@orbyn/core";
 import { client } from "../lib/api";
 import { shared } from "../styles";
 import { Character } from "./Character";
 import { Pressable } from "../motion";
-import { controls } from "../theme";
+import { controls, colors } from "../theme";
 import { AssistantAgents } from "../screens/AssistantAgents";
 import { Button } from "./Button";
 
@@ -17,6 +22,7 @@ export function HomeCompanions({
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
     let updated = false;
@@ -55,7 +61,7 @@ export function HomeCompanions({
             {identity?.name ?? "Your companion"}
           </Text>
           <Text style={shared.small}>
-            Choose its name and appearance in assistant settings.
+            Your tasks, with a place to review the work.
           </Text>
         </View>
       </View>
@@ -70,20 +76,55 @@ export function HomeCompanions({
         </Text>
       </Pressable>
       <View style={{ gap: 10 }}>
-        <Text style={shared.small}>
-          <Text style={shared.sectionTitle}>Background</Text>
-          {"\n"}Check delegated tasks, results, and questions that need you.
-        </Text>
-        <Text style={shared.small}>
-          <Text style={shared.sectionTitle}>Overnight</Text>
-          {"\n"}Review queued night work and what’s still unfinished.
-        </Text>
+        {HOME_AGENT_GUIDE.map((agent) => (
+          <View
+            key={agent.name}
+            style={{
+              gap: 6,
+              paddingVertical: 12,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}
+          >
+            <Text style={shared.sectionTitle}>{agent.name}</Text>
+            <Text style={shared.small}>{agent.timing}</Text>
+            <Text style={shared.small}>{agent.summary}</Text>
+            {guideOpen && (
+              <View style={{ gap: 8, marginTop: 6 }}>
+                <Text style={shared.small}>
+                  Example request: “{agent.request}”
+                </Text>
+                {agent.steps.map((step, index) => (
+                  <View key={step.title} style={{ gap: 4 }}>
+                    <Text style={shared.sectionTitle}>
+                      {index + 1}. {step.title}
+                    </Text>
+                    <Text style={shared.small}>{step.body}</Text>
+                  </View>
+                ))}
+                <Text style={shared.small}>{agent.result}</Text>
+                <Text style={shared.small}>{agent.pause}</Text>
+              </View>
+            )}
+          </View>
+        ))}
+        <Text style={shared.small}>{HOME_AGENT_IDLE_NOTE}</Text>
       </View>
       <Button
         title="View agent activity"
         secondary
         onPress={() => setAgentsOpen(true)}
       />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: guideOpen }}
+        onPress={() => setGuideOpen(!guideOpen)}
+        style={{ minHeight: controls.tap, justifyContent: "center" }}
+      >
+        <Text style={shared.small}>
+          {guideOpen ? "Hide guide" : "How agents work"}
+        </Text>
+      </Pressable>
       {expanded && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           {CHARACTER_PRESETS.map(({ name, appearance }) => (

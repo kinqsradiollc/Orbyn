@@ -48,7 +48,7 @@ function runtime(
     },
   };
   const source = readFileSync(
-    new URL("../../mobile/scripts/mermaid-runtime.mjs", import.meta.url),
+    new URL("../../scripts/mermaid-runtime.mjs", import.meta.url),
     "utf8",
   ).replace(/^import[^;]+;\s*/gm, "");
   runInNewContext(source, {

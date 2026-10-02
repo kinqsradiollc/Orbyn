@@ -387,7 +387,10 @@ export async function issueSession(
   userAgent = "",
   options: { reauthenticated?: boolean } = {},
 ): Promise<AuthResponse> {
-  const token = randomBytes(48).toString("base64url");
+  // Reserve a session namespace so random bytes cannot impersonate the
+  // ok_/oak_/oat_/ort_/ocl_ credential prefixes used by authenticators.
+  // Existing unprefixed sessions continue through the same hash lookup.
+  const token = `os_${randomBytes(48).toString("base64url")}`;
   await pool.query(
     `INSERT INTO sessions(token_hash,user_id,user_agent,reauthenticated_at)
      VALUES($1,$2,$3,CASE WHEN $4 THEN now() END)`,
