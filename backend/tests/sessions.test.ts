@@ -135,3 +135,23 @@ test("using the app keeps a session alive; an idle one still expires", async () 
   );
   assert.equal((await get("/me", token)).statusCode, 401);
 });
+
+test("new sessions have a namespace distinct from API and agent credentials", async () => {
+  const token = await signIn("Namespaced session");
+  assert.match(token, /^os_[A-Za-z0-9_-]{64}$/);
+  assert.equal((await get("/me", token)).statusCode, 200);
+  assert.equal((await get("/me", "ok_not-a-real-api-key")).statusCode, 401);
+  assert.equal((await get("/me", "oak_not-a-real-agent-key")).statusCode, 401);
+});
+
+test("existing unprefixed session tokens remain usable", async () => {
+  const { digest } = await import("../src/lib/auth.js");
+  const token = await signIn("Legacy session");
+  const legacy = `legacy-${randomUUID()}`;
+  await pool.query(
+    "UPDATE sessions SET token_hash = $1 WHERE token_hash = $2",
+    [digest(legacy), digest(token)],
+  );
+  assert.equal((await get("/me", legacy)).statusCode, 200);
+  assert.equal((await get("/me", token)).statusCode, 401);
+});
