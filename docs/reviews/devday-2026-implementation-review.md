@@ -186,6 +186,121 @@ Existing desktop Mermaid and rich blocks are reused. Mobile's current flowchart-
 
 ### U1 — UI synchronization and regression gate
 
+#### ChatGPT reference and separate agent runtimes — user scope addition, 2 October 2026
+
+The user explicitly authorizes inspecting [ChatGPT](https://chatgpt.com/) on laptop
+and mobile as a UI/UX reference and requires this direction to be part of the ADR.
+Improve the whole Orbyn application to that level of visual consistency while
+retaining Orbyn's palette, typefaces, identity and distinct character. Every
+shipped behavior remains required on web/Electron and mobile. This addition
+updates the earlier mobile-design preference: mobile may receive coordinated
+layout improvements, with its existing useful interactions preserved.
+
+**Observed reference, 2 October:** the actual desktop and 390 × 844 mobile web
+interfaces were inspected, including navigation, composer and Settings. Desktop
+uses a restrained navigation rail/sidebar, a clear content heading and generous
+content spacing. Mobile collapses navigation into a drawer and places the composer
+near the bottom. Settings has search, grouped destinations and a focused content
+pane; on mobile, navigation and selected content occupy separate views. These
+are observed layout patterns, not evidence about OpenAI's backend architecture
+or native iOS/Android behavior. No ChatGPT preference or conversation was changed.
+
+**Orbyn design requirements:**
+
+- Apply one hierarchy and spacing system across the shell and all U1 surfaces:
+  navigation, headings, toolbars, forms, lists, cards, empty/error/loading states
+  and overlays. Retain theme tokens, the radius scale and Orbyn controls.
+- Keep primary content readable and give it room; align repeated controls and
+  move secondary management actions into the established ⋯ menus.
+- Desktop Settings uses a searchable category rail and a focused detail pane.
+  Narrow web and native mobile use a category list with a clear return path,
+  bounded scrolling and keyboard-safe detail screens. Replace long, competing
+  accordion stacks where they obscure the current task.
+- Make profile/session loading, refresh recovery, provider availability and
+  retry states explicit. Preserve drafts and selections through failures.
+- Preserve the new companion implementation on local main (`2eb34a5`, validation
+  note `0749e6e`), including account-bound customization, assistant state and
+  reduced/static/hidden motion. Reconcile it with the redesign; do not replace
+  that work with an older branch's assistant or settings implementation.
+- Distinct agent destinations use compact, accessible identity/presence marks
+  inspired by the reference's simple dot vocabulary, expressed in Orbyn's own
+  visual language. Labels, activity and status must remain understandable without
+  color or animation. The character and presence marks have consistent roles.
+
+**A4 runtime requirement:** Overnight and background agents collaborate, but must
+not execute in the same runtime. UI separation alone does not meet this requirement.
+The intended execution boundaries are:
+
+| Destination | Responsibility                                                      | Runtime boundary                            | Web/mobile UI boundary                                              |
+| ----------- | ------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------- |
+| Chat        | Person-initiated conversation and its exact approval/question state | Interactive runner                          | Conversation, composer and current-turn controls                    |
+| Background  | Agent tasks, ideas, goal check-ins and routines outside a night run | Dedicated background worker process/service | Background activity, queue, results, waiting decisions and controls |
+| Overnight   | Jobs belonging to a night, including night tasks/goals/routines     | Dedicated Overnight worker process/service  | Tonight's status, history, morning review and unfinished work       |
+
+Shared libraries, durable storage and authorized capabilities may be reused.
+Each worker has its own claim filter, concurrency and resource limits, lifecycle,
+health and shutdown path. Interactive capacity must remain available while either
+automation lane is saturated. Restarting or stopping one automation runtime must
+not stop the other. Production must not silently collapse them into the current
+all-jobs runner or notifier fallback. Show when the required worker is unavailable
+rather than presenting queued work as an active run.
+
+**Current source evidence:** `backend/src/modules/ai/agent/runner.ts` claims all
+queued durable jobs through one loop and one global eight-slot budget. The AI
+routes start that runner; `backend/src/worker/index.ts` can start the same runner
+through `AI_RUNNER_IN_WORKER`. Night jobs carry `automation.kind = 'night'`,
+`night_id` and `source_kind` in `backend/src/worker/night-shift.ts`. Existing web
+`OvernightView` and native `OvernightSheet` provide a review surface, but do not
+establish execution isolation or a separate background workspace. This is an
+identified implementation gap, not a completed feature.
+
+**Collaboration contract:**
+
+- Exchange durable handoffs/results through explicit references and recorded
+  producer/recipient, parent work, owner, scope, revisions, status and provenance.
+  Do not rely on shared process memory or inject automated runs into a person's
+  current conversation. Each accepted handoff creates or associates distinct work
+  for the receiving runtime; it does not transfer one active execution between them.
+- Recheck current access, kept-out projects, agent rules, connection validity and
+  budgets before accepting or consuming a handoff. Sharing results never grants
+  new permissions or turns an unattended proposal into approval.
+- Use idempotent receipts, finite handoff depth/count and bounded retries so
+  duplicate delivery, a restart or reciprocal handoffs cannot create loops or
+  duplicate changes. Completion acknowledgement and failure are durable.
+- Coordinate source ownership so a task/routine/goal cannot run concurrently in
+  background and Overnight. Preserve the existing lease fencing, checkpoint
+  recovery, exact waiting IDs, approved mutations and undo history.
+- Link both activity views to the same authorized handoff and result trail while
+  keeping their run lists and controls separate. Morning review summarizes the
+  collaboration without creating a push for every unattended job.
+
+**Implementation order and completion gates:**
+
+1. Preserve and qualify the current main UI plus pending parity checkpoints.
+   Update the surface ledger from actual source and interaction evidence.
+2. Implement shared lane classification and immutable job ownership, dedicated
+   service entry points/deployment configuration, per-lane bounded claims and
+   health/recovery/shutdown. Cover upgrades and queued legacy jobs explicitly.
+3. Implement the durable collaboration/ownership contract and backend access,
+   duplication, failure and budget checks.
+4. Implement distinct Background and Overnight navigation/workspaces in both
+   clients; then apply the unified shell and Settings patterns across U1.
+5. Exercise actual desktop/web, mobile web and native iOS/Android interactions:
+   separate views, long labels, both themes, large text, software keyboard, focus
+   restoration, deep links, offline workers and nested overlays.
+6. Prove runtime isolation with two real worker processes: competing claims,
+   saturation, recovery after killing only one worker, a collaboration round trip,
+   duplicate handoff, stale approval, access revocation and absence of duplicate
+   writes or night pushes. Include service health and production configuration.
+7. Run focused/full tests, workspace types/builds, migrations and exact compiled
+   service smoke checks on stable source; commit and integrate ready checkpoints
+   to main. A screenshot, passing unit subset or UI-only lane selector is not
+   runtime delivery. Keep remaining provider/platform and preview gates explicit.
+
+The broad ADR remains active and incomplete. Voice, computer-use product features
+and the speculative Decisions adapter remain excluded; using browser/simulator
+tools to inspect and validate this work does not add those product features.
+
 #### Mandatory mobile parity — user scope clarification, 2 October 2026
 
 Every feature implemented and shipped on web/desktop must also be implemented
