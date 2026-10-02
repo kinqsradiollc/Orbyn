@@ -53,7 +53,21 @@ export function Character({
   const [pose, setPose] = useState(STILL_CHARACTER_POSE);
   const art = useMemo(
     () => characterArt(value, state),
-    [value.body, value.eyes, value.ring, value.accessory, state],
+    [
+      value.body,
+      value.eyes,
+      value.ring,
+      value.accessory,
+      value.ears,
+      value.tail,
+      value.headwear,
+      value.eyewear,
+      value.neckwear,
+      value.outfit,
+      value.backwear,
+      value.markings,
+      state,
+    ],
   );
   useEffect(() => {
     if (greeting) greetedAt.current = performance.now();
@@ -68,6 +82,7 @@ export function Character({
     const node = host.current;
     if (
       typeof IntersectionObserver === "undefined" ||
+      typeof Element === "undefined" ||
       !node ||
       !(node instanceof Element)
     ) {
@@ -88,14 +103,21 @@ export function Character({
       last = -Infinity;
     const tick = (now: number) => {
       if (now - last >= 1000 / 30) {
-        setPose(characterPose(state, now - start, now - greetedAt.current));
+        setPose(
+          characterPose(
+            state,
+            now - start,
+            now - greetedAt.current,
+            value.movement,
+          ),
+        );
         last = now;
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [active, visible, reduced, value.presence, state]);
+  }, [active, visible, reduced, value.presence, state, value.movement]);
   if (value.presence === "hidden" && !preview) return null;
   const palette: Record<CharacterColor, string> = {
     body:
@@ -103,13 +125,25 @@ export function Character({
         ? colors.accentSoft
         : value.palette === "sage"
           ? colors.soft
-          : colors.surfaceMuted,
+          : value.palette === "honey"
+            ? colors.warningSoft
+            : value.palette === "coral"
+              ? colors.dangerSoft
+              : value.palette === "paper"
+                ? colors.surface
+                : colors.surfaceMuted,
     edge:
       value.palette === "fern"
         ? colors.accent
         : value.palette === "sage"
           ? colors.dot
-          : colors.textSoft,
+          : value.palette === "honey"
+            ? colors.warning
+            : value.palette === "coral"
+              ? colors.danger
+              : value.palette === "paper"
+                ? colors.muted
+                : colors.textSoft,
     face: colors.text,
     shine: colors.surface,
     coat: `url(#${gradient})`,
@@ -125,7 +159,7 @@ export function Character({
       <Svg
         width={size}
         height={size}
-        viewBox="0 0 120 120"
+        viewBox="-8 -10 136 132"
         accessible={Platform.OS === "web" ? undefined : false}
       >
         <Defs>

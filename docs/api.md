@@ -34,14 +34,30 @@ invalid choices return `422`; malformed JSON returns `400`.
 
 The optional `character` object contains curated choices:
 
-| Field       | Choices                                | Default    |
-| ----------- | -------------------------------------- | ---------- |
-| `body`      | `orb`, `pebble`, `spark`               | `orb`      |
-| `palette`   | `fern`, `sage`, `ink`                  | `fern`     |
-| `eyes`      | `round`, `soft`, `bright`              | `round`    |
-| `ring`      | `orbit`, `halo`, `none`                | `orbit`    |
-| `accessory` | `none`, `glasses`, `headphones`, `cap` | `none`     |
-| `presence`  | `animated`, `static`, `hidden`         | `animated` |
+| Field       | Choices                                                                                 | Default    |
+| ----------- | --------------------------------------------------------------------------------------- | ---------- |
+| `body`      | `orb`, `pebble`, `spark`, `cloud`, `bean`, `heart`, `pudding`, `diamond`, `marshmallow` | `orb`      |
+| `palette`   | `fern`, `sage`, `ink`, `honey`, `coral`, `paper`                                        | `fern`     |
+| `eyes`      | `round`, `soft`, `bright`, `sleepy`, `starry`, `wink`                                   | `round`    |
+| `ears`      | `sprout`, `none`, `bunny`, `cat`, `bear`, `fox`, `antenna`                              | `sprout`   |
+| `tail`      | `none`, `curl`, `fluffy`, `fin`, `comet`                                                | `none`     |
+| `headwear`  | `none`, `beanie`, `crown`, `bucket`, `wizard`, `beret`, `flower`, `bow`                 | `none`     |
+| `eyewear`   | `none`, `spectacles`, `sunglasses`, `heart-shades`, `monocle`, `visor`                  | `none`     |
+| `neckwear`  | `none`, `scarf`, `bowtie`, `ribbon`, `bell`, `bandana`, `tie`                           | `none`     |
+| `outfit`    | `none`, `hoodie`, `overalls`, `sweater`, `tuxedo`, `raincoat`, `spacesuit`              | `none`     |
+| `backwear`  | `none`, `wings`, `cape`, `backpack`, `leaf-wings`                                       | `none`     |
+| `markings`  | `plain`, `freckles`, `stars`, `stripes`, `patch`, `heart-mark`                          | `plain`    |
+| `ring`      | `orbit`, `halo`, `none`                                                                 | `orbit`    |
+| `accessory` | `none`, `glasses`, `headphones`, `cap`                                                  | `none`     |
+| `movement`  | `gentle`, `bouncy`, `floaty`                                                            | `gentle`   |
+| `presence`  | `animated`, `static`, `hidden`                                                          | `animated` |
+
+Slots combine independently. Explicit headwear/eyewear take visual precedence over
+legacy cap/glasses accessories; the stored legacy values remain valid. Existing JSON
+records gain defaults for the new fields without a new migration. Eight starter looks
+and randomization are client-side conveniences. Presets, randomization and Reset look
+preserve presence and movement preferences. Preview expressions never change the real
+assistant's activity state.
 
 Omitting `character` preserves a saved appearance. Supplying it replaces the
 appearance, with omitted fields receiving the defaults above. Legacy records return

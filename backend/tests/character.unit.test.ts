@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import {
   CHARACTER_BODIES,
+  CHARACTER_SECTIONS,
+  CHARACTER_PRESETS,
+  CHARACTER_LAYERS,
+  randomCharacterAppearance,
+  type CharacterAppearance,
   CHARACTER_EYES,
   CHARACTER_RINGS,
   CHARACTER_ACCESSORIES,
@@ -228,7 +233,16 @@ test("identity API saves appearance per person, preserves it for legacy edits, a
     const appearance = {
       ...DEFAULT_CHARACTER,
       body: "spark",
-      accessory: "glasses",
+      accessory: "headphones",
+      headwear: "crown",
+      eyewear: "sunglasses",
+      neckwear: "scarf",
+      outfit: "overalls",
+      ears: "cat",
+      tail: "curl",
+      backwear: "wings",
+      markings: "stars",
+      movement: "bouncy",
       presence: "static",
     };
     const saved = await call("PUT", "session", {
@@ -308,4 +322,124 @@ test("SDK settings notifications update mounted clients only after successful wr
   switchAccount = false;
   await client.updateAgentSettings({ name: "Nova" });
   assert.equal(notifications, 1);
+});
+
+test("expanded wardrobe persists legacy defaults, renders stacked slots, and covers every catalog choice", () => {
+  const legacy = characterAppearanceInput.parse({
+    body: "pebble",
+    accessory: "cap",
+  });
+  assert.equal(legacy.body, "pebble");
+  assert.equal(legacy.accessory, "cap");
+  assert.equal(legacy.headwear, "none");
+  const validate = (appearance: CharacterAppearance) => {
+    assert.deepEqual(characterAppearanceInput.parse(appearance), appearance);
+    for (const state of [
+      "ready",
+      "working",
+      "waiting",
+      "done",
+      "error",
+      "interrupted",
+    ] as const) {
+      const parts = characterArt(appearance, state);
+      assert.equal(new Set(parts.map((part) => part.key)).size, parts.length);
+      assert.ok(
+        parts.every(
+          (part) =>
+            CHARACTER_LAYERS.includes(part.layer) &&
+            part.d.length > 0 &&
+            !/undefined|NaN|Infinity/.test(part.d),
+        ),
+      );
+    }
+  };
+  for (const preset of CHARACTER_PRESETS) validate(preset.appearance);
+  // Pair every option with every body instead of multiplying all independent slots.
+  for (const body of CHARACTER_BODIES)
+    for (const section of CHARACTER_SECTIONS)
+      for (const field of section.fields)
+        for (const choice of field.options) {
+          validate({ ...DEFAULT_CHARACTER, body, [field.key]: choice });
+        }
+  const shapes = CHARACTER_BODIES.map(
+    (body) =>
+      characterArt({ ...DEFAULT_CHARACTER, body }, "ready").find(
+        (part) => part.key === "body",
+      )!.d,
+  );
+  assert.equal(
+    new Set(shapes).size,
+    CHARACTER_BODIES.length,
+    "every body has its own silhouette",
+  );
+  const stacked = characterAppearanceInput.parse({
+    body: "bean",
+    ears: "bunny",
+    headwear: "beanie",
+    eyewear: "spectacles",
+    outfit: "hoodie",
+    neckwear: "scarf",
+    tail: "curl",
+    backwear: "wings",
+    accessory: "headphones",
+  });
+  const keys = characterArt(stacked, "ready").map((part) => part.key);
+  for (const key of [
+    "ears",
+    "headwear",
+    "glasses",
+    "outfit",
+    "neckwear",
+    "tail",
+    "backwear",
+    "earpieces",
+  ])
+    assert.ok(
+      keys.includes(key),
+      `${key} remains visible with other wearables`,
+    );
+  assert.ok(
+    !keys.includes("sprout"),
+    "headwear does not have a sprout poking through it",
+  );
+  validate(stacked);
+  const oldCapWithHat = characterArt(
+    { ...DEFAULT_CHARACTER, accessory: "cap", headwear: "beanie" },
+    "ready",
+  );
+  assert.ok(
+    !oldCapWithHat.some((part) => part.key === "cap"),
+    "explicit headwear takes precedence over a legacy hat",
+  );
+});
+
+test("surprise looks retain motion and visibility preferences; movement is finite and distinct", () => {
+  for (const presence of ["hidden", "static", "animated"] as const)
+    for (const movement of ["gentle", "bouncy", "floaty"] as const) {
+      const current = { ...DEFAULT_CHARACTER, presence, movement };
+      const next = randomCharacterAppearance(current, () => 0.999);
+      assert.equal(next.presence, presence);
+      assert.equal(next.movement, movement);
+      assert.equal(characterAppearanceInput.safeParse(next).success, true);
+      assert.deepEqual(
+        current,
+        { ...DEFAULT_CHARACTER, presence, movement },
+        "randomization does not mutate the saved draft",
+      );
+      for (let time = 0; time < 5000; time += 47)
+        assert.ok(
+          Object.values(
+            characterPose("working", time, Infinity, movement),
+          ).every(Number.isFinite),
+        );
+    }
+  assert.notDeepEqual(
+    characterPose("ready", 600, Infinity, "gentle"),
+    characterPose("ready", 600, Infinity, "bouncy"),
+  );
+  assert.notDeepEqual(
+    characterPose("ready", 600, Infinity, "gentle"),
+    characterPose("ready", 600, Infinity, "floaty"),
+  );
 });
