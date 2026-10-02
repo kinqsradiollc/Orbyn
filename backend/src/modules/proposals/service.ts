@@ -45,6 +45,7 @@ import {
 } from "../docs/service.js";
 import { createProject, deleteProject } from "../projects/service.js";
 import { applyProject } from "../ai/project-proposal.js";
+import { assistantProposalSourcesVisible } from "../../lib/assistant-proposal-visibility.js";
 import { checkAssistantProposalRules } from "../agents/assistant-rules.js";
 import { applySessionChange } from "../ai/session-change.js";
 import { linkDecision } from "../work-records/service.js";
@@ -955,10 +956,10 @@ export async function reviewItem(
   id: string,
 ): Promise<ReviewItem> {
   const row = (
-    await db.query<Row>(`${SELECT} WHERE id = $1 AND user_id = $2`, [
-      id,
-      userId,
-    ])
+    await db.query<Row>(
+      `${SELECT} WHERE id = $1 AND user_id = $2 AND ${assistantProposalSourcesVisible("proposals", "$2")}`,
+      [id, userId],
+    )
   ).rows[0];
   if (!row) fail(404, "That suggestion isn't here any more.");
   return itemOf(db, userId, row, await namesFor(db, userId, [row]));
@@ -976,7 +977,7 @@ export async function reviewInbox(
   const rows = (
     await db.query<Row>(
       `${SELECT}
-        WHERE user_id = $1
+        WHERE user_id = $1 AND ${assistantProposalSourcesVisible()}
           AND ((status = 'pending' AND expires_at > now())
             OR (source = 'agent' AND coalesce(decided_at, expires_at) > now() - interval '7 days'))
         ORDER BY created_at DESC LIMIT 100`,
@@ -1001,7 +1002,7 @@ export async function pendingCount(
     (
       await db.query<{ n: string }>(
         `SELECT count(*)::text AS n FROM proposals
-          WHERE user_id = $1 AND status = 'pending' AND expires_at > now()`,
+          WHERE user_id = $1 AND status = 'pending' AND expires_at > now() AND ${assistantProposalSourcesVisible()}`,
         [userId],
       )
     ).rows[0].n,
@@ -1030,7 +1031,7 @@ export async function proposalOutcome(
   const row = (
     await db.query<Row>(
       `${SELECT} WHERE id = $1 AND user_id = $2
-         AND ($3::uuid IS NULL OR grant_id = $3)`,
+         AND ($3::uuid IS NULL OR grant_id = $3) AND ${assistantProposalSourcesVisible("proposals", "$2")}`,
       [id, userId, grantId],
     )
   ).rows[0];
