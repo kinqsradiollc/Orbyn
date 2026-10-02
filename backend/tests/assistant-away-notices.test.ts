@@ -308,12 +308,13 @@ test("legacy human replies in a reminder chat migrate as personal runs", async (
   try {
     await db.query("BEGIN");
     await db.query(
-      "CREATE TEMP TABLE ai_chats (LIKE public.ai_chats INCLUDING DEFAULTS)",
+      "CREATE TEMP TABLE ai_chats (id uuid, user_id uuid, title text, origin text)",
     );
     await db.query(
-      "CREATE TEMP TABLE ai_jobs (LIKE public.ai_jobs INCLUDING DEFAULTS)",
+      "CREATE TEMP TABLE ai_jobs (id uuid, user_id uuid, chat_id uuid, state text, run_state jsonb)",
     );
-    await db.query("ALTER TABLE ai_jobs DROP COLUMN run_origin");
+    // Recreate the pre-193 inputs, not today's schema: later ownership columns
+    // rely on insert triggers which CREATE TABLE LIKE does not copy.
     const chat = randomUUID(),
       job = randomUUID();
     await db.query(
