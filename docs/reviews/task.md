@@ -1930,3 +1930,15 @@ changed-file formatting and diff checks pass. Logs /tmp/orbyn-frontmatter-final-
 A separate marked orbyn_frontmatter_20261003_test database is prepared for the
 current frozen source full suite. Its result must be recorded separately when
 terminal; do not reuse the earlier 2329-test proof for this new head.
+
+3 October Home research follow-up: public Home now uses a straight in-flow
+planner example and shared core descriptions of each agent's trigger, example
+request, review destination and pause condition. Signed-in web/native Home uses
+the same descriptions and retains the real profile action, all presets, and
+stale identity fencing. No idle activity is fabricated. Research and remaining
+reflection/collaboration/visual gates are recorded in ADR. Public checkpoint
+4e23899 is pushed in PR154; candidate cherry c9d6c7f preserves its additional
+ADR sections and exports. Text reconciliation conflicts were resolved; no
+unresolved files remain. Local Home tests 11/11, desktop/native typechecks pass.
+Public package and production web/prerender builds pass. User test-server web
+review and native screenshots/interaction remain outstanding.

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { CHARACTER_PRESETS, type PersonalAgentSettings } from "@orbyn/core";
+import {
+  CHARACTER_PRESETS,
+  HOME_AGENT_GUIDE,
+  HOME_AGENT_IDLE_NOTE,
+  type PersonalAgentSettings,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Character } from "../../components/Character";
 import { AssistantAgents } from "../assistant/AssistantAgents";
@@ -61,14 +66,13 @@ export function HomeCompanions({
       </div>
       <div className="home-companions-work">
         <div className="home-companions-lanes">
-          <p>
-            <strong>Background</strong> Check delegated tasks, results, and
-            questions that need you.
-          </p>
-          <p>
-            <strong>Overnight</strong> Review queued night work and what’s still
-            unfinished.
-          </p>
+          {HOME_AGENT_GUIDE.map((agent) => (
+            <p key={agent.name}>
+              <strong>{agent.name}</strong> {agent.summary}
+              <small>{agent.result}</small>
+            </p>
+          ))}
+          <p>{HOME_AGENT_IDLE_NOTE}</p>
         </div>
         <button className="secondary" onClick={() => setAgentsOpen(true)}>
           View agent activity
