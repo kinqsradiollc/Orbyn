@@ -38,16 +38,6 @@
 .home-companion-grid .orbyn-character {
   flex-shrink: 0;
 }
-.home-agent-intro {
-  margin: 56px 0 24px;
-  max-width: 680px;
-}
-.home-agent-intro h2 {
-  font-size: 36px;
-  line-height: 1.2;
-  margin: 0 0 16px;
-}
-.home-agent-intro p,
 .home-agent-detail p,
 .home-companion-note {
   color: var(--color-muted);
@@ -91,9 +81,6 @@
   max-width: 680px;
 }
 @media (max-width: 600px) {
-  .home-agent-intro h2 {
-    font-size: 24px;
-  }
   .home-agent-grid article {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
