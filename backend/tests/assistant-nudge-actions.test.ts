@@ -475,12 +475,16 @@ test("habit Done records a real check-in with optimistic Undo and enforces the A
 });
 test("exam Book uses the non-AI revision planner and Undo removes its untouched work", async () => {
   const { client, card, me } = await fixture();
-  const day = new Date();
+  const now = new Date();
+  const day = new Date(now);
   day.setUTCDate(day.getUTCDate() + 1);
   day.setUTCHours(12, 0, 0, 0);
   while ([0, 6].includes(day.getUTCDay())) day.setUTCDate(day.getUTCDate() + 1);
   const starts = new Date(day);
-  starts.setUTCDate(starts.getUTCDate() + 5);
+  // A weekend moves the booking to Monday. Keep the exam within the
+  // reminder selector's seven-day horizon even when today is Friday.
+  starts.setUTCDate(starts.getUTCDate() + 2);
+  assert.ok(starts.getTime() - now.getTime() < 7 * 24 * 60 * 60 * 1000);
   const key = `own:${randomUUID()}`;
   const exam = (
     await pool.query(
@@ -513,7 +517,7 @@ test("exam Book uses the non-AI revision planner and Undo removes its untouched 
     [exam],
   );
   assert.ok(
-    (await reminderNudgeCandidates(me.id, "UTC")).every(
+    (await reminderNudgeCandidates(me.id, "UTC", now)).every(
       (c) => c.entity_id !== exam,
     ),
     "renaming the exam preserves its booked revision time",
@@ -529,7 +533,7 @@ test("exam Book uses the non-AI revision planner and Undo removes its untouched 
   );
   await receipt.undo();
   assert.ok(
-    (await reminderNudgeCandidates(me.id, "UTC")).some(
+    (await reminderNudgeCandidates(me.id, "UTC", now)).some(
       (c) => c.entity_id === exam,
     ),
     "undoing the booking makes the unbooked exam eligible again",
