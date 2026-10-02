@@ -40,7 +40,21 @@ export function Character({
   const [pose, setPose] = useState(STILL_CHARACTER_POSE);
   const art = useMemo(
     () => characterArt(value, state),
-    [value.body, value.eyes, value.ring, value.accessory, state],
+    [
+      value.body,
+      value.eyes,
+      value.ring,
+      value.accessory,
+      value.ears,
+      value.tail,
+      value.headwear,
+      value.eyewear,
+      value.neckwear,
+      value.outfit,
+      value.backwear,
+      value.markings,
+      state,
+    ],
   );
   useEffect(() => {
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -74,19 +88,26 @@ export function Character({
       last = -Infinity;
     const tick = (now: number) => {
       if (now - last >= 1000 / 30) {
-        setPose(characterPose(state, now - start, now - greetedAt.current));
+        setPose(
+          characterPose(
+            state,
+            now - start,
+            now - greetedAt.current,
+            value.movement,
+          ),
+        );
         last = now;
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [value.presence, visible, foreground, reduced, state]);
+  }, [value.presence, visible, foreground, reduced, state, value.movement]);
   if (value.presence === "hidden" && !preview) return null;
   return (
     <svg
       ref={ref}
-      viewBox="0 0 120 120"
+      viewBox="-8 -10 136 132"
       width={size}
       height={size}
       className={`orbyn-character character-${value.palette}`}

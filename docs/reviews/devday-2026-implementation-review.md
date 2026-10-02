@@ -29,16 +29,56 @@ web/desktop and mobile remain in scope.
   person origin and access are checked at enqueue/extraction/write boundaries.
   Exact candidate `0392e92` passed 2,094/2,094 full local tests and all CI jobs.
 - **Reflection candidate:** draft PR #137, `codex/overnight-reflection`, current
-  head `b29f454`, based on main `3677d53`. Explicit consent, bounded current source
+  head `061a501`, based on main `3677d53`. Explicit consent, bounded current source
   evidence, durable revision receipts, read-only reflection and numbered source
   links exist on both clients. Initial candidate `8535357` passed 2,104/2,104 full
   local tests and production build/types/format. Follow-up removes misleading
   change-review controls from reflections, rejects their keep/undo operations,
   and distinguishes Queued from Working. Focused review tests passed 13/13;
-  full types/build/format passed and the final full suite/CI are in progress.
+  full types/build/format passed and b29f454 passed 2,105/2,105 full local tests.
+  Test-only 061a501 fixes same-tick fixture timestamps and adds a scan-cutoff
+  regression (10/10 focused). All four CI jobs passed; backend reported 2,105
+  passed, zero failed and one Tesseract-dependent skip out of 2,106.
   Native source navigation and compact long-label wrapping were observed with
   synthetic fixtures. Long-content scrolling and web/mobile-web visual gates
   remain open. This is not merged or deployed.
+- **Docs navigation candidate:** source `77b7d5b`, isolated main candidate
+  `25e1e6f` on draft PR #138, `codex/docs-navigation`. Both editors resolve heading fragments
+  and own-origin app links inside the app, preserving drafts and unrelated folds.
+  Mobile measures outer heading rows and applies destination pages/fragments
+  together after loading; HTML preserves heading levels and working local heading
+  links with private-resource filtering. Source and isolated main candidate f96264e passed 53 focused checks,
+  workspace types, production build and formatting. Native iOS taps on a fresh
+  candidate bundle proved relative app navigation, a folded same-page heading
+  jump, outline navigation into a folded section and a cross-page heading link
+  after correcting a stale-page race. CI 36979623013 found one stale rich-copy
+  heading assertion; 25e1e6f corrects it and adds clipboard level coverage (20/20
+  focused checks). CI 36980902473 passed all jobs: backend 2,098 passed, zero
+  failed and one known Tesseract-dependent skip. Web/mobile-web/native Android
+  interaction gates remain open. This is unmerged and does not
+  complete D1.
+- **Handoff foundation:** local source `98ff22a`, `0c8f832` and `4eaa652` defines
+  bounded receipts, durable chain counters and explicit follow-up requests.
+  Current owner, source visibility, completed producer, outcome/review revision
+  and container/dependency bindings are rechecked before creation or replay.
+  Reciprocal follow-ups preserve acknowledged ancestry and cannot reset depth;
+  UUID case variants deduplicate. Exact storage migration and full fresh-database
+  migrations were exercised. Combined focused tests passed 23/23, with no skips
+  or failures; backend types and focused formatting passed. Receiving jobs and
+  acknowledgments were simulated for these tests. No endpoints or dispatch loop
+  are enabled. Receiving-side rules/connections/budgets, cross-lane source
+  reservations, separate-worker round trips and client controls remain required.
+  This source foundation is unmerged and does not deliver collaboration.
+- **Assigned source ownership:** source `49fad02`, candidate `b7bd994` on draft
+  PR #139, serializes task/goal/routine ownership across Background/Overnight and
+  across members of shared tasks. Waiting or expired leases retain ownership;
+  explicit completion releases it. Migration 209 preserves existing active
+  overlaps on upgrade and rejects new overlapping claims and identity changes.
+  Source combined checks passed 36/36; isolated candidate checks passed 13/13,
+  all workspace types, production build and formatting passed. Full local suite
+  session 4802 and CI 36983314493 remain live. The candidate is frozen on main
+  296a342; integrate and requalify current main character updates 7c96f70/e4370a3
+  before promotion. This remains unmerged and does not dispatch handoffs.
 - **Remaining agent scope:** truthful separate profiles/workspaces, durable
   authorized Daytime/Overnight handoffs, typed rules, ownership/activity/budgets
   and the complete cross-client surface ledger remain required. Shared storage
