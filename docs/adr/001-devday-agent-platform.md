@@ -477,3 +477,13 @@ The user owns web visual validation on their test server for this increment.
 Code/build checks do not establish visual acceptance. Native screenshot and
 interaction acceptance remains required and the disposable account’s terms
 confirmation is still pending.
+
+3 October D1 frontmatter checkpoint: closed initial YAML metadata is preserved
+as one literal source block, including delimiters, blank lines, BOM, tags and
+anchor-like text; it is never evaluated. Both client code views identify it as
+YAML frontmatter and use bundled syntax coloring. A moved or malformed edited
+block exports as a safe fence. Leading thematic rules serialize unambiguously,
+and legacy anchored rules remain rules. Markdown and HTML export regressions
+cover source retention and script escaping. This does not complete reference
+links, synchronized source/preview, D1 export coverage or whole-app U1. Native
+visual acceptance remains pending, with the explicit terms confirmation gate.

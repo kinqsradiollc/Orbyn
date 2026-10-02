@@ -1039,6 +1039,22 @@ function codeFence(text: string): string {
 const indentWidth = (lead: string) =>
   [...lead].reduce((n, ch) => n + (ch === "\t" ? 4 : 1), 0);
 
+/** Reserved source-only code language for unevaluated YAML metadata. */
+export const FRONTMATTER_LANG = "orbyn-frontmatter";
+
+/** A complete frontmatter envelope; edited or moved metadata falls back to a fence. */
+function isFrontmatterSource(source: string): boolean {
+  const lines = source.split("\n");
+  return (
+    /^\uFEFF?---$/.test(lines[0]) &&
+    lines.length >= 2 &&
+    lines.findIndex(
+      (line, index) => index > 0 && /^(---|\.\.\.)$/.test(line),
+    ) ===
+      lines.length - 1
+  );
+}
+
 /**
  * Read Markdown into blocks. Unknown syntax becomes a paragraph, never an error.
  *
@@ -1104,6 +1120,25 @@ export function parseDoc(
     }
     return line.replace(ESCAPED_ANCHOR, "$1$2$3");
   };
+
+  // YAML is retained verbatim, never parsed/evaluated or fed through Markdown.
+  // Only a closed envelope at the start of the document is metadata.
+  if (
+    /^\uFEFF?---$/.test(lines[0]) &&
+    !(anchors && OWN_ANCHOR.test(lines[1]?.trim() ?? ""))
+  ) {
+    const end = lines.findIndex(
+      (line, index) => index > 0 && /^(---|\.\.\.)$/.test(line),
+    );
+    if (end > 0) {
+      push({
+        type: "code",
+        lang: FRONTMATTER_LANG,
+        text: lines.slice(0, end + 1).join("\n"),
+      });
+      i = end + 1;
+    }
+  }
 
   while (i < lines.length) {
     let line = lines[i];
@@ -1378,6 +1413,12 @@ export function parseDoc(
  * with, when the caller knows where it sits in its list.
  */
 export function serializeBlock(b: DocBlock, number?: number | null): string {
+  if (
+    b.type === "code" &&
+    b.lang === FRONTMATTER_LANG &&
+    isFrontmatterSource(b.text)
+  )
+    return b.text;
   return blockMarkdown(b, number, false);
 }
 
@@ -1433,8 +1474,15 @@ export function docLines(
   const layout = listLayout(blocks);
   return blocks.map((b, i) => {
     let line =
-      "    ".repeat(layout[i].depth) +
-      blockMarkdown(b, layout[i].number, anchors);
+      i === 0 &&
+      b.type === "code" &&
+      b.lang === FRONTMATTER_LANG &&
+      isFrontmatterSource(b.text)
+        ? b.text
+        : "    ".repeat(layout[i].depth) +
+          blockMarkdown(b, layout[i].number, anchors);
+    // A leading thematic rule must not become metadata when another rule follows.
+    if (i === 0 && b.type === "divider") line = "***";
     if (!anchors) return line;
     const own = ownLineAnchor(b);
     if (!own) line = line.replace(ANCHOR_LIKE, "$1\\$2");

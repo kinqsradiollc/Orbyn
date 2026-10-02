@@ -1910,3 +1910,23 @@ and git diff --check pass. Public-only main-based checkpoint also passes all
 workspace types, full production build, seven character tests, and generated
 HTML assertions for all eight presets, both agents, labeled examples and unique
 SVG/element IDs. No local web screenshots or native acceptance is claimed.
+
+3 October D1 frontmatter checkpoint: closed initial YAML metadata is preserved
+as one literal source block, including delimiters, blank lines, BOM, tags and
+anchor-like text; it is never evaluated. Both client code views identify it as
+YAML frontmatter and use bundled syntax coloring. A moved or malformed edited
+block exports as a safe fence. Leading thematic rules serialize unambiguously,
+and legacy anchored rules remain rules. Markdown and HTML export regressions
+cover source retention and script escaping. This does not complete reference
+links, synchronized source/preview, D1 export coverage or whole-app U1. Native
+visual acceptance remains pending, with the explicit terms confirmation gate.
+
+Frontmatter focused evidence: five initial tests failed before implementation;
+first combined run exposed an existing anchored thematic-rule ambiguity (33/34).
+After correction, final Markdown/inline/frontmatter cohort passes 36/36, including
+seven frontmatter regressions, HTML script escaping and existing 400 seeded
+anchored round-trip fixtures. Final all-workspace typechecks, production build,
+changed-file formatting and diff checks pass. Logs /tmp/orbyn-frontmatter-final-*.log.
+A separate marked orbyn_frontmatter_20261003_test database is prepared for the
+current frozen source full suite. Its result must be recorded separately when
+terminal; do not reuse the earlier 2329-test proof for this new head.

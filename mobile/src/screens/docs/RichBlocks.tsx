@@ -21,6 +21,7 @@ import { MermaidDiagram } from "../../components/MermaidDiagram";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CALLOUT_LABELS,
+  FRONTMATTER_LANG,
   colourCode,
   colourable,
   docObjectLinks,
@@ -799,13 +800,19 @@ export function FileCard({
 
 /** A code block, coloured for the languages students and teams write most. */
 export function CodeView({ text, lang }: { text: string; lang: string }) {
+  const language = lang === FRONTMATTER_LANG ? "yaml" : lang;
   const tokens = useMemo(
-    () => (colourable(lang) ? colourCode(text, lang) : null),
-    [text, lang],
+    () => (colourable(language) ? colourCode(text, language) : null),
+    [text, language],
   );
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <Text style={s.code}>
+      <Text
+        style={s.code}
+        accessibilityLabel={
+          lang === FRONTMATTER_LANG ? "YAML frontmatter source" : undefined
+        }
+      >
         {tokens
           ? tokens.map((t, i) => (
               <Text

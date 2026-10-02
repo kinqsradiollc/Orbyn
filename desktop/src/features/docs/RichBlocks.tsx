@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import {
   CALLOUT_LABELS,
+  FRONTMATTER_LANG,
   colourCode,
   colourable,
   diagramKind,
@@ -947,12 +948,21 @@ export async function scaledPicture(
 
 /** A code block, coloured for the languages students and teams write most. */
 export function CodeView({ text, lang }: { text: string; lang: string }) {
+  const language = lang === FRONTMATTER_LANG ? "yaml" : lang;
   const tokens = useMemo(
-    () => (colourable(lang) ? colourCode(text, lang) : null),
-    [text, lang],
+    () => (colourable(language) ? colourCode(text, language) : null),
+    [text, language],
   );
   return (
-    <pre className="doc-code" data-lang={lang || undefined}>
+    <pre
+      className="doc-code"
+      data-lang={
+        lang === FRONTMATTER_LANG ? "YAML frontmatter" : lang || undefined
+      }
+      aria-label={
+        lang === FRONTMATTER_LANG ? "YAML frontmatter source" : undefined
+      }
+    >
       <code>
         {tokens
           ? tokens.map((t, i) =>
