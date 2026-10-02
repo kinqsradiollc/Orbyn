@@ -2311,3 +2311,12 @@ exact-head full-suite/CI remain separate open gates.
   -53focused checks, all workspace types/production builds and scoped formatting pass. Evidence: evidence/doc-pdf-renderer.md. No localhost app inspection or terms acceptance occurred.
 - API still uses old PDF writer. Next implement authorized primary/revision-fenced API integration, bounded work/cancellation and container Chromium sandbox qualification, then real native sharing/publication/full D1/U1 gates.
 - Commit this renderer foundation, reconcile main9702f19e preserving both ADR histories and all export regressions, then run full exact-head qualification without editing that frozen runtime tree. Full goal stays active; no cleanup/deploy.
+
+### Qualification handoff — 3 October 2026
+
+- Source head0044a294 full local suite passed 2,474/2,474, no failures/skips/cancellations, exit0; /tmp/orbyn-pdf-scale-full-tests.log. Earlier1b1efec8 run had one Home font-scale failure, corrected from14px to15px. This evidence qualifies that frozen head. Main reconciliation changes only appended ADR history.
+- Public Home head1c768a08 passed 2,209/2,209 locally and all four CI37053040841 jobs; PR159 merged asmainbdc4035b. Primary checkout fast-forwarded; user mobile/app.json/untracked files preserved. Web visual acceptance remains on user's test server.
+- PDF service integration is separate branchcodex/docs-rendered-pdf, commit6f43fc92, draftPR160 stacked on this branch. Its frozen full local suite is running session17358, /tmp/orbyn-pdf-service-6f43fc92-full-tests.log, dedicated marked DBnamefile /tmp/orbyn-pdf-service-full-test-db.txt. CI37055656461 running. Do not edit/restart the frozen runtime.
+- Integration has nine current service/client checks, prior45 API/primary/service checks, fresh types/build/format. Prior sandboxed Linux container proof predates latest authentication changes, so exact image/CI are still required. No main promotion of the broad Docs branch or renderer service.
+- Review found future-dated signatures can outlive current nonce retention. Fix retention through signed timestamp expiry and add a clock-controlled replay regression after the frozen run terminates; then requalify the new head. Never merge6f43fc92 as production-ready.
+- Full ADR active: signed-in Home/mobile screenshots, native export/share, publication, model/plugin/runtime/collaboration and complete C1–C6/M1/D1/U1 gates remain open. No deployment/cleanup; preserve character and user work.
