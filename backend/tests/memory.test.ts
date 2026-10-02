@@ -10,6 +10,7 @@ const { buildApp } = await import("../src/app.js");
 const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { drainMemoryQueue } = await import("../src/worker/memory.js");
+const { finishChatTurn } = await import("../src/modules/ai/chats.js");
 const {
   enqueueMemory,
   listMemory,
@@ -364,7 +365,7 @@ test("the worker learns off-request with a fake provider and skips a kept-out pr
     ),
   );
 
-  const blockedChat = randomUUID();
+  const blockedChat = await memorySourceChat();
   await enqueueMemory(pool, {
     userId: owner.id,
     chatId: blockedChat,
@@ -440,4 +441,129 @@ test("a turn that keeps failing to learn is dropped after five tries", async () 
     [chat],
   );
   assert.equal(left.rowCount, 0);
+});
+
+test("automated completions save their answer without teaching personal Memory", async () => {
+  for (const origin of ["person", "idea", "goal", "routine", "task", "night"]) {
+    const chatId = randomUUID();
+    const turnId = randomUUID();
+    await pool.query(
+      `INSERT INTO ai_chats(id,user_id,title,origin,turns)
+       VALUES($1,$2,'Provenance check',$3,$4::jsonb)`,
+      [
+        chatId,
+        owner.id,
+        origin,
+        JSON.stringify([
+          { role: "user", text: "Review my work", turn_id: turnId },
+        ]),
+      ],
+    );
+    const result = {
+      summary: "Observed: a task failed. Interpretation: try a shorter task.",
+      trace: [],
+    };
+    await finishChatTurn(owner.id, chatId, turnId, result);
+    await finishChatTurn(owner.id, chatId, turnId, result);
+    const saved = (
+      await pool.query("SELECT turns FROM ai_chats WHERE id=$1", [chatId])
+    ).rows[0];
+    assert.equal(
+      saved.turns.length,
+      2,
+      `${origin}: retry cannot duplicate the answer`,
+    );
+    assert.equal(saved.turns[1].text, result.summary);
+    const queued = await pool.query(
+      "SELECT 1 FROM memory_queue WHERE chat_id=$1",
+      [chatId],
+    );
+    assert.equal(
+      queued.rowCount,
+      origin === "person" ? 1 : 0,
+      `${origin}: only personal chats can teach Memory`,
+    );
+    await pool.query("DELETE FROM memory_queue WHERE chat_id=$1", [chatId]);
+    await enqueueMemory(pool, {
+      userId: other.id,
+      chatId,
+      turns: [],
+      sourceProjectId: null,
+    });
+    assert.equal(
+      (
+        await pool.query("SELECT 1 FROM memory_queue WHERE chat_id=$1", [
+          chatId,
+        ])
+      ).rowCount,
+      0,
+      "a different person's chat cannot be queued",
+    );
+  }
+});
+
+test("legacy automated memory backlog is discarded before reaching a provider", async () => {
+  const chatId = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin,turns) VALUES($1,$2,'Overnight reflection','night','[]')",
+    [chatId, owner.id],
+  );
+  await pool.query(
+    `INSERT INTO memory_queue(chat_id,user_id,turns) VALUES($1,$2,$3::jsonb)`,
+    [
+      chatId,
+      owner.id,
+      JSON.stringify([
+        { role: "user", content: "Generated reflection instructions" },
+      ]),
+    ],
+  );
+  let calls = 0;
+  await drainMemoryQueue({
+    ai: {} as never,
+    completeTurn: async () => {
+      calls++;
+      throw new Error(
+        "Automated reflection reached personal memory extraction",
+      );
+    },
+  });
+  assert.equal(calls, 0);
+  assert.equal(
+    (await pool.query("SELECT 1 FROM memory_queue WHERE chat_id=$1", [chatId]))
+      .rowCount,
+    0,
+  );
+});
+
+test("a source deleted during extraction cannot create a personal memory", async () => {
+  const chatId = await memorySourceChat();
+  await enqueueMemory(pool, {
+    userId: owner.id,
+    chatId,
+    sourceProjectId: null,
+    turns: [
+      { role: "user", content: "An explicit preference in a deleted chat" },
+    ],
+  });
+  await drainMemoryQueue({
+    ai: {} as never,
+    completeTurn: async () => {
+      await pool.query("DELETE FROM ai_chats WHERE id=$1", [chatId]);
+      return JSON.stringify({
+        topics: [
+          { topic: "Deleted source preference", facts: ["Must not be stored"] },
+        ],
+      });
+    },
+  });
+  assert.equal(
+    await readMemory(pool, owner.id, "Deleted source preference"),
+    null,
+  );
+  assert.equal(
+    (await pool.query("SELECT 1 FROM memory_queue WHERE chat_id=$1", [chatId]))
+      .rowCount,
+    0,
+  );
 });
