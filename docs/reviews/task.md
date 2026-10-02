@@ -1040,3 +1040,48 @@ still verified in progress, backend tests live while mobile/Docker/mail passed.
 Plugin pipeline **75235** terminal zero: all types/build/full formatting passed;
 full suite **19850** and CI **36991179849** remain verified live on **9ce1961**.
 Keep both candidates frozen and poll their same handles; no main merge yet.
+
+## Scheduler merged and proposal rule provenance — 2 October 2026
+
+Scheduler CI **36990759723** is terminal success for all jobs. Fetched its exact
+merge commit separately (multi-ref FETCH_HEAD selected main first); candidate,
+GitHub merge and resulting main trees match
+`3e2d1b8410f139b625c88036679d62a77c08caca`. PR **#141** merged as **7f3894f**;
+main **9e1a2c8** commits ADR qualification. Dirty mobile/app.json and unrelated
+untracked files remain untouched. PR body records current evidence; no deployment.
+
+Plugin **19850** terminal zero: **2,116/2,116**, no failures/skips/cancellations,
+615,740 ms; CI **36991179849** terminal success for all jobs. All types/build/full
+format passed. These qualify **9ce1961** on base **2ba1ae2**, not newer main.
+PR **#142** remains draft with accurate qualification and interaction gates.
+Integrate/requalify current main before merging; browser/native consent, host,
+gateway/provider and UI resources/events remain required. Do not restart old runs.
+
+Source **35d186f** adds migration 212 and server-generated proposal guards with
+runtime lane, reviewed rule revision and bounded resolved action/space checks.
+Domain destinations collect checks; toReview persists them independently of tool
+arguments. Creation and approval lock the source grant, validate current owner,
+pause/access/team ceilings and rules. Edits invalidate old suggestions; legacy
+unbound built-in suggestions are accepted only at untouched initial rules.
+
+Whole-plan review previously reconstructed an assistant as an agent key and
+could name a different grant inside its action input. Review now requires the
+original connection, ignores action-input assistant identity and derives it from
+the server guard. The plan runner rebuilds built-in/plugin principals correctly
+with current rules and runtime, without first-party-session authority. Existing
+outside-agent review behavior passed regression. These findings/fixes remain
+source work, not already delivered main protections.
+
+Current **24996** terminal zero: **36/36** proposal/rules/apply-plan/agent-write
+checks, no failures/skips/cancellations, 8,712 ms. **77549** backend types and
+**91072** packages terminal zero; scoped formatting/diff passed. Fresh marked
+**orbyn_proposal_guard_212_test**, **73180** terminal zero: all migrations and
+**7/7** dedicated cases, 2,277 ms. Logs
+`/tmp/orbyn-assistant-proposal-guard-{current-tests,current-types,fresh-tests,packages}.log`.
+
+Next: bind/recheck current job/source provenance through all review paths; retain
+notification-delivery restrictions, read/external effects, typed agent records,
+first-party web/mobile rule editor, budgets/reservations and receiving dispatch.
+Run full combined source qualification before any scoped production candidate.
+This does not complete A4 or the wider ADR. Current source tree is clean except
+the two preserved untracked settings previews; no cleanup/deployment occurred.

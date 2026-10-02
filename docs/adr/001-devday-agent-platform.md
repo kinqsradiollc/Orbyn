@@ -161,3 +161,18 @@ actual concurrent rule/write locking. This source is unmerged and not full A4:
 agent ownership migration, cross-client editing/inspection, proposal provenance,
 read/effect rules, receiving budgets/dispatch and separate-worker handoffs remain.
 No public rule editing route or inferred standing-instruction policy is enabled.
+
+Scheduler PR #141 is now merged as main `7f3894f`; ADR evidence is committed on
+main `9e1a2c8`. Full local 2,120/2,120, all types/build/format and all CI jobs
+passed; candidate, tested merge and main trees match. Plugin candidate `9ce1961`
+passed 2,116/2,116 and all CI jobs but remains draft with interaction gates and
+current-main integration outstanding. Neither checkpoint is a deployment.
+
+Proposal rule source `35d186f` records server-generated runtime/revision/action-
+space evidence and rechecks it under the original grant at human review. Rule
+edits invalidate stale suggestions. Built-in and plugin plan identities are
+preserved; a plan cannot choose another connection or take assistant identity
+from its action input. Thirty-six current regressions, backend types and seven
+fresh-database migration/review tests passed. This is unmerged source. Current
+job/source provenance, read/effect/notification checks, agent records, cross-client
+editing, budgets and actual receiving-worker collaboration remain required.
