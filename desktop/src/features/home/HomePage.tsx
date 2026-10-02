@@ -30,6 +30,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { MouseEvent } from "react";
+import { CHARACTER_PRESETS } from "@orbyn/core";
+import { Character } from "../../components/Character";
 import { useReveal } from "../../hooks/useReveal";
 import { stagger } from "../../lib/motion";
 import { LinkDemo, WeekDemo } from "./HomeDemos";
@@ -116,8 +118,8 @@ const YOURS: Point[] = [
   },
   {
     icon: Sparkles,
-    title: "Nothing changes without you",
-    body: "The assistant only suggests. Every change it proposes waits for you to approve it.",
+    title: "You choose what it can do",
+    body: "Review proposed changes, choose the work you delegate, and keep private spaces out of AI.",
   },
   {
     icon: Fingerprint,
@@ -171,6 +173,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <a href="#features">Features</a>
           <a href="#planning">Planning</a>
           <a href="#work">Projects & docs</a>
+          <a href="#companions">Companions</a>
           <a href="#together">Teams</a>
           <a href="#yours">Privacy</a>
           <a href="#faq">FAQ</a>
@@ -308,7 +311,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             <Sparkles size={18} /> A little help thinking ahead
           </span>
           <span>
-            <ShieldCheck size={18} /> Every AI change is yours to approve
+            <ShieldCheck size={18} /> You decide what AI can change
           </span>
           <span>
             <Fingerprint size={18} /> Personal plans stay personal
@@ -354,11 +357,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <span className="home-feature-icon">
                 <Sparkles />
               </span>
-              <h3>An assistant that asks first.</h3>
+              <h3>An assistant with room to work.</h3>
               <p>
                 Ask for a summary of your week, a plan for tomorrow, or a change
-                of direction. It reads your tasks and your pages, and every
-                change it suggests waits for your approval.
+                of direction. Review its suggestions, or explicitly delegate a
+                task. You control its access and the changes it can make.
               </p>
               <div className="home-mini-chat">
                 “What needs my attention this week?”
@@ -394,6 +397,50 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </div>
             </article>
           </div>
+        </section>
+
+        <section className="home-features" id="companions">
+          <div className="home-section-heading reveal">
+            <span className="eyebrow">MAKE YOUR SPACE YOURS</span>
+            <h2>A companion that feels like you.</h2>
+            <p>
+              Start with a familiar face, then choose its look, accessories and
+              movement. Keep it animated, still, or tucked away.
+            </p>
+          </div>
+          <ul
+            className="home-companion-grid"
+            aria-label="Orbyn character presets"
+          >
+            {CHARACTER_PRESETS.map(({ name, appearance }) => (
+              <li key={name}>
+                <Character appearance={appearance} name={name} size={96} />
+                <span>{name}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="home-agent-grid">
+            <article>
+              <span className="eyebrow">DURING YOUR DAY</span>
+              <h3>Background</h3>
+              <p>
+                Work on the tasks you delegate while you get on with your day.
+                Follow progress, review the result, and stop a run when you need
+                to.
+              </p>
+            </article>
+            <article>
+              <span className="eyebrow">ON YOUR SCHEDULE</span>
+              <h3>Overnight</h3>
+              <p>
+                Give night work its own window and budget. Review what happened
+                in the morning, with unfinished work clearly accounted for.
+              </p>
+            </article>
+          </div>
+          <p className="home-companion-note">
+            Available when you need them. Idle until authorized work is ready.
+          </p>
         </section>
 
         <section className="home-features home-split" id="planning">

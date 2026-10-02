@@ -47,6 +47,7 @@ import { useToast } from "../../components/Toast";
 import { useConfirm } from "../../components/Confirm";
 import { dayLabel } from "../../lib/assistant-labels";
 import "./home.css";
+import { HomeCompanions } from "./HomeCompanions";
 
 /**
  * Home (W1): the greeting with the time and a friendly date, an optional
@@ -945,6 +946,7 @@ export function HomeSections(open: Openers) {
 
   return (
     <>
+      <HomeCompanions />
       {rows.map((row) =>
         row[0] === "hubs" ? (
           <HubRow

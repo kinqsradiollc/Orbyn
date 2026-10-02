@@ -22,6 +22,7 @@ import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { ProgressBar } from "./ProgressBar";
 import { AssistantUpcoming } from "./AssistantUpcoming";
+import { HomeCompanions } from "./HomeCompanions";
 
 /**
  * Home on the phone (W1, W6): a compact strip of the same hubs as the web,
@@ -360,6 +361,7 @@ export function HomeSection({
 
   return (
     <>
+      <HomeCompanions />
       {homePanels(home).map(panel)}
       <AssistantUpcoming
         agentName={agentName}

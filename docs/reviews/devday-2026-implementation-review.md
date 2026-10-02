@@ -1403,3 +1403,20 @@ real account-specific model defaults/execution, provider/embedding choices,
 plugin host acceptance, Docs/Mermaid or whole-app web/desktop/mobile UI gates.
 Preserve Orbyn palette/characters; no public rule editor, deployment or cleanup.
 The complete M1/D1/U1 and C1–C6 ADR acceptance remains active.
+
+### Home and web validation scope addition — 3 October 2026
+
+The user explicitly authorizes web UI implementation through code review and
+automated checks while local browser access remains blocked. Web visual
+validation moves to the user's test server; this is not proof of completed
+visual acceptance. Native screenshot requirements remain active. No alternate
+browser/port access is authorized by this change to validation ownership.
+
+Redesign both the public landing page and signed-in Home, including all canonical
+character presets. Preserve the existing character artwork, customization,
+animation/reduced-motion/hidden preferences and Orbyn palette. Keep dashboard
+browsing distinct from saving a person's appearance. Landing content should
+accurately describe current planning, Docs, delegated Background tasks and
+bounded Overnight work, without claiming unfinished collaboration, reflection
+or provider eligibility as delivered. Synchronize signed-in Home features with
+native mobile. The rest of the whole-application U1 ledger remains in scope.

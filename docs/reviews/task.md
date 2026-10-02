@@ -1850,3 +1850,47 @@ The user's renewed request to use native Chrome cannot override the browser
 tool's explicit prohibition on alternate surfaces for this blocked preview.
 No workaround was attempted. Continue the full ADR; this checkpoint is not a
 claim that receiving dispatch, budgets, runtime health or collaboration is done.
+
+## Full source qualification and Home continuation — 3 October 2026
+
+Frozen source b17d4c8 completed full local qualification in session70681:
+2329/2329 tests passed, zero failed/skipped/cancelled,612415ms, terminal exit0.
+All workspace typechecks and production builds passed. Tracked-file formatting
+passed; the broad workspace command flags only the preserved untracked
+desktop/src/settings-connection-preview.tsx helper. This qualification applies
+to b17d4c8 before the following Home changes, not to later source heads.
+New isolated marked database: orbyn_b17d4c8_qualification_test, on the separate
+test PostgreSQL container. Logs /tmp/orbyn-b17d4c8-*.log.
+
+Draft PR148 contains the accumulated model/Docs/profile integration candidate,
+attached to this chat. Its exact b17d4c8 head was mergeable with GitHub main
+c30c5fc. CI mail/mobile/docker passed; backend-and-web was still running last
+observed. Full ADR remains incomplete and this PR remains draft.
+
+User now explicitly authorizes code-based web redesign without local browser
+inspection, with visual validation on their test server. No browser restriction
+is bypassed. The Home addition covers BOTH public landing and signed-in Home:
+all eight canonical character presets, responsive landing companion gallery,
+distinct Background/Overnight descriptions, accurate delegated-change copy,
+and a collapsible read-only gallery on signed-in web and native Home.
+Saved appearance/hidden preference is respected; browsing does not save settings.
+Character rendering now supports the existing production server prerender.
+Mounted galleries subscribe to saved character changes and fence late initial
+loads after a newer edit or unmount. Focused tests and current-head qualification
+are separate from the b17d4c8 full-suite result above.
+Home pipeline80065 exited zero: all workspace typechecks, desktop production
+build and generated-HTML assertion for all eight presets and both runtime
+sections. Focused Home/character pipeline84863 passed13/13 with no skips.
+Logs /tmp/orbyn-home-companions-*.log. This is a first Home increment, not
+whole-dashboard redesign, screenshots or completed application-wide acceptance.
+
+Restart stopped previews and cleared the old in-memory test database. Restored
+web5174(session35626), synthetic source API8028(session12609), and Metro8088
+(session82255, IPv4 loopback; previous IPv6-only owned Metro was terminated).
+Native source fixture uses separate marked orbyn_native_recovery_20261002_test.
+It is signed into the synthetic native-models account and waits at terms version
+2026-10-01. Explicit confirmation request remains pending; do not accept it
+without the user's answer. Native visual acceptance remains open.
+The old implementation worktree remains preserved: all changed source files
+have counterparts in this candidate, but differing files still need individual
+reconciliation before cleanup. No cleanup, main merge, deployment or release.
