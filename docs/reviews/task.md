@@ -1697,3 +1697,25 @@ qualification and required UI checks remain outstanding. Previous93ad2e2 full218
 CI37005022002 success do not qualify changed d4ad16c. Native simulator currently
 shows corrected ER fixture; controlledsource Metro8088/API8028 continue. Saved
 browser denial still unresolved; do not bypass it. Full ADR remains active.
+
+## Mermaid appearance and screenshot gate continuation — 2 October 2026
+
+User reported Mermaid looks bad and requires screenshots for every web/desktop/
+mobile redesign, checking overlap and containment. ADR now records this mandatory
+gate. All ten iOS fixture families actually rendered; pie/Gantt/journey/mindmap
+exposed real visual defects. Shared mermaidThemeVariables/mermaidDiagramCss and
+visibleDiagramTicks are consumed by both desktop RichBlocks and mobile renderer.
+Native proof shows corrected pie colors/Gantt dates/Morning journey heading.
+Mindmap nodes now use palette/outline, but root label alignment and faint links
+remain defective; fitted timeline/journey text too small. Do not call Mermaid
+visually complete. Screenshots/provenance under evidence/mermaid-native.
+
+Before-fix DOMRect regression failed because geometry getters are non-enumerable;
+explicit coordinate reads fixed thinning. Family cohort20472 passed29/29 with
+all workspace types. Duplicate mock injection removed afterwards and additional
+CSS assertion added; final cohort65938 terminated zero:29/29, all workspace
+types and diff check passed. Native preview
+currently at mindmap, synthetic owner; unset-provider dev toast dismissed,
+composer was not edited/submitted by this work. Browser denial remains unresolved.
+Current mainc30c5fc, Docsd4ad16c pushed/types23focused passed but combined full/UI
+gates outstanding. No deployment/cleanup. Full ADR active.

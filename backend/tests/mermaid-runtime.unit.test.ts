@@ -2,7 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { prepareMermaidSource, MERMAID_MAX_SVG, colors } from "@orbyn/core";
+import {
+  prepareMermaidSource,
+  mermaidThemeVariables,
+  mermaidDiagramCss,
+  visibleDiagramTicks,
+  MERMAID_MAX_SVG,
+  colors,
+} from "@orbyn/core";
 
 /** Exercise the real message handler with controlled engine and DOM boundaries. */
 function runtime(
@@ -17,6 +24,7 @@ function runtime(
   const drawing = {
     style: {} as { width?: string; height?: string; maxWidth?: string },
     viewBox: { baseVal: { width: 300, height: 160 } },
+    querySelectorAll: () => [],
   };
   const host = {
     replaceChildren() {},
@@ -47,6 +55,9 @@ function runtime(
       render,
     },
     prepareMermaidSource,
+    mermaidThemeVariables,
+    mermaidDiagramCss,
+    visibleDiagramTicks,
     MERMAID_MAX_SVG,
     window: {
       parent,
@@ -126,6 +137,14 @@ test("isolated renderer accepts only host messages and pins every configuration 
     Object.keys(config).sort(),
   );
   assert.ok(fixture.removed[0].includes("animate"));
+  const journey = config.journey as {
+    textPlacement: string;
+    sectionColours: string[];
+  };
+  assert.equal(journey.textPlacement, "tspan");
+  assert.equal(journey.sectionColours[0], fixture.palette.textColor);
+  assert.match(String(config.themeCSS), /text\.journey-section/);
+  assert.ok(String(config.themeCSS).includes(fixture.palette.textColor));
 });
 
 test("directives, invalid themes and oversized output cannot produce an exported image", async () => {
@@ -181,14 +200,8 @@ test("entity attribute rows use the validated Orbyn surface palette", async () =
     string,
     string
   >;
-  assert.equal(
-    theme.rowOdd,
-    fixture.palette.secondaryColor,
-  );
-  assert.equal(
-    theme.rowEven,
-    fixture.palette.primaryColor,
-  );
+  assert.equal(theme.rowOdd, fixture.palette.secondaryColor);
+  assert.equal(theme.rowEven, fixture.palette.primaryColor);
   assert.equal(theme.primaryTextColor, fixture.palette.primaryTextColor);
 });
 

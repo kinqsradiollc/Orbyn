@@ -2,7 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { prepareMermaidSource, MERMAID_MAX_SOURCE } from "@orbyn/core";
+import {
+  prepareMermaidSource,
+  mermaidThemeVariables,
+  visibleDiagramTicks,
+  colors,
+  darkColors,
+  MERMAID_MAX_SOURCE,
+} from "@orbyn/core";
 import { mermaidFixtures } from "./helpers/mermaid-fixtures.js";
 
 test("the bundled renderer matches the current security source", () => {
@@ -67,4 +74,59 @@ test("diagram configuration cannot override the application's renderer policy", 
     "---\nconfig:\n securityLevel: loose\n---\nflowchart TD\n A --> B",
   ])
     assert.throws(() => prepareMermaidSource(source), /configuration/);
+});
+
+test("dense diagram ticks preserve readable endpoints and gain detail when zoomed", () => {
+  const dense = Array.from({ length: 10 }, (_, i) => ({
+    left: i * 10,
+    right: i * 10 + 25,
+  }));
+  assert.deepEqual(visibleDiagramTicks(dense), [0, 4, 9]);
+  assert.equal(
+    visibleDiagramTicks(
+      dense.map((b) => ({ left: b.left * 4, right: b.left * 4 + 25 })),
+    ).length,
+    10,
+  );
+  assert.deepEqual(
+    visibleDiagramTicks([
+      { left: 0, right: 40 },
+      { left: 10, right: 50 },
+    ]),
+    [0],
+  );
+  assert.deepEqual(visibleDiagramTicks([{ left: NaN, right: 50 }]), []);
+});
+
+test("both themes use application series colors and legible mindmap labels", () => {
+  for (const theme of [colors, darkColors]) {
+    const vars = mermaidThemeVariables({
+      background: theme.surface,
+      primaryColor: theme.surface,
+      primaryBorderColor: theme.accent,
+      primaryTextColor: theme.text,
+      secondaryColor: theme.soft,
+      tertiaryColor: theme.surfaceMuted,
+      lineColor: theme.muted,
+      textColor: theme.text,
+      noteBkgColor: theme.highBg,
+      noteTextColor: theme.text,
+      highText: theme.highText,
+      mediumText: theme.mediumText,
+      lowText: theme.lowText,
+    });
+    assert.equal(vars.pie1, theme.accent);
+    assert.equal(vars.pie2, theme.muted);
+    assert.equal(vars.pie3, theme.highText);
+    assert.equal(vars.cScaleInv0, theme.accent);
+    assert.equal(vars.cScaleLabel0, theme.text);
+  }
+});
+
+test("tick measurement accepts non-enumerable DOMRect coordinates", () => {
+  const box = Object.defineProperties(
+    {},
+    { left: { get: () => 10 }, right: { get: () => 40 } },
+  ) as { left: number; right: number };
+  assert.deepEqual(visibleDiagramTicks([box]), [0]);
 });

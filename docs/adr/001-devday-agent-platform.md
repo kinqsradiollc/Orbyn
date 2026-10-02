@@ -435,3 +435,21 @@ Six remaining diagram families, malformed/large fixtures, light theme, Android,
 web/mobile-web and complete Docs/UI acceptance remain open. Source7026041
 reconciles current mainc30c5fc; its sole conflict was a test blank line, with all
 regressions preserved. This source checkpoint is not merged or deployed.
+
+### Screenshot acceptance requirement — user clarification, 2 October 2026
+
+Every web, desktop and mobile redesign must include screenshots of the actual
+running surface and inspection for overlap, clipping, label readability, toolbar
+wrapping and nested overlay containment. Include relevant narrow/wide widths,
+both themes, long content and keyboard/large text states. Store provenance with
+commit, platform, viewport, fixture and observed defects. Passing tests, builds
+or responsive web screenshots do not replace native evidence. Unavailable
+surfaces remain explicitly unverified and cannot be declared complete.
+
+Mermaid's ten native fixture families now rendered, but screenshot review exposed
+further styling defects. Shared palette rules and adaptive measured Gantt tick
+selection are implemented for web/desktop and mobile. Native rechecks prove pie
+segment distinction, non-overlapping Gantt dates and restored Morning journey
+section text. Mindmap root alignment/faint links and small fitted labels still
+need work. Fullscreen/zoom usability and remaining platform/theme gates stay
+open. This remains an implementation checkpoint, not release acceptance.

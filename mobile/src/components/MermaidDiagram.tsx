@@ -39,6 +39,9 @@ export function MermaidDiagram({ text }: { text: string }) {
     textColor: colors.text,
     noteBkgColor: colors.highBg,
     noteTextColor: colors.text,
+    highText: colors.highText,
+    mediumText: colors.mediumText,
+    lowText: colors.lowText,
   });
   const request = useMemo(
     () =>

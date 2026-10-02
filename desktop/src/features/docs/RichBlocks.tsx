@@ -42,6 +42,9 @@ import {
   colourCode,
   colourable,
   diagramKind,
+  mermaidThemeVariables,
+  mermaidDiagramCss,
+  visibleDiagramTicks,
   docObjectLinks,
   fileSize,
   isAudio,
@@ -975,7 +978,7 @@ let mermaidTheme = "";
 function paletteVars() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string) => css.getPropertyValue(`--color-${name}`).trim();
-  return {
+  return mermaidThemeVariables({
     background: v("surface"),
     primaryColor: v("surface"),
     primaryBorderColor: v("accent"),
@@ -986,8 +989,10 @@ function paletteVars() {
     textColor: v("text"),
     noteBkgColor: v("highBg"),
     noteTextColor: v("text"),
-    fontFamily: "inherit",
-  };
+    highText: v("highText"),
+    mediumText: v("mediumText"),
+    lowText: v("lowText"),
+  });
 }
 
 /** Mermaid, loaded the first time a page has a diagram. */
@@ -1006,6 +1011,12 @@ async function loadMermaid(): Promise<Mermaid> {
       securityLevel: "strict",
       theme: "base",
       themeVariables: vars,
+      themeCSS: mermaidDiagramCss(vars),
+      journey: {
+        textPlacement: "tspan",
+        sectionFills: [vars.secondaryColor],
+        sectionColours: [vars.textColor],
+      },
     });
   }
   return mermaid;
@@ -1029,6 +1040,21 @@ export function Diagram({ text }: { text: string }) {
       .then(({ svg }) => {
         if (!live || !box.current) return;
         box.current.innerHTML = svg;
+        for (const axis of box.current.querySelectorAll("svg g")) {
+          const labels = [...axis.children]
+            .filter((node) => node.classList.contains("tick"))
+            .map((tick) => tick.querySelector("text"))
+            .filter((label): label is SVGTextElement => !!label);
+          if (labels.length < 2) continue;
+          const visible = new Set(
+            visibleDiagramTicks(
+              labels.map((label) => label.getBoundingClientRect()),
+            ),
+          );
+          labels.forEach((label, index) => {
+            if (!visible.has(index)) label.setAttribute("visibility", "hidden");
+          });
+        }
         for (const node of chart?.nodes ?? []) {
           if (!node.link) continue;
           const link = node.link;

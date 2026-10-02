@@ -1,5 +1,11 @@
 import mermaid from "mermaid";
-import { prepareMermaidSource, MERMAID_MAX_SVG } from "@orbyn/core";
+import {
+  prepareMermaidSource,
+  mermaidThemeVariables,
+  mermaidDiagramCss,
+  visibleDiagramTicks,
+  MERMAID_MAX_SVG,
+} from "@orbyn/core";
 
 let generation = 0;
 let lastId = "";
@@ -30,41 +36,24 @@ const receive = async (event) => {
   host.replaceChildren();
   try {
     const source = prepareMermaidSource(request.source);
-    const palette = {};
-    for (const key of [
-      "background",
-      "primaryColor",
-      "primaryBorderColor",
-      "primaryTextColor",
-      "secondaryColor",
-      "tertiaryColor",
-      "lineColor",
-      "textColor",
-      "noteBkgColor",
-      "noteTextColor",
-    ]) {
-      const value = request.palette?.[key];
-      if (
-        typeof value !== "string" ||
-        !/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(value)
-      )
-        throw new Error("Invalid diagram theme.");
-      palette[key] = value;
-    }
-    // Mermaid base theme otherwise supplies pale ER rows even in dark mode.
-    palette.rowOdd = palette.secondaryColor;
-    palette.rowEven = palette.primaryColor;
+    const palette = mermaidThemeVariables(request.palette ?? {});
     const config = {
       startOnLoad: false,
       securityLevel: "strict",
       suppressErrorRendering: true,
       theme: "base",
       themeVariables: palette,
+      themeCSS: mermaidDiagramCss(palette),
       fontFamily: "system-ui, sans-serif",
       maxTextSize: 65_536,
       maxEdges: 512,
       htmlLabels: false,
       flowchart: { htmlLabels: false },
+      journey: {
+        textPlacement: "tspan",
+        sectionFills: [palette.secondaryColor],
+        sectionColours: [palette.textColor],
+      },
       secure: [],
     };
     config.secure = Object.keys(config);
@@ -134,13 +123,28 @@ const receive = async (event) => {
     const scale = Math.min(1, (viewport - 24) / width) * zoom;
     drawing.style.width = `${width * scale}px`;
     drawing.style.height = `${height * scale}px`;
+    for (const axis of drawing.querySelectorAll("g")) {
+      const labels = [...axis.children]
+        .filter((node) => node.classList?.contains("tick"))
+        .map((tick) => tick.querySelector("text"))
+        .filter(Boolean);
+      if (labels.length < 2) continue;
+      const visible = new Set(
+        visibleDiagramTicks(
+          labels.map((label) => label.getBoundingClientRect()),
+        ),
+      );
+      labels.forEach((label, index) => {
+        if (!visible.has(index)) label.setAttribute("visibility", "hidden");
+      });
+    }
     send({
       type: "orbyn-diagram-result",
       id: request.id,
       width,
       // Match the renderer host's 12px padding above and below the SVG.
       height: height * scale + 24,
-      svg: safeSvg,
+      svg: new XMLSerializer().serializeToString(drawing),
     });
   } catch (error) {
     if (current !== generation) return;

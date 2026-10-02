@@ -24,3 +24,30 @@ tokens now pin rowOdd/rowEven and er-theme.png proves readable attributes.
 
 Remaining diagram families, malformed/large fixtures,
 both themes, Android, web/mobile-web and complete Docs acceptance remain open.
+
+## Visual correction continuation
+
+The remaining six fixture families were opened and rendered on iOS: class, pie,
+Gantt, journey, mindmap and timeline. Screenshots exposed poor pie contrast,
+overlapping Gantt dates, invisible journey section text and black mindmap nodes.
+Shared core palette rules now feed web/desktop and mobile. Actual native rechecks
+show distinct pie segments, readable Gantt endpoint/intermediate labels and the
+Morning journey heading. Mindmap nodes gained palette fills and outlines, but
+its root text alignment and faint connectors still need correction. Fit-scale
+text in timeline/journey is also too small for comfortable phone reading;
+remaining viewport/zoom/fullscreen design is not accepted yet.
+
+Gantt measurement initially lost DOMRect getter fields through object spread.
+A failing non-enumerable-coordinate regression reproduced it; explicit field
+reads fixed it. Current mobile SVG export serializes the adjusted SVG rather
+than exporting the original overlapping axis. Journey used the same generated
+class for rectangles and text; scoped owned CSS restores text color while SVG
+text placement retains the existing foreignObject restriction.
+
+The journey-readable screenshot includes a development provider-error toast
+from the synthetic account's unset AI configuration; it is not a production
+provider failure. The toast was dismissed for mindmap layout inspection.
+
+Native evidence does not qualify web/desktop, Android, light theme, large-font,
+malformed/large-content or complete Docs acceptance. The saved browser denial
+remains respected. These changes are not merged or deployed.
