@@ -17,7 +17,7 @@ import { LinkPillView } from "./DocLinks";
 import { LiveList } from "../views/LiveList";
 import { cut, touches, type Mark } from "./marks";
 import { DocNavigationContext } from "./doc-navigation";
-import { webOrigin } from "../../lib/links";
+import { linkTo, webOrigin } from "../../lib/links";
 import { OPEN_LINK_EVENT } from "./DocLinks";
 import {
   CalloutView,
@@ -151,7 +151,15 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
             <a
               key={i}
               href={
-                destination.kind === "fragment" ? run.link : destination.url
+                destination.kind === "fragment"
+                  ? navigation
+                    ? linkTo({
+                        kind: "doc",
+                        id: navigation.docId,
+                        block: destination.fragment,
+                      })
+                    : run.link
+                  : destination.url
               }
               data-src={run.start}
               target={destination.kind === "external" ? "_blank" : undefined}

@@ -3573,6 +3573,7 @@ export function DocEditor({
               <LinkPillProvider value={pillActions}>
                 <DocNavigationContext.Provider
                   value={{
+                    docId: doc.id,
                     onFragment: goToBlock,
                     onAppLink: (url) => {
                       const link = parseAppLink(url);
