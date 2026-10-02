@@ -631,3 +631,15 @@ checkpoint **5559758** is pushed, applied as the exact two-document patch from
 dirty mobile configuration and unrelated files remain preserved. Source branch
 `codex/devday-model-catalog` was pushed through **5c529b4**; this is not a PR or
 merge for its application code.
+
+Compiled candidate **b7bd994** also passed independent-process ownership proof
+on newly created, server-marked `orbyn_work_ownership_process_test`. Two distinct
+Node processes imported `backend/dist/.../runner.js` and competed across lanes:
+one acquired the shared assigned task, waiting retained ownership, completion
+allowed the other lane to claim, and clearing the first checkpoint preserved its
+source identity. Synthetic users/jobs were removed afterward. Script/log:
+`/tmp/orbyn-work-ownership-process-proof.mts` and
+`/tmp/orbyn-work-ownership-process-proof.log`. This proves compiled queue claims,
+not provider execution, dispatch, reflection or a complete handoff round trip.
+Process **25651** exited zero. CI watch **90866** remains live for run
+**36983314493**; do not duplicate/restart the run or edit the frozen candidate.
