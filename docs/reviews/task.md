@@ -20,7 +20,7 @@ commits were already published by the time of the latest fetch.
 
 ## Authoritative repositories
 
-- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `bb78cdf`.
+- Main `/Users/anhdang/Documents/Github/Orbyn`: local and remote `c1b3ffa`.
   Companion and whole-app ADR updates are published. Main `f875c8d` passed
   2,083/2,083 ordinary tests (zero fail/skip/cancel), workspace types and production
   build. `495a359` fixes CI's missing per-service backend image tags and ADR
@@ -56,8 +56,20 @@ later reply inside a chat whose origin is automation.
 Verification: 10/10 focused Memory/chat-sweep tests, zero fail/skip/cancel,
 `/tmp/orbyn-reflection-memory-tests-2.log`; marked disposable database
 `orbyn_reflection_memory_20261002_test`. Backend typecheck exit 0,
-`/tmp/orbyn-reflection-memory-types.log`. Committed on the model branch; not yet
-integrated into main. No UI completion is claimed for this backend safeguard.
+`/tmp/orbyn-reflection-memory-types.log`. Committed on the model branch and
+cherry-picked cleanly onto current main as `0392e92` on
+`codex/reflection-memory-boundary`, in the existing assistant-runtime-integration
+worktree. Draft PR https://github.com/kinqsradiollc/Orbyn/pull/136 is pushed and
+attached. It is not merged. No UI completion is claimed for this safeguard.
+
+Exact source `0392e92` is frozen for the full suite in session **18328**, marked
+DB `orbyn_main_memory_0392e92_test`, log
+`/tmp/orbyn-main-memory-0392e92-full-tests.log`. Backend types/build then full
+formatting run sequentially in session **98107**, logs
+`/tmp/orbyn-main-memory-0392e92-{types,build,format}.log`. Both were still live at
+the last read. Poll these exact handles/logs before rerunning. Keep PR 136 draft
+until full verification and exact-head CI pass. The model branch has merged main
+`c1b3ffa` without conflicts (`880beb5`).
 
 Next implementation sequence:
 
@@ -81,71 +93,47 @@ Next implementation sequence:
 5. Test no new evidence, deleted/denied sources, duplicate claims/restarts,
    cancellation and budget exhaustion, then actual web/native output access.
 
-## Current runtime work — 2 October, latest
+## Runtime isolation — merged checkpoint, 2 October
 
-Runtime foundation `69ff2d6` is committed on the model branch, not yet on main.
+PR https://github.com/kinqsradiollc/Orbyn/pull/135 merged into main as `c1b3ffa`
+on 2 October at 06:21:56 UTC. Main was fast-forwarded locally, preserving the
+user's dirty `mobile/app.json` and all unrelated untracked files. Exact PR head
+`e6f6376` and unchanged base `bb78cdf` were checked immediately before merge;
+GitHub reported MERGEABLE and no conflict occurred. Model branch also merged
+current main without conflicts.
+
 Migration 206 adds immutable job lane ownership, with four interactive slots and
 separate two-slot Background/Overnight consumers. Dedicated service entry points,
 Compose/Kubernetes deployment, private readiness, shared status groups and
 notifier fallback rejection are wired. Actual worker-process tests prove one
 runtime can be killed/recovered while the other continues; idle loops make no
-provider calls. Focused 28/28 passed, log `/tmp/orbyn-runtime-focused-tests-3.log`,
-marked DB `orbyn_runtime_lanes_206_retry_test`. Separate shared status tests pass,
-workspace types pass, Compose config/Kubernetes render and shell syntax pass.
+provider calls. This foundation does not complete profiles, reflection or agent
+collaboration.
 
-Earlier focused runs failed from two test-fixture assumptions (old claim-token
-prefix, a recovery helper accidentally selecting the wrong lane). Those are
-corrected. The second failed run was stopped after its failure contaminated later
-checkpoint fixtures; it is not a passing result. No product fallback was added.
+Qualification:
 
-Main full test log `/tmp/orbyn-main-f875c8d-release-full-tests.log`; types/build
-logs `/tmp/orbyn-main-f875c8d-types.log` and `-build.log`. Main CI `36971290485`
-for `8f2e7b3` completed successfully in all four jobs, including backend/web. Production auto-deployment is disabled; pushing main
-is not production deployment. Do not claim a release or live production version.
+- Corrected complete suite **2,091/2,091**, zero fail/skip/cancel, exit 0,
+  556089.514125 ms. Frozen source `e6f6376`; marked database
+  `orbyn_main_runtime_e6f6376_test`; session 57320 terminal.
+  `/tmp/orbyn-main-runtime-e6f6376-full-tests.log`.
+- Full format check passed (`e6f6376-format.log`, same prefix). Workspace types and
+  production build passed on application-identical source `fc4a55c`, logs
+  `/tmp/orbyn-main-runtime-fc4a55c-{types,build,format}.log`.
+- PR CI run **36972309736**, exact `e6f6376`: backend/web, mobile, Docker live smoke
+  and mail all SUCCESS. GitHub run 36971290485 on earlier main 8f2e7b3 also passed.
+- Focused runtime/process tests 28/28, automation/task integration 49/49,
+  notice/migration 8/8. Logs `/tmp/orbyn-runtime-focused-tests-3.log`,
+  `/tmp/orbyn-runtime-automation-tests-2.log`,
+  `/tmp/orbyn-runtime-legacy-notice-tests.log`.
+- Compose config, Kubernetes render and deploy shell syntax passed.
 
-Exact-main integration worktree is now
-`/Users/anhdang/.codex/worktrees/assistant-runtime-integration/Orbyn`, branch
-`codex/assistant-runtime-isolation`, HEAD `e6f6376`. Runtime `fc4a55c`, historical
-migration fixture `e1746d0`, separate automation test consumers `bd79124`, and
-main reflection ADR are integrated with no unresolved conflicts. The branch is
-pushed; draft PR https://github.com/kinqsradiollc/Orbyn/pull/135 is attached. CI
-runs on the PR before promotion. Do not merge it until its required checks and
-a complete corrected local suite pass.
+Historical failed full run `fc4a55c` was 2,083/2,091, all eight failures in fixture
+assumptions corrected before the passing final run. Its log remains
+`/tmp/orbyn-main-runtime-fc4a55c-full-tests.log`; do not confuse it with acceptance.
 
-Initial full suite session 44256 is terminal exit 1: 2,091 tests, 2,083 pass,
-eight failures, no skips/cancellations. Marked DB
-`orbyn_main_runtime_fc4a55c_test`; log
-`/tmp/orbyn-main-runtime-fc4a55c-full-tests.log`. All eight failures were in the
-historical schema clone and old automation fixtures, now fixed as below.
-
-The corrected complete suite is LIVE in session **57320**, frozen source
-`e6f6376`, fresh marked DB `orbyn_main_runtime_e6f6376_test`, log
-`/tmp/orbyn-main-runtime-e6f6376-full-tests.log`. Poll this exact handle/log before
-any rerun. Formatting session **65860** finished exit 0; all files pass. Log:
-`/tmp/orbyn-main-runtime-e6f6376-format.log`. The integration worktree is clean;
-local dependency links were placed inside ignored node_modules directories.
-Its diff from the earlier build/typechecked source `fc4a55c` contains tests and
-docs only, with identical application/asset source.
-
-PR 135 head `e6f6376` was MERGEABLE with no unresolved Git conflicts. Its CI has
-backend/web, mobile and Docker jobs running and mail passed at the latest read.
-Recheck exact head and main before merge; do not infer success from this snapshot.
-
-The fixes pass 8/8 notice/migration tests and 49/49 automation/task tests. Logs:
-`/tmp/orbyn-runtime-legacy-notice-tests.log`,
-`/tmp/orbyn-runtime-automation-tests-2.log`. A test-only child deadline preserves
-the original 2-second idea timeout assertion across the process boundary.
-The earlier automation run was 48/49 before that fixture fix. Main-based workspace
-types, production build and format check passed on application source `fc4a55c`;
-logs `/tmp/orbyn-main-runtime-fc4a55c-{types,build,format}.log`. Kustomize and
-Compose validate. Root dependencies link to existing installations, and core/API
-outputs resolve inside the integration worktree. Its task-owned dependency links are inside ignored node_modules directories.
-No npm install was run.
-
-CI run 36971290485 on main `8f2e7b3` completed successfully in all four jobs:
-backend/web, mobile exports, Docker live smoke and mail. `bb78cdf` is a subsequent
-ADR-only commit for bounded Overnight reflection, pushed to main. Production
-auto-deployment remains disabled and no deployment/release was performed.
+Production AUTO_DEPLOY remains disabled. No production deployment, release or tag
+was performed. The integration worktree is now reused for the separate Memory
+boundary PR 136; do not rerun runtime tests by resetting it to the old branch.
 
 Newest UI requirement is now canonical: each Daytime/Overnight profile must show
 truthful Idle/Ready/Scheduled/Working/Waiting/Paused/Unavailable/Failed state,
