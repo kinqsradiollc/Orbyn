@@ -32,6 +32,24 @@ export const assistantActionRule = z
   })
   .strict();
 export type AssistantActionRule = z.output<typeof assistantActionRule>;
+export const assistantRuleCheck = z
+  .object({
+    team_id: z.uuid().nullable(),
+    actions: z
+      .array(z.enum(ASSISTANT_RULE_ACTIONS))
+      .min(1)
+      .max(ASSISTANT_RULE_ACTIONS.length),
+  })
+  .strict();
+/** Server-generated evidence of the restrictions checked before proposing. */
+export const assistantProposalGuard = z
+  .object({
+    lane: assistantActionRule.shape.lane,
+    rules_revision: z.number().int().positive().max(2147483647),
+    checks: z.array(assistantRuleCheck).max(100),
+  })
+  .strict();
+export type AssistantProposalGuard = z.output<typeof assistantProposalGuard>;
 export const assistantActionRules = z
   .array(assistantActionRule)
   .max(100)

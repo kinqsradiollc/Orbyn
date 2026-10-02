@@ -159,6 +159,15 @@ export function destination(
   for (const effect of effects) {
     actions.push(effectAction[effect]);
   }
+  if (p.via === "assistant" && ctx.assistant_rule_checks) {
+    const check = { team_id: teamId, actions: [...new Set(actions)] };
+    if (
+      !ctx.assistant_rule_checks.some(
+        (existing) => JSON.stringify(existing) === JSON.stringify(check),
+      )
+    )
+      ctx.assistant_rule_checks.push(check);
+  }
   const rule =
     p.via === "assistant"
       ? assistantRuleDecision(
@@ -291,6 +300,15 @@ export async function toReview(
     clientName: p.client.name,
     summary,
     changes: changes as never,
+    ...(p.via === "assistant"
+      ? {
+          assistantGuard: {
+            lane: p.assistant_lane ?? "interactive",
+            rules_revision: p.assistant_rules_revision ?? 1,
+            checks: ctx.assistant_rule_checks ?? [],
+          },
+        }
+      : {}),
   });
   return {
     status: "pending_review",
