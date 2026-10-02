@@ -337,3 +337,16 @@ Current-version conflicts and visibility-first404 behavior remain unchanged.
 Regression checks execute the actual handlers with distinct primary and replica
 dependencies; no export query or helper may use the stale replica. This is a
 backend freshness checkpoint; PDF visual rendering and full D1/U1 remain open.
+
+### Public Home request examples — 3 October 2026
+
+[Muse's design account](https://introducing.muse.ai/) describes task-shaped outputs
+and meaningful updates. [Dots' profile documentation](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
+exposes activity and task controls. Use those presentation patterns to make
+Orbyn's existing responsibilities easier to understand. Public Home now gives
+each agent a labeled example quotation, followed by where to review the work
+and when it pauses. Preserve all character presets, Orbyn tokens and truthful
+idle behavior. This checkpoint changes public presentation only; signed-in/native
+Home refinements remain in the larger candidate. Reflection/collaboration and
+the full ADR acceptance gates remain open. User test-server visual review is
+still outstanding; automated content checks do not prove visual acceptance.
