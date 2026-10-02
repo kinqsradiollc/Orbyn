@@ -220,3 +220,31 @@ test("authentication precedes parsing and rejected bodies release reservations",
     await app.close();
   }
 });
+
+test("a future-dated signature remains replay-protected for its entire validity window", async (context) => {
+  const origin = Date.now();
+  let now = origin;
+  context.mock.method(Date, "now", () => now);
+  let runs = 0;
+  const app = buildPdfService({
+    key,
+    executable: "fixture",
+    render: async () => {
+      runs++;
+      return pdf;
+    },
+  });
+  try {
+    const headers = pdfRequestHeaders(html, key, origin + 45_000);
+    assert.equal((await inject(app, html, headers)).statusCode, 200);
+    now = origin + 65_000;
+    assert.equal((await inject(app, html, headers)).statusCode, 409);
+    now = origin + 105_001;
+    assert.equal((await inject(app, html, headers)).statusCode, 401);
+    assert.equal(runs, 1);
+    assert.equal((await inject(app)).statusCode, 200);
+    assert.equal(runs, 2);
+  } finally {
+    await app.close();
+  }
+});

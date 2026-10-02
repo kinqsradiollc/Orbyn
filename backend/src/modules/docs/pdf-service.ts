@@ -101,7 +101,9 @@ export function buildPdfService({
         .code(503)
         .header("retry-after", "5")
         .send({ message: "The PDF renderer is busy. Try again shortly." });
-    seen.set(nonce, Date.now() + WINDOW_MS);
+    // A signed timestamp may be ahead of this clock. Retain the nonce until
+    // the signature itself expires, rather than only one window after receipt.
+    seen.set(nonce, Number(stamp) + WINDOW_MS);
     working++;
     reserved.add(request);
   });
