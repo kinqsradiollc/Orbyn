@@ -36,7 +36,32 @@ from the disconnected attempt was not substituted for integration proof.
 
 ## Remaining gates
 
-Main-source validation, a full suite and a rebuilt backend image are required
-before push. This checkpoint does not prove browser rendering or math visual
+Main source `f23bab1` passed 99 focused checks and workspace typecheck. Its
+production backend image `orbyn-docs-checkpoint:f23bab1` built successfully;
+a compiled smoke check with networking disabled verified fraction/display
+MathML and blocked image commands. Logs: `/tmp/orbyn-docs-main-focused-tests.log`,
+`/tmp/orbyn-docs-main-types.log`, `/tmp/orbyn-docs-main-docker-build.log` and
+`/tmp/orbyn-docs-main-docker-smoke.log`.
+
+The existing mobile Download/Share menu includes HTML and uses the same server
+endpoint. Main `5906fe5` makes its format list use the shared catalog, preserves
+the selected MIME type when absent from a blob, revokes browser blob URLs after
+failed downloads and reports unavailable binary sharing. Thirteen checks execute
+the real mobile utility with mocked platform/filesystem/share interfaces on web,
+iOS and Android, including exact preservation of actual MathML output. Workspace
+typecheck passed. iOS/Android Metro exports passed on the corresponding model/Docs
+worktree `2046685`. These are source/behavior and packaging checks, not touch or
+visual proof. Logs: `/tmp/orbyn-mobile-download-main-tests.log`,
+`/tmp/orbyn-mobile-download-main-types.log` and
+`/tmp/orbyn-mobile-export-download-checkpoint.log`.
+
+Frozen main `b6096c8` passed all 2,078 tests with no failures, skips or
+cancellations. Log: `/tmp/orbyn-docs-mobile-main-full-tests.log`.
+The preceding `f23bab1` full run failed one date-dependent exam fixture (2,064
+passed, one failed): on Fridays its exam fell outside the seven-day selector
+horizon. The corrected fixture passed 21/21 focused checks and the fresh full
+suite. No production reminder behavior was changed for this fixture failure.
+
+This checkpoint does not prove browser rendering or math visual
 fidelity on native mobile, PDF or Word. Mermaid diagrams in HTML/PDF exports and
 the broader Markdown/UI ADR remain separate incomplete requirements.

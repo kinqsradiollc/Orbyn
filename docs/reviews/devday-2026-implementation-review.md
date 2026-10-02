@@ -8,7 +8,8 @@ web/desktop and mobile remain in scope.
 
 | Area | Authoritative checkpoint | Evidence and remaining gates |
 | --- | --- | --- |
-| Main session/profile work | Pushed through `986e77f` | Manual profile results/errors are session-bound on both clients; web tab account changes clear root planner data. Fifteen focused checks and workspace typecheck passed on main. Nested caches, other callbacks and visual/native interaction remain open. |
+| Main session/profile work | Pushed through `60de59c` | Profile, mutation errors and preference results are session-bound; web tab account changes clear root planner data. Focused checks and workspace typecheck passed on main. Nested caches, other callbacks and visual/native interaction remain open. |
+| Main Docs literals/math exports and mobile file handling | Integrated through `b6096c8` | Shared code spans, escaped literals and safe links; bounded MathML HTML export; 13 real mobile utility checks with platform/share mocks and workspace types passed. The exact main full suite passed 2,078/2,078. Native bundles passed on corresponding local source. Browser/native visual interaction and broader Markdown parity remain open. |
 | Main ChatGPT private inference | Pushed `fef8f7c`, `76fb218`, `3f5ae6f` | Saved-default adapter and executor lease fencing are private; 26 model/transport checks and 25 lease/runtime checks passed on main. No new inference IPC command exists. Signed job assignment/results, composer routing and real-account acceptance remain open. |
 | Plugin recipient/discovery | Local `codex/devday-plugin-boundary`, proof `c6f4b03` | Frozen source `e60fb32` passed 1,995/1,995 backend tests after fixture and runner fixes. Recipient consent, isolated grants/tokens, service discovery and challenges are not merged. Browser consent, gateway, host, provider and deployment gates remain open. |
 | Docs mobile Mermaid | Local `codex/devday-model-catalog`, source `ca21820` and `b1df2ef`, packaging proof `4717551` | Ten families pass the actual strict parser; nine source/runtime checks, workspace types and iOS/Android exports passed. Parsing and packaging do not prove diagram appearance, export interaction or native navigation. |
@@ -184,6 +185,25 @@ Use the VS Code built-in Markdown experience as a concrete baseline, with docume
 Existing desktop Mermaid and rich blocks are reused. Mobile's current flowchart-only renderer is insufficient for D1. Choose a bundled isolated rendering surface or authorized generated SVG with sanitized bounded output; validate Expo/native support before selecting the implementation. No renderer choice may turn private diagrams into publicly accessible assets. [VS Code baseline](https://code.visualstudio.com/docs/languages/markdown), [Mermaid security](https://mermaid.js.org/config/schema-docs/config-properties-securitylevel.html).
 
 ### U1 — UI synchronization and regression gate
+
+#### Mandatory mobile parity — user scope clarification, 2 October 2026
+
+Every feature implemented and shipped on web/desktop must also be implemented
+on mobile. Track backend/shared behavior, web/desktop entry points, mobile entry
+points, persistence and failure states, and acceptance evidence together for
+each feature. Retaining mobile's visual design does not exclude any functionality
+from this requirement. A shared helper, typecheck or Expo export is not native
+interaction proof. Verify iOS and Android behavior as well as mobile web.
+
+Platform eligibility and native callback limitations remain genuine release
+gates; they do not remove mobile from the contract. Mark the affected feature
+incomplete until an appropriate mobile flow and its acceptance evidence exist.
+The private desktop ChatGPT executor, unmerged settings redesign and isolated
+Mermaid source are foundations rather than completed cross-client features.
+
+Current Docs HTML exports use one server renderer and the existing mobile
+Download/Share menu already includes HTML. Source and automated save/share checks
+must still be distinguished from actual mobile interaction and visual fidelity.
 
 #### Web redesign and settings acceptance — user scope addition, 1 October 2026
 
