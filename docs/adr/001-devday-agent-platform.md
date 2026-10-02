@@ -393,3 +393,24 @@ Signed-in Home/profile and renderer work remain in the larger draft. Local Home
 checks3/3, all workspace typechecks/builds and full formatting pass. Web visual
 acceptance is still delegated to the user's test server for this increment;
 full exact-head local and CI qualification is required before main merge.
+
+### Main-based rendered PDF checkpoint — 3 October 2026
+
+Add a separately authenticated offline document renderer process and required
+shared helpers, with a dedicated Chromium image, credential/network isolation,
+enabled sandbox and bounded work/cancellation. The API authorizes primary-read
+snapshots and rechecks access/version before returning a file. Signed requests
+retain replay nonces until signature expiry, including allowed clock skew.
+Production rollout starts PDF before API and validates its independent key.
+
+This checkpoint prints math and all ten Mermaid families through the existing
+PDF export contract shared by web, desktop and mobile. Standalone HTML gets
+escaped source markers; this does not claim complete rendered HTML, publication,
+inline image-byte or native sharing acceptance. Root-locked first-party build
+dependencies generate only the backend asset; no app module imports are added.
+Web/native editor and settings changes remain in their respective candidates.
+
+Qualification requires focused real export tests, full local suite, workspace
+types/build/format and exact-head CI including the hardened renderer image.
+Main promotion remains conditional on those results. Full C1–C6/M1/D1/U1 scope
+remains active; no deployment, release or cleanup is performed.

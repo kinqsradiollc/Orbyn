@@ -19,7 +19,8 @@
     "test": "npm run build:packages && npm run test -w backend",
     "migrate": "npm run migrate -w backend",
     "format": "prettier --write \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md"
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" backend/src backend/tests desktop/src mobile/src docs README.md",
+    "build:pdf-renderer": "node scripts/build-mermaid.mjs"
   },
   "overrides": {
     "xcode": {
@@ -27,6 +28,8 @@
     }
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
+    "mermaid": "^11.17.2",
     "prettier": "^3.9.6"
   },
   "engines": {

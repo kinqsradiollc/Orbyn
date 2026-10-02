@@ -3,6 +3,7 @@ import {
   CALLOUT_LABELS,
   footnoteNumbers,
   isEmbed,
+  isDiagram,
   isLiveList,
   listLayout,
   mathToText,
@@ -62,6 +63,8 @@ const escapeHtml = (text: string) =>
 
 /** How HTML is written for a page's lines. */
 export type HtmlOptions = {
+  /** Mark authorized diagram source for the private offline renderer. */
+  diagramSources?: boolean;
   /** Where a picture in the page can be fetched from, when it can. */
   fileUrl?: (id: string) => string | null;
   /** The number each footnote shows (`footnoteNumbers`). */
@@ -185,7 +188,7 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
     switch (block.type) {
       case "heading": {
         closeList();
-        const level = block.level + 1;
+        const level = block.level;
         const id = o.anchors ? ` id="h-${index}"` : "";
         body.push(
           `<h${level}${id}>${inlineHtml(block.text, opts)}</h${level}>`,
@@ -251,7 +254,11 @@ export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
         closeList();
         // A live list or an embed is settings, not something to read.
         if (isLiveList(block) || isEmbed(block)) break;
-        body.push(`<pre><code>${escapeHtml(block.text)}</code></pre>`);
+        body.push(
+          isDiagram(block) && o.diagramSources
+            ? `<pre class="diagram-source" data-orbyn-diagram="mermaid"><code>${escapeHtml(block.text)}</code></pre>`
+            : `<pre><code>${escapeHtml(block.text)}</code></pre>`,
+        );
         break;
       case "math":
         closeList();
@@ -326,7 +333,7 @@ export function docToHtml(
 <style>
   body { max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem;
          font: 16px/1.65 Georgia, "Times New Roman", serif; color: #1a1a1a; }
-  h1, h2, h3, h4 { font-family: system-ui, sans-serif; line-height: 1.25; }
+  h1, h2, h3, h4, h5, h6 { font-family: system-ui, sans-serif; line-height: 1.25; }
   code, pre { font-family: ui-monospace, Menlo, Consolas, monospace;
               font-size: 0.92em; }
   pre { background: #f4f4f4; padding: 0.9rem 1rem; overflow-x: auto; }
