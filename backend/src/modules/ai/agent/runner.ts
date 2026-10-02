@@ -47,7 +47,7 @@ export async function claimAssistantJob(
          WHERE candidate.state = 'queued' AND candidate.runtime_lane = $2 AND candidate.run_state->>'version' = '1'
            AND candidate.run_state->'request' IS NOT NULL
            AND (candidate.work_source_id IS NULL OR NOT EXISTS (
-             SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id AND busy.user_id=candidate.user_id
+             SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id
                AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
                AND busy.state IN ('running','waiting')))
          ORDER BY candidate.created_at, candidate.id FOR UPDATE OF candidate SKIP LOCKED LIMIT 1

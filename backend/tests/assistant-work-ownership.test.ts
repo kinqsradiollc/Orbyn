@@ -156,10 +156,33 @@ test("different assigned work kinds and different owners can run independently",
   const source = randomUUID();
   await queued(source, "background", "goal");
   await queued(source, "overnight", "routine");
-  await queued(source, "overnight", "goal", other);
+  await queued(randomUUID(), "overnight", "goal", other);
   assert.ok(await claimAssistantJob("goal-owner", "background"));
   assert.ok(await claimAssistantJob("routine-owner", "overnight"));
   assert.ok(await claimAssistantJob("other-goal-owner", "overnight"));
+});
+
+test("one shared task cannot acquire a second runtime owner through another member", async () => {
+  const source = randomUUID();
+  const first = await queued(source, "background", "task", owner);
+  const second = await queued(source, "overnight", "task", other);
+  assert.equal(
+    (await claimAssistantJob("first-member", "background"))?.id,
+    first,
+  );
+  assert.equal(await claimAssistantJob("second-member", "overnight"), null);
+  await assert.rejects(
+    pool.query("UPDATE ai_jobs SET state='running' WHERE id=$1", [second]),
+    occupied,
+  );
+  await pool.query(
+    "UPDATE ai_jobs SET state='done',run_state=NULL WHERE id=$1",
+    [first],
+  );
+  assert.equal(
+    (await claimAssistantJob("second-member", "overnight"))?.id,
+    second,
+  );
 });
 
 test("upgrade preserves existing overlapping work and blocks additional acquisition", async () => {
