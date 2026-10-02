@@ -91,7 +91,7 @@ function fixture({
       blocksWithWebLinks: (blocks: DocBlock[]) => blocks,
       env: { APP_URL: "https://fixture.invalid" },
       docToDocx: render,
-      docToPdf: render,
+      exportRenderedPdf: render,
       docToHtml: render,
       docToText: render,
       docToMarkdown: render,
@@ -118,7 +118,7 @@ for (const format of EXPORT_FORMATS) {
       await view.run({ format, version: 8 }),
       "Current exported content",
     );
-    assert.equal(view.reads(), 1);
+    assert.equal(view.reads(), format === "pdf" ? 2 : 1);
     assert.deepEqual(view.dependencies, [view.pool, view.pool]);
     assert.equal(await view.run({ format }), "Current exported content");
   });

@@ -502,7 +502,7 @@ test("rich copy writes HTML another app keeps, and the same lines as Markdown", 
     ],
     { fileUrl: (id) => `https://files.example/${id}` },
   );
-  assert.match(html, /<h2>Plan<\/h2>/);
+  assert.match(html, /<h1>Plan<\/h1>/);
   assert.match(
     html,
     /<li><strong>Bold<\/strong> and <mark style="background:#e7f0ea">marked<\/mark>/,

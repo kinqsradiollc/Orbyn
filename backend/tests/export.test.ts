@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { pdfTextLines } from "./helpers/pdf-text.js";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -8,6 +9,17 @@ import { join } from "node:path";
 // Connects only to a verified test database (see setup.ts).
 import "./setup.js";
 
+const { startTestPdfService } = await import("./helpers/pdf-service.js");
+const { renderPdfSnapshot } =
+  await import("../src/modules/docs/pdf-renderer.js");
+let beforePdfPrint: (() => Promise<void>) | undefined;
+const pdfService = await startTestPdfService(async (options) => {
+  const before = beforePdfPrint;
+  beforePdfPrint = undefined;
+  if (before) await before();
+  return renderPdfSnapshot(options);
+});
+const { readPdf } = await import("../src/modules/imports/pdf.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -88,6 +100,7 @@ after(async () => {
   const { closeLive } = await import("../src/modules/docs/live.js");
   await closeLive();
   await app.close();
+  await pdfService.close();
   await pool.end();
 });
 
@@ -293,29 +306,15 @@ test("the PDF is well formed and holds the page's words", async () => {
   assert.match(body, /^%PDF-1\.4/);
   assert.match(body, /%%EOF\s*$/);
   assert.match(body, /\/Type \/Catalog/);
-  assert.match(body, /\/Type \/Pages \/Count \d+/);
-  assert.match(body, /\/BaseFont \/Helvetica-Bold/);
-
-  // Every offset in the table must land on the object it claims.
-  const startxref = Number(body.match(/startxref\s+(\d+)/)![1]);
-  assert.equal(body.slice(startxref, startxref + 4), "xref");
-  const offsets = [...body.matchAll(/^(\d{10}) 00000 n $/gm)].map((m) =>
-    Number(m[1]),
-  );
-  assert.ok(offsets.length >= 6, "one entry per object");
-  for (const [i, at] of offsets.entries())
-    assert.match(
-      body.slice(at, at + 12),
-      new RegExp(`^${i + 1} 0 obj`),
-      `object ${i + 1} is where the table says`,
-    );
-
-  // Words in one font are drawn as one run, so a reader can copy a sentence
-  // back out as a sentence.
-  assert.match(body, /\(Launch brief\) Tj/);
-  assert.match(body, /\(unchanged\) Tj/);
-  assert.match(body, /\(Pricing stays \) Tj/, "the run before it stays whole");
-  assert.doesNotMatch(body, /\(\*\*/, "no Markdown leaks into the PDF");
+  const pages = await readPdf(res.rawPayload, 20);
+  assert.ok(pages.length > 0);
+  const text = pages
+    .flatMap((page) => page.text.spans.map((span) => span.text))
+    .join(" ");
+  assert.match(text, /Launch brief/);
+  assert.match(text, /unchanged/);
+  assert.match(text, /Pricing stays/);
+  assert.doesNotMatch(text, /\*\*/, "no Markdown leaks into the PDF");
 });
 
 test("a long page runs onto more than one PDF page", async () => {
@@ -333,11 +332,10 @@ test("a long page runs onto more than one PDF page", async () => {
       },
     })
   ).json().id;
-  const body = (
-    await get(`/docs/${long}/export?format=pdf`)
-  ).rawPayload.toString("latin1");
-  const count = Number(body.match(/\/Type \/Pages \/Count (\d+)/)![1]);
-  assert.ok(count > 1, `it paginated (${count} pages)`);
+  const response = await get(`/docs/${long}/export?format=pdf`);
+  assert.equal(response.statusCode, 200);
+  const pages = await readPdf(response.rawPayload, 30);
+  assert.ok(pages.length > 1, `it paginated (${pages.length} pages)`);
 });
 
 test("an unknown format is refused, and someone else's page is not found", async () => {
@@ -409,6 +407,55 @@ test("bold, italic and code are drawn in the fonts they claim", async () => {
   assert.match(body, /\/BaseFont \/Courier/);
 });
 
+test("HTML export marks only authorized Mermaid source and preserves standalone math", async () => {
+  const created = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      title: "Rendered export",
+      content: [
+        {
+          type: "code",
+          lang: "mermaid",
+          text: 'flowchart LR\nA["<script>bad</script>"] --> B',
+          id: "diagram",
+        },
+        {
+          type: "code",
+          lang: "js",
+          text: "const ordinary = true",
+          id: "ordinary",
+        },
+        { type: "math", text: "\\frac{a}{b}", id: "math" },
+      ],
+    },
+  });
+  assert.equal(created.statusCode, 201);
+  const result = await get(`/docs/${created.json().id}/export?format=html`);
+  assert.equal(result.statusCode, 200);
+  assert.equal(
+    (result.body.match(/data-orbyn-diagram="mermaid"/g) ?? []).length,
+    1,
+  );
+  assert.match(result.body, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.match(result.body, /<pre><code>const ordinary = true<\/code><\/pre>/);
+  assert.match(result.body, /<math[ >]/);
+  assert.doesNotMatch(result.body, /<script|<iframe/i);
+  assert.equal(
+    (
+      await get(
+        `/docs/${created.json().id}/export?format=html`,
+        () => strangerToken,
+      )
+    ).statusCode,
+    404,
+  );
+  const markdown = await get(`/docs/${created.json().id}/export?format=md`);
+  assert.match(markdown.body, /```mermaid/);
+  assert.match(markdown.body, /<script>bad<\/script>/);
+});
+
 test("export revision checks reject changed pages without disclosing inaccessible versions", async () => {
   const original = (await get(`/docs/${docId}`)).json();
   assert.equal(
@@ -463,4 +510,82 @@ test("export revision checks reject changed pages without disclosing inaccessibl
         .statusCode,
       422,
     );
+});
+
+test("rendered PDF contains all Mermaid families and mathematical content through the authorized API", async () => {
+  const { mermaidFixtures } = await import("./helpers/mermaid-fixtures.js");
+  const id = (
+    await app.inject({
+      method: "POST",
+      url: "/docs",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        title: "Rendered diagrams",
+        content: [
+          { type: "paragraph", text: "Inline $\\frac{a}{b}$" },
+          { type: "math", text: "\\sum_{i=1}^{n}i" },
+          ...mermaidFixtures.flatMap((f) => [
+            { type: "heading", level: 2, text: f.kind },
+            { type: "code", lang: "mermaid", text: f.source },
+          ]),
+        ],
+      },
+    })
+  ).json().id;
+  const result = await get(`/docs/${id}/export?format=pdf&version=1`);
+  assert.equal(result.statusCode, 200);
+  const pages = await readPdf(result.rawPayload, 30);
+  const lines = pdfTextLines(pages);
+  const text = lines.join(" ");
+  for (const f of mermaidFixtures)
+    assert.ok(
+      lines.includes(f.kind),
+      `Missing ${f.kind} heading: ${JSON.stringify(lines)}`,
+    );
+  for (const label of [
+    "Start",
+    "Finish",
+    "Review tasks",
+    "Plan work",
+    "Task status",
+    "Release history",
+  ])
+    assert.ok(text.includes(label), label);
+  assert.doesNotMatch(text, /Diagram rendering unavailable|graph TD|\\frac/);
+});
+
+test("PDF delivery rejects revisions changed during rendering and pages deleted during rendering", async () => {
+  for (const deleted of [false, true]) {
+    const id = (
+      await app.inject({
+        method: "POST",
+        url: "/docs",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          title: "Concurrent export",
+          content: [{ type: "paragraph", text: "Original authorized content" }],
+        },
+      })
+    ).json().id;
+    beforePdfPrint = async () => {
+      const changed = await app.inject({
+        method: deleted ? "DELETE" : "PUT",
+        url: `/docs/${id}`,
+        headers: { authorization: `Bearer ${token}` },
+        ...(deleted
+          ? {}
+          : {
+              payload: {
+                title: "New revision",
+                version: 1,
+                content: [{ type: "paragraph", text: "Changed content" }],
+              },
+            }),
+      });
+      assert.ok(changed.statusCode < 300, changed.body);
+    };
+    const result = await get(`/docs/${id}/export?format=pdf&version=1`);
+    assert.equal(result.statusCode, deleted ? 404 : 409);
+    assert.doesNotMatch(result.body, /^%PDF|Original authorized content/);
+  }
 });

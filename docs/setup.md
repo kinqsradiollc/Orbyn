@@ -13,6 +13,7 @@ and every environment variable the system reads.
 
 ```bash
 cp .env.example .env
+printf '\nDOC_PDF_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 ```
 
 The root `.env` is read by Docker Compose and by the backend when it runs locally. Never commit
@@ -327,3 +328,33 @@ model configured, the AI checks report that and pass; set `SMOKE_AI=skip` to ski
 npm run format        # write
 npm run format:check  # verify (CI runs this)
 ```
+
+## Private document PDF renderer
+
+The API authorizes a primary-read document snapshot and sends self-contained HTML
+to the private `pdf` service. Set an independent `DOC_PDF_KEY` of at least 32
+characters (`openssl rand -hex 32`); Compose supplies `DOC_PDF_URL=http://pdf:8000`.
+For a locally running API, configure that URL explicitly. Unconfigured or unavailable
+rendering returns503, never a downgraded file. Changed/inaccessible pages are
+rechecked before delivery and return409/404.
+
+`backend/Dockerfile --target pdf` builds the dedicated Chromium image. The normal
+backend image keeps its existing system dependencies. Chromium's sandbox remains
+enabled with the renderer-only [seccomp profile](../deploy/pdf/README.md). The
+renderer runs nonroot, with no database/provider credentials, no published port,
+dropped capabilities, a read-only root and bounded temporary/shared memory.
+Kubernetes requires the documented node-local profile before enabling the deployment.
+Do not disable the sandbox for host compatibility. `scripts/deploy.sh` validates the
+key and starts/rolls PDF before API; `PDF_REPLICAS` defaults to one.
+
+Work is limited to1–4 simultaneous jobs (`DOC_PDF_CONCURRENCY`, default2),20MiB
+input,24MiB output and a35-second request deadline. Private requests are signed
+and replay-protected for their complete validity window. Client disconnects cancel
+owned rendering work. Math and all ten Mermaid families print without network
+access; malformed diagrams retain readable source. Existing image/file captions
+remain supported; embedded image-byte parity is a separate D1 gate.
+
+`npm run build:pdf-renderer` regenerates the backend's first-party diagram asset
+from the root's locked build dependencies. Export integration tests require a
+sandboxed Chromium executable (`PDF_TEST_CHROME` or the detected platform path)
+and their own marked PostgreSQL test database. Each process owns its test renderer.

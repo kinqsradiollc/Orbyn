@@ -3300,3 +3300,16 @@ Catalog metadata reported by a signed device is not proof of provider
 entitlement. The credential-owning runtime must recheck model availability
 before inference. These APIs do not start inference or use managed provider
 credentials as an automatic fallback.
+
+### Document PDF delivery
+
+`GET /docs/:id/export?format=pdf` uses an authorized, primary-read snapshot and a
+private offline renderer. LaTeX math and ten Mermaid diagram families are rendered
+in the file. Optional `version` fencing remains supported. Before PDF delivery,
+access and source revision are checked again: deleted/inaccessible pages return404
+and changed pages409, including when an older caller omitted `version`. Oversized
+input returns413; unconfigured/unavailable/busy rendering returns503 without a
+partial file. Client disconnects cancel owned work. Standalone HTML preserves
+escaped diagram source markers for local renderers; no scripts or private links
+are added. Native download/share interaction and complete publication/Markdown
+parity remain separate acceptance gates.

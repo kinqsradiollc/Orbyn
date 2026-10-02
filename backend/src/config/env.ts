@@ -9,6 +9,11 @@ loadEnv({
 });
 
 const schema = z.object({
+  /** Private renderer configuration; the browser process has no database/provider credentials. */
+  DOC_PDF_URL: z.string().default(""),
+  DOC_PDF_KEY: z.string().default(""),
+  DOC_PDF_EXECUTABLE: z.string().default("/usr/bin/chromium"),
+  DOC_PDF_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(2),
   DATABASE_URL: z
     .string()
     .default("postgres://orbyn:orbyn@localhost:5432/orbyn"),

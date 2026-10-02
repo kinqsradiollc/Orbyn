@@ -111,3 +111,6 @@ export * from "./chatgpt-models.js";
 export * from "./chatgpt-connections.js";
 
 export * from "./home-agent-guide.js";
+
+export * from "./mermaid.js";
+export * from "./diagram-export.js";
