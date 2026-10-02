@@ -678,8 +678,10 @@ test("pages: create_doc caps size; edit_doc keeps a labelled version, team pages
 test("sessions: plan_schedule's token is single-use and checked; moves and Undo", async () => {
   // Working hours all week, so a plan always finds room.
   await pool.query(
-    `UPDATE planner_prefs SET work_days = '{0,1,2,3,4,5,6}', work_start = '00:00',
-       work_end = '23:55' WHERE user_id = $1`,
+    `INSERT INTO planner_prefs (user_id, work_days, work_start, work_end)
+       VALUES ($1, '{0,1,2,3,4,5,6}', '00:00', '23:55')
+       ON CONFLICT (user_id) DO UPDATE SET work_days = EXCLUDED.work_days,
+       work_start = EXCLUDED.work_start, work_end = EXCLUDED.work_end`,
     [olga.id],
   );
   const task = (
