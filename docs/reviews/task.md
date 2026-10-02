@@ -514,3 +514,44 @@ PR #138. **20/20** focused richer-pages/navigation tests passed, 412 ms; log
 must be inspected by its handle; no merged application feature is claimed.
 The new level test is mirrored in the model source. Disk recovered to about
 1.6 GiB in the last snapshot but is fluctuating; continue avoiding heavy builds.
+
+## Explicit handoff requests and current evidence
+
+Source **4eaa652** adds `assistant-workspace/handoffs.ts`, with no registered API
+or worker dispatch. Producer evidence requires a completed Background/Overnight
+job, current owner/container/dependency visibility, checked sources and an enabled
+owner account. Its SHA-256 revision includes outcome, apply/review/Undo data and
+container/dependency bindings; polling, heartbeat, leases and clock-only Undo
+eligibility are excluded. Explicit requests check that exact revision, normalize
+UUID identity for concurrent deduplication and reject conflicting instructions.
+Follow-ups from receiving jobs preserve the acknowledged parent/root and depth.
+They cannot reset ancestry or use an unacknowledged result to continue a chain.
+
+Current qualification: **23/23** combined request/storage/contract tests passed,
+zero failures/skips/cancellations, 1,582 ms; log
+`/tmp/orbyn-handoff-requests-tests-8.log`. Backend types and focused formatting
+passed, log `/tmp/orbyn-handoff-requests-types-5.log`. Full migrations including
+208 ran on newly created, server-marked `orbyn_handoff_guard_test`. These tests
+simulate receiving work/acknowledgments; no separate-worker collaboration or
+provider inference is proved. Expanded tests initially could not bootstrap due
+to a PostgreSQL connection reset/refusal. Docker later responded with the owned
+test container exited; only `orbyn-postgres-test-1` was started. Docker Desktop
+and other containers were untouched. Final verification is green after recovery.
+
+Test PostgreSQL uses tmpfs: its stop/start erased earlier QA databases. The
+previous native API/Metro processes may still exist, but their synthetic QA
+database/fixtures must be recreated before further live preview claims. Preserve
+the screenshots and earlier scoped evidence; do not treat the old preview as
+currently functional. Disk subsequently recovered to roughly 6.3 GiB.
+
+ADR-only checkpoint **296a342** was cherry-picked from d80ca5c onto main and
+pushed. Main's dirty `mobile/app.json` and all unrelated untracked files remain.
+Handoff application code is still unmerged. Docs PR #138 remains at **25e1e6f**;
+CI **36980902473** is live, with Docker/mobile/mail green and backend/web pending
+in the latest snapshot. Do not restart that run on a polling timeout.
+
+Next required delivery work: receiving-side policy/connection/budget checks,
+transactional distinct receiving-job creation and inherited source dependencies,
+source ownership reservations, consumption-time revision/access checks, durable
+completion/failure acknowledgment, worker recovery tests and both client activity
+views. No automatic handoff authority can be inferred from a saved proposal.
