@@ -33,6 +33,20 @@ was rerun. No evidence from the failed attempt is reported as passing.
 ## Remaining acceptance
 
 These tests do not prove browser/native layout or complete CommonMark/GFM parity.
+
+### Native relative-link acceptance gap — 2 October 2026
+
+The shared parser retaining an actionable single-slash path or fragment does not
+prove mobile navigation. Current `mobile/src/screens/docs/Inline.tsx` forwards
+these hrefs unchanged to `Linking.openURL`, while only `orbyn://` object links
+take the in-app pill route. It does not resolve a relative path against the
+configured web origin or dispatch an in-document fragment through DocEditor’s
+line/outline scrolling. This is a source-inspected parity gap, not a completed
+native interaction reproduction. Add origin-safe app routing, current-page
+anchor resolution and handled navigation errors; verify actual taps on native
+and mobile web, including hidden/folded sections, missing targets, unsafe URLs,
+and preservation of unsaved edits. The earlier parser/export regression pass
+must not be used as proof of this UI behavior.
 Nested emphasis, reference links, balanced link destinations, frontmatter and
 preview synchronization remain part of the broader Docs requirement. Mermaid
 rendering/interaction, math/export fidelity and UI containment retain their own
