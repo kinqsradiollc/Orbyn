@@ -461,8 +461,8 @@ cross-record provenance, ownership, permissions, idempotence or concurrent work.
 
 Focused contract tests passed **10/10**, no failures/skips/cancellations, 406 ms;
 log `/tmp/orbyn-handoff-contract-tests.log`. Core package compilation passed.
-Workspace typecheck remains live in terminal **53125**; log
-`/tmp/orbyn-handoff-contract-types.log`. Do not restart based on a polling timeout.
+All workspace typechecks passed, terminal **53125** exited zero; log
+`/tmp/orbyn-handoff-contract-types.log`.
 This is source-only foundation work, not a merged or production-ready handoff
 service. There are no new endpoints, scheduler calls or permission grants.
 
