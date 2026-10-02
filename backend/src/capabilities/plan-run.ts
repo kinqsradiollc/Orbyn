@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   AGENT_BULK_LIMIT,
   AGENT_TOOLSETS,
+  assistantActionRules,
+  assistantActionRule,
   fail,
   type AgentAccess,
   type AgentAskFirst,
@@ -666,6 +668,8 @@ export async function runPlan(
 /** What the Review inbox keeps for a whole plan (a "plan.apply" action). */
 export const planApplyInput = z.object({
   grant_id: z.uuid(),
+  assistant_lane: assistantActionRule.shape.lane.optional(),
+  assistant_rules_revision: z.number().int().positive().optional(),
   job: z.string().min(1).max(64),
   summary: z.string().max(300),
   steps: z.array(planStep).min(1).max(MAX_PLAN_STEPS),
@@ -675,6 +679,9 @@ export type PlanApplyInput = z.output<typeof planApplyInput>;
 type GrantRow = {
   id: string;
   kind: string;
+  resource_kind: "mcp" | "plugin";
+  assistant_rules: unknown;
+  assistant_rules_revision: number;
   client_id: string | null;
   client_name: string | null;
   name: string;
@@ -696,8 +703,8 @@ async function grantOf(db: Db, userId: string, grantId: string) {
     await db.query<GrantRow>(
       `SELECT id, kind, client_id, client_name, name, access, team_ids, personal,
               toolsets, flags, trust, space_trust, acts_alone, suspended_at,
-              revoked_at, expires_at
-         FROM agent_grants WHERE id = $1 AND user_id = $2`,
+              revoked_at, expires_at, resource_kind, assistant_rules, assistant_rules_revision
+         FROM agent_grants WHERE id = $1 AND user_id = $2 FOR SHARE`,
       [grantId, userId],
     )
   ).rows[0];
@@ -731,22 +738,36 @@ export async function applyApprovedPlan(
   const why = await planStaleness(db, u.id, input);
   if (!g || why) fail(409, `${why} Decline it, or ask the agent again.`);
   const via =
-    g.kind === "oauth"
-      ? "oauth"
-      : g.kind === "legacy"
-        ? "legacy_key"
-        : "agent_key";
+    g.kind === "assistant"
+      ? "assistant"
+      : g.kind === "oauth"
+        ? g.resource_kind === "plugin"
+          ? "plugin"
+          : "oauth"
+        : g.kind === "legacy"
+          ? "legacy_key"
+          : "agent_key";
   const p: Principal = {
     user: { id: u.id, name: u.name, role: "member" },
     via,
+    ...(via === "assistant"
+      ? {
+          assistant_lane: input.assistant_lane ?? "interactive",
+          assistant_rules_revision: g.assistant_rules_revision,
+          assistant_rules: assistantActionRules.parse(g.assistant_rules),
+        }
+      : {}),
     grant_id: g.id,
     client: { id: g.client_id, name: g.client_name || g.name },
     access: g.access,
     team_ids: g.team_ids,
     personal: g.personal,
-    toolsets: (g.toolsets ?? []).filter((t) =>
-      (AGENT_TOOLSETS as readonly string[]).includes(t),
-    ),
+    toolsets: (
+      g.toolsets ??
+      (via === "assistant"
+        ? AGENT_TOOLSETS.filter((toolset) => toolset !== "booking")
+        : [])
+    ).filter((t) => (AGENT_TOOLSETS as readonly string[]).includes(t)),
     flags: {
       notify_teammates: !!g.flags?.notify_teammates,
       hide_outside_content: !!g.flags?.hide_outside_content,
@@ -759,6 +780,11 @@ export async function applyApprovedPlan(
     },
     teams: await reachableTeams(db, u.id, g.team_ids, via),
   };
+  if (
+    via === "assistant" &&
+    (input.assistant_rules_revision ?? 1) !== g.assistant_rules_revision
+  )
+    fail(409, "Assistant rules changed. Ask for a new plan before approving.");
   await actAs(db, u.id, g.id);
   const prefs = await loadPrefs(db, u.id);
   const ctx: CapabilityContext = {

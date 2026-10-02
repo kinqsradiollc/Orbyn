@@ -355,6 +355,7 @@ export async function execute(
         );
       currentPrincipal = {
         ...p,
+        assistant_rules_revision: grant.revision,
         assistant_rules: assistantActionRules.parse(grant.rules),
       };
     }
@@ -370,6 +371,9 @@ export async function execute(
     }
     const prefs = await loadPrefs(db, p.user.id);
     const ctx: CapabilityContext = {
+      ...(currentPrincipal.via === "assistant"
+        ? { assistant_rule_checks: [] }
+        : {}),
       principal: currentPrincipal,
       db,
       now,
