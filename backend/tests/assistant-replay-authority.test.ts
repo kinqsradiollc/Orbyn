@@ -92,6 +92,125 @@ async function held(f: Awaited<ReturnType<typeof fixture>>, p = f.p) {
     1,
   );
 }
+
+async function completedDraftFixture() {
+  const f = await fixture();
+  await pool.query(
+    "INSERT INTO projects(id,user_id,name) VALUES($1,$2,'Draft destination')",
+    [f.project, f.user.id],
+  );
+  await pool.query(
+    "INSERT INTO docs(id,user_id,project_id,title) VALUES($1,$2,$3,'Private completed draft title')",
+    [f.doc, f.user.id, f.project],
+  );
+  const draft = randomUUID();
+  const done = {
+    status: "done",
+    done: [
+      {
+        id: `doc:${f.doc}`,
+        title: "Private completed draft title",
+        url: "",
+        app_url: "",
+        version: 1,
+        change: "Written",
+      },
+    ],
+    pending: null,
+    skipped: [],
+  };
+  await pool.query(
+    "INSERT INTO agent_doc_drafts(id,user_id,grant_id,title,target,done) VALUES($1,$2,$3,'Completed draft','{}',$4)",
+    [draft, f.user.id, f.p.grant_id, done],
+  );
+  const replay = (p = f.p) =>
+    execute(
+      registry,
+      p,
+      "append_doc",
+      {
+        client_ref: randomUUID(),
+        draft: `draft:${draft}`,
+        finish: true,
+      },
+      { write: transaction },
+    );
+  return { ...f, replay };
+}
+
+test("a completed draft replays its saved page once without creating another page", async () => {
+  const f = await completedDraftFixture();
+  const result = await f.replay();
+  assert.equal(result.result.isError, undefined, JSON.stringify(result));
+  assert.match(JSON.stringify(result.result), /Private completed draft title/);
+  assert.equal(
+    (
+      await pool.query("SELECT count(*)::int n FROM docs WHERE user_id=$1", [
+        f.user.id,
+      ])
+    ).rows[0].n,
+    1,
+  );
+});
+
+test("completed draft result is held after its destination project is excluded", async () => {
+  const f = await completedDraftFixture();
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    f.project,
+  ]);
+  const result = await f.replay();
+  assert.equal(result.result.isError, true, JSON.stringify(result));
+  assert.doesNotMatch(
+    JSON.stringify(result.result),
+    /Private completed draft title/,
+  );
+  assert.deepEqual(result.targets, []);
+});
+
+test("completed draft result is held after its saved page is deleted", async () => {
+  const f = await completedDraftFixture();
+  await pool.query("DELETE FROM docs WHERE id=$1", [f.doc]);
+  const result = await f.replay();
+  assert.equal(result.result.isError, true, JSON.stringify(result));
+  assert.doesNotMatch(
+    JSON.stringify(result.result),
+    /Private completed draft title/,
+  );
+  assert.deepEqual(result.targets, []);
+});
+
+test("completed draft result uses the earlier caller's restricted Personal scope", async () => {
+  const f = await completedDraftFixture();
+  const result = await f.replay({ ...f.p, personal: false });
+  assert.equal(result.result.isError, true, JSON.stringify(result));
+  assert.doesNotMatch(
+    JSON.stringify(result.result),
+    /Private completed draft title/,
+  );
+  assert.deepEqual(result.targets, []);
+});
+
+test("restoring a completed draft destination returns the saved result without duplicating pages", async () => {
+  const f = await completedDraftFixture();
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    f.project,
+  ]);
+  assert.equal((await f.replay()).result.isError, true);
+  await pool.query("UPDATE projects SET assistant_off=false WHERE id=$1", [
+    f.project,
+  ]);
+  const result = await f.replay();
+  assert.equal(result.result.isError, undefined, JSON.stringify(result));
+  assert.match(JSON.stringify(result.result), /Private completed draft title/);
+  assert.equal(
+    (
+      await pool.query("SELECT count(*)::int n FROM docs WHERE user_id=$1", [
+        f.user.id,
+      ])
+    ).rows[0].n,
+    1,
+  );
+});
 test("unchanged assistant authority replays the original result without another mutation", async () => {
   const f = await fixture();
   const retry = await f.call();

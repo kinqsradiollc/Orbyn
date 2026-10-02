@@ -1,5 +1,16 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Completed draft result qualification — 2 October 2026
+
+This candidate contains only the completed append_doc result access guard and
+five regressions on current main e1d46af. Saved answers under a new client_ref
+must recheck producing evidence and destination access before returning titles,
+identities or links. Unchanged/restored access returns the original saved answer
+without creating another page. Three denial regressions failed before the source
+fix; source seven-file cohort passed103/103 with backend types/format. Exact
+combined candidate full tests, types/build/format and CI remain required before
+promotion. This is not a deployment or completion of the full ADR below.
+
 ## Latest qualified checkpoint — 2 October 2026
 
 PR #146 is merged as **c9b6c78** from **0033a96**, base **7c08aa6**. Cached
