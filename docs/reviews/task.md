@@ -621,3 +621,13 @@ Ownership candidate **b7bd994** is still frozen: session **4802** remains live,
 with the latest log at test 1,947; CI **36983314493** is also still in progress.
 Do not restart either on observation timeout. After terminal results, merge
 latest character main into the candidate and requalify that exact head.
+
+Local ownership suite **4802** is now terminal exit zero: **2,101/2,101** passed,
+zero failures/skips/cancellations, 519,844 ms. CI **36983314493** remains verified
+live with backend/web testing; mobile/mail/Docker passed. PR #139's body records
+the completed local result and the current-main integration gate. Main ADR-only
+checkpoint **5559758** is pushed, applied as the exact two-document patch from
+5c529b4 without installing this source worktree's own handoff on main. Main's
+dirty mobile configuration and unrelated files remain preserved. Source branch
+`codex/devday-model-catalog` was pushed through **5c529b4**; this is not a PR or
+merge for its application code.
