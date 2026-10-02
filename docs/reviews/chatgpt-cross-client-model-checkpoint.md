@@ -31,7 +31,57 @@ turn retains its captured model. Foreign, stale or failed preference reads preve
 inference instead of falling back to cached state. Concurrent fresh reads converge
 on the same bound preference.
 
+## Mobile parity gate
+
+The user explicitly requires every shipped web/desktop feature on mobile. The
+current source implements these settings operations in both clients; this table
+does not substitute for interaction acceptance.
+
+| Operation                                                        | Web implementation                                                             | Native mobile implementation                                          | Current acceptance                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Discover owned devices and choose one explicitly                 | `ChatgptRemoteModels` custom device select                                     | `ChatgptModelsSection` contained device radio list                    | Route guards, owner fences and actual handler tests pass; visual/touch gates open.          |
+| Search the complete catalog                                      | Name/ID filter and custom model select                                         | Name/ID filter; at most 50 rendered rows, search reaches later models | Both handler trees exercised; keyboard/large-text proof open.                               |
+| Save or clear the bound default                                  | Model select includes no-default choice                                        | Model rows plus clear-default action                                  | Shared CAS/controller tests pass; real eligible account and actual native interaction open. |
+| Handle expiry, offline devices, failed saves and account changes | Shared controller plus web lifecycle hook                                      | Same controller plus native lifecycle hook                            | Timeout/expiry/cancellation/StrictMode tests pass; live device acceptance open.             |
+| Connect a new ChatGPT account                                    | Desktop private OAuth runtime; website eligibility gated                       | Native callback/storage flow still incomplete                         | Required parity gap; not a shipped complete feature.                                        |
+| Start assistant execution with the chosen account/model          | Private runtime has controlled inference tests; composer/job wiring incomplete | Native execution/composer delivery incomplete                         | Required parity gap; catalog/default settings do not prove execution.                       |
+
+Native entry is Settings → AI connections & models and the shared settings search
+destination. Both actual root settings components mount their respective model
+controls. The desktop native runtime rereads the persisted default before each
+new turn; a running turn retains its captured model. These source checks and
+test fixtures do not prove a real provider connection on any platform.
+
 ## Evidence
+
+The first full run on `acc5c59` finished with 2,097/2,099 passing, two failures
+and no skipped tests (`/tmp/orbyn-chatgpt-remote-full-tests.log`). The private
+device-discovery route lacked its required capability exclusion, and the phone
+settings inventory fixture did not include the newly mounted child section.
+Commit `24419a9` corrects both. Its 37 focused inventory/UI tests passed with no
+failures or skips (`/tmp/orbyn-chatgpt-remote-inventory-tests.log`). A fresh full
+run on frozen source `24419a9` stopped with exit 7 during host disk exhaustion,
+before the terminal TAP totals (`/tmp/orbyn-chatgpt-remote-24419a9-full-tests.log`).
+The independent QA API also reported `ENOSPC`. Neither run is acceptance. The
+temporary task-owned simulator was shut down and deleted, recovering about
+1.6 GiB. PostgreSQL and Docker became unresponsive; no shared Docker restart or
+unrelated container/volume deletion was attempted. Full-suite acceptance needs
+a fresh marked database and terminal passing totals after environment recovery.
+
+The production backend Docker image `orbyn-chatgpt-remote:24419a9` built
+successfully, log `/tmp/orbyn-chatgpt-remote-24419a9-docker-build.log`.
+The earlier `acc5c59` compiled smoke passed actual schema, signed-out controller,
+401 route and malformed-JSON 400 checks; that smoke does not cover the newer
+capability exclusion. Its exact `24419a9` replacement also passed strict schema,
+capability exclusion, signed-out 401/no-store and malformed-JSON 400 checks with
+an actual completion marker (`/tmp/orbyn-chatgpt-remote-24419a9-docker-smoke.log`).
+Image/build evidence is separate from native UI evidence.
+
+After the environment failure, all 48 checks that run without Docker passed on
+`24419a9`, with no failures/skips: shared remote store, actual cross-client
+hooks/handler trees, private model runtime, picker, API catalog client and
+settings layout. Log: `/tmp/orbyn-chatgpt-remote-24419a9-unit-tests.log`. No DB
+integration or full-suite result is inferred from this independent run.
 
 Frozen source for this checkpoint passed 69 focused checks and workspace
 core/API/backend/web/mobile typechecks. The focused set includes real route and
@@ -72,8 +122,16 @@ and results, composer routing, and complete device executor delivery remain open
 This metadata/default feature does not itself start an assistant job or prove
 mobile sign-in. Settings redesign and the wider ADR remain incomplete.
 
-Disk space fell below 300 MiB after verification. The new generated web/native
-outputs occupy approximately 34 MiB, so they do not explain the wider space drop.
-No unrelated worktree, dependency, Docker volume or cache was deleted. Additional
-large image builds need sufficient space; current results remain scoped to the
-source and outputs named above.
+Disk space temporarily fell below 300 MiB, then recovered to about 7 GiB.
+Five completed task-owned test logs were losslessly gzip archived, with original
+paths retained as pointer files. No unrelated worktree, dependency, Docker volume
+or cache was deleted. A new task-owned iPhone 17 simulator, fresh marked database
+`orbyn_mobile_models_24419a9_test` and loopback API at 8027/Metro at 8087 are being
+used for native verification. Metro's IPv6 bind versus manifest mismatch was
+resolved with its advertised localhost hostname. The native authentication
+screen rendered; the settings flow was not reached. Host disk exhaustion then
+stopped the isolated API. The temporary simulator was deleted and the task-owned
+Metro stopped; about 1.6 GiB recovered. Preserve the QA database and logs until
+Docker recovers. Existing character-worktree previews at
+8018/8083 are preserved and are not evidence for this source. Native settings
+interaction and actual provider-account acceptance are still pending.

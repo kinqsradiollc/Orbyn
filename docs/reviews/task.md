@@ -24,16 +24,38 @@ recipient OAuth/discovery and host/provider acceptance are still unmerged.
 
 ## Next actions
 
-1. Commit the scoped cross-client source and evidence locally; freeze source for
-   its full suite on the marked `orbyn_plugin_service_20261001_test` database at
-   127.0.0.1:55434. Do not run another DB suite concurrently against that database.
-2. Recheck disk first. Available space dropped to approximately 242 MiB; only 34
-   MiB is attributable to the current generated outputs. Do not prune unrelated
-   files/volumes. Avoid large builds until space is available.
+1. Source is committed locally as `acc5c59`, followed by inventory corrections
+   in `24419a9`. The first full run was 2,097/2,099, not acceptance. The corrections
+   passed 37/37 focused checks. Frozen `24419a9` started the fresh full suite
+   on the marked `orbyn_plugin_service_20261001_test` database at 127.0.0.1:55434.
+   Do not run another DB suite concurrently against that database or edit source.
+   Log: `/tmp/orbyn-chatgpt-remote-24419a9-full-tests.log`; session 97567 ended with
+   exit 7 during disk exhaustion before terminal TAP totals. This is not a pass.
+   PostgreSQL/Docker are now unresponsive. A fresh marked database creation
+   attempt timed out; it is not confirmed created. Do not restart shared Docker
+   or touch other containers/volumes without user authorization.
+2. Recheck disk first. Space recovered to 7 GiB, then fresh simulator initialization
+   reduced it to about 2.8 GiB. Five completed task-owned logs were losslessly gzip
+   archived with verified original bytes and pointer stubs. Preserve other files
+   and volumes. Production Docker `orbyn-chatgpt-remote:24419a9` built successfully;
+   exact compiled smoke passed schema/exclusion and 401/no-store/400 checks.
+   Disk subsequently exhausted. Deleting only the task-created simulator recovered
+   about 1.6 GiB; all unrelated simulators and worktrees remain preserved.
 3. Preserve native/web build logs/hashes and finish actual interaction gates.
    Browser Use still has a saved block for 127.0.0.1:5174; do not bypass it via
    another URL/port, Chrome/native/headless/CDP or fake visual proof. Retry only
    after a meaningful permission change. Native interaction is separately needed.
+   Isolated simulator E809F841-E40A-4170-AB55-EEDFFDFA2AA2 was task-owned and has
+   now been deleted to recover disk. Its Expo Go
+   57 app uses Metro 8087 and API 8027 with a new marked disposable database
+   `orbyn_mobile_models_24419a9_test`. Metro's IPv6 bind versus manifest
+   address mismatch was resolved with the native packager's hostname setting.
+   The authentication screen rendered, but native sign-in/settings behavior is
+   unverified: API session 44808 died with ENOSPC, Metro session 11998 is stopped.
+   Preserve the synthetic QA database; no real provider credentials were used.
+   Preserve character-worktree servers at 8018/8083; do not stop/reuse them as
+   this proof. The user chose to recover Docker themselves; wait for recovery,
+   do not restart Docker on their behalf. Continue independent checks meanwhile.
 4. Only promote ready scoped code after exact-main tests/build checks. The older
    settings redesign controls the web entry point, so review its dependency rather
    than cherry-picking the UI changes without the required source.
@@ -47,3 +69,6 @@ recipient OAuth/discovery and host/provider acceptance are still unmerged.
 
 Full main log: `/tmp/orbyn-docs-mobile-main-full-tests.log`.
 New local logs are listed in the model-management checkpoint artifact.
+The independent `24419a9` unit set passed 48/48 without Docker, no skipped tests;
+log `/tmp/orbyn-chatgpt-remote-24419a9-unit-tests.log`. The checkpoint now lists
+actual web/mobile entry points and explicit native auth/execution parity gaps.
