@@ -20,6 +20,8 @@ export function MermaidDiagram({ text }: { text: string }) {
   const sequence = useRef(0);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [panRequest, setPanRequest] = useState<string>();
+  const panSequence = useRef(0);
   const [actualSize, setActualSize] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [result, setResult] = useState<{
@@ -177,8 +179,41 @@ export function MermaidDiagram({ text }: { text: string }) {
           <Text style={s.action}>Export SVG</Text>
         </Pressable>
       </View>
+      {(actualSize || zoom > 1) && (
+        <View style={s.toolbar}>
+          <Text style={s.label}>Move diagram</Text>
+          {[
+            { label: "left", mark: "←", x: -160, y: 0 },
+            { label: "right", mark: "→", x: 160, y: 0 },
+            { label: "up", mark: "↑", x: 0, y: -160 },
+            { label: "down", mark: "↓", x: 0, y: 160 },
+          ].map((direction) => (
+            <Pressable
+              key={direction.label}
+              accessibilityRole="button"
+              accessibilityLabel={`Pan diagram ${direction.label}`}
+              disabled={!current?.svg}
+              style={s.button}
+              onPress={() =>
+                setPanRequest(
+                  JSON.stringify({
+                    type: "orbyn-diagram-pan",
+                    id,
+                    sequence: ++panSequence.current,
+                    x: direction.x,
+                    y: direction.y,
+                  }),
+                )
+              }
+            >
+              <Text style={s.action}>{direction.mark}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
       <DiagramSurface
         request={request}
+        panRequest={panRequest}
         height={Math.min(480, Math.max(120, current?.height ?? 240))}
         onResult={receive}
       />

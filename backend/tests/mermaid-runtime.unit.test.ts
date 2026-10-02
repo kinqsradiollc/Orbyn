@@ -23,6 +23,7 @@ function runtime(
   const removed: string[] = [];
   const configurations: Record<string, unknown>[] = [];
   const parent = {};
+  const pans: unknown[] = [];
   const drawing = {
     style: {} as { width?: string; height?: string; maxWidth?: string },
     viewBox: { baseVal: { width: 300, height: 160 } },
@@ -65,6 +66,7 @@ function runtime(
     MERMAID_MAX_SVG,
     window: {
       parent,
+      scrollBy: (value: unknown) => pans.push(value),
       addEventListener: (name: string, fn: (event: unknown) => Promise<void>) =>
         (handlers[name] = fn),
       ReactNativeWebView: undefined,
@@ -120,6 +122,7 @@ function runtime(
     palette,
     styleNode,
     drawing,
+    pans,
   };
 }
 
@@ -252,4 +255,24 @@ test("actual size preserves natural dimensions and Fit restores viewport scaling
     actualSize: "true",
   });
   assert.equal(fixture.drawing.style.width, "150px");
+});
+
+test("pan commands require the rendered ID, trusted host and finite bounded steps", async () => {
+  const fixture = runtime(async () => ({ svg: "<svg/>" }));
+  await fixture.send("ready");
+  await fixture.send("ready", { type: "orbyn-diagram-pan", x: 500, y: -500 });
+  assert.equal(fixture.pans.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.pans[0])), {
+    left: 160,
+    top: -160,
+    behavior: "instant",
+  });
+  await fixture.send("stale", { type: "orbyn-diagram-pan", x: 160, y: 0 });
+  await fixture.send("ready", { type: "orbyn-diagram-pan", x: null, y: 0 });
+  await fixture.send(
+    "ready",
+    { type: "orbyn-diagram-pan", x: 160, y: 0 },
+    false,
+  );
+  assert.equal(fixture.pans.length, 1);
 });

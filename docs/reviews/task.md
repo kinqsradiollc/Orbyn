@@ -1745,3 +1745,21 @@ open, alongside desktop/web visual checks. Do not promote this checkpoint yet.
 Workspace typechecks completed zero. Final focused cohort passed32/32 with
 zero failures, skips or cancellations, including the actual-size/Fit message
 handler regression. Full ADR remains incomplete.
+
+## Accessible pan verification — 2 October 2026
+
+Both clients now offer named directional pan controls for actual-size or enlarged
+diagrams. The isolated mobile renderer accepts pan only from its trusted host,
+for the successfully rendered ID, with finite steps clamped to160px. It does not
+re-render the diagram for movement. Desktop uses its bounded canvas scroll API.
+
+Actual iOS interaction revealed October, reversed to September, and reset to
+the full contained timeline with Fit; screenshots timeline-pan-october.png,
+timeline-pan-reverse.png and timeline-pan-fit-reset.png record those results.
+Controls wrap and remain outside the scrollable image. This establishes native
+button navigation; it does not establish gesture, Android or browser acceptance.
+
+Pipeline31971 terminated zero:33/33 focused Mermaid/runtime/download tests and
+all workspace typechecks. Saved browser denial remains respected. Do not merge
+the UI checkpoint until web/desktop visual gates and combined qualification pass.
+Main remainsc30c5fc; full ADR remains active and incomplete.

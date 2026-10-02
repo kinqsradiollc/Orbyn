@@ -5,6 +5,7 @@ import type { DiagramSurfaceProps } from "./DiagramSurface";
 /** The opaque iframe can execute its bundled renderer but cannot access its host. */
 export function DiagramSurface({
   request,
+  panRequest,
   height,
   onResult,
 }: DiagramSurfaceProps) {
@@ -25,6 +26,9 @@ export function DiagramSurface({
   useEffect(() => {
     frame.current?.contentWindow?.postMessage(request, "*");
   }, [request]);
+  useEffect(() => {
+    if (panRequest) frame.current?.contentWindow?.postMessage(panRequest, "*");
+  }, [panRequest]);
   return (
     <iframe
       ref={frame}

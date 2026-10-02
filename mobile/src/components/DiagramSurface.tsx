@@ -5,6 +5,7 @@ const localSource = { html: runtime.html };
 
 export type DiagramSurfaceProps = {
   request: string;
+  panRequest?: string;
   height: number;
   onResult: (data: string) => void;
 };
@@ -12,6 +13,7 @@ export type DiagramSurfaceProps = {
 /** A local renderer without navigation, file access, cookies or network resources. */
 export function DiagramSurface({
   request,
+  panRequest,
   height,
   onResult,
 }: DiagramSurfaceProps) {
@@ -21,6 +23,9 @@ export function DiagramSurface({
   useEffect(() => {
     view.current?.postMessage(request);
   }, [request]);
+  useEffect(() => {
+    if (panRequest) view.current?.postMessage(panRequest);
+  }, [panRequest]);
   return (
     <WebView
       ref={view}

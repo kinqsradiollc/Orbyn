@@ -11,6 +11,7 @@ import {
 
 let generation = 0;
 let lastId = "";
+let renderedId = "";
 const send = (value) => {
   const payload = JSON.stringify(value);
   if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(payload);
@@ -24,6 +25,16 @@ const receive = async (event) => {
   } catch {
     return;
   }
+  if (request?.type === "orbyn-diagram-pan") {
+    if (request.id !== renderedId || !renderedId) return;
+    if (![request.x, request.y].every(Number.isFinite)) return;
+    window.scrollBy({
+      left: Math.max(-160, Math.min(160, request.x)),
+      top: Math.max(-160, Math.min(160, request.y)),
+      behavior: "instant",
+    });
+    return;
+  }
   if (
     request?.type !== "orbyn-diagram" ||
     typeof request.id !== "string" ||
@@ -33,6 +44,7 @@ const receive = async (event) => {
   )
     return;
   lastId = request.id;
+  renderedId = "";
   const current = ++generation;
   const host = document.getElementById("diagram");
   host.replaceChildren();
@@ -157,6 +169,7 @@ const receive = async (event) => {
         if (!visible.has(index)) label.setAttribute("visibility", "hidden");
       });
     }
+    renderedId = request.id;
     send({
       type: "orbyn-diagram-result",
       id: request.id,

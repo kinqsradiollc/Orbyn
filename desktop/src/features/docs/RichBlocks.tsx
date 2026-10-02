@@ -1201,6 +1201,34 @@ export function Diagram({ text }: { text: string }) {
           Export SVG
         </button>
       </div>
+      {(actualSize || zoom > 1) && (
+        <div className="doc-diagram-toolbar">
+          <span>Move diagram</span>
+          {[
+            { label: "left", mark: "←", left: -160, top: 0 },
+            { label: "right", mark: "→", left: 160, top: 0 },
+            { label: "up", mark: "↑", left: 0, top: -160 },
+            { label: "down", mark: "↓", left: 0, top: 160 },
+          ].map((direction) => (
+            <button
+              key={direction.label}
+              type="button"
+              className="text-button"
+              aria-label={`Pan diagram ${direction.label}`}
+              disabled={!ready}
+              onClick={() =>
+                box.current?.scrollBy({
+                  left: direction.left,
+                  top: direction.top,
+                  behavior: "instant",
+                })
+              }
+            >
+              {direction.mark}
+            </button>
+          ))}
+        </div>
+      )}
       <div
         className="doc-diagram-canvas"
         ref={box}
