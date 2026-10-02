@@ -109,3 +109,5 @@ export * from "./workspace-tabs.js";
 export * from "./doc-tree.js";
 export * from "./chatgpt-models.js";
 export * from "./chatgpt-connections.js";
+
+export * from "./home-agent-guide.js";

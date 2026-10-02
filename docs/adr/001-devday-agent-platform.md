@@ -277,3 +277,19 @@ meaningful interruptions; Dots informs work between conversations. Their
 capabilities do not establish capabilities in Orbyn. Reflection and collaboration
 remain open acceptance gates. This follow-up changes copy only; the user’s web
 visual validation and native acceptance remain outstanding.
+
+### Home responsibility and review layout — 3 October 2026
+
+Follow-up research confirms the useful presentation patterns: Muse puts activity
+and approved permissions behind the avatar; Dots brings back results and asks
+for decisions between conversations. Use the primary sources linked above.
+Orbyn adopts visible responsibility, review destinations and pause conditions.
+It does not inherit their cloud computers, app access or always-on execution.
+
+Public Home uses a straight, in-flow planner example and two editorial agent rows
+with labeled requests, review destinations and stopping conditions. Shared core
+copy keeps the web and native signed-in Home descriptions consistent. No status
+or output is fabricated. Reflection and collaboration remain open acceptance
+gates. All character presets remain available; browsing never changes identity.
+Web visual acceptance belongs to the user's test-server review for this increment;
+native screenshot and interaction acceptance remains open.
