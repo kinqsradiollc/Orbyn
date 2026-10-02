@@ -61,7 +61,7 @@ export function HomeCompanions({
             {identity?.name ?? "Your companion"}
           </Text>
           <Text style={shared.small}>
-            Choose its name and appearance in assistant settings.
+            Your tasks, with a place to review the work.
           </Text>
         </View>
       </View>
@@ -94,6 +94,14 @@ export function HomeCompanions({
                 <Text style={shared.small}>
                   Example request: “{agent.request}”
                 </Text>
+                {agent.steps.map((step, index) => (
+                  <View key={step.title} style={{ gap: 4 }}>
+                    <Text style={shared.sectionTitle}>
+                      {index + 1}. {step.title}
+                    </Text>
+                    <Text style={shared.small}>{step.body}</Text>
+                  </View>
+                ))}
                 <Text style={shared.small}>{agent.result}</Text>
                 <Text style={shared.small}>{agent.pause}</Text>
               </View>

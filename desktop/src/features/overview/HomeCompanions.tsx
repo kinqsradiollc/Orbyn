@@ -54,7 +54,7 @@ export function HomeCompanions({
         )}
         <div>
           <h2>{identity?.name ?? "Your companion"}</h2>
-          <p>Choose its name and appearance in assistant settings.</p>
+          <p>Your tasks, with a place to review the work.</p>
         </div>
         <button
           className="text-button"
@@ -75,6 +75,14 @@ export function HomeCompanions({
               {guideOpen && (
                 <div className="home-companions-guide">
                   <p>Example request: “{agent.request}”</p>
+                  <ol className="home-companions-steps">
+                    {agent.steps.map((step) => (
+                      <li key={step.title}>
+                        <strong>{step.title}</strong>
+                        <p>{step.body}</p>
+                      </li>
+                    ))}
+                  </ol>
                   <p>{agent.result}</p>
                   <p>{agent.pause}</p>
                 </div>

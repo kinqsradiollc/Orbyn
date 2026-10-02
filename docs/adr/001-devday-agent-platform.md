@@ -658,3 +658,39 @@ idle behavior. This checkpoint changes public presentation only; signed-in/nativ
 Home refinements remain in the larger candidate. Reflection/collaboration and
 the full ADR acceptance gates remain open. User test-server visual review is
 still outstanding; automated content checks do not prove visual acceptance.
+
+### Home responsibilities and product copy — 3 October 2026
+
+Latest user direction: Background and Overnight should feel like personal agents
+with ongoing responsibilities, informed by Muse and Dots. Both public Home and
+signed-in Home must explain the product in concrete language and preserve mobile
+parity. Avoid invented live status, generic AI slogans and capability claims that
+have not passed the governing acceptance contract.
+
+Primary references rechecked:
+
+- [Muse's design account](https://introducing.muse.ai/): task-shaped outputs,
+  visible activity and notifications worth interrupting for.
+- [Meet dots](https://learn.chatgpt.com/docs/dots): work between conversations,
+  continued responsibilities and decisions brought back for human review.
+- [Dots tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory):
+  distinct task context, reviewable outputs and explicit recurring work.
+
+These are product references; Orbyn does not inherit their computer, browser,
+voice, messaging, account access or arbitrary action capabilities.
+
+| Surface or behavior               | Decision                                                                                                                                    | Current implementation boundary                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Public Home                       | Show a project-notes-to-checklist request and a night research queue, each with three concrete steps.                                       | Examples are labeled; no fabricated tasks or activity.                                                                            |
+| Signed-in web/desktop/mobile Home | Use the same responsibilities and optional step-by-step guide; retain real profile activity behind the existing action.                     | Character browsing does not mutate settings. Status comes from authorized profile evidence, never avatar animation or local time. |
+| Background                        | Delegated work has progress, sources, an output and a place for decisions.                                                                  | Existing task/profile behavior; full ongoing-goal and routine qualification remains open.                                         |
+| Overnight                         | Explicit queue, chosen window, bounded budget and morning review of completed and unfinished work.                                          | Window/budget constraints remain visible; no promise that every queued task finishes.                                             |
+| Reflection                        | With explicit consent, review evidence from prior work and propose lessons with sources.                                                    | Existing reflection candidate remains an acceptance gate. Home must not describe it as shipped.                                   |
+| Collaboration                     | Keep separate processes, runs, budgets and activity; exchange bounded, authorized handoffs with acknowledgments and source revision checks. | Complete receiving-worker dispatch and separate-process runtime proof remain open. UI copy cannot substitute for this work.       |
+| Notifications                     | Surface meaningful results or decisions; preserve the morning review destination and quiet behavior.                                        | Delivery-policy acceptance remains part of the governing contract.                                                                |
+
+This increment changes Home content and layout, not worker capabilities. The
+public workflow collapses to one column at narrow widths; signed-in guide content
+wraps and native content grows naturally. Web visual acceptance remains with the
+user's test server for this increment. Native screenshot/interaction acceptance
+and the complete U1 gates remain open. Retain current character work and palette.

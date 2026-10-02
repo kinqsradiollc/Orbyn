@@ -2289,3 +2289,17 @@ suite43323 and CI37046563935 remain live; Docker/mobile/mail already pass.
 - Primary candidate reconciled mainb00c736 ascac22362b6bbfe84ce2bdb96e88ea89e9bdca511. Both ADR sections retained. Current42/42 combined checks, alltypes/build/fullformat PASS in /tmp/orbyn-export-primary-cac22362-{focused,types,build,format}.log.
 - Currentcac22362 FULL LOCAL SUITE LIVE on session6346, /tmp/orbyn-export-primary-cac22362-full-tests.log, dedicated marked database /tmp/orbyn-export-primary-current-test-db.txt. Do not edit that frozen tree, duplicate or restart the run. Its new exact-head CI is required; old8b CI is superseded. PR158 mergeState CLEAN as observed.
 - Wait for exact local/full CI qualification, then merge PR158 with matching head and verify main. Reconcile Docs afterward. Next implementation: rendered PDF/math/diagrams and remaining real native sharing/screenshots, publication and whole U1/model/plugin/runtime gates. Full ADR ACTIVE; no cleanup/deployment.
+
+### Home responsibility copy — 3 October 2026
+
+- Rechecked primary Muse design and official Dots product/task references. Updated public Home and signed-in web/desktop/native Home together: concrete project checklist/night research requests, three-step workflows, review destinations, truthful idle/approval/window boundaries. Shared core copy prevents platform drift.
+- Recorded reflection, authorized collaboration, separate runtimes and meaningful notification requirements in ADR, with existing incomplete implementation gates. Home does not advertise those as completed capabilities.
+- Focused Home13/13 pass. Workspace typecheck/production build running in /tmp/orbyn-home-responsibilities-{types,build}.log. Web visual acceptance remains user test-server-owned; native screenshot/interaction acceptance remains open.
+- Preserve unrelated uncommitted PDF renderer/asset-generator work; stage only the explicit Home files and this ADR/task record. Separate main-based public checkpoint can ship after exact-head qualification; signed-in Home/profile changes remain in the broader source candidate.
+- Main PR158 primary-read exports merged as9702f19e after exact-head2209/2209 local checks and all four CI jobs; source still needs that main reconciliation.
+- Full ADR remains active, including D1/PDF integration and visual QA, model/plugin/runtime and full U1 gates. No cleanup/deployment.
+
+Home responsibility qualification: all workspace typechecks and production builds
+passed, as did formatting of all eleven scoped files and git diff --check. These
+are code/content checks; visual/native acceptance and the broader candidate's
+exact-head full-suite/CI remain separate open gates.
