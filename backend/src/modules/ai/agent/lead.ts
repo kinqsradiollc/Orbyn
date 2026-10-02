@@ -70,6 +70,7 @@ export type LeadWaiting =
   | { kind: "person"; id: string; question: string; choices: string[] }
   | {
       kind: "approval";
+      assistant_rules_revision?: number;
       id: string;
       question: string;
       detail: string;

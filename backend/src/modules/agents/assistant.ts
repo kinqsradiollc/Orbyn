@@ -25,6 +25,7 @@ type ApprovalScopes = z.output<typeof approvalScopesInput>;
 
 type AssistantGrantRow = {
   id: string;
+  assistant_rules_revision: number;
   trust: "full" | "ask" | "suggest";
   space_trust: Record<string, "full" | "ask" | "suggest">;
   acts_alone: string[];
@@ -76,7 +77,7 @@ export async function assistantPrincipal(
        ON CONFLICT (user_id) WHERE kind = 'assistant'
        DO UPDATE SET name = EXCLUDED.name, client_name = EXCLUDED.client_name,
                      last_used_at = now()
-       RETURNING id, trust, space_trust, acts_alone, toolsets, suspended_at`,
+       RETURNING id, trust, space_trust, acts_alone, toolsets, suspended_at, assistant_rules_revision`,
       [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
     )
   ).rows[0];
@@ -86,6 +87,7 @@ export async function assistantPrincipal(
   return {
     user: { id: user.id, name: user.name, role: user.role },
     via: "assistant",
+    assistant_rules_revision: grant.assistant_rules_revision,
     grant_id: grant.id,
     client: { id: null, name },
     access: "write",
