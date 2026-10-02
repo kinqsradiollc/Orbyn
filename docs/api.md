@@ -1024,6 +1024,10 @@ A visible page at another version returns `409`; an inaccessible page still retu
 any revision comparison. Invalid versions return `422`. Omitting it keeps the existing latest
 saved-page behavior. A conflict must not be silently retried against a different revision.
 
+File exports and the legacy Markdown export read document visibility, content, linked task
+state and link visibility from the primary database. They do not depend on a client consistency
+header or a read replica catching up after a save or permission change.
+
 `docx` and `pdf` are written directly: `.docx` is a zip of XML using Node's `zlib`, and PDF uses
 standard fonts. PDF carries headings, lists, checklists, quotes, code, rules, and bold and italic
 within a line. It currently writes image captions and plain math symbols; rendered diagram and

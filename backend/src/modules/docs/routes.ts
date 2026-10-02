@@ -226,8 +226,10 @@ export async function docRoutes(app: FastifyInstance) {
       })
       .strict()
       .parse(r.query ?? {});
+    // File actions require current revisions and visibility even without a
+    // client read-your-writes header; a replica can still hold the old page.
     const doc = (
-      await reader(r.headers).query<{
+      await pool.query<{
         title: string;
         content: DocBlock[];
         version: number;
@@ -244,9 +246,9 @@ export async function docRoutes(app: FastifyInstance) {
     // pages, tasks and projects as web links anyone with access can open.
     const blocks = blocksWithWebLinks(
       await readableLinks(
-        reader(r.headers),
+        pool,
         u.id,
-        await withTaskState(reader(r.headers), id, doc.content ?? []),
+        await withTaskState(pool, id, doc.content ?? []),
       ),
       env.APP_URL,
     );
@@ -281,7 +283,7 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const doc = (
-      await reader(r.headers).query<{ title: string; content: DocBlock[] }>(
+      await pool.query<{ title: string; content: DocBlock[] }>(
         `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
@@ -289,9 +291,9 @@ export async function docRoutes(app: FastifyInstance) {
     if (!doc) fail(404, "Document not found");
     const blocks = blocksWithWebLinks(
       await readableLinks(
-        reader(r.headers),
+        pool,
         u.id,
-        await withTaskState(reader(r.headers), id, doc.content ?? []),
+        await withTaskState(pool, id, doc.content ?? []),
       ),
       env.APP_URL,
     );

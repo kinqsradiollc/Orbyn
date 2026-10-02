@@ -646,6 +646,18 @@ This is API foundation only: both editors still need explicit save-success and
 offline/failure handling, revision capture and all share-path integration.
 Rendered PDF, publication, native sharing and whole D1/U1 acceptance remain open.
 
+### Primary reads for file actions — 3 October 2026
+
+Export file transport does not carry the ordinary JSON transport's read-after-write
+header. Lag-tolerant replica reads could falsely reject a newly saved revision or
+return older content/visibility. Both the file export route and its legacy Markdown
+route now use the primary for the document and task/link permission enrichment.
+This gives file actions current primary state even for existing unversioned callers.
+Current-version conflicts and visibility-first404 behavior remain unchanged.
+Regression checks execute the actual handlers with distinct primary and replica
+dependencies; no export query or helper may use the stale replica. This is a
+backend freshness checkpoint; PDF visual rendering and full D1/U1 remain open.
+
 ### Public Home request examples — 3 October 2026
 
 [Muse's design account](https://introducing.muse.ai/) describes task-shaped outputs
