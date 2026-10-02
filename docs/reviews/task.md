@@ -1732,3 +1732,16 @@ Pipeline89402 terminated zero: focused cohort30/30 and all workspace types.
 These fixes remain source-branch work until checkpoint qualification; no main
 merge or deployment is claimed. Whole ADR remains incomplete and active.
 Free disk space is approximately747MiB; avoid large builds while constrained.
+
+## Actual-size viewing continuation
+
+Shared diagramDisplayScale supports fitted and natural-size viewing. Mobile now
+exposes Actual size; desktop gains Source, zoom, Fit, Actual size and adjusted
+SVG export controls with a wrapping toolbar and bounded scrolling viewport.
+Native timeline-actual-size.png shows readable natural-size labels;
+timeline-fit-restored.png proves Fit restores full diagram containment.
+Horizontal pan attempts did not establish movement; this acceptance gate stays
+open, alongside desktop/web visual checks. Do not promote this checkpoint yet.
+Workspace typechecks completed zero. Final focused cohort passed32/32 with
+zero failures, skips or cancellations, including the actual-size/Fit message
+handler regression. Full ADR remains incomplete.

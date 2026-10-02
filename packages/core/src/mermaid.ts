@@ -125,3 +125,22 @@ export function diagramLabelTranslation(
     return null;
   return `translate(${center.x - bounds.x - bounds.width / 2}, ${center.y - bounds.y - bounds.height / 2})`;
 }
+
+/** Scale a diagram to its viewport or preserve readable natural dimensions. */
+export function diagramDisplayScale(
+  width: number,
+  viewport: number,
+  zoom: number,
+  actualSize = false,
+): number {
+  const safeWidth = Number.isFinite(width)
+    ? Math.max(120, Math.min(8192, width))
+    : 320;
+  const safeViewport = Number.isFinite(viewport)
+    ? Math.max(120, Math.min(8192, viewport))
+    : safeWidth + 24;
+  const safeZoom = Number.isFinite(zoom) ? Math.max(0.5, Math.min(3, zoom)) : 1;
+  return (
+    (actualSize ? 1 : Math.min(1, (safeViewport - 24) / safeWidth)) * safeZoom
+  );
+}

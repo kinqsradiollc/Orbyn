@@ -8,6 +8,7 @@ import {
   mermaidDiagramCss,
   visibleDiagramTicks,
   diagramLabelTranslation,
+  diagramDisplayScale,
   MERMAID_MAX_SVG,
   colors,
 } from "@orbyn/core";
@@ -60,6 +61,7 @@ function runtime(
     mermaidDiagramCss,
     visibleDiagramTicks,
     diagramLabelTranslation,
+    diagramDisplayScale,
     MERMAID_MAX_SVG,
     window: {
       parent,
@@ -237,4 +239,17 @@ test("a newer render fences an older in-flight result and duplicate messages", a
   assert.equal(calls, 2);
   assert.equal(fixture.messages.length, 1);
   assert.equal(fixture.messages[0].id, "new");
+});
+
+test("actual size preserves natural dimensions and Fit restores viewport scaling", async () => {
+  const fixture = runtime(async () => ({ svg: "<svg/>" }));
+  await fixture.send("actual", { viewportWidth: 174, actualSize: true });
+  assert.equal(fixture.drawing.style.width, "300px");
+  await fixture.send("fit", { viewportWidth: 174, actualSize: false });
+  assert.equal(fixture.drawing.style.width, "150px");
+  await fixture.send("untrusted-mode", {
+    viewportWidth: 174,
+    actualSize: "true",
+  });
+  assert.equal(fixture.drawing.style.width, "150px");
 });

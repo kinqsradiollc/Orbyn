@@ -63,3 +63,16 @@ not overlap. The same label-placement helper is consumed by desktop and mobile.
 The focused Mermaid/runtime/download cohort passed 30/30 and all workspace
 typechecks completed with exit zero. This evidence covers the native fixture;
 web/desktop and remaining theme/platform acceptance are still required.
+
+## Actual-size viewing continuation
+
+Shared diagramDisplayScale supports fitted and natural-size viewing. Mobile now
+exposes Actual size; desktop gains Source, zoom, Fit, Actual size and adjusted
+SVG export controls with a wrapping toolbar and bounded scrolling viewport.
+Native timeline-actual-size.png shows readable natural-size labels;
+timeline-fit-restored.png proves Fit restores full diagram containment.
+Horizontal pan attempts did not establish movement; this acceptance gate stays
+open, alongside desktop/web visual checks. Do not promote this checkpoint yet.
+Workspace typechecks completed zero. Final focused cohort passed32/32 with
+zero failures, skips or cancellations, including the actual-size/Fit message
+handler regression. Full ADR remains incomplete.

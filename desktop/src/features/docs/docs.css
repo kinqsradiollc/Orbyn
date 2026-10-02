@@ -4170,3 +4170,24 @@ input.doc-image-caption:focus {
   color: var(--color-muted);
   font-size: 11px;
 }
+
+.doc-diagram-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  margin-bottom: 8px;
+}
+.doc-diagram-toolbar > span {
+  margin-right: 8px;
+  font-size: 13px;
+}
+.doc-diagram-canvas {
+  overflow: auto;
+  max-height: 480px;
+}
+.doc-diagram-canvas svg {
+  display: block;
+  margin: 0 auto;
+}

@@ -5,6 +5,7 @@ import {
   mermaidDiagramCss,
   visibleDiagramTicks,
   diagramLabelTranslation,
+  diagramDisplayScale,
   MERMAID_MAX_SVG,
 } from "@orbyn/core";
 
@@ -121,7 +122,12 @@ const receive = async (event) => {
     const viewport = Number.isFinite(request.viewportWidth)
       ? Math.max(120, Math.min(8192, request.viewportWidth))
       : width + 24;
-    const scale = Math.min(1, (viewport - 24) / width) * zoom;
+    const scale = diagramDisplayScale(
+      width,
+      viewport,
+      zoom,
+      request.actualSize === true,
+    );
     drawing.style.width = `${width * scale}px`;
     drawing.style.height = `${height * scale}px`;
     for (const node of drawing.querySelectorAll(".mindmap-node")) {

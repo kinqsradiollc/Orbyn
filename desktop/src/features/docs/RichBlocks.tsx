@@ -46,6 +46,7 @@ import {
   mermaidDiagramCss,
   visibleDiagramTicks,
   diagramLabelTranslation,
+  diagramDisplayScale,
   docObjectLinks,
   fileSize,
   isAudio,
@@ -1032,15 +1033,42 @@ export function Diagram({ text }: { text: string }) {
   const id = useId().replace(/[^\w-]/g, "");
   const box = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [actualSize, setActualSize] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [viewport, setViewport] = useState(0);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setViewport(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const chart = useMemo(() => parseFlowchart(text), [text]);
   useEffect(() => {
     let live = true;
     setFailed(false);
+    setReady(false);
     loadMermaid()
       .then((mermaid) => mermaid.render(`diagram-${id}`, text))
       .then(({ svg }) => {
         if (!live || !box.current) return;
         box.current.innerHTML = svg;
+        const drawing = box.current.querySelector("svg");
+        if (drawing) {
+          const bounds = drawing.viewBox.baseVal;
+          const scale = diagramDisplayScale(
+            bounds.width,
+            viewport || box.current.clientWidth,
+            zoom,
+            actualSize,
+          );
+          drawing.style.maxWidth = "none";
+          drawing.style.width = `${bounds.width * scale}px`;
+          drawing.style.height = `${bounds.height * scale}px`;
+        }
+        setReady(true);
         for (const node of box.current.querySelectorAll("svg .mindmap-node")) {
           const circle = [...node.children].find(
             (child) => child.tagName.toLowerCase() === "circle",
@@ -1091,7 +1119,7 @@ export function Diagram({ text }: { text: string }) {
     return () => {
       live = false;
     };
-  }, [text, id, chart]);
+  }, [text, id, chart, viewport, zoom, actualSize]);
   if (failed)
     return (
       <div className="doc-diagram is-failed">
@@ -1103,12 +1131,85 @@ export function Diagram({ text }: { text: string }) {
       </div>
     );
   return (
-    <div
-      className="doc-diagram"
-      ref={box}
-      role="img"
-      aria-label={`Diagram: ${diagramKind(text)}`}
-    />
+    <div className="doc-diagram" onClick={(event) => event.stopPropagation()}>
+      <div className="doc-diagram-toolbar">
+        <span>{diagramKind(text)} diagram</span>
+        <button
+          type="button"
+          className="text-button"
+          aria-expanded={sourceOpen}
+          onClick={() => setSourceOpen(!sourceOpen)}
+        >
+          Source
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          aria-label="Zoom out diagram"
+          onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          aria-label="Zoom in diagram"
+          onClick={() => setZoom((value) => Math.min(3, value + 0.25))}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            setActualSize(false);
+            setZoom(1);
+          }}
+        >
+          Fit
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          aria-pressed={actualSize}
+          onClick={() => {
+            setActualSize(true);
+            setZoom(1);
+          }}
+        >
+          Actual size
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          disabled={!ready}
+          onClick={() => {
+            const drawing = box.current?.querySelector("svg");
+            if (!drawing) return;
+            const url = URL.createObjectURL(
+              new Blob([new XMLSerializer().serializeToString(drawing)], {
+                type: "image/svg+xml",
+              }),
+            );
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "diagram.svg";
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
+        >
+          Export SVG
+        </button>
+      </div>
+      <div
+        className="doc-diagram-canvas"
+        ref={box}
+        role="img"
+        aria-label={`Diagram: ${diagramKind(text)}`}
+      />
+      {!ready && <p className="doc-diagram-note">Drawing diagram…</p>}
+      {sourceOpen && <CodeView text={text} lang="" />}
+    </div>
   );
 }
 

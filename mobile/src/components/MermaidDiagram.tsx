@@ -20,6 +20,7 @@ export function MermaidDiagram({ text }: { text: string }) {
   const sequence = useRef(0);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [actualSize, setActualSize] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [result, setResult] = useState<{
     id: string;
@@ -51,9 +52,10 @@ export function MermaidDiagram({ text }: { text: string }) {
         source: text,
         palette: JSON.parse(palette),
         zoom,
+        actualSize,
         viewportWidth: viewportWidth || undefined,
       }),
-    [instance, text, palette, zoom, viewportWidth],
+    [instance, text, palette, zoom, actualSize, viewportWidth],
   );
   const id = JSON.parse(request).id as string;
   const current = result?.id === id ? result : null;
@@ -137,10 +139,25 @@ export function MermaidDiagram({ text }: { text: string }) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Fit diagram to width"
-          onPress={() => setZoom(1)}
+          onPress={() => {
+            setActualSize(false);
+            setZoom(1);
+          }}
           style={s.button}
         >
           <Text style={s.action}>Fit</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show diagram at actual size"
+          accessibilityState={{ selected: actualSize }}
+          onPress={() => {
+            setActualSize(true);
+            setZoom(1);
+          }}
+          style={s.button}
+        >
+          <Text style={s.action}>Actual size</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"

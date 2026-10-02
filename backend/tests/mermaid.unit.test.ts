@@ -7,6 +7,7 @@ import {
   mermaidThemeVariables,
   visibleDiagramTicks,
   diagramLabelTranslation,
+  diagramDisplayScale,
   colors,
   darkColors,
   MERMAID_MAX_SOURCE,
@@ -155,4 +156,12 @@ test("mindmap circular labels center their actual local bounds", () => {
     ),
     null,
   );
+});
+
+test("actual size keeps wide diagrams readable while fit restores containment", () => {
+  assert.equal(diagramDisplayScale(2000, 320, 1), 296 / 2000);
+  assert.equal(diagramDisplayScale(2000, 320, 1, true), 1);
+  assert.equal(diagramDisplayScale(2000, 320, 2, true), 2);
+  assert.equal(diagramDisplayScale(2000, 320, 20, true), 3);
+  assert.equal(diagramDisplayScale(NaN, NaN, NaN), 1);
 });
