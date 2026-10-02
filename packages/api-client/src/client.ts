@@ -553,6 +553,9 @@ export class OrbynClient {
   private readonly streamFetch: typeof fetch;
   private lastWriteAt = 0;
   private readEpoch = 0;
+  private readonly agentSettingsListeners = new Set<
+    (settings: PersonalAgentSettings) => void
+  >();
   /** Concurrent ordinary reads share transport, but never mutable result objects. */
   private readonly pendingReads = new Map<
     string,
@@ -3395,8 +3398,15 @@ export class OrbynClient {
   agentContext() {
     return this.request<AgentContextSettings>("/me/agent-context");
   }
-  agentSettings() {
-    return this.request<PersonalAgentSettings>("/me/agent");
+  agentSettings(options?: Pick<RequestOptions, "fresh">) {
+    return this.request<PersonalAgentSettings>("/me/agent", options);
+  }
+  /** Keep mounted assistant surfaces current after a settings save in this client. */
+  onAgentSettings(listener: (settings: PersonalAgentSettings) => void) {
+    this.agentSettingsListeners.add(listener);
+    return () => {
+      this.agentSettingsListeners.delete(listener);
+    };
   }
   /** The person's optional night window and morning review preference. */
   nightShiftSettings() {
@@ -3408,11 +3418,17 @@ export class OrbynClient {
       body: input,
     });
   }
-  updateAgentSettings(input: AgentIdentityInput) {
-    return this.request<PersonalAgentSettings>("/me/agent", {
+  async updateAgentSettings(input: AgentIdentityInput) {
+    const token = await this.getToken();
+    const saved = await this.request<PersonalAgentSettings>("/me/agent", {
       method: "PUT",
       body: input,
     });
+    if (token === (await this.getToken())) {
+      for (const listener of this.agentSettingsListeners)
+        listener(structuredClone(saved));
+    }
+    return saved;
   }
   /** Opens the About me page, making it first when there isn't one. */
   openAgentProfile() {

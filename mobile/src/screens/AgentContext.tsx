@@ -1,7 +1,10 @@
+import { CharacterEditor } from "../components/CharacterEditor";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   MAX_AGENT_INSTRUCTIONS,
+  characterAppearance,
+  CHARACTER_PERSONAS,
   type AgentContextSettings,
   type PersonalAgentSettings,
   type AgentInstructions,
@@ -37,6 +40,7 @@ export function AgentWarmStartCards({
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
+  const [appearance, setAppearance] = useState(() => characterAppearance({}));
   const [editing, setEditing] = useState<{
     team_id: string | null;
     text: string;
@@ -50,6 +54,7 @@ export function AgentWarmStartCards({
       setIdentity(value);
       setIdentityName(value.name);
       setIdentityPersona(value.persona);
+      setAppearance(characterAppearance(value.character));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -75,6 +80,7 @@ export function AgentWarmStartCards({
       const value = await client.updateAgentSettings({
         name: identityName.trim(),
         persona: identityPersona,
+        character: appearance,
       });
       setIdentity(value);
     });
@@ -138,6 +144,22 @@ export function AgentWarmStartCards({
             placeholderTextColor={colors.faint}
           />
         </Field>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {CHARACTER_PERSONAS.map((preset) => (
+            <SmallAction
+              key={preset.label}
+              label={preset.label}
+              disabled={busy}
+              onPress={() => setIdentityPersona(preset.persona)}
+            />
+          ))}
+        </View>
+        <CharacterEditor
+          value={appearance}
+          onChange={setAppearance}
+          name={identityName}
+          disabled={busy}
+        />
         <Button
           title="Save"
           onPress={saveIdentity}

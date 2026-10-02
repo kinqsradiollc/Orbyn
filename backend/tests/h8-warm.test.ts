@@ -23,7 +23,8 @@ const { limiter, strikes } =
   await import("../src/modules/mcp-server/routes.js");
 const { drainStudyQueue } = await import("../src/modules/study/service.js");
 const { COVERED } = await import("../src/capabilities/exclusions.js");
-const { AGENT_TOOLSETS, learningProfileOf } = await import("@orbyn/core");
+const { AGENT_TOOLSETS, learningProfileOf, DEFAULT_CHARACTER } =
+  await import("@orbyn/core");
 
 const app = await buildApp();
 const h = helpers(app);
@@ -259,12 +260,14 @@ test("M1: a person names their Orbyn assistant and keeps its optional persona", 
   assert.deepEqual(initial.json(), {
     name: "Orbyn",
     persona: "",
+    character: DEFAULT_CHARACTER,
     named_at: null,
     updated_at: initial.json().updated_at,
   });
   const saved = await h.call(olga.token, "PUT", "/me/agent", {
     name: "Mira",
     persona: "Warm, direct, and curious.",
+    character: { ...DEFAULT_CHARACTER, body: "spark", accessory: "glasses" },
   });
   assert.equal(saved.statusCode, 200, saved.body);
   assert.equal(saved.json().name, "Mira");
@@ -289,6 +292,11 @@ test("M1: a person names their Orbyn assistant and keeps its optional persona", 
   );
   const roundTrip = await h.call(olga.token, "GET", "/me/agent");
   assert.equal(roundTrip.json().name, "Mira");
+  assert.deepEqual(roundTrip.json().character, {
+    ...DEFAULT_CHARACTER,
+    body: "spark",
+    accessory: "glasses",
+  });
 
   const review = ok(
     await tool(keys.full, "update_agent", {
@@ -326,6 +334,11 @@ test("M1: a person names their Orbyn assistant and keeps its optional persona", 
     `/me/agents/activity/${activity.id}/undo`,
   );
   assert.equal(undone.statusCode, 200, undone.body);
+  assert.deepEqual(
+    (await h.call(olga.token, "GET", "/me/agent")).json().character,
+    roundTrip.json().character,
+    "MCP identity approval and undo preserve the appearance",
+  );
   assert.deepEqual((await context(keys.full)).agent, {
     name: "Nova",
     persona: "Brief and practical.",

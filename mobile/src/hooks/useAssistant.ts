@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { AppState } from "react-native";
 import {
   HttpError,
+  characterState,
   newId,
   planOutcome,
   proposalNote,
@@ -109,6 +111,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const chatsRequest = useRef(0);
   // The running question's poll, stopped when the conversation is left.
   const poll = useRef<AbortController | null>(null);
+  const [characterOutcome, setCharacterOutcome] = useState<
+    "done" | "error" | "interrupted" | null
+  >(null);
+  const [customizingCharacter, setCustomizingCharacter] = useState(false);
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
 
   const loadChats = () => {
@@ -195,6 +201,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   /** Leave the conversation: stop its poll and start an empty one. */
   const clearConversation = (forget = true) => {
+    setCharacterOutcome(null);
     if (forget) void saveAssistantChat(null);
     generation.current += 1;
     stopPolling();
@@ -209,14 +216,31 @@ export function useAssistant({ token, act, refresh, items }: Options) {
 
   useEffect(() => {
     let live = true;
+    let revision = 0;
     setIdentity(null);
+    setCustomizingCharacter(false);
     if (!token) return;
-    void client
-      .agentSettings()
-      .then((value) => live && setIdentity(value))
-      .catch(() => undefined);
+    const load = () => {
+      const current = ++revision;
+      void client
+        .agentSettings({ fresh: true })
+        .then((value) => {
+          if (live && current === revision) setIdentity(value);
+        })
+        .catch(() => undefined);
+    };
+    const unsubscribe = client.onAgentSettings((value) => {
+      revision += 1;
+      if (live) setIdentity(value);
+    });
+    load();
+    const foreground = AppState.addEventListener("change", (next) => {
+      if (next === "active") load();
+    });
     return () => {
       live = false;
+      unsubscribe();
+      foreground.remove();
     };
   }, [token]);
 
@@ -257,6 +281,13 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       .slice(-12);
 
   const acceptResult = (result: ChatResult) => {
+    setCharacterOutcome(
+      result.assistant_run?.stopped
+        ? "interrupted"
+        : result.assistant_run?.timed_out
+          ? "error"
+          : "done",
+    );
     const { proposal } = result;
     const touched = new Set(
       proposal.actions.map((a) => a.item_id).filter((id): id is string => !!id),
@@ -309,6 +340,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     const userTurn: Turn = { id: nextId(), role: "user", text: trimmed };
     setTurns((t) => [...t, userTurn]);
     setMessage("");
+    setCharacterOutcome(null);
     setThinking(true);
     return (async () => {
       try {
@@ -334,6 +366,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         acceptResult(result);
       } catch (error) {
         if (request !== generation.current) return;
+        setCharacterOutcome("error");
         // Nothing typed is lost: the message goes back in the box and act() shows the error.
         setTurns((t) => t.filter((x) => x.id !== userTurn.id));
         setMessage((draft) => (draft ? `${trimmed}\n\n${draft}` : trimmed));
@@ -361,7 +394,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       try {
         await client.answerAssistantRun(run.job_id, answer, waitingId);
       } catch (error) {
-        if (request === generation.current) throw error;
+        if (request === generation.current) {
+          setCharacterOutcome("error");
+          throw error;
+        }
         return;
       }
       if (request !== generation.current) return;
@@ -374,6 +410,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
         state: "running",
         label: "Continuing with your answer",
       });
+      setCharacterOutcome(null);
       setThinking(true);
     });
   };
@@ -396,7 +433,10 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           scope,
         );
       } catch (error) {
-        if (request === generation.current) throw error;
+        if (request === generation.current) {
+          setCharacterOutcome("error");
+          throw error;
+        }
         return;
       }
       if (request !== generation.current) return;
@@ -409,6 +449,7 @@ export function useAssistant({ token, act, refresh, items }: Options) {
             : "Saving approval and applying the plan"
           : "Holding the plan",
       });
+      setCharacterOutcome(null);
       setThinking(true);
     });
   };
@@ -421,11 +462,15 @@ export function useAssistant({ token, act, refresh, items }: Options) {
       try {
         await client.stopAssistantRun(run.job_id);
       } catch (error) {
-        if (request === generation.current) throw error;
+        if (request === generation.current) {
+          setCharacterOutcome("error");
+          throw error;
+        }
         return;
       }
       if (request !== generation.current) return;
       setRunProgress({ ...run, state: "running", label: "Stopping the run" });
+      setCharacterOutcome(null);
       setThinking(true);
     });
   };
@@ -609,10 +654,12 @@ export function useAssistant({ token, act, refresh, items }: Options) {
           if (request === generation.current) acceptResult(result);
         })
         .catch((error) => {
-          if (request === generation.current && !controller.signal.aborted)
+          if (request === generation.current && !controller.signal.aborted) {
+            setCharacterOutcome("error");
             void act(async () => {
               throw error;
             });
+          }
         })
         .finally(() => {
           if (poll.current === controller) poll.current = null;
@@ -744,6 +791,14 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     /** The person's assistant settings (null until loaded). */
     identity,
     setIdentity,
+    customizingCharacter,
+    setCustomizingCharacter,
+    characterState: characterState({
+      thinking,
+      runState: runProgress?.state,
+      needsApproval: !!pending,
+      outcome: characterOutcome,
+    }),
     /** The name the person gave their assistant. */
     agentName: identity?.name || "Orbyn",
   };
