@@ -133,6 +133,8 @@ spec:
                     api,
                     mcp,
                     ai,
+                    assistant-background,
+                    assistant-overnight,
                     realtime,
                     status,
                     notifier,
@@ -184,6 +186,8 @@ spec:
             api,
             mcp,
             ai,
+            assistant-background,
+            assistant-overnight,
             realtime,
             status,
             notifier,
@@ -247,8 +251,10 @@ metadata:
   name: allow-ai-internet-egress
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/component: ai
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [ai, assistant-background, assistant-overnight]
   policyTypes: [Egress]
   egress:
     - to:
