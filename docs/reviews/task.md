@@ -593,3 +593,31 @@ zero failed, one known Tesseract-dependent skip**, 2,099 total. Log:
 Android and other documented UI gates outstanding; green CI is not release or
 whole-ADR completion. Its candidate also needs the latest character main before
 promotion. The full ADR goal remains active.
+
+## Durable receiving acknowledgment
+
+Source **6fd43f4** adds `acknowledgeCompletedAssistantHandoff`. It locks the
+receipt, validates expected revision and accepted status, derives the result
+from actual completed receiving work, and rechecks both jobs' owner/source access,
+runtime lanes and the producing evidence revision. Concurrent same-transition
+retries return the same current result without incrementing twice. Changed
+outcomes, stale receipt revisions, incomplete receiving work, revoked sources,
+disabled owners and unaccepted/terminal receipts are rejected. It creates no
+jobs, endpoints or permission grants. The depth-limit test now uses the actual
+acknowledgment service instead of manually completing receipts.
+
+**27/27** combined contract/storage/request tests passed, zero failures/skips/
+cancellations, 2,143 ms. Log:
+`/tmp/orbyn-handoff-acknowledgment-combined-tests-2.log`. Backend types passed
+(`/tmp/orbyn-handoff-acknowledgment-types.log`) and focused formatting passed.
+An earlier combined command named a nonexistent contract test path; its 17-pass
+result only covered storage/requests. The corrected command explicitly included
+`assistant-handoffs.unit.test.ts`, yielding the final 27 checks above.
+The code remains source-only/unmerged. Receiving policy, connections/budgets,
+atomic receiving-job creation with source inheritance, consumption-time checks,
+failure/recovery wiring, separate worker round trips and both activity UIs remain.
+
+Ownership candidate **b7bd994** is still frozen: session **4802** remains live,
+with the latest log at test 1,947; CI **36983314493** is also still in progress.
+Do not restart either on observation timeout. After terminal results, merge
+latest character main into the candidate and requalify that exact head.
