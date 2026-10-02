@@ -47,7 +47,13 @@ editing mistake was restored from the parent before adding the two format tests;
 existing service regression coverage remains present. Initial API marker-only
 expectation was strengthened to require an actual inert SVG and retained source.
 
-Full exact-head local/all CI still required before promotion, parent image qualification is complete. Publication/reference/source/editor parity, native sharing and
+The first full qualification at `82a06733` failed: local 2,276/2,277
+and CI37066687318 both found the same legacy link-privacy HTML export test
+missing its private renderer fixture. The fixture now starts and closes its own
+actual service before application configuration is imported; all 18 privacy
+checks pass, with private-title assertions retained. The failed head is not
+qualified. Full qualification of the repaired head is required before promotion;
+parent image qualification is complete. Publication/reference/source/editor parity, native sharing and
 broader C1–C6/M1/D1/U1 remain open. No app UI permission was bypassed; PDF evidence
 is a synthetic export check, not web/native visual acceptance. No deploy/release/
 cleanup and no voice/computer-use product expansion.
