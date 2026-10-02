@@ -136,6 +136,22 @@ function fixture(mobile: boolean, overrides: object = {}, reject = false) {
 }
 
 for (const mobile of [false, true]) {
+  test(`${mobile ? "mobile" : "web"} setup describes missing prerequisites without claiming readiness`, () => {
+    const view = fixture(mobile, {
+      semantic_possible: false,
+      measure_running: false,
+      embedding_provider_id: null,
+    });
+    const html = renderToStaticMarkup(view.tree);
+    assert.match(html, /Database measurements are unavailable/);
+    assert.match(html, /The measuring service is offline/);
+    assert.match(html, /Select an embedding provider/);
+    assert.doesNotMatch(
+      html,
+      /An independent embedding provider is selected|The measuring service is running|The database can store measurements/,
+    );
+  });
+
   const platform = mobile ? "mobile" : "web";
   test(`${platform} embedding controls submit the explicit recipient and generation`, async () => {
     const view = fixture(mobile);
