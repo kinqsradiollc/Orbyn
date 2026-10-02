@@ -112,11 +112,27 @@ workspace typechecks and full formatting passed in terminal session 89682:
 `/tmp/orbyn-reflection-8535357-{packages,backend-types,desktop-types,mobile-types,format}.log`.
 
 Draft PR https://github.com/kinqsradiollc/Orbyn/pull/137 is pushed and attached.
-Source is frozen in the integration worktree while full suite session **40367**
-runs against fresh marked `orbyn_main_reflection_8535357_test`, log
-`/tmp/orbyn-main-reflection-8535357-full-tests.log`. Root production build session
-**32769** runs separately, log `/tmp/orbyn-reflection-8535357-build.log`. Both are
-live at this handoff update; poll their existing handles before repeating work.
+Candidate `8535357` passed **2,104/2,104** full local tests, zero failures/skips/
+cancellations, exit 0, 590066 ms; session 40367 terminal. Fresh marked DB
+`orbyn_main_reflection_8535357_test`; log `/tmp/orbyn-main-reflection-8535357-full-tests.log`.
+Root production build passed (session 32769 exit 0), `/tmp/orbyn-reflection-8535357-build.log`.
+CI 36975244865: mobile, Docker and mail passed; backend/web was still running at
+last observation.
+
+Native review found misleading Keep/Undo controls on reflections. Source commit
+`7bf5f3a` removes them on both clients, excludes reflection from bulk review in
+both API and clients, rejects direct keep/undo with 409, labels completed output
+Reflection ready and distinguishes Queued from Working. Web Refresh remains.
+Focused review tests **13/13** passed, `/tmp/orbyn-reflection-review-controls-tests.log`;
+all source workspace types passed in terminal session 91366.
+
+The follow-up cherry-picked cleanly to integration as **b29f454** and was pushed
+on PR 137. Exact candidate is frozen again for a full local suite in session
+**15253**, fresh marked DB `orbyn_main_reflection_b29f454_test`, log
+`/tmp/orbyn-main-reflection-b29f454-full-tests.log`. Full types/build/format sequence
+is session **78370**, logs `/tmp/orbyn-reflection-b29f454-{types,build,format}.log`.
+These are live at this update. Poll existing handles before repeating work.
+Main remains `3677d53`; nothing from PR 137 is merged or deployed.
 
 Still required: focused/full verification on isolated current main, cancellation,
 consent/budget cases, pending-run restart coverage, actual web/mobile/native source
@@ -240,15 +256,38 @@ were lost, so fresh marked databases were created. Preserve other preview server
 on 8018/8083 and all unrelated containers, volumes, simulators and packages.
 
 Own API 82920/PID 25504 was stopped after checking ownership. Replacement API
-4912/8027 exited 1. Bootstrap `/tmp/orbyn-reflection-native-api.mts`; log
-`/tmp/orbyn-reflection-native-api.log`. Metro 70797/8087 was last running.
+4912/8027 exited 1; after Docker recovery API session 61269/8027 is running. Bootstrap `/tmp/orbyn-reflection-native-api.mts`; log
+`/tmp/orbyn-reflection-native-api.log`. Metro 70797/8087 was running in CI mode with watching disabled and served stale
+source after edits. Its owned PID 25148 was stopped. Replacement 10839/PID 83366
+bound IPv6 while Expo requested IPv4 and was stopped. Current Metro session
+**65880**, PID 83864, uses NODE_OPTIONS=--dns-result-order=ipv4first, CI=false,
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8027, localhost port 8087. Log
+`/tmp/orbyn-reflection-native-metro-ipv4.log`. Rebuilt bundle loaded successfully.
 The marked QA DB `orbyn_mobile_models_24419a9_test` was migrated through 207 and
 seeded using `/tmp/orbyn-reflection-native-fixture.mts`; synthetic IDs saved in
 `/tmp/orbyn-reflection-native-fixture.json`. Docker's tmpfs DB may be lost on
 recovery. No current API/native interaction success is implied by the seed.
-Native observation/clicks failed with `failedToCreateImageDestination` as space
-ran out. No reflection UI acceptance is recorded. Native token fixture files
-are private and must never be printed.
+Native observation/clicks initially failed with `failedToCreateImageDestination`
+as space ran out. After recovery, the QA database/account was recreated; seeded
+consent state is fixture setup, not real consent acceptance. The synthetic account
+signed in via UI. Rebuilt native bundle showed Reflection ready, four sections,
+numbered sources, and no Keep/Undo controls. Actual source buttons opened the
+correct completed task and the original conversation; closing the task restored
+Overnight. Conversation screenshot `/tmp/orbyn-reflection-native-source-chat-20261002.png`.
+Long second-source label is below the fold: scroll/drag attempts did not move it,
+so complete visual wrapping/scroll acceptance remains open. Latest scroll call
+reported `noWindowsAvailable`; retry observation before claiming a product fault.
+Native token fixture files are private and must never be printed.
+
+IMPORTANT TOOL INCIDENT: Simulator app.paste unexpectedly pasted the user's
+existing clipboard (production settings) rather than the provided synthetic email.
+It was NOT submitted. The field was cleared using setValue, then a full AX
+observation was inspected without emission and verified no production settings
+remained and the synthetic address was exact. The UI tool had already emitted
+production credentials into tool output. User was informed and advised affected
+credentials need rotation. Never copy those values into artifacts/logs/comments;
+do not rotate encryption keys blindly or change credentials without authorization.
+Do not use clipboard-based native input again; direct setValue worked.
 
 User explicitly authorized reading/updating `.env.production`. Main's ignored
 file was updated locally by appending only missing `AI_RUNNER_IN_WORKER=false`,
