@@ -43,10 +43,14 @@ export async function claimAssistantJob(
     const row = (
       await db.query<{ id: string; user_id: string; run_state: unknown }>(
         `WITH candidate AS (
-         SELECT id FROM ai_jobs
-         WHERE state = 'queued' AND runtime_lane = $2 AND run_state->>'version' = '1'
-           AND run_state->'request' IS NOT NULL
-         ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+         SELECT candidate.id FROM ai_jobs candidate
+         WHERE candidate.state = 'queued' AND candidate.runtime_lane = $2 AND candidate.run_state->>'version' = '1'
+           AND candidate.run_state->'request' IS NOT NULL
+           AND (candidate.work_source_id IS NULL OR NOT EXISTS (
+             SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id AND busy.user_id=candidate.user_id
+               AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
+               AND busy.state IN ('running','waiting')))
+         ORDER BY candidate.created_at, candidate.id FOR UPDATE OF candidate SKIP LOCKED LIMIT 1
        )
        UPDATE ai_jobs j SET state = 'running', claimed_by = $1,
          lease_until = now() + interval '60 seconds', heartbeat_at = now()
