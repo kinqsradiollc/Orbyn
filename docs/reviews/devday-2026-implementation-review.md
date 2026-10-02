@@ -1292,3 +1292,56 @@ budget reservations. Public rule editor remains disabled. Preserve character
 work, Orbyn palette and mobile parity; cleanup follows complete integration and
 qualification. Voice/computer-use product features and speculative Decisions
 remain outside scope.
+
+### Current assistant authority candidate gate — 2 October 2026
+
+Source **118f421** was extracted cleanly onto main **456e01a** as **d2484b5**.
+Built-in principal construction now respects stored access, Personal/team scope
+and outside-content restrictions. Every capability and generic read context
+reloads its active owned grant; disabled/paused/expired grants stop before the
+callback. Current and caller rights intersect, including team membership/role/
+agent policy, toolsets, trust and approval exceptions. Reads consult the primary;
+write checks hold the grant against changes. Typed rule revision fencing remains.
+
+Four valid baseline regressions failed before correction. Source extended suite
+passed **61/61**, backend types and scoped formatting/diff passed. These source
+results do not qualify the combined main candidate. Freeze current candidate for
+fresh full local tests, all workspace types/build/full format and current-head CI
+before promotion. No public rule editor or other unmerged feature is enabled.
+
+Receiving handoff identity/rules/connection/budget authorization, original
+provider-read snapshots and complete replay/outcome source-authorization proof
+remain open. Typed per-action read/external/notification policy and owner/editor
+UI are unfinished. Full real model/provider/embedding/plugin, Docs/Mermaid and
+whole-app web/desktop/mobile acceptance remains required. Saved web preview
+denial still blocks required visual QA; permission request is pending. Preserve
+character work and mobile parity. No deployment, cleanup or goal completion.
+
+### Qualified current assistant authority checkpoint — 2 October 2026
+
+PR #145 merged as main **3450e87**, from frozen candidate **04d1ff7** on
+base **456e01a**. Each capability reloads the current owned active assistant
+grant and intersects it with server-selected caller restrictions. Current
+Personal/team access, team role/policy, toolsets, trust, approval exceptions and
+outside-content restrictions cannot expand earlier authority. Reads use primary;
+writes serialize grant changes. Typed rule revision fences remain in place.
+
+Exact candidate full local suite passed **2,157/2,157**, zero failures, skips or
+cancellations,556,800ms, on fresh marked **orbyn_authority_04d1ff7_test**. Workspace
+types, production builds and full formatting passed. All CI **37000288172** jobs
+passed; backend passed2,156 with one Tesseract skip and zero failures. CI checked
+merge **a94a7c4**. Candidate, CI merge and resulting main trees are identical
+**94774365fcabd2b7d331d35a3d110880dce5a641**. Main fast-forward preserved user
+mobile/app.json and unrelated files. No deployment occurred.
+
+Source **c237cfb** additionally binds cached assistant results to effective
+authority and rechecks producing-job/container/current sources. Its72 focused
+checks and backend types/format passed, but it remains unmerged pending complete
+cached-target authorization, grant-scoped dependency closure and source revision/
+concurrency proof. Private receiving handoffs/budgets, typed read/effect/notice
+policy, agent ownership/editor, full real account models/providers/embeddings,
+plugin host acceptance, complete Docs/Mermaid and whole-app web/desktop/mobile
+UI gates remain required. Preserve Orbyn palette and characters. Saved web
+preview denial remains respected; cleanup follows complete integration and
+qualification. Voice/computer-use product features and speculative Decisions
+remain outside scope; the full ADR goal remains active.
