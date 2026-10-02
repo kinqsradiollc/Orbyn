@@ -590,3 +590,24 @@ retries a conflict against a newer revision. Existing unversioned callers remain
 compatible. Candidate API/client checks pass; editor save-success and offline
 failure integration, revision capture during concurrent typing, and every share
 path remain required before current-source export acceptance can close.
+
+### Home density follow-up — 3 October 2026
+
+Rechecked [Muse's design account](https://introducing.muse.ai/) and
+[Dots' profile and task controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot).
+Muse explains task-shaped outputs and updates worth interrupting for; Dots exposes
+work through activity, schedules and profile controls. Apply those presentation
+patterns to Orbyn's verified responsibilities, retaining its palette and characters.
+
+Public Home gives example requests their own readable quotation and keeps results
+and stopping conditions alongside them. Signed-in web/desktop and native Home
+show two compact responsibilities first, with detailed requests, review destinations
+and pause conditions behind an accessible “How agents work” toggle. Agent activity
+remains the primary action; character browsing remains a separate action.
+No invented activity or outputs appear. Reflection, shared handoffs and full agent
+runtime acceptance remain open; this change does not advertise them as delivered.
+
+Thirteen Home content/interaction checks pass, including opening/closing the guide
+on both clients, separate profile access and preserving all character presets.
+These checks do not establish visual acceptance: the user will review web on the
+test server; native screenshots/interaction acceptance still remain required.

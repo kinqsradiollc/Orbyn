@@ -10,7 +10,7 @@ import { client } from "../lib/api";
 import { shared } from "../styles";
 import { Character } from "./Character";
 import { Pressable } from "../motion";
-import { controls } from "../theme";
+import { controls, colors } from "../theme";
 import { AssistantAgents } from "../screens/AssistantAgents";
 import { Button } from "./Button";
 
@@ -22,6 +22,7 @@ export function HomeCompanions({
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
     let updated = false;
@@ -76,12 +77,27 @@ export function HomeCompanions({
       </Pressable>
       <View style={{ gap: 10 }}>
         {HOME_AGENT_GUIDE.map((agent) => (
-          <View key={agent.name} style={{ gap: 4 }}>
+          <View
+            key={agent.name}
+            style={{
+              gap: 6,
+              paddingVertical: 12,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}
+          >
             <Text style={shared.sectionTitle}>{agent.name}</Text>
             <Text style={shared.small}>{agent.timing}</Text>
             <Text style={shared.small}>{agent.summary}</Text>
-            <Text style={shared.small}>{agent.result}</Text>
-            <Text style={shared.small}>{agent.pause}</Text>
+            {guideOpen && (
+              <View style={{ gap: 8, marginTop: 6 }}>
+                <Text style={shared.small}>
+                  Example request: “{agent.request}”
+                </Text>
+                <Text style={shared.small}>{agent.result}</Text>
+                <Text style={shared.small}>{agent.pause}</Text>
+              </View>
+            )}
           </View>
         ))}
         <Text style={shared.small}>{HOME_AGENT_IDLE_NOTE}</Text>
@@ -91,6 +107,16 @@ export function HomeCompanions({
         secondary
         onPress={() => setAgentsOpen(true)}
       />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: guideOpen }}
+        onPress={() => setGuideOpen(!guideOpen)}
+        style={{ minHeight: controls.tap, justifyContent: "center" }}
+      >
+        <Text style={shared.small}>
+          {guideOpen ? "Hide guide" : "How agents work"}
+        </Text>
+      </Pressable>
       {expanded && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           {CHARACTER_PRESETS.map(({ name, appearance }) => (

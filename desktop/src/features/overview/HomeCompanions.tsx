@@ -17,6 +17,7 @@ export function HomeCompanions({
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
     let updated = false;
@@ -67,18 +68,32 @@ export function HomeCompanions({
       <div className="home-companions-work">
         <div className="home-companions-lanes">
           {HOME_AGENT_GUIDE.map((agent) => (
-            <p key={agent.name}>
+            <article key={agent.name}>
               <strong>{agent.name}</strong>
               <small>{agent.timing}</small>
-              {agent.summary}
-              <small>{agent.result}</small>
-              <small>{agent.pause}</small>
-            </p>
+              <p>{agent.summary}</p>
+              {guideOpen && (
+                <div className="home-companions-guide">
+                  <p>Example request: “{agent.request}”</p>
+                  <p>{agent.result}</p>
+                  <p>{agent.pause}</p>
+                </div>
+              )}
+            </article>
           ))}
-          <p>{HOME_AGENT_IDLE_NOTE}</p>
         </div>
+      </div>
+      <p className="home-companions-idle">{HOME_AGENT_IDLE_NOTE}</p>
+      <div className="home-companions-actions">
         <button className="secondary" onClick={() => setAgentsOpen(true)}>
           View agent activity
+        </button>
+        <button
+          className="text-button"
+          aria-expanded={guideOpen}
+          onClick={() => setGuideOpen(!guideOpen)}
+        >
+          {guideOpen ? "Hide guide" : "How agents work"}
         </button>
       </div>
       {expanded && (

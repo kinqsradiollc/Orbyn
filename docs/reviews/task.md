@@ -2228,3 +2228,11 @@ qualify and merge only after its exact CI passes. Preview45f012d CI may be
 superseded by the upcoming reconcile push. Continue editor save-failure and
 version capture integration, then PDF/publication/current-source/export/native
 and full U1 gates. Full goal remains active; no deployment/cleanup.
+
+### Home refinement after Muse/Dots research — 3 October 2026
+
+- Public Home: separate example request quotation from review destination and pause conditions.
+- Signed-in web/desktop/native: compact Background/Overnight summaries, optional “How agents work” guidance, primary activity action and separate character browsing.
+- Research and presentation decisions recorded in ADR; reflection/collaboration remain open acceptance gates.
+- Home checks13/13 pass. Web test-server visual review and native screenshot/interaction acceptance remain outstanding.
+- Docs export save guards are separate uncommitted work; do not stage them with this Home checkpoint. Full ADR remains active; no deployment or cleanup.
