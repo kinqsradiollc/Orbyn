@@ -46,3 +46,21 @@ unchanged. Requalification is required for the corrected head.
 Full exact-head local/all-CI qualification is required before main promotion.
 The complete whole-app UI, reflection, collaboration and ADR acceptance contract
 remain open. No release, deployment or cleanup.
+
+## Catalog correction after qualification — 3 October 2026
+
+Corrected inventory head `64534482` passed 2,298/2,299 locally and failed
+CI37071883926 on the generated MCP catalog route count. The private profile
+endpoint increased excluded routes from 248 to 249; the two generated documents
+were stale. Regenerated using the repository catalog command, preserving tool
+schemas, budgets and tests. Logs retain this failure. CI also skipped the existing
+optional Tesseract check because its executable was unavailable; this is not
+native or OCR delivery evidence. Integrated qualified media main `43812305`
+without conflicts. New exact-head full local and CI qualification are required.
+
+The corrected combined focused run passes 32/32 (catalog, route inventory,
+profile integration, client/store and both Home components), with zero failures,
+skips or cancellations. Log `/tmp/orbyn-home-profiles-catalog-focused-3.log`.
+A preliminary 26-check invocation omitted the inventory filename; it is not the
+combined acceptance result. An overlapping repeat was cancelled and excluded;
+the final 32-check run used a fresh separate marked disposable database.
