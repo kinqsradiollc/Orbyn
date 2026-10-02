@@ -1420,3 +1420,37 @@ Asked user asynchronously to clear saved Browser Use denial at127.0.0.1:5174
 elapsed time as permission or bypass using other endpoints/tools. Native Docs
 last verified514679f typing/save across reload, not all navigation/Android/web
 gates. Goal active, no deployment/cleanup or completion.
+
+## Cached assistant authority/source result checkpoint — 2 October 2026
+
+Previous turn made authoritative progress: corrected stale handoff map and pushed
+f7c4108. This turn re-polled full candidate handle41477 to terminal exit zero:
+2,157/2,157,0fail/skip/cancel,556,800ms. Workspace pipeline11930 had already
+terminated zero. CI37000288172 backend was confirmed live at11:30UTC; other
+jobs successful. Frozen04d1ff7/current test mergea94a7c4 have identical tree
+94774365fcabd2b7d331d35a3d110880dce5a641; parents456e01a/04d1ff7. No merge yet.
+
+Source replay tests19355 terminal failed four actual authority regressions;
+1178 terminal zero44/44 after digest binding. Producing-source baseline61990
+terminal failed three regressions (project excluded, source deleted, unknown/
+deleted job). After job/container/current-source checks45875 terminal zero70/70.
+Final trust/name/order/job/flags cohort3560 terminal zero72/72,12,873ms; backend
+types/format/diff89271 terminal zero. Fresh markedorbyn_replay_authority_test
+had all migrations applied. Logs /tmp/orbyn-replay-authority-{before,after,final,
+types-final}.log and /tmp/orbyn-replay-sources-{before,after}.log.
+
+Cache authority is a content-free effective permission digest, not new rights.
+Legacy assistant cache is held rather than rerun; ordinary connector replay stays
+unchanged. Job-bound replay rechecks owned container, runtime lane and strict
+current recorded dependencies. Remaining: cached target visibility and effective
+grant-scoped dependency closure, original provider-read source version binding,
+concurrent source fencing and all target-family replay tests. Do not promote this
+source as complete replay security. No public rule editor/dispatch enabled.
+
+Network observation for gh run view and PR145 body update currently uses handles
+27877 and17892; observation timeouts are not terminal. Resume the same handles.
+PR145 current combined full proof is terminal; CI still requires terminal proof
+and fresh base/head/tree checks before promotion. Saved web preview denial still
+pending user clearance, no bypass. Native partial Docs proof does not satisfy all
+UI gates. Full ADR model/provider/plugin/Docs/Mermaid/whole-app/mobile/agent
+scope remains active; no cleanup, deployment or completion.

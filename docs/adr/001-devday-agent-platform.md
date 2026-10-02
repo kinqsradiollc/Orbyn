@@ -275,3 +275,21 @@ or authority to dispatch receiving jobs. Per-agent ownership/rules, current
 receiving permissions/connection, durable budget reservations and actual separate
 worker handoff/recovery/UI proof remain required. Full model/provider/plugin,
 Docs/Mermaid and whole-app web/desktop/mobile acceptance remains active.
+
+### Cached result authority — source checkpoint, 2 October 2026
+
+Assistant write retries previously returned cached private results before current
+destination policy ran. Source now binds the result to a server-generated digest
+of effective owner/grant, lane/job, scope, team role/policy, toolsets, flags, trust
+and typed rule revision. Changed or legacy-unbound authority holds the result;
+the original mutation is not repeated. Names and set ordering do not invalidate
+equivalent authority. For job-bound results, replay also checks the owned current
+container, immutable runtime lane and strict recorded source visibility.
+
+Four authority regressions and three producing-source regressions failed before
+their respective fixes. Current rules/trust/Review/handoff/replay cohort passed
+72/72, with backend types and scoped formatting. This is unmerged source, not
+complete replay authorization: target visibility and grant-scoped dependency
+closure, original provider-read versions, concurrent source fencing and replay
+across every supported target family still require implementation and proof.
+The full ADR, whole-app and mobile acceptance gates remain open.

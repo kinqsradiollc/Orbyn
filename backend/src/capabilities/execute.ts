@@ -7,6 +7,10 @@ import { cap as capText } from "./format.js";
 import { policy, type Principal } from "./policy.js";
 import { currentAssistantPrincipal } from "./assistant-principal.js";
 import {
+  assistantReplayAuthority,
+  assertAssistantReplaySources,
+} from "./assistant-replay.js";
+import {
   keepAnswer,
   priorAnswer,
   recordChange,
@@ -340,13 +344,25 @@ export async function execute(
       );
     if (grantId && clientRef) {
       replayed = await priorAnswer(db, grantId, name, clientRef);
-      if (replayed)
+      if (replayed) {
+        if (
+          currentPrincipal.via === "assistant" &&
+          replayed.assistant_authority !==
+            assistantReplayAuthority(currentPrincipal)
+        )
+          throw new CapabilityError(
+            "FORBIDDEN",
+            "Assistant authority changed. The cached result was held.",
+            "Read the current work or ask the person to review it. Do not repeat the change with a new client_ref.",
+          );
+        await assertAssistantReplaySources(db, currentPrincipal);
         return {
           structured: replayed.structured,
           markdown: replayed.markdown,
           links: replayed.links as ResultLink[] | undefined,
           targets: replayed.targets,
         } as CapabilityResult<unknown>;
+      }
     }
     const prefs = await loadPrefs(db, p.user.id);
     const ctx: CapabilityContext = {
@@ -381,6 +397,11 @@ export async function execute(
       });
       if (clientRef)
         await keepAnswer(db, grantId, name, clientRef, {
+          ...(currentPrincipal.via === "assistant"
+            ? {
+                assistant_authority: assistantReplayAuthority(currentPrincipal),
+              }
+            : {}),
           structured: answer.structured,
           markdown: answer.markdown,
           links: answer.links,
