@@ -58,8 +58,8 @@ export function isNetworkError(e: unknown) {
  * are written for people (plain validation, "You can't edit this team's
  * items"), so those are shown; a server error, a dropped connection or a bug
  * in the app becomes a short plain sentence, and what really happened is for
- * the console (`logError`). With `debug` on (development, or DEBUG_ERRORS in
- * a build) the technical detail is added in brackets, for whoever is testing.
+ * the console (`logError`). With `debug` explicitly enabled by the caller,
+ * technical detail is added in brackets for troubleshooting.
  */
 export function errorMessage(e: unknown, debug = false): string {
   let shown: string;
