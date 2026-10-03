@@ -348,3 +348,46 @@ no saved Browser Use block bypass. Add Night page cards on both clients, explici
 additional sources/budgets, activity/undo/page reflection evidence, rolling worker
 activation and account/default device delivery. Full local/CI/native/ADR acceptance
 still required before main promotion; full C1-C6/M1/D1/U1 remains active.
+
+### A5 native inspection, schedule layout and Night cards — 4 October (not promoted)
+
+Owned API/web/Metro previews now use this branch; migrations219-223 were applied
+only after proving the preview database's `_test` name and server-side test marker.
+The existing local admin/session is preserved. Persistent helper backups remain
+in `/tmp/*before-maintained-pages`; current preview PIDs are recorded externally.
+
+Actual iPhone17/iOS26.5 Computer Use verified saved page content, menu entry,
+selected-block checkbox, instruction typing, weekly schedule creation, Pause,
+paused Edit/Resume actions and reopening with retained selection/cadence. The
+first run caught a real save guard bug: mobile's focused draft left a reference
+`dirty` flag set after successful persistence. The new shared content/title
+comparison accepts saved drafts and refuses changed/offline content. It has a
+focused regression alongside the shared controller tests.
+
+Both clients now collapse configuration when schedules exist and show schedules
+and recent runs first. Add/Edit opens just the configuration section. Native has
+an explicit accessible Close; its action was verified to restore the underlying
+page without changing saved content. Night page cards on both clients open the
+corresponding page; they are excluded from unrelated chat bulk decisions.
+Screenshots: `docs/reviews/evidence/maintained-pages-ui/`. Before-layout and edited
+form snapshots are labeled separately; compact paused view includes the final
+Close control and singular block wording. Native scroll/drag attempts did not
+move the earlier long form; this is not scroll acceptance. Software keyboard,
+long proposals, Night cards, landscape/dark/large-text/Android and web rendered
+acceptance remain open. HMR left an empty native modal once; returning to Expo
+Home and reconnecting the owned Metro project restored it. No browser bypass.
+
+98/98 combined store/controller/Night/reflection/page service/API/run tests pass,
+zero skips/cancellations, terminal code0:
+`/tmp/orbyn-page-native-layout-regressions.log`. All workspace types pass in
+`/tmp/orbyn-page-native-acceptance-types.log`; final production build passes in
+`/tmp/orbyn-page-native-acceptance-build.log` (existing large-chunk warning).
+Rendered acceptance is limited to the interactions above, not the full app.
+A new planner GET/items429 was observed after native dismissal; production
+refresh/profile429 is explicitly still unresolved, not merely an old overlay.
+
+Next exact proposal/approval native screenshots, Night page cards and manual web
+acceptance. Then explicit additional sources and budgets, activity/undo and page
+reflection evidence, rolling worker safety, real account/device delivery and
+remaining full C1-C6/M1/D1/U1 gates. Main promotion/full goal completion remains
+unproven; the disposable native schedule stays paused and production untouched.

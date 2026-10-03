@@ -217,3 +217,16 @@ export type MaintainedPageRunSummary = z.output<
 export const maintainedPageRunDecision = z
   .object({ waiting_id: z.uuid(), approved: z.boolean() })
   .strict();
+
+/** A focused draft is saved by content equality, not an editor's stale reference flag. */
+export function maintainedPageDraftSaved(
+  title: string,
+  blocks: DocBlock[],
+  savedTitle: string,
+  savedBlocks: DocBlock[],
+): boolean {
+  return (
+    title === savedTitle &&
+    JSON.stringify(blocks) === JSON.stringify(savedBlocks)
+  );
+}

@@ -1,3 +1,4 @@
+import { maintainedPageDraftSaved } from "@orbyn/core";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
@@ -2376,7 +2377,14 @@ export function DocEditor({
             onPress: () => {
               void (async () => {
                 await flush();
-                if (dirty.current)
+                if (
+                  !maintainedPageDraftSaved(
+                    live.current.title,
+                    onScreen(),
+                    baseTitle.current,
+                    base.current,
+                  )
+                )
                   throw new Error(
                     "Save your page edits before scheduling updates.",
                   );

@@ -174,3 +174,34 @@ test("pause preserves the reviewed page revision and decisions send the exact sa
   await store.decide({ ...run, can_review: false }, true);
   assert.equal(store.getSnapshot().error, "Reload this decision card.");
 });
+
+test("focused draft save guard accepts persisted content and refuses changed text or title", async () => {
+  const { maintainedPageDraftSaved } = await import("@orbyn/core");
+  assert.equal(
+    maintainedPageDraftSaved(
+      doc.title,
+      structuredClone(doc.content),
+      doc.title,
+      doc.content,
+    ),
+    true,
+  );
+  assert.equal(
+    maintainedPageDraftSaved(
+      "Unsaved title",
+      doc.content,
+      doc.title,
+      doc.content,
+    ),
+    false,
+  );
+  assert.equal(
+    maintainedPageDraftSaved(
+      doc.title,
+      [{ ...doc.content[0], text: "Offline edit" }],
+      doc.title,
+      doc.content,
+    ),
+    false,
+  );
+});
