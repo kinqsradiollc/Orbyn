@@ -21,29 +21,20 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Pressable } from "../../motion";
-import Svg, {
-  Circle as SvgCircle,
-  G,
-  Path as SvgPath,
-  Rect as SvgRect,
-  Text as SvgText,
-} from "react-native-svg";
+import { MermaidDiagram } from "../../components/MermaidDiagram";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CALLOUT_LABELS,
   colourCode,
   colourable,
-  diagramKind,
   docObjectLinks,
   docReferenceLinks,
   footnoteNumbers,
   fileSize,
-  layoutFlowchart,
   isAudio,
   PAGE_FILE_TYPES,
   recordingClock,
   parseEmbed,
-  parseFlowchart,
   parseTable,
   tableMarkdown,
   type CalloutKind,
@@ -64,7 +55,7 @@ import { openObject, pillKey, shortDue, usePagePills } from "./links";
 /**
  * The richer lines of a page on the phone (D4b): callouts, tables (edited
  * in a sheet of cells), pictures with a full-screen viewer, files, footnotes,
- * coloured code, flowcharts drawn natively, and live embeds of another
+ * coloured code, isolated Mermaid diagrams, and live embeds of another
  * page's section or of the tasks the page links to.
  */
 
@@ -851,133 +842,9 @@ export function CodeView({ text, lang }: { text: string; lang: string }) {
 
 // -------------------------------------------------------------- diagrams ---
 
-/**
- * A `mermaid` block (EDT-11). A flowchart is laid out and drawn here with
- * the palette's colours, and a node that links to a page or task opens it;
- * other kinds show their words, to be seen drawn on the web or desktop.
- */
+/** All supported Mermaid families render through the bundled isolated surface. */
 export function DiagramView({ text }: { text: string }) {
-  const chart = useMemo(() => parseFlowchart(text), [text]);
-  const layout = useMemo(
-    () => (chart ? layoutFlowchart(chart) : null),
-    [chart],
-  );
-  if (!chart || !layout)
-    return (
-      <View style={s.block}>
-        <Text style={s.muted}>
-          This {diagramKind(text) === "unknown" ? "diagram" : diagramKind(text)}{" "}
-          is drawn on the web and desktop. Its words:
-        </Text>
-        <CodeView text={text} lang="" />
-      </View>
-    );
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View
-        style={s.diagram}
-        accessibilityRole="image"
-        accessibilityLabel={`Flowchart: ${chart.nodes.map((n) => n.label).join(", ")}`}
-      >
-        <Svg width={layout.width} height={layout.height}>
-          {layout.edges.map((e, i) => {
-            const [[x1, y1], [x2, y2]] = e.points;
-            const angle = Math.atan2(y2 - y1, x2 - x1);
-            const head = (a: number) =>
-              `${x2 - 8 * Math.cos(angle + a)},${y2 - 8 * Math.sin(angle + a)}`;
-            return (
-              <G key={i}>
-                <SvgPath
-                  d={`M${x1},${y1} L${x2},${y2}`}
-                  stroke={colors.muted}
-                  strokeWidth={e.style === "thick" ? 2.4 : 1.4}
-                  strokeDasharray={e.style === "dotted" ? "4 4" : undefined}
-                  fill="none"
-                />
-                {e.arrow && (
-                  <SvgPath
-                    d={`M${head(0.45)} L${x2},${y2} L${head(-0.45)}`}
-                    stroke={colors.muted}
-                    strokeWidth={1.4}
-                    fill="none"
-                  />
-                )}
-                {!!e.label && (
-                  <SvgText
-                    x={(x1 + x2) / 2}
-                    y={(y1 + y2) / 2 - 4}
-                    fontSize={11}
-                    fontFamily={fonts.regular}
-                    fill={colors.textSoft}
-                    textAnchor="middle"
-                  >
-                    {e.label}
-                  </SvgText>
-                )}
-              </G>
-            );
-          })}
-          {layout.nodes.map((n) => {
-            const cx = n.x + n.w / 2;
-            const cy = n.y + n.h / 2;
-            const open = n.link ? () => openObject(n.link!) : undefined;
-            const shape =
-              n.shape === "circle" ? (
-                <SvgCircle
-                  cx={cx}
-                  cy={cy}
-                  r={n.w / 2}
-                  fill={colors.surface}
-                  stroke={colors.accent}
-                  strokeWidth={1.2}
-                  onPress={open}
-                />
-              ) : n.shape === "diamond" ? (
-                <SvgPath
-                  d={`M${cx},${n.y} L${n.x + n.w},${cy} L${cx},${n.y + n.h} L${n.x},${cy} Z`}
-                  fill={colors.surface}
-                  stroke={colors.accent}
-                  strokeWidth={1.2}
-                  onPress={open}
-                />
-              ) : (
-                <SvgRect
-                  x={n.x}
-                  y={n.y}
-                  width={n.w}
-                  height={n.h}
-                  rx={n.shape === "box" ? 6 : n.h / 2}
-                  fill={colors.surface}
-                  stroke={colors.accent}
-                  strokeWidth={1.2}
-                  onPress={open}
-                />
-              );
-            const lines = n.label.split(/<br\s*\/?>|\n/);
-            return (
-              <G key={n.id}>
-                {shape}
-                {lines.map((line, i) => (
-                  <SvgText
-                    key={i}
-                    x={cx}
-                    y={cy + 4 + (i - (lines.length - 1) / 2) * 16}
-                    fontSize={13}
-                    fontFamily={fonts.regular}
-                    fill={n.link ? colors.accent : colors.text}
-                    textAnchor="middle"
-                    onPress={open}
-                  >
-                    {line}
-                  </SvgText>
-                ))}
-              </G>
-            );
-          })}
-        </Svg>
-      </View>
-    </ScrollView>
-  );
+  return <MermaidDiagram text={text} />;
 }
 
 // ---------------------------------------------------------------- embeds ---

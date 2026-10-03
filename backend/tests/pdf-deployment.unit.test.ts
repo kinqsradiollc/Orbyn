@@ -114,6 +114,7 @@ test("private diagram asset matches the locked first-party builder and engine so
     .update(file("packages/core/src/mermaid.ts"))
     .update(file("scripts/build-mermaid.mjs"))
     .update(file("package.json"))
+    .update(file("mobile/package.json"))
     .update(file("package-lock.json"))
     .digest("hex");
   assert.equal(asset.sourceDigest, digest);

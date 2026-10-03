@@ -111,3 +111,21 @@ types/build/full-format pass. First final typecheck’s wrong event import was
 corrected without changing tests. Evidence: `evidence/doc-source-preview.md`.
 Stacked on PR169; full matching-head local/CI and native/editor acceptance remain
 required. Broader source editing and complete D1/U1 are still open.
+
+## Latest native diagram checkpoint — 3 October 2026
+
+Current dirty branch `codex/native-diagram-parity` is based on PR1722d5605f9.
+Ten native synthetic families rendered; source/fit/zoom/actual size/pan and SVG
+share-sheet opening were observed. Responsive canvas and tall-fit pan repair
+passes16 component/download checks. Prior44 combined checks and types/build/full
+format passed; rerun final source, then commit a draft and run fresh marked DB
+full suite/CI. See evidence/native-diagram-parity.md. Native fixture Metro8091
+current session57684, log/tmp/orbyn-native-diagram-qa-metro-7.log. No product
+account/API calls were made by the fixture. Signed-in editor/Android/parent
+scrolling and full UI acceptance remain open.
+
+Latest other candidates: models149a91e9 full2350/allCI37080854903 success;
+source2d5605f9 full2374/allCI37081138932 success; Home9232cfaa full2344/allCI
+37081215076 success. All remain draft. Main1100ca98 unchanged; user files and
+character work preserved. Full C1–C6/M1/D1/U1 remains active, no deploy/release/
+cleanup. Native Terms human action and web user validation are still open.

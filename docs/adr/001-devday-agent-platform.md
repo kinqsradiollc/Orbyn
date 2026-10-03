@@ -509,3 +509,14 @@ checks plus all workspace types/builds/full formatting. Full matching-head local
 and CI qualification and actual editor/native screenshot/interaction acceptance
 remain required. Source editing, the other D1 Markdown requirements and full U1
 remain open; no goal completion, deployment or cleanup is claimed.
+
+### Native and desktop diagram preview candidate — 3 October 2026
+
+Scoped candidate on PR172 replaces mobile flowchart-only rendering with the
+bundled strict engine and gives desktop bounded rendering plus source/fit/zoom/
+pan/SVG controls. Native canvas adapts to the window and tall fit diagrams expose
+pan. All ten native synthetic fixtures rendered; source, fit/zoom and pan were
+exercised, and SVG export opened the native share sheet. Evidence and retained
+failures: `../reviews/evidence/native-diagram-parity.md`. Full final-head tests,
+CI, signed-in editor/parent-scroll/Android/web acceptance remain open. This does
+not complete D1/U1 or authorize deployment. All C1–C6/M1/D1/U1 scope remains.

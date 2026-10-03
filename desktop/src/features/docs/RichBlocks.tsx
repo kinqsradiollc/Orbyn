@@ -44,6 +44,14 @@ import {
   colourCode,
   colourable,
   diagramKind,
+  mermaidThemeVariables,
+  mermaidDiagramCss,
+  renderBoundedMermaid,
+  prepareMermaidSource,
+  MERMAID_MAX_SOURCE,
+  diagramDisplayScale,
+  diagramLabelTranslation,
+  visibleDiagramTicks,
   docObjectLinks,
   fileSize,
   isAudio,
@@ -984,7 +992,7 @@ let mermaidTheme = "";
 function paletteVars() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string) => css.getPropertyValue(`--color-${name}`).trim();
-  return {
+  return mermaidThemeVariables({
     background: v("surface"),
     primaryColor: v("surface"),
     primaryBorderColor: v("accent"),
@@ -995,8 +1003,10 @@ function paletteVars() {
     textColor: v("text"),
     noteBkgColor: v("highBg"),
     noteTextColor: v("text"),
-    fontFamily: "inherit",
-  };
+    highText: v("highText"),
+    mediumText: v("mediumText"),
+    lowText: v("lowText"),
+  });
 }
 
 /** Mermaid, loaded the first time a page has a diagram. */
@@ -1009,13 +1019,29 @@ async function loadMermaid(): Promise<Mermaid> {
   const theme = JSON.stringify(vars);
   if (theme !== mermaidTheme) {
     mermaidTheme = theme;
-    mermaid.initialize({
+    const config = {
       startOnLoad: false,
       // No scripts or raw HTML from a diagram's text.
-      securityLevel: "strict",
-      theme: "base",
+      securityLevel: "strict" as const,
+      theme: "base" as const,
       themeVariables: vars,
-    });
+      themeCSS: mermaidDiagramCss(vars),
+      journey: {
+        textPlacement: "tspan",
+        sectionFills: [vars.secondaryColor],
+        sectionColours: [vars.textColor],
+      },
+      gantt: { fontSize: 16, sectionFontSize: 14, barHeight: 28, barGap: 8 },
+      suppressErrorRendering: true,
+      fontFamily: "system-ui, sans-serif",
+      maxTextSize: MERMAID_MAX_SOURCE,
+      maxEdges: 512,
+      htmlLabels: false,
+      flowchart: { htmlLabels: false },
+      secure: [] as string[],
+    };
+    config.secure = Object.keys(config);
+    mermaid.initialize(config);
   }
   return mermaid;
 }
@@ -1029,15 +1055,75 @@ export function Diagram({ text }: { text: string }) {
   const id = useId().replace(/[^\w-]/g, "");
   const box = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
-  const chart = useMemo(() => parseFlowchart(text), [text]);
+  const [zoom, setZoom] = useState(1);
+  const [actualSize, setActualSize] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [viewport, setViewport] = useState(0);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setViewport(element.clientWidth));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const chart = useMemo(() => {
+    try {
+      return parseFlowchart(prepareMermaidSource(text));
+    } catch {
+      return null;
+    }
+  }, [text]);
   useEffect(() => {
     let live = true;
     setFailed(false);
+    setReady(false);
     loadMermaid()
-      .then((mermaid) => mermaid.render(`diagram-${id}`, text))
-      .then(({ svg }) => {
+      .then((mermaid) => renderBoundedMermaid(mermaid, `diagram-${id}`, text))
+      .then((svg) => {
         if (!live || !box.current) return;
         box.current.innerHTML = svg;
+        const drawing = box.current.querySelector("svg");
+        if (drawing) {
+          const bounds = drawing.viewBox.baseVal;
+          const scale = diagramDisplayScale(
+            bounds.width,
+            viewport || box.current.clientWidth,
+            zoom,
+            actualSize,
+          );
+          drawing.style.maxWidth = "none";
+          drawing.style.width = `${bounds.width * scale}px`;
+          drawing.style.height = `${bounds.height * scale}px`;
+        }
+        setReady(true);
+        for (const node of box.current.querySelectorAll("svg .mindmap-node")) {
+          const circle = [...node.children].find(
+            (child) => child.tagName.toLowerCase() === "circle",
+          );
+          const label = node.querySelector<SVGGElement>("g.label");
+          if (!circle || !label) continue;
+          const transform = diagramLabelTranslation(label.getBBox(), {
+            x: Number(circle.getAttribute("cx") || 0),
+            y: Number(circle.getAttribute("cy") || 0),
+          });
+          if (transform) label.setAttribute("transform", transform);
+        }
+        for (const axis of box.current.querySelectorAll("svg g")) {
+          const labels = [...axis.children]
+            .filter((node) => node.classList.contains("tick"))
+            .map((tick) => tick.querySelector("text"))
+            .filter((label): label is SVGTextElement => !!label);
+          if (labels.length < 2) continue;
+          const visible = new Set(
+            visibleDiagramTicks(
+              labels.map((label) => label.getBoundingClientRect()),
+            ),
+          );
+          labels.forEach((label, index) => {
+            if (!visible.has(index)) label.setAttribute("visibility", "hidden");
+          });
+        }
         for (const node of chart?.nodes ?? []) {
           if (!node.link) continue;
           const link = node.link;
@@ -1061,7 +1147,7 @@ export function Diagram({ text }: { text: string }) {
     return () => {
       live = false;
     };
-  }, [text, id, chart]);
+  }, [text, id, chart, viewport, zoom, actualSize]);
   if (failed)
     return (
       <div className="doc-diagram is-failed">
@@ -1073,12 +1159,113 @@ export function Diagram({ text }: { text: string }) {
       </div>
     );
   return (
-    <div
-      className="doc-diagram"
-      ref={box}
-      role="img"
-      aria-label={`Diagram: ${diagramKind(text)}`}
-    />
+    <div className="doc-diagram" onClick={(event) => event.stopPropagation()}>
+      <div className="doc-diagram-toolbar">
+        <span>{diagramKind(text)} diagram</span>
+        <button
+          type="button"
+          className="text-button"
+          aria-expanded={sourceOpen}
+          onClick={() => setSourceOpen(!sourceOpen)}
+        >
+          Source
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          aria-label="Zoom out diagram"
+          onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          aria-label="Zoom in diagram"
+          onClick={() => setZoom((value) => Math.min(3, value + 0.25))}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            setActualSize(false);
+            setZoom(1);
+          }}
+        >
+          Fit
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          aria-pressed={actualSize}
+          onClick={() => {
+            setActualSize(true);
+            setZoom(1);
+          }}
+        >
+          Actual size
+        </button>
+        <button
+          type="button"
+          className="text-button"
+          disabled={!ready}
+          onClick={() => {
+            const drawing = box.current?.querySelector("svg");
+            if (!drawing) return;
+            const url = URL.createObjectURL(
+              new Blob([new XMLSerializer().serializeToString(drawing)], {
+                type: "image/svg+xml",
+              }),
+            );
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "diagram.svg";
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }}
+        >
+          Export SVG
+        </button>
+      </div>
+      {(actualSize || zoom > 1) && (
+        <div className="doc-diagram-toolbar">
+          <span>Move diagram</span>
+          {[
+            { label: "left", mark: "←", left: -160, top: 0 },
+            { label: "right", mark: "→", left: 160, top: 0 },
+            { label: "up", mark: "↑", left: 0, top: -160 },
+            { label: "down", mark: "↓", left: 0, top: 160 },
+          ].map((direction) => (
+            <button
+              key={direction.label}
+              type="button"
+              className="text-button"
+              aria-label={`Pan diagram ${direction.label}`}
+              disabled={!ready}
+              onClick={() =>
+                box.current?.scrollBy({
+                  left: direction.left,
+                  top: direction.top,
+                  behavior: "instant",
+                })
+              }
+            >
+              {direction.mark}
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        className="doc-diagram-canvas"
+        ref={box}
+        role="img"
+        aria-label={`Diagram: ${diagramKind(text)}`}
+      />
+      {!ready && <p className="doc-diagram-note">Drawing diagram…</p>}
+      {sourceOpen && <CodeView text={text} lang="" />}
+    </div>
   );
 }
 
