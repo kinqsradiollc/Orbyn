@@ -11,7 +11,8 @@
 }
 /* `.shell >` outranks the pages' `.shell > .content { flex: 1 0 auto }`,
    which would let the chat grow with the conversation instead of scrolling. */
-.shell > .content:has(.ai-chat) {
+.shell > .content:has(.ai-chat),
+.app.workspace .shell > .content:has(.ai-chat) {
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
@@ -1219,13 +1220,7 @@
   padding: 0;
 }
 
-/* Companion-led conversation: a quiet identity above soft, readable messages. */
-.ai-chat-head {
-  position: relative;
-  min-height: 148px;
-  padding-top: 16px;
-  align-items: flex-start;
-}
+/* Conversation surfaces retain the shared message styling. */
 .ai-character-trigger {
   position: absolute;
   left: 50%;
@@ -1254,16 +1249,19 @@
   color: var(--color-muted);
 }
 .ai-chat.is-empty .ai-thread {
-  flex: 1;
-  justify-content: flex-start;
+  flex: 0 1 38%;
+  justify-content: flex-end;
   overflow-y: auto;
-  padding-top: 24px;
+  padding-top: 16px;
+  padding-bottom: 24px;
 }
 .ai-intro {
   display: grid;
   gap: 10px;
-  max-width: 480px;
-  align-self: flex-start;
+  width: 100%;
+  max-width: var(--ai-column);
+  box-sizing: border-box;
+  align-self: center;
   padding: 18px 22px;
   background: var(--color-surfaceMuted);
   border-radius: var(--radius-lg);
@@ -1321,10 +1319,7 @@
     padding: 10px;
   }
   .ai-chat-head .ai-narrow-only {
-    margin-right: auto;
-  }
-  .ai-chat-head .ai-narrow-only + .ai-narrow-only {
-    margin-right: 0;
+    margin: 0;
   }
   .ai-reply {
     padding: 14px 16px;
@@ -1372,4 +1367,29 @@
     padding: 10px;
     min-width: 36px;
   }
+}
+
+/* Interactive chat has a quiet workspace header; characters belong to agent profiles. */
+.ai-chat-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-textSoft);
+  margin-right: auto;
+}
+.ai-chat-head {
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 52px;
+  padding: 6px var(--ai-inset);
+}
+.ai-intro {
+  padding: 16px 0;
+  background: none;
+  border: 0;
+  text-align: center;
+}
+.ai-intro h2 {
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 500;
+  color: var(--color-text);
 }

@@ -47,7 +47,9 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
         AI connections &amp; models
       </h2>
       <p className="muted">
-        Connect a personal ChatGPT account and choose its default model.
+        {state.status === "unsupported"
+          ? "Manage accounts connected through Orbyn desktop."
+          : "Connect your ChatGPT account and choose a default model."}
       </p>
       {state.status === "unsupported" ? (
         <ChatgptRemoteModels userId={userId} />

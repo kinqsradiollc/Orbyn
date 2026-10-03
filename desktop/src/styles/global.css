@@ -3336,17 +3336,89 @@ input[type="number"]::-webkit-outer-spin-button {
   margin: 0;
 }
 
-/* A field that sits borderless inside its own box (a search bar, a
-   composer) never draws a ring of its own — it would show as a second box
-   inside the first. The box shows focus instead. */
-:is(.db-search, .chat-input, .command-input, .ai-composer, .update-composer)
-  :is(input, textarea):is(:focus, :focus-visible) {
-  outline: none;
+/* Compound fields own their border and focus ring. Inner controls must not
+ * inherit another frame from modal or global focus-visible rules. */
+:is(
+    .db-search,
+    .search,
+    .settings-search-field,
+    .chat-input,
+    .command-input,
+    .ai-composer,
+    .update-composer
+  )
+  :is(input:not([type="checkbox"]):not([type="radio"]), textarea),
+:is(.modal, .settings-dialog, .auth-card)
+  :is(
+    .db-search,
+    .search,
+    .settings-search-field,
+    .chat-input,
+    .command-input,
+    .ai-composer,
+    .update-composer
+  )
+  :is(input:not([type="checkbox"]):not([type="radio"]), textarea) {
+  border: 0;
+  background: transparent;
   box-shadow: none;
 }
-:is(.db-search, .chat-input):focus-within {
-  border-color: var(--color-focus);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 35%, transparent);
+:is(
+    .db-search,
+    .search,
+    .settings-search-field,
+    .chat-input,
+    .command-input,
+    .ai-composer,
+    .update-composer
+  )
+  :is(input:not([type="checkbox"]):not([type="radio"]), textarea):is(
+    :focus,
+    :focus-visible
+  ),
+:is(.modal, .settings-dialog, .auth-card)
+  :is(
+    .db-search,
+    .search,
+    .settings-search-field,
+    .chat-input,
+    .command-input,
+    .ai-composer,
+    .update-composer
+  )
+  :is(input:not([type="checkbox"]):not([type="radio"]), textarea):is(
+    :focus,
+    :focus-visible
+  ) {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
+:is(
+  .db-search,
+  .search,
+  .settings-search-field,
+  .chat-input,
+  .command-input,
+  .ai-composer,
+  .update-composer
+):focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.search {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surfaceMuted);
+  padding: 0 10px;
+}
+.search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding-inline: 0;
+  box-shadow: none;
 }
 
 /* In a stacked form a picker sits under its label and fills the field, like

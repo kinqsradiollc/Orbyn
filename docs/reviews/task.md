@@ -900,3 +900,40 @@ retaining native behavior/feature parity. A5 extra source selection, per-binding
 budgets, activity/undo/page reflection, rolling worker activation and actual
 account/device inference remain open, along with full C1-C6/M1/D1/U1 gates.
 No workspace/A5 production promotion or full goal completion is asserted.
+
+## 2026-10-04 — chat layout and contextual suggestion feedback
+
+Scope clarification: character configuration belongs exclusively to Background
+and Overnight. Those agents need separate identities and profiles as well as
+separate runtimes. Interactive chat uses Orbyn and does not force character setup.
+Independent per-agent saved identity/configuration remains open; the legacy
+Background/Overnight identity is still shared.
+
+The collapsed-sidebar screenshot revealed competing chat/workspace CSS and an
+obsolete 148px character header. The draft now gives chat viewport rules priority,
+uses a compact aligned header and centers the empty heading above its bounded
+composer. Search fields use one wrapper focus indicator. Connection controls now
+expose desktop connection instructions on web/mobile; direct web/mobile ChatGPT
+sign-in and verified device inference remain incomplete.
+
+Shared chat actions now request fresh model-generated task suggestions, priorities,
+plans and reflections from authorized context. Prompts request evidence/citations,
+separate inferred patterns from observed facts, avoid invented commitments and
+require review before task creation. The invented personal example task was removed.
+These action labels are requests, not already generated recommendations. No extra
+background inference or refresh-time AI calls were added.
+
+Home quote selection still draws an excerpt from the person's selected page.
+Automatic AI Home task suggestions and context-based quote/excerpt selection are
+NOT complete. Next implement a bounded, consented generation pipeline with source
+references, freshness/invalidation, account isolation, current visibility checks,
+no duplicate tasks and explicit AI-written reflection labels. Reuse Background
+outputs where appropriate; preserve separate Overnight execution and review.
+
+Validation: all workspace typechecks passed and focused regression checks 9/9
+passed (no skips). iOS was inspected and captured at
+`docs/reviews/evidence/interactive-agent-separation/ios-context-actions.png`:
+new actions/composer are visible without overlap in the current portrait viewport.
+Production web build passed. Source tests are not rendered web acceptance or live model-output validation.
+Browser permission remains blocked; user-authorized manual web screenshot review
+applies. No main promotion, production deployment or full ADR completion asserted.

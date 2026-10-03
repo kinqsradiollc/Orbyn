@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 import { SmallAction } from "../../components/SmallAction";
@@ -25,10 +25,19 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     <SettingsSection title="AI connections & models">
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
-        Connect a new ChatGPT account from the Orbyn desktop app. Choose a
-        connected device below to manage its saved default here. Selecting a
-        model does not start an assistant run.
+        Add an account on your computer, then choose its default model here.
       </Text>
+      <SmallAction
+        label="Connect on desktop"
+        disabled={!userId}
+        onPress={() =>
+          Alert.alert(
+            "Connect ChatGPT",
+            "On your computer, open Orbyn desktop and sign in to the same Orbyn account. Go to Settings → Account → AI connections & models, then choose Connect ChatGPT. Direct sign-in on mobile is not available yet.",
+            [{ text: "Done" }],
+          )
+        }
+      />
       <SmallAction
         label="Refresh devices & models"
         disabled={busy || !userId}
@@ -48,9 +57,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         </Text>
       )}
       {state.status === "ready" && !state.devices.length && (
-        <Text style={shared.small}>
-          No ChatGPT devices are connected to this Orbyn account.
-        </Text>
+        <Text style={shared.small}>No ChatGPT accounts connected yet.</Text>
       )}
       {!!state.devices.length && (
         <>

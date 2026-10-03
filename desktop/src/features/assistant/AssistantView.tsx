@@ -1,5 +1,3 @@
-import { Character } from "../../components/Character";
-import { CharacterEditor } from "../../components/CharacterEditor";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowUp,
@@ -24,9 +22,6 @@ import {
 } from "lucide-react";
 import {
   assistantSuggestions as SUGGESTIONS,
-  characterAppearance,
-  CHARACTER_PERSONAS,
-  CHARACTER_STATE_LABELS,
   type AssistantSource,
   type Item,
   type Plan,
@@ -113,11 +108,7 @@ export function AssistantView({
     turnChanges,
     undoTurnChanges,
     identity,
-    setIdentity,
     agentName,
-    characterState,
-    customizingCharacter,
-    setCustomizingCharacter,
   } = assistant;
   const { ask: confirm } = useConfirm();
   const toast = useToast();
@@ -163,11 +154,6 @@ export function AssistantView({
     setChatMenu(null);
     setRename(null);
   };
-  const [identityName, setIdentityName] = useState("Orbyn");
-  const [identityPersona, setIdentityPersona] = useState("");
-  const [appearance, setAppearance] = useState(() => characterAppearance({}));
-  const [identitySaving, setIdentitySaving] = useState(false);
-  const [identityError, setIdentityError] = useState("");
   const [personAnswer, setPersonAnswer] = useState("");
   const [upcomingOpen, setUpcomingOpen] = useState(openUpcoming > 0);
   useEffect(() => {
@@ -175,57 +161,11 @@ export function AssistantView({
   }, [openUpcoming]);
   const [approveMenu, setApproveMenu] = useState<DOMRect | null>(null);
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
-  const identityFormWasOpen = useRef(false);
-  useEffect(() => {
-    const open = !!identity && (!identity.named_at || customizingCharacter);
-    const alreadyOpen = identityFormWasOpen.current;
-    identityFormWasOpen.current = open;
-    // A foreground refresh must not replace edits in an open form.
-    if (!identity || (open && alreadyOpen)) return;
-    setIdentityName(identity.name);
-    setIdentityPersona(identity.persona);
-    setAppearance(characterAppearance(identity.character));
-    setIdentityError("");
-  }, [identity, customizingCharacter]);
   /** Runs a chat menu action, closing the menu or showing why it failed. */
   const chatAction = (run: () => Promise<unknown>, failed: string) =>
     void run().then(closeChatMenu, (e: unknown) =>
       toast({ tone: "warn", text: `${failed} ${errorText(e)}` }),
     );
-  const saveIdentity = async (e: FormEvent) => {
-    e.preventDefault();
-    if (identitySaving) return;
-    setIdentitySaving(true);
-    setIdentityError("");
-    try {
-      setIdentity(
-        await client.updateAgentSettings({
-          name: identityName.trim() || "Orbyn",
-          persona: identityPersona,
-          character: appearance,
-        }),
-      );
-      setCustomizingCharacter(false);
-    } catch {
-      setIdentityError("Your assistant details could not be saved. Try again.");
-    } finally {
-      setIdentitySaving(false);
-    }
-  };
-  const skipIdentity = async () => {
-    if (identitySaving) return;
-    setIdentitySaving(true);
-    setIdentityError("");
-    try {
-      setIdentity(
-        await client.updateAgentSettings({ name: "Orbyn", persona: "" }),
-      );
-    } catch {
-      setIdentityError("Your assistant details could not be saved. Try again.");
-    } finally {
-      setIdentitySaving(false);
-    }
-  };
   const waiting = runProgress?.state === "waiting" ? runProgress.waiting : null;
   const locked = busy || thinking || !!waiting;
   useEffect(() => setPersonAnswer(""), [runProgress?.waiting?.question]);
@@ -399,134 +339,8 @@ export function AssistantView({
         </div>
       </aside>
       <div className="ai-main">
-        {identity && (!identity.named_at || customizingCharacter) && (
-          <div
-            className="modal-backdrop"
-            onMouseDown={(e) => {
-              if (
-                customizingCharacter &&
-                !identitySaving &&
-                e.target === e.currentTarget
-              )
-                setCustomizingCharacter(false);
-            }}
-          >
-            <section
-              className="modal ai-character-modal scale-in"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="ai-name-title"
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Escape" &&
-                  customizingCharacter &&
-                  !identitySaving
-                )
-                  setCustomizingCharacter(false);
-              }}
-            >
-              <div className="section-heading">
-                <h2 id="ai-name-title">
-                  {customizingCharacter
-                    ? "Make your assistant your own"
-                    : "Meet your Orbyn companion"}
-                </h2>
-              </div>
-              <form onSubmit={saveIdentity}>
-                <p className="muted modal-lead">
-                  Choose a name, appearance, and communication style. You can
-                  change these whenever you like.
-                </p>
-                <label>
-                  Name
-                  <input
-                    autoFocus
-                    required
-                    maxLength={40}
-                    value={identityName}
-                    onChange={(e) => setIdentityName(e.target.value)}
-                  />
-                </label>
-                <label>
-                  Persona
-                  <textarea
-                    maxLength={1000}
-                    rows={3}
-                    placeholder="Warm, direct, and concise"
-                    value={identityPersona}
-                    onChange={(e) => setIdentityPersona(e.target.value)}
-                  />
-                  <span className="field-hint">Optional.</span>
-                </label>
-                <div
-                  className="character-personas"
-                  aria-label="Communication presets"
-                >
-                  {CHARACTER_PERSONAS.map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      className="secondary"
-                      disabled={identitySaving}
-                      onClick={() => setIdentityPersona(preset.persona)}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-                <CharacterEditor
-                  value={appearance}
-                  onChange={setAppearance}
-                  name={identityName}
-                  disabled={identitySaving}
-                />
-                {identityError && (
-                  <p className="error" role="alert">
-                    {identityError}
-                  </p>
-                )}
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={identitySaving}
-                    onClick={() =>
-                      customizingCharacter
-                        ? setCustomizingCharacter(false)
-                        : void skipIdentity()
-                    }
-                  >
-                    {customizingCharacter ? "Cancel" : "Keep “Orbyn”"}
-                  </button>
-                  <button
-                    type="submit"
-                    className="primary"
-                    disabled={identitySaving}
-                  >
-                    Save
-                  </button>
-                </div>
-              </form>
-            </section>
-          </div>
-        )}
         <div className="ai-chat-head">
-          <button
-            type="button"
-            className="secondary ai-character-trigger"
-            aria-label={`Customize ${agentName}`}
-            disabled={!identity}
-            onClick={() => setCustomizingCharacter(true)}
-          >
-            <Character
-              appearance={identity?.character}
-              state={characterState}
-              size={72}
-              name={agentName}
-            />
-            <span>{agentName}</span>
-            <small>{CHARACTER_STATE_LABELS[characterState]}</small>
-          </button>
+          <span className="ai-chat-label">Orbyn</span>
           {/* History and New chat live in the Chats panel; on a phone the
               panel is hidden, so these two open it or start afresh. */}
           <button
@@ -580,19 +394,7 @@ export function AssistantView({
           {empty && !restoringChat && (
             <>
               <div className="ai-intro">
-                <h2>Hi, I’m {agentName}.</h2>
-                <p>
-                  What’s on your mind? We can make a plan, untangle a task, or
-                  find a little room in your day.
-                </p>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={!identity}
-                  onClick={() => setCustomizingCharacter(true)}
-                >
-                  Make me yours
-                </button>
+                <h2>What would you like to work on?</h2>
               </div>
             </>
           )}
@@ -668,7 +470,7 @@ export function AssistantView({
               <section className="ai-run-card" aria-live="polite">
                 {waiting.kind === "person" ? (
                   <>
-                    <strong>{agentName} has a question</strong>
+                    <strong>Orbyn has a question</strong>
                     <p>{waiting.question}</p>
                     {!!waiting.choices.length && (
                       <div className="ai-run-choices">
@@ -841,8 +643,7 @@ export function AssistantView({
             <div className="ai-run-status" role="status">
               <Loader2 size={15} className="spin" aria-hidden="true" />
               <span>
-                {progressText(runProgress?.label) ||
-                  `${agentName} is thinking…`}
+                {progressText(runProgress?.label) || "Orbyn is thinking…"}
               </span>
               {runProgress?.state === "running" && (
                 <button
@@ -889,7 +690,7 @@ export function AssistantView({
               rows={1}
               aria-label="Message your assistant"
               aria-describedby="ai-composer-hint"
-              placeholder={`Ask ${agentName}…`}
+              placeholder="Ask Orbyn…"
               value={message}
               maxLength={4000}
               onChange={(e) => setMessage(e.target.value)}
@@ -928,7 +729,7 @@ export function AssistantView({
                     type="button"
                     disabled={locked}
                     title={s.hint}
-                    onClick={() => suggest(s.title)}
+                    onClick={() => suggest("prompt" in s ? s.prompt : s.title)}
                   >
                     <Icon size={16} aria-hidden="true" />
                     <span>{s.title}</span>
@@ -1095,7 +896,7 @@ export function AssistantView({
                     key={s.title}
                     type="button"
                     disabled={locked}
-                    onClick={() => suggest(s.title)}
+                    onClick={() => suggest("prompt" in s ? s.prompt : s.title)}
                   >
                     <Icon size={15} aria-hidden="true" />
                     {s.title}

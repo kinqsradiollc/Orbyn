@@ -7,6 +7,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
   const { state, refresh, select, save } = useChatgptRemote(userId);
   const id = useId();
   const [query, setQuery] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const busy = state.status === "loading" || state.saving;
   const catalog = state.catalog;
   const models = catalog?.models ?? [];
@@ -23,31 +24,58 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
     <div className="ai-model-settings">
       <div className="settings-head">
         <div>
-          <h3>ChatGPT devices &amp; models</h3>
+          <h3>ChatGPT</h3>
           <p className="muted">
-            Choose a connected device to inspect its account’s model catalog.
+            Add an account on your computer, then choose its default model here.
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy || !userId}
-          onClick={refresh}
-        >
-          Refresh devices &amp; models
-        </button>
+        <div className="ai-connection-actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setConnecting(!connecting)}
+            aria-expanded={connecting}
+            aria-controls={`${id}-connect`}
+          >
+            Connect on desktop
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || !userId}
+            onClick={refresh}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
-      <p className="muted">
-        New ChatGPT connections currently require the Orbyn desktop app. You can
-        manage a connected device’s saved default here. Model selection does not
-        start an assistant run.
-      </p>
+      {connecting && (
+        <div
+          id={`${id}-connect`}
+          className="settings-subform"
+          role="region"
+          aria-label="Connect a ChatGPT account"
+        >
+          <ol>
+            <li>Open Orbyn desktop and sign in to this Orbyn account.</li>
+            <li>Go to Settings → Account → AI connections &amp; models.</li>
+            <li>Choose Connect ChatGPT and finish the sign-in there.</li>
+          </ol>
+          <a className="secondary" href="orbyn://assistant">
+            Open Orbyn desktop
+          </a>
+          <p className="muted">
+            The desktop app must be installed. Direct sign-in on web is not
+            available yet.
+          </p>
+        </div>
+      )}
       {state.status === "loading" && (
         <p role="status">Loading ChatGPT devices and models…</p>
       )}
       {state.error && <p role="alert">{state.error}</p>}
       {state.status === "ready" && !state.devices.length && (
-        <p>No ChatGPT devices are connected to this Orbyn account.</p>
+        <p>No ChatGPT accounts connected yet.</p>
       )}
       {!!state.devices.length && (
         <label className="settings-field" htmlFor={`${id}-device`}>
