@@ -24,6 +24,7 @@ import {
   applyMaintainedPageRun,
   waitMaintainedPageRun,
   failMaintainedPageRun,
+  releaseMaintainedPageRun,
   type PageRun,
   PageRunBudgetExceeded,
 } from "../modules/docs/maintenance-runs.js";
@@ -33,6 +34,7 @@ export async function processMaintainedPageRun(
   log: FastifyBaseLogger,
   lane: PageRun["lane"],
   options: {
+    claimedRun?: PageRun;
     now?: () => Date;
     signal?: AbortSignal;
     runId?: string;
@@ -44,11 +46,14 @@ export async function processMaintainedPageRun(
     heartbeatMs?: number;
   } = {},
 ) {
-  if (options.signal?.aborted) return { state: "stopped" as const };
+  if (options.signal?.aborted && !options.claimedRun)
+    return { state: "stopped" as const };
   const now = options.now ?? (() => new Date());
-  const run = await transaction((db) =>
-    claimMaintainedPageRun(db, lane, now(), options.runId),
-  );
+  const run =
+    options.claimedRun ??
+    (await transaction((db) =>
+      claimMaintainedPageRun(db, lane, now(), options.runId),
+    ));
   if (!run?.lease_token) return { state: "idle" as const };
   const token = run.lease_token;
   const controller = new AbortController();
@@ -75,6 +80,7 @@ export async function processMaintainedPageRun(
     | "authority_changed"
     | "source_changed" = "authority_changed";
   try {
+    signal.throwIfAborted();
     const context = await transaction((db) =>
       guardMaintainedPageRun(db, run.id, token, now()),
     );
@@ -175,6 +181,7 @@ export async function processMaintainedPageRun(
       );
     }
     failure = "source_changed";
+    signal.throwIfAborted();
     try {
       const applied = await transaction((db) =>
         applyMaintainedPageRun(db, run.id, token, now()),
@@ -189,6 +196,13 @@ export async function processMaintainedPageRun(
       return { state: "waiting" as const, runId: run.id };
     }
   } catch (error) {
+    if (
+      options.signal?.aborted &&
+      (await transaction((db) =>
+        releaseMaintainedPageRun(db, run.id, token, now()),
+      ).catch(() => false))
+    )
+      return { state: "stopped" as const, runId: run.id };
     if (error instanceof PageRunBudgetExceeded) failure = "budget_exceeded";
     // Never persist/log raw provider errors or generated private text.
     await transaction((db) =>
@@ -201,4 +215,23 @@ export async function processMaintainedPageRun(
     controller.abort();
     await heartbeat;
   }
+}
+
+/** Claim before starting work so the owning runner accounts for its lifecycle. */
+export async function claimMaintainedPageWork(
+  log: FastifyBaseLogger,
+  lane: PageRun["lane"],
+) {
+  const run = await transaction((db) => claimMaintainedPageRun(db, lane));
+  if (!run) return null;
+  const controller = new AbortController();
+  return {
+    run: async () => {
+      await processMaintainedPageRun(log, lane, {
+        claimedRun: run,
+        signal: controller.signal,
+      });
+    },
+    stop: () => controller.abort(),
+  };
 }

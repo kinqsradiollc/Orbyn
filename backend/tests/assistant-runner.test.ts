@@ -423,3 +423,66 @@ test("legacy chat serialization requests cancellation without erasing either run
     ]);
   }
 });
+
+test("scoped work uses its owning runner capacity and receives shutdown once", async () => {
+  const { startAssistantRunner } =
+    await import("../src/modules/ai/agent/runner.js");
+  const log = {
+    warn: () => {},
+    error: () => {},
+  } as unknown as import("fastify").FastifyBaseLogger;
+  assert.throws(
+    () => startAssistantRunner(log, { claimScopedWork: async () => null }),
+    /interactive runtime/,
+  );
+  let claims = 0;
+  let stops = 0;
+  let running = 0;
+  let peak = 0;
+  let bothStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    bothStarted = resolve;
+  });
+  const stop = startAssistantRunner(log, {
+    lane: "background",
+    shutdownMs: 50,
+    claimScopedWork: async () => {
+      if (claims >= 3) return null;
+      claims++;
+      let finish!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return {
+        run: async () => {
+          running++;
+          peak = Math.max(peak, running);
+          if (running === 2) bothStarted();
+          await pending;
+          running--;
+        },
+        stop: () => {
+          stops++;
+          finish();
+        },
+      };
+    },
+  });
+  try {
+    await Promise.race([
+      started,
+      new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error("Scoped work never started")), 3000),
+      ),
+    ]);
+    assert.equal(peak, 2);
+    assert.equal(claims, 2);
+    await stop();
+    await stop();
+    assert.equal(stops, 2);
+    assert.equal(running, 0);
+    assert.equal(claims, 2);
+  } finally {
+    await stop();
+  }
+});

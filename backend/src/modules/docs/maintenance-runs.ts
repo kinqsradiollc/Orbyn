@@ -244,6 +244,12 @@ export async function claimMaintainedPageRun(
        AND (r.retry_after IS NULL OR r.retry_after<=$2) AND (r.state='queued' OR (r.state='running' AND r.lease_expires_at<=$2))
        AND NOT b.paused AND b.revision=r.binding_revision AND b.snapshot->>'doc_version'=r.doc_version::text
        AND (r.end_at IS NULL OR r.end_at>$2)
+       AND (r.lane<>'overnight' OR (
+         NOT EXISTS(SELECT 1 FROM ai_jobs busy WHERE busy.user_id=r.user_id
+           AND busy.runtime_lane='overnight' AND busy.state IN ('queued','running'))
+         AND NOT EXISTS(SELECT 1 FROM assistant_page_runs busy WHERE busy.user_id=r.user_id
+           AND busy.id<>r.id AND busy.lane='overnight' AND busy.state='running'
+           AND busy.lease_expires_at>$2)))
      ORDER BY r.created_at,r.id LIMIT 1 FOR UPDATE OF r SKIP LOCKED`,
       [lane, now, runId ?? null],
     )
@@ -663,4 +669,21 @@ export async function listMaintainedPageRuns(
     );
   }
   return summaries;
+}
+
+/** Shutdown releases uncharged/staged work; an uncertain billed request stays held. */
+export async function releaseMaintainedPageRun(
+  db: Db,
+  runId: string,
+  leaseToken: string,
+  now = new Date(),
+): Promise<boolean> {
+  const row = await db.query(
+    `UPDATE assistant_page_runs SET state='queued',lease_token=NULL,lease_expires_at=NULL,
+      attempts=greatest(attempts-1,0),updated_at=$3
+    WHERE id=$1 AND state='running' AND lease_token=$2 AND lease_expires_at>$3
+      AND reserved_tokens=0 RETURNING id`,
+    [runId, leaseToken, now],
+  );
+  return !!row.rowCount;
 }

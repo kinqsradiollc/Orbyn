@@ -30,6 +30,9 @@ export async function claimAssistantJob(
          SELECT candidate.id FROM ai_jobs candidate
          WHERE candidate.state = 'queued' AND candidate.runtime_lane = $2 AND candidate.run_state->>'version' = '1'
            AND candidate.run_state->'request' IS NOT NULL
+           AND (candidate.runtime_lane<>'overnight' OR NOT EXISTS (
+             SELECT 1 FROM assistant_page_runs busy WHERE busy.user_id=candidate.user_id
+               AND busy.lane='overnight' AND busy.state='running' AND busy.lease_expires_at>now()))
            AND (candidate.work_source_id IS NULL OR NOT EXISTS (
              SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id
                AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
@@ -47,6 +50,12 @@ export async function claimAssistantJob(
   });
 }
 
+/** A leased scoped job managed by the same lane consumer and shutdown lifecycle. */
+export type ScopedAssistantWork = {
+  run: () => Promise<void>;
+  stop: () => void;
+};
+
 /** A bounded consumer for one runtime lane, shared only by its own replicas. */
 export function startAssistantRunner(
   log: FastifyBaseLogger,
@@ -54,13 +63,33 @@ export function startAssistantRunner(
     shutdownMs?: number;
     lane?: AssistantRuntimeLane;
     onTick?: () => Promise<void>;
+    claimScopedWork?: () => Promise<ScopedAssistantWork | null>;
   } = {},
 ) {
   const lane = options.lane ?? "interactive";
+  if (lane === "interactive" && options.claimScopedWork)
+    throw new Error("Scoped automation cannot run in the interactive runtime.");
   const releaseRuntime = acquireAssistantRuntime(lane);
   const claimedBy = `${lane}-${process.pid}-${randomUUID()}`;
   const active = new Set<Promise<void>>();
   const jobs = new Map<Promise<void>, string>();
+  const scopedStops = new Map<Promise<void>, () => void>();
+  let preferScoped = false;
+  const startScoped = (scoped: ScopedAssistantWork) => {
+    const work = Promise.resolve()
+      .then(scoped.run)
+      .catch(() => {
+        log.warn("Scoped assistant work could not finish");
+      });
+    active.add(work);
+    scopedStops.set(work, scoped.stop);
+    void work.finally(() => {
+      active.delete(work);
+      scopedStops.delete(work);
+      schedule();
+    });
+    preferScoped = false;
+  };
   let stopping = false;
   let claiming: Promise<void> | null = null;
   let lastRecovery = 0;
@@ -72,10 +101,23 @@ export function startAssistantRunner(
         lastRecovery = Date.now();
       }
       while (!stopping && active.size < ASSISTANT_RUNTIME_CAPACITY[lane]) {
+        if (preferScoped && options.claimScopedWork) {
+          const scoped = await options.claimScopedWork();
+          if (scoped) {
+            startScoped(scoped);
+            continue;
+          }
+        }
         // Each attempt gets a new token, even when this process recovers its own job.
         const owner = `${claimedBy}-${randomUUID()}`;
         const job = await claimAssistantJob(owner, lane);
-        if (!job) break;
+        if (!job) {
+          const scoped = await options.claimScopedWork?.();
+          if (!scoped) break;
+          startScoped(scoped);
+          continue;
+        }
+        preferScoped = true;
         const work = (async () => {
           const checkpoint = assistantRunStateFor(job.run_state);
           const user = (
@@ -138,6 +180,7 @@ export function startAssistantRunner(
       clearInterval(timer);
       await claiming;
       for (const id of jobs.values()) requestAssistantJobShutdown(id);
+      for (const stopScoped of scopedStops.values()) stopScoped();
       let timeout: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
         Promise.allSettled([...active]),

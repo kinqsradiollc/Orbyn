@@ -1,3 +1,4 @@
+import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
 import { pool } from "../db/pool.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
 import { createService } from "./http.js";
@@ -18,6 +19,7 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
   app.addHook("onReady", async () => {
     stop = startAssistantRunner(app.log, {
       lane,
+      claimScopedWork: () => claimMaintainedPageWork(app.log, lane),
       onTick: async () => {
         const now = Date.now();
         if (now - lastHeartbeat >= 10_000) {

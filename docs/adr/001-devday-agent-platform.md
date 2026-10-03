@@ -826,3 +826,29 @@ Still no service producer/consumer or client controls. Before activation, requir
 shared consumer lifecycle/shutdown recovery, mixed-version worker rollout safety,
 Night per-person serial ordering/ten-run/reflection/morning outputs, explicit
 source selection, budgets/activity/undo and all broader ADR acceptance gates.
+
+### A5 consumer lifecycle and Night serialization — 4 October (not promoted)
+
+Private Background/Overnight services now claim page work through their existing
+lane runner, sharing process capacity, cross-replica leases and shutdown. Queue
+preference alternates to avoid starving scoped work behind chat automation.
+Interactive workers reject scoped automation. The runner stops each scoped job
+once and waits for its cleanup. Uncharged or already staged work is requeued
+without another provider charge; unknown charged requests remain held.
+
+Claim guards serialize page and ordinary Overnight work for the same person.
+The Night scanner sees queued/running page jobs before selecting or closing work.
+Waiting human review does not occupy provider execution capacity. Different
+people retain the existing two global Overnight slots.
+
+Verified77/77 tests, no skips/cancellations, terminal code0:
+`/tmp/orbyn-page-worker-lifecycle-final-tests.log`. Backend typecheck code0:
+`/tmp/orbyn-page-worker-lifecycle-final-types.log`. Tests cover consumer recovery,
+uncertain requests, process capacity/shutdown, exact approvals, mixed queue
+claims, existing Night scanner behavior and original runner recovery. Source
+wiring is present; a full live-service/page scheduling acceptance is still absent.
+
+Next: actual bounded due producer with current source/authority; Night candidate
+integration and ten-run/reflection slot accounting/morning results; safe rolling
+upgrade activation; explicit sources, budgets/activity/undo; both clients and
+complete ADR/local/CI/runtime/native qualification. Do not promote as finished A5.

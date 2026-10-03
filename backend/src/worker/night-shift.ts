@@ -578,7 +578,8 @@ export async function scanNightShift(
               not_done: [],
             };
         const active = await db.query(
-          "SELECT 1 FROM ai_jobs WHERE user_id = $1 AND runtime_lane = 'overnight' AND state IN ('queued', 'running') LIMIT 1",
+          `SELECT 1 FROM ai_jobs WHERE user_id = $1 AND runtime_lane = 'overnight' AND state IN ('queued', 'running')
+           UNION ALL SELECT 1 FROM assistant_page_runs WHERE user_id=$1 AND lane='overnight' AND state IN ('queued','running') LIMIT 1`,
           [person.id],
         );
         if (active.rowCount) {

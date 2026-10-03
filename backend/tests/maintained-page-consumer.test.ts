@@ -644,3 +644,188 @@ test("a queued Night review requirement cannot be weakened by a later preference
     1,
   );
 });
+
+test("shutdown after claim releases uncharged work without losing its retry allowance", async () => {
+  const f = await fixture();
+  const run = await transaction((db) =>
+    claimMaintainedPageRun(db, "background", time, f.run.id),
+  );
+  assert.ok(run?.lease_token);
+  const controller = new AbortController();
+  controller.abort();
+  const result = await processMaintainedPageRun(log, "background", {
+    claimedRun: run!,
+    signal: controller.signal,
+    now: () => time,
+  });
+  assert.equal(result.state, "stopped");
+  const job = await current(run!.id);
+  assert.equal(job.state, "queued");
+  assert.equal(job.attempts, 0);
+  assert.equal(job.lease_token, null);
+  assert.equal(seen.length, 0);
+});
+
+test("shutdown preserves staged output and resumption never calls the provider twice", async () => {
+  const f = await fixture();
+  const model = await resolveMaintainedPageModel(f.user.id);
+  const run = await transaction((db) =>
+    claimMaintainedPageRun(db, "background", time, f.run.id),
+  );
+  assert.ok(run?.lease_token);
+  await transaction((db) =>
+    reserveMaintainedPageModel(
+      db,
+      run!.id,
+      run!.lease_token!,
+      5000,
+      model.key,
+      time,
+    ),
+  );
+  await transaction((db) =>
+    stageMaintainedPageRun(
+      db,
+      run!.id,
+      run!.lease_token!,
+      {
+        expected_revision: 1,
+        replacements: [
+          { id: "summary", type: "paragraph", text: "Retained staged output." },
+        ],
+      },
+      5000,
+      time,
+    ),
+  );
+  const controller = new AbortController();
+  controller.abort();
+  assert.equal(
+    (
+      await processMaintainedPageRun(log, "background", {
+        claimedRun: run!,
+        signal: controller.signal,
+        now: () => time,
+      })
+    ).state,
+    "stopped",
+  );
+  const held = await current(run!.id);
+  assert.equal(held.state, "queued");
+  assert.ok(held.proposal);
+  assert.equal(held.token_estimate, 5000);
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(run!.id))).state,
+    "done",
+  );
+  assert.equal(seen.length, 0);
+});
+
+test("shutdown during an uncertain transmitted request holds it instead of charging again", async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  let requests = 0;
+  assert.equal(
+    (
+      await processMaintainedPageRun(log, "background", {
+        ...options(f.run.id),
+        signal: controller.signal,
+        request: async () => {
+          requests++;
+          controller.abort();
+          throw new Error("private provider failure");
+        },
+      })
+    ).state,
+    "failed",
+  );
+  const held = await current(f.run.id);
+  assert.equal(held.state, "failed");
+  assert.ok(held.reserved_tokens > 0);
+  assert.equal(held.error_message, "The model request could not finish.");
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "idle",
+  );
+  assert.equal(requests, 1);
+});
+
+test("page and chat jobs serialize Overnight work for the same person", async () => {
+  const f = await fixture({ night: true });
+  const { initialAssistantRun } =
+    await import("../src/modules/ai/agent/run.js");
+  const { claimAssistantJob } =
+    await import("../src/modules/ai/agent/runner.js");
+  const { releaseMaintainedPageRun } =
+    await import("../src/modules/docs/maintenance-runs.js");
+  const page = await transaction((db) =>
+    claimMaintainedPageRun(db, "overnight", time, f.run.id),
+  );
+  assert.ok(page?.lease_token);
+  const chat = (
+    await pool.query(
+      "INSERT INTO ai_chats(id,user_id,title) VALUES(gen_random_uuid(),$1,'Serial Night') RETURNING id",
+      [f.user.id],
+    )
+  ).rows[0];
+  const checkpoint = initialAssistantRun({
+    chat_id: chat.id,
+    turn_id: randomUUID(),
+    message: "Night task",
+    timezone: "UTC",
+    history: [],
+    scope: null,
+    automation: { kind: "night" },
+  });
+  const job = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,run_state) VALUES($1,$2,$3,'queued',$4) RETURNING id",
+      [
+        f.user.id,
+        chat.id,
+        checkpoint.request.turn_id,
+        JSON.stringify(checkpoint),
+      ],
+    )
+  ).rows[0];
+  try {
+    assert.equal(await claimAssistantJob("parallel-night", "overnight"), null);
+    assert.equal(
+      await transaction((db) =>
+        releaseMaintainedPageRun(db, page!.id, page!.lease_token!, time),
+      ),
+      true,
+    );
+    assert.equal(
+      await transaction((db) =>
+        claimMaintainedPageRun(db, "overnight", time, f.run.id),
+      ),
+      null,
+    );
+    assert.equal(
+      (await claimAssistantJob("serial-night", "overnight"))?.id,
+      job.id,
+    );
+    assert.equal(
+      await transaction((db) =>
+        claimMaintainedPageRun(db, "overnight", time, f.run.id),
+      ),
+      null,
+    );
+    await pool.query(
+      "UPDATE ai_jobs SET state='waiting',lease_until=NULL WHERE id=$1",
+      [job.id],
+    );
+    assert.equal(
+      (
+        await transaction((db) =>
+          claimMaintainedPageRun(db, "overnight", time, f.run.id),
+        )
+      )?.id,
+      page!.id,
+    );
+  } finally {
+    await pool.query("DELETE FROM ai_jobs WHERE id=$1", [job.id]);
+  }
+});
