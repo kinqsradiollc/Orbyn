@@ -23,3 +23,14 @@ now reads the data envelope rather than assuming raw JSON. Backend types passed.
 Build/format/all workspace types and exact-head full/CI still required. No actual
 ChatGPT/Codex hosted resource rendering or complete C6/U1/ADR claim. No deployment
 or branch/worktree cleanup; user deploys qualified main checkpoints manually.
+
+## Full qualification repair
+
+Frozen9fdcab96 full local ended1 with two failures: generated docs/mcp.md drift
+and one background runtime fixture killed by its shutdown timeout. CI37107389878
+failed only the generated catalog check; other three jobs succeeded. Usage text
+moved to independently maintained docs/plugin.md, and catalog regenerated rather
+than relaxing its ratchet. Catalog/service/protocol28/28 passed terminal0 in
+/tmp/orbyn-plugin-resource-catalog-regressions.log. The exact idea timeout fixture
+passed1/1 in isolation, terminal0, /tmp/orbyn-plugin-resource-runtime-shutdown-recheck.log.
+The failed full remains nonqualifying; a fresh exact-head full/CI retry is needed.
