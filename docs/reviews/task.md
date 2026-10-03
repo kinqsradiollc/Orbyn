@@ -387,3 +387,33 @@ separately. No product voice/computer-use work; no deployment/tag/release.
 These are delivery dependencies, not completion claims or a reduced scope. Native
 fixtures do not qualify real account/runtime delivery. User performs permitted
 manual web visual review; Android and remaining native gates remain open.
+
+## Settings workspace layout candidate and preview crash recovery — 3 October
+
+`codex/settings-workspace-layout` in assistant-work-ownership starts from frozen
+combined509ded3c, preserving Views181 and integration184. Web settings now has a
+compact category rail beside bounded content; narrow layouts wrap categories
+above content. Ordinary named buttons preserve keyboard activation, expose the
+current category and control the labelled content region. Search keeps its
+existing section selection/open behavior. Every existing settings destination is
+retained. Mobile settings flows remain available; this web layout correction is
+not a full Settings or U1 completion claim.
+
+Four navigation/render/action/search/layout unit checks passed. Initial desktop
+check caught a removed ShieldCheck import and stale shared package declarations;
+restore the still-used icon, build own packages and use checkout-local @orbyn
+aliases. Final owned-alias desktop typecheck terminal0. Build/format/exact-head
+full/CI and user visual review still required before committing/promoting.
+
+User reported preview crash: all preview listeners were absent. Web5174/API8027
+and actual mobile Metro/web localhost8083 were restarted; all HTTP200, mobile
+web bundle200 compiled1077 modules. Same-URL browser retry again rejected by saved
+Browser Use permission; no alternate-surface workaround. Latest preview still
+serves qualified Home candidate4c6e045d, not this settings candidate yet.
+
+Local full processes20546/46406 were missing, no matching live tests, no terminal
+TAP or exit files; they are interrupted nonqualifying runs. Frozen combined509ded3c
+now runs fresh full tests in separate marked orbyn_adr_home_recovered_20261003_test,
+log /tmp/orbyn-home-combined-509ded3c-recovered-full-tests.log, session77757.
+CI183/184 backend jobs still observed running; other three jobs each passed.
+Keep goal/full C1–C6/M1/D1/U1 scope active and all original work preserved.
