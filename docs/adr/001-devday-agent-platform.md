@@ -607,6 +607,7 @@ use a cached model. Device discovery returns credential-free metadata for
 current owned registrations and is excluded from agent tools. This is a scoped
 candidate; evidence and remaining M1/U1 acceptance gates are recorded in
 `docs/reviews/evidence/chatgpt-model-settings.md`.
+
 ### Separate plugin UI resource adapter checkpoint — 3 October 2026
 
 The plugin HTTP backend now exposes bounded resource discovery/reads separately

@@ -837,6 +837,7 @@ remain supported; embedded image-byte parity is a separate D1 gate.
 from the root's locked build dependencies. Export integration tests require a
 sandboxed Chromium executable (`PDF_TEST_CHROME` or the detected platform path)
 and their own marked PostgreSQL test database. Each process owns its test renderer.
+
 ## Optional separate plugin backend
 
 The `plugin` Compose profile runs `backend/dist/services/plugin.js` separately

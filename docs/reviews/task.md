@@ -232,6 +232,7 @@ sign in again with the same saved credentials. Fresh full runs for frozen
 integration176e8dbcd7b and plugin180bc381226 are live, excluding the previous
 ENOSPC run. Resources179 CI37091484961 has completed successfully. Other local
 PostgreSQL's empty postmaster.pid restart loop was observed and left untouched.
+
 ## Source keyboard layout follow-up — 3 October 2026
 
 PR176 e8dbcd7b has all four CI37089753616 jobs successful. Full local98342
@@ -267,6 +268,7 @@ bounded controls. Actual iPhone SE keyboard/error screenshot shows Restore,
 both source lines and caret above the keyboard; accessibility activation clears
 the error. Screenshot: evidence/source-keyboard/recovery-first.png. Focused26/26
 and mobile typecheck pass. Touch scroll, Android and real editor saves still open.
+
 ## Plugin tool boundary structural limits — 3 October 2026
 
 Isolated codex/plugin-tool-input-bounds follows frozen a74ad26a without editing
@@ -323,3 +325,20 @@ PR1776220f1c1 and PR178f74bb9de now have all four respective CI jobs successful
 is not hosted ChatGPT/Codex launch acceptance: extensions, host screenshots,
 actual account/provider/tenant execution and async event cursors remain open.
 Full C1–C6/M1/D1/U1 continues; no main merge, deployment or cleanup.
+
+## Current combined qualification candidate — 3 October
+
+A dedicated managed worktree adr-release-qualification/Orbyn combines
+Views181ae6d11e7, native keyboard1776220f1c1 and plugin180bc381226, with main110
+already an ancestor. Original candidates remain frozen/preserved. Conflicts only
+in appended docs; both sides retained. Focused37/37, build and full formatting
+pass. Backend/desktop types pass; mobile retry is live after adding the missing
+existing react-native-webview dependency link (no source change). Evidence:
+`evidence/adr-release-qualification.md`. Its own exact-head full/CI and runtime
+acceptance remain required before main promotion.
+
+Recovered UI176 full2474/2474 and plugin180 full2204/2204 both terminated0, no
+failures/skips. Plugin180 CI37092219802 all four jobs passed. Views181 full and
+CI37092992563 still live. Test preview now serves Views181 at5174 with API8027;
+recreated admin login verified. Credentials stay private outside Git. Preserve
+all C1–C6/M1/D1/U1 acceptance and original work. No deployment/release/cleanup.
