@@ -885,3 +885,104 @@ test("real Background service scans a due binding, completes HTTP inference and 
     await app.close();
   }
 });
+
+test("real Overnight service stages a scheduled page for exact owner review without a parallel runtime", async () => {
+  const f = await fixture();
+  await pool.query("DELETE FROM assistant_page_runs WHERE id=$1", [f.run.id]);
+  await pool.query(
+    "UPDATE assistant_page_bindings SET next_run_at=now()-interval '1 minute',schedule_exhausted=false WHERE id=$1",
+    [f.binding.id],
+  );
+  const now = new Date();
+  const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const hhmm = (n: number) => {
+    const m = (n + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  };
+  const prefs = {
+    ...defaultNightShift(),
+    enabled: true,
+    timezone: "UTC",
+    start: hhmm(minute - 10),
+    end: hhmm(minute + 60),
+    wait_for_ok: true,
+  };
+  for (const kind of Object.keys(prefs.kinds))
+    prefs.kinds[kind as keyof typeof prefs.kinds] = false;
+  prefs.kinds.follow_through = true;
+  await pool.query(
+    "INSERT INTO agent_settings(user_id,night_shift) VALUES($1,$2)",
+    [f.user.id, JSON.stringify(prefs)],
+  );
+  const { scanNightShift } = await import("../src/worker/night-shift.js");
+  assert.equal(await scanNightShift(now, { only: [f.user.id] }), 1);
+  const { buildAssistantWorker } =
+    await import("../src/services/assistant-worker.js");
+  const app = await buildAssistantWorker("overnight");
+  let waiting: Awaited<ReturnType<typeof current>>;
+  try {
+    await app.ready();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      waiting = (
+        await pool.query(
+          "SELECT * FROM assistant_page_runs WHERE binding_id=$1 ORDER BY created_at DESC LIMIT 1",
+          [f.binding.id],
+        )
+      ).rows[0];
+      if (waiting?.state === "waiting") break;
+      if (waiting?.state === "failed")
+        assert.fail("The actual Overnight service held its page run");
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(waiting!.state, "waiting");
+    assert.ok(waiting!.waiting_id);
+    assert.equal(
+      (await pool.query("SELECT version FROM docs WHERE id=$1", [f.doc.id]))
+        .rows[0].version,
+      1,
+    );
+    assert.equal(seen.length, 1);
+    assert.equal(
+      (await app.inject({ method: "GET", url: "/ready" })).statusCode,
+      200,
+    );
+  } finally {
+    await app.close();
+  }
+  const { latestNight } =
+    await import("../src/modules/assistant-workspace/overnight.js");
+  const shown = await transaction((db) =>
+    latestNight(db, f.user.id, waiting!.night_id),
+  );
+  assert.equal(shown?.page_runs?.[0].state, "waiting");
+  const { buildOvernightSection } = await import("../src/worker/digest.js");
+  assert.ok(
+    (
+      await buildOvernightSection(
+        f.user.id,
+        shown!.local_day,
+        waiting!.night_id,
+      )
+    )?.firstLine.includes("1 to review"),
+  );
+  await transaction((db) =>
+    decideMaintainedPageRun(
+      db,
+      f.user.id,
+      waiting!.id,
+      waiting!.waiting_id,
+      true,
+    ),
+  );
+  assert.equal(
+    (await pool.query("SELECT version FROM docs WHERE id=$1", [f.doc.id]))
+      .rows[0].version,
+    2,
+  );
+  assert.equal(
+    seen.length,
+    1,
+    "Human review must never resume Night inference",
+  );
+});

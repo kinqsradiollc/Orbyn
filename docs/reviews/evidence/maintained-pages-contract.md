@@ -281,3 +281,35 @@ Night candidate/ten-run/reflection slot accounting and morning outputs remain
 next. Safe rolling upgrade, explicit source selection beyond target blocks,
 budget/activity/undo, web/mobile controls and full ADR qualification remain open.
 Main is unchanged; this feature is still on the development branch.
+
+### A5 Night plan, shared limits and morning progress — 4 October (not promoted)
+
+Due page bindings participate in the existing Night candidate plan through
+follow-through. Current source, page ownership and reviewed rules are checked
+before selection and again inside queueing. They use the scoped page queue,
+retain original consent/model provenance, and advance the Night cursor/run count
+atomically. Queued/running pages serialize with ordinary Night work; the shared
+ten-run cap and final reflection slot still apply. No private instruction or
+page title is copied into the Night candidate labels.
+
+The Night API now includes optional scoped page progress metadata. Current
+assistant authority and page visibility guard it; no proposal words, worker
+leases, credentials or hidden titles are exposed there. Page approvals remain
+nonce-bound in their document API. Morning digest counts finished/review/settling
+page work and links to the document; the existing single morning push also treats
+page work as settling. Revoking the current scope hides its page progress.
+
+Verified93/93 tests, no skips/cancellations, terminal code0:
+`/tmp/orbyn-page-night-service-final-tests.log`. All workspace types pass in
+`/tmp/orbyn-page-night-all-types.log`. New tests cover dedup/run accounting, shared
+ten-run cap, reflection slot priority, current visibility and morning metadata.
+An actual private Overnight worker test queues from the real scanner, calls the
+local HTTP provider fixture once, stages required approval, reads the Night
+progress, closes its runtime, then applies an exact owner decision without
+resuming inference. Real provider/account/deployment acceptance is still open.
+
+Next both client binding/source/consent/status/review controls and Night page
+cards. Still open: explicit source selection beyond target blocks; budgets and
+activity/undo; including page outcomes in reflection evidence; safe rolling
+worker activation; verified account-default/device inference; broader full
+local/CI/web/manual/native acceptance and complete C1-C6/M1/D1/U1. Main unchanged.

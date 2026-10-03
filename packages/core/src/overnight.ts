@@ -30,12 +30,21 @@ export type OvernightRun = {
   steps: { id: string; title: string }[];
   changes: AgentActivity[];
 };
+/** Scoped page updates are reviewed in their document, never through chat decisions. */
+export type OvernightPageRun = {
+  id: string;
+  binding_id: string;
+  doc_id: string;
+  state: "queued" | "running" | "waiting" | "done" | "failed" | "cancelled";
+  estimated_tokens: number;
+};
 export type OvernightNight = {
   id: string;
   local_day: string;
   status: "running" | "done";
   budget_used: number;
   runs: OvernightRun[];
+  page_runs?: OvernightPageRun[];
   not_done: { title: string; reason: string }[];
 };
 export const overnightKeepInput = z

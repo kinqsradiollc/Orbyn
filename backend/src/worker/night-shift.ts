@@ -1,3 +1,6 @@
+import type { UserRow } from "../lib/auth.js";
+import { maintainedPageContext } from "../modules/docs/maintenance.js";
+import { queueMaintainedPageRun } from "../modules/docs/maintenance-runs.js";
 import {
   claimReflectionSources,
   pendingReflectionSources,
@@ -7,6 +10,8 @@ import { checkinClaimable } from "./assistant-goals.js";
 import { assistantSourceVisible } from "../lib/assistant-source-visibility.js";
 import {
   nightShiftInput,
+  assistantRuleDecision,
+  HttpError,
   nextOccurrence,
   parseRrule,
   NIGHT_SHIFT_KINDS,
@@ -38,7 +43,7 @@ type Candidate = {
   title: string;
   message: string;
   id?: string;
-  source?: "task" | "goal" | "routine";
+  source?: "task" | "goal" | "routine" | "page";
   week?: string;
   next?: string | null;
 };
@@ -102,12 +107,56 @@ const work: Record<
 let afterPerson: string | null = null;
 
 async function available(
-  db: Queryable,
+  db: Db,
   userId: string,
   next: Candidate,
   now: Date,
 ): Promise<boolean> {
   if (!next.source) return true;
+  if (next.source === "page") {
+    try {
+      const user = (
+        await db.query<UserRow>(
+          "SELECT * FROM users WHERE id=$1 AND NOT disabled",
+          [userId],
+        )
+      ).rows[0];
+      if (!user || !next.id) return false;
+      const principal = await assistantPrincipal(user, { db, touch: false });
+      const context = await maintainedPageContext(db, user, principal, next.id);
+      const binding = context.binding;
+      if (
+        binding.paused ||
+        binding.schedule_exhausted ||
+        Date.parse(binding.next_run_at) > now.getTime()
+      )
+        return false;
+      const page = (
+        await db.query<{ team_id: string | null }>(
+          "SELECT team_id FROM docs WHERE id=$1",
+          [binding.doc_id],
+        )
+      ).rows[0];
+      if (
+        assistantRuleDecision(
+          context.principal.assistant_rules ?? [],
+          "overnight",
+          page.team_id,
+          ["any_change", "edit"],
+        ) === "deny"
+      )
+        return false;
+      return !(
+        await db.query(
+          "SELECT 1 FROM assistant_page_runs WHERE binding_id=$1 AND state IN ('queued','running','waiting')",
+          [binding.id],
+        )
+      ).rowCount;
+    } catch (error) {
+      if (error instanceof HttpError) return false;
+      throw error;
+    }
+  }
   if (next.source === "routine") {
     const routine = (
       await db.query<{
@@ -198,6 +247,26 @@ async function candidates(
     );
   }
   if (prefs.kinds.follow_through) {
+    const pages = (
+      await db.query<{ id: string }>(
+        `SELECT b.id FROM assistant_page_bindings b JOIN docs d ON d.id=b.doc_id
+       WHERE b.user_id=$1 AND NOT b.paused AND NOT b.schedule_exhausted AND b.next_run_at<=$2
+         AND ${visibleDocs("d", { user: "$1", ai: true })}
+         AND NOT EXISTS(SELECT 1 FROM assistant_page_runs r WHERE r.binding_id=b.id AND r.state IN ('queued','running','waiting'))
+       ORDER BY b.next_run_at,b.id LIMIT 50`,
+        [userId, now],
+      )
+    ).rows;
+    result.push(
+      ...pages.map((page) => ({
+        kind: "page_update",
+        source: "page" as const,
+        id: page.id,
+        title: "Scheduled page update",
+        message: "",
+      })),
+    );
+
     const goals = (
       await db.query<{
         id: string;
@@ -633,7 +702,9 @@ export async function scanNightShift(
         let next = plan.candidates[plan.cursor];
         while (
           next &&
-          (!(next.source === "goal" || next.source === "routine"
+          (!(next.source === "goal" ||
+          next.source === "routine" ||
+          next.source === "page"
             ? prefs.kinds.follow_through
             : prefs.kinds[next.kind as (typeof NIGHT_SHIFT_KINDS)[number]]) ||
             !(await eligibleCandidate(next)))
@@ -669,6 +740,39 @@ export async function scanNightShift(
             [night.id, JSON.stringify(plan)],
           );
           return 0;
+        }
+        if (next.source === "page") {
+          if (!next.id) return 0;
+          const user = (
+            await db.query<UserRow>(
+              "SELECT * FROM users WHERE id=$1 AND NOT disabled",
+              [person.id],
+            )
+          ).rows[0];
+          if (!user) return 0;
+          const principal = await assistantPrincipal(user, {
+            db,
+            touch: false,
+          });
+          const pageRun = await queueMaintainedPageRun(
+            db,
+            user,
+            principal,
+            next.id,
+            now,
+            {
+              kind: "overnight",
+              nightId: night.id,
+              endAt: new Date(plan.end_at),
+            },
+          );
+          if (!pageRun) return 0;
+          plan.cursor++;
+          await db.query(
+            "UPDATE assistant_nights SET runs=runs+1,summary=$2::jsonb,updated_at=now() WHERE id=$1",
+            [night.id, JSON.stringify(plan)],
+          );
+          return 1;
         }
         const job = await startAssistantAutomation({
           userId: person.id,

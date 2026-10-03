@@ -1,3 +1,4 @@
+import { maintainedPageNightProgress } from "../modules/docs/maintenance-night.js";
 import { visibleNightLeftovers } from "../lib/assistant-leftovers.js";
 import { assistantJobSourcesVisible } from "../lib/assistant-job-sources.js";
 import { randomUUID } from "node:crypto";
@@ -285,6 +286,23 @@ export async function buildOvernightSection(
     markdown.push(
       `- ${summary}${links.length ? ` — ${links.join(" · ")}` : ""}`,
     );
+  }
+  const pageRuns = await transaction((db) =>
+    maintainedPageNightProgress(db, userId, night.id),
+  );
+  for (const run of pageRuns) {
+    if (run.state === "done") completed++;
+    if (run.state === "waiting") review++;
+    if (run.state === "queued" || run.state === "running") settling++;
+    const label =
+      run.state === "done"
+        ? "Page updated"
+        : run.state === "waiting"
+          ? "Page update needs review"
+          : run.state === "failed" || run.state === "cancelled"
+            ? "Page update did not finish"
+            : "Page update is still queued or running";
+    markdown.push(`- ${linked(label, `/app/docs/${run.doc_id}`)}`);
   }
   const notDone = objectValue(night.summary).not_done;
   const leftovers = await visibleNightLeftovers(pool, userId, notDone);

@@ -37,6 +37,7 @@ export function assistantSourceVisible(
       AND (source_chat.project_id IS NULL OR EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=source_chat.project_id AND ${visibleProjects("source_project", scope)}))
       AND (source_chat.scope_kind IS DISTINCT FROM 'task' OR EXISTS(SELECT 1 FROM items source_item WHERE source_item.id=source_chat.scope_id AND ${visibleItems("source_item", scope)})))`;
   return `(CASE ${kind}
+    WHEN 'page' THEN EXISTS(SELECT 1 FROM assistant_page_bindings source_binding JOIN docs source_doc ON source_doc.id=source_binding.doc_id WHERE source_binding.id=${id} AND source_binding.user_id=${user} AND ${visibleDocs("source_doc", scope)})
     WHEN 'doc' THEN EXISTS(SELECT 1 FROM docs source_doc WHERE source_doc.id=${id} AND ${visibleDocs("source_doc", scope)})
     WHEN 'project' THEN EXISTS(SELECT 1 FROM projects source_project WHERE source_project.id=${id} AND ${visibleProjects("source_project", scope)})
     WHEN 'team' THEN EXISTS(SELECT 1 FROM team_members source_member WHERE source_member.team_id=${id} AND source_member.user_id=${user}${teamScope})
