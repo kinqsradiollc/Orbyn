@@ -417,3 +417,24 @@ now runs fresh full tests in separate marked orbyn_adr_home_recovered_20261003_t
 log /tmp/orbyn-home-combined-509ded3c-recovered-full-tests.log, session77757.
 CI183/184 backend jobs still observed running; other three jobs each passed.
 Keep goal/full C1–C6/M1/D1/U1 scope active and all original work preserved.
+
+## Main checkpoint and user-managed production rollout — 3 October 2026
+
+PR184 b0037a21 merged as51c55e91 and PR1853b18468b merged as83d6aa83.
+Local main fast-forwarded; the user's mobile/app.json and untracked files were
+preserved. Main's committed tree matches the tested settings candidate3b18468b.
+Combined2506/2506 and settings2512/2512 full local suites terminated0, no skips
+or cancellations; all four exact-head CI jobs passed. Main CI37099735333 is
+running independently. These are production checkpoints, not full ADR completion.
+
+Thirteen superseded PRs were closed only after proving their exact heads are
+ancestors of main:183,181,180,179,178,177,176,175,174,173,172,171,169.
+Their branches/worktrees are retained. PR186 and broader unabsorbed candidates
+160,153,151,148,138,137 remain open for distinct outstanding work/review.
+No worktree or branch cleanup occurred.
+
+The user explicitly chose to deploy main themselves. GitHub Deploy secrets and
+AUTO_DEPLOY are not configured; no automated or manual production rollout was
+started. Keep main merging qualified checkpoints and report the exact commit for
+the user to deploy. Preserve full C1–C6/M1/D1/U1 acceptance, including native/
+manual-web/real-account/host and remaining implementation gates.
