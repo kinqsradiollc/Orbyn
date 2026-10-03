@@ -144,11 +144,19 @@ export async function agentContextRoutes(app: FastifyInstance) {
     async (r): Promise<NightShiftSettings> => {
       const u = await firstParty(r);
       const input = nightShiftInput.parse(r.body);
-      await transaction(async (db) => {
-        await db.query(
+      const omittedReflection = !Object.hasOwn(
+        (r.body as { kinds: Record<string, unknown> }).kinds,
+        "reflection",
+      );
+      return transaction(async (db) => {
+        const saved = await db.query<{ night_shift: unknown }>(
           `INSERT INTO agent_settings(user_id, night_shift) VALUES($1, $2::jsonb)
-        ON CONFLICT(user_id) DO UPDATE SET night_shift = EXCLUDED.night_shift, updated_at = now()`,
-          [u.id, JSON.stringify(input)],
+        ON CONFLICT(user_id) DO UPDATE SET night_shift = CASE WHEN $3 THEN
+          jsonb_set(EXCLUDED.night_shift, '{kinds,reflection}',
+            coalesce(agent_settings.night_shift->'kinds'->'reflection', 'false'::jsonb))
+          ELSE EXCLUDED.night_shift END, updated_at = now()
+        RETURNING night_shift`,
+          [u.id, JSON.stringify(input), omittedReflection],
         );
         await audit(
           {
@@ -161,8 +169,8 @@ export async function agentContextRoutes(app: FastifyInstance) {
           },
           db,
         );
+        return nightShiftInput.parse(saved.rows[0].night_shift);
       });
-      return input;
     },
   );
   app.get("/me/agent", async (r): Promise<PersonalAgentSettings> => {

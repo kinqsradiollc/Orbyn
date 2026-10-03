@@ -1,5 +1,26 @@
 # Current implementation handoff — 3 October 2026
 
+## Current authoritative checkpoint — reflection integration
+
+Main is e0afd266: PR189 Projects library merged after exact71f58c9f passed
+2,534/2,534 local tests and all four CI37110461919 jobs. PR188 protected MCP
+job resources merged as ee5e3278 after 2,533/2,533 and all CI37110025877 jobs.
+Running previews still serve older checkouts; no latest Projects visual claim.
+
+Current codex/overnight-reflection-integration integrates the retained reflection
+candidate onto ee5e3278. Migration217 adds transcript/run dependency kinds and
+reflection receipts. Source visibility retains current main restrictions. Scanner,
+runner and resumed checkpoints apply current principal space restrictions;
+mismatched scope owners fail closed. Integration tests caught unused untyped SQL
+parameters and missing transcript dependency constraints, both corrected without
+relaxing assertions. Final reflection focused tests and all workspace typechecks
+passed; full qualification, selected-team tests, build, formatting, CI and newest
+main integration remain required before promotion. Reflection is not shipped.
+
+Continue full C1–C6/M1/D1/U1, including whole-app UI and mobile parity. User
+deploys main manually. Preserve root user changes, credentials, characters and
+all original branches/worktrees; no cleanup or deployment at this checkpoint.
+
 ## Scope and boundaries
 
 Complete `docs/adr/001-devday-agent-platform.md` under the full acceptance contract
