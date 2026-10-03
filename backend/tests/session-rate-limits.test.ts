@@ -134,3 +134,21 @@ test("invalid JSON still returns400 through a protected authentication route", a
   });
   assert.equal(response.statusCode, 400);
 });
+
+test("fresh rate-window fixtures retain the original confirmation time", async () => {
+  const { freshRateLimitSession } = await import("./rate-limit-session.js");
+  const original = (await issueSession(user, "Proof fixture")).token;
+  const at = new Date(Date.now() - 30 * 60_000);
+  await pool.query(
+    "UPDATE sessions SET reauthenticated_at=$2 WHERE token_hash=$1",
+    [digest(original), at],
+  );
+  const fresh = await freshRateLimitSession(original);
+  const proof = (
+    await pool.query(
+      "SELECT reauthenticated_at FROM sessions WHERE token_hash=$1",
+      [digest(fresh)],
+    )
+  ).rows[0];
+  assert.equal(proof.reauthenticated_at.toISOString(), at.toISOString());
+});

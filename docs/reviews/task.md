@@ -540,3 +540,21 @@ Candidate lives on codex/session-refresh-limits in devday-model-catalog/Orbyn.
 No unfinished maintained-page files are included. A5 remains f8780ee6 in its own
 branch; all source/budget/activity/undo/reflection/device/native/whole ADR gates
 stay open. Main remains ee45ecf0; user handles production deployment.
+
+### Session rate-window qualification follow-up — 4 October
+
+Exact c82b0d22 full local run terminated code1:2568/2587 passed,19 failed,
+no skips/cancellations. CI37155960329 passed mobile/Docker/mail and failed
+backend-and-web. No merge was attempted. Every local failure traced to fixtures
+that reused a device session across unrelated cases or treated a new IP as a
+fresh global window. Fresh independent sessions now isolate those windows;
+long template/picture suites use an independent device session per case.
+The prior authorization-proof time is copied exactly, never refreshed by the
+fixture. Lazy backend imports preserve both marked DB selection and each file's
+local renderer/environment setup.
+
+148/148 corrected affected regressions pass, no skips/cancellations:
+`/tmp/orbyn-session-limit-window-verified-regressions.log`. New checkpoint/fresh
+full run and exact CI are required; c82's failed full run is not qualification.
+Product thresholds/stricter routes/gateway/API-key/MCP behavior stay unchanged.
+A5/native work remains separate and incomplete; main remains ee45ecf0.

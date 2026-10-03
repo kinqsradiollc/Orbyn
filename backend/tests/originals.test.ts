@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -150,13 +151,14 @@ test("the setting: a personal API key may read it but not change it, and 429 pas
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(me.token);
   live.rate_limit_per_minute = 1;
   const from = () =>
     app.inject({
       method: "PUT",
       url: "/me/originals",
       remoteAddress: "10.19.250.1",
-      headers: { authorization: `Bearer ${me.token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
       payload: { keep: true },
     });
   try {

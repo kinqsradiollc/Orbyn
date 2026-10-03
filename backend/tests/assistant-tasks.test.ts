@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -205,13 +206,14 @@ test("handing a task over needs sign-in, access, a task and a fair rate", async 
 
   const settings = cachedSettings();
   const previous = settings.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(me.token);
   settings.rate_limit_per_minute = 1;
   try {
     const once = () =>
       app.inject({
         url: "/me/agent-work",
         remoteAddress: "10.254.7.7",
-        headers: auth(me.token),
+        headers: auth(limitedToken),
       });
     assert.equal((await once()).statusCode, 200);
     assert.equal((await once()).statusCode, 429);

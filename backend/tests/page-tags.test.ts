@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -382,12 +383,13 @@ test("tag routes answer 429 past the per-minute limit", async () => {
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(me.token);
   live.rate_limit_per_minute = 2;
   const from = (method: "PUT" | "POST", body: Json) =>
     app.inject({
       method,
       url: `/docs/${page.id}/tags`,
-      headers: { authorization: `Bearer ${me.token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
       remoteAddress: "10.73.0.1",
       payload: body,
     });

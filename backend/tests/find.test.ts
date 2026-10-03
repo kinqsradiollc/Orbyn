@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -244,13 +245,14 @@ test("find answers 429 past the per-minute limit", async () => {
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(me.token);
   live.rate_limit_per_minute = 2;
   const from = () =>
     app.inject({
       method: "GET",
       url: "/find?q=k",
       remoteAddress: "10.81.1.1",
-      headers: { authorization: `Bearer ${me.token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
     });
   try {
     assert.equal((await from()).statusCode, 200);

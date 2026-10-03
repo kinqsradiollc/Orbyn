@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { pdfTextLines } from "./helpers/pdf-text.js";
@@ -211,12 +212,13 @@ test("HTML export applies the live rate limit and Retry-After", async () => {
   await settings();
   const live = cachedSettings(),
     previous = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(token);
   live.rate_limit_per_minute = 2;
   const request = () =>
     app.inject({
       method: "GET",
       url: `/docs/${docId}/export?format=html`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
       remoteAddress: "10.74.1.97",
     });
   try {
