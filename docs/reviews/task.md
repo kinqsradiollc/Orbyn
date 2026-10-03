@@ -862,3 +862,41 @@ local renderer/environment setup.
 full run and exact CI are required; c82's failed full run is not qualification.
 Product thresholds/stricter routes/gateway/API-key/MCP behavior stay unchanged.
 A5/native work remains separate and incomplete; main remains ee45ecf0.
+
+### Qualified main checkpoint and workspace layout draft — 4 October
+
+PR195 merged exact e4ed6749 after full fresh IPv4 local2588/2588 code0, no skips
+or cancellations, and CI37157146020 all four jobs passed. Main/origin main now
+7f253b80; the primary checkout fast-forwarded with user changes preserved. This
+addresses authenticated session/IP interference; production deployment remains
+with the user and universal production429 resolution is not asserted. Qualified
+main was integrated into the maintained-pages branch. Only two documentation
+append conflicts occurred; both histories were retained and markers cleared.
+The owned preview API restarted with the qualified session bucket implementation.
+
+U1's new signed-in workspace layout draft now spans every web/desktop screen:
+compact sidebar/wordmark, header rail toggle, quieter location label, consistent
+working-surface padding and cards, unrestricted Docs canvas width, smaller Home
+panels and a task toolbar with separate title/progress and search/layout/filter
+rows. Desktop/tablet rail geometry uses one224px/72px pair; existing800px mobile
+web drawer breakpoint stays aligned, and coarse-pointer controls retain44px
+minimum targets. Palette/radius tokens are used and public landing/auth/dialog
+surfaces retain their separate styling. Navigation controls now reference the
+same accessible sidebar landmark and report expanded state.
+
+Source-contract4/4 checks pass in `/tmp/orbyn-workspace-layout-contract-tests.log`;
+final desktop types pass in `/tmp/orbyn-workspace-layout-final-types.log`.
+All workspace types/production build pass in
+`/tmp/orbyn-workspace-redesign-final-types.log` and
+`/tmp/orbyn-workspace-redesign-build.log` before final aria-only control wiring.
+These are source/build checks, not overlap or visual acceptance. Browser Use was
+retried at the original127.0.0.1:5174/app tab and again denied by saved permission;
+no alternate browser/port/CDP/indirect bypass was attempted. User's standing blind
+web redesign/manual screenshot review authorization applies. The live preview
+serves this draft; rendered web acceptance remains pending.
+
+Next complete remaining whole-app layouts and manual web/desktop acceptance,
+retaining native behavior/feature parity. A5 extra source selection, per-binding
+budgets, activity/undo/page reflection, rolling worker activation and actual
+account/device inference remain open, along with full C1-C6/M1/D1/U1 gates.
+No workspace/A5 production promotion or full goal completion is asserted.

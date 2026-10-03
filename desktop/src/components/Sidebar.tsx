@@ -97,7 +97,11 @@ export function Sidebar({
     prefs.shortcuts,
   ).join(" ");
   return (
-    <aside className={"sidebar " + (open ? "open" : "")}>
+    <aside
+      id="workspace-navigation"
+      aria-label="Workspace navigation"
+      className={"sidebar " + (open ? "open" : "")}
+    >
       <div className="sidebar-head">
         <div className="brand" aria-label="orbyn">
           <Orbit />

@@ -1,3 +1,4 @@
+import "./workspace.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orbit, Settings, X, type LucideIcon } from "lucide-react";
 import {
@@ -1655,7 +1656,9 @@ export function App() {
       <PlanningProviders planning={planning} planned={planned}>
         <div
           className={
-            "app" + (railed ? " is-railed" : "") + (peek ? " has-peek" : "")
+            "app workspace" +
+            (railed ? " is-railed" : "") +
+            (peek ? " has-peek" : "")
           }
         >
           <Sidebar
@@ -1692,6 +1695,9 @@ export function App() {
             <Topbar
               view={view}
               agentName={assistant.agentName}
+              railed={railed}
+              navigationOpen={mobileNav}
+              onToggleRail={toggleRail}
               onToggleMenu={() => setMobileNav(!mobileNav)}
               onOpenNotifications={() => navigate("Notifications")}
               onOpenCommand={() => openCommand()}

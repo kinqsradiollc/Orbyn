@@ -1,0 +1,231 @@
+/* Workspace layout: compact navigation and a consistent working surface.
+   Scoped to the signed-in shell; documents, dialogs and public pages keep their own controls. */
+.app.workspace {
+  background: var(--color-canvas);
+  color: var(--color-text);
+}
+.app.workspace .shell {
+  --topbar-h: 56px;
+}
+.app.workspace .sidebar {
+  padding: 18px 12px 12px;
+  background: var(--color-sunken);
+  border-color: var(--color-divider);
+}
+.app.workspace .sidebar-head {
+  margin-bottom: 20px;
+}
+.app.workspace .brand {
+  font-size: 25px;
+  letter-spacing: -0.8px;
+  gap: 8px;
+  padding-left: 10px;
+}
+.app.workspace .brand svg {
+  width: 25px;
+  height: 25px;
+}
+.app.workspace .nav-label {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--color-muted);
+  margin-bottom: 5px;
+}
+.app.workspace .nav-group + .nav-group {
+  margin-top: 18px;
+}
+.app.workspace .sidebar nav button {
+  min-height: 36px;
+  padding: 7px 10px;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.app.workspace .sidebar nav button.active {
+  background: var(--color-accentSoft, var(--color-hover));
+  color: var(--color-accentText);
+}
+.app.workspace .sidebar-bottom {
+  border-color: var(--color-divider);
+  padding-top: 10px;
+}
+.app.workspace .topbar {
+  gap: 12px;
+  padding: 0 24px;
+  border-color: var(--color-divider);
+  background: var(--color-canvas);
+  backdrop-filter: none;
+}
+.app.workspace .workspace-location {
+  font-size: 13px;
+  flex: 1;
+}
+.app.workspace .topbar > div {
+  gap: 12px;
+}
+.app.workspace .command-trigger {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--color-surface);
+  border-color: var(--color-divider);
+}
+.app.workspace .today-label {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.app.workspace .content {
+  max-width: 1320px;
+  padding: 28px clamp(20px, 3vw, 44px) 24px;
+}
+.app.workspace .content:has(.docs-nav-page) {
+  max-width: none;
+}
+.app.workspace .page-heading {
+  margin-bottom: 24px;
+  align-items: flex-start;
+}
+.app.workspace .page-heading h1 {
+  font-size: clamp(25px, 2.5vw, 32px);
+  letter-spacing: -0.8px;
+  margin-bottom: 4px;
+}
+.app.workspace .page-heading p {
+  max-width: 64ch;
+  color: var(--color-textSoft);
+}
+.app.workspace .card {
+  margin-bottom: 20px;
+  background: var(--color-surface);
+  border-color: var(--color-divider);
+  box-shadow: none;
+}
+.app.workspace .section-heading {
+  padding: 14px 18px;
+}
+.app.workspace .home-hubs-row {
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+}
+.app.workspace .home-companions-card {
+  padding: 18px;
+  margin-bottom: 20px;
+}
+.app.workspace .home-companions-heading h2 {
+  font-size: 18px;
+}
+.app.workspace .home-companions-lanes {
+  gap: 16px;
+}
+.app.workspace .home-companions-lanes article {
+  padding: 12px 0;
+}
+.app.workspace .stats {
+  margin-bottom: 20px;
+}
+.app.workspace .stats strong {
+  font-size: 25px;
+}
+.app.workspace .workspace-task-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+.app.workspace .workspace-task-toolbar > .tasks-tools {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.app.workspace .tasks-tools .search {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+.app.workspace .tasks-tools .search input {
+  width: 100%;
+  min-width: 0;
+}
+.app.workspace .tasks-tools .secondary,
+.app.workspace .workspace-task-toolbar > .secondary {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.app.workspace .filter-bar {
+  padding: 12px 18px;
+}
+.app.workspace .tasks-card .empty {
+  padding: 32px 20px;
+}
+.app.workspace .tasks-card .empty h3 {
+  font-size: 18px;
+}
+.app.workspace .tasks-card .empty p {
+  font-size: 13px;
+}
+@media (min-width: 801px) {
+  .app.workspace .sidebar {
+    width: 224px;
+  }
+  .app.workspace .shell {
+    margin-left: 224px;
+  }
+  .app.workspace.is-railed .sidebar {
+    width: 72px;
+    padding-inline: 12px;
+  }
+  .app.workspace.is-railed .shell {
+    margin-left: 72px;
+  }
+}
+@media (max-width: 1000px) {
+  .app.workspace .topbar {
+    padding-inline: 18px;
+  }
+  .app.workspace .today-label {
+    display: none;
+  }
+}
+@media (max-width: 800px) {
+  .app.workspace .workspace-rail-toggle {
+    display: none;
+  }
+  .app.workspace .shell {
+    margin-left: 0;
+  }
+  .app.workspace .content {
+    padding: 20px 16px;
+  }
+  .app.workspace .topbar {
+    padding-inline: 16px;
+  }
+  .app.workspace .page-heading {
+    gap: 12px;
+  }
+  .app.workspace .tasks-tools .search {
+    flex-basis: 100%;
+  }
+  .app.workspace .workspace-task-toolbar > .secondary span {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .app.workspace .sidebar nav button,
+  .app.workspace .tasks-tools button,
+  .app.workspace .command-trigger,
+  .app.workspace .topbar .icon-button {
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 801px) {
+  .app.workspace.is-railed .brand {
+    padding-left: 0;
+    justify-content: center;
+  }
+  .app.workspace.is-railed .brand-name {
+    display: none;
+  }
+}
