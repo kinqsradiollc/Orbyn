@@ -144,3 +144,53 @@ The general routine runner was deliberately not reused for model context: its
 whole-workspace overview would expand a selected-block binding's context. The
 scoped consumer must still use shared provider/trust/lane/budget infrastructure.
 No new voice/computer-use product feature, deployment or cleanup.
+
+## Hosted scoped consumer — 4 October (not service/UI wired)
+
+The consumer executes real provider HTTP calls with selected-block-only context,
+validated output schema, trusted execution time/zone, no tools, bounded output
+and pre-transmission budget reservation. Known credential shapes in source are
+held before sending. Generated output is staged and rechecked against current
+source/authority before atomic save. Recovery reuses staged work without another
+provider request; an unconfirmed in-flight request is held rather than billed
+again automatically. Provider identity/configuration changes are detected even
+when endpoint/model strings remain identical.
+
+Queued jobs now retain credential-free original model provenance. Removing or
+switching a selected ChatGPT account cannot turn that job into a hosted request.
+Account execution remains deferred: no verified device request/result channel is
+wired yet, and metadata/catalog availability is not treated as inference proof.
+
+Night policy/window are checked on automatic boundaries. Cost is reserved before
+transmission against the shared Night cap, and legacy Night recomputation includes
+page reservations. Original review consent remains required even if later prefs
+weaken it. Saved patches remain reviewable in the morning: an owner/nonce-bound
+human decision applies exactly that patch with fresh permissions and original
+rules, never resumes Night inference. Current rule/source/ownership conflicts
+remain holds. Document/collection signals are transactional; Study retains its
+existing durable queue and post-save synchronization.
+
+Provider error-envelope credential redaction/output caps/configuration identity
+are isolated as compatible candidate4e0a246f in PR194 for full main qualification.
+No maintained-page consumer/storage/UI files are in that PR. This fixes a real
+HTTP200 error path that could expose the configured provider key in an error.
+
+Current scoped/provider/Docs/rules/worker/retention regressions209/209 pass in
+`/tmp/orbyn-page-consumer-release-regressions.log`, no skips or cancellations.
+All workspace types and production build pass in
+`/tmp/orbyn-page-consumer-final-types.log` and `-final-build.log`.
+
+Protocol references for output caps:
+[OpenAI Chat](https://platform.openai.com/docs/api-reference/chat/create),
+[OpenAI Responses](https://platform.openai.com/docs/api-reference/responses/create),
+[Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create).
+Existing requests without an output-cap option retain their behavior; these
+hosted API fields are not claimed to be supported by plan-token inference.
+
+Still required: actual due producer/consumer service wiring with shared runtime
+capacity; verified account/default executor delivery; explicit approved source
+selection beyond target blocks (not merely repeated paraphrasing); budget controls
+and complete activity/undo; existing Night ten-run/reflection-slot/morning-result
+integration; both client selection/consent/status/review flows; scoped @orbyn
+comments and privacy; full local/CI/real-account/native acceptance. No A5/main or
+whole C1-C6/M1/D1/U1 completion is asserted.

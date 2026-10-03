@@ -771,3 +771,21 @@ both client selection/consent/status/review UI, scoped @orbyn comments, full
 qualification and native acceptance remain open. Details and the next proof
 matrix: `docs/reviews/evidence/maintained-pages-contract.md`.
 This is not an A5 or whole C1-C6/M1/D1/U1 completion claim.
+
+### A5 hosted consumer and consent/source follow-up — 4 October (not promoted)
+
+The internal consumer now executes bounded hosted HTTP completions on selected
+blocks, reserves cost before transmission, stages output and uses guarded atomic
+application. Original model provenance survives account removal/switch, with no
+hosted fallback from queued account work. Actual connected-device execution is
+still unimplemented. Original review consent cannot be weakened after queueing.
+Night model work stops at its window while saved patches remain owner/nonce-bound
+reviewable in the morning without further inference. Transactional live signals
+and durable Study synchronization preserve client re-entry behavior.
+
+209 current regressions, workspace types and production build pass. The four-file
+compatible provider guard/key-redaction subset is PR194 on4e0a246f, awaiting full
+qualification. Maintained-page service/producer/account/source/UI/undo/Night
+integration and native/full gates remain open; see the maintained-pages evidence
+matrix. Do not label a target-only paraphrasing consumer a complete maintained
+page: explicit authorized fresh source selection and @orbyn workflow are retained.

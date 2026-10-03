@@ -1,3 +1,4 @@
+import { defaultNightShift } from "@orbyn/core";
 import "./setup.js";
 import { before, after, afterEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -436,22 +437,35 @@ test("a stale approval card cannot answer a later prompt and approval remains bo
     ),
     status(409),
   );
-  const resumed = await transaction((db) =>
-    claimMaintainedPageRun(db, "background", time),
-  );
-  assert.ok(resumed?.reviewed);
-  assert.deepEqual(resumed?.proposal, proposal);
-  await transaction((db) =>
-    applyMaintainedPageRun(db, f.run.id, resumed!.lease_token!, time),
+  const decided = (
+    await pool.query(
+      "SELECT state,proposal,reviewed FROM assistant_page_runs WHERE id=$1",
+      [f.run.id],
+    )
+  ).rows[0];
+  assert.equal(decided.state, "done");
+  assert.equal(decided.reviewed, true);
+  assert.deepEqual(decided.proposal, proposal);
+  assert.equal(
+    await transaction((db) => claimMaintainedPageRun(db, "background", time)),
+    null,
   );
 });
 
 test("night ownership keeps page work out of the background lane and night deadlines are enforced", async () => {
   const f = await fixture();
   await pool.query(
-    `INSERT INTO agent_settings(user_id,night_shift) VALUES($1,'{"enabled":true,"kinds":{"follow_through":true}}'::jsonb)
+    `INSERT INTO agent_settings(user_id,night_shift) VALUES($1,$2::jsonb)
     ON CONFLICT(user_id) DO UPDATE SET night_shift=excluded.night_shift`,
-    [f.user.id],
+    [
+      f.user.id,
+      JSON.stringify({
+        ...defaultNightShift(),
+        enabled: true,
+        start: "08:00",
+        end: "10:00",
+      }),
+    ],
   );
   assert.equal(
     await transaction((db) =>

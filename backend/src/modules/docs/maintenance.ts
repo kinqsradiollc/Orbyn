@@ -1,3 +1,4 @@
+import { announceDocChange } from "./live.js";
 import {
   captureMaintainedPage,
   applyMaintainedPagePatch,
@@ -27,7 +28,7 @@ import {
   type CapabilityContext,
 } from "../../capabilities/registry.js";
 import { destination, refuseSecrets } from "../../capabilities/write.js";
-import { readDoc, requireDoc, saveDoc } from "./service.js";
+import { readDoc, requireDoc, saveDoc, announceDocs } from "./service.js";
 import { privacyFrom, readableLinks } from "../links/privacy.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 
@@ -377,6 +378,7 @@ export async function applyMaintainedPageUpdate(
       [page.id],
     )
   ).rows[0].content;
+  assertMaintainedPageFiles(context.blocks, input.replacements);
   const patched = applyMaintainedPagePatch(
     content,
     page.version,
@@ -483,6 +485,14 @@ export async function applyMaintainedPageUpdate(
       [binding.id, JSON.stringify(snapshot.value)],
     )
   ).rows[0];
+  // PostgreSQL delivers these only if the page/binding transaction commits.
+  await announceDocChange(
+    db as never,
+    page.id,
+    saved.version,
+    "assistant-maintenance",
+  );
+  await announceDocs(db, page.user_id, page.team_id, page.id);
   return { doc: saved, binding: publicBinding(updated) };
 }
 
@@ -491,4 +501,27 @@ export class MaintainedPageReviewRequired extends HttpError {
   constructor(message: string) {
     super(409, message);
   }
+}
+
+/** Generated work cannot attach an unrelated private file that the model was never given. */
+export function assertMaintainedPageFiles(
+  source: DocBlock[],
+  replacements: DocBlock[],
+) {
+  const known = new Set(
+    source.flatMap((block) =>
+      block.type === "image" || block.type === "file" ? [block.file] : [],
+    ),
+  );
+  if (
+    replacements.some(
+      (block) =>
+        (block.type === "image" || block.type === "file") &&
+        !known.has(block.file),
+    )
+  )
+    fail(
+      403,
+      "This update references a file outside the selected page blocks.",
+    );
 }

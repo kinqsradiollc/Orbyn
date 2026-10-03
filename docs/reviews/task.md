@@ -563,3 +563,26 @@ queue, run/reflection slot limits, shared token accounting and morning results
 rather than running a second parallel night consumer. Then both client controls,
 scoped @orbyn comments and full runtime/native qualification. Main remains
 fdaf13e2; user deployment and unrelated primary files stay under their control.
+
+### A5 hosted execution / provider main candidate — latest 4 October
+
+Owned maintained-pages branch has bounded real hosted provider execution,
+pre-transmission reservation, staged recovery, immutable account model origin,
+current Night window/policy and retained review consent. Explicit owner review
+applies a saved patch immediately, including after the night window, without
+resuming model work. Live doc/collection notices commit with the page; Study uses
+its existing durable queue.209 regressions, all workspace types and build pass.
+
+Compatible provider files were isolated from this unfinished feature:
+PR194, branch codex/provider-completion-guards, exact4e0a246f based mainfdaf13e2,
+worktree devday-model-catalog/Orbyn. Full persistent local qualification PID25912,
+config /tmp/orbyn-persistent-provider-guards-4e0a246f.json; fresh CI pending. Main
+merge requires local types/build/full plus exact CI success. No A5 files in PR194.
+Provider guards include HTTP200 error-envelope key redaction, validated optional
+output caps, and credential-free provider identity/configuration snapshots.
+
+Next A5: connect actual producers/consumer to shared runtime slots; explicit fresh
+source selection, account/default execution channel, budget/activity/undo, Night
+serial slot/reflection/morning integration, both UI flows and @orbyn comments.
+Do not promote the internal helper as completed automation. Full C1-C6/M1/D1/U1,
+real-account/host/provider/native gates and user deployment remain unchanged.
