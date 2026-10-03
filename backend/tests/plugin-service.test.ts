@@ -202,7 +202,7 @@ test("plugin capability calls validate input and execute shared reads for the au
   for (let depth = 0; depth < 17; depth++) nested = { nested };
   for (const argumentsValue of [
     { nested },
-    { values: Array.from({ length: 4096 }, () => "private-fixture") },
+    { values: Array.from({ length: 4096 }, () => 0) },
   ]) {
     const rejected = await call({
       name: "get_context",
