@@ -10,6 +10,7 @@ import {
   objectRefsInValue,
   targetKey,
   fail,
+  HttpError,
   type DocBlock,
   type MaintainedPageBinding,
 } from "@orbyn/core";
@@ -303,7 +304,7 @@ export async function updateMaintainedPageBinding(
   const row = (
     await db.query<BindingRow>(
       `UPDATE assistant_page_bindings SET snapshot=$4::jsonb,instruction=$5,rrule=$6,timezone=$7,
-      next_run_at=$8,paused=$9,revision=revision+1,updated_at=now()
+      next_run_at=$8,paused=$9,schedule_exhausted=false,revision=revision+1,updated_at=now()
      WHERE id=$1 AND doc_id=$2 AND user_id=$3 RETURNING *`,
       [
         bindingId,
@@ -318,6 +319,12 @@ export async function updateMaintainedPageBinding(
       ],
     )
   ).rows[0];
+  await db.query(
+    `UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,
+      waiting_id=NULL,proposal=NULL,error_message='The page binding changed.',updated_at=now()
+     WHERE binding_id=$1 AND state IN ('queued','running','waiting')`,
+    [bindingId],
+  );
   return publicBinding(row);
 }
 
@@ -394,7 +401,9 @@ export async function applyMaintainedPageUpdate(
       owner: { user_id: page.user_id },
     }) === "review"
   )
-    fail(409, "This page update needs your review.");
+    throw new MaintainedPageReviewRequired(
+      "This page update needs your review.",
+    );
   refuseSecrets(JSON.stringify(input.replacements));
   // Saving a checkbox can change its task. Lock and independently authorize each
   // selected linked task; unchanged human blocks never enter syncTicks.
@@ -444,10 +453,14 @@ export async function applyMaintainedPageUpdate(
     if (!readable.rowCount || !policy.can(ctx.principal, "write", task).ok)
       fail(403, "A linked task is outside this assistant's current authority.");
     if (destination(ctx, task.team_id, "W2", [], { owner: task }) === "review")
-      fail(409, "A linked task change needs your review.");
+      throw new MaintainedPageReviewRequired(
+        "A linked task change needs your review.",
+      );
   }
   if (ctx.asking?.mode === "collect" && ctx.asking.reasons.length)
-    fail(409, "This page update needs your approval.");
+    throw new MaintainedPageReviewRequired(
+      "This page update needs your approval.",
+    );
   const saved = await saveDoc(
     db,
     user,
@@ -471,4 +484,11 @@ export async function applyMaintainedPageUpdate(
     )
   ).rows[0];
   return { doc: saved, binding: publicBinding(updated) };
+}
+
+/** Internal review signal; stale source/binding conflicts never become approvals. */
+export class MaintainedPageReviewRequired extends HttpError {
+  constructor(message: string) {
+    super(409, message);
+  }
 }

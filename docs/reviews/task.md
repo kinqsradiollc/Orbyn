@@ -546,3 +546,20 @@ No route accepts a client-provided approval flag. No scheduler/model/UI wiring o
 production promotion yet. Next durable claims must carry binding and rule
 revisions (IDs, not copied source text), preserve them across review/resume, and
 use selected-block-only provider context. Preserve all broader acceptance gates.
+
+### A5 scoped job checkpoint — 4 October
+
+Migration220 and internal scoped-run helpers queue references only, bind original
+rule/page/binding revisions, claim lane-specific unique leases, stage once, and
+carry a unique owner-bound waiting card. Replaced workers cannot write/fail their
+successors. Binding edits clear in-flight output; expired work releases ownership.
+Final159/159 regressions include Docs/rules/worker lanes/storage/API/core/retention.
+No model request or actual scanner/consumer is wired yet, so do not promote or
+claim working page automation from these helpers.
+
+Next wire selected-block-only provider execution with staged recovery; respect
+current account/default model selection. Integrate the existing Overnight serial
+queue, run/reflection slot limits, shared token accounting and morning results
+rather than running a second parallel night consumer. Then both client controls,
+scoped @orbyn comments and full runtime/native qualification. Main remains
+fdaf13e2; user deployment and unrelated primary files stay under their control.

@@ -1,6 +1,6 @@
 import { AGENT_TOOLSETS, type AgentAccess, type SystemRole } from "@orbyn/core";
 import { z } from "zod";
-import { pool } from "../../db/pool.js";
+import { pool, type Queryable } from "../../db/pool.js";
 import { reachableTeams, type Principal } from "../../capabilities/policy.js";
 
 const approvalScopeInput = z.union([
@@ -61,17 +61,18 @@ export async function assistantPrincipal(
     name: string;
     role: SystemRole;
   },
-  options: { refusePaused?: boolean } = {},
+  options: { refusePaused?: boolean; db?: Queryable } = {},
 ): Promise<Principal> {
+  const db = options.db ?? pool;
   const identity = (
-    await pool.query<{ name: string }>(
+    await db.query<{ name: string }>(
       "SELECT name FROM agent_settings WHERE user_id = $1",
       [user.id],
     )
   ).rows[0];
   const name = identity?.name || "Orbyn";
   const grant = (
-    await pool.query<AssistantGrantRow>(
+    await db.query<AssistantGrantRow>(
       `INSERT INTO agent_grants
          (user_id, kind, name, client_name, access, team_ids, personal,
           toolsets, flags, trust, space_trust, acts_alone)
@@ -112,7 +113,7 @@ export async function assistantPrincipal(
       spaces: grant.space_trust ?? {},
       acts_alone: (grant.acts_alone ?? []) as Principal["trust"]["acts_alone"],
     },
-    teams: await reachableTeams(pool, user.id, grant.team_ids, "assistant"),
+    teams: await reachableTeams(db, user.id, grant.team_ids, "assistant"),
   };
 }
 

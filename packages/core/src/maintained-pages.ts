@@ -82,6 +82,7 @@ export type MaintainedPageBinding = {
   timezone: string;
   next_run_at: string;
   paused: boolean;
+  schedule_exhausted: boolean;
   created_at: string;
   updated_at: string;
 };

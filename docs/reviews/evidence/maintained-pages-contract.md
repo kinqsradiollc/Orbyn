@@ -102,3 +102,45 @@ provider context, staged results and review/resume. It must never substitute the
 general workspace agent's context for selected-block context or let a newly
 refreshed principal erase the revision captured by an earlier approval. Then wire
 both client selection/consent/schedule/status/review and scoped @orbyn comments.
+
+## Durable scoped job path — 4 October (consumer not wired)
+
+Migration220 stores job references to the binding, its revision, page revision,
+original assistant rule revision and owner/grant identity. Queue rows contain no
+instruction or copied page text. One active job owns a binding, and one schedule
+occurrence/revision queues once. Due time advances atomically with insertion.
+Schedule exhaustion is separate from pausing, so the final occurrence can finish.
+
+Lane-specific claims use row locks and unique leases. A dead worker's lease can
+be replaced; its later staging, completion or failure cannot affect the new
+worker. Lease checks run before loading source context and are repeated under
+lock. Context, staging, review/resume and save recheck current page/block/grant
+rights and the rule revision captured when queued. A deny rule holds work before
+context is returned to a model worker. Generated replacements and token estimates
+are bounded and staged once; recovery can reuse them without another model call.
+
+Approval uses a unique waiting ID, an owner check and the original source/rule
+revision. A stale card cannot answer later work. Explicit approval starts a fresh
+worker retry allowance while retaining the staged result, source revisions and
+budget counter. Binding edits cancel in-flight work and clear output; expired
+night/review work and invalid references release the schedule. Completed/failed/
+cancelled rows retain90days and waiting reviews7days through the existing sweeper.
+Page save, binding advancement and job completion share one transaction.
+
+Initial queue/storage/API checks28/28 passed; retention/core checks43/43 passed.
+Final Docs, assistant Docs/rules/lanes/workers, storage/API/core and retention
+regressions159/159 pass in `/tmp/orbyn-page-runs-release-regressions.log`, no skips
+or cancellations. All workspace types are rechecked for this checkpoint.
+
+| Remaining implementation            | Required proof                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connect producer and model consumer | Due scanning, bounded selected-block prompt only, provider failure/cancel/restart, staged-result reuse; current account/default model selection must be respected.                                |
+| Integrate Overnight work            | Existing serialized night queue, ten-run limit, reflection reservation, shared token accounting and morning results must include page jobs. Internal lane/deadline tests alone do not prove this. |
+| Web/desktop and mobile controls     | Explicit block selection, schedule/consent, pause/ended status, generated preview and unique-card review/resume; current access controls on all reads.                                            |
+| Scoped @orbyn comments              | Comment edit/delete/retry dedup, scoped job and reply permissions, private comment/source restrictions.                                                                                           |
+| Production qualification            | Full local/CI, migrations and signed-in web/manual/iOS/Android acceptance. No PR/main promotion of this unfinished path.                                                                          |
+
+The general routine runner was deliberately not reused for model context: its
+whole-workspace overview would expand a selected-block binding's context. The
+scoped consumer must still use shared provider/trust/lane/budget infrastructure.
+No new voice/computer-use product feature, deployment or cleanup.

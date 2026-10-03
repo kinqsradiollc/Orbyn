@@ -755,3 +755,19 @@ Docs/assistant-Docs/binding/API/core/inventory/catalog regressions118/118 and al
 workspace types pass. Scheduler/model staging/review receipts, both client UX,
 @orbyn comment jobs/replies, full qualification and native acceptance remain open.
 This does not complete A5 or the full C1-C6/M1/D1/U1 contract.
+
+### A5 durable scoped jobs — 4 October 2026 (not promoted)
+
+The maintained-page candidate now queues ID/revision references, claims by
+runtime lane with replaceable leases, stages bounded selected-block results and
+uses a unique owner-bound approval card. It retains the original assistant rule
+revision through review/resume. Binding edits, expired windows and stale source
+references invalidate output. Source permissions and write rules are rechecked
+before model context is returned and before atomic page/job completion.
+
+Final focused/regression159/159 pass. Producer/provider execution, account model
+selection, shared Overnight serialization/budget/ten-run/reflection accounting,
+both client selection/consent/status/review UI, scoped @orbyn comments, full
+qualification and native acceptance remain open. Details and the next proof
+matrix: `docs/reviews/evidence/maintained-pages-contract.md`.
+This is not an A5 or whole C1-C6/M1/D1/U1 completion claim.
