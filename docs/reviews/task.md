@@ -198,3 +198,19 @@ reason and actual native AI connections & models SettingsAnchor are repaired;
 89/89 combined checks and all workspace types/builds pass. Requalify the new
 commit, preserving original failure evidence and both untracked user previews.
 No main promotion or M1/U1 completion yet.
+
+## Combined UI review preview — latest 3 October 2026
+
+`home-agent-editorial/Orbyn` now owns `codex/adr-ui-integration`, combining
+Home9232cfaa, Docs3eb805d9 and models149a91e9. Frozen candidate branches retained.
+Append-only docs/export conflicts resolved by retaining both; generated catalog
+regenerated for combined routes. Focused163/163, all types/build/fullformat pass.
+Evidence: evidence/adr-ui-integration.md. Full frozen integration qualification
+and all runtime/platform gates remain required. No main promotion yet.
+
+Preview5174/API8027 now serve this integration, existing test admin/data intact.
+Marked preview DB migrated without reset. Explicit proxy configuration fixes
+8008/8027 mismatch; proxied health/login/me/profiles/connections/executors200.
+Private credentials are not in Git. Keep preview alive for manual user review.
+Docs PR175 full96898/CI37089037682 remain under observation; never infer completion
+from a timeout. Complete all C1–C6/M1/D1/U1; no deployment/release/cleanup.
