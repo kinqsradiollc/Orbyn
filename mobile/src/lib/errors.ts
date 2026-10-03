@@ -1,14 +1,11 @@
 import { errorMessage, logError } from "@orbyn/core";
 
 /**
- * Technical detail in error messages on screen: always in development
- * (`__DEV__`), and in a build made with EXPO_PUBLIC_DEBUG_ERRORS=true.
- * Otherwise people see plain sentences and the detail is in the console
- * (Metro, or the device log).
+ * Technical detail appears on screen only when EXPO_PUBLIC_DEBUG_ERRORS=true.
+ * Development previews use the same plain messages as production by default;
+ * full diagnostics remain in Metro or the device log.
  */
-export const DEBUG_ERRORS =
-  (typeof __DEV__ !== "undefined" && __DEV__) ||
-  process.env.EXPO_PUBLIC_DEBUG_ERRORS === "true";
+export const DEBUG_ERRORS = process.env.EXPO_PUBLIC_DEBUG_ERRORS === "true";
 
 /**
  * A readable message for a failed action, and the full story in the console

@@ -1,12 +1,11 @@
 import { errorMessage, logError } from "@orbyn/core";
 
 /**
- * Technical detail in error messages on screen: always in development, and
- * in a build made with DEBUG_ERRORS=true (VITE_DEBUG_ERRORS). Otherwise people
- * see plain sentences and the detail is in the browser console.
+ * Technical detail appears on screen only when VITE_DEBUG_ERRORS=true.
+ * Development previews use the same plain messages as production by default;
+ * full diagnostics remain in the browser console.
  */
-export const DEBUG_ERRORS =
-  import.meta.env.DEV || import.meta.env.VITE_DEBUG_ERRORS === "true";
+export const DEBUG_ERRORS = import.meta.env.VITE_DEBUG_ERRORS === "true";
 
 /**
  * A readable message for a failed action, and the full story in the console
