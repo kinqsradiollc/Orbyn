@@ -48,33 +48,55 @@ export function HomeCompanions({
         onClose={() => setAgentsOpen(false)}
         onOpenChat={onOpenChat}
       />
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
         {identity && (
           <Character
             appearance={identity.character}
             name={identity.name}
-            size={56}
+            size={40}
           />
         )}
-        <View style={{ flex: 1 }}>
+        <View style={{ flexGrow: 1, flexBasis: 120, minWidth: 0 }}>
           <Text style={shared.sectionTitle}>
             {identity?.name ?? "Your companion"}
           </Text>
-          <Text style={shared.small}>
-            Background progress and Overnight results.
-          </Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={() => setExpanded(!expanded)}
+          style={{ minHeight: controls.tap, justifyContent: "center" }}
+        >
+          <Text style={shared.small}>
+            {expanded ? "Hide companions" : "Companions"}
+          </Text>
+        </Pressable>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        onPress={() => setExpanded(!expanded)}
-        style={{ minHeight: controls.tap, justifyContent: "center" }}
-      >
-        <Text style={shared.small}>
-          {expanded ? "Hide companions" : "Browse companions"}
-        </Text>
-      </Pressable>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <Button
+          title="Activity"
+          secondary
+          style={{ flex: 1, marginBottom: 0 }}
+          onPress={() => setAgentsOpen(true)}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: guideOpen }}
+          onPress={() => setGuideOpen(!guideOpen)}
+          style={{ flex: 1, minHeight: controls.tap, justifyContent: "center" }}
+        >
+          <Text style={shared.small}>
+            {guideOpen ? "Hide guide" : "How agents work"}
+          </Text>
+        </Pressable>
+      </View>
       <View style={{ gap: 10 }}>
         {HOME_AGENT_GUIDE.map((agent) => (
           <View
@@ -87,12 +109,15 @@ export function HomeCompanions({
             }}
           >
             <Text style={shared.sectionTitle}>{agent.name}</Text>
-            <Text style={shared.small}>{agent.timing}</Text>
-            <Text style={shared.small}>{agent.summary}</Text>
-            <Text style={shared.small}>{agent.result}</Text>
-            <Text style={shared.small}>{agent.pause}</Text>
+            <Text style={shared.small}>{agent.brief}</Text>
             {guideOpen && (
               <View style={{ gap: 8, marginTop: 6 }}>
+                <Text style={shared.small}>
+                  {agent.timing}. {agent.summary}
+                </Text>
+                <Text style={shared.small}>
+                  {agent.result} {agent.pause}
+                </Text>
                 <Text style={shared.small}>
                   Example request: “{agent.request}”
                 </Text>
@@ -108,23 +133,8 @@ export function HomeCompanions({
             )}
           </View>
         ))}
-        <Text style={shared.small}>{HOME_AGENT_IDLE_NOTE}</Text>
+        {guideOpen && <Text style={shared.small}>{HOME_AGENT_IDLE_NOTE}</Text>}
       </View>
-      <Button
-        title="View agent activity"
-        secondary
-        onPress={() => setAgentsOpen(true)}
-      />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: guideOpen }}
-        onPress={() => setGuideOpen(!guideOpen)}
-        style={{ minHeight: controls.tap, justifyContent: "center" }}
-      >
-        <Text style={shared.small}>
-          {guideOpen ? "Hide guide" : "How agents work"}
-        </Text>
-      </Pressable>
       {expanded && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
           {CHARACTER_PRESETS.map(({ name, appearance }) => (

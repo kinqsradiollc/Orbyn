@@ -333,8 +333,8 @@
   min-width: 0;
 }
 .home-companions-heading h2 {
-  margin: 0 0 6px;
-  font-size: 18px;
+  margin: 0;
+  font-size: 16px;
 }
 .home-companions-heading p {
   margin: 0;
@@ -378,37 +378,28 @@
 }
 
 .home-companions-lanes {
-  flex: 1 1 260px;
-  min-width: 0;
-}
-.home-companions-lanes p + p {
-  margin-top: 10px;
-}
-.home-companions-lanes strong {
-  display: block;
-  color: var(--color-text);
-  font-weight: 500;
-}
-
-.home-companions-lanes small {
-  display: block;
-  margin-top: 4px;
-  color: var(--color-muted);
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-
-.home-companions-lanes {
+  flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: 24px;
+  gap: 12px;
+  min-width: 0;
 }
 .home-companions-lanes article {
+  display: grid;
+  grid-template-columns: minmax(90px, 120px) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px 16px;
   min-width: 0;
 }
+.home-companions-lanes strong {
+  color: var(--color-text);
+  font-weight: 500;
+  font-size: 14px;
+}
 .home-companions-lanes article > p {
-  margin-top: 8px;
-  line-height: 1.6;
+  font-size: 13px;
+}
+.home-companions-lanes .home-companions-guide {
+  grid-column: 1 / -1;
 }
 .home-companions-guide {
   display: grid;
@@ -429,6 +420,7 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  margin-top: 14px;
 }
 
 .home-companions-steps {

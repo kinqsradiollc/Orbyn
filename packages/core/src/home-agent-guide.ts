@@ -4,6 +4,7 @@
 export const HOME_AGENT_GUIDE = [
   {
     name: "Background",
+    brief: "Tasks you delegate.",
     timing: "When you delegate a task",
     summary:
       "Give it the project notes and a clear task. Come back to a draft, its sources and any questions.",
@@ -28,6 +29,7 @@ export const HOME_AGENT_GUIDE = [
   },
   {
     name: "Overnight",
+    brief: "Queued work for tonight.",
     timing: "Inside your chosen night window",
     summary:
       "Queue work for tonight. In the morning, see what finished, what needs your decision and what is still queued.",

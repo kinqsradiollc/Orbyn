@@ -317,13 +317,15 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                   <h3>{agent.name}</h3>
                 </div>
                 <div className="home-agent-detail">
-                  <p>{agent.summary}</p>
-                  <div className="home-agent-request">
-                    <span>Example request</span>
-                    <blockquote>“{agent.request}”</blockquote>
-                  </div>
+                  <p>{agent.brief}</p>
                   <details className="home-agent-how">
                     <summary>How {agent.name} works</summary>
+                    <p>{agent.summary}</p>
+                    <div className="home-agent-request">
+                      <span>Example request</span>
+                      <blockquote>“{agent.request}”</blockquote>
+                    </div>
+
                     <ol
                       className="home-agent-steps"
                       aria-label={`${agent.name} workflow`}
@@ -335,17 +337,17 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                         </li>
                       ))}
                     </ol>
+                    <dl className="home-agent-workflow">
+                      <div>
+                        <dt>Where to review</dt>
+                        <dd>{agent.result}</dd>
+                      </div>
+                      <div>
+                        <dt>When it pauses</dt>
+                        <dd>{agent.pause}</dd>
+                      </div>
+                    </dl>
                   </details>
-                  <dl className="home-agent-workflow">
-                    <div>
-                      <dt>Where to review</dt>
-                      <dd>{agent.result}</dd>
-                    </div>
-                    <div>
-                      <dt>When it pauses</dt>
-                      <dd>{agent.pause}</dd>
-                    </div>
-                  </dl>
                 </div>
               </article>
             ))}
