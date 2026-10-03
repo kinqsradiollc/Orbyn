@@ -101,6 +101,7 @@ export function OvernightSheet(props: Props) {
             night.runs
               .filter(
                 (run) =>
+                  run.kind !== "reflection" &&
                   !run.restricted &&
                   (action === "undo"
                     ? run.state === "done" || run.state === "failed"
@@ -145,42 +146,46 @@ export function OvernightSheet(props: Props) {
                 ? "Your night is still in progress."
                 : "Here is what happened overnight."}
             </Text>
-            <View
-              style={{
-                flexDirection: "row",
-                flexWrap: "wrap",
-                gap: 8,
-                marginVertical: 12,
-              }}
-            >
-              <Button
-                title="Keep all"
-                disabled={
-                  busy ||
-                  !night.runs.some(
-                    (run) =>
-                      !run.restricted &&
-                      run.state === "done" &&
-                      run.status !== "undone",
-                  )
-                }
-                onPress={() => bulk("keep")}
-              />
-              <Button
-                title="Undo all"
-                secondary
-                disabled={
-                  busy ||
-                  !night.runs.some(
-                    (run) =>
-                      !run.restricted &&
-                      ["done", "failed"].includes(run.state) &&
-                      run.status !== "undone",
-                  )
-                }
-                onPress={() => bulk("undo")}
-              />
-            </View>
+            {night.runs.some((run) => run.kind !== "reflection") && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginVertical: 12,
+                }}
+              >
+                <Button
+                  title="Keep all"
+                  disabled={
+                    busy ||
+                    !night.runs.some(
+                      (run) =>
+                        run.kind !== "reflection" &&
+                        !run.restricted &&
+                        run.state === "done" &&
+                        run.status !== "undone",
+                    )
+                  }
+                  onPress={() => bulk("keep")}
+                />
+                <Button
+                  title="Undo all"
+                  secondary
+                  disabled={
+                    busy ||
+                    !night.runs.some(
+                      (run) =>
+                        run.kind !== "reflection" &&
+                        !run.restricted &&
+                        ["done", "failed"].includes(run.state) &&
+                        run.status !== "undone",
+                    )
+                  }
+                  onPress={() => bulk("undo")}
+                />
+              </View>
+            )}
             {night.runs.map((run) => (
               <RunCard
                 key={run.id}
@@ -259,23 +264,44 @@ function RunCard({
     <View style={[shared.card, { marginBottom: 12 }]}>
       <Text style={shared.sectionTitle}>{run.title}</Text>
       <Text style={shared.small}>
-        {["queued", "running"].includes(run.state)
-          ? "Working"
-          : run.state === "waiting"
-            ? "Needs you"
-            : run.state === "failed"
-              ? "Could not finish"
-              : run.status === "partly"
-                ? "Partly kept"
-                : run.status === "undone"
-                  ? "Undone"
-                  : run.status === "pending"
-                    ? "Pending"
-                    : "Kept"}
+        {run.state === "queued"
+          ? "Queued"
+          : run.state === "running"
+            ? "Working"
+            : run.state === "waiting"
+              ? "Needs you"
+              : run.state === "failed"
+                ? "Could not finish"
+                : run.kind === "reflection"
+                  ? "Reflection ready"
+                  : run.status === "partly"
+                    ? "Partly kept"
+                    : run.status === "undone"
+                      ? "Undone"
+                      : run.status === "pending"
+                        ? "Pending"
+                        : "Kept"}
       </Text>
       <Text style={[shared.body, { marginVertical: 12 }]}>
         {run.summary || "Open the chat to see its progress."}
       </Text>
+      {!!run.reflection_sources?.length && (
+        <View style={{ gap: 8, marginBottom: 12 }}>
+          <Text style={shared.label}>Sources</Text>
+          {run.reflection_sources.map((source) => (
+            <Button
+              secondary
+              key={source.number}
+              title={`${source.number}. ${source.title}`}
+              onPress={() =>
+                source.kind === "chat"
+                  ? onOpenChat(source.id)
+                  : onOpen("task", source.id)
+              }
+            />
+          ))}
+        </View>
+      )}
       {run.approval && (
         <View style={{ gap: 8, marginBottom: 12 }}>
           <Text style={shared.body}>{run.approval.text}</Text>
@@ -367,49 +393,59 @@ function RunCard({
             onPress={() => onOpenReview(run.proposal!.id)}
           />
         )}
-        <Button
-          title={
-            pending && chosen.size < choices.length ? "Keep selected" : "Keep"
-          }
-          disabled={
-            busy ||
-            run.state !== "done" ||
-            run.restricted ||
-            run.status === "undone" ||
-            (pending && !chosen.size)
-          }
-          onPress={() =>
-            void act(() =>
-              client.keepAssistantNightRun(
-                run.id,
+        {run.kind !== "reflection" && (
+          <>
+            <Button
+              title={
                 pending && chosen.size < choices.length
-                  ? run.steps.length
-                    ? { steps: [...chosen] }
-                    : { only: [...chosen].map(Number) }
-                  : {},
-              ),
-            )
-          }
-        />
-        <Button
-          title="Undo"
-          secondary
-          disabled={
-            busy ||
-            !["done", "failed"].includes(run.state) ||
-            run.restricted ||
-            run.status === "undone"
-          }
-          onPress={() => void act(() => client.undoAssistantNightRun(run.id))}
-        />
+                  ? "Keep selected"
+                  : "Keep"
+              }
+              disabled={
+                busy ||
+                run.state !== "done" ||
+                run.restricted ||
+                run.status === "undone" ||
+                (pending && !chosen.size)
+              }
+              onPress={() =>
+                void act(() =>
+                  client.keepAssistantNightRun(
+                    run.id,
+                    pending && chosen.size < choices.length
+                      ? run.steps.length
+                        ? { steps: [...chosen] }
+                        : { only: [...chosen].map(Number) }
+                      : {},
+                  ),
+                )
+              }
+            />
+            <Button
+              title="Undo"
+              secondary
+              disabled={
+                busy ||
+                !["done", "failed"].includes(run.state) ||
+                run.restricted ||
+                run.status === "undone"
+              }
+              onPress={() =>
+                void act(() => client.undoAssistantNightRun(run.id))
+              }
+            />
+          </>
+        )}
       </View>
-      <Button
-        title={expanded ? "Hide changes" : "Show changes"}
-        secondary
-        onPress={() => setExpanded(!expanded)}
-        style={{ marginTop: 12 }}
-      />
-      {expanded && (
+      {run.kind !== "reflection" && (
+        <Button
+          title={expanded ? "Hide changes" : "Show changes"}
+          secondary
+          onPress={() => setExpanded(!expanded)}
+          style={{ marginTop: 12 }}
+        />
+      )}
+      {run.kind !== "reflection" && expanded && (
         <>
           {pending &&
             choices.map((choice) => (

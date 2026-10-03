@@ -13,6 +13,7 @@ const labels = {
   tidy: "Tidy up",
   handed: "Tasks handed to me",
   follow_through: "Follow through",
+  reflection: "Reflect on recent work",
 };
 
 /** Personal night window, allowed work, and morning review controls. */

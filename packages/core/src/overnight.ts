@@ -9,6 +9,12 @@ export type OvernightRun = {
   decision_token: string;
   chat_id: string | null;
   kind: string;
+  reflection_sources?: {
+    number: number;
+    kind: "chat" | "task";
+    id: string;
+    title: string;
+  }[];
   title: string;
   summary: string;
   status: "kept" | "undone" | "partly" | "pending";
