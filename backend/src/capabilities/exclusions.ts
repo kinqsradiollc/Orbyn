@@ -383,6 +383,7 @@ export const COVERED: Record<string, string[]> = {
 export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /models": "credentials",
   "PUT /models/default": "credentials",
+  "GET /ai/connections/chatgpt/executors": "credentials",
   "POST /ai/connections/chatgpt/executors/challenges": "credentials",
   "POST /ai/connections/chatgpt/executors/complete": "credentials",
   "POST /ai/connections/chatgpt/leases/challenges": "credentials",

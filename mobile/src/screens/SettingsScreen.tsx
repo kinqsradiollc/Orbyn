@@ -1,3 +1,4 @@
+import { ChatgptModelsSection } from "./settings/ChatgptModelsSection";
 import {
   SettingsAnchor,
   SettingsFocus,
@@ -394,6 +395,10 @@ export function SettingsScreen({
           onPress={onOpenConnections}
         />
       </View>
+
+      <SettingsAnchor name="AI connections & models">
+        <ChatgptModelsSection userId={user?.id ?? ""} />
+      </SettingsAnchor>
 
       {analytics && analytics.planned_minutes > 0 && (
         <SettingsAnchor name="Where your time goes">

@@ -34,6 +34,8 @@ const why = {
   file: "A file to download; the agent reads the same page as Markdown with fetch.",
   signIn:
     "Signing in and how an account signs in (two-step, passkeys, devices): people only.",
+  planConnection:
+    "Personal ChatGPT authorization and credential-owning device/model selection belong to the person; agents and plugin callers cannot borrow those credentials.",
   credentials:
     "Keys, webhooks, feeds, chat delivery, the Clipper and agent connections: an agent never mints access or sends data somewhere new.",
   account:
@@ -136,6 +138,7 @@ export const COMMAND_TOOLS: Record<string, CommandPlace> = {
   "settings.two-step": { reason: why.signIn },
   "settings.passkeys": { reason: why.signIn },
   "settings.signed-in": { reason: why.signIn },
+  "settings.chatgpt-models": { reason: why.planConnection },
   "settings.status": { reason: why.news },
   "settings.whats-new": { reason: why.news },
   "settings.how-you-work": {

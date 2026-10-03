@@ -597,3 +597,13 @@ revision/conflict/keyboard/swipe/Android acceptance and frozen full local/CI are
 still required. The user will manually validate web presentation; blocked
 browser access is not bypassed. This does not complete C1–C6/M1/D1/U1 or authorize
 deployment/cleanup.
+
+### ChatGPT model settings promotion candidate — 3 October 2026
+
+First-party Settings on web/desktop/mobile expose owned device catalogs and
+account-bound defaults. The credential-owning runtime rereads the shared
+default before capturing inference; failed, foreign or regressed reads cannot
+use a cached model. Device discovery returns credential-free metadata for
+current owned registrations and is excluded from agent tools. This is a scoped
+candidate; evidence and remaining M1/U1 acceptance gates are recorded in
+`docs/reviews/evidence/chatgpt-model-settings.md`.
