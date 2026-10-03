@@ -12,6 +12,7 @@ import { ActivityRecorder } from "../mcp-server/recorder.js";
 import { connectorResources } from "../oauth/resources.js";
 import { PluginAuthError, resolvePluginCaller } from "./auth.js";
 import { pluginMetadataUrl } from "./discovery.js";
+import { pluginToolInput } from "./tool-input.js";
 
 const connection = z.object({
   kind: z.literal("plugin"),
@@ -96,13 +97,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     "/plugin/tools/call",
     { bodyLimit: 65_536 },
     async (request, reply) => {
-      const input = z
-        .object({
-          name: z.string().min(1).max(128),
-          arguments: z.record(z.string(), z.unknown()),
-        })
-        .strict()
-        .safeParse(request.body);
+      const input = pluginToolInput.safeParse(request.body);
       if (!input.success)
         return reply.code(400).send({
           error: "INVALID",

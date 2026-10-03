@@ -198,6 +198,20 @@ test("plugin connection and typed catalog require plugin OAuth and reflect live 
 test("plugin capability calls validate input and execute shared reads for the authenticated person", async () => {
   const call = (payload: object) =>
     app.inject({ method: "POST", url: "/plugin/tools/call", headers, payload });
+  let nested: unknown = "private-fixture";
+  for (let depth = 0; depth < 17; depth++) nested = { nested };
+  for (const argumentsValue of [
+    { nested },
+    { values: Array.from({ length: 4096 }, () => "private-fixture") },
+  ]) {
+    const rejected = await call({
+      name: "get_context",
+      arguments: argumentsValue,
+    });
+    assert.equal(rejected.statusCode, 400);
+    assert.equal(rejected.json().error, "INVALID");
+    assert.doesNotMatch(rejected.body, /private-fixture/);
+  }
   assert.equal(
     (await call({ name: "get_context", arguments: {}, approved: true }))
       .statusCode,
