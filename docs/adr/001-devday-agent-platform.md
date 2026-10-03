@@ -607,3 +607,17 @@ use a cached model. Device discovery returns credential-free metadata for
 current owned registrations and is excluded from agent tools. This is a scoped
 candidate; evidence and remaining M1/U1 acceptance gates are recorded in
 `docs/reviews/evidence/chatgpt-model-settings.md`.
+
+### Home/task layout correction from user review — 3 October 2026
+
+User screenshots identify excessive repeated explanatory copy on signed-in Home
+and a bulky task toolbar. The full application redesign remains required.
+Signed-in Home should be a compact working entry point: identity, short Background
+and Overnight rows, actual activity access and an optional guide. Detailed
+examples, timing and stopping conditions belong behind disclosure, with collapse
+controls above long content. Public Home uses the same short agent descriptions.
+Preserve all character choices and existing task actions, with compact responsive
+controls and direct empty-state copy. Native screenshot fixture proof is limited
+to the inspected component; real account/runtime, Android, all other surfaces and
+full C1–C6/M1/D1/U1 acceptance remain open. Web visuals remain delegated to the
+user's preview/test-server review under the existing permission restriction.

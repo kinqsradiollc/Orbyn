@@ -754,13 +754,15 @@ export function TasksView({
             <input
               type="search"
               aria-label="Search items"
-              placeholder="Find something…"
+              placeholder="Search tasks"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
             />
           </div>
           <button
             className="secondary tasks-view-button"
+            aria-label="Saved view options"
+            title="Saved view options"
             aria-haspopup="dialog"
             aria-expanded={!!viewMenu}
             onClick={(e) =>
@@ -769,14 +771,17 @@ export function TasksView({
               )
             }
           >
-            <Pin size={14} aria-hidden="true" /> View
+            <Pin size={14} aria-hidden="true" /> <span>Views</span>
           </button>
           <button
             className="secondary tasks-view-button"
             aria-haspopup="dialog"
+            aria-label="Done this week"
+            title="Done this week"
             onClick={() => setProgressOpen(true)}
           >
-            <BadgeCheck size={14} aria-hidden="true" /> Done this week
+            <BadgeCheck size={14} aria-hidden="true" />{" "}
+            <span>Done this week</span>
           </button>
           <div className="segmented" role="group" aria-label="Layout">
             <button
@@ -802,7 +807,7 @@ export function TasksView({
             onClick={() => setFiltersOpen(!filtersOpen)}
           >
             <SlidersHorizontal size={14} aria-hidden="true" />
-            {activeFilters ? `Filters · ${activeFilters}` : "Filters and sort"}
+            {activeFilters ? `Filters · ${activeFilters}` : "Filters"}
           </button>
         </div>
       </div>
@@ -1066,7 +1071,13 @@ export function TasksView({
         </p>
       )}
       {!visible.length && !owners ? (
-        <EmptyState icon={ListTodo} title={empty.title} body={empty.body} />
+        <EmptyState icon={ListTodo} title={empty.title} body={empty.body}>
+          {!items.length && onNewItem && (
+            <button className="primary" onClick={() => onNewItem({})}>
+              Add task
+            </button>
+          )}
+        </EmptyState>
       ) : layout === "board" ? (
         <TaskBoard
           columns={columns}

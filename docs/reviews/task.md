@@ -232,3 +232,48 @@ sign in again with the same saved credentials. Fresh full runs for frozen
 integration176e8dbcd7b and plugin180bc381226 are live, excluding the previous
 ENOSPC run. Resources179 CI37091484961 has completed successfully. Other local
 PostgreSQL's empty postmaster.pid restart loop was observed and left untouched.
+
+## User Home/task density feedback — 3 October
+
+User screenshots reject excessive repeated Home copy and the bulky task toolbar,
+and explicitly reiterate the full application redesign. Local
+codex/home-agent-summary starts from Views181, preserves integration176 and
+combined182. It makes signed-in Home a compact header/two agent rows with help
+behind disclosure, groups native actions, shortens task empty states and makes
+responsive task controls compact without removing actions. Public Home moves
+examples/result/pause explanations into expandable guides.
+
+Actual native iPhone SE component fixture has loaded fonts and observed guide
+open/close/character expansion screenshots in evidence/home-density. Account and
+activity are mocked; lower-gallery scrolling unproven. User owns web visual
+acceptance; no browser bypass. See evidence/home-workspace-density.md. Final focused 17/17, workspace/final client types, build and formatting passed
+with terminal exit 0. Exact committed-head full/CI and combined integration remain required. Full U1 and
+C1–C6/M1/D1 remain active; these changes do not complete the full redesign.
+
+Combined18285b8b227 full local passed2502/2502 with no skips/failures; all four CI37093448880 jobs passed. Frozen Views181 ae6d11e7 full2477/2477/allCI passed. No main
+promotion, deployment/release or cleanup.
+
+## Remaining delivery pipeline — user tracking, 3 October
+
+Every checkpoint retains full C1–C6/M1/D1/U1 scope and tracks implementation,
+automated qualification, runtime/platform acceptance, commit and main integration
+separately. No product voice/computer-use work; no deployment/tag/release.
+
+| Order | Work                                                                                    | Acceptance                                                                                                           |
+| ----- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 1     | Current Home/task density correction on both clients and public Home                    | Focused/full tests and CI, native evidence and user web review                                                       |
+| 2     | Combine correction with frozen PR182 inputs                                             | Latest main, resolved conflicts, fresh combined full/CI                                                              |
+| 3     | Providers, embeddings, ChatGPT models/defaults and credential-owning executors C1/C2/M1 | Actual authenticated calls, switching/revocation and managed/BYO isolation                                           |
+| 4     | Shell, profile refresh, onboarding, notices and all Settings U1                         | Persistence, keyboard, responsive and native flows                                                                   |
+| 5     | Daily planning surfaces U1                                                              | Home/Agenda/tasks/events/Calendar/planning/focus/time/goals/routines/lists complete flows                            |
+| 6     | Workspace surfaces U1                                                                   | Projects/stages/Views/Memory/Agent notes/Study, search/edit/saved state                                              |
+| 7     | Docs C4/D1                                                                              | Typing/save/concurrency, source/preview, references/metadata/math/Mermaid/import/export and native flows             |
+| 8     | Separate Background/Overnight workspaces and runtimes C3                                | Idle/activity, rules, budgets, approval/resume, reflection and collaboration                                         |
+| 9     | Maintained pages/routines/comments, Slack then Teams C5                                 | Human edits and scoped access, deduplication and real delivery                                                       |
+| 10    | Teams/permissions/Booking/sharing/publication C5/U1                                     | Access, revocation/expiry and responsive viewers                                                                     |
+| 11    | Separate plugin backend completion C6                                                   | Async results/cursors/launch/host UI/OAuth, real host/account and current authorization                              |
+| 12    | Security and full ADR acceptance                                                        | All destinations including Admin, every requirement proven across platforms; qualified main checkpoints then cleanup |
+
+These are delivery dependencies, not completion claims or a reduced scope. Native
+fixtures do not qualify real account/runtime delivery. User performs permitted
+manual web visual review; Android and remaining native gates remain open.

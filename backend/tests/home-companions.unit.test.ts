@@ -140,10 +140,7 @@ function profileAction(node: React.ReactNode): (() => void) | undefined {
     onPress?: () => void;
     children?: React.ReactNode;
   };
-  if (
-    props.title === "View agent activity" ||
-    props.children === "View agent activity"
-  )
+  if (props.title === "Activity" || props.children === "Activity")
     return props.onClick ?? props.onPress;
   return React.Children.toArray(props.children)
     .map(profileAction)
@@ -182,9 +179,16 @@ for (const mobile of [false, true]) {
     assert.match(compact, /How agents work/);
     assert.doesNotMatch(compact, /Example request/);
     for (const agent of core.HOME_AGENT_GUIDE) {
-      assert.ok(compact.includes(agent.result));
-      assert.ok(compact.includes(agent.pause));
+      assert.ok(compact.includes(agent.brief));
+      assert.ok(!compact.includes(agent.result));
+      assert.ok(!compact.includes(agent.pause));
     }
+    assert.doesNotMatch(compact, /idle until they have authorized work/);
+    const visibleText = compact.replace(/<[^>]+>/g, " ").trim();
+    assert.ok(
+      visibleText.split(/\s+/).length < 65,
+      "Home summary should stay brief",
+    );
     guideAction(view.first)!();
     const html = renderToStaticMarkup(view.render());
     assert.match(html, /Example request/);

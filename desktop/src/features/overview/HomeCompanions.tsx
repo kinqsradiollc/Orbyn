@@ -49,12 +49,11 @@ export function HomeCompanions({
           <Character
             appearance={identity.character}
             name={identity.name}
-            size={56}
+            size={40}
           />
         )}
         <div>
           <h2>{identity?.name ?? "Your companion"}</h2>
-          <p>Background progress and Overnight results.</p>
         </div>
         <button
           className="text-button"
@@ -62,7 +61,19 @@ export function HomeCompanions({
           aria-controls="home-companion-presets"
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? "Hide companions" : "Browse companions"}
+          {expanded ? "Hide companions" : "Companions"}
+        </button>
+      </div>
+      <div className="home-companions-actions">
+        <button className="text-button" onClick={() => setAgentsOpen(true)}>
+          Activity
+        </button>
+        <button
+          className="text-button"
+          aria-expanded={guideOpen}
+          onClick={() => setGuideOpen(!guideOpen)}
+        >
+          {guideOpen ? "Hide guide" : "How agents work"}
         </button>
       </div>
       <div className="home-companions-work">
@@ -70,12 +81,15 @@ export function HomeCompanions({
           {HOME_AGENT_GUIDE.map((agent) => (
             <article key={agent.name}>
               <strong>{agent.name}</strong>
-              <small>{agent.timing}</small>
-              <p>{agent.summary}</p>
-              <p>{agent.result}</p>
-              <small>{agent.pause}</small>
+              <p>{agent.brief}</p>
               {guideOpen && (
                 <div className="home-companions-guide">
+                  <p>
+                    {agent.timing}. {agent.summary}
+                  </p>
+                  <p>
+                    {agent.result} {agent.pause}
+                  </p>
                   <p>Example request: “{agent.request}”</p>
                   <ol className="home-companions-steps">
                     {agent.steps.map((step) => (
@@ -91,19 +105,9 @@ export function HomeCompanions({
           ))}
         </div>
       </div>
-      <p className="home-companions-idle">{HOME_AGENT_IDLE_NOTE}</p>
-      <div className="home-companions-actions">
-        <button className="secondary" onClick={() => setAgentsOpen(true)}>
-          View agent activity
-        </button>
-        <button
-          className="text-button"
-          aria-expanded={guideOpen}
-          onClick={() => setGuideOpen(!guideOpen)}
-        >
-          {guideOpen ? "Hide guide" : "How agents work"}
-        </button>
-      </div>
+      {guideOpen && (
+        <p className="home-companions-idle">{HOME_AGENT_IDLE_NOTE}</p>
+      )}
       {expanded && (
         <ul
           id="home-companion-presets"
