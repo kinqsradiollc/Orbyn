@@ -90,10 +90,10 @@ const soon = (days: number, hour = 10) => {
 const itemRow = async (id: string) =>
   (await pool.query("SELECT * FROM items WHERE id = $1", [id])).rows[0];
 
-const lastActivity = async (grant: string) =>
+const lastUndoActivity = async (grant: string) =>
   (
     await pool.query(
-      "SELECT * FROM agent_activity WHERE grant_id = $1 ORDER BY id DESC LIMIT 1",
+      "SELECT * FROM agent_activity WHERE grant_id = $1 AND outcome='ok' AND undo IS NOT NULL ORDER BY at DESC,id DESC LIMIT 1",
       [grant],
     )
   ).rows[0];
@@ -301,7 +301,20 @@ test("full power: invites, assigning and a teammate's work ask first; moves are 
   );
   assert.equal(move.status, "done");
   assert.equal((await itemRow(idOf(task.id))).team_id, crew);
-  const moved = await lastActivity(grants.write);
+  // Denials are batched, so insertion ID is not the event order or an undo receipt.
+  const successful = await lastUndoActivity(grants.write);
+  const lateDenial = (
+    await pool.query<{ id: string }>(
+      `INSERT INTO agent_activity(user_id,grant_id,client_name,tool,tier,summary,outcome,at)
+     VALUES($1,$2,'Fixture','update_tasks','W2','A delayed refusal','denied',now()-interval '1 minute') RETURNING id::text`,
+      [olga.id, grants.write],
+    )
+  ).rows[0];
+  assert.ok(BigInt(lateDenial.id) > BigInt(successful.id));
+  const moved = await lastUndoActivity(grants.write);
+  assert.equal(moved.id, successful.id);
+  assert.notEqual(moved.id, lateDenial.id);
+
   const back = await h.call(
     olga.token,
     "POST",
@@ -402,7 +415,7 @@ test("update and complete: version checks, repeats, sessions and Undo", async ()
   assert.equal(code(stale), "VERSION_CONFLICT");
   assert.equal(stale._meta?.["orbyn/data"]?.version, changed.version);
   // Undo the edit from the activity list.
-  const edit = await lastActivity(grants.write);
+  const edit = await lastUndoActivity(grants.write);
   const undo = await h.call(
     olga.token,
     "POST",
@@ -436,7 +449,7 @@ test("update and complete: version checks, repeats, sessions and Undo", async ()
     [now.id],
   );
   assert.equal(left.rowCount, 0);
-  const completion = await lastActivity(grants.write);
+  const completion = await lastUndoActivity(grants.write);
   const back = await h.call(
     olga.token,
     "POST",
@@ -534,7 +547,7 @@ test("edit_checklist adds and ticks steps; Undo puts the checklist back", async 
     tick: ["00000000-0000-4000-8000-000000000000"],
   });
   assert.equal(code(unknown), "NOT_FOUND");
-  const act = await lastActivity(grants.write);
+  const act = await lastUndoActivity(grants.write);
   assert.equal(act.tool, "edit_checklist");
   const undo = await h.call(
     olga.token,
@@ -622,7 +635,7 @@ test("pages: create_doc caps size; edit_doc keeps a labelled version, team pages
   ).json();
   assert.equal(history[0].via_agent, "Agent key");
   // Undo puts the kept version back.
-  const act = await lastActivity(grants.write);
+  const act = await lastUndoActivity(grants.write);
   const undo = await h.call(
     olga.token,
     "POST",
@@ -766,7 +779,7 @@ test("sessions: plan_schedule's token is single-use and checked; moves and Undo"
     await pool.query("SELECT start_at FROM time_blocks WHERE id = $1", [b.id])
   ).rows[0];
   assert.equal(movedRow.start_at.toISOString(), start);
-  const act = await lastActivity(grants.personal);
+  const act = await lastUndoActivity(grants.personal);
   const undo = await h.call(
     olga.token,
     "POST",
