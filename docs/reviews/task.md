@@ -93,3 +93,21 @@ Current Markdown build/format session13118 and regressions11995 completed with e
 ## Embedded reference follow-up
 
 Current branch codex/docs-reference-embeds depends on Markdown89c3e2f9 (draftPR168; full33571/CI37076851819 live). Source-page privacy projection before section selection and reference map filtering are implemented in API and both clients. Focused41/41, all workspace types/build/format and final backend types pass. First test caught hidden destination context, fixed without changing its assertion. Native/editor visual and full current-head gates remain open. Home0d local2340 passed; CI37075657142 failed a recovery-worker race in the synthetic fixture; actual API-service test repair plus main110 integration are being qualified separately. Preserve native human consent and denied web UI boundaries.
+
+## Latest Docs source/preview work in progress
+
+Current assistant-work-ownership checkout is codex/docs-source-preview-ui on embed79fa1043, with uncommitted source-panel/map/component/menu/Unicode-deep-link work. Mapping/source-view/navigation18/18 passed; last typecheck rerun99447 pending. The inspector panels use current editor state, no second save path; native opening settles draft, panels fenced by doc ID. Ordinary editor fragment/fold navigation and embedded navigation context still require wiring; do not promote before those and actual runtime/UI gates. See evidence/doc-source-preview.md.
+
+Model7f486 PR170 full81981/CI37078484222 still live. Home5a CI37077524911 passed; first local34365 ended exit7 without TAP summary, lsof confirms no writer; fresh marked retry25418 running. Embed79fa local2354 and allCI37077553749 passed. Markdown89c3 local2353/allCI passed. Native human Terms-linked Sign in remains pending. Main110 unchanged, user files preserved.
+
+Disk reached216MiB; 267 closed temporary logs were preserved as gzip after excluding open writers, recovering847MiB. Manifest /tmp/orbyn-closed-log-compression-manifest.json; external handoff log paths updated where applicable. No worktree/branch cleanup, Docker restart, deployment or release.
+
+## Source/preview and current-draft navigation checkpoint
+
+`codex/docs-source-preview-ui` now wires ordinary editor heading/fold navigation
+and source-owned embedded contexts in both clients, preserving parent reference
+privacy. Current20/20 focused and115/115 combined checks pass; all workspace
+types/build/full-format pass. First final typecheck’s wrong event import was
+corrected without changing tests. Evidence: `evidence/doc-source-preview.md`.
+Stacked on PR169; full matching-head local/CI and native/editor acceptance remain
+required. Broader source editing and complete D1/U1 are still open.

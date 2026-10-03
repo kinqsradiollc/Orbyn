@@ -1,3 +1,6 @@
+import { DocNavigationContext } from "./doc-navigation";
+import { DocSourcePreview } from "./DocSourcePreview";
+import { openAppUrl } from "../../hooks/useAppLinks";
 import React, {
   useCallback,
   useEffect,
@@ -16,6 +19,9 @@ import {
 import { Pressable } from "../../motion";
 import {
   blocksToClipboard,
+  docFragmentIndex,
+  docFoldsForTarget,
+  parseAppLink,
   EMBED_LANG,
   embedText,
   emptyTable,
@@ -272,26 +278,25 @@ export function DocEditor({
   const [deciding, setDeciding] = useState(false);
   const [title, setTitle] = useState(doc.title);
   const bodyOffset = useRef<number | null>(null);
-  const targetOffset = useRef<number | null>(null);
-  const jumped = useRef(false);
+  const targetLine = useRef<number | null>(null);
   /** Where each line sits in the body, and where "Linked here" is. */
   const lineYs = useRef(new Map<number, number>());
   const linkedY = useRef<number | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
+  const [sourcePreview, setSourcePreview] = useState<string | null>(null);
   useEffect(() => {
     bodyOffset.current = null;
-    targetOffset.current = null;
-    jumped.current = false;
-  }, [doc.id, initialBlockId]);
+    targetLine.current = null;
+    lineYs.current.clear();
+  }, [doc.id]);
   const sendTarget = () => {
-    if (
-      jumped.current ||
-      bodyOffset.current === null ||
-      targetOffset.current === null
-    )
-      return;
-    jumped.current = true;
-    onTargetOffset?.(bodyOffset.current + targetOffset.current);
+    const index = targetLine.current;
+    if (index === null || bodyOffset.current === null) return;
+    const y = lineYs.current.get(index);
+    if (y === undefined) return;
+    targetLine.current = null;
+    onTargetOffset?.(bodyOffset.current + y);
+    setFlash(blocks[index]?.id ?? null);
   };
   /** The lines tied to a task, as the server last said. */
   const linked = useMemo(
@@ -365,13 +370,22 @@ export function DocEditor({
   const [publishing, setPublishing] = useState(false);
   /** Headings folded on this page (EDT-14), yours on every device. */
   const [folds, setFolds] = useState<Set<string>>(() => new Set());
+  const [foldsLoaded, setFoldsLoaded] = useState(false);
   const foldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     let live = true;
     setFolds(new Set());
+    setFoldsLoaded(false);
     client.docFolds(doc.id).then(
-      (r) => live && setFolds(new Set(r.block_ids)),
-      () => {},
+      (r) => {
+        if (live) {
+          setFolds(new Set(r.block_ids));
+          setFoldsLoaded(true);
+        }
+      },
+      () => {
+        if (live) setFoldsLoaded(true);
+      },
     );
     return () => {
       live = false;
@@ -1374,6 +1388,26 @@ export function DocEditor({
     saveFolds(next);
   };
 
+  const goToLine = (index: number) => {
+    const next = docFoldsForTarget(blocks, folds, index);
+    targetLine.current = index;
+    if (next.size !== folds.size) {
+      lineYs.current.clear();
+      saveFolds(next);
+    } else sendTarget();
+  };
+  const goToFragment = (fragment: string) => {
+    const index = docFragmentIndex(blocks, fragment);
+    if (index === null)
+      return report(
+        new Error("This heading or line is no longer in the page."),
+      );
+    goToLine(index);
+  };
+  useEffect(() => {
+    if (initialBlockId && foldsLoaded) goToFragment(initialBlockId);
+  }, [doc.id, initialBlockId, foldsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Everything waiting is saved, so the server has what is on screen. */
   const flush = async () => {
     if (timer.current) clearTimeout(timer.current);
@@ -2368,6 +2402,13 @@ export function DocEditor({
     },
     { label: "Share…", onPress: () => setMenu("share") },
     { label: "Export…", onPress: () => setMenu("export") },
+    {
+      label: "Source / preview",
+      onPress: () => {
+        syncDraft();
+        setSourcePreview(doc.id);
+      },
+    },
     { label: "History", onPress: () => onShowHistory?.() },
     ...(doc.kind !== "memory"
       ? [{ label: "Save as template", onPress: () => setSavingTemplate(true) }]
@@ -2490,6 +2531,15 @@ export function DocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <View style={styles.page}>
+        {sourcePreview === doc.id && (
+          <DocSourcePreview
+            blocks={blocks}
+            docId={doc.id}
+            onAppLink={openAppUrl}
+            report={report}
+            onClose={() => setSourcePreview(null)}
+          />
+        )}
         {/* The page's header holds only Back, its title, Info and ⋯. */}
         {headerSlot && (
           <SlotFill slot={headerSlot}>
@@ -2607,122 +2657,132 @@ export function DocEditor({
           }}
         >
           <LinkPillProvider value={pillActions}>
-            <FootnoteContext.Provider value={footnotes}>
-              <DocBody
-                content={blocks}
-                targetBlockId={initialBlockId}
-                onTargetLayout={(y) => {
-                  targetOffset.current = y;
-                  sendTarget();
-                  if (initialBlockId) setFlash(initialBlockId);
-                }}
-                folds={folds}
-                onToggleFold={toggleFold}
-                flash={flash}
-                onReplace={
-                  structural && !reading
-                    ? (index, block) => {
-                        remember();
-                        const next = blocks.slice();
-                        next[index] = block;
-                        update(next);
-                      }
-                    : undefined
-                }
-                onEditTable={
-                  structural && !reading
-                    ? (index) => setTableAt(index)
-                    : undefined
-                }
-                tasks={linked}
-                editing={focused}
-                draft={draft}
-                onDraftChange={changeDraft}
-                onCommit={commit}
-                onBlurLine={syncDraft}
-                selection={caret}
-                onSelectionChange={onSelect}
-                inputRef={lineInput}
-                counts={comments.counts}
-                marks={markRanges(comments.anchored)}
-                onOpenComments={(blockId) =>
-                  setOpenThread((open) => (open === blockId ? null : blockId))
-                }
-                renderUnder={(blockId) => {
-                  const list = comments.anchored.get(blockId) ?? [];
-                  const waiting = pending?.blockId === blockId;
-                  if (picking?.blockId === blockId)
+            <DocNavigationContext.Provider
+              value={{
+                onFragment: goToFragment,
+                onAppLink: (url) => {
+                  const link = parseAppLink(url);
+                  if (link?.kind === "doc" && link.id === doc.id && link.block)
+                    goToFragment(link.block);
+                  else openAppUrl(url);
+                },
+                report,
+              }}
+            >
+              <FootnoteContext.Provider value={footnotes}>
+                <DocBody
+                  content={blocks}
+                  folds={folds}
+                  onToggleFold={toggleFold}
+                  flash={flash}
+                  onReplace={
+                    structural && !reading
+                      ? (index, block) => {
+                          remember();
+                          const next = blocks.slice();
+                          next[index] = block;
+                          update(next);
+                        }
+                      : undefined
+                  }
+                  onEditTable={
+                    structural && !reading
+                      ? (index) => setTableAt(index)
+                      : undefined
+                  }
+                  tasks={linked}
+                  editing={focused}
+                  draft={draft}
+                  onDraftChange={changeDraft}
+                  onCommit={commit}
+                  onBlurLine={syncDraft}
+                  selection={caret}
+                  onSelectionChange={onSelect}
+                  inputRef={lineInput}
+                  counts={comments.counts}
+                  marks={markRanges(comments.anchored)}
+                  onOpenComments={(blockId) =>
+                    setOpenThread((open) => (open === blockId ? null : blockId))
+                  }
+                  renderUnder={(blockId) => {
+                    const list = comments.anchored.get(blockId) ?? [];
+                    const waiting = pending?.blockId === blockId;
+                    if (picking?.blockId === blockId)
+                      return (
+                        <WordPicker
+                          source={picking.source}
+                          onCancel={() => setPicking(null)}
+                          onAsk={(range) => {
+                            setPicking(null);
+                            setAsking({ blockId, ...range });
+                          }}
+                          onPick={(range) => {
+                            setPicking(null);
+                            setPending({
+                              blockId,
+                              quote: range.quote.slice(0, 400),
+                              range_start: range.start,
+                              range_end: range.end,
+                            });
+                            setOpenThread(blockId);
+                          }}
+                        />
+                      );
+                    if (asking?.blockId === blockId)
+                      return (
+                        <AskSheet
+                          quote={asking.quote}
+                          busy={deciding}
+                          onCancel={() => setAsking(null)}
+                          onAsk={(action, instruction) =>
+                            void assist(action, instruction)
+                          }
+                        />
+                      );
+                    if (openThread !== blockId && !waiting) return null;
                     return (
-                      <WordPicker
-                        source={picking.source}
-                        onCancel={() => setPicking(null)}
-                        onAsk={(range) => {
-                          setPicking(null);
-                          setAsking({ blockId, ...range });
+                      <DocThread
+                        comments={list}
+                        state={comments}
+                        userId={userId}
+                        quote={list[0]?.quote ?? pending?.quote}
+                        placeholder="Comment on this line…"
+                        autoFocus={waiting}
+                        anchor={{
+                          block_id: blockId,
+                          quote: pending?.quote ?? list[0]?.quote ?? "",
+                          range_start: pending?.range_start,
+                          range_end: pending?.range_end,
                         }}
-                        onPick={(range) => {
-                          setPicking(null);
-                          setPending({
-                            blockId,
-                            quote: range.quote.slice(0, 400),
-                            range_start: range.start,
-                            range_end: range.end,
-                          });
+                        // Stay open on the line just commented on, so the remark
+                        // that was written is there to read rather than folding away.
+                        onDone={() => {
+                          setPending(null);
                           setOpenThread(blockId);
                         }}
                       />
                     );
-                  if (asking?.blockId === blockId)
-                    return (
-                      <AskSheet
-                        quote={asking.quote}
-                        busy={deciding}
-                        onCancel={() => setAsking(null)}
-                        onAsk={(action, instruction) =>
-                          void assist(action, instruction)
+                  }}
+                  onLineLayout={(index, y) => {
+                    lineYs.current.set(index, y);
+                    if (targetLine.current === index) sendTarget();
+                  }}
+                  onEditBlock={reading && !suggesting ? undefined : openLine}
+                  // Reading, and allowed to edit: a double tap edits that line.
+                  onDoubleTapBlock={
+                    reading && canWrite && !suggesting
+                      ? (index) => {
+                          setMode("edit");
+                          saveLocal(MODE_KEY + doc.id, "edit");
+                          openLine(index);
                         }
-                      />
-                    );
-                  if (openThread !== blockId && !waiting) return null;
-                  return (
-                    <DocThread
-                      comments={list}
-                      state={comments}
-                      userId={userId}
-                      quote={list[0]?.quote ?? pending?.quote}
-                      placeholder="Comment on this line…"
-                      autoFocus={waiting}
-                      anchor={{
-                        block_id: blockId,
-                        quote: pending?.quote ?? list[0]?.quote ?? "",
-                        range_start: pending?.range_start,
-                        range_end: pending?.range_end,
-                      }}
-                      // Stay open on the line just commented on, so the remark
-                      // that was written is there to read rather than folding away.
-                      onDone={() => {
-                        setPending(null);
-                        setOpenThread(blockId);
-                      }}
-                    />
-                  );
-                }}
-                onLineLayout={(index, y) => lineYs.current.set(index, y)}
-                onEditBlock={reading && !suggesting ? undefined : openLine}
-                // Reading, and allowed to edit: a double tap edits that line.
-                onDoubleTapBlock={
-                  reading && canWrite && !suggesting
-                    ? (index) => {
-                        setMode("edit");
-                        saveLocal(MODE_KEY + doc.id, "edit");
-                        openLine(index);
-                      }
-                    : undefined
-                }
-                onToggleTodo={reading || !structural ? undefined : toggle}
-                underEditing={underLine}
-              />
-            </FootnoteContext.Provider>
+                      : undefined
+                  }
+                  onToggleTodo={reading || !structural ? undefined : toggle}
+                  underEditing={underLine}
+                />
+              </FootnoteContext.Provider>
+            </DocNavigationContext.Provider>
           </LinkPillProvider>
         </View>
 

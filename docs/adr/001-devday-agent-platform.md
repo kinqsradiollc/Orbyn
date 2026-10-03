@@ -492,3 +492,20 @@ the returned context. Both clients isolate embedded reference and footnote
 contexts from the containing page. See
 `docs/reviews/evidence/reference-embeds.md`; runtime/visual acceptance and full
 qualification remain open.
+
+### Current-draft source inspection and fragment navigation — 3 October 2026
+
+Scoped candidate atop PR169: both page menus expose a source/rendered inspector
+for current editor blocks; the panel owns no second draft/save. Document identity
+fences hide the panel on a page switch. Web selection and scrolling map between
+anchored Markdown lines and rendered blocks; mobile offers source/rendered tabs.
+
+Ordinary editors resolve bounded Unicode heading fragments and unfold only
+sections covering the target, waiting for saved fold preferences. Embedded
+fragments open the source page through their own navigation context. Retain
+page-scoped references and current authorization; no parent-page fragment reuse.
+Current candidate passes20 focused and115 combined export/rich-page/navigation
+checks plus all workspace types/builds/full formatting. Full matching-head local
+and CI qualification and actual editor/native screenshot/interaction acceptance
+remain required. Source editing, the other D1 Markdown requirements and full U1
+remain open; no goal completion, deployment or cleanup is claimed.

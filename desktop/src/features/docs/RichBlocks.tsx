@@ -1,3 +1,4 @@
+import { DocNavigationContext } from "./doc-navigation";
 import {
   createContext,
   useCallback,
@@ -60,7 +61,13 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { BlockView, Inline } from "./DocBlocks";
-import { openObject, pillKey, shortDue, usePageActions } from "./DocLinks";
+import {
+  openObject,
+  pillKey,
+  shortDue,
+  usePageActions,
+  OPEN_LINK_EVENT,
+} from "./DocLinks";
 
 /**
  * The richer lines of a page on the web (D4b): callouts, tables, pictures
@@ -1149,21 +1156,33 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           The part of the page this showed has gone.
         </p>
       ) : (
-        <FootnoteContext.Provider
+        <DocNavigationContext.Provider
           value={{
-            numbers,
-            texts,
-            references: section.references
-              ? new Map(section.references)
-              : docReferenceLinks(section.blocks),
+            docId: section.doc_id,
+            onFragment: (fragment) =>
+              openObject({ kind: "doc", id: section.doc_id }, fragment),
+            onAppLink: (url) =>
+              window.dispatchEvent(
+                new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+              ),
           }}
         >
-          <div className="doc-embed-body">
-            {section.blocks.map((b, i) => (
-              <BlockView key={b.id ?? i} block={b} />
-            ))}
-          </div>
-        </FootnoteContext.Provider>
+          <FootnoteContext.Provider
+            value={{
+              numbers,
+              texts,
+              references: section.references
+                ? new Map(section.references)
+                : docReferenceLinks(section.blocks),
+            }}
+          >
+            <div className="doc-embed-body">
+              {section.blocks.map((b, i) => (
+                <BlockView key={b.id ?? i} block={b} />
+              ))}
+            </div>
+          </FootnoteContext.Provider>
+        </DocNavigationContext.Provider>
       )}
       {section.more && (
         <p className="doc-embed-note">Open the page to read the rest.</p>

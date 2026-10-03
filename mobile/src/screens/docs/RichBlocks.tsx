@@ -1,5 +1,8 @@
+import { DocNavigationContext } from "./doc-navigation";
+import { openAppUrl } from "../../hooks/useAppLinks";
 import React, {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -7,6 +10,7 @@ import React, {
 } from "react";
 import {
   Image,
+  Alert,
   Modal,
   PanResponder,
   ScrollView,
@@ -1046,7 +1050,11 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
       {section.missing ? (
         <Text style={s.muted}>The part of the page this showed has gone.</Text>
       ) : (
-        <SectionBody blocks={section.blocks} references={section.references} />
+        <SectionBody
+          docId={section.doc_id}
+          blocks={section.blocks}
+          references={section.references}
+        />
       )}
       {section.more && (
         <Text style={s.muted}>Open the page to read the rest.</Text>
@@ -1061,12 +1069,15 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
  * embeds too.
  */
 function SectionBody({
+  docId,
   blocks,
   references,
 }: {
+  docId: string;
   blocks: DocBlock[];
   references?: [string, string][];
 }) {
+  const parentNavigation = useContext(DocNavigationContext);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DocBody } = require("./DocBody") as typeof import("./DocBody");
   const context = useMemo(
@@ -1082,9 +1093,24 @@ function SectionBody({
     [blocks, references],
   );
   return (
-    <FootnoteContext.Provider value={context}>
-      <DocBody content={blocks} />
-    </FootnoteContext.Provider>
+    <DocNavigationContext.Provider
+      value={{
+        onFragment: (fragment) =>
+          openObject({ kind: "doc", id: docId }, fragment),
+        onAppLink: openAppUrl,
+        report:
+          parentNavigation?.report ??
+          ((error) =>
+            Alert.alert(
+              "Could not open link",
+              error instanceof Error ? error.message : "Please try again.",
+            )),
+      }}
+    >
+      <FootnoteContext.Provider value={context}>
+        <DocBody content={blocks} />
+      </FootnoteContext.Provider>
+    </DocNavigationContext.Provider>
   );
 }
 
