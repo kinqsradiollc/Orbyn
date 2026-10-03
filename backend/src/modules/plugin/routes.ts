@@ -13,6 +13,12 @@ import { connectorResources } from "../oauth/resources.js";
 import { PluginAuthError, resolvePluginCaller } from "./auth.js";
 import { pluginMetadataUrl } from "./discovery.js";
 import { pluginToolInput } from "./tool-input.js";
+import {
+  pluginResourceInput,
+  pluginResources,
+  readPluginResource,
+} from "./ui-resources.js";
+import { toolUiMeta } from "../mcp-server/apps.js";
 
 const connection = z.object({
   kind: z.literal("plugin"),
@@ -89,10 +95,52 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
         error: "INVALID",
         message: "This route takes no query parameters.",
       });
+    const live = await settings();
     return {
-      tools: registry.for(request.pluginCaller!.principal).map(describe),
+      tools: registry.for(request.pluginCaller!.principal).map((cap) => {
+        const ui = live.agents.mcp_apps_enabled ? toolUiMeta(cap.name) : null;
+        return { ...describe(cap), ...(ui ? { _meta: ui } : {}) };
+      }),
     };
   });
+  app.get("/plugin/resources", async (request, reply) => {
+    if (Object.keys(request.query as object).length)
+      return reply.code(400).send({
+        error: "INVALID",
+        message: "This route takes no query parameters.",
+      });
+    const live = await settings();
+    const tools = registry
+      .for(request.pluginCaller!.principal)
+      .map((cap) => cap.name);
+    return { resources: pluginResources(tools, live.agents.mcp_apps_enabled) };
+  });
+  app.post(
+    "/plugin/resources/read",
+    { bodyLimit: 1024 },
+    async (request, reply) => {
+      const input = pluginResourceInput.safeParse(request.body);
+      if (!input.success)
+        return reply
+          .code(400)
+          .send({ error: "INVALID", message: "Send one resource identifier." });
+      const live = await settings();
+      const tools = registry
+        .for(request.pluginCaller!.principal)
+        .map((cap) => cap.name);
+      const resource = readPluginResource(
+        input.data.uri,
+        tools,
+        live.agents.mcp_apps_enabled,
+      );
+      if (!resource)
+        return reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "This resource is not available to this connection.",
+        });
+      return resource;
+    },
+  );
   app.post(
     "/plugin/tools/call",
     { bodyLimit: 65_536 },

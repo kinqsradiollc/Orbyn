@@ -242,3 +242,15 @@ models/defaults/execution, providers/embeddings, separate plugin integration,
 agent collaboration/reflection and whole-app Docs/UI acceptance. Preserve palette
 and characters; voice/computer-use product features remain excluded. No
 deployment or cleanup occurred. The full ADR remains active.
+
+### Separate plugin UI resource adapter checkpoint — 3 October 2026
+
+The plugin HTTP backend now exposes bounded resource discovery/reads separately
+from first-party sessions. Static Orbyn cards reuse the existing portable MCP
+renderer, declared MIME and CSP metadata. Resource visibility intersects live
+connector tool scope with the explicit card UI setting; unknown addresses are
+refused without network fetch. This adapter does not establish host launch or
+extension transport acceptance. Host screenshots, grant/account switching,
+managed/BYO execution, asynchronous results and reconnect cursors remain open.
+See docs/reviews/task.md for exact tests and the unavailable local database gate.
+All C1–C6/M1/D1/U1 implementation requirements remain active.

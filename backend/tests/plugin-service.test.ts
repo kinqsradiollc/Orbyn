@@ -413,6 +413,107 @@ test("plugin maintenance permits shared reads and denies writes", async () => {
   }
 });
 
+test("plugin UI resources require current grants, UI opt-in and bounded identifiers", async () => {
+  assert.equal(
+    (await app.inject({ url: "/plugin/resources" })).statusCode,
+    401,
+  );
+  const disabledCards = await app.inject({ url: "/plugin/resources", headers });
+  assert.deepEqual(disabledCards.json().resources, []);
+  await pool.query(
+    "INSERT INTO system_settings(key,value) VALUES ('mcp_apps_enabled','true'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+  );
+  invalidateSettings();
+  try {
+    const listed = await app.inject({ url: "/plugin/resources", headers });
+    assert.equal(listed.statusCode, 200);
+    assert.equal(listed.headers["cache-control"], "no-store");
+    assert.ok(listed.json().resources.length > 0);
+    const uri = listed.json().resources[0].uri;
+    const read = await app.inject({
+      method: "POST",
+      url: "/plugin/resources/read",
+      headers,
+      payload: { uri },
+    });
+    assert.equal(read.statusCode, 200);
+    assert.deepEqual(read.json().contents[0]._meta.ui.csp, {
+      connectDomains: [],
+      resourceDomains: [],
+    });
+    const tools = await app.inject({ url: "/plugin/tools", headers });
+    assert.ok(
+      tools
+        .json()
+        .tools.some((tool: any) => tool._meta?.ui?.resourceUri === uri),
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/resources/read",
+          headers,
+          payload: { uri, user_id: userId },
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal(
+      (await app.inject({ url: "/plugin/resources?tenant=other", headers }))
+        .statusCode,
+      400,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/resources/read",
+          headers,
+          payload: { uri: "https://private.example.test/secret" },
+        })
+      ).statusCode,
+      403,
+    );
+    await pool.query("UPDATE users SET disabled=true WHERE id=$1", [userId]);
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/resources/read",
+          headers,
+          payload: { uri },
+        })
+      ).statusCode,
+      403,
+    );
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+    await pool.query(
+      "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute','3'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    );
+    invalidateSettings();
+    const burst = [];
+    for (let n = 0; n < 4; n++)
+      burst.push(
+        await app.inject({
+          url: "/plugin/resources",
+          headers,
+          remoteAddress: "10.85.2.1",
+        }),
+      );
+    assert.ok(
+      burst.some(
+        (reply) => reply.statusCode === 429 && reply.headers["retry-after"],
+      ),
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+    await pool.query(
+      "DELETE FROM system_settings WHERE key IN ('mcp_apps_enabled','rate_limit_per_minute')",
+    );
+    invalidateSettings();
+  }
+});
+
 test("plugin boundary retains rate limiting and Retry-After", async () => {
   await pool.query(
     "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute','3'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
