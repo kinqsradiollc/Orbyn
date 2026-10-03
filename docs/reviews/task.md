@@ -514,3 +514,47 @@ integrating main947b0c23; both histories retained. Requalify the combined frozen
 head before another main checkpoint. Remaining C6 protocol/host/account/provider
 and full C1–C6/M1/D1/U1 acceptance stay open. User manages production deployment;
 no deployment or worktree/branch cleanup. Native Sign in consent question pending.
+
+### Session refresh rate-limit candidate — 4 October (qualification pending)
+
+The observed local429 burst contained288-311 requests/minute from web and mobile
+sharing loopback; steady traffic was27/minute. A compatible backend-only candidate
+counts global authenticated app requests per verified live device session instead
+of sharing an IP bucket. Session identifiers come from indexed current DB lookup;
+no raw token or client-supplied identity becomes a bucket. No authorization is
+cached/skipped. Expired/deleted/disabled/forged sessions fall back to IP, and
+route-specific stricter session limits remain IP-based. Existing API-key/MCP
+buckets, threshold180, gateway burst limits and authentication behavior remain.
+This addresses shared-address interference, not all possible429 causes or
+production deployment acceptance.
+
+Focused134/134 regressions pass in `/tmp/orbyn-session-limits-verified-regressions.log`.
+Low-limit tests now start a fresh verified session rather than pretending a new
+IP resets that device's window. The first helper version imported the DB pool
+before test setup finished; it was corrected to dynamic imports after the marked
+DB check. That failed run was cancelled after verified connection failures and
+is not passing evidence. Workspace types pass in `/tmp/orbyn-session-limits-types.log`.
+Build/full fresh DB/CI and controlled runtime qualification are next.
+
+Candidate lives on codex/session-refresh-limits in devday-model-catalog/Orbyn.
+No unfinished maintained-page files are included. A5 remains f8780ee6 in its own
+branch; all source/budget/activity/undo/reflection/device/native/whole ADR gates
+stay open. Main remains ee45ecf0; user handles production deployment.
+
+### Session rate-window qualification follow-up — 4 October
+
+Exact c82b0d22 full local run terminated code1:2568/2587 passed,19 failed,
+no skips/cancellations. CI37155960329 passed mobile/Docker/mail and failed
+backend-and-web. No merge was attempted. Every local failure traced to fixtures
+that reused a device session across unrelated cases or treated a new IP as a
+fresh global window. Fresh independent sessions now isolate those windows;
+long template/picture suites use an independent device session per case.
+The prior authorization-proof time is copied exactly, never refreshed by the
+fixture. Lazy backend imports preserve both marked DB selection and each file's
+local renderer/environment setup.
+
+148/148 corrected affected regressions pass, no skips/cancellations:
+`/tmp/orbyn-session-limit-window-verified-regressions.log`. New checkpoint/fresh
+full run and exact CI are required; c82's failed full run is not qualification.
+Product thresholds/stricter routes/gateway/API-key/MCP behavior stay unchanged.
+A5/native work remains separate and incomplete; main remains ee45ecf0.

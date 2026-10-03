@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -588,12 +589,13 @@ test("agenda days answer 429 past the per-minute limit", async () => {
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(token);
   live.rate_limit_per_minute = 2;
   const from = (method: "GET" | "POST") =>
     app.inject({
       method,
       url: `/agenda/${addDays(today(), -1)}`,
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
       remoteAddress: "10.74.0.1",
     });
   try {

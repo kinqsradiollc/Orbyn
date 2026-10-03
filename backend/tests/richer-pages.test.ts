@@ -1,4 +1,5 @@
-import { test, before, after } from "node:test";
+import { freshRateLimitSession } from "./rate-limit-session.js";
+import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readdir, writeFile, readFile } from "node:fs/promises";
@@ -133,6 +134,11 @@ before(async () => {
   });
 });
 
+// Each case is an independent device workflow; changing IP must not reset a window.
+beforeEach(async () => {
+  for (const person of [me, mate, viewer, stranger])
+    person.token = await freshRateLimitSession(person.token);
+});
 after(async () => {
   const { closeLive } = await import("../src/modules/docs/live.js");
   await closeLive();
@@ -1465,13 +1471,14 @@ test("the new routes answer 429 past the per-minute limit", async () => {
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(me.token);
   live.rate_limit_per_minute = 2;
   const from = () =>
     app.inject({
       method: "GET",
       url: `/links/card?kind=doc&id=${doc.id}`,
       remoteAddress: "10.83.253.9",
-      headers: { authorization: `Bearer ${me.token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
     });
   try {
     assert.equal((await from()).statusCode, 200);

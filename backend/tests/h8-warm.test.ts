@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 // Connects only to a verified test database (see setup.ts).
@@ -218,13 +219,14 @@ test("Settings: the profile page, one per person (401, 403 for API keys, 422, 42
   await load();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(olga.token);
   live.rate_limit_per_minute = 1;
   try {
     const at = () =>
       app.inject({
         method: "GET",
         url: "/me/agent-context",
-        headers: bearer(olga.token),
+        headers: bearer(limitedToken),
         remoteAddress: "10.88.0.8",
       });
     assert.equal((await at()).statusCode, 200);

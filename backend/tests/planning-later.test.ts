@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -980,13 +981,14 @@ test("the new planning routes answer 429 past the per-minute limit", async () =>
   try {
     let n = 0;
     for (const [method, url, payload] of routes) {
+      const limitedToken = await freshRateLimitSession(me.token);
       const from = `10.93.0.${++n}`;
       const once = () =>
         app.inject({
           method: method as "GET" | "POST" | "PUT",
           url,
           remoteAddress: from,
-          headers: { authorization: `Bearer ${me.token}` },
+          headers: { authorization: `Bearer ${limitedToken}` },
           ...(payload === undefined ? {} : { payload }),
         });
       assert.notEqual((await once()).statusCode, 429, `${method} ${url}`);

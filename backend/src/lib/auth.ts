@@ -66,6 +66,22 @@ export async function apiKeyId(r: FastifyRequest): Promise<string | null> {
   return id;
 }
 
+/** Global app reads count per live device session; this never authenticates a route. */
+export async function appSessionLimitKey(
+  r: FastifyRequest,
+): Promise<string | null> {
+  const token = r.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
+  if (!token || /^(?:ok_|oak_|oat_|ort_|ocl_)/.test(token)) return null;
+  const session = (
+    await pool.query<{ id: string }>(
+      `SELECT s.id FROM sessions s JOIN users u ON u.id=s.user_id
+     WHERE s.token_hash=$1 AND s.expires_at>now() AND NOT u.disabled`,
+      [digest(token)],
+    )
+  ).rows[0];
+  return session ? `session:${session.id}` : null;
+}
+
 export const DISABLED_MESSAGE =
   "This account has been disabled. Contact your Orbyn administrator.";
 
