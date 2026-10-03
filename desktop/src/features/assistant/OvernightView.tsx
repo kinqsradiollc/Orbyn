@@ -92,6 +92,7 @@ export function OvernightView(props: Props) {
         night.runs
           .filter(
             (run) =>
+              run.kind !== "reflection" &&
               !run.restricted &&
               (action === "undo"
                 ? run.state === "done" || run.state === "failed"
@@ -124,36 +125,42 @@ export function OvernightView(props: Props) {
           </p>
         </div>
         <div className="overnight-actions">
-          <button
-            className="secondary"
-            disabled={
-              busy ||
-              !night.runs.some(
-                (run) =>
-                  !run.restricted &&
-                  run.state === "done" &&
-                  run.status !== "undone",
-              )
-            }
-            onClick={() => void bulk("keep")}
-          >
-            Keep all
-          </button>
-          <button
-            className="secondary"
-            disabled={
-              busy ||
-              !night.runs.some(
-                (run) =>
-                  !run.restricted &&
-                  ["done", "failed"].includes(run.state) &&
-                  run.status !== "undone",
-              )
-            }
-            onClick={() => void bulk("undo")}
-          >
-            Undo all
-          </button>
+          {night.runs.some((run) => run.kind !== "reflection") && (
+            <>
+              <button
+                className="secondary"
+                disabled={
+                  busy ||
+                  !night.runs.some(
+                    (run) =>
+                      run.kind !== "reflection" &&
+                      !run.restricted &&
+                      run.state === "done" &&
+                      run.status !== "undone",
+                  )
+                }
+                onClick={() => void bulk("keep")}
+              >
+                Keep all
+              </button>
+              <button
+                className="secondary"
+                disabled={
+                  busy ||
+                  !night.runs.some(
+                    (run) =>
+                      run.kind !== "reflection" &&
+                      !run.restricted &&
+                      ["done", "failed"].includes(run.state) &&
+                      run.status !== "undone",
+                  )
+                }
+                onClick={() => void bulk("undo")}
+              >
+                Undo all
+              </button>
+            </>
+          )}
           <button
             className="secondary"
             disabled={busy}
@@ -210,7 +217,8 @@ function RunCard({
     setChosen(new Set(choices.map((choice) => choice.key)));
   }, [run.proposal?.id]);
   const pending = run.proposal?.status === "pending";
-  const done = !run.restricted && run.state === "done";
+  const done =
+    run.kind !== "reflection" && !run.restricted && run.state === "done";
   const keepChange = async (key: string) => {
     if (
       choices.length > 1 &&
@@ -244,24 +252,48 @@ function RunCard({
       <div className="overnight-head">
         <h3>{run.title}</h3>
         <span>
-          {run.state === "queued" || run.state === "running"
-            ? "Working"
-            : run.state === "waiting"
-              ? "Needs you"
-              : run.state === "failed"
-                ? "Could not finish"
-                : run.status === "partly"
-                  ? "Partly kept"
-                  : run.status === "pending"
-                    ? "Pending"
-                    : run.status === "undone"
-                      ? "Undone"
-                      : "Kept"}
+          {run.state === "queued"
+            ? "Queued"
+            : run.state === "running"
+              ? "Working"
+              : run.state === "waiting"
+                ? "Needs you"
+                : run.state === "failed"
+                  ? "Could not finish"
+                  : run.kind === "reflection"
+                    ? "Reflection ready"
+                    : run.status === "partly"
+                      ? "Partly kept"
+                      : run.status === "pending"
+                        ? "Pending"
+                        : run.status === "undone"
+                          ? "Undone"
+                          : "Kept"}
         </span>
       </div>
       <p className="overnight-summary">
         {run.summary || "Open the chat to see its progress."}
       </p>
+      {!!run.reflection_sources?.length && (
+        <section aria-label="Reflection sources">
+          <h4>Sources</h4>
+          <div className="overnight-sources">
+            {run.reflection_sources.map((source) => (
+              <button
+                className="secondary"
+                key={source.number}
+                onClick={() =>
+                  source.kind === "chat"
+                    ? onOpenChat(source.id)
+                    : onOpen("task", source.id)
+                }
+              >
+                {source.number}. {source.title}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
       {run.approval && (
         <section aria-label="Approval from your assistant">
           <p>{run.approval.text}</p>
@@ -377,31 +409,39 @@ function RunCard({
             Open Review
           </button>
         )}
-        <button
-          className="secondary"
-          disabled={
-            busy ||
-            !done ||
-            run.restricted ||
-            run.status === "undone" ||
-            (pending && !chosen.size)
-          }
-          onClick={() => void keep()}
-        >
-          {pending && chosen.size < choices.length ? "Keep selected" : "Keep"}
-        </button>
-        <button
-          className="secondary"
-          disabled={
-            busy ||
-            !["done", "failed"].includes(run.state) ||
-            run.restricted ||
-            run.status === "undone"
-          }
-          onClick={() => void act(() => client.undoAssistantNightRun(run.id))}
-        >
-          Undo
-        </button>
+        {run.kind !== "reflection" && (
+          <>
+            <button
+              className="secondary"
+              disabled={
+                busy ||
+                !done ||
+                run.restricted ||
+                run.status === "undone" ||
+                (pending && !chosen.size)
+              }
+              onClick={() => void keep()}
+            >
+              {pending && chosen.size < choices.length
+                ? "Keep selected"
+                : "Keep"}
+            </button>
+            <button
+              className="secondary"
+              disabled={
+                busy ||
+                !["done", "failed"].includes(run.state) ||
+                run.restricted ||
+                run.status === "undone"
+              }
+              onClick={() =>
+                void act(() => client.undoAssistantNightRun(run.id))
+              }
+            >
+              Undo
+            </button>
+          </>
+        )}
       </div>
       {!!(choices.length || run.changes.length) && (
         <details>

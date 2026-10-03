@@ -113,3 +113,39 @@ test("night settings are off until opted in, use the workday and stay personal",
     assert.equal(invalid.statusCode, 422, invalid.body);
   }
 });
+
+test("older clients preserve reflection consent and legacy settings do not opt in", async () => {
+  const owner = await person();
+  const legacy = defaultNightShift() as any;
+  delete legacy.kinds.reflection;
+  await pool.query(
+    "INSERT INTO agent_settings(user_id,night_shift) VALUES($1,$2::jsonb)",
+    [owner.id, JSON.stringify(legacy)],
+  );
+  const get = () =>
+    app.inject({ url: "/me/assistant/night-shift", headers: owner.headers });
+  assert.equal((await get()).json().kinds.reflection, false);
+  const update = (payload: unknown) =>
+    app.inject({
+      method: "PUT",
+      url: "/me/assistant/night-shift",
+      headers: owner.headers,
+      payload: payload as any,
+    });
+  assert.equal(
+    (await update({ ...legacy, kinds: { ...legacy.kinds, reflection: true } }))
+      .statusCode,
+    200,
+  );
+  const oldSave = await update({ ...legacy, start: "21:30" });
+  assert.equal(oldSave.statusCode, 200, oldSave.body);
+  assert.equal(oldSave.json().kinds.reflection, true);
+  assert.equal((await get()).json().kinds.reflection, true);
+  assert.equal(
+    (
+      await update({ ...legacy, kinds: { ...legacy.kinds, reflection: false } })
+    ).json().kinds.reflection,
+    false,
+  );
+  assert.equal((await update(legacy)).json().kinds.reflection, false);
+});

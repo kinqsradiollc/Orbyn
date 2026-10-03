@@ -680,3 +680,21 @@ scrolling is keyboard accessible. Current30 focused checks and all workspace
 typechecks pass. Source/CSS checks are not rendered geometry acceptance; user web
 review and actual native/Android interactions remain required alongside full
 local/CI qualification. This increment does not complete whole-app U1 redesign.
+
+### Overnight reflection integration — 3 October 2026
+
+Reflection is an explicit Night Shift opt-in, using bounded source IDs and
+revisions rather than copied private text in queued requests. Current principal
+Personal/team restrictions are applied during selection, initial execution and
+resumed provider checkpoints. Changed evidence, lost membership, project AI
+exclusion or mismatched scope owner stops use of the evidence. Reflection
+produces reviewable results; inferred memory writes remain prohibited.
+
+Migration217 retains existing source kinds and adds transcript/run dependencies
+plus deduplication receipts. Current main visibility rules and activity retention
+remain intact. Both clients expose consent and reflection review. Integration
+tests caught SQL parameter typing and missing dependency constraints; corrected
+without weakening assertions. The current combined reflection/night-settings/
+Overnight suite passes28/28, including selected-team changes and membership
+revocation. Full local tests, build/format, CI and signed-in native/web acceptance
+remain required; this is not a completed C3/U1 claim.
