@@ -214,3 +214,21 @@ Marked preview DB migrated without reset. Explicit proxy configuration fixes
 Private credentials are not in Git. Keep preview alive for manual user review.
 Docs PR175 full96898/CI37089037682 remain under observation; never infer completion
 from a timeout. Complete all C1–C6/M1/D1/U1; no deployment/release/cleanup.
+
+## Views library discovery candidate — 3 October
+
+`codex/views-library-search` in assistant-work-ownership/Orbyn starts at combined
+UI e8dbcd7b; the original code/metadata branch is preserved. Both clients share
+saved-view search and distinguish no matches from an empty library. Desktop
+library scrolling and long headings are bounded; existing view filters/selection/
+CRUD/layouts remain. Focused26/26 passed; types/build and exact-head full/CI still
+required. Native keyboard/result/Android and user web visual acceptance remain
+open. Evidence: `evidence/views-library-search.md`. Whole C1–C6/M1/D1/U1 remains
+incomplete; no cleanup or deployment.
+
+Docker engine has recovered. Its in-memory test databases were cleared; isolated
+marked databases and preview admin were recreated. Preview health200; user must
+sign in again with the same saved credentials. Fresh full runs for frozen
+integration176e8dbcd7b and plugin180bc381226 are live, excluding the previous
+ENOSPC run. Resources179 CI37091484961 has completed successfully. Other local
+PostgreSQL's empty postmaster.pid restart loop was observed and left untouched.
