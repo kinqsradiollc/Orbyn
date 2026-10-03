@@ -116,6 +116,7 @@ import {
   serializeBlock,
   serializeDoc,
   setTodoSource,
+  editDocSource,
   ticksTakenFrom,
   type Doc,
   type DocBlock,
@@ -2927,6 +2928,30 @@ export function DocEditor({
           <DocSourcePreview
             blocks={blocks}
             docId={doc.id}
+            onSourceChange={
+              canWrite && !reading && !suggesting
+                ? (text, expected) => {
+                    const next = editDocSource(
+                      live.current.blocks,
+                      text,
+                      expected,
+                    );
+                    if (next !== live.current.blocks) {
+                      update(next);
+                    }
+                    return next;
+                  }
+                : undefined
+            }
+            saveStatus={
+              save === "error"
+                ? "Couldn’t save. Changes remain in this document."
+                : save === "saving"
+                  ? "Saving…"
+                  : dirty.current
+                    ? "Unsaved changes"
+                    : "Saved"
+            }
             onAppLink={(url) =>
               window.dispatchEvent(
                 new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
@@ -3069,6 +3094,7 @@ export function DocEditor({
                       role="menuitem"
                       onClick={() => {
                         setMoreMenu(false);
+                        setFocused(null);
                         setSourcePreview(doc.id);
                       }}
                     >

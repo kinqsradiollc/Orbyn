@@ -530,3 +530,21 @@ synthetic controls were exercised and screens recorded. Evidence:
 `../reviews/evidence/code-metadata-controls.md`. Final full-suite/CI, signed-in
 editor, Android and web visual gates remain open. This candidate does not finish
 D1/U1; the complete C1–C6/M1/D1/U1 scope and excluded product features remain.
+
+### Source editing candidate — 3 October 2026
+
+The source/preview pane now delegates Markdown edits to each client's existing
+editor update/save queue. Reading and Suggesting modes retain inspection only.
+Retained anchors keep block identity; duplicate anchors show an unsaved-source
+error and can be restored explicitly. The parser reports original source-line
+ranges so blank lines, alternate fences and CRLF do not desynchronize preview
+navigation. Typed source echoes are tracked by weak block identity to avoid
+rewinding newer native input. Native caret positioning is applied once when
+returning from preview rather than controlled during typing.
+
+This candidate follows code/metadata PR174. Native synthetic typing, preview,
+validation and restoration were exercised with screenshots. Complete signed-in
+revision/conflict/keyboard/swipe/Android acceptance and frozen full local/CI are
+still required. The user will manually validate web presentation; blocked
+browser access is not bypassed. This does not complete C1–C6/M1/D1/U1 or authorize
+deployment/cleanup.

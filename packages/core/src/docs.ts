@@ -1170,12 +1170,28 @@ export function parseDoc(
   opts: DocMarkdownOptions & {
     /** Told of each table too big for one table line, which is split. */
     onTableSplit?: () => void;
+    /** Original one-based source lines, before serialization normalizes spacing. */
+    onSourceRange?: (
+      blockIndex: number,
+      startLine: number,
+      endLine: number,
+    ) => void;
   } = {},
 ): DocBlock[] {
   const anchors = !!opts.anchors;
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: DocBlock[] = [];
   let i = 0;
+  let sourceStart = 0;
+  let sourceFlushed = 0;
+  const sourceRanges: { start: number; end: number }[] = [];
+  const finishSourceRanges = () => {
+    for (; sourceFlushed < out.length; sourceFlushed++)
+      sourceRanges[sourceFlushed].end = Math.max(
+        sourceRanges[sourceFlushed].start,
+        Math.min(lines.length, i),
+      );
+  };
   /** Indentation of each depth in the list being read. */
   let indents: number[] = [];
   /** The number each numbered item was written with, by block. */
@@ -1186,6 +1202,7 @@ export function parseDoc(
     const named = pending && !b.id ? { ...b, id: pending } : b;
     pending = null;
     out.push(named);
+    sourceRanges.push({ start: sourceStart + 1, end: sourceStart + 1 });
     return named;
   };
   const depthAt = (width: number): number => {
@@ -1242,6 +1259,8 @@ export function parseDoc(
   }
 
   while (i < lines.length) {
+    finishSourceRanges();
+    sourceStart = i;
     let line = lines[i];
     pending = null;
     if (anchors) {
@@ -1253,6 +1272,7 @@ export function parseDoc(
         const typed = written.get(last);
         if (typed !== undefined) written.set(named, typed);
         out[out.length - 1] = named;
+        sourceRanges[out.length - 1].end = i + 1;
         i++;
         continue;
       }
@@ -1487,6 +1507,12 @@ export function parseDoc(
     });
     i++;
   }
+
+  finishSourceRanges();
+  sourceRanges.forEach((range, index) =>
+    opts.onSourceRange?.(index, range.start, range.end),
+  );
+  if (!out.length) opts.onSourceRange?.(0, 1, Math.max(1, lines.length));
 
   // A list that was written starting somewhere other than 1 keeps its start.
   // Only the first item of a list says where it starts; the numbers written

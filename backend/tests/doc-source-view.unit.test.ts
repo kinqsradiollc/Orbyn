@@ -7,14 +7,18 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as core from "@orbyn/core";
 
-function fixture(native: boolean) {
+function fixture(native: boolean, editable = false) {
   const states: unknown[] = [];
   let at = 0,
     refAt = 0;
   const refs: { current: any }[] = [];
   const hooks = {
     ...React,
-    useEffect: () => {},
+    useEffect: (fn: () => void, deps?: unknown[]) => {
+      // Execute the actual source reconciliation effect, excluding the DOM
+      // dialog lifecycle. A second render observes its state update.
+      if (deps?.length === 2) fn();
+    },
     useId: () => "source-title",
     useMemo: (fn: () => unknown) => fn(),
     useRef: (initial: unknown) =>
@@ -65,7 +69,7 @@ function fixture(native: boolean) {
         React.createElement("button", null, title),
     },
     "../../styles": { shared: {} },
-    "../../theme": { colors: {}, radii: {} },
+    "../../theme": { colors: {}, radii: {}, fonts: {} },
     "./DocBody": {
       DocBody: ({ content }: { content: core.DocBlock[] }) =>
         React.createElement("pre", null, core.serializeDoc(content)),
@@ -94,12 +98,26 @@ function fixture(native: boolean) {
       },
     },
   );
+  const edits: core.DocBlock[][] = [];
+  const ownedBlocks = new WeakSet<core.DocBlock[]>();
+  let currentBlocks: core.DocBlock[];
   const render = (blocks: core.DocBlock[]) => {
+    if (!ownedBlocks.has(blocks)) currentBlocks = blocks;
     at = 0;
     refAt = 0;
     return exports.DocSourcePreview({
       blocks,
       docId: "00000000-0000-4000-8000-000000000001",
+      onSourceChange: editable
+        ? (text: string, expected: core.DocBlock[]) => {
+            const next = core.editDocSource(currentBlocks, text, expected);
+            ownedBlocks.add(next);
+            currentBlocks = next;
+            edits.push(next);
+            return next;
+          }
+        : undefined,
+      saveStatus: "Unsaved changes",
       onAppLink: (url: string) => opened.push(url),
       report: () => {},
       onClose: () => {
@@ -107,7 +125,13 @@ function fixture(native: boolean) {
       },
     });
   };
-  return Object.assign(render, { refs, states, opened, closed: () => closed });
+  return Object.assign(render, {
+    refs,
+    states,
+    edits,
+    opened,
+    closed: () => closed,
+  });
 }
 function find(
   node: React.ReactNode,
@@ -301,5 +325,179 @@ for (const native of [false, true]) {
     assert.deepEqual(render.opened, [
       "orbyn://doc/00000000-0000-4000-8000-000000000002",
     ]);
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} source edits use the owning callback and retain exact typing`, () => {
+    const render = fixture(native, true);
+    const blocks = core.parseDoc("# Before ^heading");
+    const tree = render(blocks);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    assert.equal(native ? input.editable : input.readOnly, native);
+    const typed = "# After ^heading\n\n\nNew words  ";
+    if (native) input.onChangeText(typed);
+    else input.onChange({ currentTarget: { value: typed } });
+    assert.equal(render.edits.length, 1);
+    const after = render(render.edits[0]);
+    const nextInput = find(
+      after,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    assert.equal(
+      nextInput.value,
+      typed,
+      "own parsed echo must not normalize the typed buffer",
+    );
+    assert.match(renderToStaticMarkup(after), /Unsaved changes/);
+  });
+  test(`${native ? "native" : "web"} invalid anchors remain visible and cannot silently close`, () => {
+    const render = fixture(native, true);
+    const blocks = core.parseDoc("Safe ^one", { anchors: true });
+    const tree = render(blocks);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const typed = "First ^one\n\nSecond ^one";
+    if (native) input.onChangeText(typed);
+    else input.onChange({ currentTarget: { value: typed } });
+    assert.equal(render.edits.length, 0);
+    const after = render(blocks);
+    assert.match(renderToStaticMarkup(after), /This edit has not been saved/);
+    if (native)
+      find(after, (props) => props.title === "Source and preview")!.onClose();
+    else
+      find(
+        after,
+        (props) => props["aria-label"] === "Close source preview",
+      )!.onClick();
+    assert.equal(render.closed(), 0);
+    const restore = find(
+      after,
+      (props) =>
+        props.title === "Restore current document" ||
+        React.Children.toArray(props.children).includes(
+          "Restore current document",
+        ),
+    )!;
+    (native ? restore.onPress : restore.onClick)();
+    const restored = render(blocks);
+    assert.doesNotMatch(
+      renderToStaticMarkup(restored),
+      /This edit has not been saved/,
+    );
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} delayed own echoes never rewind a newer source input`, () => {
+    const render = fixture(native, true);
+    const initial = core.parseDoc("# Before ^heading", { anchors: true });
+    const tree = render(initial);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const type = (value: string) =>
+      native
+        ? input.onChangeText(value)
+        : input.onChange({ currentTarget: { value } });
+    type("# First edit ^heading");
+    type("# Latest edit ^heading\n\n\nMore words");
+    const olderEcho = render(render.edits[0]);
+    const olderInput = find(
+      olderEcho,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    assert.equal(olderInput.value, "# Latest edit ^heading\n\n\nMore words");
+    const latestEcho = render(render.edits[1]);
+    const latestInput = find(
+      latestEcho,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    assert.equal(latestInput.value, "# Latest edit ^heading\n\n\nMore words");
+    const external = core.parseDoc("# Remote edit ^heading", { anchors: true });
+    render(external);
+    const reconciled = render(external);
+    assert.equal(
+      find(
+        reconciled,
+        (props) =>
+          props["aria-label"] === "Markdown source" ||
+          props.accessibilityLabel === "Markdown source",
+      )!.value,
+      core.docSourceMap(external).source,
+    );
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} external changes during invalid source require explicit restoration`, () => {
+    const render = fixture(native, true);
+    const initial = core.parseDoc("Before ^line", { anchors: true });
+    const input = find(
+      render(initial),
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const invalid = "First ^line\n\nSecond ^line";
+    if (native) input.onChangeText(invalid);
+    else input.onChange({ currentTarget: { value: invalid } });
+    const remote = core.parseDoc("Remote words ^line", { anchors: true });
+    render(remote);
+    const conflict = render(remote);
+    assert.match(
+      renderToStaticMarkup(conflict),
+      /document changed while this source edit was invalid/,
+    );
+    const conflictInput = find(
+      conflict,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    assert.equal(conflictInput.value, invalid);
+    if (native) conflictInput.onChangeText("Unsafe overwrite ^line");
+    else
+      conflictInput.onChange({
+        currentTarget: { value: "Unsafe overwrite ^line" },
+      });
+    assert.equal(render.edits.length, 0);
+    const restore = find(
+      conflict,
+      (props) =>
+        props.title === "Restore current document" ||
+        React.Children.toArray(props.children).includes(
+          "Restore current document",
+        ),
+    )!;
+    (native ? restore.onPress : restore.onClick)();
+    const restored = render(remote);
+    assert.equal(
+      find(
+        restored,
+        (props) =>
+          props["aria-label"] === "Markdown source" ||
+          props.accessibilityLabel === "Markdown source",
+      )!.value,
+      core.docSourceMap(remote).source,
+    );
   });
 }

@@ -83,6 +83,7 @@ import {
   parseDoc,
   serializeBlock,
   setTodoSource,
+  editDocSource,
   ticksTakenFrom,
   proposeEdit,
   mentionMarkdown,
@@ -2406,6 +2407,7 @@ export function DocEditor({
       label: "Source / preview",
       onPress: () => {
         syncDraft();
+        setFocused(null);
         setSourcePreview(doc.id);
       },
     },
@@ -2535,6 +2537,25 @@ export function DocEditor({
           <DocSourcePreview
             blocks={blocks}
             docId={doc.id}
+            onSourceChange={
+              canWrite && !reading && !suggesting
+                ? (text, expected) => {
+                    const next = editDocSource(
+                      live.current.blocks,
+                      text,
+                      expected,
+                    );
+                    if (next !== live.current.blocks) {
+                      remember("type");
+                      update(next);
+                    }
+                    return next;
+                  }
+                : undefined
+            }
+            saveStatus={
+              saving ? "Saving…" : dirty.current ? "Unsaved changes" : "Saved"
+            }
             onAppLink={openAppUrl}
             report={report}
             onClose={() => setSourcePreview(null)}

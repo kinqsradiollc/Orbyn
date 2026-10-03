@@ -147,3 +147,29 @@ Main1100ca98 unchanged. Other models/source/Home drafts remain automated-qualifi
 with runtime/native acceptance open. User-requested local preview5174/API8027
 uses the marked native-home test DB; credentials are private in/tmp, not Git.
 Keep preview servers running. No deploy/release/cleanup; goal active incomplete.
+
+## Source editing candidate — latest 3 October 2026
+
+Native-diagram-parity checkout now owns `codex/docs-source-editing`, based on
+PR1749f5fed31; PR173's frozen branch/head is preserved. Source inputs delegate to
+both editors' existing update/save queues in Editing mode only. Anchors remain
+stable when retained; duplicates reject before that edit saves. Original parser
+line spans map the exact typed source, including blank lines/CRLF/fences.
+
+Initial source tests caught final-line anchor loss, fixed without weakening the
+identity assertion. Native rapid typing exposed a caret/echo race: weak own-echo
+tracking and one-time imperative caret positioning repaired it. Actual native
+fixture typing, rendered preview, duplicate error and restoration were observed.
+Screenshots in evidence/source-editing. Interleaved user input interrupted some
+CUA actions; software-keyboard/swipe acceptance remains open. No fixture account
+or API data is used; no server-save proof is claimed by its edit counter.
+
+PR174 automated qualification: fresh retry8218 full2408/2408, all four
+CI37087211471 success; old89842 stopped without TAP summary and is not qualifying.
+Source candidate final100/100 regressions, typechecks, build and formatting
+passed. Freeze a draft and run fresh full suite/CI. Full source/editor revision and
+conflict/native/Android acceptance remain required. Main1100ca98 unchanged.
+User delegates web visuals to manual verification while implementation proceeds;
+no denied browser bypass. Full C1–C6/M1/D1/U1 remains active. Keep test web5174/
+API8027 and private credentials/data alive, preserve user/character files. No
+release/deployment/cleanup.

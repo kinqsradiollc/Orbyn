@@ -18,17 +18,21 @@ import { FootnoteContext } from "./RichBlocks";
 import { DocNavigationContext } from "./doc-navigation";
 import "./doc-source.css";
 
-/** Inspect the current editor's blocks; this view owns no draft or save request. */
+/** Source editing delegates to the owning editor; this view never saves a revision. */
 export function DocSourcePreview({
   blocks,
   docId,
   onAppLink,
   onClose,
+  onSourceChange,
+  saveStatus,
 }: {
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
   onClose: () => void;
+  onSourceChange?: (source: string, expected: DocBlock[]) => DocBlock[];
+  saveStatus?: string;
 }) {
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -36,7 +40,72 @@ export function DocSourcePreview({
   const preview = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState(0);
   const expectedScroll = useRef<{ source?: number; preview?: number }>({});
-  const map = useMemo(() => docSourceMap(blocks), [blocks]);
+  const canonical = useMemo(() => docSourceMap(blocks), [blocks]);
+  // This buffer retains typed whitespace while the owning editor holds the
+  // parsed blocks and the only save/revision path. External reconciliations
+  // replace it; echoes of our own parsed source do not move the caret.
+  const [sourceText, setSourceText] = useState(canonical.source);
+  const [sourceError, setSourceError] = useState("");
+  const acceptedSource = useRef(canonical.source);
+  const ownerBlocks = useRef(blocks);
+  // React can commit an older edit after a newer native text event arrived.
+  // Recognize every own block echo without retaining old document snapshots.
+  const acceptedBlocks = useRef(new WeakSet<DocBlock[]>([blocks]));
+  const mustRestore = useRef(false);
+  useEffect(() => {
+    if (
+      acceptedBlocks.current.has(blocks) ||
+      canonical.source === acceptedSource.current
+    )
+      return;
+    if (sourceError) {
+      mustRestore.current = true;
+      setSourceError(
+        "The document changed while this source edit was invalid. Restore the current document before continuing.",
+      );
+      return;
+    }
+    acceptedSource.current = canonical.source;
+    ownerBlocks.current = blocks;
+    acceptedBlocks.current.add(blocks);
+    setSourceText(canonical.source);
+    setSourceError("");
+  }, [blocks, canonical.source]);
+  const map = useMemo(
+    () =>
+      onSourceChange && !sourceError
+        ? docSourceMap(blocks, sourceText)
+        : canonical,
+    [blocks, canonical, sourceText, sourceError, onSourceChange],
+  );
+  const changeSource = (text: string) => {
+    if (!onSourceChange || mustRestore.current) return;
+    setSourceText(text);
+    try {
+      const next = onSourceChange(text, ownerBlocks.current);
+      ownerBlocks.current = next;
+      acceptedBlocks.current.add(next);
+      acceptedSource.current = docSourceMap(next).source;
+      setSourceError("");
+    } catch (error) {
+      setSourceError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't apply the source edit.",
+      );
+    }
+  };
+  const closeSource = () => {
+    if (!sourceError) onClose();
+  };
+  const revertSource = () => {
+    mustRestore.current = false;
+    acceptedSource.current = canonical.source;
+    ownerBlocks.current = blocks;
+    acceptedBlocks.current.add(blocks);
+    setSourceText(canonical.source);
+    setSourceError("");
+  };
   const layout = useMemo(() => listLayout(blocks), [blocks]);
   const notes = useMemo(
     () => ({
@@ -53,7 +122,7 @@ export function DocSourcePreview({
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      onClose();
+      closeSource();
     };
     document.addEventListener("keydown", escape, true);
     return () => {
@@ -61,7 +130,7 @@ export function DocSourcePreview({
       dialog.current?.close();
       opener?.focus?.();
     };
-  }, []);
+  }, [sourceError]);
   const select = (index: number, fromSource = false) => {
     const range = map.ranges[index];
     if (!range) return;
@@ -92,7 +161,8 @@ export function DocSourcePreview({
       if (link?.kind === "doc" && link.id === docId && link.block)
         goToFragment(link.block);
       else {
-        onClose();
+        if (sourceError) return;
+        closeSource();
         onAppLink(url);
       }
     },
@@ -164,7 +234,7 @@ export function DocSourcePreview({
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        closeSource();
       }}
     >
       <div className="section-heading">
@@ -172,21 +242,41 @@ export function DocSourcePreview({
         <button
           className="icon-button"
           aria-label="Close source preview"
-          onClick={onClose}
+          onClick={closeSource}
+          disabled={!!sourceError}
         >
           <X size={20} />
         </button>
       </div>
       <p className="muted">
-        This is the current document, including unsaved edits. Close this view
-        to continue editing.
+        {onSourceChange
+          ? "Edit Markdown here. Source and preview use the same document and save status. Keep block anchors to preserve comments and task links."
+          : "This is the current document, including unsaved edits. Source editing is available in Editing mode."}
       </p>
+      {saveStatus && (
+        <p role="status" className="doc-source-save">
+          {saveStatus}
+        </p>
+      )}
+      {!!sourceError && (
+        <div className="doc-source-error" role="alert">
+          <p>{sourceError} This edit has not been saved.</p>
+          <button type="button" onClick={revertSource}>
+            Restore current document
+          </button>
+        </div>
+      )}
       <div className="doc-source-columns">
         <textarea
           ref={source}
           aria-label="Markdown source"
-          readOnly
-          value={map.source}
+          readOnly={!onSourceChange}
+          value={onSourceChange ? sourceText : map.source}
+          onChange={
+            onSourceChange
+              ? (event) => changeSource(event.currentTarget.value)
+              : undefined
+          }
           spellCheck={false}
           wrap="off"
           onScroll={scrollSource}
