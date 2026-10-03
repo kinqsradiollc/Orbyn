@@ -14,6 +14,9 @@ export type ResolvedAi = {
   model: string;
   options: { apiVersion?: string };
   source: "database";
+  /** Credential-free configuration identity for scoped execution provenance. */
+  providerId?: string;
+  providerRevision?: string;
   /** Hard request limits the provider enforces, if any (see AI_PROVIDERS). */
   limits?: { maxBodyBytes: number; maxMessageChars: number };
   /** Send `options.responseFormat` as `response_format` (see AI_PROVIDERS). */
@@ -197,13 +200,19 @@ export function textOf(content: unknown): string {
 }
 
 /** A 200 reply that is really an error (OpenRouter and others send these). */
-export function throwIfErrorEnvelope(body: {
-  error?: unknown;
-  type?: unknown;
-}) {
+export function throwIfErrorEnvelope(
+  body: {
+    error?: unknown;
+    type?: unknown;
+  },
+  secret = "",
+) {
   if (body.type === "error" || (body.error && body.error !== null)) {
     const error = body.error as { message?: string } | string | undefined;
-    const detail = typeof error === "string" ? error : (error?.message ?? "");
+    const detail = providerDetail(
+      typeof error === "string" ? error : (error?.message ?? ""),
+      secret,
+    );
     throw new ProviderError(
       "error_envelope",
       `The provider returned an error.${detail ? ` The provider says: ${detail.slice(0, 200)}` : ""}`,
@@ -237,8 +246,20 @@ export async function complete(
     timeoutMs?: number;
     /** A `response_format` value, used only by providers with `structuredOutput`. */
     responseFormat?: object;
+    /** Explicit cap for bounded background work; absence preserves existing provider behavior. */
+    maxOutputTokens?: number;
   } = {},
 ): Promise<string> {
+  if (
+    options.maxOutputTokens !== undefined &&
+    (!Number.isSafeInteger(options.maxOutputTokens) ||
+      options.maxOutputTokens < 1 ||
+      options.maxOutputTokens > 65536)
+  )
+    throw new ProviderError(
+      "invalid_limit",
+      "Choose a supported output token limit.",
+    );
   const signal =
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
   const system = messages
@@ -257,7 +278,7 @@ export async function complete(
         headers: headers(ai),
         body: JSON.stringify({
           model: ai.model,
-          max_tokens: 8192,
+          max_tokens: options.maxOutputTokens ?? 8192,
           ...(system ? { system } : {}),
           messages: conversation,
         }),
@@ -271,7 +292,7 @@ export async function complete(
       stop_reason?: string;
       content?: { type: string; text?: string }[];
     }>(response);
-    throwIfErrorEnvelope(body);
+    throwIfErrorEnvelope(body, ai.apiKey);
     const text = (body.content ?? [])
       .filter((part) => part.type === "text")
       .map((part) => part.text ?? "")
@@ -294,6 +315,9 @@ export async function complete(
             content: m.content,
           })),
           store: false,
+          ...(options.maxOutputTokens === undefined
+            ? {}
+            : { max_output_tokens: options.maxOutputTokens }),
         }),
       },
       signal,
@@ -307,7 +331,7 @@ export async function complete(
         content?: { type?: string; text?: string }[];
       }[];
     }>(response);
-    throwIfErrorEnvelope(body);
+    throwIfErrorEnvelope(body, ai.apiKey);
     if (!Array.isArray(body.output))
       throw new ProviderError(
         "invalid_body",
@@ -336,6 +360,11 @@ export async function complete(
       body: JSON.stringify({
         ...(ai.format === "azure" ? {} : { model: ai.model }),
         messages,
+        ...(options.maxOutputTokens === undefined
+          ? {}
+          : ai.kind === "openai" || ai.format === "azure"
+            ? { max_completion_tokens: options.maxOutputTokens }
+            : { max_tokens: options.maxOutputTokens }),
         ...(ai.structuredOutput && options.responseFormat
           ? { response_format: options.responseFormat }
           : {}),
@@ -353,7 +382,7 @@ export async function complete(
     error?: unknown;
     choices?: { message?: Message; delta?: Message; finish_reason?: string }[];
   }>(response);
-  throwIfErrorEnvelope(body);
+  throwIfErrorEnvelope(body, ai.apiKey);
   const choice = body.choices?.[0];
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");

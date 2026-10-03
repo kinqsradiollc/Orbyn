@@ -16,6 +16,7 @@ export type ProviderRow = {
   created_at: Date;
   updated_at: Date;
   embedding_revision: string;
+  provider_revision?: string;
 };
 
 /** How to call a saved provider with `model`, decrypting its key. */
@@ -34,6 +35,8 @@ export async function connection(
     model,
     options: row.options ?? {},
     source: "database",
+    providerId: row.id,
+    providerRevision: row.provider_revision ?? row.updated_at.toISOString(),
     limits: definition?.limits,
     structuredOutput: definition?.structuredOutput,
     local: definition?.local,
@@ -49,7 +52,7 @@ export async function connection(
 export async function resolveAi(): Promise<ResolvedAi | null> {
   const row = (
     await query<ProviderRow & { model: string }>(
-      `SELECT p.*, s.model FROM ai_settings s
+      `SELECT p.*, extract(epoch from p.updated_at)::text AS provider_revision, s.model FROM ai_settings s
        JOIN ai_providers p ON p.id = s.provider_id
        WHERE s.id AND p.enabled AND s.model <> ''`,
     )
