@@ -164,6 +164,18 @@ export function DocSourcePreview({
           contentContainerStyle={{ gap: 12 }}
           keyboardShouldPersistTaps="handled"
         >
+          {!!sourceError && (
+            <View style={{ gap: 8 }}>
+              <Button
+                title="Restore current document"
+                secondary
+                onPress={revertSource}
+              />
+              <Text accessibilityRole="alert" style={shared.small}>
+                {sourceError} This edit has not been saved.
+              </Text>
+            </View>
+          )}
           <Text style={shared.small}>
             {onSourceChange
               ? "Edit Markdown here. Source and preview share the same document. Keep block anchors to preserve comments and task links."
@@ -173,18 +185,6 @@ export function DocSourcePreview({
             <Text accessibilityLiveRegion="polite" style={shared.small}>
               {saveStatus}
             </Text>
-          )}
-          {!!sourceError && (
-            <View>
-              <Text accessibilityRole="alert" style={shared.small}>
-                {sourceError} This edit has not been saved.
-              </Text>
-              <Button
-                title="Restore current document"
-                secondary
-                onPress={revertSource}
-              />
-            </View>
           )}
           <Button
             title={sourceVisible ? "Show preview" : "Show Markdown source"}

@@ -203,3 +203,9 @@ size; native scroll attempt returned noWindowsAvailable, so touch scrolling is
 still unqualified. Layout-only fixture bypassed its font-load gate; server saves
 and production typography are not proven. Recovery screenshot remains outside
 Git at /tmp/orbyn-source-keyboard-qa/restored-keyboard.png. No main promotion.
+
+Recovery-first follow-up: the Restore control now precedes hints/status inside
+bounded controls. Actual iPhone SE keyboard/error screenshot shows Restore,
+both source lines and caret above the keyboard; accessibility activation clears
+the error. Screenshot: evidence/source-keyboard/recovery-first.png. Focused26/26
+and mobile typecheck pass. Touch scroll, Android and real editor saves still open.

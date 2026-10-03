@@ -534,3 +534,27 @@ test("native source controls are bounded by the available sheet height", () => {
     (600 - 44) * 0.45,
   );
 });
+
+test("native invalid-source recovery is first in the bounded controls", () => {
+  const render = fixture(true, true);
+  const blocks = core.parseDoc("One ^one", { anchors: true });
+  const initial = render(blocks);
+  const input = find(
+    initial,
+    (props) => props.accessibilityLabel === "Markdown source",
+  );
+  assert.ok(input);
+  input.onChangeText("One ^one\n\nDuplicate ^one");
+  const controls = find(
+    render(blocks),
+    (props) => props.keyboardShouldPersistTaps === "handled",
+  );
+  assert.ok(controls);
+  const first = React.Children.toArray(
+    controls.children,
+  )[0] as React.ReactElement;
+  const firstChild = React.Children.toArray(
+    (first.props as any).children,
+  )[0] as React.ReactElement;
+  assert.equal((firstChild.props as any).title, "Restore current document");
+});
