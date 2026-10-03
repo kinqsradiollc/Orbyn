@@ -308,10 +308,6 @@ export function ViewsSheet({
             {!!error && (
               <ErrorBanner error={error} onDismiss={() => setError("")} />
             )}
-            <Text style={shared.body}>
-              A view keeps a filter, a sort and a layout you come back to, like
-              “Exam week” or “Lab reports”.
-            </Text>
             <View style={[s.newRow, s.gapTop]}>
               <SmallAction
                 label="New view"
@@ -366,7 +362,7 @@ function ViewList({
       <View style={[shared.card, shared.empty]}>
         <Text style={shared.sectionTitle}>No views yet.</Text>
         <Text style={[shared.subtitle, s.center]}>
-          Make one to keep a filter you come back to.
+          Save a filter to use again.
         </Text>
       </View>
     );
@@ -953,7 +949,7 @@ function NewView({
 
 const s = themed(() =>
   StyleSheet.create({
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 0 },
     center: { textAlign: "center" },
     headActions: { flexDirection: "row", alignItems: "center", gap: 6 },
     headButton: {
@@ -985,7 +981,12 @@ const s = themed(() =>
       borderTopColor: colors.divider,
     },
     pressed: { opacity: 0.7 },
-    viewName: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    viewName: {
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      color: colors.text,
+      flexShrink: 1,
+    },
     open: { gap: 12 },
     options: { gap: 6, paddingTop: 4 },
     unsaved: {
