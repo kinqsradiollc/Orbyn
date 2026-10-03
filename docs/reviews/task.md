@@ -77,3 +77,16 @@ interactions after human sign-in. Commit and attach a scoped publication-rendere
 PR, then full current-head qualification before promotion. Reconcile parent/main
 without conflicts. Continue all C1–C6/M1/D1/U1 gates; no premature goal completion
 or cleanup. Disk is low: check before large builds, do not reinstall dependencies.
+
+## Home review layout follow-up
+
+`codex/home-agent-review-layout` in `home-agent-editorial/Orbyn` is a scoped
+presentation follow-up atop frozen PR165 head5a298544. Research, exact copy/layout
+changes and visual limits: `evidence/home-agent-review-layout.md`.
+PR165’s matching-head retry completed2344/2344 with zero skips/cancellations,
+terminalexit0; CI37077524911 all four jobs passed. Native acceptance remains open.
+No main promotion, release, deployment or cleanup in this follow-up.
+
+The new presentation focused checks pass13/13, all workspace types/builds and
+full formatting pass. Matching-head full local and CI remain required. This
+candidate is stacked on PR165; human native acceptance still outstanding.

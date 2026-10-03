@@ -1387,3 +1387,19 @@ html.js .reveal.is-visible {
     margin-bottom: 6px;
   }
 }
+
+/* Keep the request and review visible; procedural help opens on demand. */
+.home-agent-how {
+  margin: 0 0 20px;
+}
+.home-agent-how summary {
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 14px;
+  padding: 8px 0;
+}
+.home-agent-how summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}

@@ -6,9 +6,9 @@ export const HOME_AGENT_GUIDE = [
     name: "Background",
     timing: "When you delegate a task",
     summary:
-      "Turn project notes into a draft you can review while you get on with your day.",
+      "Give it the project notes and a clear task. Come back to a draft, its sources and any questions.",
     request:
-      "Read my launch notes. Draft a checklist of what still needs doing.",
+      "Read the launch notes in this project. Draft a checklist of unfinished work and link each item to its source.",
     result: "Review the draft and its sources in agent activity.",
     pause: "If it needs an answer or approval, work waits for you.",
     steps: [
@@ -30,9 +30,9 @@ export const HOME_AGENT_GUIDE = [
     name: "Overnight",
     timing: "Inside your chosen night window",
     summary:
-      "Choose tonight’s tasks and wake up to results, open questions and work still to do.",
+      "Queue work for tonight. In the morning, see what finished, what needs your decision and what is still queued.",
     request:
-      "Tonight, work through the research tasks I’ve added to my night queue.",
+      "Tonight, work through the research tasks in my queue. Keep the sources and list any questions I need to answer.",
     result:
       "Review results, proposed changes and unfinished tasks in Overnight.",
     pause: "The night window and work budget limit the run.",
@@ -55,4 +55,4 @@ export const HOME_AGENT_GUIDE = [
 
 /** No activity should be inferred from an avatar or the time of day. */
 export const HOME_AGENT_IDLE_NOTE =
-  "Agents stay idle until they have authorized work. Each keeps its own runs, activity and results.";
+  "Agents stay idle until they have authorized work. Background and Overnight have separate runs, activity and results.";

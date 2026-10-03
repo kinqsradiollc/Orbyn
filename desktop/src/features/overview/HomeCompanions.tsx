@@ -72,6 +72,8 @@ export function HomeCompanions({
               <strong>{agent.name}</strong>
               <small>{agent.timing}</small>
               <p>{agent.summary}</p>
+              <p>{agent.result}</p>
+              <small>{agent.pause}</small>
               {guideOpen && (
                 <div className="home-companions-guide">
                   <p>Example request: “{agent.request}”</p>
@@ -83,8 +85,6 @@ export function HomeCompanions({
                       </li>
                     ))}
                   </ol>
-                  <p>{agent.result}</p>
-                  <p>{agent.pause}</p>
                 </div>
               )}
             </article>

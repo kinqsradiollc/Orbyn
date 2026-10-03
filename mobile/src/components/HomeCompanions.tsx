@@ -89,6 +89,8 @@ export function HomeCompanions({
             <Text style={shared.sectionTitle}>{agent.name}</Text>
             <Text style={shared.small}>{agent.timing}</Text>
             <Text style={shared.small}>{agent.summary}</Text>
+            <Text style={shared.small}>{agent.result}</Text>
+            <Text style={shared.small}>{agent.pause}</Text>
             {guideOpen && (
               <View style={{ gap: 8, marginTop: 6 }}>
                 <Text style={shared.small}>
@@ -102,8 +104,6 @@ export function HomeCompanions({
                     <Text style={shared.small}>{step.body}</Text>
                   </View>
                 ))}
-                <Text style={shared.small}>{agent.result}</Text>
-                <Text style={shared.small}>{agent.pause}</Text>
               </View>
             )}
           </View>

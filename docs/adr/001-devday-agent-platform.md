@@ -500,3 +500,24 @@ fixture and real PDF font/bounds checks are recorded in
 `docs/reviews/evidence/diagram-readability.md`. Both clients' exports use this
 server rendering path. Editor/native preview parity and complete D1/U1 remain
 open; candidate needs full exact-head qualification before main promotion.
+
+### Home review information and progressive disclosure — 3 October 2026
+
+Rechecked [Muse’s product design](https://introducing.muse.ai/) and
+[Dots’ task/profile controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot).
+Muse makes activity and responsibility visible; Dots separates in-progress,
+scheduled and completed work. Orbyn should present these as work a person can
+inspect and direct. The two agents retain separate runtimes and schedules.
+
+The Home section currently repeats its explanation as a summary, quotation,
+three steps and review instructions. Keep the example request, destination and
+stopping condition visible; put procedural steps behind a keyboard-accessible
+“How … works” disclosure on public Home. Signed-in web and mobile must expose
+review destinations and pause conditions before their optional guide is opened.
+Use concrete requests naming source notes, requested output and unanswered
+questions. Morning copy must distinguish finished work from queued work.
+Preserve palette, all character presets and evidence-based idle status.
+
+This is a presentation candidate atop PR165, not a worker or reflection change.
+User test-server web review remains outstanding; native interaction/screenshot
+acceptance is still required. Complete C1–C6/M1/D1/U1 remains active.

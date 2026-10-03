@@ -67,10 +67,14 @@ for (const signedIn of [false, true]) {
       }
     }
     assert.match(work, /Example request/);
+    assert.equal((work.match(/<details /g) ?? []).length, 2);
+    assert.match(work, /How Background works/);
+    assert.match(work, /How Overnight works/);
+    assert.doesNotMatch(work, /<details[^>]* open/);
     assert.equal((work.match(/<ol /g) ?? []).length, 2);
     assert.equal((work.match(/<li>/g) ?? []).length, 6);
     assert.equal((work.match(/<blockquote>/g) ?? []).length, 2);
-    assert.match(work, /Hand off a task. Pick up the result/);
+    assert.match(work, /Work you can hand over/);
     assert.match(work, /idle until they have authorized work/);
     assert.doesNotMatch(work, /Working now|Active now|Reflection complete/);
     for (const character of core.CHARACTER_PRESETS)
