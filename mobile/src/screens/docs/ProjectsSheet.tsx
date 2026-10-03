@@ -16,6 +16,7 @@ import {
   projectDeadlineParts,
   projectPlanStatus,
   projectProgress,
+  searchProjects,
   projectReentry,
   deadlineOf,
   shortMinutes,
@@ -34,7 +35,6 @@ import {
   type SearchHit,
 } from "@orbyn/core";
 import { Segmented } from "../../components/Segmented";
-import { ScreenIntro } from "../../components/ScreenIntro";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { Pill } from "../../components/Pill";
@@ -149,6 +149,8 @@ export function ProjectsSheet({
 }) {
   const sheet = sheetStyles;
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const visibleProjects = searchProjects(projects ?? [], libraryQuery);
   const [open, setOpen] = useState<Project | null>(null);
   /** A project card held down: its menu (MOB-07). */
   const [heldProject, setHeldProject] = useState<Project | null>(null);
@@ -932,13 +934,6 @@ export function ProjectsSheet({
         keyboardDismissMode="interactive"
       >
         <View style={sheet.column}>
-          {!open && !aiDraftOpen && !templatesOpen && !!projects?.length && (
-            <ScreenIntro
-              icon="boxes"
-              title="Move the bigger picture forward"
-              detail="See what’s progressing, what’s next and what needs your attention."
-            />
-          )}
           <ErrorBanner error={error} onDismiss={() => setError("")} />
           {!open && !aiDraftOpen && !templatesOpen && (
             <PromiseTracker
@@ -2095,12 +2090,9 @@ export function ProjectsSheet({
               <View style={styles.emptyIcon}>
                 <Icon name="boxes" size={24} color={colors.accent} />
               </View>
-              <Text style={styles.emptyTitle}>
-                Make room for the bigger picture.
-              </Text>
+              <Text style={styles.emptyTitle}>No projects yet</Text>
               <Text style={styles.emptyDescription}>
-                Bring related tasks together, follow their stages, and see
-                what’s moving forward.
+                Add a project to organize related tasks.
               </Text>
               {draft === null ? (
                 <View style={styles.emptyActions}>{createButtons}</View>
@@ -2111,7 +2103,29 @@ export function ProjectsSheet({
           ) : (
             <View style={styles.list}>
               {draft === null ? createButtons : newProjectForm}
-              {projects.map((p) => (
+              <TextInput
+                style={styles.searchInput}
+                value={libraryQuery}
+                onChangeText={setLibraryQuery}
+                placeholder="Search projects"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel="Search projects"
+                maxLength={200}
+                clearButtonMode="while-editing"
+                autoCapitalize="none"
+              />
+              {!!libraryQuery.trim() && (
+                <Text style={styles.meta} accessibilityLiveRegion="polite">
+                  {visibleProjects.length} of {projects.length} projects
+                </Text>
+              )}
+              {visibleProjects.length === 0 && (
+                <Text style={styles.empty}>
+                  No matching projects. Try a different name, alias or
+                  workspace.
+                </Text>
+              )}
+              {visibleProjects.map((p) => (
                 <Pressable
                   key={p.id}
                   accessibilityRole="button"
@@ -2144,6 +2158,18 @@ export function ProjectsSheet({
                     <Icon name="boxes" size={16} color={colors.muted} />
                     <Text style={styles.cardName}>{p.name}</Text>
                   </View>
+                  {!!p.summary && (
+                    <Text style={styles.meta} numberOfLines={2}>
+                      {p.summary}
+                    </Text>
+                  )}
+                  <Text style={styles.meta}>
+                    {p.team_name ||
+                      (p.team_id
+                        ? teams.find((team) => team.id === p.team_id)?.name ||
+                          "Shared"
+                        : "Personal")}
+                  </Text>
                   <View style={styles.bar}>
                     <View
                       style={[
@@ -2329,8 +2355,8 @@ const styles = themed(() =>
     cardName: {
       flex: 1,
       color: colors.text,
-      fontSize: 18,
-      lineHeight: 25,
+      fontSize: 15,
+      lineHeight: 20,
       fontFamily: fonts.semibold,
     },
     chip: {
