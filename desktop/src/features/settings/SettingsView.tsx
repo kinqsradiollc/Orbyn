@@ -1,3 +1,4 @@
+import { ChatgptConnections } from "./ChatgptConnections";
 import { SettingsFocus, SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import {
@@ -5,14 +6,10 @@ import {
   BookOpen,
   Newspaper,
   Search,
-  CalendarCog,
+  ShieldCheck,
   Monitor,
   Moon,
-  Plug,
-  ShieldCheck,
   Sun,
-  Tags,
-  UserRound,
 } from "lucide-react";
 import {
   searchSettings,
@@ -42,16 +39,12 @@ import {
 import { ClipperSettings } from "./ClipperSettings";
 import "./settings.css";
 
-export type SettingsTab =
-  "account" | "planning" | "tags" | "connections" | "privacy";
-
-const TABS = [
-  { id: "account", label: "Account", icon: UserRound },
-  { id: "planning", label: "Planning", icon: CalendarCog },
-  { id: "tags", label: "Tags", icon: Tags },
-  { id: "connections", label: "Connections", icon: Plug },
-  { id: "privacy", label: "Privacy", icon: ShieldCheck },
-] as const;
+import {
+  SETTINGS_CATEGORIES,
+  SettingsNavigation,
+  type SettingsTab,
+} from "./SettingsNavigation";
+export type { SettingsTab } from "./SettingsNavigation";
 
 const THEMES: { id: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { id: "system", label: "System", icon: Monitor },
@@ -113,223 +106,210 @@ export function SettingsView({
   }, [initialSetting?.seq]);
   return (
     <SettingsFocus.Provider value={focus}>
-      <div className="settings-search" role="search">
-        <label className="settings-search-field">
-          <Search size={15} aria-hidden="true" />
-          <span className="sr-only">Search settings</span>
-          <input
-            type="search"
-            value={query}
-            placeholder="Search settings"
-            aria-controls="settings-found"
-            aria-expanded={!!query.trim()}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && found[0]) {
-                e.preventDefault();
-                choose(found[0]);
-              }
-              if (e.key === "Escape") setQuery("");
-            }}
-          />
-        </label>
-        {!!query.trim() && (
-          <ul
-            id="settings-found"
-            className="settings-found"
-            aria-label="Settings found"
-          >
-            {found.length ? (
-              found.slice(0, 8).map((entry) => (
-                <li key={entry.id}>
-                  <button type="button" onClick={() => choose(entry)}>
-                    <strong>{entry.label}</strong>
-                    <small>
-                      {TABS.find((t) => t.id === entry.tab)?.label} ·{" "}
-                      {entry.hint}
-                    </small>
-                  </button>
-                </li>
-              ))
-            ) : (
-              <li className="settings-found-none">
-                No setting is called that. Try other words.
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
-      <div className="tabs" role="tablist" aria-label="Settings">
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            role="tab"
-            id={"settings-tab-" + id}
-            aria-selected={tab === id}
-            aria-controls={"settings-panel-" + id}
-            className={tab === id ? "active" : ""}
-            onClick={() => setTab(id)}
-          >
-            <Icon size={15} aria-hidden="true" /> {label}
-          </button>
-        ))}
-      </div>
-      <div
-        role="tabpanel"
-        id={"settings-panel-" + tab}
-        aria-labelledby={"settings-tab-" + tab}
-      >
-        {tab === "account" && (
-          <SettingsSection className="card settings-card" defaultOpen>
-            <h2>Your account</h2>
-            <p>
-              {user?.name} · {user?.email}
-            </p>
-          </SettingsSection>
-        )}
-        {tab === "account" && (
-          <SettingsSection className="card settings-card">
-            <h2>Appearance</h2>
-            <div className="preference theme-preference">
-              <span>
-                <strong>Theme</strong>
-                <small>
-                  System follows your device. Saved on this device only.
-                </small>
-              </span>
-              <div className="segmented" role="group" aria-label="Theme">
-                {THEMES.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    aria-pressed={theme === id}
-                    className={theme === id ? "active" : ""}
-                    onClick={() => setTheme(id)}
-                  >
-                    <Icon size={14} aria-hidden="true" /> {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </SettingsSection>
-        )}
-        {tab === "account" && (
-          <SettingsSection className="card settings-card">
-            <h2>Reading</h2>
-            <label className="switch-line settings-field">
+      <div className="settings-workspace">
+        <aside className="settings-sidebar">
+          <div className="settings-search" role="search">
+            <label className="settings-search-field">
+              <Search size={15} aria-hidden="true" />
+              <span className="sr-only">Search settings</span>
               <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={reading}
-                onChange={(e) => {
-                  setReadsFirst(e.target.checked);
-                  setReading(e.target.checked);
+                type="search"
+                value={query}
+                placeholder="Search settings"
+                aria-controls="settings-found"
+                aria-expanded={!!query.trim()}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && found[0]) {
+                    e.preventDefault();
+                    choose(found[0]);
+                  }
+                  if (e.key === "Escape") setQuery("");
                 }}
               />
-              <span>
-                <BookOpen size={14} aria-hidden="true" /> Open pages for reading
-                <small>
-                  Pages open without editing handles; press Edit, or ⌘⇧R, to
-                  change one. Saved on this device only, so a phone and a
-                  computer can differ.
-                </small>
-              </span>
             </label>
-          </SettingsSection>
-        )}
-        {tab === "account" && <StartSettings />}
-        {tab === "account" && <ArrangeSettings user={user} />}
-        {tab === "account" && <HomeArrangeSettings />}
-        {tab === "account" && <ShortcutSettings />}
-        {tab === "account" && (
-          <SettingsSection className="card settings-card">
-            <h2>Stay in the loop</h2>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={user?.email_reminders || false}
-                disabled={busy}
-                onChange={(e) => onEmailReminders(e.target.checked)}
-              />
-              <span>
-                Email reminders
-                <small>
-                  Receive a reminder before your tasks and events are due.
-                </small>
-              </span>
-            </label>
-            <p className="muted">
-              Mobile push notifications can be enabled in the Orbyn mobile app.
-              Each item has its own reminder timing.
-            </p>
-          </SettingsSection>
-        )}
-        {tab === "account" && (
-          <SettingsSection className="card settings-card" title="Signing in">
-            <TwoFactorSettings report={report} />
-            <PasskeysSettings report={report} />
-            <SessionsSettings report={report} />
-            <DevicesSettings report={report} />
-          </SettingsSection>
-        )}
-        {tab === "account" && (
-          <SettingsSection className="card settings-card">
-            <h2>AI provider</h2>
-            <p className="muted">
-              An admin connects the AI provider in Admin → AI, and its keys stay
-              on the server.
-            </p>
-          </SettingsSection>
-        )}
-        {tab === "account" && onOpenWhatsNew && (
-          <SettingsSection className="card settings-card">
-            <h2>What's new</h2>
-            <p className="muted">
-              What changed in Orbyn lately: New, Better and No longer broken.
-            </p>
-            <button className="secondary" onClick={onOpenWhatsNew}>
-              <Newspaper size={14} /> What's new
-            </button>
-          </SettingsSection>
-        )}
-        {tab === "account" && onOpenStatus && (
-          <SettingsSection className="card settings-card">
-            <h2>Service status</h2>
-            <p className="muted">
-              See whether Orbyn is running smoothly and review recent incidents.
-            </p>
-            <button className="secondary" onClick={onOpenStatus}>
-              <Activity size={14} /> Service status
-            </button>
-          </SettingsSection>
-        )}
-        {tab === "planning" && (
-          <PlanningSettings teams={teams} report={report} />
-        )}
-        {tab === "tags" && <TagSettings teams={teams} report={report} />}
-        {tab === "connections" && <ConnectionsSettings report={report} />}
-        {tab === "connections" && <ClipperSettings report={report} />}
-        {tab === "privacy" && onOpenSecurity && (
-          <SettingsSection className="card settings-card">
-            <h2>Security and data</h2>
-            <p className="muted">
-              How Orbyn keeps your account safe and how to take your data with
-              you, last checked {securityPageDate()}.
-            </p>
-            <button className="secondary" onClick={onOpenSecurity}>
-              <ShieldCheck size={14} /> Security and data
-            </button>
-          </SettingsSection>
-        )}
-        {tab === "privacy" && (
-          <PrivacySettings
-            user={user}
-            report={report}
-            onDeleted={onAccountDeleted}
-          />
-        )}
+            {!!query.trim() && (
+              <ul
+                id="settings-found"
+                className="settings-found"
+                aria-label="Settings found"
+              >
+                {found.length ? (
+                  found.slice(0, 8).map((entry) => (
+                    <li key={entry.id}>
+                      <button type="button" onClick={() => choose(entry)}>
+                        <strong>{entry.label}</strong>
+                        <small>
+                          {
+                            SETTINGS_CATEGORIES.find((t) => t.id === entry.tab)
+                              ?.label
+                          }{" "}
+                          · {entry.hint}
+                        </small>
+                      </button>
+                    </li>
+                  ))
+                ) : (
+                  <li className="settings-found-none">
+                    No setting is called that. Try other words.
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+          <SettingsNavigation selected={tab} onSelect={setTab} />
+        </aside>
+        <section
+          className="settings-content"
+          id="settings-content"
+          aria-labelledby={"settings-category-" + tab}
+        >
+          {tab === "account" && (
+            <SettingsSection className="card settings-card" defaultOpen>
+              <h2>Your account</h2>
+              <p>
+                {user?.name} · {user?.email}
+              </p>
+            </SettingsSection>
+          )}
+          {tab === "account" && (
+            <SettingsSection className="card settings-card">
+              <h2>Appearance</h2>
+              <div className="preference theme-preference">
+                <span>
+                  <strong>Theme</strong>
+                  <small>
+                    System follows your device. Saved on this device only.
+                  </small>
+                </span>
+                <div className="segmented" role="group" aria-label="Theme">
+                  {THEMES.map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      aria-pressed={theme === id}
+                      className={theme === id ? "active" : ""}
+                      onClick={() => setTheme(id)}
+                    >
+                      <Icon size={14} aria-hidden="true" /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </SettingsSection>
+          )}
+          {tab === "account" && (
+            <SettingsSection className="card settings-card">
+              <h2>Reading</h2>
+              <label className="switch-line settings-field">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="ai-switch"
+                  checked={reading}
+                  onChange={(e) => {
+                    setReadsFirst(e.target.checked);
+                    setReading(e.target.checked);
+                  }}
+                />
+                <span>
+                  <BookOpen size={14} aria-hidden="true" /> Open pages for
+                  reading
+                  <small>
+                    Pages open without editing handles; press Edit, or ⌘⇧R, to
+                    change one. Saved on this device only, so a phone and a
+                    computer can differ.
+                  </small>
+                </span>
+              </label>
+            </SettingsSection>
+          )}
+          {tab === "account" && <StartSettings />}
+          {tab === "account" && <ArrangeSettings user={user} />}
+          {tab === "account" && <HomeArrangeSettings />}
+          {tab === "account" && <ShortcutSettings />}
+          {tab === "account" && (
+            <SettingsSection className="card settings-card">
+              <h2>Stay in the loop</h2>
+              <label className="switch-line settings-field">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="ai-switch"
+                  checked={user?.email_reminders || false}
+                  disabled={busy}
+                  onChange={(e) => onEmailReminders(e.target.checked)}
+                />
+                <span>
+                  Email reminders
+                  <small>
+                    Receive a reminder before your tasks and events are due.
+                  </small>
+                </span>
+              </label>
+              <p className="muted">
+                Mobile push notifications can be enabled in the Orbyn mobile
+                app. Each item has its own reminder timing.
+              </p>
+            </SettingsSection>
+          )}
+          {tab === "account" && (
+            <SettingsSection className="card settings-card" title="Signing in">
+              <TwoFactorSettings report={report} />
+              <PasskeysSettings report={report} />
+              <SessionsSettings report={report} />
+              <DevicesSettings report={report} />
+            </SettingsSection>
+          )}
+          {tab === "account" && <ChatgptConnections userId={user?.id ?? ""} />}
+          {tab === "account" && onOpenWhatsNew && (
+            <SettingsSection className="card settings-card">
+              <h2>What's new</h2>
+              <p className="muted">
+                What changed in Orbyn lately: New, Better and No longer broken.
+              </p>
+              <button className="secondary" onClick={onOpenWhatsNew}>
+                <Newspaper size={14} /> What's new
+              </button>
+            </SettingsSection>
+          )}
+          {tab === "account" && onOpenStatus && (
+            <SettingsSection className="card settings-card">
+              <h2>Service status</h2>
+              <p className="muted">
+                See whether Orbyn is running smoothly and review recent
+                incidents.
+              </p>
+              <button className="secondary" onClick={onOpenStatus}>
+                <Activity size={14} /> Service status
+              </button>
+            </SettingsSection>
+          )}
+          {tab === "planning" && (
+            <PlanningSettings teams={teams} report={report} />
+          )}
+          {tab === "tags" && <TagSettings teams={teams} report={report} />}
+          {tab === "connections" && <ConnectionsSettings report={report} />}
+          {tab === "connections" && <ClipperSettings report={report} />}
+          {tab === "privacy" && onOpenSecurity && (
+            <SettingsSection className="card settings-card">
+              <h2>Security and data</h2>
+              <p className="muted">
+                How Orbyn keeps your account safe and how to take your data with
+                you, last checked {securityPageDate()}.
+              </p>
+              <button className="secondary" onClick={onOpenSecurity}>
+                <ShieldCheck size={14} /> Security and data
+              </button>
+            </SettingsSection>
+          )}
+          {tab === "privacy" && (
+            <PrivacySettings
+              user={user}
+              report={report}
+              onDeleted={onAccountDeleted}
+            />
+          )}
+        </section>
       </div>
     </SettingsFocus.Provider>
   );

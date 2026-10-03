@@ -21,7 +21,12 @@
  * followed, so ?next= can't send anyone elsewhere.
  */
 
-import { parseAppLink, type AppLink } from "@orbyn/core";
+import {
+  appLinkFragment,
+  appPath,
+  parseAppLink,
+  type AppLink,
+} from "@orbyn/core";
 
 export type DeepLink =
   | { kind: "task"; id: string }
@@ -41,7 +46,6 @@ const WITH_ID = new RegExp(
   `^/app/(task|doc|project|view|review|overnight)/(${UUID})/?$`,
   "i",
 );
-const BLOCK = /^#([A-Za-z0-9_-]{1,64})$/;
 const KEY = "orbyn-open-link";
 
 /** The words a link carries (?text= or ?q=), trimmed and kept short. */
@@ -68,7 +72,7 @@ export function deepLinkOf(
   const kind = m[1].toLowerCase() as
     "task" | "doc" | "project" | "view" | "review" | "overnight";
   const id = m[2].toLowerCase();
-  if (kind === "doc") return { kind, id, block: BLOCK.exec(hash)?.[1] ?? null };
+  if (kind === "doc") return { kind, id, block: appLinkFragment(hash) };
   return { kind, id };
 }
 
@@ -88,7 +92,11 @@ export function deepLinkPath(link: DeepLink): string {
       ? `/app/search?${new URLSearchParams({ q: link.q })}`
       : "/app/search";
   if (link.kind === "doc")
-    return `/app/doc/${link.id}${link.block ? `#${link.block}` : ""}`;
+    return appPath({
+      kind: "doc",
+      id: link.id,
+      block: link.block ?? undefined,
+    });
   if (link.kind === "review" && !link.id) return "/app/review";
   return `/app/${link.kind}/${link.id}`;
 }
@@ -175,7 +183,11 @@ export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
     case "view":
       return { kind: link.kind, id: link.id };
     case "doc":
-      return { kind: "doc", id: link.id, block: BLOCK.exec(hash)?.[1] ?? null };
+      return {
+        kind: "doc",
+        id: link.id,
+        block: hash ? appLinkFragment(hash) : (link.block ?? null),
+      };
     case "today":
     case "agenda":
       return { kind: "today" };

@@ -70,7 +70,9 @@ import {
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { syncSavedPages } from "../study/service.js";
 import { docToDocx } from "./docx.js";
-import { docToPdf } from "./pdf.js";
+import { exportRenderedPdf, exportRenderedHtml } from "./pdf-client.js";
+import { exportImages } from "./export-images.js";
+import { claimToken } from "../imports/tokens.js";
 import { visibleItems } from "../../lib/visibility.js";
 import {
   COLUMNS,
@@ -214,57 +216,124 @@ export async function docRoutes(app: FastifyInstance) {
   app.get("/docs/:id/export", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const { format } = z
-      .object({ format: z.enum(EXPORT_FORMATS).default("md") })
+    const { format, version: expectedVersion } = z
+      .object({
+        format: z.enum(EXPORT_FORMATS).default("md"),
+        version: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(Number.MAX_SAFE_INTEGER)
+          .optional(),
+      })
       .strict()
       .parse(r.query ?? {});
+    // File actions require current revisions and visibility even without a
+    // client read-your-writes header; a replica can still hold the old page.
     const doc = (
-      await reader(r.headers).query<{ title: string; content: DocBlock[] }>(
-        `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+      await pool.query<{
+        title: string;
+        content: DocBlock[];
+        version: number;
+      }>(
+        `SELECT d.title, d.content, d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
+    if (expectedVersion !== undefined && doc.version !== expectedVersion)
+      fail(409, "This page changed. Refresh it before exporting.");
     const title = doc.title || "Untitled";
     // Ticks as the tasks stand, the same as the page reads, and links to
     // pages, tasks and projects as web links anyone with access can open.
     const blocks = blocksWithWebLinks(
       await readableLinks(
-        reader(r.headers),
+        pool,
         u.id,
-        await withTaskState(reader(r.headers), id, doc.content ?? []),
+        await withTaskState(pool, id, doc.content ?? []),
       ),
       env.APP_URL,
     );
-    const body =
-      format === "docx"
-        ? docToDocx(title, blocks)
-        : format === "pdf"
-          ? docToPdf(title, blocks)
-          : format === "html"
-            ? docToHtml(title, blocks, { math: createMathHtml() })
-            : format === "txt"
-              ? docToText(title, blocks)
-              : docToMarkdown(title, blocks);
-    return (
-      reply
-        .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)
-        // The name is offered here so every client gets the same file name.
-        // Written as RFC 5987 so a title holding an emoji or any non-Latin
-        // letter can ride in the header without the server refusing it.
-        .header(
-          "content-disposition",
-          contentDisposition("attachment", exportName(title, format)),
-        )
-        .send(body)
-    );
+    const imageFormat = format === "pdf" || format === "html";
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (imageFormat) {
+      r.raw.once("aborted", abort);
+      reply.raw.once("close", abort);
+      if (r.raw.aborted || reply.raw.destroyed) abort();
+    }
+    try {
+      const images = imageFormat
+        ? await exportImages(pool, u.id, blocks, {
+            baseUrl: env.FILES_URL,
+            signal: controller.signal,
+            readPath: (file) => {
+              if (env.FILES_SECRET.length < 16)
+                fail(503, "Picture export is not configured.");
+              return `/files/r/${claimToken("page-read", {
+                f: file,
+                e: Math.floor(Date.now() / 1000) + 30,
+              })}`;
+            },
+          })
+        : undefined;
+      const html = imageFormat
+        ? docToHtml(title, blocks, {
+            math: createMathHtml(),
+            diagramSources: true,
+            fileUrl: images?.fileUrl,
+          })
+        : undefined;
+      if (html && Buffer.byteLength(html) > 20 * 1024 * 1024)
+        fail(413, "This document is too large to export.");
+      const body =
+        format === "docx"
+          ? docToDocx(title, blocks)
+          : format === "pdf"
+            ? await exportRenderedPdf(html!, r, reply)
+            : format === "html"
+              ? await exportRenderedHtml(html!, r, reply)
+              : format === "txt"
+                ? docToText(title, blocks)
+                : docToMarkdown(title, blocks);
+      if (imageFormat) {
+        const current = (
+          await pool.query<{ version: number }>(
+            `SELECT d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+            [u.id, id],
+          )
+        ).rows[0];
+        if (!current) fail(404, "Document not found");
+        if (current.version !== doc.version)
+          fail(409, "This page changed. Refresh it before exporting.");
+      }
+      await images?.revalidate();
+      return (
+        reply
+          .type(`${EXPORT_LABELS[format].type}; charset=utf-8`)
+          // The name is offered here so every client gets the same file name.
+          // Written as RFC 5987 so a title holding an emoji or any non-Latin
+          // letter can ride in the header without the server refusing it.
+          .header(
+            "content-disposition",
+            contentDisposition("attachment", exportName(title, format)),
+          )
+          .send(body)
+      );
+    } finally {
+      controller.abort();
+      if (imageFormat) {
+        r.raw.removeListener("aborted", abort);
+        reply.raw.removeListener("close", abort);
+      }
+    }
   });
 
   app.get("/docs/:id/markdown", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
     const doc = (
-      await reader(r.headers).query<{ title: string; content: DocBlock[] }>(
+      await pool.query<{ title: string; content: DocBlock[] }>(
         `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
@@ -272,9 +341,9 @@ export async function docRoutes(app: FastifyInstance) {
     if (!doc) fail(404, "Document not found");
     const blocks = blocksWithWebLinks(
       await readableLinks(
-        reader(r.headers),
+        pool,
         u.id,
-        await withTaskState(reader(r.headers), id, doc.content ?? []),
+        await withTaskState(pool, id, doc.content ?? []),
       ),
       env.APP_URL,
     );

@@ -19,6 +19,7 @@ import { assistantGoalRoutes } from "./modules/assistant-workspace/goals.js";
 import { assistantRoutineRoutes } from "./modules/assistant-workspace/routines.js";
 import { overnightRoutes } from "./modules/assistant-workspace/overnight.js";
 import { assistantActivityRoutes } from "./modules/assistant-workspace/activity.js";
+import { assistantProfileRoutes } from "./modules/assistant-workspace/profiles.js";
 import { memoryRoutes } from "./modules/memory/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
@@ -117,6 +118,7 @@ export const serviceModules: Record<
     assistantRoutineRoutes,
     overnightRoutes,
     assistantActivityRoutes,
+    assistantProfileRoutes,
     reminderActionRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents

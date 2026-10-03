@@ -10,6 +10,7 @@
 import {
   plainText,
   type DocBlock,
+  type DocHeadingLevel,
   type PageSource,
   type DocVersion,
 } from "./docs.js";
@@ -20,7 +21,7 @@ export type OutlineEntry = {
   index: number;
   /** The heading's block id, when it has one (for links to it). */
   id?: string;
-  level: 1 | 2 | 3;
+  level: DocHeadingLevel;
   text: string;
 };
 

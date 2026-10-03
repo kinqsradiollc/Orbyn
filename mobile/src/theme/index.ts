@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 export { colors, statusTones, themed, tint, type Scheme } from "./live";
 export type { Palette } from "./palette";
 export {
@@ -16,6 +18,7 @@ export {
  */
 export const fonts = {
   regular: "DMSans_400Regular",
+  mono: Platform.OS === "ios" ? "Menlo" : "monospace",
   medium: "DMSans_500Medium",
   semibold: "DMSans_500Medium",
   bold: "DMSans_600SemiBold",

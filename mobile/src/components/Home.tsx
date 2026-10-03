@@ -22,6 +22,7 @@ import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { ProgressBar } from "./ProgressBar";
 import { AssistantUpcoming } from "./AssistantUpcoming";
+import { HomeCompanions } from "./HomeCompanions";
 
 /**
  * Home on the phone (W1, W6): a compact strip of the same hubs as the web,
@@ -165,12 +166,16 @@ function PanelHead({
  * reflection panels, in the account's order, hidden ones left out.
  */
 export function HomeSection({
+  canOpenAgentOutput,
+  onOpenAgentOutput,
   layout,
   agentName,
   onOpenLink,
   onOpenStudy,
   onOpenDoc,
 }: {
+  canOpenAgentOutput: boolean;
+  onOpenAgentOutput: (id: string) => void;
   layout: HomeLayout | undefined;
   agentName: string;
   onOpenLink: (
@@ -360,6 +365,10 @@ export function HomeSection({
 
   return (
     <>
+      <HomeCompanions
+        canOpen={canOpenAgentOutput}
+        onOpenChat={onOpenAgentOutput}
+      />
       {homePanels(home).map(panel)}
       <AssistantUpcoming
         agentName={agentName}

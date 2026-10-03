@@ -13,7 +13,15 @@
  */
 import { z } from "zod";
 import { parseAppLink } from "./app-links.js";
-import { parseDocInline, plainText, type DocBlock } from "./docs.js";
+import {
+  parseDocInline,
+  docReferenceLinks,
+  docReferenceDefinition,
+  docReferenceSpans,
+  plainText,
+  type DocBlock,
+  type DocHeadingLevel,
+} from "./docs.js";
 
 /** What a link can point to. An event is a task with a time. */
 export const LINK_KINDS = [
@@ -125,9 +133,10 @@ export type DocObjectLink = {
 export function docObjectLinks(blocks: DocBlock[]): DocObjectLink[] {
   const out: DocObjectLink[] = [];
   const seen = new Set<string>();
+  const references = docReferenceLinks(blocks);
   blocks.forEach((b, n) => {
     if (b.type === "code" || b.type === "math" || b.type === "divider") return;
-    for (const run of parseDocInline(b.text)) {
+    for (const run of parseDocInline(b.text, references)) {
       const ref = parseObjectHref(run.link);
       if (!ref) continue;
       const block = b.id || `#${n}`;
@@ -164,8 +173,9 @@ export function linkContext(
   source: string,
   target: ObjectRef | null,
   max = 140,
+  references?: ReadonlyMap<string, string>,
 ): LinkContext {
-  const runs = parseDocInline(source ?? "");
+  const runs = parseDocInline(source ?? "", references);
   const words = (r: { text: string; math?: boolean }) =>
     r.math ? plainText(`$${r.text}$`) : r.text;
   const at = target
@@ -398,6 +408,153 @@ export const PRIVATE_LINK_LABELS: Record<LinkKind, string> = {
   date: "Date",
 };
 
+/** Reference privacy is scoped to a single structured page, never a batch of pages. */
+function documentBlocks(value: unknown): value is DocBlock[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (block) =>
+        block &&
+        typeof block === "object" &&
+        typeof block.type === "string" &&
+        (block.type === "divider" || typeof block.text === "string"),
+    )
+  );
+}
+
+function privateReference(ref: ObjectRef): string {
+  return `private-${targetKey(ref)}`;
+}
+
+function redactDocumentReferences(
+  blocks: DocBlock[],
+  hidden: (ref: ObjectRef) => boolean,
+): DocBlock[] {
+  const references = docReferenceLinks(blocks);
+  let changed = false;
+  const result = blocks.map((block) => {
+    if (
+      block.type === "code" ||
+      block.type === "math" ||
+      block.type === "divider"
+    )
+      return block;
+    const text = redactLine(block.text, hidden, references).text;
+    if (text === block.text) return block;
+    changed = true;
+    return { ...block, text } as DocBlock;
+  });
+  return changed ? result : blocks;
+}
+
+/** Restore only server-generated private placeholders against the original page. */
+function keepDocumentReferenceLabels(
+  next: DocBlock[],
+  before: DocBlock[],
+  hidden: (ref: ObjectRef) => boolean,
+): DocBlock[] {
+  const originalReferences = docReferenceLinks(before);
+  const nextReferences = docReferenceLinks(next);
+  for (const href of originalReferences.values()) {
+    const ref = parseObjectHref(href);
+    if (ref && hidden(ref)) nextReferences.set(privateReference(ref), href);
+  }
+  const projection = redactDocumentReferences(before, hidden);
+  let changed = false;
+  const result = next.map((block, index) => {
+    if (
+      block.type === "code" ||
+      block.type === "math" ||
+      block.type === "divider"
+    )
+      return block;
+    const originalIndex = block.id
+      ? before.findIndex((old) => old.id === block.id)
+      : index;
+    const original = before[originalIndex];
+    const projected = projection[originalIndex];
+    if (
+      !original ||
+      original.type === "divider" ||
+      !projected ||
+      projected.type === "divider"
+    )
+      return block;
+    let text = block.text;
+    if (text === projected.text && text !== original.text) text = original.text;
+    else {
+      const sources = new Map<string, string[]>();
+      for (const span of docReferenceSpans(original.text, originalReferences)) {
+        const ref = parseObjectHref(span.href);
+        if (!ref || !hidden(ref)) continue;
+        const key = targetKey(ref);
+        const list = sources.get(key) ?? [];
+        list.push(original.text.slice(span.start, span.end));
+        sources.set(key, list);
+      }
+      // Work in source order to preserve multiple different labels for one target.
+      let at = 0;
+      const pieces: string[] = [];
+      for (const span of docReferenceSpans(text, nextReferences)) {
+        const ref = parseObjectHref(span.href);
+        if (
+          !ref ||
+          !hidden(ref) ||
+          span.reference !== privateReference(ref) ||
+          span.label !== PRIVATE_LINK_LABELS[ref.kind]
+        )
+          continue;
+        const source = sources.get(targetKey(ref))?.shift();
+        if (!source) continue;
+        pieces.push(text.slice(at, span.start), source);
+        at = span.end;
+      }
+      if (at) text = pieces.join("") + text.slice(at);
+    }
+    if (text === block.text) return block;
+    changed = true;
+    return { ...block, text } as DocBlock;
+  });
+  return changed ? result : next;
+}
+
+function restoreReferenceValues(
+  next: unknown,
+  before: unknown,
+  hidden: (ref: ObjectRef) => boolean,
+): unknown {
+  if (documentBlocks(next) && documentBlocks(before))
+    return keepDocumentReferenceLabels(next, before, hidden);
+  if (Array.isArray(next) && Array.isArray(before)) {
+    let copy: unknown[] | null = null;
+    next.forEach((value, index) => {
+      const restored = restoreReferenceValues(value, before[index], hidden);
+      if (restored !== value) (copy ??= next.slice())[index] = restored;
+    });
+    return copy ?? next;
+  }
+  if (
+    next &&
+    before &&
+    typeof next === "object" &&
+    typeof before === "object" &&
+    !(next instanceof Date)
+  ) {
+    let copy: Record<string, unknown> | null = null;
+    for (const [key, value] of Object.entries(next)) {
+      const restored = restoreReferenceValues(
+        value,
+        (before as Record<string, unknown>)[key],
+        hidden,
+      );
+      if (restored !== value) (copy ??= { ...next })[key] = restored;
+    }
+    return copy ?? next;
+  }
+  return next;
+}
+
 /** A picker link in a line's words: `[words](orbyn://kind/id)`. */
 const OBJECT_LINK = /\[([^\]\n]+)\]\((orbyn:\/\/[^)\s]+)\)/g;
 
@@ -409,6 +566,9 @@ export const targetKey = (r: ObjectRef): string =>
 export function objectRefsIn(text: string): ObjectRef[] {
   const out: ObjectRef[] = [];
   if (!text.includes("orbyn://")) return out;
+  const definition = docReferenceDefinition(text);
+  const target = definition && parseObjectHref(definition.href);
+  if (target) out.push(target);
   for (const m of text.matchAll(OBJECT_LINK)) {
     const ref = parseObjectHref(m[2]);
     if (ref) out.push(ref);
@@ -444,25 +604,57 @@ export type RedactedLine = {
 export function redactLine(
   text: string,
   hidden: (ref: ObjectRef) => boolean,
+  references?: ReadonlyMap<string, string>,
 ): RedactedLine {
   const swaps: LabelSwap[] = [];
+  const changes: { from: number; to: number; text: string }[] = [];
   let out = "";
   let last = 0;
-  if (text.includes("orbyn://"))
-    for (const m of text.matchAll(OBJECT_LINK)) {
-      const ref = parseObjectHref(m[2]);
-      // A day is no one's to hide.
-      if (!ref || ref.kind === "date" || !hidden(ref)) continue;
-      const label = PRIVATE_LINK_LABELS[ref.kind];
-      if (m[1] === label) continue;
-      const from = m.index! + 1;
-      const to = from + m[1].length;
-      out += text.slice(last, from);
-      const viewFrom = out.length;
-      out += label;
-      swaps.push({ from, to, viewFrom, viewTo: out.length });
-      last = to;
-    }
+  const definition = docReferenceDefinition(text);
+  const definedTarget = definition && parseObjectHref(definition.href);
+  if (definedTarget && definedTarget.kind !== "date" && hidden(definedTarget)) {
+    const replacement = `[${privateReference(definedTarget)}]: ${definition!.href}`;
+    if (replacement !== text)
+      changes.push({ from: 0, to: text.length, text: replacement });
+  } else {
+    if (text.includes("orbyn://"))
+      for (const m of text.matchAll(OBJECT_LINK)) {
+        const ref = parseObjectHref(m[2]);
+        if (!ref || ref.kind === "date" || !hidden(ref)) continue;
+        const label = PRIVATE_LINK_LABELS[ref.kind];
+        if (m[1] !== label)
+          changes.push({
+            from: m.index! + 1,
+            to: m.index! + 1 + m[1].length,
+            text: label,
+          });
+      }
+    if (references)
+      for (const span of docReferenceSpans(text, references)) {
+        const ref = parseObjectHref(span.href);
+        if (!ref || ref.kind === "date" || !hidden(ref)) continue;
+        const from = span.start + 1;
+        const to = from + span.label.length;
+        if (span.label !== PRIVATE_LINK_LABELS[ref.kind])
+          changes.push({ from, to, text: PRIVATE_LINK_LABELS[ref.kind] });
+        const tail = `][${privateReference(ref)}]`;
+        if (text.slice(to, span.end) !== tail)
+          changes.push({ from: to, to: span.end, text: tail });
+      }
+  }
+  for (const change of changes.sort((a, b) => a.from - b.from)) {
+    if (change.from < last) continue;
+    out += text.slice(last, change.from);
+    const viewFrom = out.length;
+    out += change.text;
+    swaps.push({
+      from: change.from,
+      to: change.to,
+      viewFrom,
+      viewTo: out.length,
+    });
+    last = change.to;
+  }
   if (!swaps.length)
     return {
       text,
@@ -520,8 +712,11 @@ export function redactValue<T>(
     if (typeof v === "string")
       return v.includes("orbyn://") ? redactLinkLabels(v, hidden) : v;
     if (Array.isArray(v)) {
-      let copy: unknown[] | null = null;
-      v.forEach((x, i) => {
+      const projected = documentBlocks(v)
+        ? redactDocumentReferences(v, hidden)
+        : v;
+      let copy: unknown[] | null = projected !== v ? projected.slice() : null;
+      projected.forEach((x, i) => {
         const y = walk(x);
         if (y !== x) (copy ??= v.slice())[i] = y;
       });
@@ -570,7 +765,20 @@ export function keepLinkLabels<T>(
   next: T,
   before: unknown,
   shownPrivate: (ref: ObjectRef) => boolean = () => true,
+  blockId?: string | null,
 ): T {
+  if (typeof next === "string" && documentBlocks(before) && blockId) {
+    const original = before.find((block) => block.id === blockId);
+    if (original && original.type !== "divider") {
+      const restored = keepDocumentReferenceLabels(
+        [{ ...original, text: next }],
+        before,
+        shownPrivate,
+      );
+      next = restored[0].type === "divider" ? next : (restored[0].text as T);
+    }
+  }
+  next = restoreReferenceValues(next, before, shownPrivate) as T;
   const labels = new Map<string, string>();
   const collect = (v: unknown) => {
     if (typeof v === "string") {
@@ -628,6 +836,32 @@ export function hiddenLinkLabels(
 ): Map<string, string> {
   const out = new Map<string, string>();
   const walk = (v: unknown) => {
+    if (documentBlocks(v)) {
+      const references = docReferenceLinks(v);
+      for (const block of v) {
+        if (
+          block.type === "divider" ||
+          block.type === "code" ||
+          block.type === "math"
+        )
+          continue;
+        for (const span of docReferenceSpans(block.text, references)) {
+          const ref = parseObjectHref(span.href);
+          if (ref && ref.kind !== "date" && hidden(ref) && span.label.trim())
+            out.set(span.label, PRIVATE_LINK_LABELS[ref.kind]);
+        }
+        const definition =
+          block.type === "paragraph"
+            ? docReferenceDefinition(block.text)
+            : null;
+        const ref = definition && parseObjectHref(definition.href);
+        if (definition && ref && ref.kind !== "date" && hidden(ref)) {
+          out.set(definition.label, PRIVATE_LINK_LABELS[ref.kind]);
+          if (definition.title?.trim())
+            out.set(definition.title, PRIVATE_LINK_LABELS[ref.kind]);
+        }
+      }
+    }
     if (typeof v === "string") {
       if (!v.includes("orbyn://")) return;
       for (const m of v.matchAll(OBJECT_LINK)) {
@@ -849,7 +1083,7 @@ export type HeadingOption = {
   /** Null for a line that has no id yet: picking it names it first. */
   block_id: string | null;
   index: number;
-  level: 1 | 2 | 3 | null;
+  level: DocHeadingLevel | null;
   text: string;
 };
 

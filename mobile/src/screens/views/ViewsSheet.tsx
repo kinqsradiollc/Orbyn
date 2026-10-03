@@ -12,6 +12,7 @@ import {
   fullDefinition,
   groupRows,
   layoutsFor,
+  searchSavedViews,
   VIEW_GROUP_LABELS,
   VIEW_GROUPS,
   VIEW_LAYOUT_LABELS,
@@ -109,6 +110,7 @@ export function ViewsSheet({
   onDismiss?: () => void;
 }) {
   const [views, setViews] = useState<SavedView[] | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
   const [stars, setStars] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -149,6 +151,8 @@ export function ViewsSheet({
     );
   }, [visible, openViewId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const visibleViews =
+    views === null ? null : searchSavedViews(views, libraryQuery);
   const view = views?.find((v) => v.id === selected) ?? null;
   const replace = (saved: SavedView) =>
     setViews((vs) => vs?.map((v) => (v.id === saved.id ? saved : v)) ?? vs);
@@ -292,6 +296,7 @@ export function ViewsSheet({
       ) : (
         <ScrollView
           contentContainerStyle={sheetStyles.body}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={false}
@@ -314,12 +319,29 @@ export function ViewsSheet({
                 onPress={() => setCreating(true)}
               />
             </View>
-            <ViewList
-              views={views}
-              stars={stars}
-              teams={teams}
-              onOpen={setSelected}
+            <TextInput
+              style={shared.input}
+              accessibilityLabel="Search saved views"
+              placeholder="Search views"
+              placeholderTextColor={colors.muted}
+              maxLength={120}
+              value={libraryQuery}
+              onChangeText={setLibraryQuery}
+              autoCorrect={false}
+              returnKeyType="search"
             />
+            {views && views.length > 0 && visibleViews?.length === 0 ? (
+              <Text style={shared.small} accessibilityLiveRegion="polite">
+                No matching views.
+              </Text>
+            ) : (
+              <ViewList
+                views={visibleViews}
+                stars={stars}
+                teams={teams}
+                onOpen={setSelected}
+              />
+            )}
           </View>
         </ScrollView>
       )}

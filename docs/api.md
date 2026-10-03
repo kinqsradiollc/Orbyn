@@ -979,7 +979,7 @@ highlighter colours.
 
 | Method and path                | Body / result                                                                                                                                                                                                                                                                            |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks }`                                                                                                                                                            |
+| `GET /docs/:id/section?block=` | A heading's section (or one line; without `block`, the first 60 lines) → `{ doc_id, title, block_id, missing, more, blocks, references }`                                                                                                                                                |
 | `POST /docs/:id/anchor`        | `{ index, text }` names that line (when it still says `text`) → `{ block_id }`; `409` when the page moved on; anyone who can read the page may                                                                                                                                           |
 | `POST /docs/:id/extract`       | "Move to new page": `{ block_ids, title?, version }` → `201 { doc, source }`; comments, suggestions, task lines and pictures go with the lines, and a link takes their place                                                                                                             |
 | `POST /docs/:id/merge`         | "Merge into…": `{ into, version }` → `{ doc, relinked }`; same space only (`422`); this page goes to Trash with `merged_into`, its pictures belong to `into`, and links in pages you can change are pointed at `into` (a renamed line under its new name, each page keeping its history) |
@@ -1019,11 +1019,26 @@ when its page is deleted for good. Parallel uploads are counted one at a time ag
 carries a `content-disposition` with the file name, so every client saves the same file under the
 same name.
 
-`docx` and `pdf` are written directly rather than through a library — a `.docx` is a zip of XML and
-Node already has DEFLATE in `zlib`, and a PDF with the standard fourteen fonts needs no font
-embedded. That keeps the backend on the ten dependencies it has. The PDF carries headings, lists,
-checklists, quotes, code, rules, and bold and italic within a line; it has no images (a page has
-none) and writes a formula as the symbols it reads as, the same as everywhere outside the editor.
+Optional `version` is a positive safe integer identifying the editor's confirmed saved revision.
+A visible page at another version returns `409`; an inaccessible page still returns `404` before
+any revision comparison. Invalid versions return `422`. Omitting it keeps the existing latest
+saved-page behavior. A conflict must not be silently retried against a different revision.
+
+File exports and the legacy Markdown export read document visibility, content, linked task
+state and link visibility from the primary database. They do not depend on a client consistency
+header or a read replica catching up after a save or permission change.
+
+`docx` is a zip of XML using Node's `zlib`. PDF uses the private offline renderer
+and includes LaTeX math and ten Mermaid diagram families. PDF and HTML embed
+currently authorized PNG, JPEG, GIF and WebP picture bytes with captions. They
+recheck page visibility/revision and included file access before delivery, even
+without `version`. Missing or revoked pictures return `404` rather than a partial
+file; changed metadata returns `409`, unsupported metadata `422`, oversized
+pictures `413`, and unavailable/invalid picture bytes `503`. Limits are 32 unique
+pictures, 4 MiB each and 8 MiB combined, with a 15-second combined fetch deadline.
+Duplicate references share one embedded data URI. Only signed first-party file
+paths are fetched; redirects and arbitrary authored URLs are refused. Word,
+Markdown and plain-text exports retain their existing picture representations.
 
 ### `GET /docs/:id/markdown` (auth)
 
@@ -3292,3 +3307,20 @@ Catalog metadata reported by a signed device is not proof of provider
 entitlement. The credential-owning runtime must recheck model availability
 before inference. These APIs do not start inference or use managed provider
 credentials as an automatic fallback.
+
+### Document PDF delivery
+
+`GET /docs/:id/export?format=pdf` uses an authorized, primary-read snapshot and a
+private offline renderer. LaTeX math and ten Mermaid diagram families are rendered
+in the file. Optional `version` fencing remains supported. Before PDF delivery,
+access, source revision and included picture permissions are checked again: deleted/inaccessible pages return404
+and changed pages409, including when an older caller omitted `version`. Oversized
+input returns413; unconfigured/unavailable/busy rendering returns503 without a
+partial file. Client disconnects cancel owned work. Standalone HTML uses the same private renderer to embed inert diagram SVGs,
+MathML and authorized raster images, with escaped source in details and a resource-
+denying CSP installed before content. It requires the configured renderer and
+shares its bounded concurrency; failures return503 without a partial file.
+No executable scripts or private file links are added. Native download/share interaction and complete publication/Markdown
+parity remain separate acceptance gates.
+
+For page section embeds, `references` contains `[normalized_label, destination]` pairs from the authorized source page, including definitions outside the selected section. The complete page is projected through current link privacy before the section is selected. Inaccessible object destinations are omitted from the reference map; their displayed words are neutral. Clients must use this section context rather than definitions from the containing page. Older responses without `references` fall back to definitions inside the section.

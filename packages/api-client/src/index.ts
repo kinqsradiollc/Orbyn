@@ -35,3 +35,7 @@ export type {
   ChatgptCredential,
   ChatgptPlanRequest,
 } from "./chatgpt-plan.js";
+
+export * from "./assistant-profile-store.js";
+
+export * from "./chatgpt-remote-store.js";

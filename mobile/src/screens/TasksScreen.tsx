@@ -719,7 +719,7 @@ export function TasksScreen({
         </View>
         <TextInput
           style={[shared.input, s.input]}
-          placeholder="Find something…"
+          placeholder="Search tasks"
           placeholderTextColor={colors.faint}
           value={search}
           onChangeText={onSearch}
@@ -1034,11 +1034,7 @@ export function TasksScreen({
       {visible.length === 0 && !(owners && reviewCards.length) ? (
         <>
           <SectionHeading title={title} count={0} />
-          <EmptyState
-            {...empty}
-            action="Make a plan"
-            onAction={handlers.onAdd}
-          />
+          <EmptyState {...empty} action="Add task" onAction={handlers.onAdd} />
         </>
       ) : layout === "board" ? (
         // One section per column; a long press picks a card up and a tap on

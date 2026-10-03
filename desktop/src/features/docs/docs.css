@@ -396,13 +396,14 @@
   letter-spacing: -0.01em;
   color: var(--color-text);
 }
+h1.doc-heading,
 h2.doc-heading {
   font-size: 18px;
 }
-h3.doc-heading {
-  font-size: 18px;
-}
-h4.doc-heading {
+h3.doc-heading,
+h4.doc-heading,
+h5.doc-heading,
+h6.doc-heading {
   font-size: 15px;
 }
 
@@ -3625,13 +3626,6 @@ input.doc-image-caption:focus {
 }
 
 /* Code colouring and diagrams (EDT-11). */
-.doc-code[data-lang]::before {
-  content: attr(data-lang);
-  float: right;
-  margin-left: 8px;
-  color: var(--color-faint);
-  font-size: 11px;
-}
 .code-keyword {
   color: var(--color-accentText);
   font-weight: 500;
@@ -4151,4 +4145,60 @@ input.doc-image-caption:focus {
 .docs-tree-path {
   color: var(--color-muted);
   font-size: 11px;
+}
+
+.doc-diagram-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  margin-bottom: 8px;
+}
+.doc-diagram-toolbar > span {
+  margin-right: 8px;
+  font-size: 13px;
+}
+.doc-diagram-canvas {
+  overflow: auto;
+  max-height: 480px;
+}
+.doc-diagram-canvas svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.doc-code-block {
+  min-width: 0;
+  max-width: 100%;
+}
+.doc-code-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.doc-code-label {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.doc-code-toolbar button {
+  padding: 6px 10px;
+  min-height: 34px;
+  color: var(--color-accentText);
+}
+.doc-code-status {
+  display: block;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.doc-code-block .doc-code {
+  max-width: 100%;
+  max-height: 60dvh;
+  overflow: auto;
 }

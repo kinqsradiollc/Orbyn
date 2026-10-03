@@ -1,9 +1,11 @@
 import {
   assistantActivityLane,
+  assistantProfiles,
   assistantActivityQuery,
   assistantActivityPage,
   type AssistantActivityLane,
   chatgptExecutorStart,
+  chatgptExecutorList,
   chatgptExecutorFinish,
   chatgptExecutorChallenge,
   chatgptExecutorEnrolled,
@@ -1496,6 +1498,16 @@ export class OrbynClient {
     return result;
   }
 
+  /** Discover owned devices without provider credentials or signing keys. */
+  async chatgptExecutors(signal?: AbortSignal) {
+    return chatgptExecutorList.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/executors", {
+        signal,
+        fresh: true,
+      }),
+    );
+  }
+
   async chatgptConnections(signal?: AbortSignal) {
     return chatgptConnectionList.parse(
       await this.request<unknown>("/ai/connections/chatgpt", {
@@ -2219,6 +2231,8 @@ export class OrbynClient {
       missing: boolean;
       more: boolean;
       blocks: DocBlock[];
+      /** Authorized source-page definitions, including those outside the section. */
+      references?: [string, string][];
     }>(`/docs/${docId}/section${block ? `?${params}` : ""}`);
   }
 
@@ -2311,9 +2325,18 @@ export class OrbynClient {
   /**
    * A page as a file to keep. Comes back as a blob with the name the server
    * chose, so every client saves the same file under the same name.
+   * An expected version rejects concurrent changes rather than silently exporting another revision.
    */
-  async exportDoc(docId: string, format: ExportFormat) {
-    const response = await this.raw(`/docs/${docId}/export?format=${format}`);
+  async exportDoc(
+    docId: string,
+    format: ExportFormat,
+    options: { version?: number } = {},
+  ) {
+    const revision =
+      options.version === undefined ? "" : `&version=${options.version}`;
+    const response = await this.raw(
+      `/docs/${docId}/export?format=${format}${revision}`,
+    );
     const disposition = response.headers.get("content-disposition") ?? "";
     const named = /filename="([^"]+)"/.exec(disposition)?.[1];
     return { blob: await response.blob(), name: named ?? `document.${format}` };
@@ -3505,6 +3528,15 @@ export class OrbynClient {
       grantId: grant.id,
       changes: activity.filter((a) => a.job === job),
     };
+  }
+  /** Current authorized work evidence, independent of device presence. */
+  async assistantProfiles(signal?: AbortSignal) {
+    return assistantProfiles.parse(
+      await this.request<unknown>("/me/assistant/profiles", {
+        fresh: true,
+        signal,
+      }),
+    );
   }
   // ---- The Review inbox ----
   /** Recover authorized execution activity with an owner/lane-scoped cursor. */

@@ -47,6 +47,7 @@ import { useToast } from "../../components/Toast";
 import { useConfirm } from "../../components/Confirm";
 import { dayLabel } from "../../lib/assistant-labels";
 import "./home.css";
+import { HomeCompanions } from "./HomeCompanions";
 
 /**
  * Home (W1): the greeting with the time and a friendly date, an optional
@@ -138,6 +139,8 @@ type Sources = {
 };
 
 type Openers = {
+  canOpenAgentOutput: boolean;
+  onOpenAgentOutput: (id: string) => void;
   onOpenProject: (id: string) => void;
   onOpenDoc: (id: string) => void;
   onOpenStudy: () => void;
@@ -945,6 +948,10 @@ export function HomeSections(open: Openers) {
 
   return (
     <>
+      <HomeCompanions
+        canOpen={open.canOpenAgentOutput}
+        onOpenChat={open.onOpenAgentOutput}
+      />
       {rows.map((row) =>
         row[0] === "hubs" ? (
           <HubRow

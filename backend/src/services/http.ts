@@ -3,6 +3,7 @@ import Fastify, {
   type FastifyPluginAsync,
 } from "fastify";
 import { recordRequests } from "../lib/request-log.js";
+import { serializeFileRequest } from "../lib/file-request-log.js";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
@@ -73,6 +74,7 @@ export async function createService(
       // Node's test runner frames stdout; raw fd writes can corrupt that channel.
       ...(process.env.NODE_TEST_CONTEXT ? { stream: process.stdout } : {}),
       base: { service: name },
+      serializers: { req: serializeFileRequest },
       redact: [
         "req.headers.authorization",
         "req.body.password",

@@ -77,6 +77,7 @@ Dependency direction is strictly one way: apps depend on `@orbyn/api-client` and
 
 ```bash
 cp .env.example .env
+printf '\nDOC_PDF_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up -d --build
 ```
 
@@ -98,6 +99,7 @@ choose its model. Nothing AI-related goes in `.env`; see [setup](docs/setup.md#a
 
 ```bash
 cp .env.example .env
+printf '\nDOC_PDF_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up -d postgres mailpit
 npm install
 npm run build:packages        # compile the shared packages first

@@ -163,7 +163,10 @@ services:
   # Accounts, items, teams, devices, notifications, admin console.
   api:
     <<: *backend
-    environment: *backend-env
+    environment:
+      <<: *backend-env
+      DOC_PDF_URL: http://pdf:8000
+      DOC_PDF_KEY: ${DOC_PDF_KEY:?Set DOC_PDF_KEY in .env}
     command: ["node", "backend/dist/services/api.js"]
     healthcheck: *http-health
     # Two copies, so scripts/deploy.sh can replace them without downtime.
@@ -171,6 +174,28 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
+
+  # Internal document printing; no published port, database or provider credentials.
+  pdf:
+    build: { context: ., dockerfile: backend/Dockerfile, target: pdf }
+    environment:
+      PORT: 8000
+      DOC_PDF_KEY: ${DOC_PDF_KEY:?Set DOC_PDF_KEY in .env}
+      DOC_PDF_CONCURRENCY: ${DOC_PDF_CONCURRENCY:-2}
+    command: ["node", "backend/dist/services/pdf.js"]
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=512m"]
+    shm_size: 256mb
+    cap_drop: [ALL]
+    security_opt:
+      ["no-new-privileges:true", "seccomp:./deploy/pdf/seccomp.json"]
+    healthcheck: *http-health
+    restart: unless-stopped
+    stop_grace_period: 35s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1G }
 
   # Interactive assistant and provider settings. Automation has separate processes.
   ai:

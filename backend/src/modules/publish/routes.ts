@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import argon2 from "argon2";
+import { renderPublicationDiagrams } from "./diagrams.js";
 import { createMathHtml } from "../../lib/math-html.js";
+import { contentDisposition } from "../../lib/disposition.js";
+import { loadPublishedMedia, PUBLISHED_MEDIA_MAX_BYTES } from "./media.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
@@ -23,13 +26,19 @@ import {
   type PublishState,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
-import { pool, reader, type Db } from "../../db/pool.js";
+import {
+  pool,
+  reader,
+  readTransaction,
+  type Queryable,
+  type Db,
+} from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireTeam } from "../../lib/teams.js";
 import { privacyFrom } from "../links/privacy.js";
-import { PAGE_FILE_COLUMNS, readLink } from "../page-files/service.js";
+import { PAGE_FILE_COLUMNS } from "../page-files/service.js";
 import { importsEnabled } from "../imports/tokens.js";
 import { visibleOwned } from "../../lib/visibility.js";
 
@@ -165,7 +174,7 @@ const SECURITY = {
   // Plain HTML: no script at all, pictures from this site only, forms only
   // back here (the password), never framed.
   "content-security-policy":
-    "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
 };
 
 const send = (
@@ -185,11 +194,11 @@ const send = (
 const origin = () => env.APP_URL.replace(/\/+$/, "");
 
 /** The published row at a slug, if its team still allows it. */
-async function rowAt(slug: string) {
+async function rowAt(slug: string, db: Queryable = pool) {
   if (!/^[a-z0-9][a-z0-9-]{2,79}$/.test(slug)) return null;
   return (
     (
-      await pool.query<Row & { team_ok: boolean }>(
+      await db.query<Row & { team_ok: boolean }>(
         `SELECT ${ROW},
               coalesce(t.publishing_allowed, true) AS team_ok
          FROM published_pages pp
@@ -209,6 +218,7 @@ type PublicDoc = {
   title: string;
   content: DocBlock[];
   updated_at: Date;
+  version: number;
   web_description: string;
   folder_id: string | null;
   team_id: string | null;
@@ -219,10 +229,13 @@ type PublicDoc = {
  * to: its own address, or its folder's. A page that isn't published loses
  * its link, and its words read "Private page" (see visitorView).
  */
-async function publicPaths(ids: string[]): Promise<Map<string, string>> {
+async function publicPaths(
+  ids: string[],
+  db: Queryable = pool,
+): Promise<Map<string, string>> {
   if (!ids.length) return new Map();
   const rows = (
-    await pool.query<{ id: string; path: string }>(
+    await db.query<{ id: string; path: string }>(
       `SELECT d.id,
               CASE WHEN pp.id IS NOT NULL THEN '/p/' || pp.slug
                    ELSE '/p/' || fp.slug || '/' || d.id END AS path
@@ -257,52 +270,64 @@ const linkedIds = (blocks: DocBlock[]) => {
 const visitorView = (paths: Map<string, string>) =>
   privacyFrom((ref) => !(ref.kind === "doc" && paths.has(ref.id)));
 
-/** A page's pictures, as links a reader can load for the next hour. */
-async function pictures(docId: string): Promise<Map<string, string>> {
+/** Publication-scoped URLs recheck current access on every request. */
+async function pictures(
+  docId: string,
+  slug: string,
+  db: Queryable = pool,
+): Promise<Map<string, string>> {
   if (!importsEnabled()) return new Map();
   const files = (
-    await pool.query<PageFile>(
+    await db.query<PageFile>(
       `SELECT ${PAGE_FILE_COLUMNS} FROM page_files f
          JOIN page_file_refs r ON r.file_id = f.id
         WHERE r.doc_id = $1 AND f.status = 'ready'`,
       [docId],
     )
   ).rows;
-  return new Map(
-    files.map((f) => [
-      f.id,
-      `/api${readLink({ ...f, bytes: Number(f.bytes) }).url_path}`,
-    ]),
-  );
+  return new Map(files.map((f) => [f.id, `/p/${slug}/media/${docId}/${f.id}`]));
 }
 
 async function renderPage(
   doc: PublicDoc,
   row: Row,
   path: string,
+  request: FastifyRequest,
+  reply: FastifyReply,
   folder: {
     name: string;
+    team_id: string | null;
     href: string;
-    pages: { id: string; title: string }[];
+    pages: {
+      id: string;
+      title: string;
+      version: number;
+      web_description: string;
+    }[];
   } | null,
 ) {
   const links = await publicPaths(linkedIds(doc.content));
   // A visitor can open only published pages: every other link's words are
   // hidden, so a private title never reaches the web (D3aF).
   const content = visitorView(links).value(doc.content);
-  const files = await pictures(doc.id);
-  const bodyHtml = blocksHtml(content, {
-    anchors: true,
-    math: createMathHtml(),
-    fileUrl: (id) => files.get(id) ?? null,
-    linkUrl: (href) => {
-      const ref = parseObjectHref(href);
-      if (!ref) return /^https?:\/\//i.test(href) ? href : null;
-      if (ref.kind !== "doc") return null;
-      const at = links.get(ref.id);
-      return at ?? null;
-    },
-  });
+  const files = await pictures(doc.id, row.slug);
+  const bodyHtml = await renderPublicationDiagrams(
+    blocksHtml(content, {
+      anchors: true,
+      math: createMathHtml(),
+      diagramSources: true,
+      fileUrl: (id) => files.get(id.toLowerCase()) ?? null,
+      linkUrl: (href) => {
+        const ref = parseObjectHref(href);
+        if (!ref) return /^https?:\/\//i.test(href) ? href : null;
+        if (ref.kind !== "doc") return null;
+        const at = links.get(ref.id);
+        return at ?? null;
+      },
+    }),
+    request,
+    reply,
+  );
   // Published pages that link here.
   const here = (
     await pool.query<{ id: string; title: string }>(
@@ -319,8 +344,10 @@ async function renderPage(
   const firstPicture = content.find(
     (b): b is Extract<DocBlock, { type: "image" }> => b.type === "image",
   );
-  const image = firstPicture ? files.get(firstPicture.file) : undefined;
-  return publishedPageHtml({
+  const image = firstPicture
+    ? files.get(firstPicture.file.toLowerCase())
+    : undefined;
+  const html = publishedPageHtml({
     title: doc.title,
     bodyHtml,
     description:
@@ -350,20 +377,123 @@ async function renderPage(
         }
       : null,
   });
+  await readTransaction(
+    async (db) => {
+      await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      await assertPublicationCurrent(request, row, db);
+      const current = (
+        await db.query<PublicDoc>(
+          `SELECT ${DOC_COLUMNS} FROM docs d WHERE d.id=$1 AND d.deleted_at IS NULL`,
+          [doc.id],
+        )
+      ).rows[0];
+      if (
+        !current ||
+        (row.folder_id &&
+          (current.folder_id !== row.folder_id ||
+            current.team_id !== folder?.team_id))
+      )
+        fail(404, "Published page not found");
+      if (
+        current.version !== doc.version ||
+        current.title !== doc.title ||
+        current.web_description !== doc.web_description ||
+        current.updated_at.toISOString() !== doc.updated_at.toISOString()
+      )
+        fail(409, "This published page changed. Refresh the page.");
+      await assertPathsCurrent(links, db);
+      await assertPathsCurrent(herePaths, db);
+      if (!samePaths(files, await pictures(doc.id, row.slug, db)))
+        fail(409, "This published page's files changed. Refresh the page.");
+      if (folder)
+        await assertFolderCurrent(row.folder_id!, folder, folder.pages, db);
+    },
+    { primary: true },
+  );
+  return html;
 }
 
-const DOC_COLUMNS = `d.id, d.title, d.content, d.updated_at, d.web_description,
+/** Fence current publication/password after slow work; never return the old snapshot after revocation. */
+async function assertPublicationCurrent(
+  request: FastifyRequest,
+  expected: Row,
+  db: Queryable,
+) {
+  const current = await rowAt(expected.slug, db);
+  if (!current || current.id !== expected.id)
+    fail(404, "Published page not found");
+  if (!unlocked(request, current))
+    fail(401, "Enter the current page password to read this page.");
+  if (
+    current.password_hash !== expected.password_hash ||
+    current.doc_id !== expected.doc_id ||
+    current.folder_id !== expected.folder_id ||
+    current.noindex !== expected.noindex ||
+    current.description !== expected.description ||
+    current.updated_at.toISOString() !== expected.updated_at.toISOString()
+  )
+    fail(409, "This publication changed. Refresh the page.");
+}
+const samePaths = (a: Map<string, string>, b: Map<string, string>) =>
+  a.size === b.size && [...a].every(([id, path]) => b.get(id) === path);
+async function assertPathsCurrent(
+  expected: Map<string, string>,
+  db: Queryable,
+) {
+  if (!samePaths(expected, await publicPaths([...expected.keys()], db)))
+    fail(409, "This published page's links changed. Refresh the page.");
+}
+async function assertFolderCurrent(
+  id: string,
+  expected: { name: string; team_id: string | null },
+  pages: {
+    id: string;
+    title: string;
+    version: number;
+    web_description: string;
+  }[],
+  db: Queryable,
+) {
+  const folder = (
+    await db.query<{ name: string; team_id: string | null }>(
+      "SELECT name,team_id FROM folders WHERE id=$1",
+      [id],
+    )
+  ).rows[0];
+  if (!folder) fail(404, "Published folder not found");
+  if (folder.name !== expected.name || folder.team_id !== expected.team_id)
+    fail(409, "This published folder changed. Refresh the page.");
+  const now = await folderPages(id, folder.team_id, db);
+  if (
+    now.length !== pages.length ||
+    now.some(
+      (page, i) =>
+        page.id !== pages[i].id ||
+        page.version !== pages[i].version ||
+        page.title !== pages[i].title ||
+        page.web_description !== pages[i].web_description,
+    )
+  )
+    fail(409, "This published folder's pages changed. Refresh the page.");
+}
+
+const DOC_COLUMNS = `d.id, d.title, d.content, d.updated_at, d.version, d.web_description,
   d.folder_id, d.team_id`;
 
-async function folderPages(folderId: string, teamId: string | null) {
+async function folderPages(
+  folderId: string,
+  teamId: string | null,
+  db: Queryable = pool,
+) {
   return (
-    await pool.query<{
+    await db.query<{
       id: string;
       title: string;
       web_description: string;
+      version: number;
       content: DocBlock[];
     }>(
-      `SELECT d.id, d.title, d.web_description, d.content FROM docs d
+      `SELECT d.id, d.title, d.version, d.web_description, d.content FROM docs d
         WHERE d.folder_id = $1 AND d.deleted_at IS NULL
           AND d.team_id IS NOT DISTINCT FROM $2 AND d.kind <> 'agenda'
         ORDER BY d.updated_at DESC LIMIT 500`,
@@ -600,7 +730,113 @@ export async function publishRoutes(app: FastifyInstance) {
     return true;
   };
 
+  let mediaWorking = 0;
+  let mediaBytes = 0;
+  app.get(
+    "/p/:slug/media/:doc/:file",
+    { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } },
+    async (r, reply) => {
+      reply.header("cache-control", "no-store");
+      const params = r.params as { slug: string; doc: string; file: string };
+      const docId = z.uuid().safeParse(params.doc);
+      const fileId = z.uuid().safeParse(params.file);
+      if (!docId.success || !fileId.success)
+        fail(404, "Published file not found");
+      const authorize = async () => {
+        const row = await rowAt(String(params.slug).toLowerCase());
+        if (!row) fail(404, "Published file not found");
+        if (!unlocked(r, row))
+          fail(401, "Enter the page password to read this file.");
+        const doc = (
+          await pool.query<{ id: string }>(
+            `SELECT d.id FROM docs d WHERE d.id = $1 AND d.deleted_at IS NULL
+          AND (d.id = $2 OR (d.folder_id = $3 AND d.kind <> 'agenda'
+             AND EXISTS(SELECT 1 FROM folders pf WHERE pf.id = $3
+                        AND d.team_id IS NOT DISTINCT FROM pf.team_id)))`,
+            [docId.data, row.doc_id, row.folder_id],
+          )
+        ).rows[0];
+        if (!doc) fail(404, "Published file not found");
+        const file = (
+          await pool.query<PageFile>(
+            `SELECT ${PAGE_FILE_COLUMNS} FROM page_files f
+          JOIN page_file_refs pr ON pr.file_id = f.id
+         WHERE pr.doc_id = $1 AND f.id = $2 AND f.status = 'ready'`,
+            [docId.data, fileId.data],
+          )
+        ).rows[0];
+        if (!file) fail(404, "Published file not found");
+        return { ...file, bytes: Number(file.bytes) };
+      };
+      const file = await authorize();
+      if (
+        !Number.isSafeInteger(file.bytes) ||
+        file.bytes < 1 ||
+        file.bytes > PUBLISHED_MEDIA_MAX_BYTES
+      )
+        fail(413, "This published file is too large to read.");
+      if (
+        mediaWorking >= 4 ||
+        mediaBytes + file.bytes > PUBLISHED_MEDIA_MAX_BYTES
+      )
+        return reply.code(503).header("retry-after", "5").send({
+          message: "Published file loading is busy. Try again shortly.",
+        });
+      mediaWorking++;
+      mediaBytes += file.bytes;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      let handedOff = false,
+        released = false,
+        operationActive = true;
+      const release = () => {
+        controller.abort();
+        if (operationActive || released) return;
+        released = true;
+        mediaWorking--;
+        mediaBytes -= file.bytes;
+        controller.abort();
+        r.raw.removeListener("aborted", abort);
+        reply.raw.removeListener("close", release);
+        reply.raw.removeListener("finish", release);
+      };
+      r.raw.once("aborted", abort);
+      reply.raw.once("close", release);
+      reply.raw.once("finish", release);
+      if (r.raw.aborted || reply.raw.destroyed) abort();
+      try {
+        const body = await loadPublishedMedia(file, controller.signal);
+        const current = await authorize();
+        if (
+          current.mime !== file.mime ||
+          current.bytes !== file.bytes ||
+          current.name !== file.name
+        )
+          fail(409, "This published file changed. Refresh the page.");
+        if (controller.signal.aborted) return reply.hijack();
+        handedOff = true;
+        return reply
+          .type(file.mime)
+          .header(
+            "content-disposition",
+            contentDisposition(
+              file.kind === "image" ? "inline" : "attachment",
+              file.name,
+            ),
+          )
+          .header("cache-control", "no-store")
+          .header("x-content-type-options", "nosniff")
+          .header("content-security-policy", "default-src 'none'; sandbox")
+          .send(body);
+      } finally {
+        operationActive = false;
+        if (!handedOff || controller.signal.aborted) release();
+      }
+    },
+  );
+
   app.get("/p/:slug", async (r, reply) => {
+    reply.header("cache-control", "no-store");
     const slug = String((r.params as { slug: string }).slug).toLowerCase();
     const row = await rowAt(slug);
     if (!row) return send(reply, 404, publishedMissingHtml());
@@ -624,7 +860,7 @@ export async function publishRoutes(app: FastifyInstance) {
       return send(
         reply,
         200,
-        await renderPage(doc, row, path, null),
+        await renderPage(doc, row, path, r, reply, null),
         row.noindex,
       );
     }
@@ -642,30 +878,35 @@ export async function publishRoutes(app: FastifyInstance) {
       [row.id],
     );
     const pages = await folderPages(row.folder_id!, folder.team_id);
-    const visitor = visitorView(
-      await publicPaths(pages.flatMap((p) => linkedIds(p.content))),
+    const links = await publicPaths(pages.flatMap((p) => linkedIds(p.content)));
+    const visitor = visitorView(links);
+    const html = publishedFolderHtml({
+      name: folder.name,
+      description: row.description,
+      url: `${origin()}${path}`,
+      noindex: row.noindex,
+      pages: pages.map((p) => ({
+        title: p.title,
+        href: `${path}/${p.id}`,
+        description:
+          p.web_description ||
+          cardDescription(docPlainText(visitor.value(p.content)), 120),
+      })),
+    });
+    await readTransaction(
+      async (db) => {
+        await db.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+        await assertPublicationCurrent(r, row, db);
+        await assertFolderCurrent(row.folder_id!, folder, pages, db);
+        await assertPathsCurrent(links, db);
+      },
+      { primary: true },
     );
-    return send(
-      reply,
-      200,
-      publishedFolderHtml({
-        name: folder.name,
-        description: row.description,
-        url: `${origin()}${path}`,
-        noindex: row.noindex,
-        pages: pages.map((p) => ({
-          title: p.title,
-          href: `${path}/${p.id}`,
-          description:
-            p.web_description ||
-            cardDescription(docPlainText(visitor.value(p.content)), 120),
-        })),
-      }),
-      row.noindex,
-    );
+    return send(reply, 200, html, row.noindex);
   });
 
   app.get("/p/:slug/:doc", async (r, reply) => {
+    reply.header("cache-control", "no-store");
     const params = r.params as { slug: string; doc: string };
     const row = await rowAt(String(params.slug).toLowerCase());
     const docId = z.uuid().safeParse(params.doc);
@@ -697,10 +938,16 @@ export async function publishRoutes(app: FastifyInstance) {
     return send(
       reply,
       200,
-      await renderPage(doc, row, `${base}/${doc.id}`, {
+      await renderPage(doc, row, `${base}/${doc.id}`, r, reply, {
         name: folder.name,
+        team_id: folder.team_id,
         href: base,
-        pages: pages.map((p) => ({ id: p.id, title: p.title })),
+        pages: pages.map((p) => ({
+          id: p.id,
+          title: p.title,
+          version: p.version,
+          web_description: p.web_description,
+        })),
       }),
       row.noindex,
     );

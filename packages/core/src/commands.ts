@@ -870,6 +870,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "import export markdown notion todoist ticktick csv zip backup download",
   ),
   setting(
+    "chatgpt-models",
+    "ChatGPT connections and models",
+    "Connect a ChatGPT account and choose its default model",
+    "account",
+    "AI connections & models",
+    { section: "AI connections & models" },
+    "openai plan provider default model executor device",
+  ),
+  setting(
     "agreed",
     "What you agreed to",
     "The Terms and Privacy Policy",

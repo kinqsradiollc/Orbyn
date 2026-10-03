@@ -122,11 +122,11 @@ export function OverviewView({
         <section className="card">
           <EmptyState
             icon={Sun}
-            title="Give your ideas a home."
-            body="Add a task or event to start building your plan."
+            title="No tasks yet"
+            body="Add a task or event."
           >
             <button className="primary" onClick={onNewItem}>
-              <Plus size={15} /> Make your first plan
+              <Plus size={15} /> Add task
             </button>
           </EmptyState>
         </section>

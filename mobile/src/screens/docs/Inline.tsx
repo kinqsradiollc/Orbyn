@@ -1,7 +1,8 @@
 import React, { useContext } from "react";
-import { Linking, StyleSheet, Text } from "react-native";
+import { Alert, Linking, StyleSheet, Text } from "react-native";
 import {
   layoutMath,
+  docLinkDestination,
   mathToText,
   mentionedPerson,
   parseDocInline,
@@ -14,6 +15,9 @@ import type { Mark } from "./marks";
 import { LinkPillText } from "./links";
 import { FootnoteContext } from "./footnotes";
 import { MathView } from "./MathView";
+import { DocNavigationContext } from "./doc-navigation";
+import { webOrigin } from "../../lib/api";
+import { openAppUrl } from "../../hooks/useAppLinks";
 
 /** Maths that is more than a row of symbols: it is typeset, not spelled out. */
 const typeset = (tex: string) => {
@@ -46,11 +50,30 @@ export function Inline({
   style?: object;
   marks?: Mark[];
 }) {
-  // A #tag stands apart from the words around it, on a quiet ground.
-  const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
-    tagRuns(run, text),
-  );
   const notes = useContext(FootnoteContext);
+  // A #tag stands apart from the words around it, on a quiet ground.
+  const runs: TaggedRun[] = parseDocInline(text, notes.references).flatMap(
+    (run) => tagRuns(run, text),
+  );
+  const navigation = useContext(DocNavigationContext);
+  const followLink = (href: string) => {
+    const destination = docLinkDestination(href, webOrigin);
+    const report =
+      navigation?.report ??
+      ((error: unknown) =>
+        Alert.alert(
+          "Could not open link",
+          error instanceof Error ? error.message : "Please try again.",
+        ));
+    if (!destination)
+      return report(new Error("This link cannot be opened safely."));
+    if (destination.kind === "fragment") {
+      if (navigation) navigation.onFragment(destination.fragment);
+      else report(new Error("Open this page to follow its heading link."));
+    } else if (destination.kind === "app") {
+      (navigation?.onAppLink ?? openAppUrl)(destination.url);
+    } else void Linking.openURL(destination.url).catch(report);
+  };
   return (
     <>
       {runs.map((run, i) => {
@@ -125,9 +148,7 @@ export function Inline({
               lit && s.marked,
             ]}
             onPress={
-              run.link && !person
-                ? () => void Linking.openURL(run.link!)
-                : undefined
+              run.link && !person ? () => followLink(run.link!) : undefined
             }
           >
             {shown}

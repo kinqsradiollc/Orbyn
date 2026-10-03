@@ -243,6 +243,371 @@ agent collaboration/reflection and whole-app Docs/UI acceptance. Preserve palett
 and characters; voice/computer-use product features remain excluded. No
 deployment or cleanup occurred. The full ADR remains active.
 
+### Home agent presentation — 3 October 2026
+
+Apply the user’s Muse/Dots direction to both public and signed-in Home, with native
+parity. Research: [Muse design](https://introducing.muse.ai/) emphasizes visible
+background activity, meaningful interruptions, and task-shaped outputs;
+[official Dots documentation](https://learn.chatgpt.com/docs/dots) describes work
+between conversations and separate task activity. These inform the presentation,
+not additional Orbyn capabilities or blanket permission to act.
+
+Home should explain a concrete responsibility and where to review its result.
+Public examples must be labeled examples, never fabricated live runs. Use two
+plain editorial rows for Background and Overnight, with separate timing and
+morning review descriptions; keep character customization distinct from work.
+Signed-in Home opens real permission-filtered profiles with activity and outputs.
+Idle must remain idle when no authorized work exists. Reflection and inter-agent
+collaboration remain existing acceptance gates, not advertised completed features.
+Preserve Orbyn tokens and character preferences; avoid generic slogans and a
+repeated grid of decorative feature cards.
+
+The user owns web visual validation on their test server for this increment.
+Code/build checks do not establish visual acceptance. Native screenshot and
+interaction acceptance remains required and the disposable account’s terms
+confirmation is still pending.
+
+### Home copy follow-up — 3 October 2026
+
+Replace vague first-screen metaphors with tasks, calendar, project notes and
+delegated work. Present Background and Overnight as separate work schedules,
+with an explicit review destination for each. Label illustrative requests as
+examples and keep idle behavior truthful. Muse informs visible activity and
+meaningful interruptions; Dots informs work between conversations. Their
+capabilities do not establish capabilities in Orbyn. Reflection and collaboration
+remain open acceptance gates. This follow-up changes copy only; the user’s web
+visual validation and native acceptance remain outstanding.
+
+### Home responsibility and review layout — 3 October 2026
+
+Follow-up research confirms the useful presentation patterns: Muse puts activity
+and approved permissions behind the avatar; Dots brings back results and asks
+for decisions between conversations. Use the primary sources linked above.
+Orbyn adopts visible responsibility, review destinations and pause conditions.
+It does not inherit their cloud computers, app access or always-on execution.
+
+Public Home uses a straight, in-flow planner example and two editorial agent rows
+with labeled requests, review destinations and stopping conditions. Shared core
+copy keeps the web and native signed-in Home descriptions consistent. No status
+or output is fabricated. Reflection and collaboration remain open acceptance
+gates. All character presets remain available; browsing never changes identity.
+Web visual acceptance belongs to the user's test-server review for this increment;
+native screenshot and interaction acceptance remains open.
+
+### Home responsibilities before decoration — 3 October 2026
+
+Rechecked primary product references: [Muse's design account](https://introducing.muse.ai/)
+puts work status, activity and approved permissions behind the avatar, and describes
+notifications for meaningful results or input. [Dots documentation](https://learn.chatgpt.com/docs/dots)
+describes ongoing responsibilities between conversations. Use those interaction
+patterns to explain Orbyn's existing work; they do not prove Orbyn has the same tools.
+
+Public Home now gives Background and Overnight their own section before the feature
+catalog and character gallery. Navigation opens the agents section. Each has a timing,
+a labeled example request, a review destination and a stopping condition. Replace
+vague supporting slogans with specific task, calendar, project and review copy.
+Character presets stay available in their own section. Signed-in web/native Home
+must show the same timing and pause details alongside their existing activity entry.
+No fake running states, always-on promise or completed reflection claim is introduced.
+Code tests establish content and ordering, not screenshot acceptance. The user's
+test-server web review and native visual acceptance remain open.
+
+### Saved-revision export API checkpoint — 3 October 2026
+
+Optional expected document versions protect file exports against concurrent
+changes. Check visibility first, then return409 for any format at a different
+saved revision. Invalid versions use the established422 schema response. Shared
+clients carry the revision and never silently retry against a newer one.
+Unversioned callers keep their existing behavior. The isolated candidate passes
+17 export API checks, one real client check, all workspace types and production
+builds. Exact-head CI remains required before merging this checkpoint.
+
+This is API foundation only: both editors still need explicit save-success and
+offline/failure handling, revision capture and all share-path integration.
+Rendered PDF, publication, native sharing and whole D1/U1 acceptance remain open.
+
+### Primary reads for file actions — 3 October 2026
+
+Export file transport does not carry the ordinary JSON transport's read-after-write
+header. Lag-tolerant replica reads could falsely reject a newly saved revision or
+return older content/visibility. Both the file export route and its legacy Markdown
+route now use the primary for the document and task/link permission enrichment.
+This gives file actions current primary state even for existing unversioned callers.
+Current-version conflicts and visibility-first404 behavior remain unchanged.
+Regression checks execute the actual handlers with distinct primary and replica
+dependencies; no export query or helper may use the stale replica. This is a
+backend freshness checkpoint; PDF visual rendering and full D1/U1 remain open.
+
+### Public Home request examples — 3 October 2026
+
+[Muse's design account](https://introducing.muse.ai/) describes task-shaped outputs
+and meaningful updates. [Dots' profile documentation](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot)
+exposes activity and task controls. Use those presentation patterns to make
+Orbyn's existing responsibilities easier to understand. Public Home now gives
+each agent a labeled example quotation, followed by where to review the work
+and when it pauses. Preserve all character presets, Orbyn tokens and truthful
+idle behavior. This checkpoint changes public presentation only; signed-in/native
+Home refinements remain in the larger candidate. Reflection/collaboration and
+the full ADR acceptance gates remain open. User test-server visual review is
+still outstanding; automated content checks do not prove visual acceptance.
+
+### Home responsibilities and product copy — 3 October 2026
+
+Latest user direction: Background and Overnight should feel like personal agents
+with ongoing responsibilities, informed by Muse and Dots. Both public Home and
+signed-in Home must explain the product in concrete language and preserve mobile
+parity. Avoid invented live status, generic AI slogans and capability claims that
+have not passed the governing acceptance contract.
+
+Primary references rechecked:
+
+- [Muse's design account](https://introducing.muse.ai/): task-shaped outputs,
+  visible activity and notifications worth interrupting for.
+- [Meet dots](https://learn.chatgpt.com/docs/dots): work between conversations,
+  continued responsibilities and decisions brought back for human review.
+- [Dots tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory):
+  distinct task context, reviewable outputs and explicit recurring work.
+
+These are product references; Orbyn does not inherit their computer, browser,
+voice, messaging, account access or arbitrary action capabilities.
+
+| Surface or behavior               | Decision                                                                                                                                    | Current implementation boundary                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Public Home                       | Show a project-notes-to-checklist request and a night research queue, each with three concrete steps.                                       | Examples are labeled; no fabricated tasks or activity.                                                                            |
+| Signed-in web/desktop/mobile Home | Use the same responsibilities and optional step-by-step guide; retain real profile activity behind the existing action.                     | Character browsing does not mutate settings. Status comes from authorized profile evidence, never avatar animation or local time. |
+| Background                        | Delegated work has progress, sources, an output and a place for decisions.                                                                  | Existing task/profile behavior; full ongoing-goal and routine qualification remains open.                                         |
+| Overnight                         | Explicit queue, chosen window, bounded budget and morning review of completed and unfinished work.                                          | Window/budget constraints remain visible; no promise that every queued task finishes.                                             |
+| Reflection                        | With explicit consent, review evidence from prior work and propose lessons with sources.                                                    | Existing reflection candidate remains an acceptance gate. Home must not describe it as shipped.                                   |
+| Collaboration                     | Keep separate processes, runs, budgets and activity; exchange bounded, authorized handoffs with acknowledgments and source revision checks. | Complete receiving-worker dispatch and separate-process runtime proof remain open. UI copy cannot substitute for this work.       |
+| Notifications                     | Surface meaningful results or decisions; preserve the morning review destination and quiet behavior.                                        | Delivery-policy acceptance remains part of the governing contract.                                                                |
+
+This increment changes Home content and layout, not worker capabilities. The
+public workflow collapses to one column at narrow widths; signed-in guide content
+wraps and native content grows naturally. Web visual acceptance remains with the
+user's test server for this increment. Native screenshot/interaction acceptance
+and the complete U1 gates remain open. Retain current character work and palette.
+
+Public Home promotion candidate: based on main9702f19e, includes only shared
+copy, the public page's workflow layout, its focused checks and this ADR section.
+Signed-in Home/profile and renderer work remain in the larger draft. Local Home
+checks3/3, all workspace typechecks/builds and full formatting pass. Web visual
+acceptance is still delegated to the user's test server for this increment;
+full exact-head local and CI qualification is required before main merge.
+
+### Main-based rendered PDF checkpoint — 3 October 2026
+
+Add a separately authenticated offline document renderer process and required
+shared helpers, with a dedicated Chromium image, credential/network isolation,
+enabled sandbox and bounded work/cancellation. The API authorizes primary-read
+snapshots and rechecks access/version before returning a file. Signed requests
+retain replay nonces until signature expiry, including allowed clock skew.
+Production rollout starts PDF before API and validates its independent key.
+
+This checkpoint prints math and all ten Mermaid families through the existing
+PDF export contract shared by web, desktop and mobile. Standalone HTML gets
+escaped source markers; this does not claim complete rendered HTML, publication,
+inline image-byte or native sharing acceptance. Root-locked first-party build
+dependencies generate only the backend asset; no app module imports are added.
+Web/native editor and settings changes remain in their respective candidates.
+
+Qualification requires focused real export tests, full local suite, workspace
+types/build/format and exact-head CI including the hardened renderer image.
+Main promotion remains conditional on those results. Full C1–C6/M1/D1/U1 scope
+remains active; no deployment, release or cleanup is performed.
+
+## Qualification correction — 3 October 2026
+
+- Main21c6c076 full local suite is terminal:2,245/2,246, one old clipboard expectation for `<h2>Plan</h2>` after authored level1 correctly becameh1. Updated that expectation and added exact all-six-level HTML/clipboard regressions; no h7. h4–h6 print at readable body size. [Heading fixture](pdf-heading-levels.png) inspected with no overlap or clipping.
+- Combineda039f271 CI37057124805 failed one all-family PDF text assertion despite local2,488/2,488. Reproduced in a hardened offline Linux renderer: “flowchart” prints correctly but pdf.js returns adjacent `fl`/`owchart` font runs. The test inserted a false space. Position-based line reconstruction and normalization now recover all ten exact headings and all six required SVG labels from the Linux file. A regression covers split font runs and ligatures; expected headings are exact line checks.
+  -Current57 browser/helper/service/primary/deployment units and63 actual export/rich-page/heading/text checks pass. All workspace types/build/full formatting pass after the fix. Linux diagnostic artifact is `/tmp/orbyn-pdf-linux-api-batch.pdf`; its older image isolates printing/font behavior and is not current-head image qualification.
+  -New full exact-head local and CI qualification required after committing this correction. Previous main/combined CI failures are not passing evidence. PR161 stays draft until corrected full local/all CI pass; no main merge/deploy/release/cleanup.
+
+### Authorized picture snapshots for PDF and HTML — 3 October 2026
+
+Candidate follows the qualified PDF checkpoint and uses the same endpoint on all
+clients. Export authorized raster bytes as inert data URIs rather than omitting
+pictures. Authorize on the primary, fetch only bounded signed first-party paths,
+keep credentials/network out of the renderer, and recheck page/file access before
+delivery. Missing/revoked pictures must fail explicitly rather than produce a
+caption-only partial file. Preserve copied-file reference access when the original
+page is removed. Evidence: `docs/reviews/evidence/doc-export-images.md`.
+
+This closes the candidate's PDF/HTML picture-byte gap, subject to full current-head
+qualification. It does not close native sharing, complete rendered HTML/publication,
+Word/export/editor parity or broader C1–C6/M1/D1/U1 acceptance. Goal remains active.
+
+### Portable rendered HTML candidate — 3 October 2026
+
+Use the private first-party renderer for the existing HTML export endpoint as
+well as PDF. Bind internal signatures to output format, share replay/concurrency
+limits, render inert SVG images and MathML, retain escaped source, and install
+script/frame/network-denying CSP before content. Keep screen styles with bounded
+print overrides under media rules. Recheck current page/file authority before
+sending the complete file. Evidence: `docs/reviews/evidence/doc-rendered-html.md`.
+
+Candidate is stacked on the image export checkpoint, not yet qualified for main.
+Publication, source/editor/Word parity, native interaction and the remaining full
+ADR gates still require implementation/acceptance; the objective remains active.
+
+### Signed-in Home/profile promotion candidate — 3 October 2026
+
+Extract the signed-in Home guide and separate agent profiles from the larger
+candidate onto current main (`192cb475`), with matching web/desktop and native
+entry points. Keep the same shared Background/Overnight requests and workflow
+steps as public Home. Replace the generic companion subtitle with “Background
+progress and Overnight results.” Browse every character preset without changing
+account settings. Profile activity, last work and outputs come from a private,
+permission-filtered primary snapshot; refresh and avatar presence are not work.
+
+The profile contract distinguishes idle, queued/recovering, working, waiting and
+scheduled states. Overnight alone has a night window and estimated budget. Each
+lane keeps its own activity and outputs. Open completed work only when the current
+interactive chat can safely switch. User-facing activity labels are shared by
+both clients; structured state is validated independently of copy.
+
+Research remains the primary [Muse design account](https://introducing.muse.ai/)
+and [Dots tasks and memory](https://learn.chatgpt.com/docs/dots/tasks-and-memory).
+Their useful presentation patterns inform reviewable responsibilities; this
+candidate adds no browser, computer, voice or external messaging capabilities.
+
+Focused profile/store/client/Home checks pass 22/22. The first typecheck exposed
+an omitted shared activity-label export; the scoped prerequisite was added and
+current qualification continues. Full local/all-CI results, web test-server visual
+acceptance and native screenshot/interaction acceptance are separate gates. No
+claim of full U1, reflection or collaboration completion follows from this Home
+increment.
+
+### Published diagrams and delivery authority — 3 October 2026
+
+Render public-page Mermaid sources in an isolated synthetic batch through the
+private HTML renderer, returning inert images and escaped source without sending
+publication forms, app links or live media capabilities to Chromium. Keep the
+published layout and script/frame-denying policy. Recheck publication/password,
+team policy, page revision, public links, files and folder navigation on the
+primary after rendering, before returning HTML. Refuse revoked or changed
+snapshots explicitly. Evidence: `docs/reviews/evidence/publication-renderer.md`.
+
+This candidate requires complete exact-head qualification before main promotion.
+It does not close editor, Word/export, native sharing, whole-app UI or the full
+C1–C6/M1/D1/U1 goal.
+
+### Gantt label readability candidate — 3 October 2026
+
+Keep task, section and chronological labels readable in the isolated renderer.
+Measure tick spacing and retain one label per displayed date, preserving the
+underlying grid, authored format and task times. The current synthetic printed
+fixture and real PDF font/bounds checks are recorded in
+`docs/reviews/evidence/diagram-readability.md`. Both clients' exports use this
+server rendering path. Editor/native preview parity and complete D1/U1 remain
+open; candidate needs full exact-head qualification before main promotion.
+
+### Home review information and progressive disclosure — 3 October 2026
+
+Rechecked [Muse’s product design](https://introducing.muse.ai/) and
+[Dots’ task/profile controls](https://help.openai.com/en/articles/20001530-getting-started-with-your-dot).
+Muse makes activity and responsibility visible; Dots separates in-progress,
+scheduled and completed work. Orbyn should present these as work a person can
+inspect and direct. The two agents retain separate runtimes and schedules.
+
+The Home section currently repeats its explanation as a summary, quotation,
+three steps and review instructions. Keep the example request, destination and
+stopping condition visible; put procedural steps behind a keyboard-accessible
+“How … works” disclosure on public Home. Signed-in web and mobile must expose
+review destinations and pause conditions before their optional guide is opened.
+Use concrete requests naming source notes, requested output and unanswered
+questions. Morning copy must distinguish finished work from queued work.
+Preserve palette, all character presets and evidence-based idle status.
+
+This is a presentation candidate atop PR165, not a worker or reflection change.
+User test-server web review remains outstanding; native interaction/screenshot
+acceptance is still required. Complete C1–C6/M1/D1/U1 remains active.
+
+### Scoped Markdown parity qualification — 3 October 2026
+
+Six-level headings and page-scoped references must work across schemas, saved
+pages, private read projections, comment positions, Word/clipboard exports and
+both clients. Reference definitions remain editable Markdown; HTML does not
+show them as page text. The scoped candidate preserves the existing publication
+and diagram changes on main1100ca98. See
+`docs/reviews/evidence/markdown-parity.md` for evidence and remaining acceptance
+gates. This does not close D1 or the wider UI scope.
+
+### Embedded reference context — 3 October 2026
+
+An embedded section resolves references from its authorized source page, even
+when the definitions are outside the selected heading. Privacy projection
+precedes section selection; inaccessible object destinations are excluded from
+the returned context. Both clients isolate embedded reference and footnote
+contexts from the containing page. See
+`docs/reviews/evidence/reference-embeds.md`; runtime/visual acceptance and full
+qualification remain open.
+
+### Current-draft source inspection and fragment navigation — 3 October 2026
+
+Scoped candidate atop PR169: both page menus expose a source/rendered inspector
+for current editor blocks; the panel owns no second draft/save. Document identity
+fences hide the panel on a page switch. Web selection and scrolling map between
+anchored Markdown lines and rendered blocks; mobile offers source/rendered tabs.
+
+Ordinary editors resolve bounded Unicode heading fragments and unfold only
+sections covering the target, waiting for saved fold preferences. Embedded
+fragments open the source page through their own navigation context. Retain
+page-scoped references and current authorization; no parent-page fragment reuse.
+Current candidate passes20 focused and115 combined export/rich-page/navigation
+checks plus all workspace types/builds/full formatting. Full matching-head local
+and CI qualification and actual editor/native screenshot/interaction acceptance
+remain required. Source editing, the other D1 Markdown requirements and full U1
+remain open; no goal completion, deployment or cleanup is claimed.
+
+### Native and desktop diagram preview candidate — 3 October 2026
+
+Scoped candidate on PR172 replaces mobile flowchart-only rendering with the
+bundled strict engine and gives desktop bounded rendering plus source/fit/zoom/
+pan/SVG controls. Native canvas adapts to the window and tall fit diagrams expose
+pan. All ten native synthetic fixtures rendered; source, fit/zoom and pan were
+exercised, and SVG export opened the native share sheet. Evidence and retained
+failures: `../reviews/evidence/native-diagram-parity.md`. Full final-head tests,
+CI, signed-in editor/parent-scroll/Android/web acceptance remain open. This does
+not complete D1/U1 or authorize deployment. All C1–C6/M1/D1/U1 scope remains.
+
+### Docs code and metadata controls candidate — 3 October 2026
+
+Both clients provide code copying, known-language source/highlighting and
+readable metadata disclosure while preserving exact literal source. Native
+monospace is platform-correct; web overflow stays in the block. Actual native
+synthetic controls were exercised and screens recorded. Evidence:
+`../reviews/evidence/code-metadata-controls.md`. Final full-suite/CI, signed-in
+editor, Android and web visual gates remain open. This candidate does not finish
+D1/U1; the complete C1–C6/M1/D1/U1 scope and excluded product features remain.
+
+### Source editing candidate — 3 October 2026
+
+The source/preview pane now delegates Markdown edits to each client's existing
+editor update/save queue. Reading and Suggesting modes retain inspection only.
+Retained anchors keep block identity; duplicate anchors show an unsaved-source
+error and can be restored explicitly. The parser reports original source-line
+ranges so blank lines, alternate fences and CRLF do not desynchronize preview
+navigation. Typed source echoes are tracked by weak block identity to avoid
+rewinding newer native input. Native caret positioning is applied once when
+returning from preview rather than controlled during typing.
+
+This candidate follows code/metadata PR174. Native synthetic typing, preview,
+validation and restoration were exercised with screenshots. Complete signed-in
+revision/conflict/keyboard/swipe/Android acceptance and frozen full local/CI are
+still required. The user will manually validate web presentation; blocked
+browser access is not bypassed. This does not complete C1–C6/M1/D1/U1 or authorize
+deployment/cleanup.
+
+### ChatGPT model settings promotion candidate — 3 October 2026
+
+First-party Settings on web/desktop/mobile expose owned device catalogs and
+account-bound defaults. The credential-owning runtime rereads the shared
+default before capturing inference; failed, foreign or regressed reads cannot
+use a cached model. Device discovery returns credential-free metadata for
+current owned registrations and is excluded from agent tools. This is a scoped
+candidate; evidence and remaining M1/U1 acceptance gates are recorded in
+`docs/reviews/evidence/chatgpt-model-settings.md`.
+
 ### Separate plugin UI resource adapter checkpoint — 3 October 2026
 
 The plugin HTTP backend now exposes bounded resource discovery/reads separately
@@ -278,3 +643,29 @@ remaining gates. Converter writes still require originating-grant provenance and
 current write-policy checks; protocol async jobs and actual provider/host launch
 acceptance also remain open. This candidate does not complete C6 or the full
 C1–C6/M1/D1/U1 goal and must not be promoted before the write guard is proven.
+
+### Home/task layout correction from user review — 3 October 2026
+
+User screenshots identify excessive repeated explanatory copy on signed-in Home
+and a bulky task toolbar. The full application redesign remains required.
+Signed-in Home should be a compact working entry point: identity, short Background
+and Overnight rows, actual activity access and an optional guide. Detailed
+examples, timing and stopping conditions belong behind disclosure, with collapse
+controls above long content. Public Home uses the same short agent descriptions.
+Preserve all character choices and existing task actions, with compact responsive
+controls and direct empty-state copy. Native screenshot fixture proof is limited
+to the inspected component; real account/runtime, Android, all other surfaces and
+full C1–C6/M1/D1/U1 acceptance remain open. Web visuals remain delegated to the
+user's preview/test-server review under the existing permission restriction.
+
+### Plugin import producer guard follow-up — 3 October 2026
+
+The originating grant/client/recipient is now captured by both synchronous and
+async plugin import starts. Upload admission, post-stream commit and converter
+page creation recheck live authority; FK deletion retains the origin flag and
+never falls back to first-party power. Real uploaded Word conversion,13 denial
+variants and mid-stream encrypted-object cleanup are tested. This supersedes
+the earlier missing-producer-guard note. Latest-main full/CI qualification and
+remaining protocol/host/account/provider gates still apply; full C1–C6/M1/D1/U1
+remains incomplete. Legacy in-flight imports require the documented rollout
+handling rather than invented identity snapshots.

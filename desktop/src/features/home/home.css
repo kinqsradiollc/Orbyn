@@ -14,6 +14,78 @@
 .home a {
   -webkit-tap-highlight-color: transparent;
 }
+.home-companion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 32px 0;
+}
+.home-companion-grid li {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.home-companion-grid .orbyn-character {
+  flex-shrink: 0;
+}
+.home-agent-detail p,
+.home-companion-note {
+  color: var(--color-muted);
+  line-height: 1.65;
+}
+.home-agent-grid article {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr);
+  gap: 24px;
+  padding: 28px 0;
+  border-top: 1px solid var(--color-border);
+}
+.home-agent-grid h3 {
+  margin: 10px 0 0;
+  font-size: 24px;
+}
+.home-agent-detail p {
+  margin: 0 0 18px;
+}
+.home-agent-workflow {
+  margin: 0;
+}
+.home-agent-workflow > div {
+  display: grid;
+  grid-template-columns: minmax(0, 130px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-border);
+}
+.home-agent-workflow dt {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.home-agent-workflow dd {
+  margin: 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.home-companion-note {
+  margin: 16px 0 0;
+  max-width: 680px;
+}
+@media (max-width: 600px) {
+  .home-agent-grid article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+}
 .home a {
   text-decoration: none;
   color: inherit;
@@ -1225,4 +1297,109 @@ html.js .reveal.is-visible {
   50% {
     opacity: 0;
   }
+}
+
+/* Home's product example stays in document flow at every width. */
+.home .home-scene {
+  min-height: 0;
+  width: 100%;
+}
+.home .home-preview {
+  width: 100%;
+  max-width: 440px;
+  box-sizing: border-box;
+  transform: none;
+  box-shadow: none;
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+.home .home-preview-top,
+.home .home-preview-date,
+.home .home-preview-bottom {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.home .home-preview-item > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .home-agent-workflow > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+.home-agent-request {
+  margin-bottom: 20px;
+  padding: 18px 20px;
+  border-left: 2px solid var(--color-accent);
+  background: var(--color-surface);
+}
+.home-agent-request > span {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.home-agent-request blockquote {
+  margin: 8px 0 0;
+  color: var(--color-text);
+  font-size: 18px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.home-agent-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  list-style: none;
+  counter-reset: work-step;
+  padding: 24px 0;
+  margin: 0;
+}
+.home-agent-steps li {
+  min-width: 0;
+  counter-increment: work-step;
+  overflow-wrap: anywhere;
+}
+.home-agent-steps li::before {
+  content: "0" counter(work-step);
+  display: block;
+  margin-bottom: 12px;
+  color: var(--color-accent);
+  font-size: 13px;
+}
+.home-agent-steps strong {
+  font-weight: 500;
+  font-size: 15px;
+}
+.home-agent-steps li p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+@media (max-width: 760px) {
+  .home-agent-steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .home-agent-steps li::before {
+    margin-bottom: 6px;
+  }
+}
+
+/* Keep the request and review visible; procedural help opens on demand. */
+.home-agent-how {
+  margin: 0 0 20px;
+}
+.home-agent-how summary {
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 13px;
+  padding: 8px 0;
+}
+.home-agent-how summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
 }

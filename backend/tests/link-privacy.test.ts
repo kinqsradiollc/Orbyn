@@ -16,6 +16,8 @@ import { helpers, type Person } from "./mcp-helpers.js";
  * the titles for the people who can open them.
  */
 
+const { startTestPdfService } = await import("./helpers/pdf-service.js");
+const pdfService = await startTestPdfService();
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
@@ -135,6 +137,7 @@ after(async () => {
   const { closeLive } = await import("../src/modules/docs/live.js");
   await closeLive();
   await app.close();
+  await pdfService.close();
   await pool.end();
 });
 
@@ -509,6 +512,63 @@ test("a live embed of a shared page hides the words of links the reader can't op
   noSecrets(first.body, "section (first lines)");
   const own = await call(ana, "GET", `/docs/${sharedId}/section?block=b1`);
   assert.match(own.body, /Budget 2027 private/);
+});
+
+test("section references use only the authorized source page, including definitions outside the section", async () => {
+  const made = await call(ana, "POST", "/docs", {
+    title: "Reference embed",
+    team_id: lab,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const id = made.json().id as string;
+  const saved = await call(ana, "PUT", `/docs/${id}`, {
+    version: 1,
+    content: [
+      para(
+        `[Budget 2027 private]: orbyn://doc/${personalId} "Budget 2027 private"`,
+        "definition-private",
+      ),
+      para(`[open]: orbyn://doc/${openId}`, "definition-open"),
+      para("[guide]: https://example.test/guide", "definition-guide"),
+      { type: "heading", level: 2, text: "Summary", id: "summary" },
+      para(
+        "Read [Budget 2027 private], [Lab][open] and [Guide][guide].",
+        "usage",
+      ),
+      { type: "heading", level: 2, text: "Later", id: "later" },
+      para("Other section", "other"),
+    ],
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const section = await call(ben, "GET", `/docs/${id}/section?block=summary`);
+  assert.equal(section.statusCode, 200, section.body);
+  noSecrets(section.body, "reference section");
+  assert.match(section.body, /Private page/);
+  assert.equal(section.json().blocks.length, 2);
+  const refs = new Map<string, string>(section.json().references);
+  assert.equal(refs.get("guide"), "https://example.test/guide");
+  assert.equal(refs.get("open"), `orbyn://doc/${openId}`);
+  assert.ok(![...refs.values()].includes(`orbyn://doc/${personalId}`));
+  const owner = await call(ana, "GET", `/docs/${id}/section?block=summary`);
+  assert.match(owner.body, /Budget 2027 private/);
+  assert.equal(
+    new Map<string, string>(owner.json().references).get("budget 2027 private"),
+    `orbyn://doc/${personalId}`,
+  );
+  assert.equal(
+    (await call(null, "GET", `/docs/${id}/section?block=summary`)).statusCode,
+    401,
+  );
+  assert.equal(
+    (await call(stranger, "GET", `/docs/${id}/section?block=summary`))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (await call(ben, "GET", `/docs/${id}/section?block=${"x".repeat(65)}`))
+      .statusCode,
+    422,
+  );
 });
 
 test("study cards made from a shared line show the neutral words", async () => {

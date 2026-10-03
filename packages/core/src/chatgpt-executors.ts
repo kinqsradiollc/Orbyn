@@ -59,6 +59,22 @@ export type ChatgptExecutorChallenge = z.output<
 export type ChatgptExecutorFinish = z.output<typeof chatgptExecutorFinish>;
 export type ChatgptExecutorCatalog = z.output<typeof chatgptExecutorCatalog>;
 
+/** Owned devices discoverable by first-party clients; no key or session metadata. */
+export const chatgptExecutorList = z
+  .array(
+    z
+      .object({
+        executor_id: z.uuid(),
+        connection_id: z.uuid(),
+        host_id: z.uuid(),
+      })
+      .strict(),
+  )
+  .max(1000);
+export type ChatgptExecutorSummary = z.output<
+  typeof chatgptExecutorList
+>[number];
+
 export const CHATGPT_CATALOG_SIGNATURE_DOMAIN = "orbyn:executor:catalog:v1";
 
 /** Canonical metadata for the runtime/server signature digest; never includes credentials. */

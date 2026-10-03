@@ -383,6 +383,7 @@ export const COVERED: Record<string, string[]> = {
 export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /models": "credentials",
   "PUT /models/default": "credentials",
+  "GET /ai/connections/chatgpt/executors": "credentials",
   "POST /ai/connections/chatgpt/executors/challenges": "credentials",
   "POST /ai/connections/chatgpt/executors/complete": "credentials",
   "POST /ai/connections/chatgpt/leases/challenges": "credentials",
@@ -405,6 +406,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/assistant/reminder-actions/:id/undo": "people_only",
   "GET /me/assistant/nights/latest": "people_only",
   "GET /me/assistant/activity/:lane": "people_only",
+  "GET /me/assistant/profiles": "people_only",
   "POST /me/assistant/nights/runs/:id/keep": "people_only",
   "POST /me/assistant/nights/runs/:id/undo": "people_only",
   "POST /me/assistant/nights/:id/keep-all": "people_only",
@@ -699,6 +701,8 @@ export const PUBLIC: string[] = [
   // password form for a page that has one.
   "GET /p/:slug",
   "GET /p/:slug/:doc",
+  // Publication-scoped media rechecks live publication/password/page/ref authority.
+  "GET /p/:slug/media/:doc/:file",
   "POST /p/:slug/unlock",
   "GET /mcp",
   "DELETE /mcp",

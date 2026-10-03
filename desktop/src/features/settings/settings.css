@@ -1,4 +1,75 @@
 /* Settings: planning, frames, places, tags and connections. */
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+.settings-sidebar,
+.settings-content {
+  min-width: 0;
+}
+.settings-sidebar .settings-search {
+  margin-bottom: 12px;
+}
+.settings-sidebar .settings-search-field {
+  padding-inline: 10px;
+}
+.settings-navigation {
+  display: grid;
+  gap: 4px;
+}
+.settings-navigation button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--control-h);
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 13px;
+  text-align: left;
+}
+.settings-navigation button svg {
+  flex: none;
+}
+.settings-navigation button span {
+  overflow-wrap: anywhere;
+}
+.settings-navigation button:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.settings-navigation button[aria-current="page"] {
+  background: var(--color-selected);
+  color: var(--color-accentText);
+  font-weight: 500;
+}
+.settings-content > .settings-card {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.settings-content > .settings-card:last-child {
+  margin-bottom: 0;
+}
+@media (max-width: 900px) {
+  .settings-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .settings-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .settings-sidebar .settings-search {
+    max-width: none;
+  }
+}
 .settings-card h2 {
   display: flex;
   align-items: center;
@@ -818,4 +889,139 @@
 .home-quote-setting {
   gap: 16px;
   margin-top: 14px;
+}
+
+.ai-connection-note {
+  padding: 16px;
+  margin-top: 16px;
+  background: var(--color-surfaceMuted);
+  border-radius: var(--radius-md);
+}
+.ai-connection-note p,
+.ai-connection-row p,
+.ai-connection-heading p,
+.ai-model-settings .settings-head p {
+  margin: 6px 0 0;
+}
+.ai-connection-heading {
+  margin-top: 20px;
+}
+.ai-connection-heading h3,
+.ai-model-settings h3 {
+  margin: 0;
+}
+.ai-connection-list {
+  display: grid;
+  gap: 12px;
+}
+.ai-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.ai-connection-row > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-connection-menu {
+  position: relative;
+}
+.ai-connection-menu summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  list-style: none;
+  border-radius: var(--radius-sm);
+}
+.ai-connection-menu summary::-webkit-details-marker {
+  display: none;
+}
+.ai-connection-menu > div {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 2;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  min-width: 140px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.ai-connection-menu button {
+  text-align: left;
+  padding: 8px;
+  min-height: var(--control-h);
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+}
+.ai-connection-menu button:hover {
+  background: var(--color-surfaceMuted);
+}
+.ai-model-settings {
+  margin-top: 24px;
+  display: grid;
+  gap: 14px;
+}
+.ai-model-settings .settings-head {
+  margin: 0;
+}
+@media (max-width: 540px) {
+  .ai-connection-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .ai-connection-actions {
+    align-self: flex-end;
+  }
+}
+.settings-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-card h2 svg {
+  color: var(--color-muted);
+}
+.settings-card code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: var(--color-surfaceMuted);
+  color: var(--color-text);
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+}
+.settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  /* What follows (a list, or "No habits yet") keeps clear of the button. */
+  margin-bottom: 14px;
+}
+.settings-subtitle {
+  margin: 24px 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 18px;
+}
+.settings-grid .wide {
+  grid-column: 1 / -1;
 }

@@ -4,6 +4,7 @@ import {
   chatgptCatalogDefaultUpdate,
   chatgptModelBinding,
   chatgptModelPreference,
+  chatgptExecutorList,
   fail,
 } from "@orbyn/core";
 import { transaction, type Db } from "../../db/pool.js";
@@ -14,6 +15,25 @@ import {
 
 type Session = { userId: string; sessionId: string };
 type Selection = import("zod").output<typeof chatgptCatalogSelection>;
+
+/** Discover only this person's registrations with an unexpired owning device session. */
+export async function listChatgptExecutors(session: Session) {
+  return transaction(async (db) => {
+    await requireLiveSession(db, session);
+    const result = await db.query(
+      `SELECT e.id AS executor_id,e.connection_id,e.host_id
+       FROM chatgpt_executor_enrollments e
+       JOIN chatgpt_identity_connections c ON c.id=e.connection_id
+       JOIN sessions s ON s.id=e.session_id AND s.user_id=c.user_id
+       WHERE c.user_id=$1 AND c.revoked_at IS NULL
+         AND s.expires_at>clock_timestamp()
+       ORDER BY c.verified_at DESC,e.enrolled_at DESC,e.id LIMIT 1000`,
+      [session.userId],
+    );
+    await requireLiveSession(db, session);
+    return chatgptExecutorList.parse(result.rows);
+  });
+}
 
 /** Connection locks serialize catalog/default decisions with publication and revocation. */
 async function catalogLocked(

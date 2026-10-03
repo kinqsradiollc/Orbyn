@@ -50,6 +50,8 @@ export function diagramKind(source: string): string {
   if (word === "pie") return "pie";
   if (word === "timeline") return "timeline";
   if (word === "mindmap") return "mindmap";
+  if (word === "erdiagram") return "er";
+  if (word === "journey") return "journey";
   return word || "unknown";
 }
 

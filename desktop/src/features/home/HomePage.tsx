@@ -30,6 +30,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { MouseEvent } from "react";
+import {
+  CHARACTER_PRESETS,
+  HOME_AGENT_GUIDE,
+  HOME_AGENT_IDLE_NOTE,
+} from "@orbyn/core";
+import { Character } from "../../components/Character";
 import { useReveal } from "../../hooks/useReveal";
 import { stagger } from "../../lib/motion";
 import { LinkDemo, WeekDemo } from "./HomeDemos";
@@ -116,8 +122,8 @@ const YOURS: Point[] = [
   },
   {
     icon: Sparkles,
-    title: "Nothing changes without you",
-    body: "The assistant only suggests. Every change it proposes waits for you to approve it.",
+    title: "You choose what it can do",
+    body: "Review proposed changes, choose the work you delegate, and keep private spaces out of AI.",
   },
   {
     icon: Fingerprint,
@@ -171,6 +177,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <a href="#features">Features</a>
           <a href="#planning">Planning</a>
           <a href="#work">Projects & docs</a>
+          <a href="#agents">Agents</a>
           <a href="#together">Teams</a>
           <a href="#yours">Privacy</a>
           <a href="#faq">FAQ</a>
@@ -193,20 +200,19 @@ export function HomePage({ signedIn, onNavigate }: Props) {
       <main id="home-main">
         <section className="home-hero">
           <div className="home-hero-copy">
-            {/* Says plainly what Orbyn is. The headline is a feeling; this
-                line is what someone searching for a planner is looking for. */}
+            {/* Keep the first screen specific to the work Orbyn supports. */}
             <span className="home-kicker">
               <span /> TASKS · CALENDAR · PROJECTS · NOTES · AI
             </span>
             <h1>
-              Your life.
+              Plan your day.
               <br />
-              In a better <em>orbit.</em>
+              Keep work <em>moving.</em>
             </h1>
             <p>
-              One planner for the things you need to do, the people you make
-              time for and the ideas you don’t want to lose — that plans your
-              day around them.
+              Keep tasks, calendar and project notes together. Plan around your
+              available time, delegate a task to Background, or queue work for
+              Overnight and review it in the morning.
             </p>
             <div className="home-hero-actions">
               <button className="primary" onClick={start}>
@@ -226,12 +232,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <div
             className="home-scene"
             role="img"
-            aria-label="An example day in Orbyn: a quiet morning, time for a big idea, and dinner with friends"
+            aria-label="Example Orbyn planner showing project work and a team check-in"
           >
-            <div className="home-orbit one" />
-            <div className="home-orbit two" />
-            <div className="home-orbit three" />
-            <span className="home-star">✦</span>
             <div className="home-preview" aria-hidden="true">
               <div className="home-preview-top">
                 <span>
@@ -239,29 +241,24 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 </span>
                 <small>EXAMPLE DAY</small>
               </div>
-              {/* An illustration's caption, not a heading of this page: a
-                  heading here put "A little room for a good day" into the
-                  outline search engines read, between the headline and the
-                  page's real sections. */}
-              <p className="home-preview-title">
-                A little room for a good day.
-              </p>
+              {/* Illustration caption stays outside the heading outline. */}
+              <p className="home-preview-title">Today’s plan.</p>
               <div className="home-preview-date">
                 <CalendarDays size={14} /> Today’s focus <span>3 plans</span>
               </div>
               {[
                 {
-                  title: "A quiet start to the morning",
+                  title: "Review project notes",
                   detail: "Personal · 8:00 AM",
                   done: true,
                 },
                 {
-                  title: "Give that big idea a little time",
+                  title: "Draft next steps",
                   detail: "Creative time · 10:00 AM",
                   done: false,
                 },
                 {
-                  title: "Dinner with people who matter",
+                  title: "Team check-in",
                   detail: "Event · 6:30 PM",
                   done: false,
                 },
@@ -277,22 +274,9 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 </div>
               ))}
               <div className="home-preview-bottom">
-                <span>Little by little, it adds up.</span>
+                <span>Tasks and events, together.</span>
                 <span>1 of 3 complete</span>
               </div>
-            </div>
-            <div className="home-floating-ai" aria-hidden="true">
-              <span>
-                <Sparkles size={19} />
-              </span>
-              <div>
-                <strong>A mind beside yours.</strong>
-                <small>A clear plan starts with a conversation.</small>
-              </div>
-            </div>
-            <div className="home-floating-reminder" aria-hidden="true">
-              <Bell size={17} />
-              <span>A gentle nudge, right on time.</span>
             </div>
           </div>
         </section>
@@ -302,30 +286,86 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           aria-label="Product principles"
         >
           <span>
-            <ListTodo size={18} /> Less to hold in your head
+            <ListTodo size={18} /> Tasks and calendar in one place
           </span>
           <span>
-            <Sparkles size={18} /> A little help thinking ahead
+            <Sparkles size={18} /> Delegated work with results to review
           </span>
           <span>
-            <ShieldCheck size={18} /> Every AI change is yours to approve
+            <ShieldCheck size={18} /> You decide what AI can change
           </span>
           <span>
             <Fingerprint size={18} /> Personal plans stay personal
           </span>
         </section>
 
+        <section className="home-features" id="agents">
+          <div className="home-section-heading reveal">
+            <span className="eyebrow">BACKGROUND AND OVERNIGHT</span>
+            <h2>Work you can hand over.</h2>
+            <p>
+              Give Background a task during the day. Put longer work in your
+              Overnight queue. Each keeps its own progress and brings the work
+              back for you to review.
+            </p>
+          </div>
+          <div className="home-agent-grid">
+            {HOME_AGENT_GUIDE.map((agent) => (
+              <article key={agent.name}>
+                <div className="home-agent-label">
+                  <span className="eyebrow">{agent.timing}</span>
+                  <h3>{agent.name}</h3>
+                </div>
+                <div className="home-agent-detail">
+                  <p>{agent.brief}</p>
+                  <details className="home-agent-how">
+                    <summary>How {agent.name} works</summary>
+                    <p>{agent.summary}</p>
+                    <div className="home-agent-request">
+                      <span>Example request</span>
+                      <blockquote>“{agent.request}”</blockquote>
+                    </div>
+
+                    <ol
+                      className="home-agent-steps"
+                      aria-label={`${agent.name} workflow`}
+                    >
+                      {agent.steps.map((step) => (
+                        <li key={step.title}>
+                          <strong>{step.title}</strong>
+                          <p>{step.body}</p>
+                        </li>
+                      ))}
+                    </ol>
+                    <dl className="home-agent-workflow">
+                      <div>
+                        <dt>Where to review</dt>
+                        <dd>{agent.result}</dd>
+                      </div>
+                      <div>
+                        <dt>When it pauses</dt>
+                        <dd>{agent.pause}</dd>
+                      </div>
+                    </dl>
+                  </details>
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="home-companion-note">{HOME_AGENT_IDLE_NOTE}</p>
+        </section>
+
         <section className="home-features" id="features">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">LIFE HAS A LOT OF MOVING PARTS</span>
+            <span className="eyebrow">TASKS, CALENDAR AND NOTES</span>
             <h2>
-              Give them a place
+              See the day.
               <br />
-              to come together.
+              Find the work behind it.
             </h2>
             <p>
-              A planner for the whole picture, from everyday errands to your
-              next big thing.
+              Follow a task from its project notes to a time on your calendar.
+              Keep the details close when plans change.
             </p>
           </div>
           <div className="home-feature-grid">
@@ -354,11 +394,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <span className="home-feature-icon">
                 <Sparkles />
               </span>
-              <h3>An assistant that asks first.</h3>
+              <h3>Ask about your work.</h3>
               <p>
                 Ask for a summary of your week, a plan for tomorrow, or a change
-                of direction. It reads your tasks and your pages, and every
-                change it suggests waits for your approval.
+                of direction. Review its suggestions, or explicitly delegate a
+                task. You control its access and the changes it can make.
               </p>
               <div className="home-mini-chat">
                 “What needs my attention this week?”
@@ -369,21 +409,21 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <span className="home-feature-icon">
                 <Bell />
               </span>
-              <h3>A nudge before the rush.</h3>
+              <h3>Reminders you schedule.</h3>
               <p>
                 Choose when to be reminded — in the app, by email or on your
                 phone — and start each morning with a short digest of the day
                 ahead, in your inbox, Slack or Discord.
               </p>
               <div className="home-feature-note">
-                <span /> At the right time. In your own rhythm.
+                <span /> Choose the time and delivery channel.
               </div>
             </article>
             <article className="home-feature reveal" style={stagger(3)}>
               <span className="home-feature-icon">
                 <Clock />
               </span>
-              <h3>Stay with one thing.</h3>
+              <h3>Focus on a task.</h3>
               <p>
                 Focus mode keeps one task in front of you. The time you spend is
                 counted as you go, so you can see where the week went — and
@@ -394,6 +434,28 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </div>
             </article>
           </div>
+        </section>
+
+        <section className="home-features" id="companions">
+          <div className="home-section-heading reveal">
+            <span className="eyebrow">MEET YOUR COMPANION</span>
+            <h2>Choose a face. Give it a name.</h2>
+            <p>
+              Start with a familiar face, then choose its look, accessories and
+              movement. Keep it animated, still, or tucked away.
+            </p>
+          </div>
+          <ul
+            className="home-companion-grid"
+            aria-label="Orbyn character presets"
+          >
+            {CHARACTER_PRESETS.map(({ name, appearance }) => (
+              <li key={name}>
+                <Character appearance={appearance} name={name} size={96} />
+                <span>{name}</span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section className="home-features home-split" id="planning">
@@ -417,11 +479,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
         <section className="home-features" id="work">
           <div className="home-section-heading reveal">
             <span className="eyebrow">PROJECTS AND PAGES</span>
-            <h2>
-              The big things,
-              <br />
-              and the thinking behind them.
-            </h2>
+            <h2>Project tasks and their notes.</h2>
             <p>
               Projects keep the work in order. Pages keep the words beside it.
             </p>
@@ -466,11 +524,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
         <section className="home-features" id="together">
           <div className="home-section-heading reveal">
             <span className="eyebrow">TEAMS AND BOOKING</span>
-            <h2>
-              Leave room
-              <br />
-              for your people.
-            </h2>
+            <h2>Shared plans and booking.</h2>
             <p>Share what should be shared. Keep the rest your own.</p>
           </div>
           <div className="home-feature-grid">
@@ -489,7 +543,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <span>A</span>
                 <span>J</span>
                 <span>M</span>
-                <small>A shared orbit.</small>
+                <small>Shared with your team.</small>
               </div>
             </article>
             <article className="home-feature reveal" style={stagger(1)}>
@@ -545,26 +599,22 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-how" id="how-it-works">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">A SMALL START IS STILL A START</span>
-            <h2>
-              From on your mind
-              <br />
-              to in your plans.
-            </h2>
+            <span className="eyebrow">GET STARTED</span>
+            <h2>Add a task. Choose when to work.</h2>
           </div>
           <div className="home-steps">
             {[
               {
-                title: "Let it land.",
+                title: "Capture the work.",
                 body: "Capture a task, an event, or something you want to make time for — in plain words, from any device.",
               },
               {
-                title: "Find your rhythm.",
+                title: "Plan the time.",
                 body: "Give it a date, a priority and a rough size. Let Orbyn find it a time, or ask your assistant for a hand.",
               },
               {
-                title: "Keep moving, gently.",
-                body: "Check in from anywhere. Adjust as life changes. Celebrate the things you finish.",
+                title: "Review and adjust.",
+                body: "Check in from anywhere. Adjust as life changes. Review completed and unfinished work.",
               },
             ].map((step, n) => (
               <article key={step.title} className="reveal" style={stagger(n)}>
@@ -651,11 +701,9 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-final reveal">
           <Orbit size={37} />
-          <span className="eyebrow">
-            A LITTLE MORE CLARITY. A LITTLE MORE YOU.
-          </span>
-          <h2>Make space for a good day.</h2>
-          <p>Your next chapter can start with one small plan.</p>
+          <span className="eyebrow">TASKS · PLANNING · DELEGATED WORK</span>
+          <h2>Start with your next task.</h2>
+          <p>Keep your plans, notes and agent results together.</p>
           <button className="primary" onClick={start}>
             {signedIn ? "Open your planner" : "Create your space"}
             <ArrowRight size={17} />
@@ -667,7 +715,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <Orbit />
           orbyn<span>•</span>
         </a>
-        <span>Thoughtfully planned. Entirely yours.</span>
+        <span>Tasks, calendar, projects and notes.</span>
         <nav className="home-footer-links" aria-label="Footer">
           <a href="#planning" className="text-button">
             Planning

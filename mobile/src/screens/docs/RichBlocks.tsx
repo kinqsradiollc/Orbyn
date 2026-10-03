@@ -1,5 +1,8 @@
+import { DocNavigationContext } from "./doc-navigation";
+import { openAppUrl } from "../../hooks/useAppLinks";
 import React, {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -7,6 +10,7 @@ import React, {
 } from "react";
 import {
   Image,
+  Alert,
   Modal,
   PanResponder,
   ScrollView,
@@ -17,27 +21,22 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Pressable } from "../../motion";
-import Svg, {
-  Circle as SvgCircle,
-  G,
-  Path as SvgPath,
-  Rect as SvgRect,
-  Text as SvgText,
-} from "react-native-svg";
+import { MermaidDiagram } from "../../components/MermaidDiagram";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CALLOUT_LABELS,
+  FRONTMATTER_LANG,
+  docCodeLabel,
   colourCode,
   colourable,
-  diagramKind,
   docObjectLinks,
+  docReferenceLinks,
+  footnoteNumbers,
   fileSize,
-  layoutFlowchart,
   isAudio,
   PAGE_FILE_TYPES,
   recordingClock,
   parseEmbed,
-  parseFlowchart,
   parseTable,
   tableMarkdown,
   type CalloutKind,
@@ -47,6 +46,7 @@ import {
 } from "@orbyn/core";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { client } from "../../lib/api";
+import { copyText } from "../../lib/share";
 import { saveFile } from "../../lib/download";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Icon, type IconName } from "../../components/Icon";
@@ -58,12 +58,13 @@ import { openObject, pillKey, shortDue, usePagePills } from "./links";
 /**
  * The richer lines of a page on the phone (D4b): callouts, tables (edited
  * in a sheet of cells), pictures with a full-screen viewer, files, footnotes,
- * coloured code, flowcharts drawn natively, and live embeds of another
+ * coloured code, isolated Mermaid diagrams, and live embeds of another
  * page's section or of the tasks the page links to.
  */
 
 // ------------------------------------------------------------- footnotes ---
 
+import { FootnoteContext } from "./footnotes";
 export { FootnoteContext } from "./footnotes";
 
 /** A footnote's words, as the page lists them. */
@@ -806,171 +807,97 @@ export function FileCard({
 
 // ------------------------------------------------------------------ code ---
 
-/** A code block, coloured for the languages students and teams write most. */
+/** Copyable preserved source with contained scrolling and readable metadata naming. */
 export function CodeView({ text, lang }: { text: string; lang: string }) {
+  const metadata = lang === FRONTMATTER_LANG;
+  const [open, setOpen] = useState(!metadata);
+  const [source, setSource] = useState(false);
+  const highlighted = colourable(lang);
   const tokens = useMemo(
-    () => (colourable(lang) ? colourCode(text, lang) : null),
-    [text, lang],
+    () => (highlighted && !source ? colourCode(text, lang) : null),
+    [text, lang, source, highlighted],
   );
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <Text style={s.code}>
-        {tokens
-          ? tokens.map((t, i) => (
-              <Text
-                key={i}
-                style={
-                  t.kind === "keyword"
-                    ? s.codeKeyword
-                    : t.kind === "string"
-                      ? s.codeString
-                      : t.kind === "comment"
-                        ? s.codeComment
-                        : t.kind === "number"
-                          ? s.codeNumber
-                          : t.kind === "name"
-                            ? s.codeName
-                            : undefined
-                }
-              >
-                {t.text}
-              </Text>
-            ))
-          : text}
-      </Text>
-    </ScrollView>
+    <View style={s.codeBlock}>
+      <View style={s.codeToolbar}>
+        <Text style={s.codeLabel} numberOfLines={2}>
+          {docCodeLabel(lang)}
+        </Text>
+        {metadata ? (
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={8}
+            accessibilityState={{ expanded: open }}
+            onPress={() => setOpen(!open)}
+            style={s.codeButton}
+          >
+            <Text style={s.codeAction}>
+              {open ? "Hide source" : "View source"}
+            </Text>
+          </Pressable>
+        ) : highlighted ? (
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={8}
+            accessibilityState={{ selected: source }}
+            onPress={() => setSource(!source)}
+            style={s.codeButton}
+          >
+            <Text style={s.codeAction}>{source ? "Highlight" : "Source"}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() =>
+            void copyText(text, metadata ? "Metadata copied" : "Code copied")
+          }
+          style={s.codeButton}
+        >
+          <Text style={s.codeAction}>Copy</Text>
+        </Pressable>
+      </View>
+      {open && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          accessibilityLabel={metadata ? "YAML metadata source" : "Code source"}
+        >
+          <Text selectable style={s.code}>
+            {tokens
+              ? tokens.map((token, index) => (
+                  <Text
+                    key={index}
+                    style={
+                      token.kind === "keyword"
+                        ? s.codeKeyword
+                        : token.kind === "string"
+                          ? s.codeString
+                          : token.kind === "comment"
+                            ? s.codeComment
+                            : token.kind === "number"
+                              ? s.codeNumber
+                              : token.kind === "name"
+                                ? s.codeName
+                                : undefined
+                    }
+                  >
+                    {token.text}
+                  </Text>
+                ))
+              : text}
+          </Text>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
 // -------------------------------------------------------------- diagrams ---
 
-/**
- * A `mermaid` block (EDT-11). A flowchart is laid out and drawn here with
- * the palette's colours, and a node that links to a page or task opens it;
- * other kinds show their words, to be seen drawn on the web or desktop.
- */
+/** All supported Mermaid families render through the bundled isolated surface. */
 export function DiagramView({ text }: { text: string }) {
-  const chart = useMemo(() => parseFlowchart(text), [text]);
-  const layout = useMemo(
-    () => (chart ? layoutFlowchart(chart) : null),
-    [chart],
-  );
-  if (!chart || !layout)
-    return (
-      <View style={s.block}>
-        <Text style={s.muted}>
-          This {diagramKind(text) === "unknown" ? "diagram" : diagramKind(text)}{" "}
-          is drawn on the web and desktop. Its words:
-        </Text>
-        <CodeView text={text} lang="" />
-      </View>
-    );
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View
-        style={s.diagram}
-        accessibilityRole="image"
-        accessibilityLabel={`Flowchart: ${chart.nodes.map((n) => n.label).join(", ")}`}
-      >
-        <Svg width={layout.width} height={layout.height}>
-          {layout.edges.map((e, i) => {
-            const [[x1, y1], [x2, y2]] = e.points;
-            const angle = Math.atan2(y2 - y1, x2 - x1);
-            const head = (a: number) =>
-              `${x2 - 8 * Math.cos(angle + a)},${y2 - 8 * Math.sin(angle + a)}`;
-            return (
-              <G key={i}>
-                <SvgPath
-                  d={`M${x1},${y1} L${x2},${y2}`}
-                  stroke={colors.muted}
-                  strokeWidth={e.style === "thick" ? 2.4 : 1.4}
-                  strokeDasharray={e.style === "dotted" ? "4 4" : undefined}
-                  fill="none"
-                />
-                {e.arrow && (
-                  <SvgPath
-                    d={`M${head(0.45)} L${x2},${y2} L${head(-0.45)}`}
-                    stroke={colors.muted}
-                    strokeWidth={1.4}
-                    fill="none"
-                  />
-                )}
-                {!!e.label && (
-                  <SvgText
-                    x={(x1 + x2) / 2}
-                    y={(y1 + y2) / 2 - 4}
-                    fontSize={11}
-                    fontFamily={fonts.regular}
-                    fill={colors.textSoft}
-                    textAnchor="middle"
-                  >
-                    {e.label}
-                  </SvgText>
-                )}
-              </G>
-            );
-          })}
-          {layout.nodes.map((n) => {
-            const cx = n.x + n.w / 2;
-            const cy = n.y + n.h / 2;
-            const open = n.link ? () => openObject(n.link!) : undefined;
-            const shape =
-              n.shape === "circle" ? (
-                <SvgCircle
-                  cx={cx}
-                  cy={cy}
-                  r={n.w / 2}
-                  fill={colors.surface}
-                  stroke={colors.accent}
-                  strokeWidth={1.2}
-                  onPress={open}
-                />
-              ) : n.shape === "diamond" ? (
-                <SvgPath
-                  d={`M${cx},${n.y} L${n.x + n.w},${cy} L${cx},${n.y + n.h} L${n.x},${cy} Z`}
-                  fill={colors.surface}
-                  stroke={colors.accent}
-                  strokeWidth={1.2}
-                  onPress={open}
-                />
-              ) : (
-                <SvgRect
-                  x={n.x}
-                  y={n.y}
-                  width={n.w}
-                  height={n.h}
-                  rx={n.shape === "box" ? 6 : n.h / 2}
-                  fill={colors.surface}
-                  stroke={colors.accent}
-                  strokeWidth={1.2}
-                  onPress={open}
-                />
-              );
-            const lines = n.label.split(/<br\s*\/?>|\n/);
-            return (
-              <G key={n.id}>
-                {shape}
-                {lines.map((line, i) => (
-                  <SvgText
-                    key={i}
-                    x={cx}
-                    y={cy + 4 + (i - (lines.length - 1) / 2) * 16}
-                    fontSize={13}
-                    fontFamily={fonts.regular}
-                    fill={n.link ? colors.accent : colors.text}
-                    textAnchor="middle"
-                    onPress={open}
-                  >
-                    {line}
-                  </SvgText>
-                ))}
-              </G>
-            );
-          })}
-        </Svg>
-      </View>
-    </ScrollView>
-  );
+  return <MermaidDiagram text={text} />;
 }
 
 // ---------------------------------------------------------------- embeds ---
@@ -1043,7 +970,11 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
       {section.missing ? (
         <Text style={s.muted}>The part of the page this showed has gone.</Text>
       ) : (
-        <SectionBody blocks={section.blocks} />
+        <SectionBody
+          docId={section.doc_id}
+          blocks={section.blocks}
+          references={section.references}
+        />
       )}
       {section.more && (
         <Text style={s.muted}>Open the page to read the rest.</Text>
@@ -1057,10 +988,50 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
  * body is read when it's needed rather than imported, since the body draws
  * embeds too.
  */
-function SectionBody({ blocks }: { blocks: DocBlock[] }) {
+function SectionBody({
+  docId,
+  blocks,
+  references,
+}: {
+  docId: string;
+  blocks: DocBlock[];
+  references?: [string, string][];
+}) {
+  const parentNavigation = useContext(DocNavigationContext);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DocBody } = require("./DocBody") as typeof import("./DocBody");
-  return <DocBody content={blocks} />;
+  const context = useMemo(
+    () => ({
+      numbers: footnoteNumbers(blocks),
+      texts: new Map(
+        blocks
+          .filter((b) => b.type === "footnote")
+          .map((b) => [b.label, b.text]),
+      ),
+      references: references ? new Map(references) : docReferenceLinks(blocks),
+    }),
+    [blocks, references],
+  );
+  return (
+    <DocNavigationContext.Provider
+      value={{
+        onFragment: (fragment) =>
+          openObject({ kind: "doc", id: docId }, fragment),
+        onAppLink: openAppUrl,
+        report:
+          parentNavigation?.report ??
+          ((error) =>
+            Alert.alert(
+              "Could not open link",
+              error instanceof Error ? error.message : "Please try again.",
+            )),
+      }}
+    >
+      <FootnoteContext.Provider value={context}>
+        <DocBody content={blocks} />
+      </FootnoteContext.Provider>
+    </DocNavigationContext.Provider>
+  );
 }
 
 function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
@@ -1295,11 +1266,35 @@ const s = themed(() =>
       justifyContent: "center",
       backgroundColor: colors.accentSoft,
     },
+    codeBlock: { minWidth: 0, gap: 4 },
+    codeToolbar: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 4,
+    },
+    codeLabel: {
+      color: colors.muted,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      flexShrink: 1,
+      maxWidth: "100%",
+    },
+    codeButton: {
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      minHeight: controls.compact,
+    },
+    codeAction: {
+      color: colors.accent,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+    },
     code: {
       color: colors.text,
       fontSize: 13,
       lineHeight: 19,
-      fontFamily: "monospace",
+      fontFamily: fonts.mono,
       backgroundColor: colors.surfaceMuted,
       borderRadius: radii.input,
       padding: 12,

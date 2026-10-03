@@ -218,7 +218,7 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
       const row = (
         await pool.query<{ name: string; mime: string; kind: string }>(
           `SELECT name, mime, kind FROM page_files
-            WHERE id = $1 AND status = 'ready' AND doc_id IS NOT NULL`,
+            WHERE id = $1 AND status = 'ready'`,
           [claim.f],
         )
       ).rows[0];
