@@ -48,12 +48,24 @@ export async function resolvePluginCaller(
       [digest(token)],
     )
   ).rows[0];
+  return pluginPrincipalFromGrant(row, settings, resources.plugin!, db);
+}
+
+/** Shared live grant/client checks for HTTP calls and server-owned import producers. */
+export async function pluginPrincipalFromGrant(
+  row: GrantRow | undefined,
+  settings: LiveSettings,
+  resource: string,
+  db: Queryable = pool,
+): Promise<{ principal: Principal; expiresAt: Date }> {
+  if (!settings.agents.agents_enabled)
+    throw new PluginAuthError(403, "Plugin connections are disabled.");
   if (
     !row ||
     row.kind !== "oauth" ||
     row.resource_kind !== "plugin" ||
     !row.client_id ||
-    row.resource !== resources.plugin ||
+    row.resource !== resource ||
     !row.token_expires_at ||
     row.revoked_at ||
     row.token_expires_at.getTime() <= Date.now() ||

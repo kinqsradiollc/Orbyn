@@ -631,6 +631,19 @@ Protocol tests establish exchange behavior with synthetic authorized callbacks,
 not actual account, provider or hosted UI acceptance. Remaining C6 gates and the
 full retained implementation scope stay open in docs/reviews/task.md.
 
+### Plugin async import candidate — 3 October 2026
+
+The separate plugin backend now has a local candidate for durable import handles
+and bounded status-event replay through its independently authenticated grant.
+It reuses domain import/receipt execution, records content-free transitions,
+revalidates current project/document scope at retrieval and binds reconnect
+positions to current account/grant/client/resource/job authority. See
+`docs/reviews/evidence/plugin-import-jobs.md` for actual route/unit evidence and
+remaining gates. Converter writes still require originating-grant provenance and
+current write-policy checks; protocol async jobs and actual provider/host launch
+acceptance also remain open. This candidate does not complete C6 or the full
+C1–C6/M1/D1/U1 goal and must not be promoted before the write guard is proven.
+
 ### Home/task layout correction from user review — 3 October 2026
 
 User screenshots identify excessive repeated explanatory copy on signed-in Home
@@ -644,3 +657,15 @@ controls and direct empty-state copy. Native screenshot fixture proof is limited
 to the inspected component; real account/runtime, Android, all other surfaces and
 full C1–C6/M1/D1/U1 acceptance remain open. Web visuals remain delegated to the
 user's preview/test-server review under the existing permission restriction.
+
+### Plugin import producer guard follow-up — 3 October 2026
+
+The originating grant/client/recipient is now captured by both synchronous and
+async plugin import starts. Upload admission, post-stream commit and converter
+page creation recheck live authority; FK deletion retains the origin flag and
+never falls back to first-party power. Real uploaded Word conversion,13 denial
+variants and mid-stream encrypted-object cleanup are tested. This supersedes
+the earlier missing-producer-guard note. Latest-main full/CI qualification and
+remaining protocol/host/account/provider gates still apply; full C1–C6/M1/D1/U1
+remains incomplete. Legacy in-flight imports require the documented rollout
+handling rather than invented identity snapshots.

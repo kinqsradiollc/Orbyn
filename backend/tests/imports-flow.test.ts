@@ -1,7 +1,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument, StandardFonts } from "pdf-lib";
@@ -21,12 +22,16 @@ process.env.FILES_DIR = dir;
 process.env.OCR_URL = "";
 // This machine's disk may be nearly full; the space guard is tested apart.
 process.env.FILES_MIN_FREE_MB = "0";
+process.env.PLUGIN_PUBLIC_URL = "https://plugin-import.example.test/api";
 const { env } = await import("../src/config/env.js");
 const { buildApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { zip } = await import("../src/modules/docs/zip.js");
 const { convertPending } = await import("../src/modules/imports/converter.js");
+const { buildPluginService } = await import("../src/app.js");
+const { digest } = await import("../src/lib/auth.js");
+const { objectPaths } = await import("../src/modules/imports/store.js");
 const app = await buildApp();
 let caller = 0;
 const address = () => `10.17.${Math.floor(++caller / 250)}.${caller % 250}`;
@@ -284,6 +289,272 @@ function wordFile() {
     },
   ]);
 }
+
+test("real plugin Word conversion rechecks producer authority before saving a page", async () => {
+  const plugin = await buildPluginService();
+  const cases = [
+    "allowed",
+    "revoked",
+    "deleted",
+    "read-only",
+    "no-personal",
+    "ask-first",
+    "blocked-client",
+    "excluded-project",
+    "expired-token",
+    "expired-grant",
+    "disabled-owner",
+    "lost-files",
+    "revoked-before-upload",
+    "revoked-mid-upload",
+  ] as const;
+  try {
+    for (const scenario of cases) {
+      const me = await person();
+      const clientId = `plugin-import-${randomUUID()}`;
+      const bearer = `oat_${randomUUID()}`;
+      await pool.query(
+        "INSERT INTO oauth_clients(id,kind,name,host,redirect_uris) VALUES ($1,'dcr','Import fixture','fixture.example.test',ARRAY['https://fixture.example.test/callback'])",
+        [clientId],
+      );
+      const grantId = (
+        await pool.query(
+          "INSERT INTO agent_grants(user_id,kind,resource_kind,client_id,access,personal,toolsets,trust,authorized_at) VALUES ($1,'oauth','plugin',$2,'write',true,ARRAY['files'],'full',now()) RETURNING id",
+          [me.id, clientId],
+        )
+      ).rows[0].id;
+      await pool.query(
+        "INSERT INTO agent_tokens(token_hash,grant_id,kind,resource,expires_at) VALUES ($1,$2,'access',$3,now()+interval '1 hour')",
+        [digest(bearer), grantId, env.PLUGIN_PUBLIC_URL],
+      );
+      const project =
+        scenario === "excluded-project"
+          ? (
+              await call(me.token, "POST", "/projects", {
+                name: `Plugin ${scenario}`,
+              })
+            ).body.id
+          : undefined;
+      const bytes = wordFile();
+      const created = await plugin.inject({
+        method: "POST",
+        url: "/plugin/jobs/imports",
+        remoteAddress: address(),
+        headers: { authorization: `Bearer ${bearer}` },
+        payload: {
+          name: "start_import",
+          arguments: {
+            file_name: `plugin-${scenario}.docx`,
+            bytes: bytes.length,
+            client_ref: `import-${randomUUID()}`,
+            ...(project ? { project: `project:${project}` } : {}),
+          },
+        },
+      });
+      assert.equal(created.statusCode, 200, scenario);
+      assert.ok(created.json().job?.id, scenario);
+      const result = created.json().result.structuredContent;
+      const id = result.done[0].id.slice("import:".length);
+      const origin = (
+        await pool.query(
+          "SELECT plugin_owned,plugin_grant_id,plugin_client_id,plugin_resource FROM imports WHERE id=$1",
+          [id],
+        )
+      ).rows[0];
+      assert.deepEqual(origin, {
+        plugin_owned: true,
+        plugin_grant_id: grantId,
+        plugin_client_id: clientId,
+        plugin_resource: env.PLUGIN_PUBLIC_URL,
+      });
+      const uploadPath = new URL(result.upload_url).pathname.replace(
+        /^\/api/,
+        "",
+      );
+      if (scenario === "revoked-before-upload")
+        await pool.query(
+          "UPDATE agent_grants SET revoked_at=now() WHERE id=$1",
+          [grantId],
+        );
+      let streamedObject: string | undefined;
+      const stream =
+        scenario === "revoked-mid-upload"
+          ? Readable.from(
+              (async function* () {
+                yield bytes.subarray(0, Math.floor(bytes.length / 2));
+                const deadline = Date.now() + 5000;
+                while (
+                  !(
+                    await pool.query(
+                      "SELECT object_id FROM imports WHERE id=$1",
+                      [id],
+                    )
+                  ).rows[0].object_id
+                ) {
+                  assert.ok(
+                    Date.now() < deadline,
+                    "upload reservation must precede mid-stream revocation",
+                  );
+                  await new Promise((done) => setTimeout(done, 5));
+                }
+                streamedObject = (
+                  await pool.query(
+                    "SELECT object_id FROM imports WHERE id=$1",
+                    [id],
+                  )
+                ).rows[0].object_id;
+                await pool.query(
+                  "UPDATE agent_grants SET revoked_at=now() WHERE id=$1",
+                  [grantId],
+                );
+                yield bytes.subarray(Math.floor(bytes.length / 2));
+              })(),
+            )
+          : bytes;
+      const uploaded = await app.inject({
+        method: "PUT",
+        url: uploadPath,
+        remoteAddress: address(),
+        headers: {
+          "content-type":
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+        payload: stream,
+      });
+      if (
+        scenario === "revoked-before-upload" ||
+        scenario === "revoked-mid-upload"
+      ) {
+        assert.equal(uploaded.statusCode, 403, scenario);
+        const refused = (
+          await pool.query("SELECT object_id,status FROM imports WHERE id=$1", [
+            id,
+          ])
+        ).rows[0];
+        assert.equal(refused.object_id, null, scenario);
+        if (scenario === "revoked-mid-upload") {
+          assert.ok(streamedObject);
+          const paths = objectPaths(streamedObject!, dir);
+          await assert.rejects(access(paths.data), { code: "ENOENT" });
+          await assert.rejects(access(paths.key), { code: "ENOENT" });
+        }
+        assert.equal(
+          refused.status,
+          scenario === "revoked-before-upload" ? "waiting" : "failed",
+          scenario,
+        );
+        assert.equal(
+          (
+            await pool.query("SELECT count(*) FROM docs WHERE user_id=$1", [
+              me.id,
+            ])
+          ).rows[0].count,
+          "0",
+        );
+        await pool.query("DELETE FROM users WHERE id=$1", [me.id]);
+        await pool.query("DELETE FROM oauth_clients WHERE id=$1", [clientId]);
+        continue;
+      }
+      assert.equal(uploaded.statusCode, 201, scenario);
+      if (scenario === "revoked")
+        await pool.query(
+          "UPDATE agent_grants SET revoked_at=now() WHERE id=$1",
+          [grantId],
+        );
+      if (scenario === "deleted")
+        await pool.query("DELETE FROM agent_grants WHERE id=$1", [grantId]);
+      if (scenario === "read-only")
+        await pool.query("UPDATE agent_grants SET access='read' WHERE id=$1", [
+          grantId,
+        ]);
+      if (scenario === "no-personal")
+        await pool.query("UPDATE agent_grants SET personal=false WHERE id=$1", [
+          grantId,
+        ]);
+      if (scenario === "ask-first")
+        await pool.query("UPDATE agent_grants SET trust='ask' WHERE id=$1", [
+          grantId,
+        ]);
+      if (scenario === "blocked-client")
+        await pool.query("UPDATE oauth_clients SET blocked=true WHERE id=$1", [
+          clientId,
+        ]);
+      if (project)
+        await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+          project,
+        ]);
+      if (scenario === "expired-token")
+        await pool.query(
+          "UPDATE agent_tokens SET expires_at=now()-interval '1 second' WHERE grant_id=$1",
+          [grantId],
+        );
+      if (scenario === "expired-grant")
+        await pool.query(
+          "UPDATE agent_grants SET expires_at=now()-interval '1 second' WHERE id=$1",
+          [grantId],
+        );
+      if (scenario === "disabled-owner")
+        await pool.query("UPDATE users SET disabled=true WHERE id=$1", [me.id]);
+      if (scenario === "lost-files")
+        await pool.query(
+          "UPDATE agent_grants SET toolsets=ARRAY['core'] WHERE id=$1",
+          [grantId],
+        );
+      await convertPending();
+      const outcome =
+        scenario === "disabled-owner"
+          ? (
+              await pool.query(
+                "SELECT status,doc_id,error FROM imports WHERE id=$1",
+                [id],
+              )
+            ).rows[0]
+          : (await call(me.token, "GET", `/imports/${id}`)).body;
+      if (scenario === "allowed") {
+        assert.equal(outcome.status, "ready");
+        assert.ok(outcome.doc_id);
+        assert.equal(
+          (await call(me.token, "GET", `/docs/${outcome.doc_id}`)).body.title,
+          "Consensus",
+        );
+        const events = await plugin.inject({
+          url: `/plugin/jobs/${created.json().job.id}/events`,
+          remoteAddress: address(),
+          headers: { authorization: `Bearer ${bearer}` },
+        });
+        assert.equal(events.statusCode, 200);
+        assert.equal(events.json().result.id, `doc:${outcome.doc_id}`);
+      } else {
+        assert.equal(outcome.status, "failed", scenario);
+        assert.equal(outcome.doc_id, null, scenario);
+        assert.match(outcome.error, /Nothing was shared/, scenario);
+        assert.equal(
+          (
+            await pool.query("SELECT count(*) FROM docs WHERE user_id=$1", [
+              me.id,
+            ])
+          ).rows[0].count,
+          "0",
+          scenario,
+        );
+      }
+      if (scenario === "deleted")
+        assert.equal(
+          (
+            await pool.query(
+              "SELECT plugin_owned,plugin_grant_id FROM imports WHERE id=$1",
+              [id],
+            )
+          ).rows[0].plugin_owned,
+          true,
+        );
+      await pool.query("DELETE FROM users WHERE id=$1", [me.id]);
+      await pool.query("DELETE FROM oauth_clients WHERE id=$1", [clientId]);
+    }
+  } finally {
+    await plugin.close();
+  }
+});
 
 test("a Word file becomes a page in Uploads, with its equation, and the file is deleted", async () => {
   const me = await person();

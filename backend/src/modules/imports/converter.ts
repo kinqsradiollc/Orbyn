@@ -17,6 +17,12 @@ import { formulaAvailable, readFormulas } from "./formula.js";
 import { ocrImage, renderPdfPage, tesseractAvailable } from "./tesseract.js";
 import { serviceKey } from "./tokens.js";
 import { actAs } from "../../lib/actor.js";
+import { settings } from "../../lib/settings.js";
+import {
+  pluginImportProducer,
+  PluginImportAuthorityError,
+  type PluginImportOrigin,
+} from "./plugin-producer.js";
 
 /**
  * The converter: turns uploaded files into Orbyn pages.
@@ -520,18 +526,20 @@ async function finish(importId: string) {
   // Only one lane finishes an import, and never a cancelled one.
   const row = (
     await pool.query<
-      ImportRow & {
-        notes: string[];
-        project_id: string | null;
-        project_team_id: string | null;
-        keep_original: boolean;
-        bytes: string | number;
-      }
+      ImportRow &
+        PluginImportOrigin & {
+          notes: string[];
+          project_id: string | null;
+          project_team_id: string | null;
+          keep_original: boolean;
+          bytes: string | number;
+        }
     >(
       `UPDATE imports SET finished_at = now()
         WHERE id = $1 AND status IN ('reading','ocr') AND finished_at IS NULL
         RETURNING id, user_id, file_name, file_type, object_id, attempts,
-          notes, project_id, project_team_id, keep_original, bytes`,
+          notes, project_id, project_team_id, keep_original, bytes,
+          plugin_owned, plugin_grant_id, plugin_client_id, plugin_resource`,
       [importId],
     )
   ).rows[0];
@@ -566,7 +574,15 @@ async function finish(importId: string) {
       notes: row.notes ?? [],
     });
     await transaction(async (db) => {
-      await actAs(db, row.user_id);
+      const producer = await pluginImportProducer(
+        db,
+        row.user_id,
+        row,
+        row.project_id,
+        row.project_team_id,
+        await settings(),
+      );
+      await actAs(db, row.user_id, producer?.principal.grant_id ?? undefined);
       const project = row.project_id
         ? (
             await db.query<{ name: string; team_id: string | null }>(
@@ -586,6 +602,8 @@ async function finish(importId: string) {
         throw new ImportFailure(
           "This project or your access to it changed while the file was being read. Nothing was shared. Import it again after checking the project.",
         );
+      if (producer && producer.expiresAt.getTime() <= Date.now())
+        throw new PluginImportAuthorityError();
       const docId = (
         await db.query<{ id: string }>(
           `INSERT INTO docs (user_id, team_id, project_id, title, kind, content,
@@ -645,7 +663,8 @@ async function finish(importId: string) {
   } catch (error) {
     log("finish failed", { import: row.id, error: (error as Error).message });
     const message =
-      error instanceof ImportFailure
+      error instanceof ImportFailure ||
+      error instanceof PluginImportAuthorityError
         ? error.message
         : "This file couldn't be turned into a page. Please try again.";
     await pool.query(

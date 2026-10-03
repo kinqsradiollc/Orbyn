@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IMPORT_LIMITS } from "@orbyn/core";
+import { env } from "../config/env.js";
 import {
   cancelImport,
   importCapabilities,
@@ -193,6 +194,17 @@ export const startImportCapability = defineCapability({
         ? { project_id: project.id, project_team_id: project.team_id }
         : {}),
     });
+    if (ctx.principal.via === "plugin")
+      await dbOf(ctx).query(
+        `UPDATE imports SET plugin_owned=true, plugin_grant_id=$2,
+          plugin_client_id=$3, plugin_resource=$4 WHERE id=$1`,
+        [
+          started.import.id,
+          ctx.principal.grant_id,
+          ctx.principal.client.id,
+          env.PLUGIN_PUBLIC_URL,
+        ],
+      );
     const answer = await finishWrite(ctx, "Importing", {
       done: [
         {
