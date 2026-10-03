@@ -47,13 +47,25 @@ export type AppLink =
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const validFragment = (fragment: string) =>
+  fragment.length <= 512 && /^[\p{L}\p{N}\p{M}_-]+$/u.test(fragment);
+
+/** Decode a bounded heading or block fragment, preserving Unicode heading slugs. */
+export function appLinkFragment(hash: string): string | null {
+  if (!hash.startsWith("#") || hash.length > 6145) return null;
+  try {
+    const fragment = decodeURIComponent(hash.slice(1));
+    return validFragment(fragment) ? fragment : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The path that opens a page, task or project in the web app. */
 export const appPath = (target: LinkTarget) =>
   `/app/${target.kind}/${target.id.toLowerCase()}${
-    target.kind === "doc" &&
-    target.block &&
-    /^[A-Za-z0-9_-]{1,64}$/.test(target.block)
-      ? `#${target.block}`
+    target.kind === "doc" && target.block && validFragment(target.block)
+      ? `#${encodeURIComponent(target.block)}`
       : ""
   }`;
 
@@ -103,7 +115,7 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   if ((head === "task" || head === "doc" || head === "project") && id) {
     if (rest.length || !UUID.test(id)) return null;
     // A page's link can name a line to open it at: /app/doc/<id>#<line>.
-    const line = /^#([A-Za-z0-9_-]{1,64})$/.exec(parsed.hash)?.[1];
+    const line = appLinkFragment(parsed.hash);
     if (head === "doc" && line)
       return { kind: head, id: id.toLowerCase(), block: line };
     return { kind: head, id: id.toLowerCase() };

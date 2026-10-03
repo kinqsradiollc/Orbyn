@@ -1,0 +1,11 @@
+# Docs source and preview candidate — 3 October 2026
+
+Scoped branch `codex/docs-source-preview-ui`, based on embedded-reference79fa1043. Broad e7 source and all review branches preserved.
+
+Both editors expose Source / preview from the page menu. Desktop uses a modal with synchronized block/line selection and scroll geometry; mobile toggles source/rendered content in a sheet. Panels inspect the current editor blocks and own no additional draft/save request. Native opening settles the current line draft. A panel is keyed to its document ID and hides when documents switch.
+
+Shared mapping preserves anchored Markdown, fences and metadata. Local preview references/footnotes use the page's own context. Unicode/long heading fragments use bounded shared decoding rather than ASCII-only desktop parsing.
+
+Focused mapping/component/navigation18/18 passed after restoring the desktop deep-link dependency. The first navigation run17/18 caught desktop dropping Unicode fragments; the assertion was retained. Ordinary editors now use current-draft fragment navigation and unfold only covering sections after saved folds load. Native navigation can repeat and waits for measured line coordinates. Embedded sections own their source-page navigation context. Two tests execute the actual section components and verify Unicode fragment callbacks open the source page, never the containing page.
+
+Current focused mapping/component/navigation/section checks20/20 pass. Combined rich-page/export/image/revision/privacy/navigation checks115/115 pass, zero skips/cancellations. All workspace types, production builds and full formatting pass. The first final typecheck caught OPEN_LINK_EVENT imported from the wrong module; corrected it to DocLinks and retained the failure log. Logs: `/tmp/orbyn-doc-navigation-section-focused.log`, `/tmp/orbyn-doc-source-preview-regressions.log`, `/tmp/orbyn-doc-navigation-section-types-2.log`, `/tmp/orbyn-doc-source-preview-build.log`, `/tmp/orbyn-doc-source-preview-format.log`. Remaining: matching-head full local/CI and native/editor visual/interaction acceptance. Source panels are inspectors; broader source editing/typing acceptance remains open. No claim that D1/U1 is finished.

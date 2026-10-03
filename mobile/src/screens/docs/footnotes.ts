@@ -9,5 +9,6 @@ import { createContext } from "react";
 export const FootnoteContext = createContext<{
   numbers: Map<string, number>;
   texts: Map<string, string>;
+  references?: ReadonlyMap<string, string>;
   onShow?: (n: string, words: string) => void;
 }>({ numbers: new Map(), texts: new Map() });

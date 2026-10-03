@@ -86,9 +86,10 @@ export async function copyLink(target: LinkTarget, title: string) {
 export async function copyText(text: string, done = "Copied") {
   try {
     if (Platform.OS === "web") {
-      await (
-        globalThis.navigator as Navigator | undefined
-      )?.clipboard?.writeText(text);
+      const clipboard = (globalThis.navigator as Navigator | undefined)
+        ?.clipboard;
+      if (!clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await clipboard.writeText(text);
     } else {
       const clipboard = nativeClipboard();
       if (!clipboard) {

@@ -221,6 +221,7 @@ ${style("Title", "Title", '<w:pPr><w:spacing w:after="240"/></w:pPr><w:rPr><w:b/
 ${style("Heading1", "heading 1", '<w:pPr><w:spacing w:before="320" w:after="120"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr>')}
 ${style("Heading2", "heading 2", '<w:pPr><w:spacing w:before="280" w:after="120"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/></w:rPr>')}
 ${style("Heading3", "heading 3", '<w:pPr><w:spacing w:before="240" w:after="120"/><w:outlineLvl w:val="2"/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/></w:rPr>')}
+${[4, 5, 6].map((level) => style(`Heading${level}`, `heading ${level}`, `<w:pPr><w:spacing w:before="200" w:after="100"/><w:outlineLvl w:val="${level - 1}"/></w:pPr><w:rPr><w:b/><w:sz w:val="26"/></w:rPr>`)).join("")}
 ${style("Quote", "Quote", '<w:pPr><w:ind w:left="480"/><w:spacing w:before="120" w:after="120"/></w:pPr><w:rPr><w:i/><w:color w:val="555555"/></w:rPr>')}
 ${style("Code", "Code", '<w:pPr><w:spacing w:after="0"/></w:pPr><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/><w:sz w:val="20"/></w:rPr>')}
 ${style("ListParagraph", "List Paragraph", '<w:pPr><w:ind w:left="720"/><w:spacing w:after="80"/></w:pPr>')}

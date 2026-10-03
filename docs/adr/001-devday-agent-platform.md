@@ -521,3 +521,79 @@ Preserve palette, all character presets and evidence-based idle status.
 This is a presentation candidate atop PR165, not a worker or reflection change.
 User test-server web review remains outstanding; native interaction/screenshot
 acceptance is still required. Complete C1–C6/M1/D1/U1 remains active.
+
+### Scoped Markdown parity qualification — 3 October 2026
+
+Six-level headings and page-scoped references must work across schemas, saved
+pages, private read projections, comment positions, Word/clipboard exports and
+both clients. Reference definitions remain editable Markdown; HTML does not
+show them as page text. The scoped candidate preserves the existing publication
+and diagram changes on main1100ca98. See
+`docs/reviews/evidence/markdown-parity.md` for evidence and remaining acceptance
+gates. This does not close D1 or the wider UI scope.
+
+### Embedded reference context — 3 October 2026
+
+An embedded section resolves references from its authorized source page, even
+when the definitions are outside the selected heading. Privacy projection
+precedes section selection; inaccessible object destinations are excluded from
+the returned context. Both clients isolate embedded reference and footnote
+contexts from the containing page. See
+`docs/reviews/evidence/reference-embeds.md`; runtime/visual acceptance and full
+qualification remain open.
+
+### Current-draft source inspection and fragment navigation — 3 October 2026
+
+Scoped candidate atop PR169: both page menus expose a source/rendered inspector
+for current editor blocks; the panel owns no second draft/save. Document identity
+fences hide the panel on a page switch. Web selection and scrolling map between
+anchored Markdown lines and rendered blocks; mobile offers source/rendered tabs.
+
+Ordinary editors resolve bounded Unicode heading fragments and unfold only
+sections covering the target, waiting for saved fold preferences. Embedded
+fragments open the source page through their own navigation context. Retain
+page-scoped references and current authorization; no parent-page fragment reuse.
+Current candidate passes20 focused and115 combined export/rich-page/navigation
+checks plus all workspace types/builds/full formatting. Full matching-head local
+and CI qualification and actual editor/native screenshot/interaction acceptance
+remain required. Source editing, the other D1 Markdown requirements and full U1
+remain open; no goal completion, deployment or cleanup is claimed.
+
+### Native and desktop diagram preview candidate — 3 October 2026
+
+Scoped candidate on PR172 replaces mobile flowchart-only rendering with the
+bundled strict engine and gives desktop bounded rendering plus source/fit/zoom/
+pan/SVG controls. Native canvas adapts to the window and tall fit diagrams expose
+pan. All ten native synthetic fixtures rendered; source, fit/zoom and pan were
+exercised, and SVG export opened the native share sheet. Evidence and retained
+failures: `../reviews/evidence/native-diagram-parity.md`. Full final-head tests,
+CI, signed-in editor/parent-scroll/Android/web acceptance remain open. This does
+not complete D1/U1 or authorize deployment. All C1–C6/M1/D1/U1 scope remains.
+
+### Docs code and metadata controls candidate — 3 October 2026
+
+Both clients provide code copying, known-language source/highlighting and
+readable metadata disclosure while preserving exact literal source. Native
+monospace is platform-correct; web overflow stays in the block. Actual native
+synthetic controls were exercised and screens recorded. Evidence:
+`../reviews/evidence/code-metadata-controls.md`. Final full-suite/CI, signed-in
+editor, Android and web visual gates remain open. This candidate does not finish
+D1/U1; the complete C1–C6/M1/D1/U1 scope and excluded product features remain.
+
+### Source editing candidate — 3 October 2026
+
+The source/preview pane now delegates Markdown edits to each client's existing
+editor update/save queue. Reading and Suggesting modes retain inspection only.
+Retained anchors keep block identity; duplicate anchors show an unsaved-source
+error and can be restored explicitly. The parser reports original source-line
+ranges so blank lines, alternate fences and CRLF do not desynchronize preview
+navigation. Typed source echoes are tracked by weak block identity to avoid
+rewinding newer native input. Native caret positioning is applied once when
+returning from preview rather than controlled during typing.
+
+This candidate follows code/metadata PR174. Native synthetic typing, preview,
+validation and restoration were exercised with screenshots. Complete signed-in
+revision/conflict/keyboard/swipe/Android acceptance and frozen full local/CI are
+still required. The user will manually validate web presentation; blocked
+browser access is not bypassed. This does not complete C1–C6/M1/D1/U1 or authorize
+deployment/cleanup.
