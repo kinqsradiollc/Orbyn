@@ -1637,7 +1637,7 @@ kbd {
   padding: 32px 20px;
 }
 .tasks-card > .empty h3 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
 }
 .tasks-card > .empty p {

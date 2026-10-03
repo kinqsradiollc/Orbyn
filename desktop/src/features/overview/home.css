@@ -334,7 +334,7 @@
 }
 .home-companions-heading h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 .home-companions-heading p {
   margin: 0;
@@ -393,7 +393,7 @@
 .home-companions-lanes strong {
   color: var(--color-text);
   font-weight: 500;
-  font-size: 14px;
+  font-size: 13px;
 }
 .home-companions-lanes article > p {
   font-size: 13px;
