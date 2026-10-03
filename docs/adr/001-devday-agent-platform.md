@@ -669,3 +669,14 @@ the earlier missing-producer-guard note. Latest-main full/CI qualification and
 remaining protocol/host/account/provider gates still apply; full C1–C6/M1/D1/U1
 remains incomplete. Legacy in-flight imports require the documented rollout
 handling rather than invented identity snapshots.
+
+### Views workspace layout — 3 October 2026
+
+View layout selection remains immediately available. Filtering, grouping and
+sorting share a disclosure on web/desktop and mobile, preserving source-specific
+options, custom fields and the existing autosave path. Library instructions are
+shortened, headers and rail items bounded on narrow screens, and horizontal table
+scrolling is keyboard accessible. Current30 focused checks and all workspace
+typechecks pass. Source/CSS checks are not rendered geometry acceptance; user web
+review and actual native/Android interactions remain required alongside full
+local/CI qualification. This increment does not complete whole-app U1 redesign.

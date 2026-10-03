@@ -580,10 +580,7 @@ export function ViewsView({
           </p>
         )}
         {views && !views.length && (
-          <p className="muted views-rail-empty">
-            A view keeps a filter, a sort and a layout, like "Exam week" or "Lab
-            reports".
-          </p>
+          <p className="muted views-rail-empty">Save a filter to use again.</p>
         )}
         {mine.length > 0 && (
           <ViewPicker
@@ -611,7 +608,7 @@ export function ViewsView({
           <EmptyState
             icon={Table2}
             title={views === null ? "Loading views…" : "No view open"}
-            body="Make a view to keep a filter, a sort and a layout you come back to."
+            body="Save a filter to use again."
           >
             {views !== null && (
               <button className="primary" onClick={() => setCreating(true)}>
@@ -707,56 +704,6 @@ export function ViewsView({
                   );
                 })}
               </div>
-              <label className="filter-select">
-                <span>Group</span>
-                <Select
-                  value={def.group_by}
-                  onChange={(e) => change({ group_by: e.target.value })}
-                >
-                  {VIEW_GROUPS[def.source].map((g) => (
-                    <option key={g} value={g}>
-                      {VIEW_GROUP_LABELS[g] ?? g}
-                    </option>
-                  ))}
-                  {sourceFields
-                    .filter((f) => f.type !== "text")
-                    .map((f) => (
-                      <option key={f.id} value={`field:${f.id}`}>
-                        {f.name}
-                      </option>
-                    ))}
-                </Select>
-              </label>
-              <label className="filter-select">
-                <span>Sort</span>
-                <Select
-                  value={`${def.sort.by}|${def.sort.dir}`}
-                  onChange={(e) => {
-                    const [by, dir] = e.target.value.split("|");
-                    change({
-                      sort: { by: by as never, dir: dir as "asc" | "desc" },
-                    });
-                  }}
-                >
-                  {VIEW_SORTS.filter(
-                    (s) =>
-                      def.source === "tasks" ||
-                      (s !== "priority" && s !== "estimate"),
-                  ).flatMap((s) => [
-                    <option key={`${s}|asc`} value={`${s}|asc`}>
-                      {VIEW_SORT_LABELS[s]}
-                    </option>,
-                    <option key={`${s}|desc`} value={`${s}|desc`}>
-                      {VIEW_SORT_LABELS[s]}, reversed
-                    </option>,
-                  ])}
-                  {sourceFields.map((f) => (
-                    <option key={f.id} value={`field:${f.id}|asc`}>
-                      {f.name}
-                    </option>
-                  ))}
-                </Select>
-              </label>
               {def.layout === "calendar" && def.source !== "tasks" && (
                 <label className="filter-select">
                   <span>Dates from</span>
@@ -804,23 +751,81 @@ export function ViewsView({
               >
                 <SlidersHorizontal size={14} aria-hidden="true" />
                 {Object.keys(def.filters).length
-                  ? `Filters · ${Object.keys(def.filters).length}`
-                  : "Filters"}
+                  ? `Filter, group and sort · ${Object.keys(def.filters).length}`
+                  : "Filter, group and sort"}
               </button>
             </div>
 
             {filtersOpen && (
-              <ViewFilters
+              <section
                 id="view-filters"
-                def={def}
-                teams={teams}
-                projects={projects}
-                folders={folders}
-                lists={planning.lists}
-                tags={planning.tags}
-                fields={sourceFields}
-                onChange={(filters) => change({ filters })}
-              />
+                className="views-options"
+                aria-label="Filter, group and sort"
+              >
+                <div className="views-arrangement">
+                  <label className="filter-select">
+                    <span>Group</span>
+                    <Select
+                      value={def.group_by}
+                      onChange={(e) => change({ group_by: e.target.value })}
+                    >
+                      {VIEW_GROUPS[def.source].map((g) => (
+                        <option key={g} value={g}>
+                          {VIEW_GROUP_LABELS[g] ?? g}
+                        </option>
+                      ))}
+                      {sourceFields
+                        .filter((f) => f.type !== "text")
+                        .map((f) => (
+                          <option key={f.id} value={`field:${f.id}`}>
+                            {f.name}
+                          </option>
+                        ))}
+                    </Select>
+                  </label>
+                  <label className="filter-select">
+                    <span>Sort</span>
+                    <Select
+                      value={`${def.sort.by}|${def.sort.dir}`}
+                      onChange={(e) => {
+                        const [by, dir] = e.target.value.split("|");
+                        change({
+                          sort: { by: by as never, dir: dir as "asc" | "desc" },
+                        });
+                      }}
+                    >
+                      {VIEW_SORTS.filter(
+                        (s) =>
+                          def.source === "tasks" ||
+                          (s !== "priority" && s !== "estimate"),
+                      ).flatMap((s) => [
+                        <option key={`${s}|asc`} value={`${s}|asc`}>
+                          {VIEW_SORT_LABELS[s]}
+                        </option>,
+                        <option key={`${s}|desc`} value={`${s}|desc`}>
+                          {VIEW_SORT_LABELS[s]}, reversed
+                        </option>,
+                      ])}
+                      {sourceFields.map((f) => (
+                        <option key={f.id} value={`field:${f.id}|asc`}>
+                          {f.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                </div>
+                <ViewFilters
+                  id="view-filter-fields"
+                  def={def}
+                  teams={teams}
+                  projects={projects}
+                  folders={folders}
+                  lists={planning.lists}
+                  tags={planning.tags}
+                  fields={sourceFields}
+                  onChange={(filters) => change({ filters })}
+                />
+              </section>
             )}
 
             {!view.can_edit && !same(def, view.definition) && (
