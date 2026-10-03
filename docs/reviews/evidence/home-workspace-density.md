@@ -54,3 +54,14 @@ Based on Views181 ae6d11e7. Combined18285b8b227 remains frozen and passed its ow
 2,502/2,502 full local suite. These newer Home/task changes require separate
 qualification and integration before a main checkpoint. No main merge, release,
 deployment, original-work cleanup or change to the retained ADR scope occurred.
+
+## Full-suite type-scale failure and repair
+
+Frozen Home4c6e045d CI37094807284 and combined509ded3c CI37094926543 failed the
+existing neatness type-scale ratchet. Recovered combined full local finished
+2,505/2,506 with one failure, terminal1, no skips/cancellations. Three new web
+sizes (16px Home heading,14px lane label,16px task empty heading) were off the
+canonical [11,13,15,18,24,36] scale. Production CSS now uses15/13/15 respectively;
+the existing ratchet was not relaxed. Neatness plus Home component/density
+regressions passed in /tmp/orbyn-home-scale-regressions.log. Requalify the new
+head and integration; previous failed frozen heads retained. No main promotion.
