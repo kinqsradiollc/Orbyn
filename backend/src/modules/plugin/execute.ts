@@ -15,6 +15,28 @@ export async function pluginWrite<T>(
   resources: ConnectorResources,
   run: (db: Queryable) => Promise<T>,
 ): Promise<T> {
+  return pluginTransaction(principal, headers, settings, resources, run, true);
+}
+
+/** Hold fresh connector authority while reading private plugin jobs and results. */
+export async function pluginRead<T>(
+  principal: Principal,
+  headers: Record<string, string | string[] | undefined>,
+  settings: LiveSettings,
+  resources: ConnectorResources,
+  run: (db: Queryable) => Promise<T>,
+): Promise<T> {
+  return pluginTransaction(principal, headers, settings, resources, run, false);
+}
+
+async function pluginTransaction<T>(
+  principal: Principal,
+  headers: Record<string, string | string[] | undefined>,
+  settings: LiveSettings,
+  resources: ConnectorResources,
+  run: (db: Queryable) => Promise<T>,
+  write: boolean,
+): Promise<T> {
   return transaction(async (db) => {
     const token = String(headers.authorization ?? "").match(
       /^Bearer (oat_\S+)$/,
@@ -27,7 +49,7 @@ export async function pluginWrite<T>(
     await db.query(
       `SELECT g.id FROM agent_tokens t JOIN agent_grants g ON g.id=t.grant_id
       JOIN users u ON u.id=g.user_id WHERE t.token_hash=$1 AND g.id=$2
-      FOR UPDATE OF t,g FOR SHARE OF u`,
+      ${write ? "FOR UPDATE OF t,g FOR SHARE OF u" : "FOR SHARE OF t,g,u"}`,
       [digest(token), principal.grant_id],
     );
     // Hold both app policy and membership rows against revocation during a write.
@@ -56,11 +78,13 @@ export async function pluginWrite<T>(
         "STALE",
         "Connection permissions changed. Read the current connection and retry.",
       );
-    await actAs(db, principal.user.id, principal.grant_id);
+    if (write) await actAs(db, principal.user.id, principal.grant_id);
     const result = await run(db);
-    await db.query("UPDATE agent_grants SET last_write_at=now() WHERE id=$1", [
-      principal.grant_id,
-    ]);
+    if (write)
+      await db.query(
+        "UPDATE agent_grants SET last_write_at=now() WHERE id=$1",
+        [principal.grant_id],
+      );
     return result;
   });
 }

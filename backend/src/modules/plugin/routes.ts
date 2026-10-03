@@ -1,10 +1,10 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { settings } from "../../lib/settings.js";
 import { registry } from "../../capabilities/index.js";
 import { Limiter } from "../mcp-server/limits.js";
-import { describe } from "../../capabilities/registry.js";
+import { CapabilityError, describe } from "../../capabilities/registry.js";
 import { ActivityRecorder } from "../mcp-server/recorder.js";
 import { connectorResources } from "../oauth/resources.js";
 import { PluginAuthError, resolvePluginCaller } from "./auth.js";
@@ -18,6 +18,34 @@ import {
   readPluginResource,
 } from "./ui-resources.js";
 import { toolUiMeta } from "../mcp-server/apps.js";
+import { pluginRead, pluginWrite } from "./execute.js";
+import { trackPluginImport, readPluginImportEvents } from "./import-jobs.js";
+import { pluginJobCursorKey } from "./job-cursor.js";
+
+const jobQuery = z
+  .object({ cursor: z.string().min(1).max(512).optional() })
+  .strict();
+const jobParams = z.object({ id: z.uuid() }).strict();
+function jobRefusal(error: unknown, reply: FastifyReply) {
+  if (error instanceof PluginCallError) {
+    if (error.retryAfter) reply.header("Retry-After", String(error.retryAfter));
+    return reply.code(error.status).send(error.body);
+  }
+  if (error instanceof CapabilityError) {
+    const status =
+      error.code === "NOT_FOUND"
+        ? 404
+        : error.code === "INVALID"
+          ? 400
+          : error.code === "STALE"
+            ? 409
+            : 403;
+    return reply
+      .code(status)
+      .send({ error: error.code, message: error.message });
+  }
+  throw error;
+}
 
 const connection = z.object({
   kind: z.literal("plugin"),
@@ -101,6 +129,88 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
         return { ...describe(cap), ...(ui ? { _meta: ui } : {}) };
       }),
     };
+  });
+  app.post(
+    "/plugin/jobs/imports",
+    { bodyLimit: 65_536 },
+    async (request, reply) => {
+      const input = pluginToolInput.safeParse(request.body);
+      if (!input.success || input.data.name !== "start_import")
+        return reply.code(400).send({
+          error: "INVALID",
+          message: "Send start_import and its arguments.",
+        });
+      try {
+        const result = await dispatchPluginTool(
+          request,
+          input.data,
+          limiter,
+          recorder,
+          resources,
+        );
+        const done = result.structuredContent?.done as
+          { id?: string }[] | undefined;
+        const importId = done?.[0]?.id?.match(/^import:([0-9a-f-]+)$/i)?.[1];
+        // Approval/refusal stays an ordinary tool result, never a manufactured job.
+        if (result.isError || !importId) return { result };
+        const live = await settings();
+        const job = await pluginWrite(
+          request.pluginCaller!.principal,
+          request.headers,
+          live,
+          resources,
+          (db) =>
+            trackPluginImport(db, request.pluginCaller!.principal, importId),
+        );
+        return { job, result };
+      } catch (error) {
+        return jobRefusal(error, reply);
+      }
+    },
+  );
+  app.get("/plugin/jobs/:id/events", async (request, reply) => {
+    const params = jobParams.safeParse(request.params);
+    const query = jobQuery.safeParse(request.query);
+    if (!params.success || !query.success)
+      return reply.code(400).send({
+        error: "INVALID",
+        message: "Send one job id and an optional reconnect cursor.",
+      });
+    const live = await settings();
+    const principal = request.pluginCaller!.principal;
+    const slot = await limiter.take(
+      principal.grant_id!,
+      principal.user.id,
+      "call",
+      live.agents.agent_limits,
+    );
+    if (!slot.ok) {
+      recorder.count(principal.grant_id!, "limited");
+      reply.header("Retry-After", String(slot.retryAfter));
+      return reply.code(429).send({ error: "LIMITED", message: slot.reason });
+    }
+    try {
+      const key = await pluginJobCursorKey();
+      return await pluginRead(
+        principal,
+        request.headers,
+        live,
+        resources,
+        (db) =>
+          readPluginImportEvents(
+            db,
+            principal,
+            params.data.id,
+            resources.plugin!,
+            key,
+            query.data.cursor,
+          ),
+      );
+    } catch (error) {
+      return jobRefusal(error, reply);
+    } finally {
+      slot.release();
+    }
   });
   app.get("/plugin/resources", async (request, reply) => {
     if (Object.keys(request.query as object).length)

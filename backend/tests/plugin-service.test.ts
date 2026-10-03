@@ -613,3 +613,218 @@ test("plugin boundary retains rate limiting and Retry-After", async () => {
     replies.find((reply) => reply.statusCode === 429)?.headers["retry-after"],
   );
 });
+
+test("plugin import job routes retain 401,403,400 and429 boundaries", async () => {
+  await pool.query(
+    "DELETE FROM system_settings WHERE key='rate_limit_per_minute'",
+  );
+  invalidateSettings();
+  const job = randomUUID();
+  assert.equal(
+    (
+      await app.inject({
+        remoteAddress: "10.85.4.1",
+        url: `/plugin/jobs/${job}/events`,
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        remoteAddress: "10.85.4.2",
+        url: `/plugin/jobs/${job}/events`,
+        headers,
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        remoteAddress: "10.85.4.3",
+        url: `/plugin/jobs/${job}/events?cursor=x&extra=x`,
+        headers,
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        remoteAddress: "10.85.4.4",
+        method: "POST",
+        url: "/plugin/jobs/imports",
+        payload: { name: "start_import", arguments: {} },
+      })
+    ).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        remoteAddress: "10.85.4.5",
+        method: "POST",
+        url: "/plugin/jobs/imports",
+        headers,
+        payload: { name: "start_import", arguments: {} },
+      })
+    ).statusCode,
+    403,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        remoteAddress: "10.85.4.6",
+        method: "POST",
+        url: "/plugin/jobs/imports",
+        headers,
+        payload: { name: "get_context", arguments: {} },
+      })
+    ).statusCode,
+    400,
+  );
+  try {
+    await pool.query(
+      "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute','3'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    );
+    invalidateSettings();
+    for (const [url, method, address] of [
+      [`/plugin/jobs/${job}/events`, "GET", "10.85.3.1"],
+      ["/plugin/jobs/imports", "POST", "10.85.3.2"],
+    ] as const) {
+      const replies = [];
+      for (let n = 0; n < 4; n++)
+        replies.push(
+          await app.inject({
+            url,
+            method,
+            headers,
+            remoteAddress: address,
+            ...(method === "POST"
+              ? { payload: { name: "start_import", arguments: {} } }
+              : {}),
+          }),
+        );
+      assert.ok(
+        replies.some(
+          (reply) => reply.statusCode === 429 && reply.headers["retry-after"],
+        ),
+      );
+    }
+  } finally {
+    await pool.query(
+      "DELETE FROM system_settings WHERE key='rate_limit_per_minute'",
+    );
+    invalidateSettings();
+  }
+});
+
+test("plugin import status events survive replay and completed links obey current source visibility", async () => {
+  const previousFilesSecret = env.FILES_SECRET;
+  env.FILES_SECRET = "fixture-only-plugin-import-secret";
+  const grant = (
+    await pool.query("SELECT grant_id FROM agent_tokens WHERE token_hash=$1", [
+      digest(token),
+    ])
+  ).rows[0].grant_id;
+  await pool.query(
+    "UPDATE agent_grants SET access='write',trust='full',toolsets=ARRAY['files'],personal=true WHERE id=$1",
+    [grant],
+  );
+  try {
+    const payload = {
+      name: "start_import",
+      arguments: {
+        file_name: "PRIVATE-FILE-TITLE.pdf",
+        bytes: 100,
+        client_ref: `plugin-import-${randomUUID()}`,
+      },
+    };
+    const created = await app.inject({
+      method: "POST",
+      url: "/plugin/jobs/imports",
+      headers,
+      payload,
+    });
+    assert.equal(created.statusCode, 200);
+    const tracked = created.json().job;
+    assert.ok(tracked?.id);
+    const imported = created
+      .json()
+      .result.structuredContent.done[0].id.slice("import:".length);
+    const replayed = await app.inject({
+      method: "POST",
+      url: "/plugin/jobs/imports",
+      headers,
+      payload,
+    });
+    assert.equal(replayed.statusCode, 200);
+    assert.equal(replayed.json().job.id, tracked.id);
+    const first = await app.inject({
+      url: `/plugin/jobs/${tracked.id}/events`,
+      headers,
+    });
+    assert.equal(first.statusCode, 200, first.body);
+    assert.deepEqual(
+      first.json().events.map((event: { status: string }) => event.status),
+      ["waiting"],
+    );
+    await pool.query("UPDATE imports SET status='queued' WHERE id=$1", [
+      imported,
+    ]);
+    await pool.query("UPDATE imports SET status='queued' WHERE id=$1", [
+      imported,
+    ]);
+    const second = await app.inject({
+      url: `/plugin/jobs/${tracked.id}/events?cursor=${encodeURIComponent(first.json().cursor)}`,
+      headers,
+    });
+    assert.equal(second.statusCode, 200, second.body);
+    assert.deepEqual(
+      second.json().events.map((event: { status: string }) => event.status),
+      ["queued"],
+    );
+    assert.doesNotMatch(second.body, /PRIVATE-FILE-TITLE/);
+    const doc = (
+      await pool.query(
+        "INSERT INTO docs(user_id,title) VALUES ($1,'PRIVATE-DOC-TITLE') RETURNING id",
+        [userId],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "UPDATE imports SET status='ready',doc_id=$2 WHERE id=$1",
+      [imported, doc],
+    );
+    const ready = await app.inject({
+      url: `/plugin/jobs/${tracked.id}/events?cursor=${encodeURIComponent(second.json().cursor)}`,
+      headers,
+    });
+    assert.equal(ready.statusCode, 200, ready.body);
+    assert.equal(ready.json().result.id, `doc:${doc}`);
+    assert.doesNotMatch(ready.body, /PRIVATE-FILE-TITLE|PRIVATE-DOC-TITLE/);
+    await pool.query("UPDATE agent_grants SET personal=false WHERE id=$1", [
+      grant,
+    ]);
+    assert.equal(
+      (await app.inject({ url: `/plugin/jobs/${tracked.id}/events`, headers }))
+        .statusCode,
+      404,
+    );
+    await pool.query("UPDATE agent_grants SET personal=true WHERE id=$1", [
+      grant,
+    ]);
+    await pool.query("UPDATE docs SET deleted_at=now() WHERE id=$1", [doc]);
+    assert.equal(
+      (await app.inject({ url: `/plugin/jobs/${tracked.id}/events`, headers }))
+        .statusCode,
+      404,
+    );
+  } finally {
+    env.FILES_SECRET = previousFilesSecret;
+    await pool.query(
+      "UPDATE agent_grants SET access='read',toolsets=ARRAY['core'],personal=true WHERE id=$1",
+      [grant],
+    );
+  }
+});

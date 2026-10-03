@@ -54,3 +54,45 @@ PR1776220f1c1 and PR178f74bb9de now have all four respective CI jobs successful
 is not hosted ChatGPT/Codex launch acceptance: extensions, host screenshots,
 actual account/provider/tenant execution and async event cursors remain open.
 Full C1–C6/M1/D1/U1 continues; no main merge, deployment or cleanup.
+
+## Plugin async reconnect groundwork — 3 October
+
+codex/plugin-job-cursors preserves frozen plugin180bc381226. Local job-cursor.ts
+binds a signed reconnect position to the current plugin principal, client/grant/
+owner, plugin resource, job, source revision and effective authority. Expiry and
+length/safe-integer bounds apply. Display renames/order do not invalidate equal
+authority; scope changes, other accounts/grants/resources/jobs/sources do.
+Derived key is domain-separated and must load outside read-only transactions.
+Six cursor unit checks and backend typecheck passed terminal0. This is not yet
+wired to a durable event store/async job route and is not a delivered C6 flow.
+Implement live authentication, job/source revalidation and bounded durable event
+retrieval before exposing results; keep current unsafe generic stored task reads
+out of the plugin path. Do not promote dead groundwork as plugin completion.
+
+UI qualification has priority: Home1834c6 and combined184509 failed the existing
+shared font-scale ratchet (three CSS sizes). Combined recovered full finished
+2505/2506 terminal1, no skips. Home repair1c00ed79 uses15/13/15, ratchet unchanged,
+focused24/24. Combined newb0037a21 contains repair, no source conflicts, fresh
+full42763 and build91303. Settings185d041 remains frozen while full62351 runs;
+after terminal observation integrate the same repair, requalify its new head.
+No main merge, deployment or cleanup; full ADR remains active.
+
+## Plugin async import transport candidate — latest 3 October
+
+Local codex/plugin-job-cursors now adds migration214, source-checked import job
+store, shared fresh read/write grant transaction, bounded start/event routes and
+response schemas. Cursor/store/protocol17/17 and actual plugin service13/13
+passed terminal0. Actual start/replay and status persistence/duplicate/cursor/
+visibility/Trash/shield paths are tested; file conversion completion is seeded.
+See evidence/plugin-import-jobs.md for missing producer-grant guard at converter
+writes and all remaining C6/ADR acceptance. Do not promote before that guard.
+Final types/build/format and exact frozen full/CI remain required. No main merge.
+
+Frozen combined184b0037a21 persistent full2506/2506 and settings1853b18468b
+persistent full2512/2512 both completed code0, no skips/failures/cancellations.
+All four exact-head CI37096051688/37096227442 jobs succeeded. These automated
+results do not complete the remaining runtime/native/manual-web/host gates.
+Preview services are detached and survive chat interruption. iPhone17 iOS26.5
+now displays the actual Orbyn sign-in; the user-reported runtime startup recovery
+cause is unverified. Saved credentials verified API8027 login200/admin, filled
+existing password securely; human Sign in remains pending. No credentials in Git.

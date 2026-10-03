@@ -365,6 +365,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "plugin_import_jobs",
+    label: "Plugin import jobs",
+    detail:
+      "Plugin import state and its status events, an hour after the last transition.",
+    table: "plugin_import_jobs",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "oauth_clients",
     label: "Unused registered apps",
     detail:
