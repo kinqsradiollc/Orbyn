@@ -194,3 +194,12 @@ fixture fonts were loading; temporary fixture removes its font-load gate for
 layout-only inspection. This does not qualify production typography or saves.
 Original reproducer screenshot: /tmp/orbyn-source-keyboard-qa/duplicate-error-keyboard.png.
 Web permission still saved-denied; no bypass. Full ADR scope remains incomplete.
+
+Updated native fixture rendered after manual Reload. With duplicate error and
+software keyboard open, both source lines and caret are now visible above the
+keyboard. Restore activated through accessibility and cleared the error/close
+guard. Hint/error controls are bounded and some controls require scroll at this
+size; native scroll attempt returned noWindowsAvailable, so touch scrolling is
+still unqualified. Layout-only fixture bypassed its font-load gate; server saves
+and production typography are not proven. Recovery screenshot remains outside
+Git at /tmp/orbyn-source-keyboard-qa/restored-keyboard.png. No main promotion.
