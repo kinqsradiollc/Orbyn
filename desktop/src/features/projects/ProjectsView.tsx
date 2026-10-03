@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { onLive } from "../../lib/live";
-import { Boxes, LayoutTemplate, Plus } from "lucide-react";
+import { Boxes, LayoutTemplate, Plus, Search } from "lucide-react";
 import {
   projectProgress,
+  searchProjects,
   hasTeamPermission,
   type Item,
   type Project,
@@ -72,6 +73,8 @@ export function ProjectsView({
   onShown?: (project: Project | null) => void;
 }) {
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const visibleProjects = searchProjects(projects ?? [], libraryQuery);
   const [open, setOpen] = useState<Project | null>(null);
   const [openSection, setOpenSection] = useState<
     "home" | "decisions" | "history"
@@ -210,9 +213,11 @@ export function ProjectsView({
         <span className="muted projects-count">
           {projects === null
             ? ""
-            : projects.length === 1
-              ? "1 project"
-              : `${projects.length} projects`}
+            : libraryQuery.trim()
+              ? `${visibleProjects.length} of ${projects.length} projects`
+              : projects.length === 1
+                ? "1 project"
+                : `${projects.length} projects`}
         </span>
         <span className="projects-actions">
           <button className="secondary" onClick={() => setTemplates(true)}>
@@ -270,13 +275,26 @@ export function ProjectsView({
         }
       />
 
+      {!!projects?.length && (
+        <label className="projects-search">
+          <Search size={15} aria-hidden="true" />
+          <span className="sr-only">Search projects</span>
+          <input
+            type="search"
+            placeholder="Search projects"
+            maxLength={200}
+            value={libraryQuery}
+            onChange={(event) => setLibraryQuery(event.target.value)}
+          />
+        </label>
+      )}
       {projects === null ? (
         <p className="muted">Loading…</p>
       ) : projects.length === 0 ? (
         <EmptyState
           icon={Boxes}
           title="No projects yet"
-          body="Group related tasks into stages to see a piece of work end to end."
+          body="Add a project to organize related tasks."
         >
           <button
             className="primary"
@@ -286,9 +304,15 @@ export function ProjectsView({
             <Plus size={15} /> New project
           </button>
         </EmptyState>
+      ) : visibleProjects.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No matching projects"
+          body="Try a different name, alias or workspace."
+        />
       ) : (
         <ul className="project-grid">
-          {projects.map((p) => {
+          {visibleProjects.map((p) => {
             const percent = projectProgress(p);
             return (
               <li key={p.id}>
@@ -304,18 +328,29 @@ export function ProjectsView({
                       }),
                   )}
                 >
-                  <span className="project-card-top">
-                    <strong>{p.name}</strong>
-                  </span>
-                  {p.summary && <small className="muted">{p.summary}</small>}
-                  <span className="project-bar" aria-hidden="true">
-                    <i style={{ width: `${percent}%` }} />
-                  </span>
-                  <span className="project-card-foot">
-                    <span>
-                      {p.done_count} of {p.task_count} done
+                  <span className="project-card-main">
+                    <span className="project-card-top">
+                      <strong>{p.name}</strong>
                     </span>
-                    <span>{dueLabel(p.deadline)}</span>
+                    {p.summary && <small className="muted">{p.summary}</small>}
+                    <small className="project-workspace">
+                      {p.team_name ||
+                        (p.team_id
+                          ? teams.find((team) => team.id === p.team_id)?.name ||
+                            "Shared"
+                          : "Personal")}
+                    </small>
+                  </span>
+                  <span className="project-card-status">
+                    <span className="project-bar" aria-hidden="true">
+                      <i style={{ width: `${percent}%` }} />
+                    </span>
+                    <span className="project-card-foot">
+                      <span>
+                        {p.done_count} of {p.task_count} done
+                      </span>
+                      <span>{dueLabel(p.deadline)}</span>
+                    </span>
                   </span>
                 </button>
               </li>

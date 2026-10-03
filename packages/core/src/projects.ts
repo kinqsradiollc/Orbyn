@@ -52,6 +52,29 @@ export type Project = {
   icon?: string | null;
 };
 
+/** Search an already-authorized project library without changing its order or entries. */
+export function searchProjects(
+  projects: readonly Project[],
+  query: string,
+): Project[] {
+  const normalize = (text: string) =>
+    text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+  const words = normalize(query).trim().split(/\s+/).filter(Boolean);
+  return projects.filter((project) => {
+    const text = normalize(
+      [
+        project.name,
+        project.summary,
+        project.team_name ?? "",
+        project.team_id ? "" : "personal",
+        project.status,
+        ...(project.aliases ?? []),
+      ].join(" "),
+    );
+    return words.every((word) => text.includes(word));
+  });
+}
+
 /** Your open work in a project, measured against each task's planning target. */
 export type ProjectPlanning = {
   project_id: string;
