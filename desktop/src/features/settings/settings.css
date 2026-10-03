@@ -1,4 +1,75 @@
 /* Settings: planning, frames, places, tags and connections. */
+.settings-workspace {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1100px;
+  margin-inline: auto;
+}
+.settings-sidebar,
+.settings-content {
+  min-width: 0;
+}
+.settings-sidebar .settings-search {
+  margin-bottom: 12px;
+}
+.settings-sidebar .settings-search-field {
+  padding-inline: 10px;
+}
+.settings-navigation {
+  display: grid;
+  gap: 4px;
+}
+.settings-navigation button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--control-h);
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 13px;
+  text-align: left;
+}
+.settings-navigation button svg {
+  flex: none;
+}
+.settings-navigation button span {
+  overflow-wrap: anywhere;
+}
+.settings-navigation button:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+.settings-navigation button[aria-current="page"] {
+  background: var(--color-selected);
+  color: var(--color-accentText);
+  font-weight: 500;
+}
+.settings-content > .settings-card {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+.settings-content > .settings-card:last-child {
+  margin-bottom: 0;
+}
+@media (max-width: 900px) {
+  .settings-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .settings-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .settings-sidebar .settings-search {
+    max-width: none;
+  }
+}
 .settings-card h2 {
   display: flex;
   align-items: center;
