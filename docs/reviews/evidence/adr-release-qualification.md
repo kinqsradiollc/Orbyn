@@ -46,3 +46,24 @@ Native source keyboard fixture proof remains distinct from actual editor/server
 saves, persisted revisions, Android and full screen acceptance. Full per-surface
 interaction/geometry/persistence coverage, agent reflection/collaboration and
 remaining ADR requirements are not complete.
+
+## Frozen PR182 result and Home correction successor
+
+PR182 head85b8b227 completed full local tests 2,502/2,502, terminal exit0 with
+no skips/failures; all four CI37093448880 jobs passed. It remains frozen, draft
+and unmerged. Those results apply to that head only.
+
+The successor `codex/adr-home-integration` retains those inputs and merges
+Home/task correction4c6e045d (PR183). Current origin/main1100ca98 remains an
+ancestor. Only ADR/task append conflicts occurred; both histories and the full
+remaining delivery pipeline were retained. No product source conflicts occurred.
+
+Home correction passed 17 focused checks, workspace/final client typechecks,
+build and formatting. Its exact-head full suite and CI37094807284 are live.
+Actual component screenshots and fixture limits are recorded in
+`home-workspace-density.md`. The preview serves the corrected Home/task source
+at5174; user web visual review and remaining native/runtime acceptance are open.
+
+This successor must pass fresh combined focused/type/build/format/full/CI checks
+before promotion. Prior green tests are not proof of this merged head or the full
+ADR. No cleanup, release, deployment or main promotion has occurred.
