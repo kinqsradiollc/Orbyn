@@ -277,7 +277,12 @@ export function ViewTable({
   );
 
   return (
-    <div className="view-table-wrap">
+    <div
+      className="view-table-wrap"
+      tabIndex={0}
+      role="region"
+      aria-label="View table"
+    >
       <table className="view-table" ref={table}>
         <thead>
           <tr>
