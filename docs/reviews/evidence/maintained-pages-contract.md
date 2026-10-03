@@ -72,3 +72,33 @@ no scoped model job, schedule consumer, guarded document application, scoped
 @orbyn reply flow or client consent/review UI is wired. No PR/main promotion is
 claimed. Complete those pieces and signed-in cross-client acceptance before
 main qualification; do not silently call the metadata endpoints a working routine.
+
+## Guarded application — 4 October (runtime not yet wired)
+
+The server-only apply helper rereads owner/grant/page/block authority under locks,
+checks the binding receipt and pause state, validates replacements against saved
+IDs and positions, and applies current trust and typed action rules. Approval
+cannot override a deny rule. Ask/suggest work is held rather than saved silently.
+No client route can supply an approved helper option.
+
+Document saves now support server-only block ownership: task ticks, hidden-label
+processing and file authorization run on the selected blocks, while unrelated
+human blocks remain unchanged in storage. A selected checkbox's task receives
+independent current grant/source, membership, permission, trust and action-rule
+checks. Task authority is refreshed after its membership/project locks are
+acquired. Refusal rolls back the page and binding together. Successful saves use
+normal version history/comment/suggestion/file checks, then advance the binding
+baseline within the same transaction. Concurrent stale receipts cannot save twice.
+
+Focused25/25 pass in `/tmp/orbyn-maintained-page-apply-focused.log`. Existing Docs,
+editing and assistant-Docs plus binding/API/core/inventory/catalog regressions
+118/118 pass in `/tmp/orbyn-maintained-page-save-regressions.log`, no skips or
+cancellations. All workspace typechecks pass in
+`/tmp/orbyn-maintained-page-save-final-types.log`. This is an internal apply path,
+not a completed schedule or UI feature; full qualification is still required.
+
+Next implementation must connect saved binding/rule revisions to durable claims,
+provider context, staged results and review/resume. It must never substitute the
+general workspace agent's context for selected-block context or let a newly
+refreshed principal erase the revision captured by an earlier approval. Then wire
+both client selection/consent/schedule/status/review and scoped @orbyn comments.

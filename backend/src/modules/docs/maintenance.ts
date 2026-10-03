@@ -1,5 +1,7 @@
 import {
   captureMaintainedPage,
+  applyMaintainedPagePatch,
+  maintainedPagePatchInput,
   checkMaintainedPage,
   maintainedPageBindingInput,
   maintainedPageBindingUpdate,
@@ -17,8 +19,14 @@ import { Params, scopeFor, visibleDocs } from "../../lib/visibility.js";
 import { assistantMayRead } from "../../lib/doc-visibility.js";
 import { currentAssistantPrincipal } from "../../capabilities/assistant-principal.js";
 import { policy, type Principal } from "../../capabilities/policy.js";
-import { CapabilityError } from "../../capabilities/registry.js";
-import { readDoc, requireDoc } from "./service.js";
+import {
+  CapabilityError,
+  cursorCodec,
+  type Asking,
+  type CapabilityContext,
+} from "../../capabilities/registry.js";
+import { destination, refuseSecrets } from "../../capabilities/write.js";
+import { readDoc, requireDoc, saveDoc } from "./service.js";
 import { privacyFrom, readableLinks } from "../links/privacy.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
 
@@ -336,4 +344,131 @@ export async function deleteMaintainedPageBinding(
     bindingId,
   ]);
   return { ok: true };
+}
+
+/** A scoped save uses the same current trust/action-rule policy as ordinary agent writes. */
+export async function applyMaintainedPageUpdate(
+  db: Db,
+  user: UserRow,
+  principal: Principal,
+  bindingId: string,
+  raw: unknown,
+  options: { asking?: Asking } = {},
+) {
+  const input = maintainedPagePatchInput.parse(raw);
+  const context = await maintainedPageContext(db, user, principal, bindingId);
+  const binding = context.binding;
+  if (binding.paused || binding.revision !== input.expected_revision)
+    fail(
+      409,
+      "This maintenance binding changed or was paused. Review it again.",
+    );
+  const page = await requireDoc(db, binding.doc_id, user, "items:write");
+  const content = (
+    await db.query<{ content: DocBlock[] }>(
+      "SELECT content FROM docs WHERE id=$1",
+      [page.id],
+    )
+  ).rows[0].content;
+  const patched = applyMaintainedPagePatch(
+    content,
+    page.version,
+    binding.snapshot,
+    input.replacements,
+  );
+  if (!patched.ok)
+    fail(409, "The page or selected blocks changed. Review them again.");
+  const current = await currentAssistantPrincipal(db, context.principal, true);
+  const ctx: CapabilityContext = {
+    principal: current,
+    db,
+    now: new Date(),
+    timezone: binding.timezone,
+    spaces: policy.spaces(current),
+    cursor: cursorCodec(current, "maintained_page", { bindingId }),
+    assistant_rule_checks: [],
+    ...(options.asking ? { asking: options.asking } : {}),
+  };
+  if (
+    destination(ctx, page.team_id, "W2", [], {
+      owner: { user_id: page.user_id },
+    }) === "review"
+  )
+    fail(409, "This page update needs your review.");
+  refuseSecrets(JSON.stringify(input.replacements));
+  // Saving a checkbox can change its task. Lock and independently authorize each
+  // selected linked task; unchanged human blocks never enter syncTicks.
+  const ids = binding.snapshot.blocks.map((block) => block.block_id);
+  const links = (
+    await db.query<{
+      block_id: string;
+      id: string;
+      user_id: string;
+      team_id: string | null;
+      project_id: string | null;
+      assignee_id: string | null;
+      status: string;
+    }>(
+      `SELECT l.block_id,i.id,i.user_id,i.team_id,i.project_id,i.assignee_id,i.status
+       FROM doc_task_links l JOIN items i ON i.id=l.item_id
+      WHERE l.doc_id=$1 AND l.block_id=ANY($2::text[]) ORDER BY i.id,l.block_id FOR UPDATE OF i`,
+      [page.id, ids],
+    )
+  ).rows;
+  const proposed = new Map(
+    patched.value.flatMap((block) =>
+      block.id ? [[block.id, block] as const] : [],
+    ),
+  );
+  for (const task of links) {
+    const block = proposed.get(task.block_id);
+    if (block?.type !== "todo" || block.done === (task.status === "done"))
+      continue;
+    await db.query("SELECT id FROM projects WHERE id=$1 FOR SHARE", [
+      task.project_id,
+    ]);
+    await db.query("SELECT id FROM teams WHERE id=$1 FOR SHARE", [
+      task.team_id,
+    ]);
+    await db.query(
+      "SELECT user_id FROM team_members WHERE team_id=$1 AND user_id=$2 FOR SHARE",
+      [task.team_id, user.id],
+    );
+    ctx.principal = await currentAssistantPrincipal(db, ctx.principal, true);
+    const params = new Params(task.id);
+    const scope = scopeFor(policy.spaces(ctx.principal), params);
+    const readable = await db.query(
+      `SELECT i.id FROM items i WHERE i.id=$1 AND ${assistantSourceVisible("'task'", "i.id", scope.user, false, scope)}`,
+      params.values,
+    );
+    if (!readable.rowCount || !policy.can(ctx.principal, "write", task).ok)
+      fail(403, "A linked task is outside this assistant's current authority.");
+    if (destination(ctx, task.team_id, "W2", [], { owner: task }) === "review")
+      fail(409, "A linked task change needs your review.");
+  }
+  if (ctx.asking?.mode === "collect" && ctx.asking.reasons.length)
+    fail(409, "This page update needs your approval.");
+  const saved = await saveDoc(
+    db,
+    user,
+    page.id,
+    { version: page.version, content: patched.value },
+    { always: true, ticksFrom: page.version, ownedBlockIds: ids },
+  );
+  const stored = (
+    await db.query<{ content: DocBlock[] }>(
+      "SELECT content FROM docs WHERE id=$1",
+      [page.id],
+    )
+  ).rows[0].content;
+  const snapshot = captureMaintainedPage(stored, saved.version, ids);
+  if (!snapshot.ok)
+    fail(409, "The selected block identities changed during the save.");
+  const updated = (
+    await db.query<BindingRow>(
+      `UPDATE assistant_page_bindings SET snapshot=$2::jsonb,revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *`,
+      [binding.id, JSON.stringify(snapshot.value)],
+    )
+  ).rows[0];
+  return { doc: saved, binding: publicBinding(updated) };
 }

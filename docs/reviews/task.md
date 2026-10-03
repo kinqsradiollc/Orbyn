@@ -534,3 +534,15 @@ only for an authorized successful agent save. Then both client explicit selectio
 schedule/consent, pause/status/review; scoped @orbyn comments, edit/delete/retry
 dedup and privacy. Finish real concurrency/revocation tests, full local/CI and
 web/manual + iOS/Android inspection. Full C1-C6/M1/D1/U1 remains active.
+
+### A5 guarded save follow-up — 4 October
+
+Owned page-binding branch has an internal apply helper plus server-only
+selected-block save processing. Current trust/action rules and separately locked
+linked-task authority precede all writes; page history and binding baseline
+advance atomically. Human blocks and unrelated task ticks remain untouched.
+25/25 focused,118/118 broader Docs regressions and all workspace types pass.
+No route accepts a client-provided approval flag. No scheduler/model/UI wiring or
+production promotion yet. Next durable claims must carry binding and rule
+revisions (IDs, not copied source text), preserve them across review/resume, and
+use selected-block-only provider context. Preserve all broader acceptance gates.

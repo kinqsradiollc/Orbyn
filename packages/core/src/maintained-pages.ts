@@ -62,6 +62,14 @@ export type MaintainedPageBindingUpdate = z.input<
   typeof maintainedPageBindingUpdate
 >;
 
+/** Server-side job/approval receipt must match the saved binding revision. */
+export const maintainedPagePatchInput = z
+  .object({
+    expected_revision: z.number().int().positive(),
+    replacements: docContent.min(1).max(MAX_MAINTAINED_BLOCKS),
+  })
+  .strict();
+
 export type MaintainedPageBinding = {
   id: string;
   doc_id: string;

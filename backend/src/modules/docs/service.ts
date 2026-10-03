@@ -1157,7 +1157,12 @@ export async function saveDoc(
   u: UserRow,
   id: string,
   body: DocSave,
-  options: { ticksFrom?: number | null; always?: boolean } = {},
+  options: {
+    ticksFrom?: number | null;
+    always?: boolean;
+    /** Server-only block ownership: unrelated task ticks and labels are untouched. */
+    ownedBlockIds?: readonly string[];
+  } = {},
 ): Promise<Doc> {
   await actAs(db, u.id);
   const privateMemory = (
@@ -1192,19 +1197,39 @@ export async function saveDoc(
   // Where it sits in the tree (W5): its parent, and the folder that brings.
   const move = await planMove(db, u, current, body);
   // Lines tied to tasks are stored as their tasks now stand.
-  const content = body.content
+  const owned = options.ownedBlockIds && new Set(options.ownedBlockIds);
+  const submitted =
+    body.content &&
+    (owned
+      ? body.content.filter((block) => block.id && owned.has(block.id))
+      : body.content);
+  const processed = submitted
     ? await syncTicks(
         db,
         u,
         id,
-        await keepHiddenLabels(db, id, u.id, body.content),
+        await keepHiddenLabels(db, id, u.id, submitted),
         options.ticksFrom ?? null,
       )
     : undefined;
+  const changed = new Map(
+    processed?.flatMap((block) =>
+      block.id ? [[block.id, block] as const] : [],
+    ) ?? [],
+  );
+  const content =
+    processed &&
+    (owned
+      ? body.content!.map((block) =>
+          block.id && owned.has(block.id)
+            ? (changed.get(block.id) ?? block)
+            : block,
+        )
+      : processed);
   if (content) await followComments(db, id, content);
   if (content) await followSuggestions(db, id, content);
   // A picture or file pasted in is linked only if the saver can read it.
-  if (content) await allowPageFiles(db, u.id, content);
+  if (processed) await allowPageFiles(db, u.id, processed);
   await snapshot(db, id, u.id, options.always);
   await db.query(
     `UPDATE docs SET

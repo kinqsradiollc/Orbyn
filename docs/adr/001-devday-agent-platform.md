@@ -742,3 +742,16 @@ guarded document writes (including linked-task side effects), @orbyn comment
 jobs/replies, consent and review UI, native interactions, and full local/CI
 qualification remain open. Details: `docs/reviews/evidence/maintained-pages-contract.md`.
 No production promotion or A5 completion is asserted.
+
+### Maintained pages guarded application — 4 October 2026 (not promoted)
+
+A5's internal apply path now uses normal document persistence with selected-block
+processing, independent linked-task authorization, current trust/action-rule
+checks and atomic page/binding revision advancement. Human blocks and unrelated
+task ticks are preserved. Stale/moved/paused work, outside-bound patches and task
+permission failures cannot advance the baseline. Concurrent receipts save once.
+
+Docs/assistant-Docs/binding/API/core/inventory/catalog regressions118/118 and all
+workspace types pass. Scheduler/model staging/review receipts, both client UX,
+@orbyn comment jobs/replies, full qualification and native acceptance remain open.
+This does not complete A5 or the full C1-C6/M1/D1/U1 contract.
