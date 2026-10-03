@@ -907,6 +907,8 @@ export function DocEditor({
         setBlocks(theirs.content.length ? theirs.content : [EMPTY]);
         live.current = { title: theirs.title, blocks: theirs.content };
         history.current = emptyUndo();
+        setSavedAt(theirs.updated_at);
+        setNow(new Date());
         if (news) setNote(news);
         onChanged(theirs);
         return;
@@ -2898,7 +2900,12 @@ export function DocEditor({
         {maintaining && (
           <PageMaintenanceSheet
             id={doc.id}
-            onChanged={onChanged}
+            onChanged={(updated) => {
+              if (updated.version < version.current) return;
+              setSavedAt(updated.updated_at);
+              setNow(new Date());
+              onChanged(updated);
+            }}
             onClose={() => setMaintaining(false)}
           />
         )}

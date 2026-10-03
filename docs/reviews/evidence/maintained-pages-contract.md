@@ -391,3 +391,38 @@ acceptance. Then explicit additional sources and budgets, activity/undo and page
 reflection evidence, rolling worker safety, real account/device delivery and
 remaining full C1-C6/M1/D1/U1 gates. Main promotion/full goal completion remains
 unproven; the disposable native schedule stays paused and production untouched.
+
+### A5 native exact review and receipt follow-up — 4 October (not promoted)
+
+A labeled proposal was staged through internal scoped helpers in the marked
+local preview DB only. It is a UI fixture, not provider/inference evidence:
+modelCalls0 and synthetic100 estimated tokens. Native UI showed the exact saved
+replacement, then Apply changed the owned run to done and removed its waiting
+card. The underlying document displayed exactly `UI fixture: a concise disposable
+summary.`; authoritative DB check reported version6, done and waiting ID cleared.
+The disposable schedule was paused and prior Night preferences restored.
+
+Native Overnight displayed its separate page-result card and Open page action;
+current screenshots are in `docs/reviews/evidence/maintained-pages-ui/` with
+`fixture` in their filenames. Existing dev LogBox partially covered the review
+buttons visually, although the native accessibility action and persisted result
+were verified. This is not long-proposal/software-keyboard/Android acceptance.
+
+Inspection also caught stale receipt metadata: external/maintained saves updated
+content but left the old Saved time. Both editors now update receipt time on
+accepted clean external changes and maintained-page callbacks; callbacks older
+than the current page revision cannot regress it. All workspace types pass in
+`/tmp/orbyn-page-review-receipt-types.log`. Native re-read displayed the newer
+20-minute receipt instead of the old one-hour label. No local draft was overwritten.
+
+Main/PR195 remains a separate compatible session-rate checkpoint. Corrected e4ed6749
+passed CI37157146020 all four jobs. Its local full run completed2396 checks without
+failures before sessions.test.ts stalled with an identical IPv6 local/peer TCP
+endpoint and no registered PostgreSQL connection. That confirmed transport stall
+was cancelled and recorded externally, not called passing qualification. A new
+fresh marked IPv4 full run is live; merge still waits for complete local evidence.
+
+Next: complete that qualified main checkpoint and bring it into this branch,
+then complete explicit extra sources/budgets, activity/undo and page reflection,
+rolling worker activation, real account/device execution, remaining native/web
+render acceptance and full C1-C6/M1/D1/U1. No A5/main or whole-goal completion claim.

@@ -1013,6 +1013,8 @@ export function DocEditor({
             ? theirs.content
             : [{ type: "paragraph", text: "" }],
         );
+        setSavedAt(theirs.updated_at);
+        setNow(new Date());
         if (news) setNote(news);
         onChanged(theirs);
         return;
@@ -4177,7 +4179,12 @@ export function DocEditor({
         {maintaining && (
           <PageMaintenanceDialog
             id={doc.id}
-            onChanged={onChanged}
+            onChanged={(updated) => {
+              if (updated.version < version.current) return;
+              setSavedAt(updated.updated_at);
+              setNow(new Date());
+              onChanged(updated);
+            }}
             onClose={() => setMaintaining(false)}
           />
         )}
