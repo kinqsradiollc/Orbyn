@@ -1395,7 +1395,7 @@ html.js .reveal.is-visible {
 .home-agent-how summary {
   cursor: pointer;
   color: var(--color-text);
-  font-size: 14px;
+  font-size: 13px;
   padding: 8px 0;
 }
 .home-agent-how summary:focus-visible {

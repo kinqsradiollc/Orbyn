@@ -37,3 +37,11 @@ Component rendering tests prove content/disclosure structure, not visual layout.
 No screenshot acceptance claimed. Web review belongs to the user’s test server;
 native interaction and screenshot acceptance remain open. This branch is stacked
 on PR165 and cannot be promoted as though its parent/native acceptance were complete.
+
+## Full-suite typography correction
+
+Head6451f216 full suite failed2343/2344, zero skips/cancellations, terminalexit1.
+The repository-wide neatness check caught the new disclosure summary at14px,
+outside Orbyn's shared scale. Corrected the label to the existing13px scale;
+retained the assertion and the original full log. Include neatness checks in
+focused requalification. New matching-head local/CI qualification is required.
