@@ -828,3 +828,129 @@ test("plugin import status events survive replay and completed links obey curren
     );
   }
 });
+
+test("plugin job replay isolates grants/accounts, bounds pages and rejects expired or mismatched cursors", async () => {
+  const grant = (
+    await pool.query("SELECT grant_id FROM agent_tokens WHERE token_hash=$1", [
+      digest(token),
+    ])
+  ).rows[0].grant_id;
+  await pool.query(
+    "UPDATE agent_grants SET access='write',toolsets=ARRAY['files'],personal=true WHERE id=$1",
+    [grant],
+  );
+  let request = 0;
+  const read = (job: string, bearer = token, cursor?: string) =>
+    app.inject({
+      url: `/plugin/jobs/${job}/events${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+      headers: { authorization: `Bearer ${bearer}` },
+      remoteAddress: `10.85.5.${++request}`,
+    });
+  const createdClients: string[] = [];
+  const createdUsers: string[] = [];
+  try {
+    const imported = (
+      await pool.query(
+        "INSERT INTO imports(user_id,file_name,file_type,bytes) VALUES ($1,'PRIVATE-REPLAY-SOURCE.pdf','pdf',100) RETURNING id",
+        [userId],
+      )
+    ).rows[0].id;
+    const job = (
+      await pool.query(
+        "INSERT INTO plugin_import_jobs(user_id,grant_id,import_id) VALUES ($1,$2,$3) RETURNING id",
+        [userId, grant, imported],
+      )
+    ).rows[0].id;
+    await pool.query(
+      "INSERT INTO plugin_import_events(job_id,status) SELECT $1,'waiting' FROM generate_series(1,205)",
+      [job],
+    );
+    const first = await read(job);
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.json().events.length, 100);
+    assert.equal(first.json().has_more, true);
+    const second = await read(job, token, first.json().cursor);
+    assert.equal(second.statusCode, 200);
+    assert.equal(second.json().events.length, 100);
+    assert.equal(second.json().has_more, true);
+    const last = await read(job, token, second.json().cursor);
+    assert.equal(last.statusCode, 200);
+    assert.equal(last.json().events.length, 5);
+    assert.equal(last.json().has_more, false);
+    const all = [
+      ...first.json().events,
+      ...second.json().events,
+      ...last.json().events,
+    ];
+    assert.equal(
+      new Set(all.map((event: { sequence: string }) => event.sequence)).size,
+      205,
+    );
+    assert.doesNotMatch(
+      first.body + second.body + last.body,
+      /PRIVATE-REPLAY-SOURCE/,
+    );
+    for (const otherAccount of [false, true]) {
+      const owner = otherAccount
+        ? (
+            await pool.query(
+              "INSERT INTO users(email,name,password_hash) VALUES ($1,'Other','unusable') RETURNING id",
+              [`${randomUUID()}@example.test`],
+            )
+          ).rows[0].id
+        : userId;
+      if (otherAccount) createdUsers.push(owner);
+      const client = `replay-${randomUUID()}`;
+      createdClients.push(client);
+      await pool.query(
+        "INSERT INTO oauth_clients(id,kind,name,host,redirect_uris) VALUES ($1,'dcr','Replay','fixture.example.test',ARRAY['https://fixture.example.test/callback'])",
+        [client],
+      );
+      const otherGrant = (
+        await pool.query(
+          "INSERT INTO agent_grants(user_id,kind,resource_kind,client_id,access,personal,toolsets,trust,authorized_at) VALUES ($1,'oauth','plugin',$2,'write',true,ARRAY['files'],'full',now()) RETURNING id",
+          [owner, client],
+        )
+      ).rows[0].id;
+      const otherToken = `oat_${randomUUID()}`;
+      await pool.query(
+        "INSERT INTO agent_tokens(token_hash,grant_id,kind,resource,expires_at) VALUES ($1,$2,'access',$3,now()+interval '1 hour')",
+        [digest(otherToken), otherGrant, resource],
+      );
+      const refused = await read(job, otherToken, first.json().cursor);
+      assert.equal(refused.statusCode, 404);
+      assert.ok(!refused.json().events && !refused.json().result);
+    }
+    const otherImport = (
+      await pool.query(
+        "INSERT INTO imports(user_id,file_name,file_type,bytes) VALUES ($1,'Other.pdf','pdf',100) RETURNING id",
+        [userId],
+      )
+    ).rows[0].id;
+    const otherJob = (
+      await pool.query(
+        "INSERT INTO plugin_import_jobs(user_id,grant_id,import_id) VALUES ($1,$2,$3) RETURNING id",
+        [userId, grant, otherImport],
+      )
+    ).rows[0].id;
+    assert.equal(
+      (await read(otherJob, token, first.json().cursor)).statusCode,
+      400,
+    );
+    assert.equal((await read(job, token, "malformed")).statusCode, 400);
+    await pool.query(
+      "UPDATE plugin_import_jobs SET expires_at=now()-interval '1 second' WHERE id=$1",
+      [job],
+    );
+    assert.equal((await read(job)).statusCode, 404);
+  } finally {
+    await pool.query(
+      "UPDATE agent_grants SET access='read',toolsets=ARRAY['core'],personal=true WHERE id=$1",
+      [grant],
+    );
+    for (const owner of createdUsers)
+      await pool.query("DELETE FROM users WHERE id=$1", [owner]);
+    for (const client of createdClients)
+      await pool.query("DELETE FROM oauth_clients WHERE id=$1", [client]);
+  }
+});

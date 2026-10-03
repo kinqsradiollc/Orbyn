@@ -87,3 +87,13 @@ returning403. Actual real-stream fixtures verify those filesystem removals,
 failed/waiting state and zero documents. Latest serial30/30 terminal0:
 /tmp/orbyn-plugin-producer-guard-regressions.log. These two variants add to the
 12 earlier conversion scenarios; permissions are not held for the whole stream.
+
+## Access matrix follow-up
+
+Actual separate-service tests now prove another grant on the same account and
+another account cannot retrieve the job or replay its cursor (404, no events or
+result). A205-event fixture pages100/100/5 with205 unique sequences; no filename
+appears. Malformed and other-job cursors return400; expired jobs return404.
+Service14/14 terminal0: /tmp/orbyn-plugin-job-access-matrix.log. This is a
+regression-only follow-up in a separate checkout while5818a1d2 remains frozen
+for its running full test. It will update the same PR186, with its own full/CI.
