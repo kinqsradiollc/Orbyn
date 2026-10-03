@@ -28,6 +28,9 @@ const time = new Date("2026-10-05T09:00:00Z");
 const later = (ms: number) => new Date(time.getTime() + ms);
 before(() => migrate());
 afterEach(async () => {
+  await pool.query("DELETE FROM ai_jobs WHERE user_id=ANY($1::uuid[])", [
+    people,
+  ]);
   await pool.query(
     "UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,waiting_id=NULL WHERE user_id=ANY($1::uuid[]) AND state IN ('queued','running','waiting')",
     [people],
@@ -681,5 +684,123 @@ test("a queued action that was already forbidden cannot expose context to a mode
       ])
     ).rows[0].proposal,
     null,
+  );
+});
+
+test("page claims and chat claims share background capacity without consuming interactive slots", async () => {
+  const first = await fixture();
+  const second = await fixture();
+  const third = await fixture();
+  const runs = await Promise.all([
+    queued(first),
+    queued(second),
+    queued(third),
+  ]);
+  const claimedPages = await Promise.all(
+    runs.map((run) =>
+      transaction((db) =>
+        claimMaintainedPageRun(db, "background", time, run.id),
+      ),
+    ),
+  );
+  assert.equal(claimedPages.filter(Boolean).length, 2);
+  const { initialAssistantRun } =
+    await import("../src/modules/ai/agent/run.js");
+  const { claimAssistantJob } =
+    await import("../src/modules/ai/agent/runner.js");
+  const chat = (
+    await pool.query(
+      "INSERT INTO ai_chats(id,user_id,title) VALUES(gen_random_uuid(),$1,'Shared capacity') RETURNING id",
+      [first.user.id],
+    )
+  ).rows[0];
+  const enqueue = async (background: boolean) => {
+    const checkpoint = initialAssistantRun({
+      chat_id: chat.id,
+      turn_id: randomUUID(),
+      message: "Test shared slots",
+      timezone: "UTC",
+      history: [],
+      scope: null,
+      ...(background ? { automation: { kind: "idea" as const } } : {}),
+    });
+    return (
+      await pool.query(
+        "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,run_state) VALUES($1,$2,$3,'queued',$4) RETURNING id",
+        [
+          first.user.id,
+          chat.id,
+          checkpoint.request.turn_id,
+          JSON.stringify(checkpoint),
+        ],
+      )
+    ).rows[0];
+  };
+  await enqueue(true);
+  assert.equal(
+    await claimAssistantJob("background-overflow", "background"),
+    null,
+  );
+  const interactive = await enqueue(false);
+  assert.equal(
+    (await claimAssistantJob("interactive-room", "interactive"))?.id,
+    interactive.id,
+  );
+  await pool.query(
+    "UPDATE assistant_page_runs SET lease_expires_at=now()-interval '1 second' WHERE id=ANY($1::uuid[]) AND state='running'",
+    [runs.map((r) => r.id)],
+  );
+  assert.ok(await claimAssistantJob("background-after-expiry", "background"));
+});
+
+test("leased chat automation prevents a page claim until its lane has room", async () => {
+  const f = await fixture();
+  const run = await queued(f);
+  const { initialAssistantRun } =
+    await import("../src/modules/ai/agent/run.js");
+  for (let i = 0; i < 2; i++) {
+    const chat = (
+      await pool.query(
+        "INSERT INTO ai_chats(id,user_id,title) VALUES(gen_random_uuid(),$1,'Occupied background') RETURNING id",
+        [f.user.id],
+      )
+    ).rows[0];
+    const checkpoint = initialAssistantRun({
+      chat_id: chat.id,
+      turn_id: randomUUID(),
+      message: "Occupied",
+      timezone: "UTC",
+      history: [],
+      scope: null,
+      automation: { kind: "idea" },
+    });
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,run_state,lease_until) VALUES($1,$2,$3,'running',$4,$5)",
+      [
+        f.user.id,
+        chat.id,
+        checkpoint.request.turn_id,
+        JSON.stringify(checkpoint),
+        later(60000),
+      ],
+    );
+  }
+  assert.equal(
+    await transaction((db) =>
+      claimMaintainedPageRun(db, "background", time, run.id),
+    ),
+    null,
+  );
+  await pool.query(
+    "UPDATE ai_jobs SET state='waiting',lease_until=NULL WHERE user_id=$1",
+    [f.user.id],
+  );
+  assert.equal(
+    (
+      await transaction((db) =>
+        claimMaintainedPageRun(db, "background", time, run.id),
+      )
+    )?.id,
+    run.id,
   );
 });

@@ -806,3 +806,23 @@ and the broader C1-C6/M1/D1/U1 acceptance remain open.
 
 Main is now ee45ecf0: PR194 merged after corrected934e87d8 passed2582/2582
 local tests and all four CI jobs37149341825. User deploys main themselves.
+
+### A5 shared provider capacity checkpoint — 4 October (not promoted)
+
+Chat and maintained-page claims now use the same transaction advisory lock and
+count live leases across both queues. Background page work shares the existing
+two Background slots; it cannot consume the four interactive slots. The separate
+two Overnight slots and eight total slots remain unchanged. Expired leases and
+waiting jobs do not occupy execution capacity. Mixed queue regressions prove
+both directions, concurrent page claims and released capacity after expiry.
+
+Verified45/45 (runs, owner review API, provider consumer, runtime lanes and runner),
+zero skips/cancellations; backend typecheck passes. Evidence:
+`/tmp/orbyn-page-shared-slots-verified.log` and
+`/tmp/orbyn-page-shared-slots-types.log`. Earlier fixture failures are superseded
+by this terminal code0 run; they are not passing evidence.
+
+Still no service producer/consumer or client controls. Before activation, require
+shared consumer lifecycle/shutdown recovery, mixed-version worker rollout safety,
+Night per-person serial ordering/ten-run/reflection/morning outputs, explicit
+source selection, budgets/activity/undo and all broader ADR acceptance gates.

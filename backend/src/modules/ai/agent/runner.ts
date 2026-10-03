@@ -1,3 +1,4 @@
+import { assistantRuntimeHasRoom } from "./runtime-slots.js";
 import { flushAssistantAwayNotices } from "./notices.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
@@ -22,24 +23,7 @@ export async function claimAssistantJob(
   lane: AssistantRuntimeLane = "interactive",
 ) {
   return transaction(async (db) => {
-    // Serialize the short claim across replicas, including old consumers during
-    // a rolling upgrade. No lock is held during a provider call.
-    await db.query(
-      "SELECT pg_advisory_xact_lock(hashtext('assistant-global-slots'))",
-    );
-    const occupied = (
-      await db.query<{ count: number; lane_count: number }>(
-        `SELECT count(*)::int AS count,
-         count(*) FILTER (WHERE runtime_lane = $1)::int AS lane_count
-         FROM ai_jobs WHERE state='running' AND run_state->>'version'='1' AND lease_until > now()`,
-        [lane],
-      )
-    ).rows[0];
-    if (
-      occupied.count >= 8 ||
-      occupied.lane_count >= ASSISTANT_RUNTIME_CAPACITY[lane]
-    )
-      return null;
+    if (!(await assistantRuntimeHasRoom(db, lane))) return null;
     const row = (
       await db.query<{ id: string; user_id: string; run_state: unknown }>(
         `WITH candidate AS (

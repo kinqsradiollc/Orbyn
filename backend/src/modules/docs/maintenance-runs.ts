@@ -1,3 +1,4 @@
+import { assistantRuntimeHasRoom } from "../ai/agent/runtime-slots.js";
 import { assistantNightWindow } from "../../worker/night-window.js";
 import { captureMaintainedPageModelOrigin } from "./maintenance-model.js";
 import { randomUUID } from "node:crypto";
@@ -227,6 +228,7 @@ export async function claimMaintainedPageRun(
   now = new Date(),
   runId?: string,
 ): Promise<PageRun | null> {
+  if (!(await assistantRuntimeHasRoom(db, lane, now))) return null;
   await expireMaintainedPageRuns(db, lane, now);
   // Exhausted leases terminate instead of repeatedly charging a stalled provider.
   await db.query(
