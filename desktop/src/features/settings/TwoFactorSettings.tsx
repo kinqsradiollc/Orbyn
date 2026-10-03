@@ -123,7 +123,10 @@ export function TwoFactorSettings({
           </div>
         </form>
       ) : (
-        <div className="two-factor-codes">
+        <div
+          className="two-factor-codes"
+          data-settings-close-guard="Save your recovery codes before leaving Settings."
+        >
           <p>
             <strong>Save your recovery codes.</strong> Each works once if you
             lose your authenticator. They won’t be shown again.

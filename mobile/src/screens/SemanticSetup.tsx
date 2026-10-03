@@ -4,9 +4,8 @@ import { AI_PROVIDERS, type AiProvider, type AiSettings } from "@orbyn/core";
 import { Segmented } from "../components/Segmented";
 import { client } from "../lib/api";
 import { Button } from "../components/Button";
+import { Disclosure } from "../components/Disclosure";
 import { Icon } from "../components/Icon";
-import { Pill } from "../components/Pill";
-import { FadeIn } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -100,13 +99,17 @@ export function SemanticSetup({
       }
     });
   return (
-    <FadeIn style={shared.card}>
-      <View style={s.head}>
-        <Text style={[shared.sectionTitle, { flex: 1 }]}>
-          Search by meaning
-        </Text>
-        <Pill label={on ? "On" : "Off"} tone={on ? "accent" : "muted"} />
-      </View>
+    <Disclosure
+      title="Search by meaning"
+      detail={
+        on
+          ? "On"
+          : settings.embedding_needs_validation
+            ? "Validation needed"
+            : "Off"
+      }
+      initiallyOpen={on || !!settings.embedding_needs_validation}
+    >
       {settings.embedding_needs_validation && (
         <Text style={shared.small}>
           The saved provider changed or was removed. Validate a provider again
@@ -227,7 +230,7 @@ export function SemanticSetup({
           />
         </>
       )}
-    </FadeIn>
+    </Disclosure>
   );
 }
 

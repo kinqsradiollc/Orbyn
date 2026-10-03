@@ -1,9 +1,11 @@
 import type { FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
 import {
   AI_PROVIDERS,
   aiProviderInput,
   aiProviderUpdate,
   aiSettingsInput,
+  aiNightBudgetInput,
   aiTestInput,
   semanticSetupInput,
   fail,
@@ -44,6 +46,26 @@ const toPublic = (row: ProviderRow): AiProvider => ({
   updated_at: iso(row.updated_at),
 });
 
+type BudgetSettings = {
+  provider_id: string | null;
+  model: string;
+  night_token_budget: number;
+  embedding_generation: string;
+  updated_at_epoch: string | null;
+};
+const budgetRevision = (row: BudgetSettings) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        row.provider_id,
+        row.model,
+        row.night_token_budget,
+        row.embedding_generation,
+        row.updated_at_epoch,
+      ]),
+    )
+    .digest("hex");
+
 async function currentSettings(): Promise<AiSettings> {
   const row = (
     await query<{
@@ -61,9 +83,10 @@ async function currentSettings(): Promise<AiSettings> {
       semantic_accepted_at: Date | null;
       measure_running: boolean;
       night_token_budget: number;
+      updated_at_epoch: string | null;
     }>(
       `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled, s.night_token_budget,
-              s.embedding_model, s.semantic_accepted_at,
+              s.embedding_model, s.semantic_accepted_at, extract(epoch FROM s.updated_at)::text AS updated_at_epoch,
               s.embedding_provider_id,s.embedding_dimensions,s.embedding_generation,
               s.embedding_search_enabled,
               (s.embedding_search_enabled AND ep.enabled AND s.semantic_accepted_at IS NOT NULL
@@ -94,6 +117,7 @@ async function currentSettings(): Promise<AiSettings> {
     : undefined;
   return {
     night_token_budget: row?.night_token_budget ?? 1000000,
+    settings_revision: row ? budgetRevision(row) : undefined,
     provider_id: row?.provider_id ?? null,
     model: row?.model ?? "",
     source: fromDatabase ? "database" : "none",
@@ -501,9 +525,42 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     return currentSettings();
   });
 
+  app.put("/ai/settings/night-budget", strictRateLimit, async (r) => {
+    const actor = await authorize(r, "ai:manage");
+    const input = aiNightBudgetInput.parse(r.body);
+    await transaction(async (db) => {
+      const current = (
+        await db.query<BudgetSettings>(`SELECT provider_id,model,night_token_budget,embedding_generation,
+        extract(epoch FROM updated_at)::text AS updated_at_epoch FROM ai_settings WHERE id FOR UPDATE`)
+      ).rows[0];
+      if (!current || budgetRevision(current) !== input.expected_revision)
+        fail(409, "AI settings changed. Refresh the budget before saving.");
+      await db.query(
+        "UPDATE ai_settings SET night_token_budget=$1,updated_by=$2,updated_at=now() WHERE id",
+        [input.night_token_budget, actor.id],
+      );
+      await audit(
+        {
+          actorId: actor.id,
+          action: "ai.night_budget_changed",
+          targetType: "system",
+          targetId: null,
+          details: {
+            before: current.night_token_budget,
+            after: input.night_token_budget,
+          },
+        },
+        db,
+      );
+    });
+    return currentSettings();
+  });
+
   app.put("/ai/settings", async (r) => {
     const actor = await authorize(r, "ai:manage");
     const d = aiSettingsInput.parse(r.body);
+    if (d.night_token_budget !== undefined)
+      fail(409, "Use the night-shift budget control to change its allowance.");
     // Search by meaning is turned on only through its own setup, below.
     if (d.semantic_search === true)
       fail(
@@ -524,14 +581,13 @@ export async function aiAdminRoutes(app: FastifyInstance) {
            embedding_generation = CASE WHEN $4::boolean=false THEN gen_random_uuid() ELSE embedding_generation END,
            semantic_accepted_at = CASE WHEN $4::boolean=false THEN NULL ELSE semantic_accepted_at END,
            semantic_accepted_by = CASE WHEN $4::boolean=false THEN NULL ELSE semantic_accepted_by END,
-           night_token_budget = coalesce($5, night_token_budget), updated_at=now()
+           updated_at=now()
          WHERE id`,
         [
           d.provider_id,
           d.provider_id ? d.model : "",
           actor.id,
           d.semantic_search ?? null,
-          d.night_token_budget ?? null,
         ],
       );
       if (d.semantic_search === false && (await hasVectors())) {

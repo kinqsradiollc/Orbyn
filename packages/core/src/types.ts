@@ -571,6 +571,8 @@ export type AiProvider = {
 };
 
 export type AiSettings = {
+  /** Opaque current settings snapshot for independent, conditional budget edits. */
+  settings_revision?: string;
   /** Shared token allowance for one person's night, set by a workspace admin. */
   night_token_budget?: number;
   provider_id: string | null;

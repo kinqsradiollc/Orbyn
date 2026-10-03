@@ -134,6 +134,10 @@ import {
 import { AssistantView } from "../features/assistant/AssistantView";
 import { NotificationsView } from "../features/notifications/NotificationsView";
 import { SettingsView } from "../features/settings/SettingsView";
+import {
+  SettingsModal,
+  settingsExitAllowed,
+} from "../features/settings/SettingsModal";
 import { TeamsView } from "../features/teams/TeamsView";
 import type { TeamActions } from "../features/teams/TeamDetail";
 import { AdminView } from "../features/admin/AdminView";
@@ -251,6 +255,15 @@ export function App() {
       return "Overview";
     }
   });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => {
+    if (!settingsExitAllowed()) return false;
+    setSettingsOpen(false);
+    return true;
+  }, []);
+  useEffect(() => {
+    if (!token) setSettingsOpen(false);
+  }, [token]);
   // Compact layouts have no workspace tabs to restore their current screen.
   useEffect(() => {
     try {
@@ -775,6 +788,7 @@ export function App() {
     }
     const actions: Record<string, () => void> = {
       "app.search": () => {
+        if (settingsOpen && !closeSettings()) return;
         setCommandQuery("");
         setCommandAdd(false);
         setCommandOpen((open) => !open);
@@ -968,6 +982,12 @@ export function App() {
   };
 
   const navigate = (v: View) => {
+    if (v === "Settings") {
+      setSettingsOpen(true);
+      setMobileNav(false);
+      return;
+    }
+    if (settingsOpen && !closeSettings()) return;
     if (v === "Overnight") setOvernightId(undefined);
     // A failure belongs to the view it happened in.
     if (v !== view) planner.setError("");
@@ -1006,6 +1026,11 @@ export function App() {
   /** Show a tab's place: its screen, afresh, with its thing open. */
   const showPlace = (place: TabPlace) => {
     const next = place.view as View;
+    if (next === "Settings") {
+      setSettingsOpen(true);
+      setMobileNav(false);
+      return;
+    }
     if (next !== view) planner.setError("");
     setMobileNav(false);
     setQuery("");
@@ -1040,6 +1065,15 @@ export function App() {
   /** Change the tabs as the person asked, and show what came to the front. */
   const tabAct = (action: TabAction) => {
     if (!tabsLive) return;
+    if (action.type === "select") {
+      const selected = tabs.ref.current.tabs.find(
+        (tab) => tab.key === action.key,
+      );
+      if (selected && placeOf(selected).view === "Settings") {
+        navigate("Settings");
+        return;
+      }
+    }
     const before = activeTab(tabs.ref.current);
     const was = placeOf(before);
     const after = activeTab(tabs.act(action));
@@ -1571,6 +1605,33 @@ export function App() {
     onOpen: openItem,
   };
 
+  const settingsDialog =
+    settingsOpen && user ? (
+      <SettingsModal onClose={closeSettings}>
+        <SettingsView
+          user={user}
+          teams={teams}
+          busy={busy}
+          report={report}
+          initialSetting={settingAsked}
+          onOpenWhatsNew={() => {
+            if (closeSettings()) setWhatsNewOpen(true);
+          }}
+          onEmailReminders={planner.setEmailReminders}
+          onOpenStatus={() => {
+            if (closeSettings()) navigatePath("/status");
+          }}
+          onOpenSecurity={() => {
+            if (closeSettings()) navigatePath("/security");
+          }}
+          onAccountDeleted={() => {
+            planner.clearSession();
+            navigatePath("/", true);
+          }}
+        />
+      </SettingsModal>
+    ) : null;
+
   // One page in a window of its own (NAV-06): no sidebar, no library.
   if (pageWindowId)
     return (
@@ -1584,6 +1645,7 @@ export function App() {
             onItemsChanged={() => void refresh()}
             report={report}
           />
+          {settingsDialog}
         </PlanningProviders>
       </PrefsContext.Provider>
     );
@@ -2066,23 +2128,6 @@ export function App() {
                     }
                   />
                 )}
-                {view === "Settings" && (
-                  <SettingsView
-                    user={user}
-                    teams={teams}
-                    busy={busy}
-                    report={report}
-                    initialSetting={settingAsked}
-                    onOpenWhatsNew={() => setWhatsNewOpen(true)}
-                    onEmailReminders={planner.setEmailReminders}
-                    onOpenStatus={() => navigatePath("/status")}
-                    onOpenSecurity={() => navigatePath("/security")}
-                    onAccountDeleted={() => {
-                      planner.clearSession();
-                      navigatePath("/", true);
-                    }}
-                  />
-                )}
               </div>
               {loading && (
                 <small className="sync-status">Syncing your space…</small>
@@ -2101,6 +2146,7 @@ export function App() {
               )}
             </main>
           </div>
+          {settingsDialog}
           {shownTask && (
             <TaskDetail
               key={shownTask.id}

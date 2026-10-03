@@ -13,6 +13,7 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
+import { Disclosure } from "../components/Disclosure";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
@@ -138,75 +139,93 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
           <Pill label={source.label} tone={source.tone} />
         </View>
         <Text style={[shared.body, s.gapBelow]}>{source.body}</Text>
-        <View style={s.kv}>
-          <Text style={shared.small}>Provider</Text>
-          <Text style={s.kvValue} numberOfLines={1}>
-            {active ? `${active.name} · ${KIND_LABELS[active.kind]}` : "—"}
+        {(settings.provider_id || settings.model) && (
+          <>
+            <View style={s.kv}>
+              <Text style={shared.small}>Provider</Text>
+              <Text style={s.kvValue} numberOfLines={1}>
+                {active ? `${active.name} · ${KIND_LABELS[active.kind]}` : "—"}
+              </Text>
+            </View>
+            <View style={s.kv}>
+              <Text style={shared.small}>Model</Text>
+              <Text style={s.kvValue} numberOfLines={1}>
+                {settings.model || "—"}
+              </Text>
+            </View>
+          </>
+        )}
+        <Disclosure
+          title="Night-shift budget"
+          detail={
+            typeof settings.night_token_budget === "number"
+              ? `${settings.night_token_budget.toLocaleString()} tokens per person`
+              : "Budget unavailable"
+          }
+        >
+          <Field label="Night-shift tokens per person">
+            <TextInput
+              accessibilityLabel="Night-shift tokens per person"
+              style={shared.input}
+              keyboardType="number-pad"
+              value={nightBudget}
+              onChangeText={setNightBudget}
+            />
+          </Field>
+          <Text style={shared.small}>
+            Shared across up to ten runs each night. Remaining work waits for
+            morning.
           </Text>
-        </View>
-        <View style={s.kv}>
-          <Text style={shared.small}>Model</Text>
-          <Text style={s.kvValue} numberOfLines={1}>
-            {settings.model || "—"}
-          </Text>
-        </View>
-        <Field label="Night-shift tokens per person">
-          <TextInput
-            accessibilityLabel="Night-shift tokens per person"
-            style={shared.input}
-            keyboardType="number-pad"
-            value={nightBudget}
-            onChangeText={setNightBudget}
+          <Button
+            title="Save night budget"
+            disabled={
+              busy ||
+              !settings.settings_revision ||
+              !Number.isInteger(Number(nightBudget)) ||
+              Number(nightBudget) < 1000 ||
+              Number(nightBudget) > 10000000
+            }
+            onPress={() =>
+              void act(async () => {
+                try {
+                  await client.updateAiNightBudget({
+                    expected_revision: settings.settings_revision!,
+                    night_token_budget: Number(nightBudget),
+                  });
+                } finally {
+                  await load();
+                }
+              })
+            }
           />
-        </Field>
-        <Text style={shared.small}>
-          Shared across up to ten runs each night. Remaining work waits for
-          morning.
-        </Text>
-        <Button
-          title="Save night budget"
-          disabled={
-            busy ||
-            !Number.isInteger(Number(nightBudget)) ||
-            Number(nightBudget) < 1000 ||
-            Number(nightBudget) > 10000000
-          }
-          onPress={() =>
-            void act(async () => {
-              await client.updateAiSettings({
-                provider_id: settings.provider_id,
-                model: settings.model,
-                night_token_budget: Number(nightBudget),
-              });
-              await load();
-            })
-          }
-        />
-        <Button
-          secondary
-          title="Turn off assistant"
-          style={s.flushButton}
-          disabled={busy || settings.source === "none"}
-          onPress={() =>
-            Alert.alert(
-              "Turn off the assistant?",
-              "It stays off until you choose a provider again.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Turn off",
-                  style: "destructive",
-                  onPress: () =>
-                    act(async () =>
-                      setSettings(
-                        await client.updateAiSettings({ provider_id: null }),
+        </Disclosure>
+        {settings.source !== "none" && (
+          <Button
+            secondary
+            title="Turn off assistant"
+            style={s.flushButton}
+            disabled={busy}
+            onPress={() =>
+              Alert.alert(
+                "Turn off the assistant?",
+                "It stays off until you choose a provider again.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Turn off",
+                    style: "destructive",
+                    onPress: () =>
+                      act(async () =>
+                        setSettings(
+                          await client.updateAiSettings({ provider_id: null }),
+                        ),
                       ),
-                    ),
-                },
-              ],
-            )
-          }
-        />
+                  },
+                ],
+              )
+            }
+          />
+        )}
       </FadeIn>
 
       <View style={s.section}>
@@ -220,7 +239,14 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
         />
       </View>
 
-      <Text style={[shared.eyebrow, s.section]}>PROVIDERS</Text>
+      <View style={[s.cardHead, s.section]}>
+        <Text style={[shared.eyebrow, { flex: 1 }]}>PROVIDERS</Text>
+        <SmallAction
+          label="Add provider"
+          disabled={busy}
+          onPress={() => setForm({ mode: "new" })}
+        />
+      </View>
       {providers.length ? (
         <View style={s.list}>
           {providers.map((p, n) => (
@@ -268,22 +294,12 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
           ))}
         </View>
       ) : (
-        <View style={[shared.card, shared.empty]}>
-          <View style={shared.emptyIcon}>
-            <Icon name="sparkles" size={26} color={colors.accent} />
-          </View>
-          <Text style={shared.sectionTitle}>No providers yet.</Text>
-          <Text style={[shared.subtitle, s.center]}>
-            Connect a cloud service or a model running on your own machine.
+        <View style={shared.card}>
+          <Text style={shared.small}>
+            Add a provider for chat or embeddings.
           </Text>
         </View>
       )}
-      <Button
-        title="Add provider"
-        icon="plus"
-        disabled={busy}
-        onPress={() => setForm({ mode: "new" })}
-      />
     </>
   );
 }

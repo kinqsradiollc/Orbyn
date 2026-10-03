@@ -710,3 +710,20 @@ without weakening assertions. The current combined reflection/night-settings/
 Overnight suite passes28/28, including selected-team changes and membership
 revocation. Full local tests, build/format, CI and signed-in native/web acceptance
 remain required; this is not a completed C3/U1 claim.
+
+### Settings modality and layout — user requirement, 4 October 2026
+
+Settings opens as a bounded web/desktop modal over the existing workspace, keeping
+documents/chats mounted. Native retains its settings sheet. Preserve search and
+setting-command entry points, category navigation, keyboard/viewport containment,
+focus return and nested dialog ownership. One-time recovery material cannot be
+lost by closing or changing category before acknowledgement.
+
+The next layout checkpoint also replaces wrapped Admin tabs with a desktop rail
+and compact native selector, bounded scrolling menus and progressive disclosure
+for budget/embedding setup. Budget saves must change only the allowance and
+reject stale settings snapshots. Latest UI controls21 and real HTTP budget tests3
+pass; full/CI and remaining platform acceptance remain required. Web visuals are
+user-reviewed under the latest explicit blind-redesign allowance; native screens
+are inspected directly. Evidence and limitations:
+`docs/reviews/evidence/settings-modal-layout.md`. This does not complete all U1.

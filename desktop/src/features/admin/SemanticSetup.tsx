@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, ChevronDown } from "lucide-react";
 import { AI_PROVIDERS, type AiProvider, type AiSettings } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { client } from "../../lib/api";
@@ -91,27 +91,34 @@ export function SemanticSetup({
       }
     });
   return (
-    <section className="card semantic-setup fade-up">
-      <div className="section-heading">
-        <h2>Search by meaning</h2>
-        <span className={"plan-chip" + (on ? " is-ok" : "")}>
-          {on ? "On" : "Off"}
+    <details
+      className="card semantic-setup fade-up"
+      open={on || settings.embedding_needs_validation}
+    >
+      <summary className="semantic-summary">
+        <strong>Search by meaning</strong>
+        <span>
+          {on
+            ? "On"
+            : settings.embedding_needs_validation
+              ? "Validation needed"
+              : "Off"}
         </span>
-      </div>
+        <ChevronDown size={16} aria-hidden="true" />
+      </summary>
       <p className="muted">
-        Finds a page that says the same thing in other words, beside the word
-        search. It stays off unless you set it up here: every page is sent to
-        the provider to be measured, not just the pages a question needs.
+        Uses an embedding provider to index pages. Projects and teams kept out
+        of the assistant are excluded.
       </p>
       <ul className="semantic-steps">
-        {steps.map((s) => (
-          <li key={s.text} className={s.done ? "is-done" : ""}>
-            {s.done ? (
+        {steps.map((step) => (
+          <li key={step.text} className={step.done ? "is-done" : ""}>
+            {step.done ? (
               <Check size={14} aria-label="Done" />
             ) : (
               <Circle size={14} aria-label="Not yet" />
             )}
-            <span>{s.text}</span>
+            <span>{step.text}</span>
           </li>
         ))}
       </ul>
@@ -222,6 +229,6 @@ export function SemanticSetup({
           </button>
         </form>
       )}
-    </section>
+    </details>
   );
 }

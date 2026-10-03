@@ -14,7 +14,7 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import type { Editing } from "../components/ItemEditor";
 import { Pill } from "../components/Pill";
-import { Segmented } from "../components/Segmented";
+import { ActionSheet } from "../components/MoreMenu";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { TeamList } from "../components/TeamList";
@@ -55,6 +55,10 @@ type Segment =
 
 const SEGMENTS: Segment[] = ["overview", "users", "teams", "audit"];
 const SEGMENT_LABELS = {
+  overview: "Overview",
+  users: "Users",
+  teams: "Teams",
+  audit: "Audit log",
   analytics: "Analytics",
   requests: "Requests",
   database: "Database",
@@ -98,6 +102,7 @@ export function AdminSheet({
   const [segment, setSegment] = useState<Segment>("overview");
   const [team, setTeam] = useState<string | null>(null);
   const [account, setAccount] = useState<string | null>(null);
+  const [sectionsOpen, setSectionsOpen] = useState(false);
   const canManageAi = hasSystemPermission(user?.role, "ai:manage");
   const canManageSystem = hasSystemPermission(user?.role, "system:manage");
   const segments: Segment[] = [
@@ -117,6 +122,7 @@ export function AdminSheet({
   const banner = <ErrorBanner error={error} onDismiss={clearError} />;
   const close = () => {
     setTeam(null);
+    setSectionsOpen(false);
     clearError();
     onClose();
   };
@@ -150,16 +156,33 @@ export function AdminSheet({
         >
           <View style={sheetStyles.column}>
             {banner}
-            <Segmented
-              accessibilityLabel="Admin section"
-              options={segments}
-              labels={SEGMENT_LABELS}
-              // Five or more segments truncate "Overview" as a fixed row; let them flow.
-              wrap={segments.length > SEGMENTS.length}
-              value={segment}
-              onChange={setSegment}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Admin section: ${SEGMENT_LABELS[segment]}`}
+              accessibilityState={{ expanded: sectionsOpen }}
+              onPress={() => setSectionsOpen(true)}
+              style={({ pressed }) => [
+                s.sectionPicker,
+                pressed && s.sectionPressed,
+              ]}
+            >
+              <Text style={shared.small}>Section</Text>
+              <Text style={s.sectionName}>{SEGMENT_LABELS[segment]}</Text>
+              <Icon name="chevronDown" size={18} color={colors.muted} />
+            </Pressable>
+            <ActionSheet
+              visible={sectionsOpen}
+              label="Choose admin section"
+              title="Admin sections"
+              onClose={() => setSectionsOpen(false)}
+              actions={segments.map((section) => ({
+                label: `${SEGMENT_LABELS[section]}${section === segment ? " · current" : ""}`,
+                onPress: () => {
+                  setSegment(section);
+                  setAccount(null);
+                },
+              }))}
             />
-            <View style={s.spacer} />
             {segment === "overview" && <Overview act={act} />}
             {segment === "analytics" && <AdminAnalyticsView act={act} />}
             {segment === "requests" && <AdminRequests act={act} busy={busy} />}
@@ -485,6 +508,27 @@ function auditTarget(a: AuditEntry) {
 
 const s = themed(() =>
   StyleSheet.create({
+    sectionPicker: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      minHeight: 44,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      backgroundColor: colors.surface,
+      marginBottom: 16,
+    },
+    sectionPressed: { backgroundColor: colors.surfaceMuted },
+    sectionName: {
+      flex: 1,
+      minWidth: 0,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
     spacer: { height: 18 },
     grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     tile: {

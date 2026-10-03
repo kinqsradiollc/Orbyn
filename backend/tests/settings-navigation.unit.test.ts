@@ -84,10 +84,11 @@ test("settings search still selects the tab and opens the matching section", () 
   );
   assert.match(view, /setTab\(entry.tab\)/);
   assert.match(view, /key: sectionKey\(entry.section\)/);
-  assert.match(
-    view,
-    /<SettingsNavigation selected=\{tab\} onSelect=\{setTab\}/,
-  );
+  const start = view.indexOf("<SettingsNavigation");
+  const navigation = view.slice(start, view.indexOf("/>", start));
+  assert.match(navigation, /selected=\{tab\}/);
+  assert.match(navigation, /onSelect=\{\(next\) =>/);
+  assert.match(navigation, /if \(settingsExitAllowed\(\)\) setTab\(next\)/);
   assert.match(view, /id="settings-content"/);
   assert.match(view, /aria-labelledby=\{"settings-category-" \+ tab\}/);
 });
