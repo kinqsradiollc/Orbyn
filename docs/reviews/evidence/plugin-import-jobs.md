@@ -51,3 +51,39 @@ methods/async plan jobs and hosted launch/UI/account/provider flows. Full exact
 committed-head suite/CI and the retained C1–C6/M1/D1/U1 audit remain open. This is
 an async import increment, not complete C6 or ADR delivery. No main merge,
 deployment, release or original-work cleanup occurred.
+
+## Producer guard follow-up — latest 3 October
+
+New server-owned import origin records grant/client/recipient inside the capability
+write transaction, covering synchronous plugin starts as well as the async route.
+The origin flag survives FK deletion and never becomes a first-party fallback.
+Before INSERT docs, the converter locks current OAuth/grant/user/client/membership
+and project authority, checks file write scope, trust, account/client/policy state
+and expiry, and attributes successful writes to the plugin grant. No bearer or
+user-controlled plan token is stored or recovered.
+
+The real Word upload/file-store/converter/page/event flow now passes, including
+11 denial variants: revocation, grant deletion, read-only, lost Personal, ask-first,
+blocked client, project exclusion, token expiry, grant expiry, disabled owner and
+lost file toolset. Denied cases save no page and retain the origin flag. Final
+serial checks30/30 terminated0, no skips/cancellations:
+/tmp/orbyn-plugin-producer-final-regressions.log. The earlier parallel20/20 run
+is retained as exploratory evidence; qualification uses serial DB suites.
+
+Plugin migrations are renumbered215/216 to follow main's214 doc reference
+migration. Existing candidate/identifiable legacy plugin starts lack a trustworthy
+original recipient snapshot and fail closed pending reimport. Drain legacy
+in-flight imports before production upgrade; deleted legacy grants can have lost
+activity attribution. This is a rollout limitation, not a reconstructed identity.
+
+This follow-up supersedes the earlier missing-write-guard paragraph. It still
+requires latest-main integration, fresh full/CI, broader cross-account/concurrency/
+expiry/large-page and protocol/host acceptance. No complete C6/ADR claim.
+
+Upload admission and the post-stream queue transaction now use the same current
+producer guard. Revocation before upload creates no reservation; revocation
+mid-stream clears the reservation and deletes both ciphertext/key files before
+returning403. Actual real-stream fixtures verify those filesystem removals,
+failed/waiting state and zero documents. Latest serial30/30 terminal0:
+/tmp/orbyn-plugin-producer-guard-regressions.log. These two variants add to the
+12 earlier conversion scenarios; permissions are not held for the whole stream.

@@ -22,9 +22,46 @@ import type { Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { IMPORT_LIMITS, sniffImportType } from "@orbyn/core";
 import { env } from "../../config/env.js";
-import { pool } from "../../db/pool.js";
+import { pool, transaction, type Queryable } from "../../db/pool.js";
+import { settings } from "../../lib/settings.js";
+import {
+  pluginImportProducer,
+  PluginImportAuthorityError,
+  type PluginImportOrigin,
+} from "./plugin-producer.js";
 import { announceTo } from "../presence/live.js";
 import { isService, readUploadToken } from "./tokens.js";
+
+async function uploadAuthority(
+  db: Queryable,
+  importId: string,
+  userId: string,
+) {
+  const row = (
+    await db.query<
+      PluginImportOrigin & {
+        project_id: string | null;
+        project_team_id: string | null;
+      }
+    >(
+      `SELECT project_id,project_team_id,plugin_owned,plugin_grant_id,plugin_client_id,plugin_resource
+     FROM imports WHERE id=$1 AND user_id=$2 AND status='waiting'`,
+      [importId, userId],
+    )
+  ).rows[0];
+  if (!row) return false;
+  const authority = await pluginImportProducer(
+    db,
+    userId,
+    row,
+    row.project_id,
+    row.project_team_id,
+    await settings(),
+  );
+  if (authority && authority.expiresAt.getTime() <= Date.now())
+    throw new PluginImportAuthorityError();
+  return true;
+}
 
 /**
  * The file store: Orbyn's own home for uploaded files while they're being
@@ -413,15 +450,24 @@ export async function filesRoutes(app: FastifyInstance) {
         });
       const objectId = randomUUID();
       // Reserving the import makes the link single-use.
-      const reserved = (
-        await pool.query(
-          `UPDATE imports SET object_id = $3, claimed_at = now()
+      let reserved: number | null;
+      try {
+        reserved = await transaction(async (db) => {
+          if (!(await uploadAuthority(db, claim.i, claim.u))) return 0;
+          return (
+            await db.query(
+              `UPDATE imports SET object_id = $3, claimed_at = now()
             WHERE id = $1 AND user_id = $2 AND status = 'waiting'
               AND object_id IS NULL
             RETURNING id`,
-          [claim.i, claim.u, objectId],
-        )
-      ).rowCount;
+              [claim.i, claim.u, objectId],
+            )
+          ).rowCount;
+        });
+      } catch (error) {
+        if (!(error instanceof PluginImportAuthorityError)) throw error;
+        return reply.code(403).send({ message: error.message });
+      }
       if (!reserved)
         return reply
           .code(409)
@@ -452,13 +498,29 @@ export async function filesRoutes(app: FastifyInstance) {
           .code(e instanceof UploadError ? e.statusCode : 400)
           .send({ message });
       }
-      const queued = (
+      let queued: number | null;
+      try {
+        queued = await transaction(async (db) => {
+          if (!(await uploadAuthority(db, claim.i, claim.u))) return 0;
+          return (
+            await db.query(
+              `UPDATE imports SET status = 'queued', bytes = $2, claimed_at = NULL
+            WHERE id = $1 AND user_id=$4 AND object_id=$3 AND status = 'waiting' RETURNING id`,
+              [claim.i, bytes, objectId, claim.u],
+            )
+          ).rowCount;
+        });
+      } catch (error) {
+        await removeObject(objectId);
+        if (!(error instanceof PluginImportAuthorityError)) throw error;
         await pool.query(
-          `UPDATE imports SET status = 'queued', bytes = $2, claimed_at = NULL
-            WHERE id = $1 AND status = 'waiting' RETURNING id`,
-          [claim.i, bytes],
-        )
-      ).rowCount;
+          `UPDATE imports SET status='failed',error=$2,object_id=NULL,finished_at=now()
+          WHERE id=$1 AND object_id=$3`,
+          [claim.i, error.message, objectId],
+        );
+        await announceTo(pool, { user_id: claim.u }, "changed").catch(() => {});
+        return reply.code(403).send({ message: error.message });
+      }
       // Cancelled while it was uploading: nothing to keep.
       if (!queued) await removeObject(objectId);
       await announceTo(pool, { user_id: claim.u }, "changed").catch(() => {});
