@@ -3,6 +3,7 @@ import {
   Animated,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -138,40 +139,44 @@ export function ActionSheet({
               </Text>
             )}
           </View>
-          {shown.map((a) => (
-            <Pressable
-              key={a.label}
-              accessibilityRole="menuitem"
-              disabled={a.disabled}
-              onPress={() => {
-                chosen.current = a.onPress;
-                onClose();
-                // Only iOS waits for the menu to go before the next thing,
-                // and not for ever should the dismissal go unreported.
-                if (Platform.OS !== "ios") run();
-                else setTimeout(run, 600);
-              }}
-              style={({ pressed }) => [
-                s.item,
-                pressed && { backgroundColor: colors.surfaceMuted },
-                a.disabled && { opacity: 0.45 },
-              ]}
-            >
-              {a.icon && (
-                <Icon
-                  name={a.icon}
-                  size={18}
-                  color={a.destructive ? colors.danger : colors.textSoft}
-                />
-              )}
-              <Text
-                style={[s.itemText, a.destructive && { color: colors.danger }]}
-                numberOfLines={1}
+          <ScrollView style={s.actionList} keyboardShouldPersistTaps="handled">
+            {shown.map((a) => (
+              <Pressable
+                key={a.label}
+                accessibilityRole="menuitem"
+                disabled={a.disabled}
+                onPress={() => {
+                  chosen.current = a.onPress;
+                  onClose();
+                  // Only iOS waits for the menu to go before the next thing,
+                  // and not for ever should the dismissal go unreported.
+                  if (Platform.OS !== "ios") run();
+                  else setTimeout(run, 600);
+                }}
+                style={({ pressed }) => [
+                  s.item,
+                  pressed && { backgroundColor: colors.surfaceMuted },
+                  a.disabled && { opacity: 0.45 },
+                ]}
               >
-                {a.label}
-              </Text>
-            </Pressable>
-          ))}
+                {a.icon && (
+                  <Icon
+                    name={a.icon}
+                    size={18}
+                    color={a.destructive ? colors.danger : colors.textSoft}
+                  />
+                )}
+                <Text
+                  style={[
+                    s.itemText,
+                    a.destructive && { color: colors.danger },
+                  ]}
+                >
+                  {a.label}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
           <Pressable
             accessibilityRole="button"
             onPress={onClose}
@@ -235,16 +240,20 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.muted,
     },
-    // Every row the same height, a line icon and a verb, no lines between.
+    actionList: { flexShrink: 1, minHeight: 0 },
+    // Rows share a minimum height; long labels wrap with room on every side.
     item: {
       minHeight: controls.tap + 8,
       flexDirection: "row",
       alignItems: "center",
       gap: 14,
       paddingHorizontal: 16,
+      paddingVertical: 10,
       borderRadius: radii.input,
     },
     itemText: {
+      flexShrink: 1,
+      minWidth: 0,
       flex: 1,
       fontFamily: fonts.medium,
       fontSize: 15,

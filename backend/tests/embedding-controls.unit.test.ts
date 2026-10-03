@@ -93,7 +93,7 @@ function fixture(mobile: boolean, overrides: object = {}, reject = false) {
         return { colors: {}, fonts: {}, themed: (fn: () => unknown) => fn() };
       if (path.endsWith("/styles")) return { shared: {} };
       if (path.endsWith("/motion")) return { FadeIn: control };
-      for (const name of ["Button", "Icon", "Pill", "Segmented"])
+      for (const name of ["Button", "Icon", "Pill", "Segmented", "Disclosure"])
         if (path.endsWith(`/components/${name}`)) return { [name]: control };
       return require(path);
     },

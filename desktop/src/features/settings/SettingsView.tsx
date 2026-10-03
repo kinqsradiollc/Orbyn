@@ -1,6 +1,7 @@
 import { ChatgptConnections } from "./ChatgptConnections";
 import { SettingsFocus, SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
+import { settingsExitAllowed } from "./SettingsModal";
 import {
   Activity,
   BookOpen,
@@ -91,6 +92,7 @@ export function SettingsView({
   const [reading, setReading] = useState(readsFirst);
   const found = searchSettings(query);
   const choose = (entry: SettingEntry) => {
+    if (!settingsExitAllowed()) return;
     setTab(entry.tab);
     setQuery("");
     setFocus((f) => ({
@@ -124,7 +126,11 @@ export function SettingsView({
                     e.preventDefault();
                     choose(found[0]);
                   }
-                  if (e.key === "Escape") setQuery("");
+                  if (e.key === "Escape" && query) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setQuery("");
+                  }
                 }}
               />
             </label>
@@ -157,7 +163,12 @@ export function SettingsView({
               </ul>
             )}
           </div>
-          <SettingsNavigation selected={tab} onSelect={setTab} />
+          <SettingsNavigation
+            selected={tab}
+            onSelect={(next) => {
+              if (settingsExitAllowed()) setTab(next);
+            }}
+          />
         </aside>
         <section
           className="settings-content"
