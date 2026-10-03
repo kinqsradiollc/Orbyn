@@ -15,8 +15,10 @@ const { scanNightShift } = await import("../src/worker/night-shift.js");
 const { latestNight } =
   await import("../src/modules/assistant-workspace/overnight.js");
 const users: string[] = [];
+const teams: string[] = [];
 before(() => migrate());
 after(async () => {
+  await pool.query("DELETE FROM teams WHERE id=ANY($1::uuid[])", [teams]);
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [users]);
   await pool.end();
 });
@@ -140,6 +142,75 @@ test("reflection uses current Personal scope when collecting and rechecking evid
     (await reflectionEvidence(pool, user, selected, now, allowed)).length,
     2,
   );
+});
+
+test("reflection restricts teams and rechecks membership and project exclusions", async () => {
+  const user = await person();
+  const owner = await person();
+  const jobs: string[] = [];
+  const tasks: string[] = [];
+  const projects: string[] = [];
+  for (let index = 0; index < 2; index++) {
+    const team = randomUUID();
+    teams.push(team);
+    await pool.query(
+      "INSERT INTO teams(id,name,created_by) VALUES($1,'Reflection team',$2)",
+      [team, owner],
+    );
+    await pool.query(
+      "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner'),($1,$3,'member')",
+      [team, owner, user],
+    );
+    const project = (
+      await pool.query(
+        "INSERT INTO projects(user_id,team_id,name) VALUES($1,$2,'Team evidence') RETURNING id",
+        [owner, team],
+      )
+    ).rows[0].id;
+    projects.push(project);
+    jobs.push((await source(user, project)).job);
+    tasks.push(
+      (
+        await pool.query(
+          "INSERT INTO items(user_id,team_id,project_id,title,updated_at) VALUES($1,$2,$3,'Team task',now()-interval '1 second') RETURNING id",
+          [owner, team, project],
+        )
+      ).rows[0].id,
+    );
+  }
+  const scope = { userId: user, teamIds: [teams.at(-2)!], personal: false };
+  const now = new Date();
+  const selected = await pendingReflectionSources(pool, user, now, scope);
+  assert.deepEqual(
+    new Set(selected.map((entry) => entry.id)),
+    new Set([jobs[0], tasks[0]]),
+  );
+  assert.deepEqual(
+    await reflectionEvidence(pool, user, selected, now, {
+      ...scope,
+      teamIds: [teams.at(-1)!],
+    }),
+    [],
+  );
+  await pool.query("UPDATE projects SET assistant_off=true WHERE id=$1", [
+    projects[0],
+  ]);
+  assert.deepEqual(
+    await reflectionEvidence(pool, user, selected, now, scope),
+    [],
+  );
+  await pool.query("UPDATE projects SET assistant_off=false WHERE id=$1", [
+    projects[0],
+  ]);
+  await pool.query("DELETE FROM team_members WHERE team_id=$1 AND user_id=$2", [
+    scope.teamIds[0],
+    user,
+  ]);
+  assert.deepEqual(
+    await reflectionEvidence(pool, user, selected, now, scope),
+    [],
+  );
+  assert.deepEqual(await pendingReflectionSources(pool, user, now, scope), []);
 });
 
 test("reflection rejects a scope belonging to another principal", async () => {
