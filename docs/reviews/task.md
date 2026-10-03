@@ -173,3 +173,24 @@ User delegates web visuals to manual verification while implementation proceeds;
 no denied browser bypass. Full C1–C6/M1/D1/U1 remains active. Keep test web5174/
 API8027 and private credentials/data alive, preserve user/character files. No
 release/deployment/cleanup.
+
+## Source keyboard layout follow-up — 3 October 2026
+
+PR176 e8dbcd7b has all four CI37089753616 jobs successful. Full local98342
+terminated with exit7 after ENOSPC, with no TAP completion and no writable exit
+file; it is not qualifying. Preview API logging also hit ENOSPC; API restarted
+without growing that log, session1131, but readiness503 reports database
+unreachable. Docker remains user-controlled. No main merge.
+
+Native computer use reproduced duplicate-anchor error controls squeezing source
+to approximately one visible line with the software keyboard on iPhone SE.
+Isolated codex/docs-source-keyboard-layout preserves frozen PR175. Controls now
+scroll within a measured share of the sheet's available height, retaining editor
+space and keyboard taps. Focused25/25 and mobile typecheck pass. First test run
+23/25 failed because adding a hook shifted a test's positional state index; hook
+order now preserves the selected-block state index and all assertions pass.
+Native updated layout/recovery screenshots still required: reload stalled while
+fixture fonts were loading; temporary fixture removes its font-load gate for
+layout-only inspection. This does not qualify production typography or saves.
+Original reproducer screenshot: /tmp/orbyn-source-keyboard-qa/duplicate-error-keyboard.png.
+Web permission still saved-denied; no bypass. Full ADR scope remains incomplete.
