@@ -26,6 +26,7 @@ import {
   groupRows,
   isBoardGroup,
   layoutsFor,
+  searchSavedViews,
   VIEW_COLUMNS,
   VIEW_GROUP_LABELS,
   VIEW_GROUPS,
@@ -129,6 +130,7 @@ export function ViewsView({
   const toast = useToast();
   const { ask } = useConfirm();
   const [views, setViews] = useState<SavedView[] | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
   const [stars, setStars] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [def, setDef] = useState<ViewDefinition | null>(null);
@@ -415,13 +417,14 @@ export function ViewsView({
       return next;
     });
 
-  const mine = (views ?? []).filter((v) => !v.team_id);
+  const visibleViews = searchSavedViews(views ?? [], libraryQuery);
+  const mine = visibleViews.filter((v) => !v.team_id);
   // Shared views by team, named from the views themselves so they show
   // before the team list has loaded.
   const byTeam = [
-    ...new Set((views ?? []).flatMap((v) => (v.team_id ? [v.team_id] : []))),
+    ...new Set(visibleViews.flatMap((v) => (v.team_id ? [v.team_id] : []))),
   ].map((id) => {
-    const list = (views ?? []).filter((v) => v.team_id === id);
+    const list = visibleViews.filter((v) => v.team_id === id);
     return {
       team: {
         id,
@@ -562,6 +565,20 @@ export function ViewsView({
         <button className="primary views-new" onClick={() => setCreating(true)}>
           <Plus size={15} aria-hidden="true" /> New view
         </button>
+        <input
+          type="search"
+          className="views-library-search"
+          aria-label="Search saved views"
+          placeholder="Search views"
+          maxLength={120}
+          value={libraryQuery}
+          onChange={(event) => setLibraryQuery(event.target.value)}
+        />
+        {views && views.length > 0 && visibleViews.length === 0 && (
+          <p className="muted views-rail-empty" role="status">
+            No matching views.
+          </p>
+        )}
         {views && !views.length && (
           <p className="muted views-rail-empty">
             A view keeps a filter, a sort and a layout, like "Exam week" or "Lab

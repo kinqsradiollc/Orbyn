@@ -1693,6 +1693,27 @@ export function App() {
                 )}
                 {view === "Overview" && (
                   <HomeSections
+                    canOpenAgentOutput={
+                      !busy &&
+                      !assistant.thinking &&
+                      !assistant.restoringChat &&
+                      !["queued", "running", "waiting"].includes(
+                        assistant.runProgress?.state ?? "",
+                      )
+                    }
+                    onOpenAgentOutput={(id) => {
+                      if (
+                        busy ||
+                        assistant.thinking ||
+                        assistant.restoringChat ||
+                        ["queued", "running", "waiting"].includes(
+                          assistant.runProgress?.state ?? "",
+                        )
+                      )
+                        return;
+                      navigate("AI assistant");
+                      void assistant.openChat(id).catch(report);
+                    }}
                     report={report}
                     onOpenProject={(id) => {
                       setProjectToOpen(id);

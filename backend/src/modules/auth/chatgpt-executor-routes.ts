@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   chatgptExecutorEnrolled,
   chatgptCatalogReceipt,
@@ -11,6 +12,7 @@ import {
   chatgptExecutorLease,
   chatgptLeaseRenewal,
   chatgptCatalogPublication,
+  chatgptExecutorList,
 } from "@orbyn/core";
 import { authenticateSessionBinding } from "../../lib/auth.js";
 import { strictRateLimit, writeRateLimit } from "../../lib/params.js";
@@ -24,9 +26,20 @@ import {
   renewChatgptExecutorLease,
   publishChatgptExecutorCatalog,
 } from "./chatgpt-executor-leases.js";
+import { listChatgptExecutors } from "./chatgpt-model-catalog.js";
 
 /** Credential-free proofs/publications require the exact first-party device session. */
 export async function chatgptExecutorRoutes(app: FastifyInstance) {
+  app.get(
+    "/ai/connections/chatgpt/executors",
+    strictRateLimit,
+    async (r, reply) => {
+      reply.header("Cache-Control", "no-store");
+      const session = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.query);
+      return chatgptExecutorList.parse(await listChatgptExecutors(session));
+    },
+  );
   app.post(
     "/ai/connections/chatgpt/executors/challenges",
     strictRateLimit,

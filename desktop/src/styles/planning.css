@@ -80,30 +80,28 @@ a.drawer-fact {
   display: none;
 }
 @media (max-width: 640px) {
-  /* Search on its own row, then the four controls as an even 2 × 2 grid. */
   .tasks-heading .tasks-tools {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     width: 100%;
   }
-  .tasks-heading .tasks-tools > * {
-    order: 2;
-    justify-content: center;
-  }
   .tasks-heading .tasks-tools > .search {
-    order: 0;
-    grid-column: 1 / -1;
+    flex: 1 1 100%;
+    min-width: 0;
   }
   .tasks-heading .tasks-tools > .segmented {
-    order: 1;
+    margin-right: auto;
   }
-  .tasks-heading .tasks-tools > .segmented button {
-    flex: 1;
+  .tasks-heading .tasks-view-button span {
+    display: none;
+  }
+  .tasks-heading .tasks-view-button {
+    width: 34px;
+    padding: 6px;
     justify-content: center;
   }
   .tasks-heading .tasks-tools > .filters-toggle {
-    order: 3;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1608,4 +1606,46 @@ kbd {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* A work list, with a compact toolbar and quiet empty state. */
+.tasks-heading {
+  gap: 12px;
+  align-items: center;
+}
+.tasks-tools {
+  gap: 8px;
+  min-width: 0;
+}
+.tasks-tools .search {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surfaceMuted);
+}
+.tasks-tools .search input {
+  width: 180px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+}
+.tasks-card > .empty {
+  padding: 32px 20px;
+}
+.tasks-card > .empty h3 {
+  font-size: 15px;
+  font-weight: 500;
+}
+.tasks-card > .empty p {
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .tasks-tools .search input {
+    flex: 1;
+    width: 100%;
+  }
 }

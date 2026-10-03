@@ -302,11 +302,11 @@ export function HomePage({ signedIn, onNavigate }: Props) {
         <section className="home-features" id="agents">
           <div className="home-section-heading reveal">
             <span className="eyebrow">BACKGROUND AND OVERNIGHT</span>
-            <h2>Hand off a task. Pick up the result.</h2>
+            <h2>Work you can hand over.</h2>
             <p>
-              A project checklist while you work. Research queued for tonight.
-              Choose what to hand over, then return to a result you can read,
-              question and use.
+              Give Background a task during the day. Put longer work in your
+              Overnight queue. Each keeps its own progress and brings the work
+              back for you to review.
             </p>
           </div>
           <div className="home-agent-grid">
@@ -317,32 +317,37 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                   <h3>{agent.name}</h3>
                 </div>
                 <div className="home-agent-detail">
-                  <p>{agent.summary}</p>
-                  <div className="home-agent-request">
-                    <span>Example request</span>
-                    <blockquote>“{agent.request}”</blockquote>
-                  </div>
-                  <ol
-                    className="home-agent-steps"
-                    aria-label={`${agent.name} workflow`}
-                  >
-                    {agent.steps.map((step) => (
-                      <li key={step.title}>
-                        <strong>{step.title}</strong>
-                        <p>{step.body}</p>
-                      </li>
-                    ))}
-                  </ol>
-                  <dl className="home-agent-workflow">
-                    <div>
-                      <dt>Where to review</dt>
-                      <dd>{agent.result}</dd>
+                  <p>{agent.brief}</p>
+                  <details className="home-agent-how">
+                    <summary>How {agent.name} works</summary>
+                    <p>{agent.summary}</p>
+                    <div className="home-agent-request">
+                      <span>Example request</span>
+                      <blockquote>“{agent.request}”</blockquote>
                     </div>
-                    <div>
-                      <dt>When it pauses</dt>
-                      <dd>{agent.pause}</dd>
-                    </div>
-                  </dl>
+
+                    <ol
+                      className="home-agent-steps"
+                      aria-label={`${agent.name} workflow`}
+                    >
+                      {agent.steps.map((step) => (
+                        <li key={step.title}>
+                          <strong>{step.title}</strong>
+                          <p>{step.body}</p>
+                        </li>
+                      ))}
+                    </ol>
+                    <dl className="home-agent-workflow">
+                      <div>
+                        <dt>Where to review</dt>
+                        <dd>{agent.result}</dd>
+                      </div>
+                      <div>
+                        <dt>When it pauses</dt>
+                        <dd>{agent.pause}</dd>
+                      </div>
+                    </dl>
+                  </details>
                 </div>
               </article>
             ))}

@@ -1,4 +1,5 @@
 import { pluginRoutes } from "./modules/plugin/routes.js";
+import { pluginDiscoveryRoutes } from "./modules/plugin/discovery.js";
 import { reminderActionRoutes } from "./modules/assistant-workspace/reminder-actions.js";
 import { systemRoutes } from "./modules/system/routes.js";
 import type { FastifyPluginAsync } from "fastify";
@@ -18,6 +19,7 @@ import { assistantGoalRoutes } from "./modules/assistant-workspace/goals.js";
 import { assistantRoutineRoutes } from "./modules/assistant-workspace/routines.js";
 import { overnightRoutes } from "./modules/assistant-workspace/overnight.js";
 import { assistantActivityRoutes } from "./modules/assistant-workspace/activity.js";
+import { assistantProfileRoutes } from "./modules/assistant-workspace/profiles.js";
 import { memoryRoutes } from "./modules/memory/routes.js";
 import { proposalRoutes } from "./modules/proposals/routes.js";
 import { oauthRoutes } from "./modules/oauth/routes.js";
@@ -116,6 +118,7 @@ export const serviceModules: Record<
     assistantRoutineRoutes,
     overnightRoutes,
     assistantActivityRoutes,
+    assistantProfileRoutes,
     reminderActionRoutes,
     memoryRoutes,
     // The Review inbox: approving what the assistant and outside agents
@@ -225,7 +228,7 @@ export const serviceModules: Record<
    * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.
    */
   mcp: [mcpServerRoutes],
-  plugin: [pluginRoutes],
+  plugin: [pluginDiscoveryRoutes, pluginRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);

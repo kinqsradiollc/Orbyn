@@ -143,8 +143,8 @@ export const assistantSuggestions = [
 export const planDayPrompt =
   "Summarize my upcoming plans and suggest what I should focus on.";
 export const emptyPlans = {
-  title: "Give your ideas a home.",
-  body: "Add a task or event to start building your plan.",
+  title: "No tasks yet",
+  body: "Add a task or event.",
 };
 export const emptySearch = {
   title: "No matching items.",

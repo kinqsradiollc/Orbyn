@@ -100,6 +100,11 @@ export class ChatgptDesktopStore {
       if (generation === this.generation) this.initializing = false;
     }
   }
+  /** Retry session verification using the current Orbyn session. */
+  async retrySession(): Promise<void> {
+    await this.syncSession(this.token);
+  }
+
   /** Runtime change events fetch only the latest metadata and cannot restore a switched account. */
   async reload(): Promise<void> {
     if (!this.bridge || this.closed || this.initializing) return;

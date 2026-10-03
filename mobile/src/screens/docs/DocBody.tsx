@@ -312,6 +312,7 @@ export function DocBody({
                 style={[
                   styles.heading,
                   block.level === 1 ? styles.h1 : styles.h2,
+                  block.level >= 4 ? styles.deepHeading : undefined,
                   dir(block.text),
                 ]}
               >
@@ -601,6 +602,7 @@ const styles = themed(() =>
     heading: { color: colors.text, fontFamily: fonts.display },
     h1: { fontSize: 18 },
     h2: { fontSize: 15 },
+    deepHeading: { fontFamily: fonts.semibold },
     text: { color: colors.text, fontSize: 15, lineHeight: 22, flex: 1 },
     done: { color: colors.muted, textDecorationLine: "line-through" },
     todoText: {

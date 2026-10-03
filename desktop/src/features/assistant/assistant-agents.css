@@ -1,0 +1,100 @@
+.assistant-agents-dialog {
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  background: var(--color-background);
+  overflow: hidden;
+}
+.assistant-agents-dialog::backdrop {
+  background: color-mix(in srgb, var(--color-text) 35%, transparent);
+}
+.assistant-agents-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+.assistant-agents-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.assistant-agents-body {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  overflow-y: auto;
+  max-height: calc(100dvh - 130px);
+}
+.assistant-agents-body > p {
+  margin: 0;
+}
+.assistant-agent-card {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surfaceMuted);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.assistant-agent-card header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.assistant-agent-card header > div {
+  min-width: 0;
+}
+.assistant-agent-card h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.assistant-agent-card p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.assistant-agent-card h4 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.assistant-agent-activity,
+.assistant-agent-outputs {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.assistant-agent-activity li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.assistant-agent-activity time,
+.assistant-agent-outputs time {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.assistant-agent-outputs li {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+.assistant-agent-outputs button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

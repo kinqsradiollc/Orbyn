@@ -1386,6 +1386,29 @@ export function RootScreen() {
                   )}
                   {tab === "Today" && (
                     <TodayScreen
+                      canOpenAgentOutput={
+                        !busy &&
+                        !assistant.thinking &&
+                        !assistant.restoringChat &&
+                        !["queued", "running", "waiting"].includes(
+                          assistant.runProgress?.state ?? "",
+                        )
+                      }
+                      onOpenAgentOutput={(id) => {
+                        if (
+                          busy ||
+                          assistant.thinking ||
+                          assistant.restoringChat ||
+                          ["queued", "running", "waiting"].includes(
+                            assistant.runProgress?.state ?? "",
+                          )
+                        )
+                          return;
+                        setTab("AI");
+                        void assistant
+                          .openChat(id)
+                          .catch((e) => setError(errorText(e)));
+                      }}
                       items={items}
                       homeLayout={accountPrefs.prefs.home}
                       agentName={assistant.agentName}

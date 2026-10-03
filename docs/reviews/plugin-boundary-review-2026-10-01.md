@@ -298,3 +298,15 @@ issuance. The following acceptance requirements remain open.
    durable write receipts and maintenance controls. Preserve portable MCP tests.
 6. Validate actual supported host/plugin surfaces and record external approval
    gates. Unit helper checks are not authorization or host-delivery evidence.
+
+## Recipient/discovery reconciliation — 2 October 2026
+
+The retained plugin branch is being reconciled with current main `2ba1ae2`.
+Preserve main's integrated resolver/execution and all runtime/character changes;
+add the separately retained plugin recipient consent, token issuance, discovery
+and authentication challenge. Resource kind remains server-selected and grants
+remain separated by recipient. Current combined qualification is pending; older
+results above do not qualify this combination. The recipient checkpoint details
+remain in `consent-recipient-checkpoint.md`. Browser/native consent, host launch,
+UI resources, gateway/deployment and actual provider inference gates remain open.
+No production recipient is enabled by this merge preparation.

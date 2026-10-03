@@ -394,6 +394,27 @@ export type SavedView = {
   updated_at: string;
 };
 
+/** Search the saved-view library without changing the selected view or its row filters. */
+export function searchSavedViews(
+  views: readonly SavedView[],
+  query: string,
+): SavedView[] {
+  const normalize = (text: string) =>
+    text.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+  const words = normalize(query).trim().split(/\s+/).filter(Boolean);
+  return views.filter((view) => {
+    const text = normalize(
+      [
+        view.name,
+        view.team_name ?? "",
+        VIEW_SOURCE_LABELS[view.source],
+        VIEW_LAYOUT_LABELS[view.definition.layout],
+      ].join(" "),
+    );
+    return words.every((word) => text.includes(word));
+  });
+}
+
 const viewName = z.string().trim().min(1).max(80);
 
 export const savedViewInput = z

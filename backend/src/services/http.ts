@@ -190,7 +190,7 @@ export async function createService(
     delegator: (req, cb) => {
       cb(
         null,
-        isMcpPath(req.url)
+        name === "plugin" || isMcpPath(req.url)
           ? mcpCors
           : isOAuthOpenPath(req.url)
             ? oauthCors
