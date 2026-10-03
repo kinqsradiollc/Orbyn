@@ -130,7 +130,7 @@ async function openAiStep(
     error?: unknown;
     choices?: { message?: Msg; delta?: Msg; finish_reason?: string }[];
   }>(response);
-  throwIfErrorEnvelope(body);
+  throwIfErrorEnvelope(body, ai.apiKey);
   const choice = body.choices?.[0];
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");
@@ -246,7 +246,7 @@ async function anthropicStep(
       input?: unknown;
     }[];
   }>(response);
-  throwIfErrorEnvelope(body);
+  throwIfErrorEnvelope(body, ai.apiKey);
   const blocks = body.content ?? [];
   const toolCalls = blocks
     .filter((b) => b.type === "tool_use" && b.name)
@@ -475,7 +475,7 @@ async function jsonStep(
     error?: unknown;
     choices?: { message?: { content?: unknown }; finish_reason?: string }[];
   }>(response);
-  throwIfErrorEnvelope(body);
+  throwIfErrorEnvelope(body, ai.apiKey);
   const choice = body.choices?.[0];
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");
