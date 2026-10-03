@@ -24,7 +24,7 @@ import { helpers, type Person } from "./mcp-helpers.js";
  * are stood in for.
  */
 
-const { buildApp } = await import("../src/app.js");
+const { buildApp, buildPluginService } = await import("../src/app.js");
 const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
@@ -296,6 +296,130 @@ after(async () => {
   await pool.end();
 });
 
+test("plugin consent and token families retain a distinct recipient", async () => {
+  const saved = env.PLUGIN_PUBLIC_URL;
+  env.PLUGIN_PUBLIC_URL = "https://plugin.example.com/plugin";
+  try {
+    const who = await h.register("oauth-plugin-recipient", "Recipient");
+    const plugin = request({ resource: env.PLUGIN_PUBLIC_URL });
+    const shown = await check(plugin.req, who.token);
+    assert.equal(shown.statusCode, 200, shown.body);
+    assert.deepEqual(shown.json().resource, {
+      kind: "plugin",
+      url: env.PLUGIN_PUBLIC_URL,
+    });
+    const allowed = await consent(who.token, plugin.req);
+    assert.equal(allowed.statusCode, 200, allowed.body);
+    const code = codeOf(allowed.json().redirect_to);
+    const wrong = await exchange(code, plugin.verifier);
+    assert.equal(wrong.statusCode, 400);
+    assert.equal(wrong.json().error, "invalid_target");
+    const retry = request({ resource: env.PLUGIN_PUBLIC_URL });
+    const retryConsent = await consent(who.token, retry.req);
+    assert.equal(retryConsent.statusCode, 200, retryConsent.body);
+    const tokens = await exchange(
+      codeOf(retryConsent.json().redirect_to),
+      retry.verifier,
+      {
+        resource: env.PLUGIN_PUBLIC_URL,
+      },
+    );
+    assert.equal(tokens.statusCode, 200, tokens.body);
+    const refused = await refresh(tokens.json().refresh_token, CLIENT, {
+      resource: env.MCP_PUBLIC_URL,
+    });
+    assert.equal(refused.statusCode, 400);
+    assert.equal(refused.json().error, "invalid_target");
+    const rotated = await refresh(tokens.json().refresh_token);
+    assert.equal(rotated.statusCode, 200, rotated.body);
+    const portable = request();
+    const portableConsent = await consent(who.token, portable.req);
+    assert.equal(portableConsent.statusCode, 200, portableConsent.body);
+    const portableTokens = await exchange(
+      codeOf(portableConsent.json().redirect_to),
+      portable.verifier,
+    );
+    assert.equal(portableTokens.statusCode, 200, portableTokens.body);
+    const grants = await pool.query(
+      "SELECT resource_kind FROM agent_grants WHERE user_id = $1 AND client_id = $2 ORDER BY resource_kind",
+      [who.id, CLIENT],
+    );
+    assert.deepEqual(
+      grants.rows.map((g) => g.resource_kind),
+      ["mcp", "plugin"],
+    );
+    const pluginRows = await pool.query(
+      "SELECT DISTINCT t.resource FROM agent_tokens t JOIN agent_grants g ON g.id = t.grant_id WHERE g.user_id = $1 AND g.resource_kind = 'plugin'",
+      [who.id],
+    );
+    assert.deepEqual(pluginRows.rows, [{ resource: env.PLUGIN_PUBLIC_URL }]);
+    const service = await buildPluginService();
+    try {
+      const connection = async (token: string) =>
+        service.inject({
+          url: "/plugin/connection",
+          headers: { authorization: `Bearer ${token}` },
+        });
+      const own = await connection(rotated.json().access_token);
+      assert.equal(own.statusCode, 200, own.body);
+      assert.equal(own.json().user.id, who.id);
+      const other = await h.register(
+        "oauth-plugin-other-recipient",
+        "Other recipient",
+      );
+      const otherRequest = request({ resource: env.PLUGIN_PUBLIC_URL });
+      const otherCheck = await check(otherRequest.req, other.token);
+      assert.equal(otherCheck.statusCode, 200, otherCheck.body);
+      assert.equal(otherCheck.json().account.existing, null);
+      const otherConsent = await consent(other.token, otherRequest.req);
+      assert.equal(otherConsent.statusCode, 200, otherConsent.body);
+      const otherTokens = await exchange(
+        codeOf(otherConsent.json().redirect_to),
+        otherRequest.verifier,
+        { resource: env.PLUGIN_PUBLIC_URL },
+      );
+      assert.equal(otherTokens.statusCode, 200, otherTokens.body);
+      const otherConnection = await connection(otherTokens.json().access_token);
+      assert.equal(otherConnection.statusCode, 200, otherConnection.body);
+      assert.equal(otherConnection.json().user.id, other.id);
+      assert.notEqual(otherConnection.json().grant_id, own.json().grant_id);
+      assert.equal(
+        (await connection(rotated.json().access_token)).json().user.id,
+        who.id,
+      );
+      assert.equal(
+        (await connection(portableTokens.json().access_token)).statusCode,
+        401,
+      );
+      assert.equal((await connection(who.token)).statusCode, 401);
+      const mcp = await inject("POST", "/mcp", {
+        token: rotated.json().access_token,
+        json: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+      });
+      assert.equal(mcp.statusCode, 401, mcp.body);
+      await pool.query(
+        "UPDATE agent_grants SET revoked_at = now() WHERE user_id = $1 AND resource_kind = 'plugin'",
+        [who.id],
+      );
+      assert.equal(
+        (await connection(rotated.json().access_token)).statusCode,
+        401,
+      );
+      const afterRevoke = await refresh(rotated.json().refresh_token);
+      assert.equal(afterRevoke.statusCode, 400);
+      assert.equal(afterRevoke.json().error, "invalid_grant");
+      const portableRefresh = await refresh(
+        portableTokens.json().refresh_token,
+      );
+      assert.equal(portableRefresh.statusCode, 200, portableRefresh.body);
+    } finally {
+      await service.close();
+    }
+  } finally {
+    env.PLUGIN_PUBLIC_URL = saved;
+  }
+});
+
 // ---- metadata and the resource server ----
 
 test("metadata: RFC 8414 at the issuer, PKCE for all, none or private_key_jwt, CIMD and iss advertised, open CORS", async () => {
@@ -375,6 +499,10 @@ test("full sign-in with PKCE: check, consent, code with state and iss, tokens, M
   assert.equal(out.json().client.verified, true);
   assert.equal(out.json().client.redirect_host, "agent.example.com");
   assert.equal(out.json().account, null);
+  assert.deepEqual(out.json().resource, {
+    kind: "mcp",
+    url: env.MCP_PUBLIC_URL,
+  });
 
   const session = await login(me);
   const signedIn = await check(req, session);

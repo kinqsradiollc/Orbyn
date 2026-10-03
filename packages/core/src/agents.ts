@@ -775,6 +775,8 @@ export type OAuthTeamChoice = {
 
 /** What the consent page shows for a request (GET /oauth/authorize/check). */
 export type OAuthCheck = {
+  /** Server-owned service recipient; absent when talking to an older API. */
+  resource?: { kind: "mcp" | "plugin"; url: string };
   client: {
     id: string;
     /** The app's own name, from its description; never a logo. */

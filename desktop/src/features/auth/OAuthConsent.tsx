@@ -132,6 +132,17 @@ function WhoAsks({ check }: { check: OAuthCheck }) {
         )}
         <span>Sends you back to {c.redirect_host}</span>
       </div>
+      {check.resource && (
+        <div className="oauth-app-line muted">
+          <span className="oauth-resource">
+            {check.resource.kind === "plugin"
+              ? "Plugin integration"
+              : "Portable MCP connection"}
+            {" · "}
+            {check.resource.url}
+          </span>
+        </div>
+      )}
       {c.redirect_local && (
         <p className="oauth-warn">
           <AlertTriangle size={14} aria-hidden="true" /> It sends you back to an

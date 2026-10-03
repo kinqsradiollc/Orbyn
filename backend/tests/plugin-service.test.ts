@@ -7,6 +7,9 @@ const { buildPluginService } = await import("../src/app.js");
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { env } = await import("../src/config/env.js");
+const { oauthIssuer } = await import("../src/config/env.js");
+const { pluginMetadataUrl } =
+  await import("../src/modules/plugin/discovery.js");
 const { digest } = await import("../src/lib/auth.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { settings } = await import("../src/lib/settings.js");
@@ -59,6 +62,63 @@ after(async () => {
   await pool.end();
 });
 const headers = { authorization: `Bearer ${token}` };
+test("plugin discovery is public, configured and isolated from MCP", async () => {
+  const path = "/.well-known/oauth-protected-resource/api";
+  const response = await app.inject({
+    url: path,
+    headers: {
+      host: "attacker.example",
+      "x-forwarded-host": "attacker.example",
+      "x-forwarded-proto": "http",
+      origin: "https://chatgpt.com",
+    },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(
+    response.headers["access-control-allow-origin"],
+    "https://chatgpt.com",
+  );
+  assert.equal(response.json().resource, resource);
+  assert.deepEqual(response.json().authorization_servers, [oauthIssuer()]);
+  assert.deepEqual(response.json().bearer_methods_supported, ["header"]);
+  assert.ok(response.json().scopes_supported.includes("orbyn:read"));
+  assert.doesNotMatch(response.body, /attacker/);
+  assert.equal((await disabled.inject({ url: path })).statusCode, 404);
+  assert.equal(
+    (await app.inject({ url: "/.well-known/oauth-protected-resource/mcp" }))
+      .statusCode,
+    404,
+  );
+  const denied = await app.inject({
+    url: "/plugin/connection",
+    headers: { origin: "https://chatgpt.com" },
+  });
+  assert.equal(denied.statusCode, 401);
+  assert.match(
+    String(denied.headers["access-control-expose-headers"]),
+    /WWW-Authenticate/,
+  );
+  const untrusted = await app.inject({
+    url: path,
+    headers: { origin: "https://attacker.example" },
+  });
+  assert.equal(untrusted.headers["access-control-allow-origin"], undefined);
+  assert.equal(
+    denied.headers["www-authenticate"],
+    `Bearer resource_metadata="https://plugin.example.test${path}"`,
+  );
+  assert.equal(
+    pluginMetadataUrl({
+      mcp: env.MCP_PUBLIC_URL,
+      plugin: "https://plugin.example.test/",
+    }),
+    "https://plugin.example.test/.well-known/oauth-protected-resource",
+  );
+  assert.equal(
+    pluginMetadataUrl({ mcp: env.MCP_PUBLIC_URL, plugin: "" }),
+    undefined,
+  );
+});
 test("plugin service is disabled by default and exposes no first-party or MCP routes", async () => {
   assert.equal(
     (await disabled.inject({ url: "/plugin/connection", headers })).statusCode,
@@ -138,6 +198,20 @@ test("plugin connection and typed catalog require plugin OAuth and reflect live 
 test("plugin capability calls validate input and execute shared reads for the authenticated person", async () => {
   const call = (payload: object) =>
     app.inject({ method: "POST", url: "/plugin/tools/call", headers, payload });
+  let nested: unknown = "private-fixture";
+  for (let depth = 0; depth < 17; depth++) nested = { nested };
+  for (const argumentsValue of [
+    { nested },
+    { values: Array.from({ length: 4096 }, () => 0) },
+  ]) {
+    const rejected = await call({
+      name: "get_context",
+      arguments: argumentsValue,
+    });
+    assert.equal(rejected.statusCode, 400);
+    assert.equal(rejected.json().error, "INVALID");
+    assert.doesNotMatch(rejected.body, /private-fixture/);
+  }
   assert.equal(
     (await call({ name: "get_context", arguments: {}, approved: true }))
       .statusCode,
@@ -336,6 +410,187 @@ test("plugin maintenance permits shared reads and denies writes", async () => {
       "UPDATE agent_grants SET access='read' WHERE user_id=$1 AND resource_kind='plugin'",
       [userId],
     );
+  }
+});
+
+test("plugin MCP transport resolves independent grants and retains HTTP protection", async () => {
+  const payload = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+  assert.equal(
+    (await app.inject({ method: "POST", url: "/plugin", payload })).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/plugin",
+        headers: { authorization: "Bearer session-fixture" },
+        payload,
+      })
+    ).statusCode,
+    401,
+  );
+  const listed = await app.inject({
+    method: "POST",
+    url: "/plugin",
+    headers,
+    payload,
+  });
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.headers["cache-control"], "no-store");
+  assert.equal(listed.headers["mcp-session-id"], undefined);
+  const parsed = String(listed.headers["content-type"]).includes(
+    "text/event-stream",
+  )
+    ? JSON.parse(
+        listed.body
+          .split("\n")
+          .find((line) => line.startsWith("data: "))!
+          .slice(6),
+      )
+    : listed.json();
+  assert.ok(
+    parsed.result.tools.some((tool: any) => tool.name === "get_context"),
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/plugin",
+        headers,
+        payload: { invalid: true },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal((await app.inject({ url: "/plugin", headers })).statusCode, 405);
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [userId]);
+  try {
+    assert.equal(
+      (await app.inject({ method: "POST", url: "/plugin", headers, payload }))
+        .statusCode,
+      403,
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+  }
+});
+
+test("plugin UI resources require current grants, UI opt-in and bounded identifiers", async () => {
+  assert.equal(
+    (await app.inject({ url: "/plugin/resources" })).statusCode,
+    401,
+  );
+  const disabledCards = await app.inject({ url: "/plugin/resources", headers });
+  assert.deepEqual(disabledCards.json().resources, []);
+  await pool.query(
+    "INSERT INTO system_settings(key,value) VALUES ('mcp_apps_enabled','true'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+  );
+  invalidateSettings();
+  try {
+    const listed = await app.inject({ url: "/plugin/resources", headers });
+    assert.equal(listed.statusCode, 200);
+    assert.equal(listed.headers["cache-control"], "no-store");
+    assert.ok(listed.json().resources.length > 0);
+    const uri = listed.json().resources[0].uri;
+    const read = await app.inject({
+      method: "POST",
+      url: "/plugin/resources/read",
+      headers,
+      payload: { uri },
+    });
+    assert.equal(read.statusCode, 200);
+    assert.deepEqual(read.json().contents[0]._meta.ui.csp, {
+      connectDomains: [],
+      resourceDomains: [],
+    });
+    const tools = await app.inject({ url: "/plugin/tools", headers });
+    assert.ok(
+      tools
+        .json()
+        .tools.some((tool: any) => tool._meta?.ui?.resourceUri === uri),
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/resources/read",
+          headers,
+          payload: { uri, user_id: userId },
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal(
+      (await app.inject({ url: "/plugin/resources?tenant=other", headers }))
+        .statusCode,
+      400,
+    );
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/resources/read",
+          headers,
+          payload: { uri: "https://private.example.test/secret" },
+        })
+      ).statusCode,
+      403,
+    );
+    await pool.query("UPDATE users SET disabled=true WHERE id=$1", [userId]);
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/resources/read",
+          headers,
+          payload: { uri },
+        })
+      ).statusCode,
+      403,
+    );
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+    await pool.query(
+      "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute','3'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    );
+    invalidateSettings();
+    const burst = [];
+    for (let n = 0; n < 4; n++)
+      burst.push(
+        await app.inject({
+          url: "/plugin/resources",
+          headers,
+          remoteAddress: "10.85.2.1",
+        }),
+      );
+    assert.ok(
+      burst.some(
+        (reply) => reply.statusCode === 429 && reply.headers["retry-after"],
+      ),
+    );
+    const protocolBurst = [];
+    for (let n = 0; n < 4; n++)
+      protocolBurst.push(
+        await app.inject({
+          method: "POST",
+          url: "/plugin",
+          headers,
+          remoteAddress: "10.85.2.2",
+          payload: { jsonrpc: "2.0", id: n, method: "tools/list" },
+        }),
+      );
+    assert.ok(
+      protocolBurst.some(
+        (response) =>
+          response.statusCode === 429 && response.headers["retry-after"],
+      ),
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+    await pool.query(
+      "DELETE FROM system_settings WHERE key IN ('mcp_apps_enabled','rate_limit_per_minute')",
+    );
+    invalidateSettings();
   }
 });
 

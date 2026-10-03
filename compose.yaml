@@ -286,6 +286,22 @@ services:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
+  # Optional plugin integration: a separate authenticated process, never the
+  # browser API or MCP recipient. Enable only after configuring its public
+  # recipient and a reviewed reverse proxy. Local publication stays loopback.
+  plugin:
+    <<: *backend
+    profiles: [plugin]
+    environment:
+      <<: *backend-env
+      PLUGIN_PUBLIC_URL: ${PLUGIN_PUBLIC_URL:-}
+    command: ["node", "backend/dist/services/plugin.js"]
+    healthcheck: *http-health
+    ports: ["127.0.0.1:${PLUGIN_PORT:-8040}:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      pgbouncer: { condition: service_healthy }
+
   # The file store for importing into Docs: uploads arrive through the
   # gateway's /files/u/ route and are kept encrypted until the converter has
   # read them, never longer than a day, unless the person chose "Keep the

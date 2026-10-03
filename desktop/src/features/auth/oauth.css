@@ -36,6 +36,10 @@
 .oauth-app-line svg {
   flex: none;
 }
+.oauth-resource {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .oauth-card .oauth-warn {
   display: flex;
   align-items: flex-start;

@@ -1,4 +1,5 @@
 import { pluginRoutes } from "./modules/plugin/routes.js";
+import { pluginDiscoveryRoutes } from "./modules/plugin/discovery.js";
 import { reminderActionRoutes } from "./modules/assistant-workspace/reminder-actions.js";
 import { systemRoutes } from "./modules/system/routes.js";
 import type { FastifyPluginAsync } from "fastify";
@@ -227,7 +228,7 @@ export const serviceModules: Record<
    * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.
    */
   mcp: [mcpServerRoutes],
-  plugin: [pluginRoutes],
+  plugin: [pluginDiscoveryRoutes, pluginRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);

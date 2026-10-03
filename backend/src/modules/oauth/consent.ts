@@ -30,12 +30,12 @@ import {
   resolveClient,
   type OAuthClient,
 } from "./clients.js";
+import { PKCE_CHALLENGE, issueCode, toolsetsFor } from "./tokens.js";
 import {
-  PKCE_CHALLENGE,
-  isOurResource,
-  issueCode,
-  toolsetsFor,
-} from "./tokens.js";
+  selectConnectorResource,
+  ResourceTargetError,
+  type ConnectorResource,
+} from "./resources.js";
 
 /**
  * The consent page's side of signing in with Orbyn: checking a request
@@ -55,8 +55,9 @@ export type CheckedRequest = {
   state: string | undefined;
   /** The scopes it asked for that Orbyn knows. */
   scopes: string[];
-  /** The canonical MCP address the tokens will be for. */
+  /** The canonical service address the tokens will be for. */
   resource: string;
+  resourceKind: ConnectorResource["kind"];
 };
 
 /** A request's problem, as the page shows it (400, or 403 for a blocked app). */
@@ -94,16 +95,19 @@ export async function validateRequest(
       400,
       "This app didn't protect its sign-in (PKCE with S256 is required). Update the app and try again.",
     );
-  const canonical = env.MCP_PUBLIC_URL;
-  if (
-    q.resource !== undefined &&
-    q.resource !== "" &&
-    !isOurResource(q.resource)
-  )
+  let target: ConnectorResource;
+  try {
+    target = selectConnectorResource(q.resource, {
+      mcp: env.MCP_PUBLIC_URL,
+      plugin: env.PLUGIN_PUBLIC_URL,
+    });
+  } catch (error) {
+    if (!(error instanceof ResourceTargetError)) throw error;
     fail(
       400,
       "This app asked for a connection recipient that is not enabled. Start again from the app.",
     );
+  }
   const known = new Set([
     "orbyn:read",
     "orbyn:propose",
@@ -119,7 +123,9 @@ export async function validateRequest(
     // Names Orbyn doesn't know are left out, not refused: some apps add
     // their own (openid, profile) to every sign-in.
     scopes: q.scope.split(/\s+/).filter((x) => known.has(x)),
-    resource: canonical,
+    resource:
+      target.kind === "plugin" ? env.PLUGIN_PUBLIC_URL : env.MCP_PUBLIC_URL,
+    resourceKind: target.kind,
   };
 }
 
@@ -173,6 +179,7 @@ export async function checkRequest(
   const req = await validateRequest(raw, s);
   const back = redirectHost(req.redirectUri);
   const check: OAuthCheck = {
+    resource: { kind: req.resourceKind, url: req.resource },
     client: {
       id: req.client.id,
       name: req.client.name,
@@ -197,9 +204,9 @@ export async function checkRequest(
     pool.query<{ id: string }>(
       `SELECT id FROM agent_grants
         WHERE user_id = $1 AND kind = 'oauth' AND client_id = $2 AND revoked_at IS NULL
-          AND resource_kind = 'mcp'
+          AND resource_kind = $3
           AND authorized_at IS NOT NULL`,
-      [who.user.id, req.client.id],
+      [who.user.id, req.client.id, req.resourceKind],
     ),
   ]);
   check.account = {
@@ -274,9 +281,9 @@ export async function allowRequest(
       await db.query<{ id: string; access: AgentAccess; toolsets: string[] }>(
         `SELECT id, access, toolsets FROM agent_grants
           WHERE user_id = $1 AND kind = 'oauth' AND client_id = $2 AND revoked_at IS NULL
-            AND resource_kind = 'mcp'
+            AND resource_kind = $3
           FOR UPDATE`,
-        [user.id, req.client.id],
+        [user.id, req.client.id, req.resourceKind],
       )
     ).rows[0];
     let id: string;
@@ -319,9 +326,9 @@ export async function allowRequest(
       id = (
         await db.query<{ id: string }>(
           `INSERT INTO agent_grants (user_id, kind, client_id, client_name, name, access,
-             team_ids, personal, toolsets, flags, expires_at, trust)
+             team_ids, personal, toolsets, flags, expires_at, trust, resource_kind)
            VALUES ($1, 'oauth', $2, $3, $3, $4, $5, $6, $7, $8,
-                   now() + make_interval(days => $9::int), $10)
+                   now() + make_interval(days => $9::int), $10, $11)
            RETURNING id`,
           [
             user.id,
@@ -334,6 +341,7 @@ export async function allowRequest(
             flags,
             days,
             trust,
+            req.resourceKind,
           ],
         )
       ).rows[0].id;
@@ -357,6 +365,7 @@ export async function allowRequest(
           notify_teammates: d.notify_teammates,
           hide_outside_content: d.hide_outside_content,
           scope,
+          resource_kind: req.resourceKind,
           days,
         },
         requestId,
