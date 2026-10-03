@@ -1,4 +1,7 @@
 import {
+  type MaintainedPageBinding,
+  type MaintainedPageBindingInput,
+  type MaintainedPageBindingUpdate,
   assistantActivityLane,
   assistantProfiles,
   assistantActivityQuery,
@@ -2357,6 +2360,39 @@ export class OrbynClient {
       Object.entries(filter).flatMap(([k, v]) => (v ? [[k, v]] : [])),
     ).toString();
     return this.request<DocSummary[]>(`/docs${q ? `?${q}` : ""}`);
+  }
+  /** Private ownership and schedules for selected page blocks. */
+  listPageMaintenance(docId: string) {
+    return this.request<MaintainedPageBinding[]>(`/docs/${docId}/maintenance`);
+  }
+  createPageMaintenance(docId: string, body: MaintainedPageBindingInput) {
+    return this.request<MaintainedPageBinding>(`/docs/${docId}/maintenance`, {
+      method: "POST",
+      body,
+    });
+  }
+  updatePageMaintenance(
+    docId: string,
+    bindingId: string,
+    body: MaintainedPageBindingUpdate,
+  ) {
+    return this.request<MaintainedPageBinding>(
+      `/docs/${docId}/maintenance/${bindingId}`,
+      { method: "PUT", body },
+    );
+  }
+  deletePageMaintenance(
+    docId: string,
+    bindingId: string,
+    expectedRevision: number,
+  ) {
+    return this.request<{ ok: true }>(
+      `/docs/${docId}/maintenance/${bindingId}`,
+      {
+        method: "DELETE",
+        body: { expected_revision: expectedRevision },
+      },
+    );
   }
   getDoc(id: string) {
     return this.request<Doc>(`/docs/${id}`);

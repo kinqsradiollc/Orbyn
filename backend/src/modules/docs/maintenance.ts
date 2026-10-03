@@ -1,0 +1,339 @@
+import {
+  captureMaintainedPage,
+  checkMaintainedPage,
+  maintainedPageBindingInput,
+  maintainedPageBindingUpdate,
+  maintainedPageBindingDelete,
+  maintainedPageSnapshot,
+  objectRefsInValue,
+  targetKey,
+  fail,
+  type DocBlock,
+  type MaintainedPageBinding,
+} from "@orbyn/core";
+import type { Db } from "../../db/pool.js";
+import type { UserRow } from "../../lib/auth.js";
+import { Params, scopeFor, visibleDocs } from "../../lib/visibility.js";
+import { assistantMayRead } from "../../lib/doc-visibility.js";
+import { currentAssistantPrincipal } from "../../capabilities/assistant-principal.js";
+import { policy, type Principal } from "../../capabilities/policy.js";
+import { CapabilityError } from "../../capabilities/registry.js";
+import { readDoc, requireDoc } from "./service.js";
+import { privacyFrom, readableLinks } from "../links/privacy.js";
+import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
+
+type BindingRow = Omit<
+  MaintainedPageBinding,
+  "created_at" | "updated_at" | "next_run_at"
+> & {
+  created_at: Date;
+  updated_at: Date;
+  next_run_at: Date;
+};
+const publicBinding = (row: BindingRow): MaintainedPageBinding => ({
+  ...row,
+  snapshot: maintainedPageSnapshot.parse(row.snapshot),
+  created_at: row.created_at.toISOString(),
+  updated_at: row.updated_at.toISOString(),
+  next_run_at: row.next_run_at.toISOString(),
+});
+
+/** The caller owns this assistant; current scope and page rights are intersected under locks. */
+async function maintenancePage(
+  db: Db,
+  user: UserRow,
+  principal: Principal,
+  docId: string,
+) {
+  if (
+    principal.via !== "assistant" ||
+    !principal.grant_id ||
+    principal.user.id !== user.id
+  )
+    fail(403, "Use your own assistant for page maintenance.");
+  let current: Principal;
+  try {
+    current = await currentAssistantPrincipal(db, principal, true);
+  } catch (error) {
+    if (error instanceof CapabilityError)
+      fail(
+        403,
+        "Your assistant changed or is unavailable. Reload page maintenance.",
+      );
+    throw error;
+  }
+  const actor = await db.query(
+    "SELECT id FROM users WHERE id=$1 AND NOT disabled FOR SHARE",
+    [user.id],
+  );
+  if (!actor.rowCount) fail(403, "This account is unavailable.");
+  if (!policy.allows(current, { access: "suggest", toolset: "core" }))
+    fail(403, "Your assistant cannot maintain pages with its current access.");
+  const doc = await requireDoc(db, docId, user, "items:write");
+  if (doc.kind === "memory" || doc.kind === "profile")
+    fail(403, "Memory and profile pages need a separate reviewed request.");
+  await db.query(
+    "SELECT id FROM projects WHERE id=(SELECT project_id FROM docs WHERE id=$1) FOR SHARE",
+    [docId],
+  );
+  await db.query("SELECT id FROM teams WHERE id=$1 FOR SHARE", [doc.team_id]);
+  await db.query(
+    "SELECT user_id FROM team_members WHERE user_id=$1 AND team_id=$2 FOR SHARE",
+    [user.id, doc.team_id],
+  );
+  // Membership and workspace policy may have changed while acquiring their locks.
+  await requireDoc(db, docId, user, "items:write");
+  current = await currentAssistantPrincipal(db, current, true);
+  const params = new Params(docId);
+  const scope = scopeFor(policy.spaces(current), params);
+  const row = (
+    await db.query<{ content: DocBlock[] }>(
+      `SELECT d.content FROM docs d WHERE d.id=$1 AND ${visibleDocs("d", scope)} AND ${assistantMayRead("d")}`,
+      params.values,
+    )
+  ).rows[0];
+  if (!row) fail(404, "This page is not available to your assistant.");
+  const decision = policy.can(current, "suggest", doc);
+  if (!decision.ok)
+    fail(decision.code === "NOT_FOUND" ? 404 : 403, decision.message);
+  return { current, doc, content: row.content ?? [] };
+}
+
+/** Internal storage only: no public route or scheduler consumes bindings before runtime wiring. */
+export async function createMaintainedPageBinding(
+  db: Db,
+  user: UserRow,
+  principal: Principal,
+  docId: string,
+  raw: unknown,
+): Promise<MaintainedPageBinding> {
+  const input = maintainedPageBindingInput.parse(raw);
+  const { current, doc, content } = await maintenancePage(
+    db,
+    user,
+    principal,
+    docId,
+  );
+  if (doc.version !== input.expected_doc_version)
+    fail(409, "This page changed. Select its blocks again.");
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: input.timezone });
+  } catch {
+    fail(422, "Choose a supported time zone.");
+  }
+  const captured = captureMaintainedPage(content, doc.version, input.block_ids);
+  if (!captured.ok)
+    fail(409, "The selected blocks changed. Select them again.");
+  await db.query(
+    "SELECT pg_advisory_xact_lock(hashtext('page-bindings:'||$1))",
+    [user.id],
+  );
+  const count = (
+    await db.query<{ count: number }>(
+      "SELECT count(*)::integer AS count FROM assistant_page_bindings WHERE user_id=$1",
+      [user.id],
+    )
+  ).rows[0].count;
+  if (count >= 100) fail(409, "This account already has 100 page bindings.");
+  const overlaps = await db.query(
+    `SELECT 1 FROM assistant_page_bindings b, jsonb_array_elements(b.snapshot->'blocks') target
+     WHERE b.doc_id=$1 AND target->>'block_id'=ANY($2::text[]) LIMIT 1`,
+    [docId, input.block_ids],
+  );
+  if (overlaps.rowCount)
+    fail(409, "A selected block already has a maintenance binding.");
+  const row = (
+    await db.query<BindingRow>(
+      `INSERT INTO assistant_page_bindings(doc_id,user_id,agent_grant_id,snapshot,instruction,rrule,timezone,next_run_at,paused)
+     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        docId,
+        user.id,
+        current.grant_id,
+        JSON.stringify(captured.value),
+        input.instruction,
+        input.rrule,
+        input.timezone,
+        input.next_run_at,
+        input.paused,
+      ],
+    )
+  ).rows[0];
+  return publicBinding(row);
+}
+
+/** Fresh scoped context includes selected blocks only, with private links projected for the owner. */
+export async function maintainedPageContext(
+  db: Db,
+  user: UserRow,
+  principal: Principal,
+  bindingId: string,
+) {
+  const initial = (
+    await db.query<BindingRow>(
+      "SELECT * FROM assistant_page_bindings WHERE id=$1 AND user_id=$2",
+      [bindingId, user.id],
+    )
+  ).rows[0];
+  if (!initial || initial.agent_grant_id !== principal.grant_id)
+    fail(404, "Page binding not found.");
+  const { doc, content, current } = await maintenancePage(
+    db,
+    user,
+    principal,
+    initial.doc_id,
+  );
+  const row = (
+    await db.query<BindingRow>(
+      "SELECT * FROM assistant_page_bindings WHERE id=$1 AND user_id=$2 FOR UPDATE",
+      [bindingId, user.id],
+    )
+  ).rows[0];
+  if (!row || row.agent_grant_id !== current.grant_id)
+    fail(404, "Page binding not found.");
+  if (row.doc_id !== initial.doc_id)
+    fail(409, "The page binding changed. Reload it.");
+  const snapshot = maintainedPageSnapshot.parse(row.snapshot);
+  const checked = checkMaintainedPage(content, doc.version, snapshot);
+  if (!checked.ok)
+    fail(409, "This page changed. Review its maintenance binding.");
+  const shown = await readDoc(db, row.doc_id, user.id);
+  const ids = new Set(snapshot.blocks.map((block) => block.block_id));
+  let blocks = await readableLinks(
+    db,
+    policy.spaces(current),
+    shown.content.filter((block) => block.id && ids.has(block.id)),
+  );
+  // Space projection alone does not cover targets kept out of AI. Check their
+  // current source policy before retaining any derived link labels in context.
+  const refs = objectRefsInValue(blocks).filter((ref) =>
+    ["doc", "task", "event", "project"].includes(ref.kind),
+  );
+  if (refs.length) {
+    const params = new Params(
+      refs.map((ref) => (ref.kind === "event" ? "task" : ref.kind)),
+      refs.map((ref) => ref.id),
+    );
+    const scope = scopeFor(policy.spaces(current), params);
+    const hidden = new Set(
+      (
+        await db.query<{ kind: string; id: string }>(
+          `SELECT target.kind,target.id::text AS id FROM unnest($1::text[],$2::uuid[]) target(kind,id)
+       WHERE NOT ${assistantSourceVisible("target.kind", "target.id", scope.user, false, scope)}
+         OR (target.kind='doc' AND EXISTS(SELECT 1 FROM docs linked_doc WHERE linked_doc.id=target.id AND NOT ${assistantMayRead("linked_doc")}))`,
+          params.values,
+        )
+      ).rows.map((ref) => `${ref.kind}:${ref.id}`),
+    );
+    blocks = privacyFrom((ref) => hidden.has(targetKey(ref))).value(blocks);
+  }
+  return {
+    binding: publicBinding(row),
+    principal: current,
+    blocks,
+  };
+}
+
+/** Only the binding owner can see its instructions; page permission is checked anew. */
+export async function listMaintainedPageBindings(
+  db: Db,
+  user: UserRow,
+  docId: string,
+) {
+  await requireDoc(db, docId, user, "items:read");
+  const rows = await db.query<BindingRow>(
+    "SELECT * FROM assistant_page_bindings WHERE doc_id=$1 AND user_id=$2 ORDER BY created_at,id",
+    [docId, user.id],
+  );
+  return rows.rows.map(publicBinding);
+}
+
+/** Rebinding is an explicit person action, never a runner's way to overwrite human edits. */
+export async function updateMaintainedPageBinding(
+  db: Db,
+  user: UserRow,
+  principal: Principal,
+  docId: string,
+  bindingId: string,
+  raw: unknown,
+): Promise<MaintainedPageBinding> {
+  const input = maintainedPageBindingUpdate.parse(raw);
+  const { current, doc, content } = await maintenancePage(
+    db,
+    user,
+    principal,
+    docId,
+  );
+  const existing = (
+    await db.query<BindingRow>(
+      "SELECT * FROM assistant_page_bindings WHERE id=$1 AND doc_id=$2 AND user_id=$3 FOR UPDATE",
+      [bindingId, docId, user.id],
+    )
+  ).rows[0];
+  if (!existing || existing.agent_grant_id !== current.grant_id)
+    fail(404, "Page binding not found.");
+  if (
+    existing.revision !== input.expected_revision ||
+    doc.version !== input.expected_doc_version
+  )
+    fail(409, "This page or binding changed. Review it again.");
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: input.timezone });
+  } catch {
+    fail(422, "Choose a supported time zone.");
+  }
+  const captured = captureMaintainedPage(content, doc.version, input.block_ids);
+  if (!captured.ok)
+    fail(409, "The selected blocks changed. Select them again.");
+  const overlaps = await db.query(
+    `SELECT 1 FROM assistant_page_bindings b, jsonb_array_elements(b.snapshot->'blocks') target
+     WHERE b.doc_id=$1 AND b.id<>$2 AND target->>'block_id'=ANY($3::text[]) LIMIT 1`,
+    [docId, bindingId, input.block_ids],
+  );
+  if (overlaps.rowCount)
+    fail(409, "A selected block already has a maintenance binding.");
+  const row = (
+    await db.query<BindingRow>(
+      `UPDATE assistant_page_bindings SET snapshot=$4::jsonb,instruction=$5,rrule=$6,timezone=$7,
+      next_run_at=$8,paused=$9,revision=revision+1,updated_at=now()
+     WHERE id=$1 AND doc_id=$2 AND user_id=$3 RETURNING *`,
+      [
+        bindingId,
+        docId,
+        user.id,
+        JSON.stringify(captured.value),
+        input.instruction,
+        input.rrule,
+        input.timezone,
+        input.next_run_at,
+        input.paused,
+      ],
+    )
+  ).rows[0];
+  return publicBinding(row);
+}
+
+/** A person can stop maintenance even when their assistant has been suspended. */
+export async function deleteMaintainedPageBinding(
+  db: Db,
+  user: UserRow,
+  docId: string,
+  bindingId: string,
+  raw: unknown,
+) {
+  const input = maintainedPageBindingDelete.parse(raw);
+  await requireDoc(db, docId, user, "items:write");
+  const existing = (
+    await db.query<BindingRow>(
+      "SELECT * FROM assistant_page_bindings WHERE id=$1 AND doc_id=$2 AND user_id=$3 FOR UPDATE",
+      [bindingId, docId, user.id],
+    )
+  ).rows[0];
+  if (!existing) fail(404, "Page binding not found.");
+  if (existing.revision !== input.expected_revision)
+    fail(409, "This binding changed. Reload it.");
+  await db.query("DELETE FROM assistant_page_bindings WHERE id=$1", [
+    bindingId,
+  ]);
+  return { ok: true };
+}

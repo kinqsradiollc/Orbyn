@@ -727,3 +727,18 @@ pass; full/CI and remaining platform acceptance remain required. Web visuals are
 user-reviewed under the latest explicit blind-redesign allowance; native screens
 are inspected directly. Evidence and limitations:
 `docs/reviews/evidence/settings-modal-layout.md`. This does not complete all U1.
+
+### Maintained pages storage and management — 4 October 2026 (not promoted)
+
+A5 now has a local owner/assistant-bound storage and management API candidate.
+Exact page/block and binding revisions protect explicit rebinding; current grant,
+page and workspace authority is intersected before context/update. Only selected
+blocks enter context, and current link/AI visibility removes private derived
+labels. Metadata snapshots never copy page text. Shared-page binding instructions
+remain private to their owner. Both clients have typed management contracts.
+
+Focused28/28 tests and all workspace types pass. The scheduler, scoped model jobs,
+guarded document writes (including linked-task side effects), @orbyn comment
+jobs/replies, consent and review UI, native interactions, and full local/CI
+qualification remain open. Details: `docs/reviews/evidence/maintained-pages-contract.md`.
+No production promotion or A5 completion is asserted.

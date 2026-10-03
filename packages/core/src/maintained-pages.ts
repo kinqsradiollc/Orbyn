@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { docContent } from "./schemas.js";
 import type { DocBlock } from "./docs.js";
+import { agentRoutineInput } from "./assistant-workspace.js";
 
 export const MAX_MAINTAINED_BLOCKS = 100;
 const blockId = z.string().min(1).max(64);
@@ -35,6 +36,47 @@ export const maintainedPageSnapshot = z
         snapshot.blocks.length,
   );
 export type MaintainedPageSnapshot = z.output<typeof maintainedPageSnapshot>;
+/** A page-owned schedule starts paused until its scoped runtime is explicitly enabled. */
+export const maintainedPageBindingInput = agentRoutineInput
+  .extend({
+    block_ids: maintainedBlockIds,
+    expected_doc_version: z.number().int().positive(),
+    paused: z.boolean().default(true),
+  })
+  .strict();
+/** Editing or rebinding requires both current page and binding revisions. */
+export const maintainedPageBindingUpdate = maintainedPageBindingInput
+  .extend({
+    expected_revision: z.number().int().positive(),
+  })
+  .strict();
+export const maintainedPageBindingDelete = z
+  .object({
+    expected_revision: z.number().int().positive(),
+  })
+  .strict();
+export type MaintainedPageBindingInput = z.input<
+  typeof maintainedPageBindingInput
+>;
+export type MaintainedPageBindingUpdate = z.input<
+  typeof maintainedPageBindingUpdate
+>;
+
+export type MaintainedPageBinding = {
+  id: string;
+  doc_id: string;
+  user_id: string;
+  agent_grant_id: string;
+  revision: number;
+  snapshot: MaintainedPageSnapshot;
+  instruction: string;
+  rrule: string;
+  timezone: string;
+  next_run_at: string;
+  paused: boolean;
+  created_at: string;
+  updated_at: string;
+};
 export type MaintainedPageConflict =
   "version" | "missing" | "moved" | "ambiguous" | "outside_binding";
 type Result<T> =

@@ -514,3 +514,23 @@ integrating main947b0c23; both histories retained. Requalify the combined frozen
 head before another main checkpoint. Remaining C6 protocol/host/account/provider
 and full C1–C6/M1/D1/U1 acceptance stay open. User manages production deployment;
 no deployment or worktree/branch cleanup. Native Sign in consent question pending.
+
+## Maintained pages continuation — 4 October
+
+Current mainfdaf13e2 contains merged Settings modal PR193, qualified local2580/2580
+and CI37132802593 all four jobs. User deploys main manually. Primary checkout
+user changes remain preserved.
+
+Owned branch codex/maintained-pages-contract includes current main and local
+A5 migration219, selected-block storage/context plus owner-only CAS management
+routes/client methods. Focused28/28 and all workspace types pass; no public UI or
+runtime consumes the bindings yet. No new PR/main merge until runnable end-to-end.
+
+Next: persist binding/revision references in scoped jobs; claim schedules once,
+respect Background/Overnight lane ownership and budgets; rebuild current context
+before provider/resume/apply; document save must preserve human blocks, refuse
+stale/moved/deleted ownership and fence linked task writes; baseline advances
+only for an authorized successful agent save. Then both client explicit selection,
+schedule/consent, pause/status/review; scoped @orbyn comments, edit/delete/retry
+dedup and privacy. Finish real concurrency/revocation tests, full local/CI and
+web/manual + iOS/Android inspection. Full C1-C6/M1/D1/U1 remains active.

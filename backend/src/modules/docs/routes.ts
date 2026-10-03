@@ -54,7 +54,14 @@ import {
 import { authenticate, type UserRow } from "../../lib/auth.js";
 import { contentDisposition } from "../../lib/disposition.js";
 import { createMathHtml } from "../../lib/math-html.js";
-import { idParam } from "../../lib/params.js";
+import { idParam, writeRateLimit } from "../../lib/params.js";
+import { assistantPrincipal } from "../agents/assistant.js";
+import {
+  createMaintainedPageBinding,
+  listMaintainedPageBindings,
+  updateMaintainedPageBinding,
+  deleteMaintainedPageBinding,
+} from "./maintenance.js";
 import { requireTeam } from "../../lib/teams.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { announceDocChange, announceCrdtUpdate } from "./live.js";
@@ -141,6 +148,38 @@ import {
 const AGENDA_GET_DEPRECATED = Date.UTC(2026, 8, 26);
 
 export async function docRoutes(app: FastifyInstance) {
+  app.get("/docs/:id/maintenance", async (r) => {
+    const user = await authenticate(r);
+    const id = idParam(r);
+    return transaction((db) => listMaintainedPageBindings(db, user, id));
+  });
+  app.post("/docs/:id/maintenance", writeRateLimit, async (r, reply) => {
+    const user = await authenticate(r);
+    const id = idParam(r);
+    const principal = await assistantPrincipal(user);
+    const binding = await transaction((db) =>
+      createMaintainedPageBinding(db, user, principal, id, r.body),
+    );
+    return reply.code(201).send(binding);
+  });
+  app.put("/docs/:id/maintenance/:bindingId", writeRateLimit, async (r) => {
+    const user = await authenticate(r);
+    const id = idParam(r);
+    const bindingId = idParam(r, "bindingId");
+    const principal = await assistantPrincipal(user);
+    return transaction((db) =>
+      updateMaintainedPageBinding(db, user, principal, id, bindingId, r.body),
+    );
+  });
+  app.delete("/docs/:id/maintenance/:bindingId", writeRateLimit, async (r) => {
+    const user = await authenticate(r);
+    const id = idParam(r);
+    const bindingId = idParam(r, "bindingId");
+    return transaction((db) =>
+      deleteMaintainedPageBinding(db, user, id, bindingId, r.body),
+    );
+  });
+
   /** The documents someone can see, newest edit first. */
   app.get("/docs", async (r) => {
     const u = await authenticate(r);
