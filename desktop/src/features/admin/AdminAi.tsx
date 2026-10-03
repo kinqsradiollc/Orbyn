@@ -10,6 +10,7 @@ import {
   type Ref,
 } from "react";
 import {
+  ChevronDown,
   CircleCheck,
   CircleX,
   KeyRound,
@@ -204,51 +205,60 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         )}
       </section>
 
-      <section className="card ai-assistant">
-        <h3>Night-shift token budget</h3>
-        <p className="muted">
-          The shared allowance for one person’s night, across up to ten runs.
-          Remaining work appears in the morning review.
-        </p>
-        <label className="settings-field">
-          Tokens per night
-          <input
-            type="number"
-            min={1000}
-            max={10000000}
-            step={1000}
-            value={nightBudget}
-            onChange={(e) => setNightBudget(e.target.value)}
-          />
-        </label>
-        <button
-          className="secondary"
-          disabled={
-            busy ||
-            !settings ||
-            !Number.isInteger(Number(nightBudget)) ||
-            Number(nightBudget) < 1000 ||
-            Number(nightBudget) > 10000000
-          }
-          onClick={() =>
-            settings &&
-            void mutate(
-              () =>
-                client.updateAiSettings({
-                  provider_id: settings.provider_id,
-                  model: settings.model,
-                  night_token_budget: Number(nightBudget),
-                }),
-              "Change the night-shift budget for everyone?",
-            )
-          }
-        >
-          Save night budget
-        </button>
-      </section>
+      <details className="card ai-budget">
+        <summary>
+          <strong>Night-shift budget</strong>
+          <span>
+            {typeof settings?.night_token_budget === "number"
+              ? `${settings.night_token_budget.toLocaleString()} tokens per person`
+              : "Budget unavailable"}
+          </span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
+        <div className="ai-budget-body">
+          <p className="muted">
+            The shared allowance for one person’s night, across up to ten runs.
+            Remaining work appears in the morning review.
+          </p>
+          <label className="settings-field">
+            Tokens per night
+            <input
+              type="number"
+              min={1000}
+              max={10000000}
+              step={1000}
+              value={nightBudget}
+              onChange={(e) => setNightBudget(e.target.value)}
+            />
+          </label>
+          <button
+            className="secondary"
+            disabled={
+              busy ||
+              !settings?.settings_revision ||
+              !Number.isInteger(Number(nightBudget)) ||
+              Number(nightBudget) < 1000 ||
+              Number(nightBudget) > 10000000
+            }
+            onClick={() =>
+              settings &&
+              void mutate(
+                () =>
+                  client.updateAiNightBudget({
+                    expected_revision: settings.settings_revision!,
+                    night_token_budget: Number(nightBudget),
+                  }),
+                "Change the night-shift budget for everyone?",
+              )
+            }
+          >
+            Save night budget
+          </button>
+        </div>
+      </details>
       <SemanticSetup
         settings={settings}
-        providerName={active?.name ?? null}
+        providers={providers}
         busy={busy}
         act={(fn) => void act(fn)}
         onChanged={load}

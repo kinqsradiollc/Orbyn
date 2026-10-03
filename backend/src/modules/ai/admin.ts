@@ -1,9 +1,11 @@
 import type { FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
 import {
   AI_PROVIDERS,
   aiProviderInput,
   aiProviderUpdate,
   aiSettingsInput,
+  aiNightBudgetInput,
   aiTestInput,
   semanticSetupInput,
   fail,
@@ -14,10 +16,17 @@ import {
 import { query, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import { hasVectors } from "../search/semantic.js";
+import { assistantMayRead } from "../../lib/doc-visibility.js";
+import { notKeptOut } from "../../lib/assistant-off.js";
 import { authorize } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { encryptSecret, maskSecret } from "../../lib/secrets.js";
-import { complete, listModels, ProviderError } from "./providers/adapters.js";
+import {
+  complete,
+  embed,
+  listModels,
+  ProviderError,
+} from "./providers/adapters.js";
 import { assertProviderUrl } from "./providers/network.js";
 import { connection, type ProviderRow } from "./providers/resolve.js";
 
@@ -37,6 +46,26 @@ const toPublic = (row: ProviderRow): AiProvider => ({
   updated_at: iso(row.updated_at),
 });
 
+type BudgetSettings = {
+  provider_id: string | null;
+  model: string;
+  night_token_budget: number;
+  embedding_generation: string;
+  updated_at_epoch: string | null;
+};
+const budgetRevision = (row: BudgetSettings) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        row.provider_id,
+        row.model,
+        row.night_token_budget,
+        row.embedding_generation,
+        row.updated_at_epoch,
+      ]),
+    )
+    .digest("hex");
+
 async function currentSettings(): Promise<AiSettings> {
   const row = (
     await query<{
@@ -46,27 +75,63 @@ async function currentSettings(): Promise<AiSettings> {
       enabled: boolean | null;
       semantic_search: boolean;
       embedding_model: string;
+      embedding_provider_id: string | null;
+      embedding_dimensions: number | null;
+      embedding_generation: string;
+      embedding_search_enabled: boolean;
+      embedding_ready: boolean;
       semantic_accepted_at: Date | null;
       measure_running: boolean;
       night_token_budget: number;
+      updated_at_epoch: string | null;
     }>(
       `SELECT s.provider_id, s.model, s.updated_at, s.semantic_search, p.enabled, s.night_token_budget,
-              s.embedding_model, s.semantic_accepted_at,
+              s.embedding_model, s.semantic_accepted_at, extract(epoch FROM s.updated_at)::text AS updated_at_epoch,
+              s.embedding_provider_id,s.embedding_dimensions,s.embedding_generation,
+              s.embedding_search_enabled,
+              (s.embedding_search_enabled AND ep.enabled AND s.semantic_accepted_at IS NOT NULL
+                AND s.embedding_model <> '' AND s.embedding_dimensions IS NOT NULL
+                AND s.embedding_provider_revision=ep.embedding_revision) AS embedding_ready,
               EXISTS (SELECT 1 FROM service_heartbeats h WHERE h.service = 'measure'
                         AND h.last_seen_at > now() - interval '3 minutes') AS measure_running
-       FROM ai_settings s LEFT JOIN ai_providers p ON p.id = s.provider_id WHERE s.id`,
+       FROM ai_settings s LEFT JOIN ai_providers p ON p.id = s.provider_id
+         LEFT JOIN ai_providers ep ON ep.id=s.embedding_provider_id WHERE s.id`,
     )
   ).rows[0];
   const fromDatabase = !!(row?.provider_id && row.enabled && row.model);
+  const possible = await hasVectors();
+  const acceptedEmbedding = possible && !!row?.embedding_ready;
+  const progress = acceptedEmbedding
+    ? (
+        await query<{ pending: number; indexed: number }>(
+          `SELECT count(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM doc_embedding_queue q WHERE q.doc_id=d.id))::integer AS pending,
+       count(*) FILTER (WHERE EXISTS (
+         SELECT 1 FROM doc_embeddings e WHERE e.doc_id=d.id
+           AND e.embedding_generation=$1 AND e.doc_version=d.version))::integer AS indexed
+      FROM docs d WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
+        AND ${assistantMayRead("d")}`,
+          [row.embedding_generation],
+        )
+      ).rows[0]
+    : undefined;
   return {
     night_token_budget: row?.night_token_budget ?? 1000000,
+    settings_revision: row ? budgetRevision(row) : undefined,
     provider_id: row?.provider_id ?? null,
     model: row?.model ?? "",
     source: fromDatabase ? "database" : "none",
-    semantic_search: !!row?.semantic_search,
+    semantic_search: acceptedEmbedding,
     /** Whether this database could do it at all, so the console can say so. */
-    semantic_possible: await hasVectors(),
+    semantic_possible: possible,
     embedding_model: row?.embedding_model ?? "",
+    embedding_provider_id: row?.embedding_provider_id ?? null,
+    embedding_dimensions: row?.embedding_dimensions ?? null,
+    embedding_generation: row?.embedding_generation,
+    embedding_needs_validation:
+      !!row?.embedding_search_enabled && !acceptedEmbedding,
+    embedding_pending_pages: progress?.pending,
+    embedding_indexed_pages: progress?.indexed,
     semantic_accepted_at: row?.semantic_accepted_at
       ? iso(row.semantic_accepted_at)
       : null,
@@ -311,7 +376,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
    * provider, a model that measures text and the admin's agreement that
    * every page is sent to be measured. Off forgets every measurement.
    */
-  app.put("/ai/settings/semantic", async (r) => {
+  app.put("/ai/settings/semantic", strictRateLimit, async (r) => {
     const actor = await authorize(r, "ai:manage");
     const d = semanticSetupInput.parse(r.body);
     if (d.on) {
@@ -321,8 +386,21 @@ export async function aiAdminRoutes(app: FastifyInstance) {
           "This database can't search by meaning: it needs the pgvector image (see the setup guide).",
         );
       const current = await currentSettings();
-      if (current.source === "none")
-        fail(409, "Connect an AI provider for the assistant first.");
+      if (!d.expected_generation)
+        fail(
+          409,
+          "Reload embedding setup and select its provider before accepting.",
+        );
+      if (!d.embedding_provider_id)
+        fail(422, "Choose an embedding provider explicitly.");
+      if (d.expected_generation !== current.embedding_generation)
+        fail(
+          409,
+          "Embedding settings changed. Reload the setup before accepting.",
+        );
+      const provider = await providerRow(d.embedding_provider_id);
+      if (!provider.enabled)
+        fail(409, "Enable the embedding provider before using it.");
       const model = d.embedding_model ?? current.embedding_model ?? "";
       if (!model) fail(422, "Choose the model that measures text.");
       if (!d.accept)
@@ -330,20 +408,66 @@ export async function aiAdminRoutes(app: FastifyInstance) {
           422,
           "Agree that every page is sent to the provider to be measured.",
         );
-      await transaction(async (db) => {
-        await db.query(
-          `UPDATE ai_settings SET semantic_search = true, embedding_model = $1,
-             semantic_accepted_at = now(), semantic_accepted_by = $2,
-             updated_by = $2, updated_at = now() WHERE id`,
-          [model, actor.id],
+      let dimensions: number;
+      try {
+        // Only fixed non-personal text is sent before configuration is committed.
+        const [probe] = await embed(
+          await connection(provider, model),
+          ["Orbyn embedding configuration validation."],
+          { timeoutMs: 15_000 },
         );
+        dimensions = probe.length;
+      } catch (error) {
+        if (error instanceof ProviderError) fail(422, error.message);
+        throw error;
+      }
+      await transaction(async (db) => {
+        const saved = (
+          await db.query<{ embedding_generation: string }>(
+            "SELECT embedding_generation FROM ai_settings WHERE id FOR UPDATE",
+          )
+        ).rows[0];
+        if (saved.embedding_generation !== d.expected_generation)
+          fail(
+            409,
+            "Embedding settings changed during validation. Reload the setup.",
+          );
+        const selected = (
+          await db.query<ProviderRow>(
+            "SELECT * FROM ai_providers WHERE id=$1 FOR SHARE",
+            [provider.id],
+          )
+        ).rows[0];
+        if (
+          !selected?.enabled ||
+          selected.embedding_revision !== provider.embedding_revision
+        )
+          fail(
+            409,
+            "The embedding provider changed during validation. Validate it again.",
+          );
+        await db.query(
+          `UPDATE ai_settings SET embedding_search_enabled = true, embedding_model = $1,
+             semantic_accepted_at = now(), semantic_accepted_by = $2,
+             embedding_provider_id=$3,embedding_provider_revision=$4,
+             embedding_dimensions=$5,embedding_generation=gen_random_uuid(),
+             updated_by = $2, updated_at = now() WHERE id`,
+          [
+            model,
+            actor.id,
+            provider.id,
+            provider.embedding_revision,
+            dimensions,
+          ],
+        );
+        await db.query("DELETE FROM doc_embeddings");
+        await db.query("DELETE FROM doc_embedding_queue");
         // Everything written so far is measured once, by the measuring
         // service (pages kept out of the assistant never are).
         await db.query(
           `INSERT INTO doc_embedding_queue (doc_id)
            SELECT d.id FROM docs d
-            WHERE d.deleted_at IS NULL AND NOT EXISTS (
-              SELECT 1 FROM projects p WHERE p.id = d.project_id AND p.assistant_off)
+            WHERE d.deleted_at IS NULL AND ${notKeptOut("d")} AND ${assistantMayRead("d")}
            ON CONFLICT DO NOTHING`,
         );
         await audit(
@@ -352,15 +476,31 @@ export async function aiAdminRoutes(app: FastifyInstance) {
             action: "ai.semantic_on",
             targetType: "system",
             targetId: null,
-            details: { model },
+            details: {
+              model,
+              provider_id: provider.id,
+              provider_revision: provider.embedding_revision,
+              dimensions,
+            },
           },
           db,
         );
       });
     } else
       await transaction(async (db) => {
+        const saved = (
+          await db.query<{ embedding_generation: string }>(
+            "SELECT embedding_generation FROM ai_settings WHERE id FOR UPDATE",
+          )
+        ).rows[0];
+        if (
+          d.expected_generation &&
+          saved.embedding_generation !== d.expected_generation
+        )
+          fail(409, "Embedding settings changed. Reload the setup.");
         await db.query(
-          `UPDATE ai_settings SET semantic_search = false,
+          `UPDATE ai_settings SET embedding_search_enabled = false,
+             embedding_generation=gen_random_uuid(),
              embedding_model = coalesce($1, embedding_model),
              semantic_accepted_at = NULL, semantic_accepted_by = NULL,
              updated_by = $2, updated_at = now() WHERE id`,
@@ -385,9 +525,42 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     return currentSettings();
   });
 
+  app.put("/ai/settings/night-budget", strictRateLimit, async (r) => {
+    const actor = await authorize(r, "ai:manage");
+    const input = aiNightBudgetInput.parse(r.body);
+    await transaction(async (db) => {
+      const current = (
+        await db.query<BudgetSettings>(`SELECT provider_id,model,night_token_budget,embedding_generation,
+        extract(epoch FROM updated_at)::text AS updated_at_epoch FROM ai_settings WHERE id FOR UPDATE`)
+      ).rows[0];
+      if (!current || budgetRevision(current) !== input.expected_revision)
+        fail(409, "AI settings changed. Refresh the budget before saving.");
+      await db.query(
+        "UPDATE ai_settings SET night_token_budget=$1,updated_by=$2,updated_at=now() WHERE id",
+        [input.night_token_budget, actor.id],
+      );
+      await audit(
+        {
+          actorId: actor.id,
+          action: "ai.night_budget_changed",
+          targetType: "system",
+          targetId: null,
+          details: {
+            before: current.night_token_budget,
+            after: input.night_token_budget,
+          },
+        },
+        db,
+      );
+    });
+    return currentSettings();
+  });
+
   app.put("/ai/settings", async (r) => {
     const actor = await authorize(r, "ai:manage");
     const d = aiSettingsInput.parse(r.body);
+    if (d.night_token_budget !== undefined)
+      fail(409, "Use the night-shift budget control to change its allowance.");
     // Search by meaning is turned on only through its own setup, below.
     if (d.semantic_search === true)
       fail(
@@ -404,16 +577,23 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     await transaction(async (db) => {
       await db.query(
         `UPDATE ai_settings SET provider_id=$1, model=$2, updated_by=$3,
-           semantic_search = coalesce($4, semantic_search), night_token_budget = coalesce($5, night_token_budget), updated_at=now()
+           embedding_search_enabled = CASE WHEN $4::boolean=false THEN false ELSE embedding_search_enabled END,
+           embedding_generation = CASE WHEN $4::boolean=false THEN gen_random_uuid() ELSE embedding_generation END,
+           semantic_accepted_at = CASE WHEN $4::boolean=false THEN NULL ELSE semantic_accepted_at END,
+           semantic_accepted_by = CASE WHEN $4::boolean=false THEN NULL ELSE semantic_accepted_by END,
+           updated_at=now()
          WHERE id`,
         [
           d.provider_id,
           d.provider_id ? d.model : "",
           actor.id,
           d.semantic_search ?? null,
-          d.night_token_budget ?? null,
         ],
       );
+      if (d.semantic_search === false && (await hasVectors())) {
+        await db.query("DELETE FROM doc_embeddings");
+        await db.query("DELETE FROM doc_embedding_queue");
+      }
       await audit(
         {
           actorId: actor.id,

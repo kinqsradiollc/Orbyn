@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Select } from "../../components/Select";
+import "./admin-workspace.css";
 import {
   ArrowLeft,
   Bot,
@@ -118,94 +120,143 @@ export function AdminView({
   );
 
   return (
-    <>
-      <div className="tabs" role="tablist" aria-label="Admin sections">
-        {tabs.map(({ label, icon: Icon }) => (
-          <button
-            key={label}
-            role="tab"
-            aria-selected={tab === label}
-            className={tab === label ? "active" : ""}
-            onClick={() => {
-              setTab(label);
-              setTeamId(null);
-              setUserId(null);
+    <div className="admin-workspace">
+      <aside className="admin-navigation" aria-label="Admin sections">
+        {[
+          { label: "People", items: ["Overview", "Users", "Teams"] },
+          { label: "AI", items: ["AI", "Agents"] },
+          {
+            label: "Operations",
+            items: [
+              "Audit log",
+              "Analytics",
+              "Requests",
+              "Database",
+              "Storage",
+              "System",
+            ],
+          },
+        ].map((group) => {
+          const entries = tabs.filter((entry) =>
+            group.items.includes(entry.label),
+          );
+          if (!entries.length) return null;
+          return (
+            <div className="admin-navigation-group" key={group.label}>
+              <h3>{group.label}</h3>
+              {entries.map(({ label, icon: Icon }) => (
+                <button
+                  key={label}
+                  aria-current={tab === label ? "page" : undefined}
+                  className={tab === label ? "active" : ""}
+                  onClick={() => {
+                    setTab(label);
+                    setTeamId(null);
+                    setUserId(null);
+                  }}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </aside>
+      <section className="admin-content" aria-label={tab}>
+        <label className="admin-section-picker">
+          Section
+          <Select
+            value={tab}
+            onChange={(event) => {
+              const chosen = tabs.find(
+                (entry) => entry.label === event.target.value,
+              );
+              if (chosen) {
+                setTab(chosen.label);
+                setTeamId(null);
+                setUserId(null);
+              }
             }}
           >
-            <Icon size={15} /> {label}
-          </button>
-        ))}
-      </div>
-      {tab === "Overview" && (
-        <OverviewPanel
-          revision={props.revision}
-          report={props.report}
-          canManageSystem={canManageSystem}
-          onNavigate={setTab}
-        />
-      )}
-      {tab === "Analytics" && canSeeAnalytics && (
-        <AdminAnalytics report={props.report} />
-      )}
-      {tab === "Requests" && canSeeRequests && (
-        <AdminRequests report={props.report} />
-      )}
-      {tab === "Users" &&
-        (userId ? (
-          <AdminUserDetail
-            key={userId}
-            userId={userId}
-            selfId={props.user?.id}
-            report={props.report}
-            onBack={() => setUserId(null)}
-          />
-        ) : (
-          <AdminUsers {...props} onOpen={setUserId} />
-        ))}
-      {tab === "Teams" &&
-        (teamId ? (
-          <>
-            <button className="text-button" onClick={() => setTeamId(null)}>
-              <ArrowLeft size={14} /> All teams
-            </button>
-            <TeamDetail
-              key={teamId}
-              teamId={teamId}
-              warnOnChanges
-              onClose={() => setTeamId(null)}
-              {...props}
-            />
-          </>
-        ) : (
-          <TeamsPanel
+            {tabs.map(({ label }) => (
+              <option key={label} value={label}>
+                {label}
+              </option>
+            ))}
+          </Select>
+        </label>
+        {tab === "Overview" && (
+          <OverviewPanel
             revision={props.revision}
             report={props.report}
-            onOpen={setTeamId}
+            canManageSystem={canManageSystem}
+            onNavigate={setTab}
           />
-        ))}
-      {tab === "Audit log" && <AdminAudit report={props.report} />}
-      {tab === "Database" && canManageSystem && (
-        <AdminDatabase
-          report={props.report}
-          user={props.user}
-          refresh={props.refresh}
-        />
-      )}
-      {tab === "Storage" && canManageSystem && (
-        <AdminStorage report={props.report} />
-      )}
-      {tab === "AI" && canManageAi && <AdminAi {...props} />}
-      {tab === "Agents" && canManageSystem && (
-        <AdminAgents report={props.report} />
-      )}
-      {tab === "System" && canManageSystem && (
-        <AdminSystem
-          user={props.user}
-          report={props.report}
-          onMaintenanceChange={onMaintenanceChange}
-        />
-      )}
-    </>
+        )}
+        {tab === "Analytics" && canSeeAnalytics && (
+          <AdminAnalytics report={props.report} />
+        )}
+        {tab === "Requests" && canSeeRequests && (
+          <AdminRequests report={props.report} />
+        )}
+        {tab === "Users" &&
+          (userId ? (
+            <AdminUserDetail
+              key={userId}
+              userId={userId}
+              selfId={props.user?.id}
+              report={props.report}
+              onBack={() => setUserId(null)}
+            />
+          ) : (
+            <AdminUsers {...props} onOpen={setUserId} />
+          ))}
+        {tab === "Teams" &&
+          (teamId ? (
+            <>
+              <button className="text-button" onClick={() => setTeamId(null)}>
+                <ArrowLeft size={14} /> All teams
+              </button>
+              <TeamDetail
+                key={teamId}
+                teamId={teamId}
+                warnOnChanges
+                onClose={() => setTeamId(null)}
+                {...props}
+              />
+            </>
+          ) : (
+            <TeamsPanel
+              revision={props.revision}
+              report={props.report}
+              onOpen={setTeamId}
+            />
+          ))}
+        {tab === "Audit log" && <AdminAudit report={props.report} />}
+        {tab === "Database" && canManageSystem && (
+          <AdminDatabase
+            report={props.report}
+            user={props.user}
+            refresh={props.refresh}
+          />
+        )}
+        {tab === "Storage" && canManageSystem && (
+          <AdminStorage report={props.report} />
+        )}
+        {tab === "AI" && canManageAi && <AdminAi {...props} />}
+        {tab === "Agents" && canManageSystem && (
+          <AdminAgents report={props.report} />
+        )}
+        {tab === "System" && canManageSystem && (
+          <AdminSystem
+            user={props.user}
+            report={props.report}
+            onMaintenanceChange={onMaintenanceChange}
+          />
+        )}
+      </section>
+    </div>
   );
 }
 

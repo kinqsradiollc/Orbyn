@@ -4503,9 +4503,20 @@ export class OrbynClient {
    * Search by meaning's own setup: on needs the model that measures text
    * and `accept` (every page is sent to the provider to be measured).
    */
+  updateAiNightBudget(input: {
+    night_token_budget: number;
+    expected_revision: string;
+  }) {
+    return this.request<AiSettings>("/ai/settings/night-budget", {
+      method: "PUT",
+      body: input,
+    });
+  }
   setSemanticSearch(input: {
     on: boolean;
     embedding_model?: string;
+    embedding_provider_id?: string;
+    expected_generation?: string;
     accept?: boolean;
   }) {
     return this.request<AiSettings>("/ai/settings/semantic", {

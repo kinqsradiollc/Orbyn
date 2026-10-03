@@ -193,3 +193,13 @@ the complete successful 1,965-test rerun. No failed run is counted as passing.
 
 Independent configuration, the schema/worker foundation and client controls are
 separate local work and are not included in these main validation results.
+
+## Current main integration candidate — 3 October 2026
+
+The preserved independent configuration/schema/worker/client implementation has
+been extracted onto main3ee0fa16 in codex/embedding-settings-state. Migration218
+replaces the candidate's old203 number. Historical candidate checks above are
+not substituted for current qualification. Current pgvector21, stock17 and two
+separate late-install/legacy-upgrade checks pass; full/CI and actual provider/UI
+acceptance remain open. Evidence and limits are recorded in
+`evidence/independent-embedding-main-integration.md`.

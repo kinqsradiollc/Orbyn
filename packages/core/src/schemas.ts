@@ -1071,10 +1071,20 @@ export const aiSettingsInput = z
  * on needs a model that measures text and an admin accepting, each time,
  * that every page is sent to the provider to be measured.
  */
+/** Budget edits carry the exact settings snapshot and never change providers. */
+export const aiNightBudgetInput = z
+  .object({
+    night_token_budget: z.number().int().min(1000).max(10000000),
+    expected_revision: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+
 export const semanticSetupInput = z
   .object({
     on: z.boolean(),
     embedding_model: z.string().trim().max(200).optional(),
+    embedding_provider_id: z.uuid().optional(),
+    expected_generation: z.uuid().optional(),
     accept: z.boolean().optional(),
   })
   .strict();

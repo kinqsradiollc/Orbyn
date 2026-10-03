@@ -670,6 +670,29 @@ remaining protocol/host/account/provider gates still apply; full C1–C6/M1/D1/U
 remains incomplete. Legacy in-flight imports require the documented rollout
 handling rather than invented identity snapshots.
 
+### Independent embeddings integration — 3 October 2026
+
+The retained independent-embedding implementation is extracted onto current main
+with migration218. Legacy workers stay disabled; explicit embedding provider,
+model, verified dimensions, revision-bound consent and generation are independent
+of generation settings. Both client admin surfaces expose setup and indexing
+state. Schema/setup/client checks21/21, stock-provider checks17/17, late-install
+backfill1/1 and actual legacy-vector upgrade1/1 pass. Full local/CI and real
+provider/platform acceptance remain required. See
+`docs/reviews/evidence/independent-embedding-main-integration.md`. This checkpoint
+does not complete provider/model administration or whole-app U1.
+
+### Views workspace layout — 3 October 2026
+
+View layout selection remains immediately available. Filtering, grouping and
+sorting share a disclosure on web/desktop and mobile, preserving source-specific
+options, custom fields and the existing autosave path. Library instructions are
+shortened, headers and rail items bounded on narrow screens, and horizontal table
+scrolling is keyboard accessible. Current30 focused checks and all workspace
+typechecks pass. Source/CSS checks are not rendered geometry acceptance; user web
+review and actual native/Android interactions remain required alongside full
+local/CI qualification. This increment does not complete whole-app U1 redesign.
+
 ### Overnight reflection integration — 3 October 2026
 
 Reflection is an explicit Night Shift opt-in, using bounded source IDs and
@@ -687,3 +710,20 @@ without weakening assertions. The current combined reflection/night-settings/
 Overnight suite passes28/28, including selected-team changes and membership
 revocation. Full local tests, build/format, CI and signed-in native/web acceptance
 remain required; this is not a completed C3/U1 claim.
+
+### Settings modality and layout — user requirement, 4 October 2026
+
+Settings opens as a bounded web/desktop modal over the existing workspace, keeping
+documents/chats mounted. Native retains its settings sheet. Preserve search and
+setting-command entry points, category navigation, keyboard/viewport containment,
+focus return and nested dialog ownership. One-time recovery material cannot be
+lost by closing or changing category before acknowledgement.
+
+The next layout checkpoint also replaces wrapped Admin tabs with a desktop rail
+and compact native selector, bounded scrolling menus and progressive disclosure
+for budget/embedding setup. Budget saves must change only the allowance and
+reject stale settings snapshots. Latest UI controls21 and real HTTP budget tests3
+pass; full/CI and remaining platform acceptance remain required. Web visuals are
+user-reviewed under the latest explicit blind-redesign allowance; native screens
+are inspected directly. Evidence and limitations:
+`docs/reviews/evidence/settings-modal-layout.md`. This does not complete all U1.
