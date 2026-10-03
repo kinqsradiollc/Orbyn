@@ -15,6 +15,7 @@ import {
   agentLimitKey,
   apiKeyId,
   authenticate,
+  appSessionLimitKey,
   isApiKeyRequest,
   isMcpPath,
   isOAuthOpenPath,
@@ -203,9 +204,9 @@ export async function createService(
   // Sign-in and AI routes set their own stricter limits, which always apply.
   // The general per-client limit can be left to the gateway (0). Requests
   // signed with a personal API key count against that key, wherever they
-  // come from, and on the MCP address an agent's requests count against its
+  // come from, verified app sessions against their device session, and on the MCP address an agent's requests count against its
   // connection; both only once the credential is known to be real, so a
-  // made-up one counts per address. Everything else counts per address
+  // made-up one counts per address. Anonymous/invalid sessions count per address
   // (the key a route's own stricter limit uses too). Every response says
   // where the client stands (RateLimit-Limit, -Remaining, -Reset), and a
   // 429 says when to try again (Retry-After, in seconds).
@@ -222,7 +223,11 @@ export async function createService(
       const agent = await agentLimitKey(request).catch(() => null);
       if (agent) return agent;
       const key = await apiKeyId(request).catch(() => null);
-      return key ? `key:${key}` : request.ip;
+      if (key) return `key:${key}`;
+      // Route-specific safeguards retain their existing per-address buckets.
+      if (request.routeOptions.config?.rateLimit != null) return request.ip;
+      const session = await appSessionLimitKey(request).catch(() => null);
+      return session ?? request.ip;
     },
   });
 

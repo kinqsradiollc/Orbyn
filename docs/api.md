@@ -94,7 +94,11 @@ Access and refresh tokens are rejected, and identity tokens are never stored.
 ## Rate limits
 
 Requests signed with a personal API key (`ok_…`) count against that key, wherever they come
-from; every other request counts against its IP address. The limit is 180 requests a minute by
+from. Global app requests with a verified live session count against that device session,
+so devices and people sharing an IP do not consume one another's app allowance. Anonymous,
+expired, disabled and invalid sessions count against their IP. A route's stricter session
+limit still counts per IP; personal API keys and MCP connections retain their existing buckets.
+The global limit is 180 requests a minute by
 default (Admin → System, `rate_limit_per_minute`); sign-in, the assistant, creating API keys and
 webhooks, and the public booking, invite and RSVP answers allow 10 a minute. Every response
 carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (seconds until the window

@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -452,13 +453,14 @@ test("the link routes answer 429 past the per-minute limit", async () => {
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(me.token);
   live.rate_limit_per_minute = 2;
   const from = () =>
     app.inject({
       method: "GET",
       url: `/links/here?kind=doc&id=${targetId}`,
       remoteAddress: "10.82.9.9",
-      headers: { authorization: `Bearer ${me.token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
     });
   try {
     assert.equal((await from()).statusCode, 200);

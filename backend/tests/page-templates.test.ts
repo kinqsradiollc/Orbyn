@@ -1,4 +1,5 @@
-import { test, before, after } from "node:test";
+import { freshRateLimitSession } from "./rate-limit-session.js";
+import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 // Connects only to a verified test database (see setup.ts).
@@ -83,6 +84,11 @@ before(async () => {
      VALUES ($1,$2,'owner'),($1,$3,'member'),($1,$4,'viewer')`,
     [team, owner.id, member.id, viewer.id],
   );
+});
+// Each case is an independent device workflow; changing IP must not reset a window.
+beforeEach(async () => {
+  for (const person of [owner, member, viewer, stranger])
+    person.token = await freshRateLimitSession(person.token);
 });
 after(async () => {
   await app.close();
@@ -1830,12 +1836,13 @@ test("page templates answer 429 past the per-minute limit", async () => {
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(member.token);
   live.rate_limit_per_minute = 2;
   const from = (method: "GET" | "POST", url: string) =>
     app.inject({
       method,
       url,
-      headers: { authorization: `Bearer ${member.token}` },
+      headers: { authorization: `Bearer ${limitedToken}` },
       remoteAddress: "10.72.0.1",
       ...(method === "POST" ? { payload: {} } : {}),
     });

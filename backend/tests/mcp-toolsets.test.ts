@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -378,13 +379,14 @@ test("Settings: choosing a connection's toolsets (401, 403 for API keys, 404, 42
   await settings();
   const live = cachedSettings();
   const was = live.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(olga.token);
   live.rate_limit_per_minute = 1;
   try {
     const at = (n: number) =>
       app.inject({
         method: "PUT",
         url: `/me/agents/${k.id}/toolsets`,
-        headers: bearer(olga.token),
+        headers: bearer(limitedToken),
         remoteAddress: "10.75.0.7",
         payload: { toolsets: n ? ["files"] : ["teams"] },
       });

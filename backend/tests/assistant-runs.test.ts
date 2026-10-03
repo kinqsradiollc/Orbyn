@@ -1,3 +1,4 @@
+import { freshRateLimitSession } from "./rate-limit-session.js";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -952,13 +953,14 @@ test("routines validate ownership and approval scopes, then run once when due", 
 
   const settings = cachedSettings();
   const previousLimit = settings.rate_limit_per_minute;
+  const limitedToken = await freshRateLimitSession(user.token);
   settings.rate_limit_per_minute = 1;
   try {
     const fromOneAddress = () =>
       app.inject({
         url: "/me/agent-routines",
         remoteAddress: "10.254.0.10",
-        headers: auth(user.token),
+        headers: auth(limitedToken),
       });
     assert.equal((await fromOneAddress()).statusCode, 200);
     const limited = await fromOneAddress();
