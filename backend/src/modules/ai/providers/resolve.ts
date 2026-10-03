@@ -2,6 +2,7 @@ import { AI_PROVIDERS, type AiProviderKind } from "@orbyn/core";
 import { query } from "../../../db/pool.js";
 import { decryptSecret } from "../../../lib/secrets.js";
 import type { ResolvedAi } from "./adapters.js";
+import type { EmbeddingConfiguration } from "../../search/vectors.js";
 
 export type ProviderRow = {
   id: string;
@@ -14,6 +15,7 @@ export type ProviderRow = {
   enabled: boolean;
   created_at: Date;
   updated_at: Date;
+  embedding_revision: string;
 };
 
 /** How to call a saved provider with `model`, decrypting its key. */
@@ -53,4 +55,18 @@ export async function resolveAi(): Promise<ResolvedAi | null> {
     )
   ).rows[0];
   return row ? connection(row, row.model) : null;
+}
+
+/** Embeddings use only their accepted provider revision, independently of chat. */
+export async function resolveEmbedding(
+  config: EmbeddingConfiguration,
+): Promise<ResolvedAi | null> {
+  const row = (
+    await query<ProviderRow>(
+      `SELECT * FROM ai_providers
+      WHERE id=$1 AND enabled AND embedding_revision=$2::bigint`,
+      [config.providerId, config.providerRevision],
+    )
+  ).rows[0];
+  return row ? connection(row, config.model) : null;
 }

@@ -248,7 +248,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       </section>
       <SemanticSetup
         settings={settings}
-        providerName={active?.name ?? null}
+        providers={providers}
         busy={busy}
         act={(fn) => void act(fn)}
         onChanged={load}

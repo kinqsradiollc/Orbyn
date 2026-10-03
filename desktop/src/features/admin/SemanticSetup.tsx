@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Circle } from "lucide-react";
-import type { AiSettings } from "@orbyn/core";
+import { AI_PROVIDERS, type AiProvider, type AiSettings } from "@orbyn/core";
+import { Select } from "../../components/Select";
 import { client } from "../../lib/api";
 
 /**
@@ -12,36 +13,61 @@ import { client } from "../../lib/api";
  */
 export function SemanticSetup({
   settings,
-  providerName,
+  providers,
   busy,
   act,
   onChanged,
 }: {
   settings: AiSettings | undefined;
-  providerName: string | null;
+  providers: AiProvider[];
   busy: boolean;
   act: (fn: () => Promise<void>) => void;
   onChanged: () => Promise<void>;
 }) {
   const [model, setModel] = useState(settings?.embedding_model ?? "");
   const [accept, setAccept] = useState(false);
+  const [providerId, setProviderId] = useState(
+    settings?.embedding_provider_id ?? "",
+  );
   useEffect(() => {
     setModel(settings?.embedding_model ?? "");
-  }, [settings?.embedding_model]);
+    setProviderId(settings?.embedding_provider_id ?? "");
+    setAccept(false);
+  }, [
+    settings?.embedding_model,
+    settings?.embedding_provider_id,
+    settings?.embedding_generation,
+  ]);
   if (!settings) return null;
+  const selected = providers.find((provider) => provider.id === providerId);
+  const eligible = providers.filter(
+    (provider) =>
+      provider.enabled && AI_PROVIDERS[provider.kind].format !== "anthropic",
+  );
+  const providerName = providers.find(
+    (provider) => provider.id === settings.embedding_provider_id,
+  )?.name;
   const on = settings.semantic_search && !!settings.semantic_accepted_at;
   const steps: { done: boolean; text: string }[] = [
     {
       done: settings.semantic_possible,
-      text: "The database can store measurements (the pgvector image, set with POSTGRES_IMAGE).",
+      text: settings.semantic_possible
+        ? "The database can store measurements."
+        : "Database measurements are unavailable.",
     },
     {
       done: !!settings.measure_running,
-      text: "The measuring service is running (the semantic profile).",
+      text: settings.measure_running
+        ? "The measuring service is running."
+        : "The measuring service is offline.",
     },
     {
-      done: settings.source === "database",
-      text: "A provider is connected for the assistant.",
+      done:
+        !!selected && eligible.some((provider) => provider.id === selected.id),
+      text:
+        selected && eligible.some((provider) => provider.id === selected.id)
+          ? "An independent embedding provider is selected."
+          : "Select an embedding provider.",
     },
   ];
   const ready = steps.every((s) => s.done);
@@ -50,12 +76,18 @@ export function SemanticSetup({
       try {
         await client.setSemanticSearch(
           next
-            ? { on: true, embedding_model: model.trim(), accept }
-            : { on: false },
+            ? {
+                on: true,
+                embedding_model: model.trim(),
+                embedding_provider_id: providerId,
+                expected_generation: settings.embedding_generation,
+                accept,
+              }
+            : { on: false, expected_generation: settings.embedding_generation },
         );
       } finally {
-        await onChanged();
         setAccept(false);
+        await onChanged();
       }
     });
   return (
@@ -83,12 +115,36 @@ export function SemanticSetup({
           </li>
         ))}
       </ul>
+      {settings.embedding_needs_validation && (
+        <p role="status" className="muted">
+          The saved provider changed or was removed. Select a provider and
+          validate it again before any more page text is sent.
+        </p>
+      )}
       {on ? (
         <div className="semantic-on">
+          <p role="status">
+            {typeof settings.embedding_indexed_pages === "number" &&
+            typeof settings.embedding_pending_pages === "number"
+              ? `${settings.embedding_indexed_pages} pages measured; ${settings.embedding_pending_pages} pages waiting.`
+              : "Indexing status is unavailable. Refresh to check again."}
+            {!settings.measure_running &&
+              " The measuring service is offline; queued pages will wait until it starts."}
+          </p>
+          <button
+            className="secondary"
+            disabled={busy}
+            onClick={() => act(onChanged)}
+          >
+            Refresh indexing status
+          </button>
           <p>
             Measuring with <strong>{settings.embedding_model}</strong>
             {providerName ? ` on ${providerName}` : ""}. Turned on{" "}
-            {new Date(settings.semantic_accepted_at!).toLocaleDateString()}.
+            {new Date(settings.semantic_accepted_at!).toLocaleDateString()}.{" "}
+            {settings.embedding_dimensions
+              ? `${settings.embedding_dimensions} dimensions verified.`
+              : ""}
           </p>
           <button
             className="secondary"
@@ -107,13 +163,41 @@ export function SemanticSetup({
           }}
         >
           <label>
+            Embedding provider
+            <Select
+              value={providerId}
+              disabled={busy || !settings.semantic_possible}
+              onChange={(event) => {
+                setProviderId(event.target.value);
+                setModel("");
+                setAccept(false);
+              }}
+            >
+              <option value="">Choose a provider</option>
+              {eligible.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          {!eligible.length && (
+            <p className="muted">
+              Add and enable an OpenAI-compatible or Azure provider below. Chat
+              can remain off.
+            </p>
+          )}
+          <label>
             Model that measures text
             <input
               value={model}
               maxLength={200}
               placeholder="text-embedding-3-small"
               disabled={!ready}
-              onChange={(e) => setModel(e.target.value)}
+              onChange={(e) => {
+                setModel(e.target.value);
+                setAccept(false);
+              }}
             />
           </label>
           <label className="check-line">
@@ -125,16 +209,16 @@ export function SemanticSetup({
             />
             <span>
               I understand that the words of every page in this workspace
-              (except projects kept out of the assistant) are sent to{" "}
-              {providerName ?? "the provider"} to be measured, and that this is
-              described in the Privacy Policy.
+              (except projects and teams kept out of the assistant) are sent to{" "}
+              {selected?.name ?? "the selected embedding provider"} to be
+              measured, and that this is described in the Privacy Policy.
             </span>
           </label>
           <button
             className="primary"
             disabled={busy || !ready || !accept || !model.trim()}
           >
-            Turn on search by meaning
+            Validate and turn on search by meaning
           </button>
         </form>
       )}

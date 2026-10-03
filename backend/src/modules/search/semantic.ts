@@ -1,11 +1,11 @@
 import { blockText, type DocBlock } from "@orbyn/core";
 import { assistantMayRead } from "../../lib/doc-visibility.js";
-import { pool } from "../../db/pool.js";
+import { pool, transaction } from "../../db/pool.js";
 import { embed } from "../ai/providers/adapters.js";
-import { resolveAi } from "../ai/providers/resolve.js";
+import { resolveEmbedding } from "../ai/providers/resolve.js";
 import { notKeptOut } from "../../lib/assistant-off.js";
 import { readableDocs } from "../../lib/visibility.js";
-import { semanticModel, type NearHit } from "./vectors.js";
+import { semanticConfiguration, type NearHit } from "./vectors.js";
 
 // Whether search by meaning is possible and on lives in ./vectors.ts, which
 // loads no AI provider (docs, links and agents' paths ask it).
@@ -55,13 +55,19 @@ const asVector = (v: number[]) => `[${v.join(",")}]`;
  * so an ordinary edit to one paragraph costs one line, not a page.
  */
 export async function measureQueued(limit = 5): Promise<number> {
-  const model = await semanticModel();
-  if (!model) return 0;
-  const ai = await resolveAi();
+  const config = await semanticConfiguration();
+  if (!config) return 0;
+  const model = config.model;
+  const ai = await resolveEmbedding(config);
   if (!ai) return 0;
   const waiting = (
-    await pool.query<{ doc_id: string; content: DocBlock[] }>(
-      `SELECT q.doc_id, d.content FROM doc_embedding_queue q
+    await pool.query<{
+      doc_id: string;
+      content: DocBlock[];
+      version: number;
+      queue_revision: string;
+    }>(
+      `SELECT q.doc_id, d.content, d.version, q.queue_revision FROM doc_embedding_queue q
          JOIN docs d ON d.id = q.doc_id
         -- A page in Trash can't be searched: measuring it would be a call
         -- to the provider for nothing. It is queued again when restored.
@@ -75,43 +81,120 @@ export async function measureQueued(limit = 5): Promise<number> {
     )
   ).rows;
   let done = 0;
-  for (const page of waiting) {
+  pages: for (const page of waiting) {
     const wanted = passages(page.content);
     const known = new Map(
       (
-        await pool.query<{ block_id: string; quote: string }>(
-          "SELECT block_id, quote FROM doc_embeddings WHERE doc_id = $1",
-          [page.doc_id],
+        await pool.query<{
+          block_id: string;
+          quote: string;
+          embedding: string;
+        }>(
+          `SELECT block_id, quote, embedding::text FROM doc_embeddings
+            WHERE doc_id = $1 AND embedding_generation = $2
+              AND vector_dims(embedding) = $3`,
+          [page.doc_id, config.generation, config.dimensions],
         )
-      ).rows.map((r) => [r.block_id, r.quote]),
+      ).rows.map((r) => [r.block_id, r]),
     );
-    const fresh = wanted.filter((p) => known.get(p.block_id) !== p.quote);
-    // Lines that have gone from the page no longer answer for it.
-    await pool.query(
-      "DELETE FROM doc_embeddings WHERE doc_id = $1 AND NOT (block_id = ANY($2::text[]))",
-      [page.doc_id, wanted.map((p) => p.block_id)],
+    const fresh = wanted.filter(
+      (p) => known.get(p.block_id)?.quote !== p.quote,
     );
+    const measured = new Map<string, string>();
     for (let at = 0; at < fresh.length; at += BATCH) {
+      // Queue selection may precede several slow calls. Recheck before every
+      // batch so later pages/batches do not send text after an intervening edit,
+      // keep-out change, disable or provider revision change.
+      const eligible = await pool.query(
+        `SELECT d.id FROM docs d CROSS JOIN ai_settings s
+          JOIN ai_providers p ON p.id=s.embedding_provider_id
+         WHERE d.id=$1 AND d.version=$2 AND d.deleted_at IS NULL
+           AND ${notKeptOut("d")} AND ${assistantMayRead("d")}
+           AND s.id AND s.embedding_search_enabled AND p.enabled
+           AND s.embedding_generation=$3 AND s.semantic_accepted_at IS NOT NULL
+           AND s.embedding_provider_revision=p.embedding_revision`,
+        [page.doc_id, page.version, config.generation],
+      );
+      if (!eligible.rowCount) continue pages;
       const batch = fresh.slice(at, at + BATCH);
       const vectors = await embed(
         ai,
         batch.map((p) => p.quote),
-        { model },
+        { model, expectedDimensions: config.dimensions },
       );
       for (const [i, p] of batch.entries())
-        await pool.query(
-          `INSERT INTO doc_embeddings (doc_id, block_id, quote, embedding, model)
-             VALUES ($1,$2,$3,$4::vector,$5)
-           ON CONFLICT (doc_id, block_id)
-             DO UPDATE SET quote = $3, embedding = $4::vector, model = $5,
-                           created_at = now()`,
-          [page.doc_id, p.block_id, p.quote, asVector(vectors[i]), model],
-        );
+        measured.set(p.block_id, asVector(vectors[i]));
     }
-    await pool.query("DELETE FROM doc_embedding_queue WHERE doc_id = $1", [
-      page.doc_id,
-    ]);
-    done++;
+    const saved = await transaction(async (db) => {
+      // Provider calls never hold database locks. Serialize only the final
+      // acceptance/write phase with configuration changes and document edits.
+      await db.query("SELECT id FROM ai_settings WHERE id FOR SHARE");
+      await db.query("SELECT id FROM ai_providers WHERE id=$1 FOR SHARE", [
+        config.providerId,
+      ]);
+      const current = await semanticConfiguration(db);
+      if (
+        !current ||
+        current.generation !== config.generation ||
+        current.providerRevision !== config.providerRevision
+      )
+        return false;
+      const document = await db.query<{
+        project_id: string | null;
+        team_id: string | null;
+      }>(
+        `SELECT d.project_id,d.team_id FROM docs d WHERE d.id=$1 AND d.version=$2
+          AND d.deleted_at IS NULL FOR SHARE OF d`,
+        [page.doc_id, page.version],
+      );
+      if (!document.rowCount) return false;
+      await db.query("SELECT id FROM projects WHERE id=$1 FOR SHARE", [
+        document.rows[0].project_id,
+      ]);
+      await db.query("SELECT id FROM teams WHERE id=$1 FOR SHARE", [
+        document.rows[0].team_id,
+      ]);
+      const stillAllowed = await db.query(
+        `SELECT d.id FROM docs d WHERE d.id=$1 AND ${notKeptOut("d")}
+          AND ${assistantMayRead("d")}`,
+        [page.doc_id],
+      );
+      if (!stillAllowed.rowCount) return false;
+      const queue = await db.query(
+        "SELECT doc_id FROM doc_embedding_queue WHERE doc_id=$1 AND queue_revision=$2 FOR UPDATE",
+        [page.doc_id, page.queue_revision],
+      );
+      if (!queue.rowCount) return false;
+      await db.query("DELETE FROM doc_embeddings WHERE doc_id=$1", [
+        page.doc_id,
+      ]);
+      for (const passage of wanted) {
+        const vector =
+          measured.get(passage.block_id) ??
+          known.get(passage.block_id)?.embedding;
+        if (!vector) throw new Error("A measured passage has no vector.");
+        await db.query(
+          `INSERT INTO doc_embeddings
+            (doc_id,block_id,quote,embedding,model,embedding_generation,doc_version)
+           VALUES ($1,$2,$3,$4::vector,$5,$6,$7)`,
+          [
+            page.doc_id,
+            passage.block_id,
+            passage.quote,
+            vector,
+            model,
+            config.generation,
+            page.version,
+          ],
+        );
+      }
+      await db.query(
+        "DELETE FROM doc_embedding_queue WHERE doc_id=$1 AND queue_revision=$2",
+        [page.doc_id, page.queue_revision],
+      );
+      return true;
+    });
+    if (saved) done++;
   }
   return done;
 }
@@ -128,11 +211,16 @@ export async function nearest(
   projectId?: string,
 ): Promise<NearHit[]> {
   try {
-    const model = await semanticModel();
-    if (!model) return [];
-    const ai = await resolveAi();
+    const config = await semanticConfiguration();
+    if (!config) return [];
+    const model = config.model;
+    const ai = await resolveEmbedding(config);
     if (!ai) return [];
-    const [vector] = await embed(ai, [query], { model, timeoutMs: 15_000 });
+    const [vector] = await embed(ai, [query], {
+      model,
+      timeoutMs: 15_000,
+      expectedDimensions: config.dimensions,
+    });
     if (!vector?.length) return [];
     return (
       await pool.query<NearHit>(
@@ -143,9 +231,24 @@ export async function nearest(
             AND ${assistantMayRead("d")}
             AND ${readableDocs("d")}
             AND ($4::uuid IS NULL OR d.project_id = $4)
+            AND e.embedding_generation = $5 AND e.doc_version = d.version
+            AND vector_dims(e.embedding) = $6
+            AND EXISTS (
+              SELECT 1 FROM ai_settings s JOIN ai_providers p ON p.id=s.embedding_provider_id
+               WHERE s.id AND s.embedding_search_enabled AND p.enabled
+                 AND s.semantic_accepted_at IS NOT NULL
+                 AND s.embedding_generation=$5
+                 AND s.embedding_provider_revision=p.embedding_revision)
           ORDER BY e.embedding <=> $2::vector
           LIMIT $3`,
-        [userId, asVector(vector), limit, projectId ?? null],
+        [
+          userId,
+          asVector(vector),
+          limit,
+          projectId ?? null,
+          config.generation,
+          config.dimensions,
+        ],
       )
     ).rows;
   } catch {
