@@ -81,3 +81,11 @@ or cleanup. Disk is low: check before large builds, do not reinstall dependencie
 ## Current ChatGPT model settings candidate
 
 Checkout codex/chatgpt-model-settings is a scoped extraction on main110, preserving4f/e7 and the two untracked settings previews. Owned executor discovery, shared remote state, settings UI on both clients, and remote default refresh before private inference are implemented. Combined67/67, all workspace types/build and owned formatting pass. Full formatting flags only preserved user preview; not staged/edited. Exact-head full/CI and authenticated executor/native/editor/UI acceptance remain required. Markdown89c3 has local2353/allCI success but native/editor acceptance remains open. Home5a and embed79fa full/CI remain live. Full C1-C6/M1/D1/U1 goal retained; no deploy/release/cleanup.
+
+## Model Settings qualification repair
+
+PR170 prior7f486c06 failed full local2347/2350 and CI37078484222. The command-map
+reason and actual native AI connections & models SettingsAnchor are repaired;
+89/89 combined checks and all workspace types/builds pass. Requalify the new
+commit, preserving original failure evidence and both untracked user previews.
+No main promotion or M1/U1 completion yet.

@@ -396,7 +396,9 @@ export function SettingsScreen({
         />
       </View>
 
-      <ChatgptModelsSection userId={user?.id ?? ""} />
+      <SettingsAnchor name="AI connections & models">
+        <ChatgptModelsSection userId={user?.id ?? ""} />
+      </SettingsAnchor>
 
       {analytics && analytics.planned_minutes > 0 && (
         <SettingsAnchor name="Where your time goes">
