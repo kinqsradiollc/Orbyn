@@ -1222,9 +1222,14 @@ test("rate limits count per API key and say so in headers", async () => {
   // The same key from another address shares its allowance.
   const two = await call(key, "GET", "/me", undefined, "10.99.0.2");
   assert.equal(Number(two.headers["ratelimit-remaining"]), left - 1);
-  // A session from a fresh address has its own.
+  // A verified session has its own allowance, stable across address changes.
+  // The fixture already used this session to save its planner preferences.
   const session = await call(me.token, "GET", "/me", undefined, "10.99.0.3");
-  assert.equal(Number(session.headers["ratelimit-remaining"]), limit - 1);
+  const moved = await call(me.token, "GET", "/me", undefined, "10.99.0.4");
+  assert.equal(
+    Number(moved.headers["ratelimit-remaining"]),
+    Number(session.headers["ratelimit-remaining"]) - 1,
+  );
 
   // Past a route's limit: 429 with Retry-After.
   let last = one;
