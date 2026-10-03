@@ -143,7 +143,20 @@ test("setup validates an explicit provider independently of chat and requires re
     embedding_model: "embedding-fixture",
     accept: true,
   });
-  assert.equal(missing.statusCode, 422);
+  assert.equal(
+    missing.statusCode,
+    409,
+    "legacy setup cannot grant a generation provider consent",
+  );
+  assert.equal(
+    requests,
+    0,
+    "legacy setup sends no provider probe or page text",
+  );
+  assert.equal(
+    (await call(accounts[0].token, "GET")).json().settings.semantic_search,
+    false,
+  );
   const input = {
     on: true,
     embedding_provider_id: providerId,

@@ -28,7 +28,7 @@ test("late extension installation reuses recorded migrations and queues existing
   );
   const applied = (
     await pool.query(
-      "SELECT applied_at::text FROM migrations WHERE name='203_independent_embeddings.sql'",
+      "SELECT applied_at::text FROM migrations WHERE name='218_independent_embeddings.sql'",
     )
   ).rows[0]?.applied_at;
   assert.ok(
@@ -47,7 +47,7 @@ test("late extension installation reuses recorded migrations and queues existing
   assert.equal(
     (
       await pool.query(
-        "SELECT applied_at::text FROM migrations WHERE name='203_independent_embeddings.sql'",
+        "SELECT applied_at::text FROM migrations WHERE name='218_independent_embeddings.sql'",
       )
     ).rows[0].applied_at,
     applied,

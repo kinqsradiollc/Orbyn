@@ -362,12 +362,14 @@ export async function aiAdminRoutes(app: FastifyInstance) {
           "This database can't search by meaning: it needs the pgvector image (see the setup guide).",
         );
       const current = await currentSettings();
+      if (!d.expected_generation)
+        fail(
+          409,
+          "Reload embedding setup and select its provider before accepting.",
+        );
       if (!d.embedding_provider_id)
         fail(422, "Choose an embedding provider explicitly.");
-      if (
-        !d.expected_generation ||
-        d.expected_generation !== current.embedding_generation
-      )
+      if (d.expected_generation !== current.embedding_generation)
         fail(
           409,
           "Embedding settings changed. Reload the setup before accepting.",

@@ -669,3 +669,15 @@ the earlier missing-producer-guard note. Latest-main full/CI qualification and
 remaining protocol/host/account/provider gates still apply; full C1–C6/M1/D1/U1
 remains incomplete. Legacy in-flight imports require the documented rollout
 handling rather than invented identity snapshots.
+
+### Independent embeddings integration — 3 October 2026
+
+The retained independent-embedding implementation is extracted onto current main
+with migration218. Legacy workers stay disabled; explicit embedding provider,
+model, verified dimensions, revision-bound consent and generation are independent
+of generation settings. Both client admin surfaces expose setup and indexing
+state. Schema/setup/client checks21/21, stock-provider checks17/17, late-install
+backfill1/1 and actual legacy-vector upgrade1/1 pass. Full local/CI and real
+provider/platform acceptance remain required. See
+`docs/reviews/evidence/independent-embedding-main-integration.md`. This checkpoint
+does not complete provider/model administration or whole-app U1.

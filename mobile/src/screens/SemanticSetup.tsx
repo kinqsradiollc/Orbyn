@@ -126,7 +126,13 @@ export function SemanticSetup({
               size={14}
               color={x.done ? colors.accent : colors.muted}
             />
-            <Text style={[shared.small, x.done && { color: colors.text }]}>
+            <Text
+              style={[
+                shared.small,
+                { flex: 1, minWidth: 0 },
+                x.done && { color: colors.text },
+              ]}
+            >
               {x.text}
             </Text>
           </View>
