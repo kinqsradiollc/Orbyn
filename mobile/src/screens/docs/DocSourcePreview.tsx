@@ -38,6 +38,7 @@ export function DocSourcePreview({
 }) {
   const [sourceVisible, setSourceVisible] = useState(true);
   const [selected, setSelected] = useState(0);
+  const [controlsHeight, setControlsHeight] = useState<number>();
   const [sourceSelection, setSourceSelection] = useState<
     { start: number; end: number } | undefined
   >();
@@ -150,41 +151,54 @@ export function DocSourcePreview({
       onClose={closeSource}
       hideClose={!!sourceError}
     >
-      <View style={{ flex: 1, minHeight: 0, padding: 16, gap: 12 }}>
-        <Text style={shared.small}>
-          {onSourceChange
-            ? "Edit Markdown here. Source and preview share the same document. Keep block anchors to preserve comments and task links."
-            : "Current document, including unsaved edits. Source editing is available in Editing mode."}
-        </Text>
-        {saveStatus && (
-          <Text accessibilityLiveRegion="polite" style={shared.small}>
-            {saveStatus}
+      <View
+        style={{ flex: 1, minHeight: 0, padding: 16, gap: 12 }}
+        onLayout={(event) =>
+          setControlsHeight(
+            Math.max(0, (event.nativeEvent.layout.height - 44) * 0.45),
+          )
+        }
+      >
+        <ScrollView
+          style={{ flexGrow: 0, flexShrink: 1, maxHeight: controlsHeight }}
+          contentContainerStyle={{ gap: 12 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          {!!sourceError && (
+            <View style={{ gap: 8 }}>
+              <Button
+                title="Restore current document"
+                secondary
+                onPress={revertSource}
+              />
+              <Text accessibilityRole="alert" style={shared.small}>
+                {sourceError} This edit has not been saved.
+              </Text>
+            </View>
+          )}
+          <Text style={shared.small}>
+            {onSourceChange
+              ? "Edit Markdown here. Source and preview share the same document. Keep block anchors to preserve comments and task links."
+              : "Current document, including unsaved edits. Source editing is available in Editing mode."}
           </Text>
-        )}
-        {!!sourceError && (
-          <View>
-            <Text accessibilityRole="alert" style={shared.small}>
-              {sourceError} This edit has not been saved.
+          {saveStatus && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              {saveStatus}
             </Text>
-            <Button
-              title="Restore current document"
-              secondary
-              onPress={revertSource}
-            />
-          </View>
-        )}
-        <Button
-          title={sourceVisible ? "Show preview" : "Show Markdown source"}
-          secondary
-          onPress={() => {
-            setSourceSelection(
-              !sourceVisible && selectedRange
-                ? { start: selectedRange.start, end: selectedRange.start }
-                : undefined,
-            );
-            setSourceVisible(!sourceVisible);
-          }}
-        />
+          )}
+          <Button
+            title={sourceVisible ? "Show preview" : "Show Markdown source"}
+            secondary
+            onPress={() => {
+              setSourceSelection(
+                !sourceVisible && selectedRange
+                  ? { start: selectedRange.start, end: selectedRange.start }
+                  : undefined,
+              );
+              setSourceVisible(!sourceVisible);
+            }}
+          />
+        </ScrollView>
         {sourceVisible ? (
           <TextInput
             accessibilityLabel="Markdown source"

@@ -501,3 +501,60 @@ for (const native of [false, true]) {
     );
   });
 }
+
+test("native source controls are bounded by the available sheet height", () => {
+  const render = fixture(true, true);
+  const blocks = core.parseDoc("Words ^body", { anchors: true });
+  const tree = render(blocks);
+  const area = find(
+    tree,
+    (props) => props.style?.padding === 16 && !!props.onLayout,
+  );
+  assert.ok(area);
+  area.onLayout({ nativeEvent: { layout: { height: 300 } } });
+  const compact = render(blocks);
+  const controls = find(
+    compact,
+    (props) => props.keyboardShouldPersistTaps === "handled",
+  );
+  assert.ok(controls);
+  assert.equal(controls.style.maxHeight, (300 - 44) * 0.45);
+  assert.equal(controls.style.flexShrink, 1);
+  assert.equal(
+    find(compact, (props) => props.accessibilityLabel === "Markdown source")
+      ?.style.flex,
+    1,
+  );
+  area.onLayout({ nativeEvent: { layout: { height: 600 } } });
+  assert.equal(
+    find(
+      render(blocks),
+      (props) => props.keyboardShouldPersistTaps === "handled",
+    )?.style.maxHeight,
+    (600 - 44) * 0.45,
+  );
+});
+
+test("native invalid-source recovery is first in the bounded controls", () => {
+  const render = fixture(true, true);
+  const blocks = core.parseDoc("One ^one", { anchors: true });
+  const initial = render(blocks);
+  const input = find(
+    initial,
+    (props) => props.accessibilityLabel === "Markdown source",
+  );
+  assert.ok(input);
+  input.onChangeText("One ^one\n\nDuplicate ^one");
+  const controls = find(
+    render(blocks),
+    (props) => props.keyboardShouldPersistTaps === "handled",
+  );
+  assert.ok(controls);
+  const first = React.Children.toArray(
+    controls.children,
+  )[0] as React.ReactElement;
+  const firstChild = React.Children.toArray(
+    (first.props as any).children,
+  )[0] as React.ReactElement;
+  assert.equal((firstChild.props as any).title, "Restore current document");
+});

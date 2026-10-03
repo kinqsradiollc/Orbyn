@@ -232,3 +232,38 @@ sign in again with the same saved credentials. Fresh full runs for frozen
 integration176e8dbcd7b and plugin180bc381226 are live, excluding the previous
 ENOSPC run. Resources179 CI37091484961 has completed successfully. Other local
 PostgreSQL's empty postmaster.pid restart loop was observed and left untouched.
+## Source keyboard layout follow-up — 3 October 2026
+
+PR176 e8dbcd7b has all four CI37089753616 jobs successful. Full local98342
+terminated with exit7 after ENOSPC, with no TAP completion and no writable exit
+file; it is not qualifying. Preview API logging also hit ENOSPC; API restarted
+without growing that log, session1131, but readiness503 reports database
+unreachable. Docker remains user-controlled. No main merge.
+
+Native computer use reproduced duplicate-anchor error controls squeezing source
+to approximately one visible line with the software keyboard on iPhone SE.
+Isolated codex/docs-source-keyboard-layout preserves frozen PR175. Controls now
+scroll within a measured share of the sheet's available height, retaining editor
+space and keyboard taps. Focused25/25 and mobile typecheck pass. First test run
+23/25 failed because adding a hook shifted a test's positional state index; hook
+order now preserves the selected-block state index and all assertions pass.
+Native updated layout/recovery screenshots still required: reload stalled while
+fixture fonts were loading; temporary fixture removes its font-load gate for
+layout-only inspection. This does not qualify production typography or saves.
+Original reproducer screenshot: /tmp/orbyn-source-keyboard-qa/duplicate-error-keyboard.png.
+Web permission still saved-denied; no bypass. Full ADR scope remains incomplete.
+
+Updated native fixture rendered after manual Reload. With duplicate error and
+software keyboard open, both source lines and caret are now visible above the
+keyboard. Restore activated through accessibility and cleared the error/close
+guard. Hint/error controls are bounded and some controls require scroll at this
+size; native scroll attempt returned noWindowsAvailable, so touch scrolling is
+still unqualified. Layout-only fixture bypassed its font-load gate; server saves
+and production typography are not proven. Recovery screenshot remains outside
+Git at /tmp/orbyn-source-keyboard-qa/restored-keyboard.png. No main promotion.
+
+Recovery-first follow-up: the Restore control now precedes hints/status inside
+bounded controls. Actual iPhone SE keyboard/error screenshot shows Restore,
+both source lines and caret above the keyboard; accessibility activation clears
+the error. Screenshot: evidence/source-keyboard/recovery-first.png. Focused26/26
+and mobile typecheck pass. Touch scroll, Android and real editor saves still open.
