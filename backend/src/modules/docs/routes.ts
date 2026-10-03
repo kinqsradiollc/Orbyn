@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   docCommentInput,
+  maintainedPageRunDecision,
   docCommentUpdate,
   docInput,
   docListQuery,
@@ -55,6 +56,10 @@ import { authenticate, type UserRow } from "../../lib/auth.js";
 import { contentDisposition } from "../../lib/disposition.js";
 import { createMathHtml } from "../../lib/math-html.js";
 import { idParam, writeRateLimit } from "../../lib/params.js";
+import {
+  listMaintainedPageRuns,
+  decideMaintainedPageRun,
+} from "./maintenance-runs.js";
 import { assistantPrincipal } from "../agents/assistant.js";
 import {
   createMaintainedPageBinding,
@@ -148,6 +153,39 @@ import {
 const AGENDA_GET_DEPRECATED = Date.UTC(2026, 8, 26);
 
 export async function docRoutes(app: FastifyInstance) {
+  app.get("/docs/:id/maintenance/runs", async (r, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const user = await authenticate(r);
+    const id = idParam(r);
+    return transaction((db) => listMaintainedPageRuns(db, user, id));
+  });
+  app.post(
+    "/docs/:id/maintenance/runs/:runId/decision",
+    writeRateLimit,
+    async (r) => {
+      const user = await authenticate(r);
+      const id = idParam(r);
+      const runId = idParam(r, "runId");
+      const input = maintainedPageRunDecision.parse(r.body);
+      const result = await transaction(async (db) => {
+        const owned = await db.query(
+          `SELECT 1 FROM assistant_page_runs r JOIN assistant_page_bindings b ON b.id=r.binding_id
+        WHERE r.id=$1 AND r.user_id=$2 AND b.doc_id=$3`,
+          [runId, user.id, id],
+        );
+        if (!owned.rowCount) fail(404, "Page run not found.");
+        return decideMaintainedPageRun(
+          db,
+          user.id,
+          runId,
+          input.waiting_id,
+          input.approved,
+        );
+      });
+      if (result.state === "done") await syncSavedPages(result.doc.id);
+      return { state: result.state };
+    },
+  );
   app.get("/docs/:id/maintenance", async (r) => {
     const user = await authenticate(r);
     const id = idParam(r);

@@ -187,3 +187,33 @@ export const maintainedPageModelOrigin = z.discriminatedUnion("kind", [
 export type MaintainedPageModelOrigin = z.output<
   typeof maintainedPageModelOrigin
 >;
+
+/** App-session review card; worker leases and private authentication metadata are omitted. */
+export const maintainedPageRunSummary = z
+  .object({
+    id: z.uuid(),
+    binding_id: z.uuid(),
+    state: z.enum([
+      "queued",
+      "running",
+      "waiting",
+      "done",
+      "failed",
+      "cancelled",
+    ]),
+    lane: z.enum(["background", "overnight"]),
+    scheduled_for: z.iso.datetime(),
+    updated_at: z.iso.datetime(),
+    estimated_tokens: z.number().int().nonnegative(),
+    error: z.string().max(300).nullable(),
+    waiting_id: z.uuid().nullable(),
+    replacements: docContent.max(MAX_MAINTAINED_BLOCKS).nullable(),
+    can_review: z.boolean(),
+  })
+  .strict();
+export type MaintainedPageRunSummary = z.output<
+  typeof maintainedPageRunSummary
+>;
+export const maintainedPageRunDecision = z
+  .object({ waiting_id: z.uuid(), approved: z.boolean() })
+  .strict();

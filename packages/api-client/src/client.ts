@@ -1,5 +1,6 @@
 import {
   type MaintainedPageBinding,
+  type MaintainedPageRunSummary,
   type MaintainedPageBindingInput,
   type MaintainedPageBindingUpdate,
   assistantActivityLane,
@@ -2362,6 +2363,23 @@ export class OrbynClient {
     return this.request<DocSummary[]>(`/docs${q ? `?${q}` : ""}`);
   }
   /** Private ownership and schedules for selected page blocks. */
+  listPageMaintenanceRuns(docId: string) {
+    return this.request<MaintainedPageRunSummary[]>(
+      `/docs/${docId}/maintenance/runs`,
+      { fresh: true },
+    );
+  }
+  decidePageMaintenanceRun(
+    docId: string,
+    runId: string,
+    waitingId: string,
+    approved: boolean,
+  ) {
+    return this.request<{ state: "done" | "cancelled" }>(
+      `/docs/${docId}/maintenance/runs/${runId}/decision`,
+      { method: "POST", body: { waiting_id: waitingId, approved } },
+    );
+  }
   listPageMaintenance(docId: string) {
     return this.request<MaintainedPageBinding[]>(`/docs/${docId}/maintenance`);
   }

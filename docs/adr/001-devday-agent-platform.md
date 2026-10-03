@@ -789,3 +789,20 @@ qualification. Maintained-page service/producer/account/source/UI/undo/Night
 integration and native/full gates remain open; see the maintained-pages evidence
 matrix. Do not label a target-only paraphrasing consumer a complete maintained
 page: explicit authorized fresh source selection and @orbyn workflow are retained.
+
+### A5 owner review API checkpoint — 4 October 2026 (not promoted)
+
+Owned document-run listing and nonce-bound decisions are available in the development
+branch and shared client contract. Progress GETs neither create nor touch assistant
+grants; they omit worker leases and hide proposals when current source or authority
+changed. Decision transactions retain Night → grant → document → binding → run lock
+ordering and reject stale/repeated cards. Successful saves synchronize Study.
+
+Focused HTTP coverage passes15/15 with no skips/cancellations; all workspace types
+pass. Evidence: `/tmp/orbyn-page-review-api-focused.log` and
+`/tmp/orbyn-page-review-api-final-types.log`. This is not a visible/running feature:
+service/shared-slot integration, sources, budget/activity/undo, both client controls
+and the broader C1-C6/M1/D1/U1 acceptance remain open.
+
+Main is now ee45ecf0: PR194 merged after corrected934e87d8 passed2582/2582
+local tests and all four CI jobs37149341825. User deploys main themselves.

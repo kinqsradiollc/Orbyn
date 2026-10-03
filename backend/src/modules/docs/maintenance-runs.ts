@@ -9,11 +9,13 @@ import {
   fail,
   HttpError,
   nightShiftInput,
+  maintainedPageRunSummary,
   type MaintainedPageModelOrigin,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
 import type { Principal } from "../../capabilities/policy.js";
+import { visibleDocs } from "../../lib/visibility.js";
 import { assistantPrincipal } from "../agents/assistant.js";
 import { refuseSecrets } from "../../capabilities/write.js";
 import { nightShiftOwns } from "../../worker/assistant-scan.js";
@@ -313,7 +315,7 @@ export async function guardMaintainedPageRun(
   ).rows[0];
   if (!user) fail(403, "This account is unavailable.");
   const principal: Principal = {
-    ...(await assistantPrincipal(user, { db })),
+    ...(await assistantPrincipal(user, { db, touch: false })),
     assistant_lane: seen.lane,
     unattended: seen.lane === "overnight",
     assistant_rules_revision: seen.assistant_rules_revision,
@@ -607,4 +609,56 @@ export class PageRunBudgetExceeded extends HttpError {
   constructor(message: string) {
     super(409, message);
   }
+}
+
+/** Owned progress reads never touch grant activity or disclose a worker lease. */
+export async function listMaintainedPageRuns(
+  db: Db,
+  user: UserRow,
+  docId: string,
+) {
+  const readable = await db.query(
+    `SELECT d.id FROM docs d WHERE d.id=$1 AND ${visibleDocs("d", { user: "$2" })}`,
+    [docId, user.id],
+  );
+  if (!readable.rowCount) fail(404, "Document not found.");
+  const rows = (
+    await db.query<PageRun>(
+      `SELECT r.* FROM assistant_page_runs r JOIN assistant_page_bindings b ON b.id=r.binding_id
+     WHERE r.user_id=$1 AND b.doc_id=$2 ORDER BY r.created_at DESC,r.id DESC LIMIT 50`,
+      [user.id, docId],
+    )
+  ).rows;
+  const summaries = [];
+  for (const run of rows) {
+    let replacements = null;
+    let canReview = false;
+    if (run.state === "waiting" && run.waiting_id && run.proposal) {
+      try {
+        await guardMaintainedPageRun(db, run.id, null, new Date(), user.id);
+        replacements = maintainedPagePatchInput.parse(
+          run.proposal,
+        ).replacements;
+        canReview = true;
+      } catch {
+        /* Changed authority/source holds output; metadata remains owned. */
+      }
+    }
+    summaries.push(
+      maintainedPageRunSummary.parse({
+        id: run.id,
+        binding_id: run.binding_id,
+        state: run.state,
+        lane: run.lane,
+        scheduled_for: run.scheduled_for.toISOString(),
+        updated_at: run.updated_at.toISOString(),
+        estimated_tokens: run.token_estimate,
+        error: run.error_message,
+        waiting_id: canReview ? run.waiting_id : null,
+        replacements,
+        can_review: canReview,
+      }),
+    );
+  }
+  return summaries;
 }

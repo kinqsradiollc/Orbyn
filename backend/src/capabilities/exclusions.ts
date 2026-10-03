@@ -381,6 +381,8 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /docs/:id/maintenance/runs": "hosted_ai",
+  "POST /docs/:id/maintenance/runs/:runId/decision": "hosted_ai",
   "GET /docs/:id/maintenance": "hosted_ai",
   "POST /docs/:id/maintenance": "hosted_ai",
   "PUT /docs/:id/maintenance/:bindingId": "hosted_ai",

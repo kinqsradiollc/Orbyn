@@ -61,7 +61,7 @@ export async function assistantPrincipal(
     name: string;
     role: SystemRole;
   },
-  options: { refusePaused?: boolean; db?: Queryable } = {},
+  options: { refusePaused?: boolean; db?: Queryable; touch?: boolean } = {},
 ): Promise<Principal> {
   const db = options.db ?? pool;
   const identity = (
@@ -71,9 +71,17 @@ export async function assistantPrincipal(
     )
   ).rows[0];
   const name = identity?.name || "Orbyn";
-  const grant = (
-    await db.query<AssistantGrantRow>(
-      `INSERT INTO agent_grants
+  const grant =
+    options.touch === false
+      ? (
+          await db.query<AssistantGrantRow>(
+            "SELECT id,access,personal,team_ids,flags,trust,space_trust,acts_alone,toolsets,suspended_at,assistant_rules_revision FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
+            [user.id],
+          )
+        ).rows[0]
+      : (
+          await db.query<AssistantGrantRow>(
+            `INSERT INTO agent_grants
          (user_id, kind, name, client_name, access, team_ids, personal,
           toolsets, flags, trust, space_trust, acts_alone)
        VALUES ($1, 'assistant', $3, $3, 'write',
@@ -83,9 +91,9 @@ export async function assistantPrincipal(
        DO UPDATE SET name = EXCLUDED.name, client_name = EXCLUDED.client_name,
                      last_used_at = now()
        RETURNING id, access, personal, team_ids, flags, trust, space_trust, acts_alone, toolsets, suspended_at, assistant_rules_revision`,
-      [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
-    )
-  ).rows[0];
+            [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
+          )
+        ).rows[0];
   if (!grant) throw new Error("The Orbyn assistant grant is unavailable.");
   if (options.refusePaused && grant.suspended_at)
     throw new AssistantPausedError();
