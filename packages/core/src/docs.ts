@@ -1134,6 +1134,15 @@ const indentWidth = (lead: string) =>
 /** Reserved source-only code language for unevaluated YAML metadata. */
 export const FRONTMATTER_LANG = "orbyn-frontmatter";
 
+/** A human label for preserved source, without exposing internal language names. */
+export function docCodeLabel(lang: string): string {
+  return lang === FRONTMATTER_LANG
+    ? "Page metadata"
+    : lang
+      ? `Code · ${lang}`
+      : "Code";
+}
+
 /** A complete frontmatter envelope; edited or moved metadata falls back to a fence. */
 function isFrontmatterSource(source: string): boolean {
   const lines = source.split("\n");

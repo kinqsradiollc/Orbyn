@@ -25,6 +25,8 @@ import { MermaidDiagram } from "../../components/MermaidDiagram";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CALLOUT_LABELS,
+  FRONTMATTER_LANG,
+  docCodeLabel,
   colourCode,
   colourable,
   docObjectLinks,
@@ -44,6 +46,7 @@ import {
 } from "@orbyn/core";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { client } from "../../lib/api";
+import { copyText } from "../../lib/share";
 import { saveFile } from "../../lib/download";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Icon, type IconName } from "../../components/Icon";
@@ -804,39 +807,89 @@ export function FileCard({
 
 // ------------------------------------------------------------------ code ---
 
-/** A code block, coloured for the languages students and teams write most. */
+/** Copyable preserved source with contained scrolling and readable metadata naming. */
 export function CodeView({ text, lang }: { text: string; lang: string }) {
+  const metadata = lang === FRONTMATTER_LANG;
+  const [open, setOpen] = useState(!metadata);
+  const [source, setSource] = useState(false);
+  const highlighted = colourable(lang);
   const tokens = useMemo(
-    () => (colourable(lang) ? colourCode(text, lang) : null),
-    [text, lang],
+    () => (highlighted && !source ? colourCode(text, lang) : null),
+    [text, lang, source, highlighted],
   );
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <Text style={s.code}>
-        {tokens
-          ? tokens.map((t, i) => (
-              <Text
-                key={i}
-                style={
-                  t.kind === "keyword"
-                    ? s.codeKeyword
-                    : t.kind === "string"
-                      ? s.codeString
-                      : t.kind === "comment"
-                        ? s.codeComment
-                        : t.kind === "number"
-                          ? s.codeNumber
-                          : t.kind === "name"
-                            ? s.codeName
-                            : undefined
-                }
-              >
-                {t.text}
-              </Text>
-            ))
-          : text}
-      </Text>
-    </ScrollView>
+    <View style={s.codeBlock}>
+      <View style={s.codeToolbar}>
+        <Text style={s.codeLabel} numberOfLines={2}>
+          {docCodeLabel(lang)}
+        </Text>
+        {metadata ? (
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={8}
+            accessibilityState={{ expanded: open }}
+            onPress={() => setOpen(!open)}
+            style={s.codeButton}
+          >
+            <Text style={s.codeAction}>
+              {open ? "Hide source" : "View source"}
+            </Text>
+          </Pressable>
+        ) : highlighted ? (
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={8}
+            accessibilityState={{ selected: source }}
+            onPress={() => setSource(!source)}
+            style={s.codeButton}
+          >
+            <Text style={s.codeAction}>{source ? "Highlight" : "Source"}</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() =>
+            void copyText(text, metadata ? "Metadata copied" : "Code copied")
+          }
+          style={s.codeButton}
+        >
+          <Text style={s.codeAction}>Copy</Text>
+        </Pressable>
+      </View>
+      {open && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator
+          accessibilityLabel={metadata ? "YAML metadata source" : "Code source"}
+        >
+          <Text selectable style={s.code}>
+            {tokens
+              ? tokens.map((token, index) => (
+                  <Text
+                    key={index}
+                    style={
+                      token.kind === "keyword"
+                        ? s.codeKeyword
+                        : token.kind === "string"
+                          ? s.codeString
+                          : token.kind === "comment"
+                            ? s.codeComment
+                            : token.kind === "number"
+                              ? s.codeNumber
+                              : token.kind === "name"
+                                ? s.codeName
+                                : undefined
+                    }
+                  >
+                    {token.text}
+                  </Text>
+                ))
+              : text}
+          </Text>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -1213,11 +1266,35 @@ const s = themed(() =>
       justifyContent: "center",
       backgroundColor: colors.accentSoft,
     },
+    codeBlock: { minWidth: 0, gap: 4 },
+    codeToolbar: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 4,
+    },
+    codeLabel: {
+      color: colors.muted,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      flexShrink: 1,
+      maxWidth: "100%",
+    },
+    codeButton: {
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      minHeight: controls.compact,
+    },
+    codeAction: {
+      color: colors.accent,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+    },
     code: {
       color: colors.text,
       fontSize: 13,
       lineHeight: 19,
-      fontFamily: "monospace",
+      fontFamily: fonts.mono,
       backgroundColor: colors.surfaceMuted,
       borderRadius: radii.input,
       padding: 12,

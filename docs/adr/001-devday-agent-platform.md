@@ -520,3 +520,13 @@ exercised, and SVG export opened the native share sheet. Evidence and retained
 failures: `../reviews/evidence/native-diagram-parity.md`. Full final-head tests,
 CI, signed-in editor/parent-scroll/Android/web acceptance remain open. This does
 not complete D1/U1 or authorize deployment. All C1–C6/M1/D1/U1 scope remains.
+
+### Docs code and metadata controls candidate — 3 October 2026
+
+Both clients provide code copying, known-language source/highlighting and
+readable metadata disclosure while preserving exact literal source. Native
+monospace is platform-correct; web overflow stays in the block. Actual native
+synthetic controls were exercised and screens recorded. Evidence:
+`../reviews/evidence/code-metadata-controls.md`. Final full-suite/CI, signed-in
+editor, Android and web visual gates remain open. This candidate does not finish
+D1/U1; the complete C1–C6/M1/D1/U1 scope and excluded product features remain.

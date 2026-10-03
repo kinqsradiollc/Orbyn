@@ -275,5 +275,5 @@ const s = themed(() => ({
     padding: 8,
   },
   source: { backgroundColor: colors.surfaceMuted, padding: 8 },
-  sourceText: { color: colors.text, fontFamily: "monospace", fontSize: 13 },
+  sourceText: { color: colors.text, fontFamily: fonts.mono, fontSize: 13 },
 }));

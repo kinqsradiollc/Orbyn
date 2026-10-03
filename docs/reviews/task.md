@@ -129,3 +129,21 @@ source2d5605f9 full2374/allCI37081138932 success; Home9232cfaa full2344/allCI
 37081215076 success. All remain draft. Main1100ca98 unchanged; user files and
 character work preserved. Full C1–C6/M1/D1/U1 remains active, no deploy/release/
 cleanup. Native Terms human action and web user validation are still open.
+
+## Latest code/metadata checkpoint — 3 October 2026
+
+Current branch `codex/docs-code-metadata-ui` follows PR1732de8f72d. Code copy/
+source controls and metadata naming/disclosure implemented on both clients.
+Native iOS actual component source/highlight/copy and metadata disclosure
+observed with screenshots. Menlo fixes iOS source typography. Focused17 and
+regressions64 passed; all workspace types/build/fullformat passed, final targets
+being rechecked. Record full frozen-head local/CI before promotion. Native
+horizontal scroll attempt returned noWindowsAvailable; editor/Android/web
+acceptance remains open. See evidence/code-metadata-controls.md.
+
+PR173 full55274 terminalexit0 passed2402/2402 no skips/cancellations. All four
+CI37085698130 jobs succeeded. It remains draft with editor/Android/web gates open.
+Main1100ca98 unchanged. Other models/source/Home drafts remain automated-qualified
+with runtime/native acceptance open. User-requested local preview5174/API8027
+uses the marked native-home test DB; credentials are private in/tmp, not Git.
+Keep preview servers running. No deploy/release/cleanup; goal active incomplete.

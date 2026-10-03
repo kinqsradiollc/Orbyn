@@ -40,6 +40,8 @@ import {
 } from "lucide-react";
 import {
   CALLOUT_LABELS,
+  FRONTMATTER_LANG,
+  docCodeLabel,
   docReferenceLinks,
   colourCode,
   colourable,
@@ -957,28 +959,92 @@ export async function scaledPicture(
 
 // ------------------------------------------------------------------ code ---
 
-/** A code block, coloured for the languages students and teams write most. */
+/** Bounded code source with copy controls; metadata stays unevaluated. */
 export function CodeView({ text, lang }: { text: string; lang: string }) {
+  const metadata = lang === FRONTMATTER_LANG;
+  const [open, setOpen] = useState(!metadata);
+  const [source, setSource] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [message, setMessage] = useState("");
+  const highlighted = colourable(lang);
   const tokens = useMemo(
-    () => (colourable(lang) ? colourCode(text, lang) : null),
-    [text, lang],
+    () => (highlighted && !source ? colourCode(text, lang) : null),
+    [text, lang, source, highlighted],
   );
   return (
-    <pre className="doc-code" data-lang={lang || undefined}>
-      <code>
-        {tokens
-          ? tokens.map((t, i) =>
-              t.kind === "plain" ? (
-                t.text
-              ) : (
-                <span key={i} className={`code-${t.kind}`}>
-                  {t.text}
-                </span>
-              ),
-            )
-          : text}
-      </code>
-    </pre>
+    <div className="doc-code-block">
+      <div
+        className="doc-code-toolbar"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <span className="doc-code-label" title={docCodeLabel(lang)}>
+          {docCodeLabel(lang)}
+        </span>
+        {metadata ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? "Hide source" : "View source"}
+          </button>
+        ) : highlighted ? (
+          <button
+            type="button"
+            aria-pressed={source}
+            onClick={() => setSource(!source)}
+          >
+            {source ? "Highlight" : "Source"}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          disabled={copying}
+          onClick={() => {
+            setCopying(true);
+            setMessage("");
+            void (async () => {
+              try {
+                await navigator.clipboard.writeText(text);
+                setMessage("Copied");
+              } catch {
+                setMessage("Couldn't copy. Select the source to copy it.");
+              } finally {
+                setCopying(false);
+              }
+            })();
+          }}
+        >
+          Copy
+        </button>
+      </div>
+      {open && (
+        <pre
+          className="doc-code"
+          tabIndex={0}
+          aria-label={metadata ? "YAML metadata source" : "Code source"}
+        >
+          <code>
+            {tokens
+              ? tokens.map((token, index) =>
+                  token.kind === "plain" ? (
+                    token.text
+                  ) : (
+                    <span key={index} className={`code-${token.kind}`}>
+                      {token.text}
+                    </span>
+                  ),
+                )
+              : text}
+          </code>
+        </pre>
+      )}
+      {!!message && (
+        <span className="doc-code-status" role="status">
+          {message}
+        </span>
+      )}
+    </div>
   );
 }
 
