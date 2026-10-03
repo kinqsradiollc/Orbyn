@@ -15,6 +15,9 @@ import {
 } from "./ui-resources.js";
 import { PluginCallError } from "./dispatch.js";
 import { pluginToolInput } from "./tool-input.js";
+import { parsePluginJobUri } from "./job-resource.js";
+import { CapabilityError } from "../../capabilities/registry.js";
+import type { readPluginImportEvents } from "./import-jobs.js";
 
 type PluginProtocolCall = {
   grantId: string;
@@ -22,6 +25,10 @@ type PluginProtocolCall = {
   tools: ReturnType<typeof describe>[];
   uiEnabled: boolean;
   invoke: (name: string, args: Record<string, unknown>) => Promise<ToolResult>;
+  readJob?: (
+    id: string,
+    cursor?: string,
+  ) => ReturnType<typeof readPluginImportEvents>;
 };
 
 /** Per-request plugin protocol server: connector authority comes only from the adapter. */
@@ -52,6 +59,45 @@ export function buildPluginProtocol(call: PluginProtocolCall) {
     resources: pluginResources(names, call.uiEnabled),
   }));
   server.setRequestHandler("resources/read", async (request) => {
+    if (request.params.uri.startsWith("orbyn://plugin-job/")) {
+      const input = parsePluginJobUri(request.params.uri);
+      if (!input || !call.readJob || !names.includes("start_import"))
+        throw new ProtocolError(
+          ProtocolErrorCode.InvalidParams,
+          "This resource is not available to this connection.",
+        );
+      try {
+        const page = await call.readJob(input.id, input.cursor);
+        return {
+          contents: [
+            {
+              uri: request.params.uri,
+              mimeType: "application/json",
+              text: JSON.stringify(page),
+            },
+          ],
+        };
+      } catch (error) {
+        if (error instanceof CapabilityError)
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            "This job resource is unavailable.",
+          );
+        if (error instanceof PluginCallError)
+          throw new ProtocolError(
+            ProtocolErrorCode.InvalidParams,
+            error.body.message,
+            {
+              httpStatus: error.status,
+              ...(error.retryAfter ? { retryAfter: error.retryAfter } : {}),
+            },
+          );
+        throw new ProtocolError(
+          ProtocolErrorCode.InternalError,
+          "The job resource could not be read.",
+        );
+      }
+    }
     const input = pluginResourceInput.safeParse({ uri: request.params.uri });
     const resource = input.success
       ? readPluginResource(input.data.uri, names, call.uiEnabled)

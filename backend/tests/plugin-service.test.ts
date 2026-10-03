@@ -761,6 +761,61 @@ test("plugin import status events survive replay and completed links obey curren
     });
     assert.equal(replayed.statusCode, 200);
     assert.equal(replayed.json().job.id, tracked.id);
+    const protocolStart = await app.inject({
+      method: "POST",
+      url: "/plugin",
+      headers,
+      payload: {
+        jsonrpc: "2.0",
+        id: 100,
+        method: "tools/call",
+        params: payload,
+      },
+    });
+    assert.equal(protocolStart.statusCode, 200);
+    const protocolAnswer = String(
+      protocolStart.headers["content-type"],
+    ).includes("text/event-stream")
+      ? JSON.parse(
+          protocolStart.body
+            .split("\n")
+            .find((line) => line.startsWith("data: "))!
+            .slice(6),
+        )
+      : protocolStart.json();
+    const progress = protocolAnswer.result.content.find(
+      (part: { type: string; uri?: string }) =>
+        part.type === "resource_link" &&
+        part.uri?.startsWith("orbyn://plugin-job/"),
+    );
+    assert.equal(progress.uri, `orbyn://plugin-job/${tracked.id}`);
+    const modernMeta = {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": { name: "fixture", version: "1" },
+      "io.modelcontextprotocol/clientCapabilities": {},
+    };
+    const protocolRead = await app.inject({
+      method: "POST",
+      url: "/plugin",
+      headers: {
+        ...headers,
+        "mcp-protocol-version": "2026-07-28",
+        "mcp-method": "resources/read",
+        "mcp-name": progress.uri,
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 101,
+        method: "resources/read",
+        params: { uri: progress.uri, _meta: modernMeta },
+      },
+    });
+    assert.equal(protocolRead.statusCode, 200);
+    const progressPage = JSON.parse(
+      protocolRead.json().result.contents[0].text,
+    );
+    assert.equal(progressPage.id, tracked.id);
+    assert.equal(progressPage.status, "waiting");
     const first = await app.inject({
       url: `/plugin/jobs/${tracked.id}/events`,
       headers,

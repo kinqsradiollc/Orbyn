@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { settings } from "../../lib/settings.js";
@@ -21,6 +21,8 @@ import { toolUiMeta } from "../mcp-server/apps.js";
 import { pluginRead, pluginWrite } from "./execute.js";
 import { trackPluginImport, readPluginImportEvents } from "./import-jobs.js";
 import { pluginJobCursorKey } from "./job-cursor.js";
+import { pluginJobUri } from "./job-resource.js";
+import type { ToolResult } from "../../capabilities/execute.js";
 
 const jobQuery = z
   .object({ cursor: z.string().min(1).max(512).optional() })
@@ -103,6 +105,62 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
+  async function trackResult(request: FastifyRequest, result: ToolResult) {
+    const done = result.structuredContent?.done as
+      { id?: string }[] | undefined;
+    const importId = done?.[0]?.id?.match(/^import:([0-9a-f-]+)$/i)?.[1];
+    if (result.isError || !importId) return undefined;
+    const live = await settings();
+    return pluginWrite(
+      request.pluginCaller!.principal,
+      request.headers,
+      live,
+      resources,
+      (db) => trackPluginImport(db, request.pluginCaller!.principal, importId),
+    );
+  }
+  async function jobEvents(
+    request: FastifyRequest,
+    id: string,
+    cursor?: string,
+  ) {
+    const live = await settings();
+    const principal = request.pluginCaller!.principal;
+    const slot = await limiter.take(
+      principal.grant_id!,
+      principal.user.id,
+      "call",
+      live.agents.agent_limits,
+    );
+    if (!slot.ok) {
+      recorder.count(principal.grant_id!, "limited");
+      throw new PluginCallError(
+        429,
+        { error: "LIMITED", message: slot.reason },
+        slot.retryAfter,
+      );
+    }
+    try {
+      const key = await pluginJobCursorKey();
+      return await pluginRead(
+        principal,
+        request.headers,
+        live,
+        resources,
+        (db) =>
+          readPluginImportEvents(
+            db,
+            principal,
+            id,
+            resources.plugin!,
+            key,
+            cursor,
+          ),
+      );
+    } finally {
+      slot.release();
+    }
+  }
   app.get("/plugin/connection", async (request) => {
     const { principal: p, expiresAt } = request.pluginCaller!;
     return connection.parse({
@@ -148,20 +206,8 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           recorder,
           resources,
         );
-        const done = result.structuredContent?.done as
-          { id?: string }[] | undefined;
-        const importId = done?.[0]?.id?.match(/^import:([0-9a-f-]+)$/i)?.[1];
-        // Approval/refusal stays an ordinary tool result, never a manufactured job.
-        if (result.isError || !importId) return { result };
-        const live = await settings();
-        const job = await pluginWrite(
-          request.pluginCaller!.principal,
-          request.headers,
-          live,
-          resources,
-          (db) =>
-            trackPluginImport(db, request.pluginCaller!.principal, importId),
-        );
+        const job = await trackResult(request, result);
+        if (!job) return { result };
         return { job, result };
       } catch (error) {
         return jobRefusal(error, reply);
@@ -176,40 +222,10 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
         error: "INVALID",
         message: "Send one job id and an optional reconnect cursor.",
       });
-    const live = await settings();
-    const principal = request.pluginCaller!.principal;
-    const slot = await limiter.take(
-      principal.grant_id!,
-      principal.user.id,
-      "call",
-      live.agents.agent_limits,
-    );
-    if (!slot.ok) {
-      recorder.count(principal.grant_id!, "limited");
-      reply.header("Retry-After", String(slot.retryAfter));
-      return reply.code(429).send({ error: "LIMITED", message: slot.reason });
-    }
     try {
-      const key = await pluginJobCursorKey();
-      return await pluginRead(
-        principal,
-        request.headers,
-        live,
-        resources,
-        (db) =>
-          readPluginImportEvents(
-            db,
-            principal,
-            params.data.id,
-            resources.plugin!,
-            key,
-            query.data.cursor,
-          ),
-      );
+      return await jobEvents(request, params.data.id, query.data.cursor);
     } catch (error) {
       return jobRefusal(error, reply);
-    } finally {
-      slot.release();
     }
   });
   app.get("/plugin/resources", async (request, reply) => {
@@ -285,14 +301,35 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           clientId: principal.client.id!,
           tools,
           uiEnabled: live.agents.mcp_apps_enabled,
-          invoke: (name, args) =>
-            dispatchPluginTool(
+          invoke: async (name, args) => {
+            const result = await dispatchPluginTool(
               request,
               { name, arguments: args },
               limiter,
               recorder,
               resources,
-            ),
+            );
+            if (name !== "start_import") return result;
+            const job = await trackResult(request, result);
+            if (!job) return result;
+            return {
+              ...result,
+              content: [
+                ...result.content,
+                {
+                  type: "resource_link" as const,
+                  uri: pluginJobUri(job.id),
+                  name: "Import progress",
+                  mimeType: "application/json",
+                },
+              ],
+              _meta: {
+                ...result._meta,
+                "orbyn/importJob": { id: job.id, uri: pluginJobUri(job.id) },
+              },
+            };
+          },
+          readJob: (id, cursor) => jobEvents(request, id, cursor),
         },
         webRequest,
         request.body,

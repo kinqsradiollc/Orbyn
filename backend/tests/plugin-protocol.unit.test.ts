@@ -2,6 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { servePluginProtocol } from "../src/modules/plugin/protocol.js";
 import { PluginCallError } from "../src/modules/plugin/dispatch.js";
+import {
+  parsePluginJobUri,
+  pluginJobUri,
+} from "../src/modules/plugin/job-resource.js";
 
 const tools = [
   {
@@ -23,6 +27,8 @@ async function rpc(
     ui?: boolean;
     modern?: boolean;
     invoke?: (name: string, args: Record<string, unknown>) => Promise<any>;
+    tools?: typeof tools;
+    readJob?: (id: string, cursor?: string) => Promise<any>;
   } = {},
 ) {
   const meta = {
@@ -52,6 +58,9 @@ async function rpc(
             ...(method === "tools/call"
               ? { "mcp-name": (params as { name: string }).name }
               : {}),
+            ...(method === "resources/read"
+              ? { "mcp-name": (params as { uri: string }).uri }
+              : {}),
           }
         : {}),
     },
@@ -61,11 +70,12 @@ async function rpc(
     {
       grantId: "fixture-grant",
       clientId: "fixture-client",
-      tools,
+      tools: options.tools ?? tools,
       uiEnabled: options.ui ?? false,
       invoke:
         options.invoke ??
         (async () => ({ content: [{ type: "text", text: "Fixture" }] })),
+      readJob: options.readJob,
     },
     request,
     body,
@@ -97,6 +107,74 @@ test("plugin protocol initializes statelessly and lists only adapter-authorized 
     list.json.result.tools.map((tool: any) => tool.name),
     ["get_today"],
   );
+});
+
+test("plugin import resources use bounded server addresses and reject identity or URL injection", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  assert.deepEqual(parsePluginJobUri(pluginJobUri(id)), { id });
+  assert.deepEqual(
+    parsePluginJobUri(pluginJobUri(id) + "?cursor=pj1.fixture"),
+    { id, cursor: "pj1.fixture" },
+  );
+  for (const uri of [
+    "https://example.test/private",
+    pluginJobUri(id) + "?grant=other",
+    pluginJobUri(id) + "?cursor=a&cursor=b",
+    pluginJobUri(id) + "#private",
+    pluginJobUri(id) + "?cursor=" + "a".repeat(513),
+    "orbyn://user:pass@plugin-job/" + id,
+  ])
+    assert.equal(parsePluginJobUri(uri), null);
+});
+test("modern plugin clients read authorized async import pages without enabling UI cards", async () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  const calls: unknown[] = [];
+  const page = {
+    id,
+    status: "waiting",
+    events: [],
+    cursor: "fixture-next",
+    has_more: false,
+  };
+  const result = await rpc(
+    "resources/read",
+    { uri: pluginJobUri(id) + "?cursor=fixture-before" },
+    {
+      modern: true,
+      tools: [{ ...tools[0], name: "start_import" }],
+      readJob: async (...args) => {
+        calls.push(args);
+        return page;
+      },
+    },
+  );
+  assert.equal(result.response.status, 200, JSON.stringify(result.json));
+  assert.deepEqual(calls, [[id, "fixture-before"]]);
+  assert.equal(result.json.result.contents[0].mimeType, "application/json");
+  assert.deepEqual(JSON.parse(result.json.result.contents[0].text), page);
+});
+test("plugin import resources refuse unavailable tools and malformed scopes before job retrieval", async () => {
+  const uri = pluginJobUri("00000000-0000-4000-8000-000000000001");
+  let reads = 0;
+  for (const [address, allowed] of [
+    [uri, false],
+    [uri + "?user=other", true],
+  ] as const) {
+    const result = await rpc(
+      "resources/read",
+      { uri: address },
+      {
+        modern: true,
+        tools: allowed ? [{ ...tools[0], name: "start_import" }] : tools,
+        readJob: async () => {
+          reads++;
+          return {};
+        },
+      },
+    );
+    assert.equal(result.json.error.code, -32602);
+  }
+  assert.equal(reads, 0);
 });
 test("plugin protocol refuses tools outside the current connection before invocation", async () => {
   let calls = 0;
