@@ -1,6 +1,7 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useContext, type CSSProperties, type ReactNode } from "react";
 import {
   mentionedPerson,
+  docLinkDestination,
   EMBED_LANG,
   isDiagram,
   LIVE_LIST_LANG,
@@ -15,6 +16,9 @@ import { Math } from "./Math";
 import { LinkPillView } from "./DocLinks";
 import { LiveList } from "../views/LiveList";
 import { cut, touches, type Mark } from "./marks";
+import { DocNavigationContext } from "./doc-navigation";
+import { linkTo, webOrigin } from "../../lib/links";
+import { OPEN_LINK_EVENT } from "./DocLinks";
 import {
   CalloutView,
   CodeView,
@@ -66,6 +70,7 @@ function Pieces({ run, marks }: { run: DocInline; marks: Mark[] }) {
  * no meaningful half of either.
  */
 export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
+  const navigation = useContext(DocNavigationContext);
   // A #tag stands apart from the words around it, drawn as a quiet chip.
   const runs: TaggedRun[] = parseDocInline(text).flatMap((run) =>
     tagRuns(run, text),
@@ -139,18 +144,56 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
               start={run.start}
             />
           );
-        if (run.link)
+        if (run.link) {
+          const destination = docLinkDestination(run.link, webOrigin());
+          if (!destination) return <span key={i}>{shade(run.text)}</span>;
           return (
             <a
               key={i}
-              href={run.link}
+              href={
+                destination.kind === "fragment"
+                  ? navigation
+                    ? linkTo({
+                        kind: "doc",
+                        id: navigation.docId,
+                        block: destination.fragment,
+                      })
+                    : run.link
+                  : destination.url
+              }
               data-src={run.start}
-              target="_blank"
+              target={destination.kind === "external" ? "_blank" : undefined}
               rel="noreferrer"
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                )
+                  return;
+                if (destination.kind === "fragment" && navigation) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  navigation.onFragment(destination.fragment);
+                } else if (destination.kind === "app") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (navigation) navigation.onAppLink(destination.url);
+                  else
+                    window.dispatchEvent(
+                      new CustomEvent(OPEN_LINK_EVENT, {
+                        detail: destination.url,
+                      }),
+                    );
+                }
+              }}
             >
               {shade(run.text)}
             </a>
           );
+        }
         if (run.bold)
           return (
             <strong key={i}>

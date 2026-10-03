@@ -132,16 +132,24 @@ export function DocBody({
    * row (its switch must stay outside the tappable label) and still needs
    * its remarks shown.
    */
+  const lineLayout = (index: number) =>
+    content[index].id === targetBlockId || onLineLayout
+      ? (event: { nativeEvent: { layout: { y: number } } }) => {
+          const y = event.nativeEvent.layout.y;
+          onLineLayout?.(index, y);
+          if (content[index].id === targetBlockId) onTargetLayout?.(y);
+        }
+      : undefined;
   const decorate = (index: number, body: React.ReactNode) => {
-    const id = content[index].id;
-    const targetLayout =
-      id === targetBlockId || onLineLayout
-        ? (event: { nativeEvent: { layout: { y: number } } }) => {
-            const y = event.nativeEvent.layout.y;
-            onLineLayout?.(index, y);
-            if (id === targetBlockId) onTargetLayout?.(y);
-          }
-        : undefined;
+    const block = content[index];
+    const id = block.id;
+    // A foldable heading has an outer row; its inner text is always at y=0.
+    const headingRow =
+      block.type === "heading" &&
+      id &&
+      onToggleFold &&
+      (folds?.has(id) || canFold(content, index));
+    const targetLayout = headingRow ? undefined : lineLayout(index);
     const count = (id && counts?.[id]) || 0;
     const under = id ? renderUnder?.(id) : null;
     const lit = !!id && id === flash;
@@ -277,7 +285,11 @@ export function DocBody({
         // made a heading or a checkbox is there to change.
         if (index === editing)
           return (
-            <View key={index} style={[styles.editing, inset(index)]}>
+            <View
+              key={index}
+              style={[styles.editing, inset(index)]}
+              onLayout={lineLayout(index)}
+            >
               <TextInput
                 ref={inputRef}
                 style={[styles.input, dir(draft ?? "")]}
@@ -323,7 +335,11 @@ export function DocBody({
             // The fold sits at the heading's end, where a thumb reaches it
             // and nothing is drawn past the page's edge.
             return (
-              <View key={index} style={styles.headingRow}>
+              <View
+                key={index}
+                style={styles.headingRow}
+                onLayout={lineLayout(index)}
+              >
                 <View style={styles.headingBody}>{heading}</View>
                 <Pressable
                   accessibilityRole="button"

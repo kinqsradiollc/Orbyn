@@ -80,6 +80,7 @@ export * from "./links.js";
 export * from "./task-groups.js";
 export * from "./agent-tasks.js";
 export * from "./doc-outline.js";
+export * from "./doc-navigation.js";
 export * from "./fields.js";
 export * from "./page-files.js";
 export * from "./code-colour.js";

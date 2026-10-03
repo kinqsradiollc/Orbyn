@@ -13,6 +13,7 @@ import {
   type DocBlock,
   type DocInline,
 } from "./docs.js";
+import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
 
 /**
  * Turning a page into something to keep.
@@ -156,7 +157,25 @@ function tableHtml(text: string, o: HtmlOptions): string {
  */
 export function blocksHtml(blocks: DocBlock[], o: HtmlOptions = {}): string {
   const notes = o.notes ?? footnoteNumbers(blocks);
-  const opts = { ...o, notes };
+  const opts = {
+    ...o,
+    notes,
+    linkUrl: (href: string) => {
+      // Local heading links refer only to the already authorized exported page.
+      // Keep legacy h-N targets used by published contents lists.
+      if (o.anchors && href.startsWith("#")) {
+        const destination = docLinkDestination(href, null);
+        const index =
+          destination?.kind === "fragment"
+            ? docFragmentIndex(blocks, destination.fragment)
+            : null;
+        return index !== null && blocks[index].type === "heading"
+          ? `#h-${index}`
+          : null;
+      }
+      return o.linkUrl ? o.linkUrl(href) : href;
+    },
+  };
   const body: string[] = [];
   const layout = listLayout(blocks);
   // The lists open around the current line, outermost first. A list item is
@@ -321,7 +340,7 @@ export function docToHtml(
   blocks: DocBlock[],
   o: HtmlOptions = {},
 ): string {
-  const body = blocksHtml(blocks, o);
+  const body = blocksHtml(blocks, { anchors: true, ...o });
   // The colours below are written out, not theme tokens: the file is opened
   // on its own, far from the app's stylesheet, so it has no variables to
   // read. They match the light theme (the highlight is its warnSoft tint),

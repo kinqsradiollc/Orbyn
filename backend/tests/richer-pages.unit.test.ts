@@ -515,6 +515,16 @@ test("rich copy writes HTML another app keeps, and the same lines as Markdown", 
   assert.equal(text.split("\n")[0], "# Plan");
 });
 
+test("rich copy preserves each supported heading level in both clipboard formats", () => {
+  for (const level of [1, 2, 3] as const) {
+    const { html, text } = blocksToClipboard([
+      { type: "heading", level, text: `Heading ${level}` },
+    ]);
+    assert.ok(html.includes(`<h${level}>Heading ${level}</h${level}>`));
+    assert.equal(text, `${"#".repeat(level)} Heading ${level}\n`);
+  }
+});
+
 test("a page's files are checked by their first bytes and their names", () => {
   assert.equal(pageFileType("photo.JPG"), "image/jpeg");
   assert.equal(pageFileType("notes", "application/pdf"), "application/pdf");
