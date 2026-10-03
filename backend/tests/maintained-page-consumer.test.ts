@@ -829,3 +829,59 @@ test("page and chat jobs serialize Overnight work for the same person", async ()
     await pool.query("DELETE FROM ai_jobs WHERE id=$1", [job.id]);
   }
 });
+
+test("real Background service scans a due binding, completes HTTP inference and saves its page", async () => {
+  const f = await fixture();
+  await pool.query("DELETE FROM assistant_page_runs WHERE id=$1", [f.run.id]);
+  await pool.query(
+    "UPDATE assistant_page_bindings SET next_run_at=now()-interval '1 minute',schedule_exhausted=false WHERE id=$1",
+    [f.binding.id],
+  );
+  const { buildAssistantWorker } =
+    await import("../src/services/assistant-worker.js");
+  const app = await buildAssistantWorker("background");
+  try {
+    await app.ready();
+    const deadline = Date.now() + 8000;
+    let completed = false;
+    while (Date.now() < deadline) {
+      const run = (
+        await pool.query(
+          "SELECT state FROM assistant_page_runs WHERE binding_id=$1 ORDER BY created_at DESC LIMIT 1",
+          [f.binding.id],
+        )
+      ).rows[0];
+      if (run?.state === "done") {
+        completed = true;
+        break;
+      }
+      if (run?.state === "failed")
+        assert.fail("The real service held its page run");
+      await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    }
+    assert.equal(
+      completed,
+      true,
+      "The service never completed its scheduled page update",
+    );
+    assert.equal(
+      (await app.inject({ method: "GET", url: "/ready" })).statusCode,
+      200,
+    );
+    assert.equal(seen.length, 1);
+    assert.ok(!JSON.stringify(seen).includes("Human private material"));
+    const page = (
+      await pool.query("SELECT version,content FROM docs WHERE id=$1", [
+        f.doc.id,
+      ])
+    ).rows[0];
+    assert.equal(page.version, 2);
+    assert.equal(
+      page.content[0].text,
+      "Human private material must not be transmitted.",
+    );
+    assert.equal(page.content[1].text, "Generated scoped summary.");
+  } finally {
+    await app.close();
+  }
+});

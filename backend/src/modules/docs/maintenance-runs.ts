@@ -114,6 +114,21 @@ export async function queueMaintainedPageRun(
       : null;
   const context = await maintainedPageContext(db, user, principal, bindingId);
   const binding = context.binding;
+  const page = (
+    await db.query<{ team_id: string | null }>(
+      "SELECT team_id FROM docs WHERE id=$1",
+      [binding.doc_id],
+    )
+  ).rows[0];
+  if (
+    assistantRuleDecision(
+      context.principal.assistant_rules ?? [],
+      lane.kind,
+      page.team_id,
+      ["any_change", "edit"],
+    ) === "deny"
+  )
+    fail(403, "A reviewed assistant rule forbids this page update.");
   if (
     binding.paused ||
     binding.schedule_exhausted ||

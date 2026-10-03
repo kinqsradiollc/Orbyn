@@ -852,3 +852,27 @@ Next: actual bounded due producer with current source/authority; Night candidate
 integration and ten-run/reflection slot accounting/morning results; safe rolling
 upgrade activation; explicit sources, budgets/activity/undo; both clients and
 complete ADR/local/CI/runtime/native qualification. Do not promote as finished A5.
+
+### A5 bounded Background producer / service delivery — 4 October (not promoted)
+
+The private Background service now scans due bindings once per minute in bounded
+round-robin batches. It excludes disabled/suspended/revoked/expired owners,
+paused/ended bindings, active jobs, inaccessible/AI-excluded pages and Night-owned
+follow-through. Each candidate rebuilds current authority and selected context
+inside the canonical transaction lock order. Reviewed deny rules stop queueing;
+source/authority conflicts do not advance the schedule. Concurrent replicas queue
+a due occurrence once. Selected unavailable models retain the existing defer
+semantics without falling back to a different account/provider.
+
+Verified79/79 tests, terminal code0, no skips/cancellations:
+`/tmp/orbyn-page-due-service-tests.log`. Backend types pass:
+`/tmp/orbyn-page-due-service-types.log`. New actual-service test starts the private
+Background Fastify worker, observes its real due producer and hosted HTTP fixture
+request, verifies ready200 and selected-block version2 save while preserving the
+human block, then closes the worker. This proves local service delivery; it is
+not real-provider/account or deployed production acceptance.
+
+Night candidate/ten-run/reflection slot accounting and morning outputs remain
+next. Safe rolling upgrade, explicit source selection beyond target blocks,
+budget/activity/undo, web/mobile controls and full ADR qualification remain open.
+Main is unchanged; this feature is still on the development branch.

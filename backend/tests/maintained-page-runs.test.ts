@@ -653,7 +653,7 @@ test("a replaced worker cannot terminate its successor, while a current failure 
   );
 });
 
-test("a queued action that was already forbidden cannot expose context to a model worker", async () => {
+test("forbidden updates cannot queue or expose model context after authority changes", async () => {
   const f = await fixture();
   const rule = {
     id: randomUUID(),
@@ -666,9 +666,36 @@ test("a queued action that was already forbidden cannot expose context to a mode
     "UPDATE agent_grants SET assistant_rules=$2::jsonb WHERE id=$1",
     [f.principal.grant_id, JSON.stringify([rule])],
   );
-  await queued(f);
+  await assert.rejects(() => queued(f), status(403));
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM assistant_page_runs WHERE binding_id=$1",
+        [f.binding.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT next_run_at FROM assistant_page_bindings WHERE id=$1",
+        [f.binding.id],
+      )
+    ).rows[0].next_run_at.toISOString(),
+    time.toISOString(),
+  );
+  await pool.query(
+    "UPDATE agent_grants SET assistant_rules='[]'::jsonb WHERE id=$1",
+    [f.principal.grant_id],
+  );
+  const q = await queued(f);
+  await pool.query(
+    "UPDATE agent_grants SET assistant_rules=$2::jsonb WHERE id=$1",
+    [f.principal.grant_id, JSON.stringify([rule])],
+  );
   const run = await transaction((db) =>
-    claimMaintainedPageRun(db, "background", time),
+    claimMaintainedPageRun(db, "background", time, q.id),
   );
   assert.ok(run?.lease_token);
   await assert.rejects(
@@ -803,4 +830,52 @@ test("leased chat automation prevents a page claim until its lane has room", asy
     )?.id,
     run.id,
   );
+});
+
+test("due producer queues once across replicas and leaves held/paused/future work unchanged", async () => {
+  const { scanMaintainedPages } =
+    await import("../src/worker/maintained-page-scan.js");
+  const due = await fixture();
+  const future = await fixture();
+  const paused = await fixture();
+  const suspended = await fixture();
+  const stale = await fixture();
+  await pool.query(
+    "UPDATE assistant_page_bindings SET next_run_at=$2 WHERE id=$1",
+    [future.binding.id, later(60000)],
+  );
+  await pool.query(
+    "UPDATE assistant_page_bindings SET paused=true WHERE id=$1",
+    [paused.binding.id],
+  );
+  await pool.query("UPDATE agent_grants SET suspended_at=$2 WHERE id=$1", [
+    suspended.principal.grant_id,
+    time,
+  ]);
+  await pool.query("UPDATE docs SET version=version+1 WHERE id=$1", [
+    stale.doc.id,
+  ]);
+  const only = [due, future, paused, suspended, stale].map((f) => f.user.id);
+  const counts = await Promise.all([
+    scanMaintainedPages(time, { only }),
+    scanMaintainedPages(time, { only }),
+  ]);
+  assert.equal(
+    counts.reduce((a, b) => a + b, 0),
+    1,
+  );
+  const runs = await pool.query(
+    "SELECT binding_id FROM assistant_page_runs WHERE user_id=ANY($1::uuid[])",
+    [only],
+  );
+  assert.deepEqual(
+    runs.rows.map((r) => r.binding_id),
+    [due.binding.id],
+  );
+  const unchanged = await pool.query(
+    "SELECT next_run_at FROM assistant_page_bindings WHERE id=$1",
+    [stale.binding.id],
+  );
+  assert.equal(unchanged.rows[0].next_run_at.toISOString(), time.toISOString());
+  assert.equal(await scanMaintainedPages(time, { only }), 0);
 });
