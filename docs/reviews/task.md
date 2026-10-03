@@ -30,3 +30,27 @@ Official source inspected: https://developers.openai.com/plugins/build/chatgpt-u
 This is the separate HTTP resource adapter, not completed MCP-host launch:
 transport/extension entry points, host screenshots, account-switch/provider and
 async result/event cursors remain open. No main merge, deployment or cleanup.
+
+## Separate plugin MCP transport — 3 October 2026
+
+Isolated codex/plugin-mcp-transport follows frozen9d852b69. /plugin adds the
+SDK's current and legacy stateless exchanges under the existing plugin-only
+auth hook. Each request gets a server bound to its freshly resolved connector
+principal and authorized catalog. It shares one dispatcher with HTTP calls,
+retaining quotas, write revalidation/receipts, maintenance guards and activity.
+UI resources remain opt-in and scoped. Discovery/list/read cache hints are
+private with zero TTL; HTTP responses remain no-store. Unsupported legacy
+session operations return405. Host metadata never chooses user or grant.
+
+27 combined SDK/resource/input/principal/catalog checks pass, no skips. Both
+legacy initialization and current2026-07-28 discovery/list/call were exercised
+without external requests or DB. Structural input refusals happen before
+invocation; unexpected errors are generic. Backend typecheck/build pass, final
+service assertions being rechecked. HTTP401/403/400/429 assertions now include
+the protocol path; local full/service runtime awaits Docker/marked DB recovery.
+
+PR1776220f1c1 and PR178f74bb9de now have all four respective CI jobs successful
+(37090985523/37091077562). PR179 CI37091484961 remains in progress. This transport
+is not hosted ChatGPT/Codex launch acceptance: extensions, host screenshots,
+actual account/provider/tenant execution and async event cursors remain open.
+Full C1–C6/M1/D1/U1 continues; no main merge, deployment or cleanup.

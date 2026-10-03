@@ -413,6 +413,69 @@ test("plugin maintenance permits shared reads and denies writes", async () => {
   }
 });
 
+test("plugin MCP transport resolves independent grants and retains HTTP protection", async () => {
+  const payload = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+  assert.equal(
+    (await app.inject({ method: "POST", url: "/plugin", payload })).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/plugin",
+        headers: { authorization: "Bearer session-fixture" },
+        payload,
+      })
+    ).statusCode,
+    401,
+  );
+  const listed = await app.inject({
+    method: "POST",
+    url: "/plugin",
+    headers,
+    payload,
+  });
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.headers["cache-control"], "no-store");
+  assert.equal(listed.headers["mcp-session-id"], undefined);
+  const parsed = String(listed.headers["content-type"]).includes(
+    "text/event-stream",
+  )
+    ? JSON.parse(
+        listed.body
+          .split("\n")
+          .find((line) => line.startsWith("data: "))!
+          .slice(6),
+      )
+    : listed.json();
+  assert.ok(
+    parsed.result.tools.some((tool: any) => tool.name === "get_context"),
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url: "/plugin",
+        headers,
+        payload: { invalid: true },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal((await app.inject({ url: "/plugin", headers })).statusCode, 405);
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [userId]);
+  try {
+    assert.equal(
+      (await app.inject({ method: "POST", url: "/plugin", headers, payload }))
+        .statusCode,
+      403,
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+  }
+});
+
 test("plugin UI resources require current grants, UI opt-in and bounded identifiers", async () => {
   assert.equal(
     (await app.inject({ url: "/plugin/resources" })).statusCode,
@@ -503,6 +566,23 @@ test("plugin UI resources require current grants, UI opt-in and bounded identifi
     assert.ok(
       burst.some(
         (reply) => reply.statusCode === 429 && reply.headers["retry-after"],
+      ),
+    );
+    const protocolBurst = [];
+    for (let n = 0; n < 4; n++)
+      protocolBurst.push(
+        await app.inject({
+          method: "POST",
+          url: "/plugin",
+          headers,
+          remoteAddress: "10.85.2.2",
+          payload: { jsonrpc: "2.0", id: n, method: "tools/list" },
+        }),
+      );
+    assert.ok(
+      protocolBurst.some(
+        (response) =>
+          response.statusCode === 429 && response.headers["retry-after"],
       ),
     );
   } finally {

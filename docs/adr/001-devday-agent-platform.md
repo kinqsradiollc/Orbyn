@@ -254,3 +254,14 @@ extension transport acceptance. Host screenshots, grant/account switching,
 managed/BYO execution, asynchronous results and reconnect cursors remain open.
 See docs/reviews/task.md for exact tests and the unavailable local database gate.
 All C1–C6/M1/D1/U1 implementation requirements remain active.
+
+### Plugin protocol adapter checkpoint — 3 October 2026
+
+A per-request MCP SDK server now serves current and legacy stateless exchanges
+at the separate plugin boundary. The adapter receives only the independently
+resolved plugin principal; HTTP/protocol tool calls share policy, budgets and
+domain receipt execution. UI cards intersect current tool scope and the card
+UI opt-in. Private zero-TTL protocol metadata supplements no-store HTTP replies.
+Protocol tests establish exchange behavior with synthetic authorized callbacks,
+not actual account, provider or hosted UI acceptance. Remaining C6 gates and the
+full retained implementation scope stay open in docs/reviews/task.md.

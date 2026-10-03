@@ -816,8 +816,9 @@ Its optional local port binds only to loopback (`PLUGIN_PORT`, default8040).
 
 Set `PLUGIN_PUBLIC_URL` to the exact reviewed HTTPS recipient before enabling
 OAuth for this service. Blank configuration returns404 for plugin calls and
-publishes no discovery document. Route only `/plugin/connection`,
-`/plugin/tools`, `/plugin/tools/call` and the configured recipient's derived
+publishes no discovery document. Route only `/plugin`, `/plugin/connection`,
+`/plugin/tools`, `/plugin/tools/call`, `/plugin/resources`, `/plugin/resources/read`
+and the configured recipient's derived
 `/.well-known/oauth-protected-resource…` path to this process through the
 reviewed reverse proxy. Do not route browser API paths or `/mcp` to it. The
 existing gateway does not automatically expose this profile.
