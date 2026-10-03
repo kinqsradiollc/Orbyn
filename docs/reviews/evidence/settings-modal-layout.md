@@ -50,3 +50,25 @@ landscape/large text, both themes, Settings interactions, nested confirmations
 and Android remain required. Browser history and all existing secret/draft exit
 paths need acceptance alongside the new modal. Whole C1–C6/M1/D1/U1 stays active.
 No deployment or worktree/branch cleanup. User preview files are preserved.
+
+## Qualification repair — 4 October
+
+Frozen head5b204e97 failed CI37129494450: the new budget endpoint lacked its
+explicit admin-only route classification, and the navigation assertion still
+required the old direct tab setter. The endpoint is now classified and generated
+catalog files regenerated. The navigation assertion now requires the guarded
+callback, retaining category and search checks. Focused checks23/23 pass in
+`/tmp/orbyn-settings-modal-repair-focused.log`; all workspace typechecks pass.
+
+The old full local run was cancelled after those CI failures and an agenda child
+stalled during cleanup for over35minutes. Its log and cancellation result are
+preserved; it is not passing evidence. Agenda isolation13/13 now exits normally
+in `/tmp/orbyn-settings-agenda-isolation.log`. A corrected frozen head requires
+fresh full local and CI qualification before merge.
+
+Native Settings opens as a sheet over the workspace; its close control, profile,
+search and grouped rows are visible in `settings-modal-layout/ios-settings-sheet.png`.
+Searching connections exposes the ChatGPT connections and models entry. This
+portrait inspection does not establish landscape, keyboard, large-text or Android
+acceptance. A repeated planner429 remains visible in the local preview and needs
+further investigation; it has not been dismissed as solved.
