@@ -1,3 +1,4 @@
+import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
 import {
@@ -612,6 +613,7 @@ export function DocEditor({
   const [merging, setMerging] = useState(false);
   /** "Publish to web…" (SHR-05). */
   const [publishing, setPublishing] = useState(false);
+  const [maintaining, setMaintaining] = useState(false);
   /** Presenting the page as slides (CNV-03), recording into it (CAP-10). */
   const [presenting, setPresenting] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -3210,6 +3212,27 @@ export function DocEditor({
                       </button>
                     </li>
                   )}
+                  {canWrite && doc.kind === "doc" && !suggesting && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        aria-haspopup="dialog"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          void (async () => {
+                            await flush();
+                            if (dirty.current)
+                              throw new Error(
+                                "Save your page edits before scheduling updates.",
+                              );
+                            setMaintaining(true);
+                          })().catch(report);
+                        }}
+                      >
+                        Page updates…
+                      </button>
+                    </li>
+                  )}
                   {doc.kind !== "agenda" && doc.kind !== "memory" && (
                     <li>
                       <button
@@ -4151,6 +4174,13 @@ export function DocEditor({
               void addFiles(files, place.index, place.replace);
           }}
         />
+        {maintaining && (
+          <PageMaintenanceDialog
+            id={doc.id}
+            onChanged={onChanged}
+            onClose={() => setMaintaining(false)}
+          />
+        )}
         {publishing && (
           <PublishDialog
             kind="doc"

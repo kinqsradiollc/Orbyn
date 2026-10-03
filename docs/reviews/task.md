@@ -705,3 +705,38 @@ cards. Still open: explicit source selection beyond target blocks; budgets and
 activity/undo; including page outcomes in reflection evidence; safe rolling
 worker activation; verified account-default/device inference; broader full
 local/CI/web/manual/native acceptance and complete C1-C6/M1/D1/U1. Main unchanged.
+
+### A5 cross-client controls draft — 4 October (visual acceptance pending)
+
+Web/desktop now has a bounded native modal; mobile has our native BottomSheet.
+Both document menus flush pending edits and refuse unsaved/offline work before
+opening Page updates. One shared portable controller owns fresh page/binding/run
+reads, stable missing-block IDs through ordinary CAS document persistence,
+selected-block create/edit, pause/resume/remove and exact waiting-card decisions.
+Account switches prevent dependent writes and clear old evidence. Disposal and
+React effect replay cannot restore an old result or leave the panel busy forever.
+
+Both surfaces show selected blocks/instructions/daily or weekly cadence, saved
+schedules behind options, recent status/token estimates and the actual saved
+proposal in Markdown source before Apply/Decline. Pausing preserves the original
+reviewed page revision; explicit Edit/Save reviews and rebinds current blocks.
+The web native dialog owns focus/Escape; repeat buttons remain inside it, avoiding
+our Select portal outside the browser's modal top layer. Palette/radius tokens
+and native scrolling/keyboard sheet primitives are retained.
+
+Shared controller4/4 unit checks pass, no skips/cancellations:
+`/tmp/orbyn-page-controls-delivery-tests.log`. All workspace types code0:
+`/tmp/orbyn-page-controls-delivery-types.log`. Production build code0:
+`/tmp/orbyn-page-controls-delivery-build.log` (existing large-chunk warning remains).
+These prove source/build/controller behavior, not rendered acceptance. The iOS
+Simulator was reached with Computer Use, but it is still serving the prior preview
+source; its existing planner429 overlay is not evidence for this draft's layout.
+
+Next switch owned API/Metro previews to this branch against the marked preview DB
+with migrations219-223, preserve the test admin, inspect/screenshot the new native
+sheet, typing/scrolling/schedule/review states and correct layout. Web visual
+acceptance remains human review under the explicit blind-redesign authorization;
+no saved Browser Use block bypass. Add Night page cards on both clients, explicit
+additional sources/budgets, activity/undo/page reflection evidence, rolling worker
+activation and account/default device delivery. Full local/CI/native/ADR acceptance
+still required before main promotion; full C1-C6/M1/D1/U1 remains active.

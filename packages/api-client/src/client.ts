@@ -2412,8 +2412,8 @@ export class OrbynClient {
       },
     );
   }
-  getDoc(id: string) {
-    return this.request<Doc>(`/docs/${id}`);
+  getDoc(id: string, options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
+    return this.request<Doc>(`/docs/${id}`, options);
   }
   /** A page's Info panel: what it belongs to, tags, links, versions. */
   docInfo(id: string) {

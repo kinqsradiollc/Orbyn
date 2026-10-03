@@ -39,3 +39,5 @@ export type {
 export * from "./assistant-profile-store.js";
 
 export * from "./chatgpt-remote-store.js";
+
+export * from "./page-maintenance-store.js";
