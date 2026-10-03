@@ -1,4 +1,3 @@
-
 ## Plugin tool boundary structural limits — 3 October 2026
 
 Isolated codex/plugin-tool-input-bounds follows frozen a74ad26a without editing
