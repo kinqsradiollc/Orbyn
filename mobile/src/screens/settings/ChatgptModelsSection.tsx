@@ -1,3 +1,4 @@
+import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { CHATGPT_USAGE_URL } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -95,6 +96,17 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   const selected = models.find((m) => m.slug === catalog?.preference.model);
   return (
     <SettingsSection title="AI connections & models">
+      <AiProviderChoiceControls
+        userId={userId}
+        selection={
+          state.selection
+            ? {
+                connection_id: state.selection.connection_id,
+                executor_id: state.selection.executor_id,
+              }
+            : null
+        }
+      />
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
         Connect your ChatGPT account and choose its default model.

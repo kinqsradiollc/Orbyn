@@ -1,3 +1,4 @@
+import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { useEffect, useId, useRef, useState } from "react";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
@@ -87,6 +88,17 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
     !models.some((m) => m.slug === catalog.preference.model);
   return (
     <div className="ai-model-settings">
+      <AiProviderChoiceControls
+        userId={userId}
+        selection={
+          state.selection
+            ? {
+                connection_id: state.selection.connection_id,
+                executor_id: state.selection.executor_id,
+              }
+            : null
+        }
+      />
       <div className="settings-head">
         <div>
           <h3>ChatGPT</h3>

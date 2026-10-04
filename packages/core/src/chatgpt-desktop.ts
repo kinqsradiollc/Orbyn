@@ -51,6 +51,10 @@ export const chatgptDesktopState = z
       .object({
         registrationId: chatgptRegistrationId.nullable(),
         revision: z.uuid().nullable(),
+        executor: z
+          .object({ connection_id: z.uuid(), executor_id: z.uuid() })
+          .strict()
+          .optional(),
       })
       .strict()
       .nullable(),
@@ -120,6 +124,16 @@ export const chatgptDesktopState = z
       ctx.addIssue({
         code: "custom",
         message: "Plan verification belongs to another account.",
+      });
+    if (
+      value.selection?.executor &&
+      (!selected[0] ||
+        value.selection.executor.connection_id !==
+          selected[0].binding.connection_id)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Desktop executor belongs to another selected connection.",
       });
     if (
       value.catalog?.preference &&

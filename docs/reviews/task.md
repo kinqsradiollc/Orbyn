@@ -1185,3 +1185,62 @@ planning/memory and complete fresh full/CI qualification; do not restart Docker
 Desktop or erase test/primary data as a workaround. Source permission predicates
 must stay enforced. Goal remains full C1-C6/M1/D1/U1, with actual ChatGPT-primary
 execution and explicit Orbyn-default fallback highest priority.
+
+### Direct Connect interaction — 4 October 2026
+
+User confirmed that Connect to ChatGPT must immediately start authorization,
+without opening ChatGPT sign-in settings first. Desktop dispatches `connect`;
+web/mobile create an opaque connect request and launch the credential-owning
+Orbyn runtime, which claims it and starts OpenAI authorization directly. MCP
+configuration remains separate. The local runtime dependency is still present;
+this is not standalone hosted-browser OAuth.
+
+Direct entrypoint and manager tests pass13/13 with no skips in
+`/tmp/orbyn-direct-connect-recheck.log`. Backend typecheck passes in
+`/tmp/orbyn-routing-backend-recheck.log` after restoring fresh default-provider
+resolution in the explicit admission-failure fallback. Uncommitted execution,
+provider-choice and UI work still needs authorization-fence, integration and
+full qualification before promotion to main. No live OpenAI consent or inference
+was performed in this check.
+
+### ChatGPT dispatch and provider-choice candidate — 4 October 2026
+
+Active branch: `codex/chatgpt-execution`. Private device polling claims encrypted
+runner assignments, checks owner/session/lease/model/hash, invokes the public
+Responses transport, signs completed or classified failed results, and publishes
+them to the runner. Composer JSON steps use personal provider routing. No renderer
+inference IPC or arbitrary-prompt HTTP enqueue endpoint is introduced.
+
+Migration227 stores explicit ChatGPT-primary/default and fallback choices with
+CAS. Migration228 captures provider consent revision on each assignment and
+cancels legacy active assignments without that evidence. Enqueue, claim, result
+publication and read reject provider changes. Web/desktop/mobile controls hide
+another account's state, abort stale requests and offer reload after conflict.
+MCP and plugin grants remain separate.
+
+Actual marked-database routing tests pass6/6: encrypted once-only assignment,
+signed completion, forged/lease/source/session rejection, revision fencing,
+runner consumption of the assigned model, and a local default-provider stand-in
+called only with explicit fallback and a confirmed admission rejection. Stream
+and unknown failures do not retry. Evidence:
+`/tmp/orbyn-chatgpt-routing-admission-tests.log`. Endpoint/security, manager,
+private processor, routing contract and catalog checks pass27/27 in
+`/tmp/orbyn-routing-security-focused.log`. Model UI/neatness checks pass19/19 in
+`/tmp/orbyn-routing-ui-recheck.log`; the model-only fixture mocks the separate
+provider-choice child and does not prove that child's rendered appearance.
+
+Workspace types and production build pass in
+`/tmp/orbyn-routing-complete-types.log` and
+`/tmp/orbyn-routing-production-build.log`. These checks do not qualify main:
+full-suite PostgreSQL OOM investigation, actual OpenAI consent/inference,
+cross-client provider-control visual review, durable user-visible inference
+usage/provenance, and broader ADR acceptance remain open. The running preview
+still serves the earlier worktree; do not claim it shows this candidate.
+
+Final combined ChatGPT-focused run passes249/249, no skips, exit0, including
+new endpoint security, all `chatgpt*.test.ts`, provider choice, route inventory,
+catalog and neatness checks. Log:
+`/tmp/orbyn-chatgpt-checkpoint-all-focused.log`. PostgreSQL JIT is disabled only
+for this diagnostic test process (`PGOPTIONS=-c jit=off`); it is not production
+configuration and does not resolve the earlier full-suite OOM qualification.
+Final workspace typecheck passes in `/tmp/orbyn-routing-checkpoint-types.log`.

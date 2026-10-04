@@ -452,25 +452,37 @@ async function jsonStep(
 ): Promise<StepResult> {
   const usable = toolsAllowed ? tools : [];
   const schema = ai.structuredOutput === "json_schema" && usable.length;
-  const response = await send(
-    chatUrl(ai),
-    {
-      method: "POST",
-      headers: headers(ai),
-      body: JSON.stringify({
-        ...(ai.format === "azure" ? {} : { model: ai.model }),
-        messages: toJsonHistory(
-          messages,
-          usable,
-          ai.limits?.maxMessageChars,
-          !!ai.structuredOutput,
-        ),
-        ...(schema ? { response_format: stepFormat(usable) } : {}),
-      }),
-    },
-    signal,
-    ai.apiKey,
+  const protocolMessages = toJsonHistory(
+    messages,
+    usable,
+    ai.limits?.maxMessageChars,
+    !!ai.structuredOutput,
   );
+  const response = ai.textTransport
+    ? Response.json({
+        choices: [
+          {
+            message: {
+              content: await ai.textTransport(protocolMessages, signal),
+            },
+            finish_reason: "stop",
+          },
+        ],
+      })
+    : await send(
+        chatUrl(ai),
+        {
+          method: "POST",
+          headers: headers(ai),
+          body: JSON.stringify({
+            ...(ai.format === "azure" ? {} : { model: ai.model }),
+            messages: protocolMessages,
+            ...(schema ? { response_format: stepFormat(usable) } : {}),
+          }),
+        },
+        signal,
+        ai.apiKey,
+      );
   const body = await json<{
     error?: unknown;
     choices?: { message?: { content?: unknown }; finish_reason?: string }[];

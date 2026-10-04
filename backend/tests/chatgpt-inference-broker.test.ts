@@ -3,6 +3,7 @@ import { before, after, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, generateKeyPairSync, createHash, sign } from "node:crypto";
 import { chatgptInferenceReceiptMessage } from "@orbyn/core";
+import { createServer } from "node:http";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const {
@@ -74,6 +75,10 @@ async function fixture() {
     )
   ).rows[0].id;
   const selection = { connection_id: connection, executor_id: executor };
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider,connection_id,executor_id) VALUES($1,'chatgpt',$2,$3)",
+    [owner, connection, executor],
+  );
   const binding = { userId: owner, sessionId: session };
   return {
     owner,
@@ -213,4 +218,201 @@ test("unverified job sources and another owner's job never reach a device", asyn
     ).rows[0].n,
     0,
   );
+});
+
+test("provider edits fence queued disclosure and claimed result publication", async () => {
+  const queued = await fixture();
+  await queueChatgptInference(queued.owner, queued.job, queued.selection, {
+    instructions: "",
+    input: [{ role: "user", content: "private" }],
+  });
+  await pool.query(
+    "UPDATE user_ai_provider_choice SET version=version+1 WHERE user_id=$1",
+    [queued.owner],
+  );
+  await assert.rejects(
+    claimChatgptInference(queued.binding, queued.selection.executor_id),
+    status(409),
+  );
+  const claimed = await fixture();
+  const request = await queueChatgptInference(
+    claimed.owner,
+    claimed.job,
+    claimed.selection,
+    {
+      instructions: "",
+      input: [{ role: "user", content: "private" }],
+    },
+  );
+  const assignment = await claimChatgptInference(
+    claimed.binding,
+    claimed.selection.executor_id,
+  );
+  assert.ok(assignment);
+  await pool.query(
+    "UPDATE user_ai_provider_choice SET version=version+1 WHERE user_id=$1",
+    [claimed.owner],
+  );
+  await assert.rejects(
+    finishChatgptInference(claimed.binding, claimed.receipt(assignment)),
+    status(409),
+  );
+  await assert.rejects(
+    readChatgptInference(claimed.owner, claimed.job, request.id),
+    status(409),
+  );
+});
+
+test("personal provider routing consumes the assigned model's signed completed result", async () => {
+  const f = await fixture();
+  const { resolveUserAi } =
+    await import("../src/modules/ai/providers/user-choice.js");
+  const notices: string[] = [];
+  const ai = await resolveUserAi(f.owner, f.job, async (message) => {
+    notices.push(message);
+  });
+  assert.ok(ai?.textTransport);
+  const controller = new AbortController();
+  const output = ai.textTransport(
+    [
+      { role: "system", content: "Private instructions" },
+      { role: "user", content: "Private question" },
+    ],
+    controller.signal,
+  );
+  // Attach a rejection handler before waiting for the asynchronous enqueue.
+  void output.catch(() => {});
+  try {
+    let assignment = null;
+    for (let attempt = 0; attempt < 50 && !assignment; attempt++) {
+      assignment = await claimChatgptInference(
+        f.binding,
+        f.selection.executor_id,
+      );
+      if (!assignment) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.ok(assignment);
+    assert.equal(assignment.model, "fixture-model");
+    assert.equal(assignment.payload.instructions, "Private instructions");
+    assert.deepEqual(assignment.payload.input, [
+      { role: "user", content: "Private question" },
+    ]);
+    await finishChatgptInference(f.binding, f.receipt(assignment));
+    assert.equal(await output, "Private result");
+    assert.deepEqual(notices, []);
+  } finally {
+    controller.abort();
+    await output.catch(() => {});
+  }
+});
+
+test("fallback calls the configured provider only for explicit consent and confirmed admission failure", async () => {
+  const original = (
+    await pool.query("SELECT provider_id,model FROM ai_settings WHERE id")
+  ).rows[0];
+  const requests: unknown[] = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    requests.push(JSON.parse(body));
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        choices: [
+          {
+            message: { role: "assistant", content: "Default result" },
+            finish_reason: "stop",
+          },
+        ],
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const provider = (
+    await pool.query(
+      "INSERT INTO ai_providers(kind,name,base_url) VALUES('openai-compatible','Routing fixture',$1) RETURNING id",
+      [`http://127.0.0.1:${port}/v1`],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "UPDATE ai_settings SET provider_id=$1,model='default-fixture' WHERE id",
+    [provider],
+  );
+  const { resolveUserAi } =
+    await import("../src/modules/ai/providers/user-choice.js");
+  try {
+    for (const [fallback, phase, expectedCalls] of [
+      [false, "admission", 0],
+      [true, "stream", 0],
+      [true, "unknown", 0],
+      [true, "admission", 1],
+    ] as const) {
+      const f = await fixture();
+      await pool.query(
+        "UPDATE user_ai_provider_choice SET fallback_to_default=$2 WHERE user_id=$1",
+        [f.owner, fallback],
+      );
+      const notices: string[] = [];
+      const ai = await resolveUserAi(f.owner, f.job, async (m) => {
+        notices.push(m);
+      });
+      assert.ok(ai?.textTransport);
+      const abort = new AbortController();
+      const output = ai.textTransport(
+        [{ role: "user", content: "Question" }],
+        abort.signal,
+      );
+      void output.catch(() => {});
+      try {
+        let assignment = null;
+        for (let i = 0; i < 50 && !assignment; i++) {
+          assignment = await claimChatgptInference(
+            f.binding,
+            f.selection.executor_id,
+          );
+          if (!assignment) await new Promise((r) => setTimeout(r, 20));
+        }
+        assert.ok(assignment);
+        const publication = f.receipt(assignment);
+        const receipt = {
+          ...publication.receipt,
+          result: {
+            status: "failed",
+            reason: "usage_limit",
+            phase,
+            http_status: 429,
+            provider_code: "subscription_sharing_usage_limit_exceeded",
+          },
+        };
+        const signature = sign(
+          null,
+          Buffer.from(chatgptInferenceReceiptMessage(receipt)),
+          f.keys.privateKey,
+        ).toString("base64url");
+        await finishChatgptInference(f.binding, { receipt, signature });
+        if (expectedCalls) {
+          assert.equal(await output, "Default result");
+          assert.equal(notices.length, 1);
+        } else {
+          await assert.rejects(output, /usage limit/);
+          assert.equal(notices.length, 0);
+        }
+        assert.equal(requests.length, expectedCalls);
+      } finally {
+        abort.abort();
+        await output.catch(() => {});
+      }
+    }
+    assert.equal((requests[0] as { model: string }).model, "default-fixture");
+  } finally {
+    await pool.query(
+      "UPDATE ai_settings SET provider_id=$1,model=$2 WHERE id",
+      [original.provider_id, original.model],
+    );
+    await pool.query("DELETE FROM ai_providers WHERE id=$1", [provider]);
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
 });

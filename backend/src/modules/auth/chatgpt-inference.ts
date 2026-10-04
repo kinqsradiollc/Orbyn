@@ -14,10 +14,30 @@ import { requireLiveSession } from "./chatgpt-connections.js";
 import { readChatgptCatalogLocked } from "./chatgpt-model-catalog.js";
 import { verifyChatgptExecutorProof } from "./chatgpt-executor-proof.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
+import { readAiProviderChoice } from "./ai-provider-choice.js";
 type Session = { userId: string; sessionId: string };
 type Selection = { connection_id: string; executor_id: string };
 const digest = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+/** Serialize dispatch with provider edits and require the captured billing consent. */
+async function providerLive(
+  db: Db,
+  owner: string,
+  selection: Selection,
+  version?: number,
+) {
+  await db.query("SELECT id FROM users WHERE id=$1 FOR SHARE", [owner]);
+  const choice = await readAiProviderChoice(db, owner);
+  if (
+    choice.primary !== "chatgpt" ||
+    choice.connection_id !== selection.connection_id ||
+    choice.executor_id !== selection.executor_id ||
+    (version !== undefined && choice.version !== version)
+  )
+    fail(409, "Your AI provider choice changed. Start a fresh request.");
+  return choice.version;
+}
 
 /** Current job authority is mandatory before exposing any conversation or accepting output. */
 async function jobLive(db: Db, owner: string, id: string) {
@@ -57,15 +77,25 @@ export async function queueChatgptInference(
   jobId: string,
   selection: Selection,
   input: unknown,
+  expectedModel?: string,
+  expectedProviderVersion?: number,
 ) {
   if (Buffer.byteLength(JSON.stringify(input)) > 2 * 1024 * 1024)
     fail(400, "The ChatGPT request exceeded its size limit.");
   const payload = chatgptInferenceInput.parse(input);
   const encrypted = await encryptSecret(JSON.stringify(payload));
   return transaction(async (db) => {
+    const providerVersion = await providerLive(
+      db,
+      owner,
+      selection,
+      expectedProviderVersion,
+    );
     await jobLive(db, owner, jobId);
     const { row, catalog } = await device(db, owner, selection);
     const model = catalog.preference.model;
+    if (expectedModel !== undefined && model !== expectedModel)
+      fail(409, "The selected ChatGPT default model changed.");
     if (!model || !catalog.models.some((m) => m.slug === model))
       fail(409, "Choose an available ChatGPT default model first.");
     const nonce = randomBytes(32).toString("base64url");
@@ -77,8 +107,8 @@ export async function queueChatgptInference(
     });
     const result = (
       await db.query(
-        `INSERT INTO chatgpt_inference_requests(user_id,job_id,executor_id,connection_id,enrollment_epoch,lease_epoch,model,nonce,request_hash,payload_encrypted)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,expires_at`,
+        `INSERT INTO chatgpt_inference_requests(user_id,job_id,executor_id,connection_id,enrollment_epoch,lease_epoch,model,nonce,request_hash,payload_encrypted,provider_choice_version)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id,expires_at`,
         [
           owner,
           jobId,
@@ -90,6 +120,7 @@ export async function queueChatgptInference(
           nonce,
           requestHash,
           encrypted,
+          providerVersion,
         ],
       )
     ).rows[0];
@@ -115,6 +146,10 @@ export async function claimChatgptInference(
     ).rows[0];
     if (!enrollment || enrollment.session_id !== session.sessionId)
       fail(404, "This ChatGPT executor is unavailable.");
+    await providerLive(db, session.userId, {
+      executor_id: executorId,
+      connection_id: enrollment.connection_id,
+    });
     const selected = await device(db, session.userId, {
       executor_id: executorId,
       connection_id: enrollment.connection_id,
@@ -126,6 +161,17 @@ export async function claimChatgptInference(
       )
     ).rows[0];
     if (!request) return null;
+    if (request.provider_choice_version === null)
+      fail(409, "This ChatGPT request has no current provider consent.");
+    await providerLive(
+      db,
+      session.userId,
+      {
+        executor_id: executorId,
+        connection_id: enrollment.connection_id,
+      },
+      Number(request.provider_choice_version),
+    );
     if (
       String(request.enrollment_epoch) !== String(selected.row.epoch) ||
       String(request.lease_epoch) !== String(selected.row.lease_epoch)
@@ -177,6 +223,10 @@ export async function finishChatgptInference(session: Session, value: unknown) {
   const encrypted = await encryptSecret(JSON.stringify(r.result));
   return transaction(async (db) => {
     await requireLiveSession(db, session);
+    await providerLive(db, session.userId, {
+      executor_id: r.executor_id,
+      connection_id: r.binding.connection_id,
+    });
     const selected = await device(db, session.userId, {
       executor_id: r.executor_id,
       connection_id: r.binding.connection_id,
@@ -193,6 +243,17 @@ export async function finishChatgptInference(session: Session, value: unknown) {
       )
     ).rows[0];
     if (!request) fail(404, "This ChatGPT request is unavailable.");
+    if (request.provider_choice_version === null)
+      fail(409, "This ChatGPT request has no current provider consent.");
+    await providerLive(
+      db,
+      session.userId,
+      {
+        executor_id: r.executor_id,
+        connection_id: r.binding.connection_id,
+      },
+      Number(request.provider_choice_version),
+    );
     if (
       request.state !== "claimed" ||
       request.expires_at.getTime() <= Date.now() ||
@@ -233,11 +294,14 @@ export async function readChatgptInference(
     await jobLive(db, owner, jobId);
     const row = (
       await db.query(
-        "SELECT state,result_encrypted,expires_at FROM chatgpt_inference_requests WHERE id=$1 AND user_id=$2 AND job_id=$3",
+        "SELECT state,result_encrypted,expires_at,executor_id,connection_id,provider_choice_version FROM chatgpt_inference_requests WHERE id=$1 AND user_id=$2 AND job_id=$3",
         [id, owner, jobId],
       )
     ).rows[0];
     if (!row) fail(404, "This ChatGPT request is unavailable.");
+    if (row.provider_choice_version === null)
+      fail(409, "This ChatGPT request has no current provider consent.");
+    await providerLive(db, owner, row, Number(row.provider_choice_version));
     if (row.result_encrypted)
       return chatgptInferenceResult.parse(
         JSON.parse(await decryptSecret(row.result_encrypted)),

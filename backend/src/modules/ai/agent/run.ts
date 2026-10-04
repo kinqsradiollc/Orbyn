@@ -41,7 +41,7 @@ import { announceTo } from "../../presence/live.js";
 import { recallMemory } from "../../memory/service.js";
 import type { UserRow } from "../../../lib/auth.js";
 import type { Proposal } from "@orbyn/core";
-import { resolveAi } from "../providers/resolve.js";
+import { resolveUserAi } from "../providers/user-choice.js";
 import { mayChange } from "../guards.js";
 import { overview, type AgentContext } from "./tools.js";
 import type { AgentTrace, AgentTraceEvent } from "./loop.js";
@@ -1524,7 +1524,12 @@ export async function runAssistantJob(
       );
       return;
     }
-    const ai = await resolveAi();
+    const ai = await resolveUserAi(user.id, jobId, async (message) => {
+      await pool.query(
+        "UPDATE ai_jobs SET progress=$2 WHERE id=$1 AND user_id=$3",
+        [jobId, { label: message }, user.id],
+      );
+    });
     if (!ai) throw new Error("The AI assistant is not set up yet.");
     principal = await principalFor(user, request, jobId);
     const recordSources = (value: unknown, targets?: string[]) =>

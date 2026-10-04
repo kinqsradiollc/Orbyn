@@ -1,3 +1,7 @@
+import {
+  claimChatgptInference,
+  finishChatgptInference,
+} from "./chatgpt-inference.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -13,6 +17,7 @@ import {
   chatgptLeaseRenewal,
   chatgptCatalogPublication,
   chatgptExecutorList,
+  chatgptInferencePublication,
 } from "@orbyn/core";
 import { authenticateSessionBinding } from "../../lib/auth.js";
 import { strictRateLimit, writeRateLimit } from "../../lib/params.js";
@@ -30,6 +35,28 @@ import { listChatgptExecutors } from "./chatgpt-model-catalog.js";
 
 /** Credential-free proofs/publications require the exact first-party device session. */
 export async function chatgptExecutorRoutes(app: FastifyInstance) {
+  app.post(
+    "/ai/connections/chatgpt/inference/claim",
+    writeRateLimit,
+    async (r, reply) => {
+      const session = await authenticateSessionBinding(r);
+      const body = z.object({ executor_id: z.uuid() }).strict().parse(r.body);
+      reply.header("Cache-Control", "no-store");
+      return claimChatgptInference(session, body.executor_id);
+    },
+  );
+  app.post(
+    "/ai/connections/chatgpt/inference/result",
+    { ...writeRateLimit, bodyLimit: 5 * 1024 * 1024 },
+    async (r, reply) => {
+      const session = await authenticateSessionBinding(r);
+      reply.header("Cache-Control", "no-store");
+      return finishChatgptInference(
+        session,
+        chatgptInferencePublication.parse(r.body),
+      );
+    },
+  );
   app.get(
     "/ai/connections/chatgpt/executors",
     strictRateLimit,

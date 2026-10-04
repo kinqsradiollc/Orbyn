@@ -162,6 +162,34 @@ async function createChatgptModelRuntime({
       options.onReceipt?.({ model: chosen.model.slug, usage });
       return result;
     },
+    /** Server-assigned requests keep their captured model; this method never crosses IPC. */
+    async completeAssigned(model, request, options = {}) {
+      const { chatgptModel } = await import("@orbyn/core");
+      const slug = chatgptModel.shape.slug.parse(model);
+      const signal = AbortSignal.any([
+        lifetime.signal,
+        AbortSignal.timeout(120000),
+        ...(options.signal ? [options.signal] : []),
+      ]);
+      await live();
+      let usage = null;
+      const text = await transport.complete(
+        {
+          model: slug,
+          input: request.input,
+          instructions: request.instructions,
+        },
+        {
+          signal,
+          onUsage: (value) => {
+            usage = value;
+          },
+        },
+      );
+      await live();
+      signal.throwIfAborted();
+      return { text, usage };
+    },
     close() {
       closed = true;
       lifetime.abort();

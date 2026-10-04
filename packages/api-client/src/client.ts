@@ -38,6 +38,10 @@ import {
   chatgptConnectionList,
   type ChatgptConnectionStart,
   chatgptConnectRequestStart,
+  aiProviderChoice,
+  aiProviderChoiceInput,
+  chatgptInferenceAssignment,
+  chatgptInferencePublication,
   chatgptConnectRequestState,
   type ChatgptConnectionFinish,
   HttpError,
@@ -1382,6 +1386,20 @@ export class OrbynClient {
   projectChats(projectId: string) {
     return this.request<AiChatSummary[]>(`/ai/projects/${projectId}/chats`);
   }
+  async aiProviderChoice(signal?: AbortSignal) {
+    return aiProviderChoice.parse(
+      await this.request("/ai/provider-choice", { fresh: true, signal }),
+    );
+  }
+  async saveAiProviderChoice(input: unknown, signal?: AbortSignal) {
+    return aiProviderChoice.parse(
+      await this.request("/ai/provider-choice", {
+        method: "PUT",
+        body: aiProviderChoiceInput.parse(input),
+        signal,
+      }),
+    );
+  }
   async startChatgptConnectRequest(signal?: AbortSignal) {
     return chatgptConnectRequestStart.parse(
       await this.request("/ai/connections/chatgpt/connect-requests", {
@@ -1398,6 +1416,20 @@ export class OrbynClient {
         signal,
       }),
     );
+  }
+  async claimChatgptInference(executorId: string, signal?: AbortSignal) {
+    const result = await this.request(
+      "/ai/connections/chatgpt/inference/claim",
+      { method: "POST", body: { executor_id: executorId }, signal },
+    );
+    return result === null ? null : chatgptInferenceAssignment.parse(result);
+  }
+  finishChatgptInference(publication: unknown, signal?: AbortSignal) {
+    return this.request("/ai/connections/chatgpt/inference/result", {
+      method: "POST",
+      body: chatgptInferencePublication.parse(publication),
+      signal,
+    });
   }
   pendingChatgptConnectRequests(signal?: AbortSignal) {
     return this.request<{ id: string; expires_at: string }[]>(

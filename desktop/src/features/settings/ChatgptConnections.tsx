@@ -1,3 +1,4 @@
+import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { useId, useState } from "react";
 import { Plus, RefreshCw, Sparkles } from "lucide-react";
 import { CHATGPT_USAGE_URL, type ChatgptDesktopCommand } from "@orbyn/core";
@@ -55,6 +56,17 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
         <ChatgptRemoteModels userId={userId} />
       ) : (
         <>
+          <AiProviderChoiceControls
+            userId={userId}
+            selection={
+              connection?.selection?.executor
+                ? {
+                    connection_id: connection.selection.executor.connection_id,
+                    executor_id: connection.selection.executor.executor_id,
+                  }
+                : null
+            }
+          />
           <div className="settings-head ai-connection-heading">
             <div>
               <h3>ChatGPT</h3>

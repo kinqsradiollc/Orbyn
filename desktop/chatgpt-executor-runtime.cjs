@@ -5,6 +5,7 @@ async function createChatgptExecutorRuntime({
   signer,
   models,
   complete,
+  completeAssigned,
   requireLiveConnection,
 }) {
   const {
@@ -23,6 +24,7 @@ async function createChatgptExecutorRuntime({
   let closed = false,
     enrollment = null,
     lease = null;
+  let executing = false;
   let heartbeatSequence = 0,
     catalogSequence = 0;
   let tail = Promise.resolve();
@@ -191,6 +193,129 @@ async function createChatgptExecutorRuntime({
       )
         throw new Error("The ChatGPT executor lease changed during inference.");
       return text;
+    },
+    /** Claims a server-owned task once; heartbeats remain free to renew during model work. */
+    async executeNext(signal) {
+      if (executing) return { processed: false };
+      executing = true;
+      try {
+        await live();
+        if (!lease || typeof completeAssigned !== "function")
+          throw new Error("The inference runtime is unavailable.");
+        const captured = validateLease(lease);
+        const task = await client.claimChatgptInference(
+          captured.executor_id,
+          signals(signal),
+        );
+        await live();
+        if (!task) return { processed: false };
+        const { chatgptInferenceAssignment } = await import("@orbyn/core");
+        const assigned = chatgptInferenceAssignment.parse(task);
+        const current = validateLease(lease);
+        const hash = require("node:crypto")
+          .createHash("sha256")
+          .update(
+            JSON.stringify({
+              binding: assigned.binding,
+              model: assigned.model,
+              payload: assigned.payload,
+              job_id: assigned.job_id,
+            }),
+          )
+          .digest("hex");
+        if (
+          !same(assigned.binding) ||
+          assigned.executor_id !== current.executor_id ||
+          assigned.enrollment_epoch !== current.enrollment_epoch ||
+          assigned.lease_epoch !== current.lease_epoch ||
+          assigned.request_hash !== hash ||
+          Date.parse(assigned.expires_at) <= Date.now()
+        )
+          throw new Error("The inference assignment changed.");
+        const deadline = AbortSignal.timeout(
+          Math.max(
+            1,
+            Math.min(120000, Date.parse(assigned.expires_at) - Date.now()),
+          ),
+        );
+        const combined = AbortSignal.any([
+          lifetime.signal,
+          deadline,
+          ...(signal ? [signal] : []),
+        ]);
+        let result;
+        try {
+          const done = await completeAssigned(
+            assigned.model,
+            assigned.payload,
+            { signal: combined },
+          );
+          combined.throwIfAborted();
+          result = {
+            status: "completed",
+            text: done.text,
+            usage: done.usage ?? null,
+          };
+        } catch (error) {
+          const code =
+            typeof error.providerCode === "string" &&
+            /^[A-Za-z0-9_-]{1,128}$/.test(error.providerCode)
+              ? error.providerCode
+              : null;
+          const status =
+            Number.isInteger(error.status) &&
+            error.status >= 100 &&
+            error.status <= 599
+              ? error.status
+              : null;
+          result = {
+            status: "failed",
+            reason:
+              code === "subscription_sharing_user_not_eligible"
+                ? "eligibility"
+                : code === "subscription_sharing_usage_limit_exceeded"
+                  ? "usage_limit"
+                  : code === "subscription_sharing_usage_unavailable"
+                    ? "unavailable"
+                    : status === 401 || status === 403
+                      ? "permission"
+                      : combined.aborted
+                        ? "interrupted"
+                        : "unknown",
+            phase:
+              status === 200
+                ? "stream"
+                : status !== null
+                  ? "admission"
+                  : "unknown",
+            http_status: status,
+            provider_code: code,
+          };
+        }
+        await live();
+        const after = validateLease(lease);
+        if (
+          after.enrollment_epoch !== assigned.enrollment_epoch ||
+          after.lease_epoch !== assigned.lease_epoch
+        )
+          throw new Error("The inference lease changed.");
+        const publication = await signer.signInference({
+          request_id: assigned.id,
+          executor_id: assigned.executor_id,
+          binding: assigned.binding,
+          enrollment_epoch: assigned.enrollment_epoch,
+          lease_epoch: assigned.lease_epoch,
+          model: assigned.model,
+          nonce: assigned.nonce,
+          request_hash: assigned.request_hash,
+          result,
+        });
+        await live();
+        await client.finishChatgptInference(publication, signals(signal));
+        return { processed: true };
+      } finally {
+        executing = false;
+      }
     },
     close() {
       closed = true;

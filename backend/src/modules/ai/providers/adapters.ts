@@ -8,6 +8,11 @@ import {
 /** Everything needed to call one provider with one model. */
 export type ResolvedAi = {
   kind: string;
+  /** Credential-free, internal device transport; never serialized into a client request. */
+  textTransport?: (
+    messages: ChatMessage[],
+    signal: AbortSignal,
+  ) => Promise<string>;
   format: AiRequestFormat;
   baseUrl: string;
   apiKey: string;
@@ -262,6 +267,7 @@ export async function complete(
     );
   const signal =
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
+  if (ai.textTransport) return ai.textTransport(messages, signal);
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => m.content)

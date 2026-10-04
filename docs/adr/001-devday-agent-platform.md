@@ -2,6 +2,22 @@
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
 
+### Current ChatGPT checkpoint — 4 October 2026
+
+`codex/chatgpt-execution` adds private signed device dispatch, personal provider
+choice and explicit default-provider fallback. A queued request captures the
+provider consent revision; changing that choice fences claim, publication and
+read. Only a known admission rejection can use fallback. Partial or unknown
+completion cannot be retried through another billing provider. Connect starts
+authorization directly; the local callback flow still requires a running Orbyn
+runtime. MCP permissions and plugin calls remain separate.
+
+Focused routing/security checks pass; this candidate is not production-qualified
+or merged. Full-suite stability, real-account inference and measured usage display,
+cross-client visual acceptance and the full governing C1-C6/M1/D1/U1 contract
+remain required. Current evidence and limitations are recorded in
+[the task handoff](../reviews/task.md#chatgpt-dispatch-and-provider-choice-candidate--4-october-2026).
+
 ## Context and scope
 
 The user authorized implementation of the revised DevDay plan with production checkpoints on main. Voice, computer use and the speculative Decisions API integration are excluded. The existing durable assistant, source visibility, approvals, receipts, Docs and managed connections remain the foundation. The governing acceptance contract is [the revised implementation review](../reviews/devday-2026-implementation-review.md), including M1, D1 and U1. No removed feature is required to finish this ADR's scope.

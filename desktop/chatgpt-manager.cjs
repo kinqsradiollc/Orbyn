@@ -71,6 +71,7 @@ async function createChatgptManager({
           "The credential-owning device is unavailable. Reconnect or retry.",
       };
     cancelSchedule(ctx.active.timer);
+    cancelSchedule(ctx.active.inferenceTimer);
     ctx.active.unsubscribe?.();
     ctx.active.models.close();
     ctx.active.executor.close();
@@ -223,7 +224,12 @@ async function createChatgptManager({
           selected: value.registrationId === selection.registrationId,
           sharing_granted: ctx.grants.get(value.registrationId) ?? null,
         })),
-      selection,
+      selection: {
+        ...selection,
+        ...(ctx.active?.executorSelection
+          ? { executor: ctx.active.executorSelection }
+          : {}),
+      },
       catalog,
       error: ctx.error,
       ...(ctx.active?.verification
@@ -299,6 +305,7 @@ async function createChatgptManager({
         signer,
         models: models.models,
         complete: models.completeDefault,
+        completeAssigned: models.completeAssigned,
         requireLiveConnection: live,
       });
       const active = {
@@ -316,10 +323,36 @@ async function createChatgptManager({
       const started = await executor.start(ctx.lifetime.signal);
       await live();
       serverSelection = started.selection;
+      active.executorSelection = started.selection;
       await models.picker.load();
       await live();
       if (models.picker.snapshot().status !== "ready")
         throw new Error("ChatGPT models could not be loaded.");
+      const processInference = async () => {
+        if (
+          ctx !== context ||
+          ctx.active !== active ||
+          ctx.lifetime.signal.aborted
+        )
+          return;
+        try {
+          await executor.executeNext(ctx.lifetime.signal);
+        } catch {
+          /* Terminal request failure or fenced assignment never retries inference. */
+        }
+        if (
+          ctx === context &&
+          ctx.active === active &&
+          !ctx.lifetime.signal.aborted
+        ) {
+          active.inferenceTimer = schedule(processInference, 5000);
+          active.inferenceTimer?.unref?.();
+        }
+      };
+      if (typeof ctx.client.claimChatgptInference === "function") {
+        active.inferenceTimer = schedule(processInference, 5000);
+        active.inferenceTimer?.unref?.();
+      }
       const pulse = async () => {
         if (ctx !== context || ctx.active !== active) return;
         try {
