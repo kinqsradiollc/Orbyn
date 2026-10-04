@@ -45,6 +45,24 @@ const onIdleError = (which: string) => (error: Error) =>
       message: error.message,
     }),
   );
+// A checked-out client can lose its socket while an async transaction callback
+// is between queries. pg's idle-pool handler has been removed at that point.
+// Observe transport errors on every connection; subsequent queries still reject
+// and no transaction is retried or reported successful.
+const observeCheckedOut = (which: string) => (client: pg.PoolClient) => {
+  client.on("error", (error: Error) => {
+    console.error(
+      JSON.stringify({
+        event: "db_connection_error",
+        pool: which,
+        message: error.message,
+      }),
+    );
+  });
+};
+pool.on("connect", observeCheckedOut("primary"));
+if (readPool !== pool) readPool.on("connect", observeCheckedOut("replica"));
+
 pool.on("error", onIdleError("primary"));
 if (readPool !== pool) readPool.on("error", onIdleError("replica"));
 
@@ -66,7 +84,7 @@ export async function transaction<T>(fn: (db: Db) => Promise<T>): Promise<T> {
     await db.query("COMMIT");
     return result;
   } catch (error) {
-    await db.query("ROLLBACK");
+    await db.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
     db.release();
