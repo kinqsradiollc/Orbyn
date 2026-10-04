@@ -26,6 +26,7 @@ import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { resolveAi } from "./providers/resolve.js";
+import { assistantProviderCapabilities } from "./providers/admission.js";
 import { complete } from "./providers/adapters.js";
 import { beginChatTurn, resolveChatScope } from "./chats.js";
 import { type AgentContext, getItem } from "./agent/tools.js";
@@ -211,12 +212,8 @@ export async function aiRoutes(app: FastifyInstance) {
     ).rows;
   });
   app.get("/ai/capabilities", async (r) => {
-    await authenticate(r);
-    const provider = await resolveAi();
-    return {
-      enabled: !!provider,
-      tools: !!provider && !provider.structuredOutput,
-    };
+    const u = await authenticate(r);
+    return assistantProviderCapabilities(u.id);
   });
   // Draft a project from a prompt: a set of subtasks with estimates and due
   // dates, returned as a proposal to review — nothing is saved until applied.
@@ -306,10 +303,10 @@ export async function aiRoutes(app: FastifyInstance) {
     } catch {
       fail(422, "Unknown timezone");
     }
-    if (!(await resolveAi()))
+    if (!(await assistantProviderCapabilities(u.id)).enabled)
       fail(
         503,
-        "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
+        "Choose an available provider in Settings → AI connections & models. Reconnect ChatGPT or ask an admin to configure Orbyn's default provider.",
       );
     const submission = {
       ...d,

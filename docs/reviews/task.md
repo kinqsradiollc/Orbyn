@@ -1498,3 +1498,38 @@ Control links now share button styling without browser-default blue/underline.
 The native tool stopped responding during plan verification; completed live
 inference, refresh/revocation, actual assistant receipts/usage and mobile/web
 connected acceptance remain unproven. No production/main promotion is claimed.
+
+### Personal chat admission and visible recovery errors — 5 October 2026
+
+The notice-query checkpointcbbea304 passed2731/2731 full local checks with no
+skips in `/tmp/orbyn-notification-guard-full-tests.log`. CI37203144839 passed all
+backend/web, mobile, Docker/live smoke and mail jobs. Production build passed
+in `/tmp/orbyn-notification-guard-production-build.log`. This qualifies that
+source; subsequent changes require fresh qualification.
+
+Live preview inspection exposed a separate admission defect: chat submission
+and capabilities still required managed workspace configuration before the
+personal resolver could run. Both now consult the owner's selected provider.
+A selected ChatGPT binding can enqueue without a managed provider. Missing or
+revoked bindings cannot admit through default billing without explicit fallback.
+Dispatch still performs current identity/catalog/lease/model/source checks and
+captured-choice fencing. No readiness/entitlement is invented at admission.
+
+An HTTP regression proves202 enqueue and captured personal choice with no managed
+provider, plus401/403/422/429 shields and idempotent replay. Broker, admission,
+plan transport, desktop bridge/store checks pass50/50, no skips, in
+`/tmp/orbyn-chatgpt-admission-recovery-final-tests.log`, using the separately marked
+`orbyn_admission_cbbea304_test` database. Workspace types pass in
+`/tmp/orbyn-chatgpt-admission-action-types.log`.
+
+Fixed safe plan recovery messages now cross desktop IPC; arbitrary provider text,
+mutated Error.message and request IDs remain excluded. Routine metadata reload
+preserves an action failure for the same owner instead of immediately hiding it.
+A new successful action or owner/session change clears it. Actual plan permission
+and model discovery remain distinct from a completed verification/inference.
+
+Open routing work includes safe Background deferral when its private runtime is
+absent without fallback, actual completed assistant inference/receipts/usage,
+non-chat first-party AI features that still use managed adapters, maintained-page
+private execution and the remaining full ADR/platform acceptance. Plugin/MCP
+calls retain their separate provider and grant boundaries. Main is unchanged.

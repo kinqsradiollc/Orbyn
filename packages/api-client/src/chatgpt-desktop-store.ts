@@ -1,3 +1,4 @@
+import { safeChatgptActionError } from "./chatgpt-plan.js";
 import {
   chatgptDesktopCommand,
   chatgptDesktopState,
@@ -116,7 +117,15 @@ export class ChatgptDesktopStore {
       );
       if (this.closed || generation !== this.generation || read !== this.reads)
         return;
-      this.publish({ ...this.state, status: "ready", connection, error: null });
+      this.publish({
+        ...this.state,
+        status: "ready",
+        connection,
+        error:
+          this.state.connection?.user_id === connection.user_id
+            ? this.state.error
+            : null,
+      });
     } catch {
       if (this.closed || generation !== this.generation || read !== this.reads)
         return;
@@ -161,7 +170,7 @@ export class ChatgptDesktopStore {
             ? "Disconnected on this device. Remote revocation was not confirmed; you can remove Orbyn in ChatGPT Settings."
             : null,
       });
-    } catch {
+    } catch (error) {
       if (
         this.closed ||
         generation !== this.generation ||
@@ -176,14 +185,9 @@ export class ChatgptDesktopStore {
         request !== this.commands
       )
         return;
-      this.publish({
-        ...this.state,
-        error:
-          "ChatGPT could not complete this action. Retry or reconnect this account.",
-      });
-      throw new Error(
-        "ChatGPT could not complete this action. Retry or reconnect this account.",
-      );
+      const message = safeChatgptActionError(error);
+      this.publish({ ...this.state, error: message });
+      throw new Error(message);
     }
   }
   close() {

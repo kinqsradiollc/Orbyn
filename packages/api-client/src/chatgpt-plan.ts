@@ -42,6 +42,41 @@ export class ChatgptPlanError extends Error {
     this.name = "ChatgptPlanError";
   }
 }
+const CHATGPT_ACTION_FAILURE =
+  "ChatGPT could not complete this action. Retry or reconnect this account.";
+const SAFE_ACTION_MESSAGES = new Set([
+  CHATGPT_ACTION_FAILURE,
+  ...[
+    [429, "subscription_sharing_usage_limit_exceeded"],
+    [403, "subscription_sharing_user_not_eligible"],
+    [503, "subscription_sharing_usage_unavailable"],
+    [401, null],
+    [429, null],
+    [500, null],
+  ].map(
+    ([status, code]) =>
+      new ChatgptPlanError(status as number, code as string | null, null)
+        .message,
+  ),
+  "Choose a ChatGPT default model first.",
+  "Choose an available ChatGPT default model before continuing.",
+  "This model is unavailable for the selected ChatGPT account.",
+  "ChatGPT plan verification did not complete.",
+  "ChatGPT did not return a response stream.",
+  "ChatGPT sent an invalid stream event.",
+  "ChatGPT did not complete the response.",
+  "ChatGPT disconnected before completing the response.",
+]);
+/** Only fixed recovery messages cross IPC; arbitrary provider text is never reflected. */
+export function safeChatgptActionError(error: unknown): string {
+  if (error instanceof ChatgptPlanError)
+    return new ChatgptPlanError(error.status, error.providerCode, null).message;
+  const prefix = "Error invoking remote method 'orbyn:chatgpt': Error: ";
+  const raw = error instanceof Error ? error.message : "";
+  const message = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+  return SAFE_ACTION_MESSAGES.has(message) ? message : CHATGPT_ACTION_FAILURE;
+}
+
 const safeCode = (value: unknown) =>
   typeof value === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(value)
     ? value

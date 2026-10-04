@@ -985,3 +985,93 @@ test("fallback calls the configured provider only for explicit consent and confi
     );
   }
 });
+
+test("ChatGPT-selected chat admission and capabilities work without a workspace provider", async () => {
+  const { buildApp } = await import("../src/app.js");
+  const { digest } = await import("../src/lib/auth.js");
+  const f = await fixture(false);
+  const token = randomUUID();
+  await pool.query("UPDATE sessions SET token_hash=$2 WHERE id=$1", [
+    f.binding.sessionId,
+    digest(token),
+  ]);
+  const saved = (
+    await pool.query("SELECT provider_id,model FROM ai_settings WHERE id")
+  ).rows[0];
+  await pool.query("UPDATE ai_settings SET provider_id=NULL,model='' WHERE id");
+  const app = await buildApp();
+  const headers = { authorization: `Bearer ${token}` };
+  try {
+    assert.equal(
+      (await app.inject({ method: "GET", url: "/ai/capabilities" })).statusCode,
+      401,
+    );
+    const capabilities = await app.inject({
+      method: "GET",
+      url: "/ai/capabilities",
+      headers,
+    });
+    assert.equal(capabilities.statusCode, 200);
+    assert.deepEqual(capabilities.json(), { enabled: true, tools: false });
+    const payload = {
+      message: "Reply with a short test answer.",
+      timezone: "UTC",
+      chat_id: randomUUID(),
+      turn_id: randomUUID(),
+    };
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/ai/chat/start",
+          headers,
+          payload: { message: 12 },
+        })
+      ).statusCode,
+      422,
+    );
+    const admitted = await app.inject({
+      method: "POST",
+      url: "/ai/chat/start",
+      headers,
+      payload,
+    });
+    assert.equal(admitted.statusCode, 202, admitted.body);
+    const snapshot = (
+      await pool.query(
+        "SELECT provider_choice_snapshot FROM ai_jobs WHERE id=$1",
+        [admitted.json().id],
+      )
+    ).rows[0].provider_choice_snapshot;
+    assert.equal(snapshot.primary, "chatgpt");
+    assert.equal(snapshot.fallback_to_default, false);
+    let limited = false;
+    for (let i = 0; i < 12; i++) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/ai/chat/start",
+        headers,
+        payload,
+      });
+      if (response.statusCode === 429) {
+        limited = true;
+        break;
+      }
+      assert.equal(response.statusCode, 202, response.body);
+      assert.equal(response.json().id, admitted.json().id);
+    }
+    assert.ok(limited, "personal routing retains the route rate limit");
+    await pool.query("UPDATE users SET disabled=true WHERE id=$1", [f.owner]);
+    assert.equal(
+      (await app.inject({ method: "GET", url: "/ai/capabilities", headers }))
+        .statusCode,
+      403,
+    );
+  } finally {
+    await app.close();
+    await pool.query(
+      "UPDATE ai_settings SET provider_id=$1,model=$2 WHERE id",
+      [saved.provider_id, saved.model],
+    );
+  }
+});
