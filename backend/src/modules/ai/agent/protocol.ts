@@ -465,7 +465,11 @@ async function jsonStep(
         choices: [
           {
             message: {
-              content: await ai.textTransport(protocolMessages, signal),
+              content: await ai.textTransport(
+                protocolMessages,
+                signal,
+                ai.operationId,
+              ),
             },
             finish_reason: "stop",
           },

@@ -1402,3 +1402,50 @@ operation-level constraint, with separate queued work for each specialist.
 Do not use payload equality alone as operation identity or replay a charge after
 unknown completion/expired envelope cleanup. Actual provider/fallback provenance,
 current full/CI, real-account acceptance and connected-layout checks remain open.
+
+### Private operation recovery and parallel dispatch — 4 October 2026
+
+Migration232 replaces per-job active uniqueness with durable per-operation
+identity. Each private loop persists a UUID before dispatch, freezes its exact
+wire messages, and saves received/parsed replies and its finished result.
+Recovery retains the original budget reservation and does not count the pending
+lead step again. Finished context hashes match the bounded checkpoint projection;
+a new person answer invalidates the finished-loop cache rather than repeating the
+same question forever. Separate specialists share an adapter but have distinct
+operation IDs and assignments.
+
+The broker serializes creation per operation and returns the original assignment
+on replay. Accepted output can recover with the device offline. Expired undisclosed
+queued work becomes a known admission failure; claimed/unknown work cannot silently
+switch provider. Fallback is marked before its managed call, and a missing result
+holds the original operation instead of repeating a possible charge. Received
+fallback output is encrypted for recovery. Active request envelopes survive their
+dispatch deadline for saved-run recovery; expired inactive envelopes are swept.
+Content-free operation tombstones survive envelope deletion and follow job
+retention. Existing beta private jobs without operation evidence are held, not
+silently retried. Privacy text reflects this retention.
+
+Actual marked-database and child-process tests include SIGKILL after a signed
+reply is accepted but before the loop saves it. Recovery, with the device offline,
+uses one physical request and one usage record. The same suite exercises parallel
+loops reaching separate signed assignments and independently replaying their saved
+results. Process/broker checks14/14 pass in
+`/tmp/orbyn-private-process-recovery-tests.log`. Loop reservation/cache/context
+checks5/5 pass in `/tmp/orbyn-private-budget-tests.log`.
+
+The initial broader run failed74/75: its sixty-poll presence check took over11s,
+crossing the real10s grace interval, while asserting the row never changed. No
+test assertion or production interval was altered. An isolated normal-settings
+rerun passed (684ms for sixty polls;62ms under the runner lock) in
+`/tmp/orbyn-private-presence-isolated.log`. The subsequent assistant/broker/loop
+rerun passed59/59 in `/tmp/orbyn-private-parallel-final-tests.log`. Final combined
+assistant/process recovery/broker/loop/legal/sweeper checks pass83/83, no skips,
+in `/tmp/orbyn-private-operation-checkpoint-tests.log`. Final workspace types pass
+in `/tmp/orbyn-private-operation-checkpoint-types.log`; production build passes
+in `/tmp/orbyn-private-recovery-build.log`. This is focused evidence, not a fresh
+full-suite/CI result for this source.
+
+Remaining M1 release gates include actual provider/fallback provenance in the
+user-visible result, fresh current full/CI, real-account acceptance and connected
+large-catalog visual checks. Native desktop sign-in and the refreshed iOS agreement
+remain pending Computer Use confirmations. Full governing ADR scope remains active.

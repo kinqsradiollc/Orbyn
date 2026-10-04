@@ -10,10 +10,13 @@ export type ResolvedAi = {
   kind: string;
   /** Internal authority check before dispatch; never supplied by an HTTP caller. */
   assertAuthority?: () => Promise<void>;
+  /** Durable private-call slot; per-loop copies prevent cross-specialist mutation. */
+  operationId?: string;
   /** Credential-free, internal device transport; never serialized into a client request. */
   textTransport?: (
     messages: ChatMessage[],
     signal: AbortSignal,
+    operationId?: string,
   ) => Promise<string>;
   format: AiRequestFormat;
   baseUrl: string;
@@ -271,7 +274,8 @@ export async function complete(
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
   await ai.assertAuthority?.();
   signal.throwIfAborted();
-  if (ai.textTransport) return ai.textTransport(messages, signal);
+  if (ai.textTransport)
+    return ai.textTransport(messages, signal, ai.operationId);
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => m.content)

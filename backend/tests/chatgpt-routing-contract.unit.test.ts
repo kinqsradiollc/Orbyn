@@ -46,7 +46,5 @@ test("chat loop uses user routing; only known admission failures can change bill
     new URL("../src/modules/ai/agent/protocol.ts", import.meta.url),
     "utf8",
   );
-  assert.ok(
-    protocol.includes("await ai.textTransport(protocolMessages, signal)"),
-  );
+  assert.ok(protocol.includes("ai.operationId"));
 });

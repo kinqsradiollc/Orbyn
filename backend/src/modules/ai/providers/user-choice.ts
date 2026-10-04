@@ -1,10 +1,13 @@
 import { readJobAiProviderChoice } from "../../auth/ai-provider-choice.js";
 import {
   queueChatgptInference,
-  readChatgptInference,
+  readChatgptOperation,
+  beginChatgptFallback,
+  finishChatgptFallback,
+  readCachedChatgptFallback,
+  assertChatgptJobAccess,
   cancelChatgptInference,
 } from "../../auth/chatgpt-inference.js";
-import { readChatgptCatalogLocked } from "../../auth/chatgpt-model-catalog.js";
 import { transaction } from "../../../db/pool.js";
 import { resolveAi } from "./resolve.js";
 import { fail } from "@orbyn/core";
@@ -63,52 +66,72 @@ export async function resolveUserAi(
     );
     return { ...ai, assertAuthority: unchanged };
   };
-  if (!choice.connection_id || !choice.executor_id)
-    return useDefault("Your ChatGPT connection is unavailable.");
-  let catalog;
-  try {
-    catalog = await transaction(async (db) => {
-      const e = (
-        await db.query(
-          "SELECT session_id FROM chatgpt_executor_enrollments WHERE id=$1 AND connection_id=$2",
-          [choice.executor_id, choice.connection_id],
-        )
-      ).rows[0];
-      if (!e) fail(503, "The ChatGPT device is unavailable.");
-      return readChatgptCatalogLocked(
-        db,
-        { userId, sessionId: e.session_id },
-        {
-          executor_id: choice.executor_id!,
-          connection_id: choice.connection_id!,
-        },
-        false,
-        true,
-      );
-    });
-  } catch (error) {
-    const status = (error as { statusCode?: number }).statusCode;
-    if (status !== 404 && status !== 503) throw error;
-    return useDefault("Your ChatGPT device is unavailable.");
-  }
-  if (catalog.status !== "ready" || !catalog.preference.model)
-    return useDefault("Your ChatGPT device or default model is unavailable.");
-  const model = catalog.preference.model;
+  const preferred = choice.connection_id
+    ? await transaction(
+        async (db) =>
+          (
+            await db.query(
+              "SELECT model FROM chatgpt_model_preferences WHERE connection_id=$1",
+              [choice.connection_id],
+            )
+          ).rows[0]?.model as string | null | undefined,
+      )
+    : null;
+  if (choice.connection_id && choice.executor_id && !preferred)
+    throw new ProviderError(
+      "chatgpt_model_unavailable",
+      "Choose a ChatGPT default model before starting a fresh request.",
+    );
+  const initialFallback =
+    !choice.connection_id || !choice.executor_id
+      ? await useDefault("Your ChatGPT connection is unavailable.")
+      : null;
+  const model = preferred ?? initialFallback!.model;
+  const fallback = async (
+    messages: ChatMessage[],
+    signal: AbortSignal,
+    operationId: string,
+    reason: string,
+  ) => {
+    const cached = await readCachedChatgptFallback(userId, jobId, operationId);
+    if (cached) return cached.text;
+    const managed = await useDefault(reason);
+    await beginChatgptFallback(userId, jobId, operationId);
+    const { complete } = await import("./adapters.js");
+    const text = await complete(managed, messages, { signal });
+    await finishChatgptFallback(userId, jobId, operationId, text);
+    return text;
+  };
   return {
     kind: "chatgpt_plan",
-    assertAuthority: unchanged,
+    assertAuthority: async () => {
+      await unchanged();
+      await assertChatgptJobAccess(userId, jobId);
+    },
     format: "openai",
     baseUrl: "",
     apiKey: "",
     model,
     source: "database",
     options: {},
-    providerId: choice.executor_id,
+    providerId: choice.executor_id ?? undefined,
     providerRevision: String(choice.version),
     structuredOutput: "json_schema",
-    textTransport: async (messages: ChatMessage[], signal: AbortSignal) => {
+    textTransport: async (
+      messages: ChatMessage[],
+      signal: AbortSignal,
+      operationId?: string,
+    ) => {
       await unchanged();
       signal.throwIfAborted();
+      if (!operationId) fail(409, "A durable model-call identity is required.");
+      if (!choice.connection_id || !choice.executor_id)
+        return fallback(
+          messages,
+          signal,
+          operationId,
+          "Your ChatGPT connection is unavailable.",
+        );
       const instructions = messages
         .filter((m) => m.role === "system")
         .map((m) => m.content)
@@ -131,19 +154,23 @@ export async function resolveUserAi(
           { instructions, input },
           model,
           choice.version,
+          operationId,
         );
       } catch (error) {
         // Enqueue rolled back: no device received input and no upstream request started.
         if ((error as { statusCode?: number }).statusCode !== 503) throw error;
-        const managed = await useDefault("Your ChatGPT device is unavailable.");
-        const { complete } = await import("./adapters.js");
-        return complete(managed, messages, { signal });
+        return fallback(
+          messages,
+          signal,
+          operationId,
+          "Your ChatGPT device is unavailable.",
+        );
       }
       try {
-        while (Date.now() < Date.parse(request.expires_at)) {
+        while (true) {
           await unchanged();
           signal.throwIfAborted();
-          const result = await readChatgptInference(userId, jobId, request.id);
+          const result = await readChatgptOperation(userId, jobId, operationId);
           if (result?.status === "completed") {
             await unchanged();
             return result.text;
@@ -158,20 +185,11 @@ export async function resolveUserAi(
               )
             ) {
               await unchanged();
-              await notice(
-                `Using Orbyn's default provider as your selected fallback (${result.reason}).`,
-              );
-              const { complete } = await import("./adapters.js");
-              const managed = await resolveAi();
-              if (!managed)
-                throw new ProviderError(
-                  "fallback_unavailable",
-                  "Orbyn's default provider is not available.",
-                );
-              return complete(
-                { ...managed, assertAuthority: unchanged },
+              return fallback(
                 messages,
-                { signal },
+                signal,
+                operationId,
+                `ChatGPT ${result.reason}.`,
               );
             }
             throw new ProviderError(
@@ -181,6 +199,7 @@ export async function resolveUserAi(
                 : "ChatGPT could not complete this request.",
             );
           }
+          if (Date.now() >= Date.parse(request.expires_at)) break;
           await wait(signal);
         }
         throw new ProviderError(

@@ -484,9 +484,10 @@ export const SWEEP_RULES: SweepRule[] = [
     key: "chatgpt_inference_requests",
     label: "ChatGPT inference requests",
     detail:
-      "Expired encrypted request/result envelopes; no provider credentials.",
+      "Expired encrypted envelopes after the saved run becomes inactive; active calls retain recovery evidence.",
     table: "chatgpt_inference_requests",
-    where: "expires_at < now()",
+    where:
+      "expires_at < now() AND NOT EXISTS (SELECT 1 FROM ai_jobs recovery_job WHERE recovery_job.id=chatgpt_inference_requests.job_id AND recovery_job.state IN ('queued','running','waiting'))",
     days: 0,
     configurable: false,
   },

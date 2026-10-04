@@ -1,4 +1,5 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { z } from "zod";
 import {
   chatgptInferenceInput,
   chatgptInferenceAssignment,
@@ -52,6 +53,10 @@ async function jobLive(db: Db, owner: string, id: string) {
   if (!job.rowCount) fail(409, "The assistant job or its sources changed.");
   await assertJobAiProviderChoice(db, owner, id);
 }
+/** Cached loop replies still require current producing-source authority. */
+export async function assertChatgptJobAccess(owner: string, jobId: string) {
+  return transaction((db) => jobLive(db, owner, jobId));
+}
 async function device(db: Db, owner: string, selection: Selection) {
   const row = (
     await db.query(
@@ -90,7 +95,9 @@ export async function queueChatgptInference(
   input: unknown,
   expectedModel?: string,
   expectedProviderVersion?: number,
+  operationId: string = randomUUID(),
 ) {
+  z.uuid().parse(operationId);
   if (Buffer.byteLength(JSON.stringify(input)) > 2 * 1024 * 1024)
     fail(400, "The ChatGPT request exceeded its size limit.");
   const payload = chatgptInferenceInput.parse(input);
@@ -103,6 +110,65 @@ export async function queueChatgptInference(
       expectedProviderVersion,
     );
     await jobLive(db, owner, jobId);
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [
+      jobId,
+      operationId,
+    ]);
+    const existing = (
+      await db.query(
+        `SELECT o.state,o.request_id,o.fallback_result_encrypted,r.expires_at,r.request_hash,r.model,r.executor_id,r.connection_id,r.provider_choice_version
+       FROM chatgpt_inference_operations o LEFT JOIN chatgpt_inference_requests r ON r.id=o.request_id
+       WHERE o.job_id=$1 AND o.operation_id=$2 AND o.user_id=$3 FOR UPDATE OF o`,
+        [jobId, operationId, owner],
+      )
+    ).rows[0];
+    if (existing) {
+      if (existing.state === "fallback_started") {
+        if (!existing.fallback_result_encrypted)
+          fail(
+            409,
+            "This fallback has an unknown completion. It was not retried.",
+          );
+        return {
+          id: (existing.request_id ?? operationId) as string,
+          expires_at: new Date().toISOString(),
+        };
+      }
+      if (!existing.request_id || !existing.expires_at)
+        fail(409, "This call has no recoverable response. It was not retried.");
+      if (
+        existing.executor_id !== selection.executor_id ||
+        existing.connection_id !== selection.connection_id ||
+        Number(existing.provider_choice_version) !== providerVersion ||
+        (expectedModel !== undefined && existing.model !== expectedModel)
+      )
+        fail(409, "The captured ChatGPT operation changed.");
+      // Binding identity is unchanged by disconnect; existing completed output needs no new device call.
+      const identity = (
+        await db.query(
+          "SELECT issuer,subject,client_id FROM chatgpt_identity_connections WHERE id=$1 AND user_id=$2",
+          [selection.connection_id, owner],
+        )
+      ).rows[0];
+      if (
+        !identity ||
+        digest({
+          binding: {
+            user_id: owner,
+            connection_id: selection.connection_id,
+            ...identity,
+          },
+          model: existing.model,
+          payload,
+          job_id: jobId,
+        }) !== existing.request_hash
+      )
+        fail(409, "The captured ChatGPT input changed.");
+      return {
+        id: existing.request_id as string,
+        expires_at: existing.expires_at.toISOString() as string,
+      };
+    }
     const { row, catalog } = await device(db, owner, selection);
     const model = catalog.preference.model;
     if (expectedModel !== undefined && model !== expectedModel)
@@ -135,10 +201,143 @@ export async function queueChatgptInference(
         ],
       )
     ).rows[0];
+    await db.query(
+      "INSERT INTO chatgpt_inference_operations(job_id,operation_id,user_id,request_id,state) VALUES($1,$2,$3,$4,'assigned')",
+      [jobId, operationId, owner, result.id],
+    );
     return {
       id: result.id as string,
       expires_at: result.expires_at.toISOString() as string,
     };
+  });
+}
+
+/** Persist before managed fallback: an uncertain fallback can never restart under the same slot. */
+export async function beginChatgptFallback(
+  owner: string,
+  jobId: string,
+  operationId: string,
+) {
+  z.uuid().parse(operationId);
+  return transaction(async (db) => {
+    await jobLive(db, owner, jobId);
+    const choice = await assertJobAiProviderChoice(db, owner, jobId);
+    if (choice.primary !== "chatgpt" || !choice.fallback_to_default)
+      fail(403, "Fallback was not authorized.");
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [
+      jobId,
+      operationId,
+    ]);
+    const row = (
+      await db.query(
+        "SELECT state,request_id FROM chatgpt_inference_operations WHERE job_id=$1 AND operation_id=$2 AND user_id=$3 FOR UPDATE",
+        [jobId, operationId, owner],
+      )
+    ).rows[0];
+    if (row?.state === "fallback_started")
+      fail(409, "This fallback has an unknown completion. It was not retried.");
+    if (row) {
+      const receipt = (
+        await db.query(
+          "SELECT state,result_encrypted FROM chatgpt_inference_requests WHERE id=$1 FOR UPDATE",
+          [row.request_id],
+        )
+      ).rows[0];
+      if (!receipt?.result_encrypted)
+        fail(409, "This private call cannot safely change provider.");
+      const result = chatgptInferenceResult.parse(
+        JSON.parse(await decryptSecret(receipt.result_encrypted)),
+      );
+      if (
+        result.status !== "failed" ||
+        result.phase !== "admission" ||
+        !["eligibility", "usage_limit", "unavailable"].includes(result.reason)
+      )
+        fail(409, "This private call cannot safely change provider.");
+      await db.query(
+        "UPDATE chatgpt_inference_operations SET state='fallback_started' WHERE job_id=$1 AND operation_id=$2",
+        [jobId, operationId],
+      );
+    } else {
+      await db.query(
+        "INSERT INTO chatgpt_inference_operations(job_id,operation_id,user_id,state) VALUES($1,$2,$3,'fallback_started')",
+        [jobId, operationId, owner],
+      );
+    }
+  });
+}
+
+/** A received managed response can recover under the original slot without another request. */
+export async function finishChatgptFallback(
+  owner: string,
+  jobId: string,
+  operationId: string,
+  text: string,
+) {
+  const encrypted = await encryptSecret(
+    JSON.stringify(
+      chatgptInferenceResult.parse({ status: "completed", text, usage: null }),
+    ),
+  );
+  return transaction(async (db) => {
+    await jobLive(db, owner, jobId);
+    const saved = await db.query(
+      "UPDATE chatgpt_inference_operations SET fallback_result_encrypted=$4 WHERE user_id=$1 AND job_id=$2 AND operation_id=$3 AND state='fallback_started' AND fallback_result_encrypted IS NULL RETURNING operation_id",
+      [owner, jobId, operationId, encrypted],
+    );
+    if (!saved.rowCount) fail(409, "The fallback operation changed.");
+  });
+}
+
+export async function readCachedChatgptFallback(
+  owner: string,
+  jobId: string,
+  operationId: string,
+) {
+  return transaction(async (db) => {
+    await jobLive(db, owner, jobId);
+    const row = (
+      await db.query(
+        "SELECT state,fallback_result_encrypted FROM chatgpt_inference_operations WHERE user_id=$1 AND job_id=$2 AND operation_id=$3",
+        [owner, jobId, operationId],
+      )
+    ).rows[0];
+    if (row?.state !== "fallback_started") return null;
+    if (!row.fallback_result_encrypted)
+      fail(409, "This fallback has an unknown completion. It was not retried.");
+    const result = chatgptInferenceResult.parse(
+      JSON.parse(await decryptSecret(row.fallback_result_encrypted)),
+    );
+    if (result.status !== "completed")
+      fail(409, "This fallback did not complete.");
+    return result;
+  });
+}
+
+export async function readChatgptOperation(
+  owner: string,
+  jobId: string,
+  operationId: string,
+) {
+  return transaction(async (db) => {
+    await jobLive(db, owner, jobId);
+    const row = (
+      await db.query(
+        "SELECT request_id,state,fallback_result_encrypted FROM chatgpt_inference_operations WHERE user_id=$1 AND job_id=$2 AND operation_id=$3",
+        [owner, jobId, operationId],
+      )
+    ).rows[0];
+    if (!row) fail(404, "This private operation is unavailable.");
+    if (row.fallback_result_encrypted)
+      return chatgptInferenceResult.parse(
+        JSON.parse(await decryptSecret(row.fallback_result_encrypted)),
+      );
+    if (row.state === "fallback_started" || !row.request_id)
+      fail(
+        409,
+        "This operation has an unknown completion. It was not retried.",
+      );
+    return readChatgptInferenceLocked(db, owner, jobId, row.request_id);
   });
 }
 
@@ -311,24 +510,47 @@ export async function readChatgptInference(
 ) {
   return transaction(async (db) => {
     await jobLive(db, owner, jobId);
-    const row = (
-      await db.query(
-        "SELECT state,result_encrypted,expires_at,executor_id,connection_id,provider_choice_version FROM chatgpt_inference_requests WHERE id=$1 AND user_id=$2 AND job_id=$3",
-        [id, owner, jobId],
-      )
-    ).rows[0];
-    if (!row) fail(404, "This ChatGPT request is unavailable.");
-    if (row.provider_choice_version === null)
-      fail(409, "This ChatGPT request has no current provider consent.");
-    await providerLive(db, owner, row, Number(row.provider_choice_version));
-    if (row.result_encrypted)
-      return chatgptInferenceResult.parse(
-        JSON.parse(await decryptSecret(row.result_encrypted)),
-      );
-    if (row.state === "cancelled" || row.expires_at.getTime() <= Date.now())
-      fail(503, "The ChatGPT request did not complete in time.");
-    return null;
+    return readChatgptInferenceLocked(db, owner, jobId, id);
   });
+}
+async function readChatgptInferenceLocked(
+  db: Db,
+  owner: string,
+  jobId: string,
+  id: string,
+) {
+  const row = (
+    await db.query(
+      "SELECT state,result_encrypted,expires_at,executor_id,connection_id,provider_choice_version FROM chatgpt_inference_requests WHERE id=$1 AND user_id=$2 AND job_id=$3 FOR UPDATE",
+      [id, owner, jobId],
+    )
+  ).rows[0];
+  if (!row) fail(404, "This ChatGPT request is unavailable.");
+  if (row.provider_choice_version === null)
+    fail(409, "This ChatGPT request has no current provider consent.");
+  await providerLive(db, owner, row, Number(row.provider_choice_version));
+  if (row.result_encrypted)
+    return chatgptInferenceResult.parse(
+      JSON.parse(await decryptSecret(row.result_encrypted)),
+    );
+  if (row.state === "queued" && row.expires_at.getTime() <= Date.now()) {
+    const unavailable = chatgptInferenceResult.parse({
+      status: "failed",
+      reason: "unavailable",
+      phase: "admission",
+      http_status: null,
+      provider_code: null,
+    });
+    const encrypted = await encryptSecret(JSON.stringify(unavailable));
+    await db.query(
+      "UPDATE chatgpt_inference_requests SET state='failed',result_encrypted=$2,payload_encrypted='',finished_at=now() WHERE id=$1",
+      [id, encrypted],
+    );
+    return unavailable;
+  }
+  if (row.state === "cancelled" || row.expires_at.getTime() <= Date.now())
+    fail(503, "The ChatGPT request did not complete in time.");
+  return null;
 }
 export async function cancelChatgptInference(owner: string, id: string) {
   return transaction((db) =>

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { randomUUID, generateKeyPairSync, createHash, sign } from "node:crypto";
 import { chatgptInferenceReceiptMessage } from "@orbyn/core";
 import { createServer } from "node:http";
+import { fork, type ChildProcess } from "node:child_process";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const {
@@ -11,6 +12,9 @@ const {
   claimChatgptInference,
   finishChatgptInference,
   readChatgptInference,
+  readChatgptOperation,
+  beginChatgptFallback,
+  finishChatgptFallback,
 } = await import("../src/modules/auth/chatgpt-inference.js");
 const owners: string[] = [];
 before(() => migrate());
@@ -121,6 +125,388 @@ async function fixture(fallback = false) {
   };
 }
 const status = (code: number) => (error: any) => error.statusCode === code;
+
+test("operation replay returns one assignment while distinct specialists can queue concurrently", async () => {
+  const f = await fixture(),
+    operation = randomUUID(),
+    input = { instructions: "same", input: [] };
+  const copies = await Promise.all(
+    [1, 2].map(() =>
+      queueChatgptInference(
+        f.owner,
+        f.job,
+        f.selection,
+        input,
+        "fixture-model",
+        1,
+        operation,
+      ),
+    ),
+  );
+  assert.equal(copies[0].id, copies[1].id);
+  const second = await queueChatgptInference(
+    f.owner,
+    f.job,
+    f.selection,
+    input,
+    "fixture-model",
+    1,
+    randomUUID(),
+  );
+  assert.notEqual(second.id, copies[0].id);
+  const firstClaim = await claimChatgptInference(
+    f.binding,
+    f.selection.executor_id,
+  );
+  const secondClaim = await claimChatgptInference(
+    f.binding,
+    f.selection.executor_id,
+  );
+  assert.ok(firstClaim && secondClaim);
+  assert.notEqual(firstClaim.id, secondClaim.id);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM chatgpt_inference_requests WHERE job_id=$1",
+        [f.job],
+      )
+    ).rows[0].n,
+    2,
+  );
+});
+
+test("parallel durable loops reach separate signed assignments and recover independently", async () => {
+  const f = await fixture();
+  const { resolveUserAi } =
+    await import("../src/modules/ai/providers/user-choice.js");
+  const { runAgent } = await import("../src/modules/ai/agent/loop.js");
+  const ai = await resolveUserAi(f.owner, f.job, async () => {});
+  assert.ok(ai);
+  const controller = new AbortController();
+  const saved: any[] = [];
+  const results = Promise.all(
+    [0, 1].map((index) =>
+      runAgent(
+        ai,
+        {
+          user: { id: f.owner, role: "member" },
+          timezone: "UTC",
+          intentText: "Read",
+          actions: [],
+          clarification: null,
+        },
+        `Independent task ${index}`,
+        [],
+        {},
+        undefined,
+        undefined,
+        {
+          signal: controller.signal,
+          checkpoint: async (state) => {
+            saved[index] = structuredClone(state);
+          },
+        },
+      ),
+    ),
+  );
+  void results.catch(() => {});
+  try {
+    const ids: string[] = [];
+    for (let tries = 0; tries < 100 && ids.length < 2; tries++) {
+      const assigned = await claimChatgptInference(
+        f.binding,
+        f.selection.executor_id,
+      );
+      if (!assigned) {
+        await new Promise((r) => setTimeout(r, 20));
+        continue;
+      }
+      ids.push(assigned.id);
+      await finishChatgptInference(f.binding, f.receipt(assigned));
+    }
+    assert.equal(new Set(ids).size, 2);
+    assert.deepEqual(
+      (await results).map((r) => r.summary),
+      ["Private result", "Private result"],
+    );
+    assert.ok(saved.every((s) => s.finished_result));
+    await Promise.all(
+      saved.map((resume, index) =>
+        runAgent(
+          ai,
+          {
+            user: { id: f.owner, role: "member" },
+            timezone: "UTC",
+            intentText: "Read",
+            actions: [],
+            clarification: null,
+          },
+          `Independent task ${index}`,
+          [],
+          {},
+          undefined,
+          undefined,
+          { resume },
+        ),
+      ),
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM chatgpt_inference_requests WHERE job_id=$1",
+          [f.job],
+        )
+      ).rows[0].n,
+      2,
+    );
+  } finally {
+    controller.abort();
+    await results.catch(() => {});
+  }
+});
+
+test("SIGKILL after accepted private output recovers the same assignment without a second charge", async () => {
+  const f = await fixture();
+  const children: ChildProcess[] = [];
+  const start = (mode: string) => {
+    const child = fork(
+      new URL("./fixtures/chatgpt-loop-process.ts", import.meta.url),
+      [f.owner, f.job, mode],
+      {
+        execArgv: ["--import", "tsx"],
+        stdio: ["ignore", "ignore", "ignore", "ipc"],
+        env: process.env,
+      },
+    );
+    children.push(child);
+    return child;
+  };
+  const message = (child: ChildProcess, stage: string) =>
+    new Promise<any>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timed out awaiting ${stage}`));
+      }, 15000);
+      const onMessage = (value: any) => {
+        if (value.stage === "error") {
+          cleanup();
+          reject(new Error(value.message));
+        } else if (value.stage === stage) {
+          cleanup();
+          resolve(value);
+        }
+      };
+      const onExit = (code: number | null, signal: string | null) => {
+        cleanup();
+        reject(new Error(`Child exited before ${stage}: ${code}/${signal}`));
+      };
+      const cleanup = () => {
+        clearTimeout(timeout);
+        child.off("message", onMessage);
+        child.off("exit", onExit);
+      };
+      child.on("message", onMessage);
+      child.on("exit", onExit);
+    });
+  try {
+    const first = start("hold_raw"),
+      held = message(first, "raw_received");
+    void held.catch(() => {});
+    let assigned = null;
+    for (let n = 0; n < 150 && !assigned; n++) {
+      assigned = await claimChatgptInference(
+        f.binding,
+        f.selection.executor_id,
+      );
+      if (!assigned) await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.ok(assigned);
+    await finishChatgptInference(f.binding, f.receipt(assigned));
+    await held;
+    const killed = new Promise<string | null>((resolve) =>
+      first.once("exit", (_code, signal) => resolve(signal)),
+    );
+    first.kill("SIGKILL");
+    assert.equal(await killed, "SIGKILL");
+    const state = (
+      await pool.query("SELECT run_state FROM ai_jobs WHERE id=$1", [f.job])
+    ).rows[0].run_state;
+    assert.ok(state.loop.pending_provider.wire_messages);
+    assert.equal(state.loop.pending_provider.raw_reply, undefined);
+    await pool.query(
+      "UPDATE chatgpt_executor_leases SET expires_at=now()-interval '1 second' WHERE executor_id=$1",
+      [f.selection.executor_id],
+    );
+    const recovered = start("recover");
+    const result = await message(recovered, "finished");
+    assert.equal(result.summary, "Private result");
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM chatgpt_inference_requests WHERE job_id=$1",
+          [f.job],
+        )
+      ).rows[0].n,
+      1,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT count(*)::int n FROM chatgpt_completed_usage WHERE user_id=$1",
+          [f.owner],
+        )
+      ).rows[0].n,
+      1,
+    );
+  } finally {
+    for (const child of children)
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGTERM");
+  }
+});
+
+test("accepted operation recovery reuses output even after the device goes offline", async () => {
+  const f = await fixture(),
+    operation = randomUUID(),
+    input = { instructions: "", input: [] };
+  const request = await queueChatgptInference(
+    f.owner,
+    f.job,
+    f.selection,
+    input,
+    "fixture-model",
+    1,
+    operation,
+  );
+  const assigned = await claimChatgptInference(
+    f.binding,
+    f.selection.executor_id,
+  );
+  assert.ok(assigned);
+  await finishChatgptInference(f.binding, f.receipt(assigned));
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()-interval '1 second' WHERE executor_id=$1",
+    [f.selection.executor_id],
+  );
+  const replay = await queueChatgptInference(
+    f.owner,
+    f.job,
+    f.selection,
+    input,
+    "fixture-model",
+    1,
+    operation,
+  );
+  assert.equal(replay.id, request.id);
+  assert.equal(
+    (await readChatgptOperation(f.owner, f.job, operation))?.status,
+    "completed",
+  );
+  await assert.rejects(
+    queueChatgptInference(
+      f.owner,
+      f.job,
+      f.selection,
+      { instructions: "changed", input: [] },
+      "fixture-model",
+      1,
+      operation,
+    ),
+    status(409),
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM chatgpt_completed_usage WHERE user_id=$1",
+        [f.owner],
+      )
+    ).rows[0].n,
+    1,
+  );
+});
+
+test("only undisclosed expired work can fallback; lost envelopes and uncertain fallbacks cannot restart", async () => {
+  const f = await fixture(true),
+    operation = randomUUID(),
+    input = { instructions: "", input: [] };
+  const request = await queueChatgptInference(
+    f.owner,
+    f.job,
+    f.selection,
+    input,
+    "fixture-model",
+    1,
+    operation,
+  );
+  await pool.query(
+    "UPDATE chatgpt_inference_requests SET expires_at=now()-interval '1 second' WHERE id=$1",
+    [request.id],
+  );
+  const failed = await readChatgptOperation(f.owner, f.job, operation);
+  assert.equal(failed?.status, "failed");
+  assert.equal(failed?.status === "failed" && failed.phase, "admission");
+  await beginChatgptFallback(f.owner, f.job, operation);
+  await assert.rejects(
+    beginChatgptFallback(f.owner, f.job, operation),
+    status(409),
+  );
+  await assert.rejects(
+    queueChatgptInference(
+      f.owner,
+      f.job,
+      f.selection,
+      input,
+      "fixture-model",
+      1,
+      operation,
+    ),
+    status(409),
+  );
+  await finishChatgptFallback(
+    f.owner,
+    f.job,
+    operation,
+    "Recovered default reply",
+  );
+  assert.equal(
+    (await readChatgptOperation(f.owner, f.job, operation))?.status,
+    "completed",
+  );
+  const uncertain = await fixture(true),
+    slot = randomUUID();
+  const claimed = await queueChatgptInference(
+    uncertain.owner,
+    uncertain.job,
+    uncertain.selection,
+    input,
+    "fixture-model",
+    1,
+    slot,
+  );
+  await claimChatgptInference(
+    uncertain.binding,
+    uncertain.selection.executor_id,
+  );
+  await assert.rejects(
+    beginChatgptFallback(uncertain.owner, uncertain.job, slot),
+    status(409),
+  );
+  await pool.query("DELETE FROM chatgpt_inference_requests WHERE id=$1", [
+    claimed.id,
+  ]);
+  await assert.rejects(
+    queueChatgptInference(
+      uncertain.owner,
+      uncertain.job,
+      uncertain.selection,
+      input,
+      "fixture-model",
+      1,
+      slot,
+    ),
+    status(409),
+  );
+});
 test("assigned input is encrypted; only one claim and signed completed output are accepted", async () => {
   const f = await fixture();
   const request = await queueChatgptInference(f.owner, f.job, f.selection, {
@@ -425,6 +811,7 @@ test("personal provider routing consumes the assigned model's signed completed r
       { role: "user", content: "Private question" },
     ],
     controller.signal,
+    randomUUID(),
   );
   // Attach a rejection handler before waiting for the asynchronous enqueue.
   void output.catch(() => {});
@@ -504,6 +891,7 @@ test("fallback calls the configured provider only for explicit consent and confi
       const output = ai.textTransport(
         [{ role: "user", content: "Question" }],
         abort.signal,
+        randomUUID(),
       );
       void output.catch(() => {});
       try {

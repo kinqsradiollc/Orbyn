@@ -82,12 +82,17 @@ export async function assertJobAiProviderChoice(
 ): Promise<AiProviderChoice> {
   const row = (
     await db.query(
-      "SELECT provider_choice_snapshot FROM ai_jobs WHERE id=$1 AND user_id=$2 FOR SHARE",
+      "SELECT provider_choice_snapshot,private_inference_legacy FROM ai_jobs WHERE id=$1 AND user_id=$2 FOR SHARE",
       [jobId, owner],
     )
   ).rows[0];
   if (!row) fail(404, "This assistant job is unavailable.");
   const parsed = aiProviderChoice.safeParse(row.provider_choice_snapshot);
+  if (row.private_inference_legacy)
+    fail(
+      409,
+      "This older private run has no durable call identity. Start a fresh request.",
+    );
   if (!parsed.success)
     fail(
       409,

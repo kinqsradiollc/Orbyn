@@ -39,9 +39,14 @@ Computer Use confirmation before completing current connected-layout review.
 Provider selection is now captured in immutable job metadata at enqueue for both
 interactive and automation work. Recovery and dispatch compare it with current
 settings; managed calls and explicit fallback also recheck before sending data.
-Focused recovery/authority tests pass. Private call recovery and parallel
-specialist assignment still require durable operation identities before main
-promotion; no per-job active uniqueness shortcut is accepted as completion.
+Focused recovery/authority tests pass. Private calls now have durable per-loop
+operation IDs, frozen wire input, cached accepted replies and budget reservations.
+Separate specialist loops queue independent assignments. Fallback is marked
+before dispatch and cannot repeat after unknown completion. Active encrypted
+envelopes retain recovery evidence; operation tombstones follow saved-job
+retention. Process-kill and focused recovery checks pass. Current full/CI,
+actual provider provenance and live-account/UI acceptance remain required before
+main promotion.
 
 ## Context and scope
 
