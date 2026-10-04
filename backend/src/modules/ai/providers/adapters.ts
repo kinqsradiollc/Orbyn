@@ -10,6 +10,8 @@ export type ResolvedAi = {
   kind: string;
   /** Internal authority check before dispatch; never supplied by an HTTP caller. */
   assertAuthority?: () => Promise<void>;
+  /** Content-free receipt after a parsed provider response. */
+  recordCompletion?: () => Promise<void>;
   /** Durable private-call slot; per-loop copies prevent cross-specialist mutation. */
   operationId?: string;
   /** Credential-free, internal device transport; never serialized into a client request. */

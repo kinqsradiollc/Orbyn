@@ -11,6 +11,7 @@ import {
 import { transaction } from "../../../db/pool.js";
 import { resolveAi } from "./resolve.js";
 import { fail } from "@orbyn/core";
+import { recordProviderUse } from "../provider-provenance.js";
 import {
   ProviderError,
   type ResolvedAi,
@@ -49,7 +50,21 @@ export async function resolveUserAi(
   };
   if (choice.primary === "default") {
     const ai = await resolveAi();
-    return ai ? { ...ai, assertAuthority: unchanged } : null;
+    return ai
+      ? {
+          ...ai,
+          assertAuthority: unchanged,
+          recordCompletion: () =>
+            recordProviderUse(
+              userId,
+              jobId,
+              "default",
+              ai.model,
+              false,
+              "completed",
+            ),
+        }
+      : null;
   }
   const useDefault = async (reason: string) => {
     await unchanged();
@@ -97,9 +112,24 @@ export async function resolveUserAi(
     if (cached) return cached.text;
     const managed = await useDefault(reason);
     await beginChatgptFallback(userId, jobId, operationId);
+    await recordProviderUse(
+      userId,
+      jobId,
+      "default",
+      managed.model,
+      true,
+      "started",
+      operationId,
+    );
     const { complete } = await import("./adapters.js");
     const text = await complete(managed, messages, { signal });
-    await finishChatgptFallback(userId, jobId, operationId, text);
+    await finishChatgptFallback(
+      userId,
+      jobId,
+      operationId,
+      text,
+      managed.model,
+    );
     return text;
   };
   return {

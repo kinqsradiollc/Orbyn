@@ -1,3 +1,4 @@
+import { providerDetailLines } from "@orbyn/core";
 import { ReminderNudge } from "../components/ReminderNudge";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -466,6 +467,11 @@ export function AssistantScreen({
                     undo={undoTurnChanges}
                   />
                 )}
+                {providerDetailLines(turn.trace).map((label) => (
+                  <Text key={label} style={shared.small}>
+                    {label}
+                  </Text>
+                ))}
                 <ChatTrace trace={turn.trace} />
               </View>
             </FadeIn>

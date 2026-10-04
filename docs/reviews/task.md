@@ -1449,3 +1449,22 @@ Remaining M1 release gates include actual provider/fallback provenance in the
 user-visible result, fresh current full/CI, real-account acceptance and connected
 large-catalog visual checks. Native desktop sign-in and the refreshed iOS agreement
 remain pending Computer Use confirmations. Full governing ADR scope remains active.
+
+### Provider receipt labels and atomic fallback recovery — 4 October 2026
+
+Both assistant result views now display provider/model receipts from the existing
+trace contract. Signed ChatGPT completion records its label in the same transaction
+as accepted output and usage. Managed fallback completion records its label in the
+same transaction as the encrypted recoverable reply; a crash cannot leave a cached
+completed fallback represented only as started. Managed protocol completion also
+records the actual model. Duplicate receipt labels are suppressed while distinct
+models remain visible. These markers are display metadata, not authorization.
+
+Focused provenance, broker/process recovery and assistant-run checks pass56/56,
+no skips, in `/tmp/orbyn-provider-provenance-atomic-tests.log`. Workspace types pass
+in `/tmp/orbyn-provider-provenance-atomic-types.log`. A subsequent small change
+preserves distinct default models during trace deduplication. Fresh full-source
+qualification is running in `/tmp/orbyn-provider-provenance-full-tests.log`;
+production build is running in `/tmp/orbyn-provider-provenance-build.log`.
+Neither running process is a passing result. Current full/CI, real-account and
+connected native/web visual acceptance remain open. Main promotion is not claimed.

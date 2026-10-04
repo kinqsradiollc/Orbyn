@@ -20,6 +20,7 @@ import {
   assertJobAiProviderChoice,
 } from "./ai-provider-choice.js";
 import { recordCompletedChatgptUsage } from "./chatgpt-usage.js";
+import { recordProviderUse } from "../ai/provider-provenance.js";
 type Session = { userId: string; sessionId: string };
 type Selection = { connection_id: string; executor_id: string };
 const digest = (value: unknown) =>
@@ -273,6 +274,7 @@ export async function finishChatgptFallback(
   jobId: string,
   operationId: string,
   text: string,
+  model: string,
 ) {
   const encrypted = await encryptSecret(
     JSON.stringify(
@@ -286,6 +288,16 @@ export async function finishChatgptFallback(
       [owner, jobId, operationId, encrypted],
     );
     if (!saved.rowCount) fail(409, "The fallback operation changed.");
+    await recordProviderUse(
+      owner,
+      jobId,
+      "default",
+      model,
+      true,
+      "completed",
+      operationId,
+      db,
+    );
   });
 }
 
@@ -498,6 +510,24 @@ export async function finishChatgptInference(session: Session, value: unknown) {
         r.model,
         r.result.usage,
       );
+    if (r.result.status === "completed") {
+      const operation = (
+        await db.query(
+          "SELECT operation_id FROM chatgpt_inference_operations WHERE request_id=$1",
+          [r.request_id],
+        )
+      ).rows[0];
+      await recordProviderUse(
+        session.userId,
+        request.job_id,
+        "chatgpt",
+        r.model,
+        false,
+        "completed",
+        operation?.operation_id,
+        db,
+      );
+    }
     return { accepted: true };
   });
 }

@@ -1,3 +1,4 @@
+import { providerDetailLines } from "@orbyn/core";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ArrowUp,
@@ -562,6 +563,15 @@ export function AssistantView({
                       undo={undoTurnChanges}
                     />
                   )}
+                  {providerDetailLines(turn.trace).map((label) => (
+                    <small
+                      key={label}
+                      className="muted"
+                      style={{ display: "block", overflowWrap: "anywhere" }}
+                    >
+                      {label}
+                    </small>
+                  ))}
                   <TurnSteps entries={turn.trace} />
                 </div>
               </div>

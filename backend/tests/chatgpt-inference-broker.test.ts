@@ -79,7 +79,7 @@ async function fixture(fallback = false) {
   ).rows[0].id;
   const job = (
     await pool.query(
-      "INSERT INTO ai_jobs(user_id,chat_id,state,sources_checked,lease_until,run_state) VALUES($1,$2,'running',true,now()+interval '5 minutes',$3) RETURNING id",
+      "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,sources_checked,lease_until,run_state) VALUES($1,$2,gen_random_uuid(),'running',true,now()+interval '5 minutes',$3) RETURNING id",
       [owner, chat, { version: 1 }],
     )
   ).rows[0].id;
@@ -467,10 +467,26 @@ test("only undisclosed expired work can fallback; lost envelopes and uncertain f
     f.job,
     operation,
     "Recovered default reply",
+    "recovery-fixture",
   );
   assert.equal(
     (await readChatgptOperation(f.owner, f.job, operation))?.status,
     "completed",
+  );
+  const recoveredTrace = (
+    await pool.query(
+      "SELECT c.trace FROM ai_chats c JOIN ai_jobs j ON j.chat_id=c.id WHERE j.id=$1",
+      [f.job],
+    )
+  ).rows[0].trace;
+  assert.equal(
+    recoveredTrace.filter((e: any) => e.tool === `pf_c:${operation}`).length,
+    1,
+  );
+  assert.ok(
+    recoveredTrace.some(
+      (e: any) => e.label === "Orbyn fallback · recovery-fixture · completed",
+    ),
   );
   const uncertain = await fixture(true),
     slot = randomUUID();
@@ -532,6 +548,16 @@ test("assigned input is encrypted; only one claim and signed completed output ar
   );
   const publication = f.receipt(assigned);
   await finishChatgptInference(f.binding, publication);
+  const trace = (
+    await pool.query(
+      "SELECT c.trace FROM ai_chats c JOIN ai_jobs j ON j.chat_id=c.id WHERE j.id=$1",
+      [f.job],
+    )
+  ).rows[0].trace;
+  assert.equal(trace.filter((e: any) => e.tool?.startsWith("pc_c:")).length, 1);
+  assert.ok(
+    trace.some((e: any) => e.label === "ChatGPT · fixture-model · completed"),
+  );
   const { readCompletedChatgptUsage } =
     await import("../src/modules/auth/chatgpt-usage.js");
   const summary = await readCompletedChatgptUsage(f.binding);
@@ -924,6 +950,19 @@ test("fallback calls the configured provider only for explicit consent and confi
         if (expectedCalls) {
           assert.equal(await output, "Default result");
           assert.equal(notices.length, 1);
+          const trace = (
+            await pool.query(
+              "SELECT c.trace FROM ai_chats c JOIN ai_jobs j ON j.chat_id=c.id WHERE j.id=$1",
+              [f.job],
+            )
+          ).rows[0].trace;
+          assert.ok(
+            trace.some(
+              (e: any) =>
+                e.tool?.startsWith("pf_c:") &&
+                e.label === "Orbyn fallback · default-fixture · completed",
+            ),
+          );
         } else {
           await assert.rejects(output, /usage limit/);
           assert.equal(notices.length, 0);

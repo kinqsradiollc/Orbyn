@@ -56,10 +56,14 @@ export async function step(
 ): Promise<StepResult> {
   await ai.assertAuthority?.();
   options.signal.throwIfAborted();
-  if (options.mode === "json") return jsonStep(ai, messages, tools, options);
-  if (ai.format === "anthropic")
-    return anthropicStep(ai, messages, tools, options);
-  return openAiStep(ai, messages, tools, options);
+  const result =
+    options.mode === "json"
+      ? await jsonStep(ai, messages, tools, options)
+      : ai.format === "anthropic"
+        ? await anthropicStep(ai, messages, tools, options)
+        : await openAiStep(ai, messages, tools, options);
+  await ai.recordCompletion?.();
+  return result;
 }
 
 // ---- OpenAI-compatible (and Azure) native tools ----------------------------
