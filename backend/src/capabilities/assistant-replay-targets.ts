@@ -192,12 +192,14 @@ export async function assertAssistantReplayTargets(
     group.push(ref);
     groups.set(ref.kind, group);
   }
+  // A bound array lets PostgreSQL estimate the actual reference count. The
+  // JSON recordset's default 100-row estimate magnifies these source subplans.
   for (const [kind, group] of groups) {
     const row = (
       await db.query<{ visible: boolean }>(
         `
       WITH refs AS (SELECT id,CASE WHEN id ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN id::uuid END AS uuid
-        FROM jsonb_to_recordset($3::jsonb) AS target(id text))
+        FROM unnest($3::text[]) AS target(id))
       SELECT bool_and(coalesce(${condition(kind)},false))
         AND EXISTS(SELECT 1 FROM agent_grants live JOIN users owner ON owner.id=live.user_id
           WHERE live.id=$4 AND live.user_id=$1 AND NOT owner.disabled AND live.kind='assistant'
@@ -210,7 +212,7 @@ export async function assertAssistantReplayTargets(
         [
           p.user.id,
           p.teams.map((t) => t.id),
-          JSON.stringify(group),
+          group.map((ref) => ref.id),
           p.grant_id,
         ],
       )
