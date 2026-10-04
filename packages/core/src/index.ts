@@ -120,3 +120,5 @@ export * from "./assistant-profiles.js";
 
 export * from "./doc-source.js";
 export * from "./maintained-pages.js";
+
+export * from "./chatgpt-inference.js";

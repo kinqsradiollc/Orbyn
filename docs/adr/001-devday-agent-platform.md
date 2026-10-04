@@ -1351,3 +1351,40 @@ files and the former dependency symlink remain intact. Runtime request/receipt
 contracts and encrypted request storage are in progress there, not delivered.
 Continue ChatGPT-primary routing and explicit Orbyn-default fallback first, while
 retaining every C1-C6/M1/D1/U1 requirement. No main or production promotion claimed.
+
+## 2026-10-04 — signed ChatGPT inference broker foundation (not delivered routing)
+
+Execution work is isolated in the attached `devday-model-catalog/Orbyn` worktree
+on `codex/chatgpt-execution`, based on current source checkpoint0de9ca3d. Its
+workspace package links point to its own builds; preserved preview files are
+untouched and the former dependency symlink remains backed up under/tmp.
+
+Migration226 introduces bounded per-job request storage with encrypted prompts
+and results, a two-minute expiry and one active request per job. The internal
+runner queue captures the current owned account, model, enrollment/lease epochs,
+input hash and nonce. No HTTP endpoint accepts arbitrary prompt input. A claim
+requires the exact enrolled Orbyn session and current lease/catalog/account.
+Publication verifies an Ed25519 signature covering the exact request identity,
+nonce, epochs, model and completed/failed result. Replays, forged results, changed
+leases, another owner and inactive/unverified-source jobs are rejected. Input is
+cleared on completion/cancellation. Runner result reads recheck current job/source
+access. These are storage/contract gates; no device polling endpoint, processing
+loop, composer integration, fallback choice or live provider result is delivered.
+
+Backend types pass in `/tmp/orbyn-inference-broker-final-types.log`. Broker storage
+checks3/3 pass with no skips in `/tmp/orbyn-inference-broker-final-three-tests.log`.
+This diagnostic run uses `PGOPTIONS=-c jit=off`; it does not modify PostgreSQL or
+production configuration. No OpenAI request is made. Fixture fixes preserve real
+JSON encoding, mandatory chat IDs and allowed inactive job states.
+
+Current full checkpoint qualification0de9ca3d actually ended code1, signal:null:
+2670/2677 pass, seven failures, no skips. The attempted cancellation happened
+after its handle had already disappeared (ESRCH); the cancellation record was
+corrected and the exit JSON is authoritative. Logs confirm a PostgreSQL backend
+was SIGKILLed while evaluating the replay permission query, with container OOM
+state and postmaster recovery. This affected both full and broker test sessions.
+JIT-off broker passing is not proof the replay OOM is fixed. Investigate query
+planning/memory and complete fresh full/CI qualification; do not restart Docker
+Desktop or erase test/primary data as a workaround. Source permission predicates
+must stay enforced. Goal remains full C1-C6/M1/D1/U1, with actual ChatGPT-primary
+execution and explicit Orbyn-default fallback highest priority.

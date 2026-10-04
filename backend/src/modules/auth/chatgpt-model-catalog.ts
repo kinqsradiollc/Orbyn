@@ -36,7 +36,7 @@ export async function listChatgptExecutors(session: Session) {
 }
 
 /** Connection locks serialize catalog/default decisions with publication and revocation. */
-async function catalogLocked(
+export async function readChatgptCatalogLocked(
   db: Db,
   session: Session,
   selection: Selection,
@@ -154,7 +154,7 @@ export async function readChatgptModelCatalog(
   const selection = chatgptCatalogSelection.parse(value);
   return transaction(async (db) => {
     await requireLiveSession(db, session);
-    const result = await catalogLocked(db, session, selection);
+    const result = await readChatgptCatalogLocked(db, session, selection);
     await requireLiveSession(db, session);
     return result;
   });
@@ -168,7 +168,12 @@ export async function selectChatgptDefaultModel(
   const input = chatgptCatalogDefaultUpdate.parse(value);
   return transaction(async (db) => {
     await requireLiveSession(db, session);
-    const current = await catalogLocked(db, session, input.selection, true);
+    const current = await readChatgptCatalogLocked(
+      db,
+      session,
+      input.selection,
+      true,
+    );
     if (
       JSON.stringify(input.preference.binding) !==
       JSON.stringify(current.binding)
@@ -182,7 +187,12 @@ export async function selectChatgptDefaultModel(
       async () => {
         await requireLiveSession(db, session);
         if (input.preference.model === null) return;
-        const catalog = await catalogLocked(db, session, input.selection, true);
+        const catalog = await readChatgptCatalogLocked(
+          db,
+          session,
+          input.selection,
+          true,
+        );
         if (catalog.status !== "ready")
           fail(503, "Reconnect the ChatGPT executor before selecting a model.");
         if (
