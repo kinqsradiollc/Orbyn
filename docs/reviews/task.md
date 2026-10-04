@@ -1244,3 +1244,22 @@ catalog and neatness checks. Log:
 for this diagnostic test process (`PGOPTIONS=-c jit=off`); it is not production
 configuration and does not resolve the earlier full-suite OOM qualification.
 Final workspace typecheck passes in `/tmp/orbyn-routing-checkpoint-types.log`.
+
+### Replay qualification follow-up — 4 October 2026
+
+Known literal source families now emit their existing predicate directly instead
+of the complete dynamic CASE. Dynamic source-kind columns keep every allowlisted
+family and the fail-closed default. The source-expression regression compares
+each emitted literal predicate with its exact dynamic branch; replay authority
+checks pass24/24 using normal PostgreSQL settings, without `PGOPTIONS` overrides.
+Evidence: `/tmp/orbyn-replay-static-family-tests.log`.
+
+Read-only EXPLAIN comparison (`/tmp/orbyn-replay-family-plans.json`) shows reduced
+SQL bytes for task/doc/record/exam but identical estimated costs and plan nodes in
+the synthetic comparison. This is not proof of the earlier OOM cause or a JIT
+fix. Full tests are currently running normally in
+`/tmp/orbyn-fe0ef346-replayfix-full-tests.log`, session79424; do not restart them
+on an observation timeout. Types pass. The standard format command warns only
+about the preserved untracked `desktop/src/settings-connection-preview.tsx`;
+that file was not edited. Separate tracked-source formatting is checked without
+adding checker exceptions. No main promotion is qualified yet.
