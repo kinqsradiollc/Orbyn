@@ -30,6 +30,43 @@ export async function claimAssistantJob(
          SELECT candidate.id FROM ai_jobs candidate
          WHERE candidate.state = 'queued' AND candidate.runtime_lane = $2 AND candidate.run_state->>'version' = '1'
            AND candidate.run_state->'request' IS NOT NULL
+           AND (
+             candidate.runtime_lane='interactive'
+             OR coalesce(candidate.provider_choice_snapshot->>'primary','default')<>'chatgpt'
+             OR candidate.provider_choice_snapshot->>'fallback_to_default'='true'
+             OR candidate.private_inference_legacy
+             OR candidate.cancel_requested
+             OR (candidate.runtime_lane='overnight'
+               AND coalesce(candidate.run_state->>'reviewed','false')<>'true'
+               AND EXISTS(SELECT 1 FROM assistant_nights ended_night
+                 WHERE ended_night.id::text=candidate.run_state#>>'{request,automation,night_id}'
+                   AND ended_night.user_id=candidate.user_id AND ended_night.status='done'))
+             OR EXISTS(SELECT 1 FROM users disabled_owner WHERE disabled_owner.id=candidate.user_id AND disabled_owner.disabled)
+             OR NOT EXISTS(SELECT 1 FROM user_ai_provider_choice current_choice
+               WHERE current_choice.user_id=candidate.user_id AND current_choice.primary_provider='chatgpt'
+                 AND current_choice.version::text=candidate.provider_choice_snapshot->>'version'
+                 AND current_choice.connection_id::text=candidate.provider_choice_snapshot->>'connection_id'
+                 AND current_choice.executor_id::text=candidate.provider_choice_snapshot->>'executor_id'
+                 AND NOT current_choice.fallback_to_default)
+             OR EXISTS(SELECT 1 FROM chatgpt_inference_operations operation
+               LEFT JOIN chatgpt_inference_requests received ON received.id=operation.request_id
+               WHERE operation.job_id=candidate.id AND operation.user_id=candidate.user_id
+                 AND (operation.fallback_result_encrypted IS NOT NULL
+                   OR (received.state='completed' AND received.result_encrypted IS NOT NULL)))
+             OR EXISTS(SELECT 1 FROM chatgpt_executor_enrollments executor
+               JOIN chatgpt_identity_connections connection ON connection.id=executor.connection_id
+               JOIN chatgpt_executor_leases lease ON lease.executor_id=executor.id
+               JOIN sessions session ON session.id=executor.session_id
+               JOIN chatgpt_executor_catalogs catalog ON catalog.executor_id=executor.id
+               WHERE executor.id::text=candidate.provider_choice_snapshot->>'executor_id'
+                 AND connection.id::text=candidate.provider_choice_snapshot->>'connection_id'
+                 AND connection.user_id=candidate.user_id AND connection.revoked_at IS NULL
+                 AND session.user_id=candidate.user_id AND session.expires_at>clock_timestamp()
+                 AND lease.session_id=executor.session_id AND lease.enrollment_epoch=executor.epoch
+                 AND lease.expires_at>clock_timestamp() AND catalog.enrollment_epoch=executor.epoch
+                 AND catalog.lease_epoch=lease.epoch AND catalog.published_at>clock_timestamp()-interval '5 minutes'
+                 AND catalog.capabilities @> '["plan_inference_v1"]'::jsonb)
+           )
            AND (candidate.runtime_lane<>'overnight' OR NOT EXISTS (
              SELECT 1 FROM assistant_page_runs busy WHERE busy.user_id=candidate.user_id
                AND busy.lane='overnight' AND busy.state='running' AND busy.lease_expires_at>now()))

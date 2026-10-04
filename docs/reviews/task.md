@@ -1589,3 +1589,30 @@ availability deferral, all first-party AI feature routing and remaining pages,
 Docs, whole-app layouts and external host/platform acceptance. No more live
 plan retries while the connected provider reports usage exhaustion. Cleanup
 remains at the end; no production deployment was performed.
+
+### Private automation queue admission — 5 October 2026 (candidate)
+
+Background and Overnight jobs whose captured choice requires ChatGPT without
+managed fallback now remain queued while the chosen device has no live matching
+session/lease, fresh catalog or signed inference capability. This admission guard
+runs before claiming; it does not disclose prompts or reserve a running slot.
+Interactive requests retain their immediate failure behavior. Current provider
+choice changes, legacy private-run holds, cancellation and disabled owners can
+still be claimed for execution-time settlement. Closed unreviewed night work can
+also be settled; reviewed work retains its normal provider requirement.
+
+An accepted signed completion or stored fallback reply remains recoverable with
+the device offline. The worker still rechecks current source/choice authority
+before using it. Tests perform actual broker signing/publication before checking
+this recovery path. Queue/runner lifecycle checks14/14 pass, no skips, in
+`/tmp/orbyn-private-queue-lifecycle-tests.log`; the preceding broker/run regression
+checks69/69 pass in `/tmp/orbyn-private-queue-broker-regression.log`. Workspace
+types pass in `/tmp/orbyn-private-queue-types.log`. Counts overlap and do not
+replace fresh combined qualification.
+
+This is pre-claim admission, not complete offline deferral. A device/lease can
+still disappear after claim and before dispatch; that known admission failure
+needs durable requeue handling without repeating unknown or already disclosed
+operations. No complete Background deferral or main promotion is claimed.
+Remaining first-party feature routing, A5, Docs, UI/platform and plugin/host
+acceptance retain the full C1-C6/M1/D1/U1 scope.
