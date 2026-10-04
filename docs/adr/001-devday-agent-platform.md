@@ -36,6 +36,13 @@ Current API, types and focused behavior checks are recorded in the handoff.
 Desktop sign-in and refreshed native agreement acceptance require the pending
 Computer Use confirmation before completing current connected-layout review.
 
+Provider selection is now captured in immutable job metadata at enqueue for both
+interactive and automation work. Recovery and dispatch compare it with current
+settings; managed calls and explicit fallback also recheck before sending data.
+Focused recovery/authority tests pass. Private call recovery and parallel
+specialist assignment still require durable operation identities before main
+promotion; no per-job active uniqueness shortcut is accepted as completion.
+
 ## Context and scope
 
 The user authorized implementation of the revised DevDay plan with production checkpoints on main. Voice, computer use and the speculative Decisions API integration are excluded. The existing durable assistant, source visibility, approvals, receipts, Docs and managed connections remain the foundation. The governing acceptance contract is [the revised implementation review](../reviews/devday-2026-implementation-review.md), including M1, D1 and U1. No removed feature is required to finish this ADR's scope.

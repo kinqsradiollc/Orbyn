@@ -8,6 +8,8 @@ import {
 /** Everything needed to call one provider with one model. */
 export type ResolvedAi = {
   kind: string;
+  /** Internal authority check before dispatch; never supplied by an HTTP caller. */
+  assertAuthority?: () => Promise<void>;
   /** Credential-free, internal device transport; never serialized into a client request. */
   textTransport?: (
     messages: ChatMessage[],
@@ -267,6 +269,8 @@ export async function complete(
     );
   const signal =
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
+  await ai.assertAuthority?.();
+  signal.throwIfAborted();
   if (ai.textTransport) return ai.textTransport(messages, signal);
   const system = messages
     .filter((m) => m.role === "system")

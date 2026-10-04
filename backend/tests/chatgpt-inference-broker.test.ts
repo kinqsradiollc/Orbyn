@@ -18,7 +18,7 @@ after(async () => {
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [owners]);
   await pool.end();
 });
-async function fixture() {
+async function fixture(fallback = false) {
   const owner = randomUUID(),
     session = randomUUID(),
     connection = randomUUID(),
@@ -62,6 +62,11 @@ async function fixture() {
     "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'fixture-model')",
     [connection],
   );
+  const selection = { connection_id: connection, executor_id: executor };
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider,connection_id,executor_id,fallback_to_default) VALUES($1,'chatgpt',$2,$3,$4)",
+    [owner, connection, executor, fallback],
+  );
   const chat = (
     await pool.query(
       "INSERT INTO ai_chats(id,user_id,title) VALUES(gen_random_uuid(),$1,'Private fixture') RETURNING id",
@@ -74,11 +79,6 @@ async function fixture() {
       [owner, chat, { version: 1 }],
     )
   ).rows[0].id;
-  const selection = { connection_id: connection, executor_id: executor };
-  await pool.query(
-    "INSERT INTO user_ai_provider_choice(user_id,primary_provider,connection_id,executor_id) VALUES($1,'chatgpt',$2,$3)",
-    [owner, connection, executor],
-  );
   const binding = { userId: owner, sessionId: session };
   return {
     owner,
@@ -494,11 +494,7 @@ test("fallback calls the configured provider only for explicit consent and confi
       [true, "unknown", 0],
       [true, "admission", 1],
     ] as const) {
-      const f = await fixture();
-      await pool.query(
-        "UPDATE user_ai_provider_choice SET fallback_to_default=$2 WHERE user_id=$1",
-        [f.owner, fallback],
-      );
+      const f = await fixture(fallback);
       const notices: string[] = [];
       const ai = await resolveUserAi(f.owner, f.job, async (m) => {
         notices.push(m);

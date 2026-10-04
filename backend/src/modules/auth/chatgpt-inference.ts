@@ -14,7 +14,10 @@ import { requireLiveSession } from "./chatgpt-connections.js";
 import { readChatgptCatalogLocked } from "./chatgpt-model-catalog.js";
 import { verifyChatgptExecutorProof } from "./chatgpt-executor-proof.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
-import { readAiProviderChoice } from "./ai-provider-choice.js";
+import {
+  readAiProviderChoice,
+  assertJobAiProviderChoice,
+} from "./ai-provider-choice.js";
 import { recordCompletedChatgptUsage } from "./chatgpt-usage.js";
 type Session = { userId: string; sessionId: string };
 type Selection = { connection_id: string; executor_id: string };
@@ -47,6 +50,7 @@ async function jobLive(db: Db, owner: string, id: string) {
     [owner, id],
   );
   if (!job.rowCount) fail(409, "The assistant job or its sources changed.");
+  await assertJobAiProviderChoice(db, owner, id);
 }
 async function device(db: Db, owner: string, selection: Selection) {
   const row = (

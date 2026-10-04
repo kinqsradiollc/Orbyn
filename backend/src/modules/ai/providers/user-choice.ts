@@ -1,11 +1,11 @@
-import { readAiProviderChoice } from "../../auth/ai-provider-choice.js";
+import { readJobAiProviderChoice } from "../../auth/ai-provider-choice.js";
 import {
   queueChatgptInference,
   readChatgptInference,
   cancelChatgptInference,
 } from "../../auth/chatgpt-inference.js";
 import { readChatgptCatalogLocked } from "../../auth/chatgpt-model-catalog.js";
-import { pool, transaction } from "../../../db/pool.js";
+import { transaction } from "../../../db/pool.js";
 import { resolveAi } from "./resolve.js";
 import { fail } from "@orbyn/core";
 import {
@@ -35,16 +35,19 @@ export async function resolveUserAi(
   jobId: string,
   notice: (message: string) => Promise<void>,
 ): Promise<ResolvedAi | null> {
-  const choice = await readAiProviderChoice(pool, userId);
-  if (choice.primary === "default") return resolveAi();
+  const choice = await readJobAiProviderChoice(userId, jobId);
   const unchanged = async () => {
-    const next = await readAiProviderChoice(pool, userId);
+    const next = await readJobAiProviderChoice(userId, jobId);
     if (JSON.stringify(next) !== JSON.stringify(choice))
       throw new ProviderError(
         "provider_changed",
         "Your AI provider choice changed. Start a fresh request.",
       );
   };
+  if (choice.primary === "default") {
+    const ai = await resolveAi();
+    return ai ? { ...ai, assertAuthority: unchanged } : null;
+  }
   const useDefault = async (reason: string) => {
     await unchanged();
     if (!choice.fallback_to_default)
@@ -58,7 +61,7 @@ export async function resolveUserAi(
     await notice(
       `Using Orbyn's default provider as your selected fallback. ${reason}`,
     );
-    return ai;
+    return { ...ai, assertAuthority: unchanged };
   };
   if (!choice.connection_id || !choice.executor_id)
     return useDefault("Your ChatGPT connection is unavailable.");
@@ -93,6 +96,7 @@ export async function resolveUserAi(
   const model = catalog.preference.model;
   return {
     kind: "chatgpt_plan",
+    assertAuthority: unchanged,
     format: "openai",
     baseUrl: "",
     apiKey: "",
@@ -164,7 +168,11 @@ export async function resolveUserAi(
                   "fallback_unavailable",
                   "Orbyn's default provider is not available.",
                 );
-              return complete(managed, messages, { signal });
+              return complete(
+                { ...managed, assertAuthority: unchanged },
+                messages,
+                { signal },
+              );
             }
             throw new ProviderError(
               `chatgpt_${result.reason}`,

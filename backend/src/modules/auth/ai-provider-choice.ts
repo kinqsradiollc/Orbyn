@@ -4,7 +4,7 @@ import {
   fail,
   type AiProviderChoice,
 } from "@orbyn/core";
-import { transaction, type Queryable } from "../../db/pool.js";
+import { transaction, type Queryable, type Db } from "../../db/pool.js";
 import { requireLiveSession } from "./chatgpt-connections.js";
 import { readChatgptCatalogLocked } from "./chatgpt-model-catalog.js";
 export async function readAiProviderChoice(
@@ -70,5 +70,43 @@ export async function saveAiProviderChoice(
       ],
     );
     return readAiProviderChoice(db, session.userId);
+  });
+}
+
+/** Read the immutable enqueue-time choice; changing settings cannot retarget a resumed job. */
+export async function assertJobAiProviderChoice(
+  db: Db,
+  owner: string,
+  jobId: string,
+  current?: AiProviderChoice,
+): Promise<AiProviderChoice> {
+  const row = (
+    await db.query(
+      "SELECT provider_choice_snapshot FROM ai_jobs WHERE id=$1 AND user_id=$2 FOR SHARE",
+      [jobId, owner],
+    )
+  ).rows[0];
+  if (!row) fail(404, "This assistant job is unavailable.");
+  const parsed = aiProviderChoice.safeParse(row.provider_choice_snapshot);
+  if (!parsed.success)
+    fail(
+      409,
+      "This older run has no captured provider choice. Start a fresh request.",
+    );
+  const live = current ?? (await readAiProviderChoice(db, owner));
+  if (JSON.stringify(parsed.data) !== JSON.stringify(live))
+    fail(409, "Your AI provider choice changed. Start a fresh request.");
+  return parsed.data;
+}
+
+/** Each dispatch rereads authority under the same parent lock used by settings edits. */
+export async function readJobAiProviderChoice(owner: string, jobId: string) {
+  return transaction(async (db) => {
+    const person = await db.query(
+      "SELECT id FROM users WHERE id=$1 AND NOT disabled FOR SHARE",
+      [owner],
+    );
+    if (!person.rowCount) fail(403, "This account cannot run the assistant.");
+    return assertJobAiProviderChoice(db, owner, jobId);
   });
 }

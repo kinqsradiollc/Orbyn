@@ -54,6 +54,8 @@ export async function step(
   tools: ToolSpec[],
   options: { mode: Mode; toolsAllowed: boolean; signal: AbortSignal },
 ): Promise<StepResult> {
+  await ai.assertAuthority?.();
+  options.signal.throwIfAborted();
   if (options.mode === "json") return jsonStep(ai, messages, tools, options);
   if (ai.format === "anthropic")
     return anthropicStep(ai, messages, tools, options);

@@ -1371,3 +1371,34 @@ source is claimed. Main stays unchanged until the durable recovery gaps above
 are fixed and acceptance is qualified. Native desktop QA process9478 is still
 live at the pending login; refreshing/rebuilding its file bundle must keep its
 test API8027 configuration before the next visual check.
+
+### Durable provider-choice fencing — 4 October 2026
+
+Migration231 captures the current personal provider choice on every ai_jobs
+insert, covering interactive and automation producers. It ignores a supplied
+snapshot and rejects later edits to the captured value. Existing rows with no
+configured personal choice are backfilled with the known legacy default;
+uncertain beta rows remain fail-closed instead of inventing original consent.
+Resolver recovery and private queue/claim/publication/read compare this immutable
+snapshot with current settings. Managed native/JSON dispatch and plain
+completions also recheck authority before any network/device transport call.
+Explicit fallback keeps that guard, including after its notice callback.
+
+Snapshot/broker/routing tests13/13 pass in
+`/tmp/orbyn-provider-snapshot-focused.log`. Existing assistant runs, protocol and
+provider-limit checks61/61 pass in
+`/tmp/orbyn-provider-snapshot-protocol-runs.log`. Dispatch guard/limit checks21/21
+pass in `/tmp/orbyn-provider-authority-protocol-tests.log`, with zero network or
+device calls after rejection. Final snapshot/broker/protocol checks30/30 pass
+in `/tmp/orbyn-provider-choice-durable-tests.log`. Types pass in
+`/tmp/orbyn-provider-choice-durable-types.log`. Counts overlap and are not full
+qualification.
+
+The enqueue/restart retarget gap is addressed by this source. Remaining private
+transport recovery needs stable per-call operation IDs and consumed/checkpoint
+evidence. The current unique-active-per-job constraint also conflicts with the
+lead's real parallel specialist execution (`Promise.all`); it must become an
+operation-level constraint, with separate queued work for each specialist.
+Do not use payload equality alone as operation identity or replay a charge after
+unknown completion/expired envelope cleanup. Actual provider/fallback provenance,
+current full/CI, real-account acceptance and connected-layout checks remain open.
