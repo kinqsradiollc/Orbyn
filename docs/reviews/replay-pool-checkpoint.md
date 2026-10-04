@@ -27,3 +27,22 @@ Broader candidate replay/process/rules/runner checks previously passed102/102.
 Those results do not replace full-source qualification for this checkpoint.
 Fresh full local tests, production build and CI remain required before main merge.
 The full ADR stays open in C1-C6/M1/D1/U1. User deploys main manually.
+
+## Notification-query follow-up
+
+CI37212727662 passed all jobs for97914b50. Its local full suite ended2574/2578
+pass,4fail: notification-source privacy lost its database connection, with
+subsequent setup/recovery failures. This is not a passing local gate.
+
+The checkpoint now includes bounded notification pages and separate source
+checks only for notice families actually present. Hidden notices do not consume
+the100 visible-result limit; the final source guards remain mandatory. Exact
+PostgreSQL timestamp/ID cursors avoid losing microsecond precision, and internal
+cursor fields are stripped from responses. These changes were already covered
+on the broader candidate; this main-based source requires its own fresh checks.
+
+The expanded main-based source passes105/105 focused notification/replay/privacy/
+planner/disconnect checks, no skips, in
+`/tmp/orbyn-main-notice-replay-focused-tests.log`. Workspace types pass in
+`/tmp/orbyn-main-notice-replay-types.log`. A fresh full suite and CI must qualify
+this new head before merging; the preceding CI result belongs to97914b50.
