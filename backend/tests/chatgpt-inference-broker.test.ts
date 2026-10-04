@@ -52,7 +52,7 @@ async function fixture() {
     [executor, session],
   );
   await pool.query(
-    "INSERT INTO chatgpt_executor_catalogs(executor_id,enrollment_epoch,lease_epoch,sequence,models) VALUES($1,1,1,1,$2)",
+    "INSERT INTO chatgpt_executor_catalogs(executor_id,enrollment_epoch,lease_epoch,sequence,models,capabilities) VALUES($1,1,1,1,$2,'[\"plan_inference_v1\"]')",
     [
       executor,
       JSON.stringify([{ slug: "fixture-model", display_name: "Fixture" }]),
@@ -260,6 +260,50 @@ test("provider edits fence queued disclosure and claimed result publication", as
   await assert.rejects(
     readChatgptInference(claimed.owner, claimed.job, request.id),
     status(409),
+  );
+});
+
+test("legacy catalog-only devices remain readable but cannot receive private inference input", async () => {
+  const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET capabilities='[]' WHERE executor_id=$1",
+    [f.selection.executor_id],
+  );
+  const { readChatgptModelCatalog } =
+    await import("../src/modules/auth/chatgpt-model-catalog.js");
+  const catalog = await readChatgptModelCatalog(f.binding, f.selection);
+  assert.equal(catalog.status, "ready");
+  assert.equal(catalog.models[0].slug, "fixture-model");
+  assert.ok(
+    !("capabilities" in catalog),
+    "existing strict catalog readers keep their response shape",
+  );
+  await assert.rejects(
+    queueChatgptInference(f.owner, f.job, f.selection, {
+      instructions: "private",
+      input: [],
+    }),
+    status(503),
+  );
+  const { saveAiProviderChoice } =
+    await import("../src/modules/auth/ai-provider-choice.js");
+  await assert.rejects(
+    saveAiProviderChoice(f.binding, {
+      primary: "chatgpt",
+      ...f.selection,
+      fallback_to_default: false,
+      expected_version: 1,
+    }),
+    status(503),
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM chatgpt_inference_requests WHERE job_id=$1",
+        [f.job],
+      )
+    ).rows[0].n,
+    0,
   );
 });
 

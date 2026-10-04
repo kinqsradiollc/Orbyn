@@ -37,6 +37,8 @@ export const chatgptExecutorCatalog = z
     lease_epoch: z.number().int().positive(),
     sequence: z.number().int().positive(),
     models: z.array(chatgptModel.strict()).max(1000),
+    // Omission preserves the canonical signature of older catalog-only runtimes.
+    capabilities: z.array(z.literal("plan_inference_v1")).max(1).optional(),
   })
   .strict()
   .superRefine((value, context) => {

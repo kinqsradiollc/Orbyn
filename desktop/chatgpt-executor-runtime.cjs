@@ -70,6 +70,11 @@ async function createChatgptExecutorRuntime({
       lease_epoch: lease.lease_epoch,
       sequence: ++catalogSequence,
       models: available,
+      ...(typeof completeAssigned === "function" &&
+      typeof client.claimChatgptInference === "function" &&
+      typeof client.finishChatgptInference === "function"
+        ? { capabilities: ["plan_inference_v1"] }
+        : {}),
     });
     const signed = await signer.signCatalog(catalog);
     await live();

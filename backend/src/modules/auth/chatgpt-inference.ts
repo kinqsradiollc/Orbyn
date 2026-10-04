@@ -57,7 +57,13 @@ async function device(db: Db, owner: string, selection: Selection) {
   if (!row) fail(503, "The ChatGPT device is unavailable.");
   const session = { userId: owner, sessionId: row.session_id };
   await requireLiveSession(db, session);
-  const catalog = await readChatgptCatalogLocked(db, session, selection);
+  const catalog = await readChatgptCatalogLocked(
+    db,
+    session,
+    selection,
+    false,
+    true,
+  );
   if (catalog.status !== "ready")
     fail(503, "The ChatGPT device or its model catalog is unavailable.");
   const current = (

@@ -41,6 +41,7 @@ export async function readChatgptCatalogLocked(
   session: Session,
   selection: Selection,
   write = false,
+  requireInference = false,
 ) {
   // Lock the device session before its cascading children, matching sign-out.
   const device = (
@@ -90,11 +91,17 @@ export async function readChatgptCatalogLocked(
       lease_epoch: string;
       sequence: string;
       published_at: Date;
+      capabilities: string[];
     }>(
-      "SELECT models,enrollment_epoch,lease_epoch,sequence,published_at FROM chatgpt_executor_catalogs WHERE executor_id=$1 FOR SHARE",
+      "SELECT models,enrollment_epoch,lease_epoch,sequence,published_at,capabilities FROM chatgpt_executor_catalogs WHERE executor_id=$1 FOR SHARE",
       [selection.executor_id],
     )
   ).rows[0];
+  if (requireInference && !snapshot?.capabilities.includes("plan_inference_v1"))
+    fail(
+      503,
+      "Update the Orbyn desktop app and refresh its ChatGPT connection before using it as a provider.",
+    );
   // Evaluate freshness after every row lock, with the database's current clock.
   const fresh = (
     await db.query<{ live: boolean; fresh: boolean }>(

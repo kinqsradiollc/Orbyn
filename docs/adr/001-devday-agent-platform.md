@@ -18,6 +18,14 @@ cross-client visual acceptance and the full governing C1-C6/M1/D1/U1 contract
 remain required. Current evidence and limitations are recorded in
 [the task handoff](../reviews/task.md#chatgpt-dispatch-and-provider-choice-candidate--4-october-2026).
 
+The preceding dispatch/replay source passed2701/2701 full local checks with
+normal PostgreSQL settings. A subsequent upgrade safeguard requires signed
+`plan_inference_v1` capability before selecting or dispatching to a device;
+legacy catalog signatures and reader responses remain compatible. Personal
+provider data routing and explicit fallback are documented in the Privacy Policy
+under the shipped2026-10-04 agreement version. These later changes have focused
+coverage and require fresh full/CI qualification before a main checkpoint.
+
 ## Context and scope
 
 The user authorized implementation of the revised DevDay plan with production checkpoints on main. Voice, computer use and the speculative Decisions API integration are excluded. The existing durable assistant, source visibility, approvals, receipts, Docs and managed connections remain the foundation. The governing acceptance contract is [the revised implementation review](../reviews/devday-2026-implementation-review.md), including M1, D1 and U1. No removed feature is required to finish this ADR's scope.

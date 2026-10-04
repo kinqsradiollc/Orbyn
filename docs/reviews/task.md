@@ -1263,3 +1263,40 @@ on an observation timeout. Types pass. The standard format command warns only
 about the preserved untracked `desktop/src/settings-connection-preview.tsx`;
 that file was not edited. Separate tracked-source formatting is checked without
 adding checker exceptions. No main promotion is qualified yet.
+
+The normal-settings full run completed with exit0:2701/2701 pass, no skips, in
+`/tmp/orbyn-fe0ef346-replayfix-full-tests.log` (session79424 terminal). This covers
+the dispatch/provider-choice checkpoint and replay SQL change; do not attribute
+it to later capability or legal changes. No PostgreSQL restart or JIT override
+was used. Tracked-source format passes in
+`/tmp/orbyn-replayfix-tracked-format.log`; standard formatting still warns on the
+preserved untracked preview file.
+
+The owned API8027, web5174 and Metro8083 previews were refreshed to the execution
+worktree after the marked preview database was migrated. The running API health
+is good. Native Expo was reloaded through its developer menu; the current
+Provider/default/Connect/Refresh/Usage controls were inspected and captured at
+`evidence/chatgpt-provider-routing/ios-settings-provider.png`. Controls fit with
+no overlap in this dark-mode empty-account view. This is not verification of
+connected accounts, large catalogs, web layout or actual OpenAI consent. The
+stale development warning was dismissed only after capturing its presence.
+
+### Rolling-upgrade and privacy follow-up — 4 October 2026
+
+Migration229 adds signed `plan_inference_v1` catalog capability. Omission keeps
+legacy canonical signatures and the existing strict catalog response shape;
+catalog-only devices remain readable. Primary-provider selection and private
+dispatch require an advertised execution processor. Missing/old runtimes cannot
+receive input. New catalog metadata advertises capability only when the private
+adapter and claim/result client methods exist.
+
+Capability, broker, lease/proof, manager and private runtime checks pass43/43
+with normal PostgreSQL settings in `/tmp/orbyn-chatgpt-capability-tests.log`.
+Privacy text now describes device/OpenAI routing, encrypted temporary envelopes,
+explicit fallback and the limits of revoking already-sent content. Shipped legal
+version becomes2026-10-04 using the existing default-text/version workflow.
+Legal/provider-route/broker checks pass14/14 in
+`/tmp/orbyn-chatgpt-capability-legal-tests.log`. These follow-ups require their
+own fresh full/CI qualification;2701 passing is the preceding checkpoint's
+evidence. Usage/provenance display, connected-state visual coverage, real-account
+acceptance and the remaining full ADR contract are still open.

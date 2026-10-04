@@ -41,10 +41,16 @@ export async function saveAiProviderChoice(
     ]);
     await requireLiveSession(db, session);
     if (input.primary === "chatgpt") {
-      const catalog = await readChatgptCatalogLocked(db, session, {
-        connection_id: input.connection_id,
-        executor_id: input.executor_id,
-      });
+      const catalog = await readChatgptCatalogLocked(
+        db,
+        session,
+        {
+          connection_id: input.connection_id,
+          executor_id: input.executor_id,
+        },
+        false,
+        true,
+      );
       if (catalog.status !== "ready" || !catalog.preference.model)
         fail(409, "Choose an available ChatGPT model first.");
     }

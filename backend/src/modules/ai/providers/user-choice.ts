@@ -79,6 +79,8 @@ export async function resolveUserAi(
           executor_id: choice.executor_id!,
           connection_id: choice.connection_id!,
         },
+        false,
+        true,
       );
     });
   } catch (error) {
