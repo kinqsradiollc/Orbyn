@@ -2,6 +2,17 @@
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
 
+### Qualified main checkpoint — 5 October 2026
+
+PR197 merged as `82576dfa`. Main now contains replay reference-array planning,
+checked-out connection error handling and bounded notification source checks.
+This checkpoint passed2592/2592 full local tests, all workspace typechecks,
+production build and all four CI jobs in run37230581000. Root main was safely
+fast-forwarded; user mobile and untracked files remain preserved. The broader
+ChatGPT/pages/UI candidate integrated this main checkpoint without conflict.
+Its full ADR/runtime/platform acceptance remains open; it is not deployed or
+promoted by this backend checkpoint. User deploys main manually.
+
 ### Current ChatGPT checkpoint — 4 October 2026
 
 `codex/chatgpt-execution` adds private signed device dispatch, personal provider

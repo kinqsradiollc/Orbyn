@@ -1576,3 +1576,16 @@ content. Plan/model runtime/manager/bridge/store checks56/56 pass, no skips, in
 `/tmp/orbyn-stream-resilience-final-types.log`. Fresh frozen full/CI qualification,
 actual completed inference after availability returns, remaining cross-client
 acceptance and full C1-C6/M1/D1/U1 remain open. No main promotion is claimed.
+
+### Main checkpoint delivered — 5 October 2026
+
+PR197 merged as82576dfa after2592/2592 full local tests, workspace types,
+production build and all four CI37230581000 jobs passed. Root main was safely
+fast-forwarded with mobile/app.json and all user untracked files preserved.
+The broader codex/chatgpt-execution branch merged origin/main without conflict;
+only the scoped qualification document was new because the code fixes already
+matched. Full C1-C6/M1/D1/U1 remains active. Next: Background/private-device
+availability deferral, all first-party AI feature routing and remaining pages,
+Docs, whole-app layouts and external host/platform acceptance. No more live
+plan retries while the connected provider reports usage exhaustion. Cleanup
+remains at the end; no production deployment was performed.
