@@ -498,6 +498,13 @@ nav button i,
   align-items: center;
   padding: 7px 0;
 }
+/* Links used as controls share the same appearance as button controls. */
+a:is(.primary, .secondary, .text-button) {
+  text-decoration: none;
+}
+a.secondary {
+  color: var(--color-text);
+}
 .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

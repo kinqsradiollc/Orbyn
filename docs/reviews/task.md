@@ -1468,3 +1468,33 @@ qualification is running in `/tmp/orbyn-provider-provenance-full-tests.log`;
 production build is running in `/tmp/orbyn-provider-provenance-build.log`.
 Neither running process is a passing result. Current full/CI, real-account and
 connected native/web visual acceptance remain open. Main promotion is not claimed.
+
+### Notice-query qualification repair and connected desktop evidence — 4 October 2026
+
+The latest local full run terminated2678/2687 pass,9fail in
+`/tmp/orbyn-provider-provenance-full-tests.log`. Notice-list failures coincided
+with database disconnect/recovery and subsequent setup failures. Do not classify
+this as a passing local gate or assert a proven PostgreSQL kill cause. GitHub
+CI37202016175 passed all backend/web, mobile bundles, Docker image/live smoke and
+mail jobs for8bd2e48d. The preceding CI stopped at one indentation-only test
+format issue, corrected by8bd2e48d.
+
+The notification list now pages ordinary owner/item-visible notices separately
+from assistant chat, proposal and reminder-nudge source checks. Only families
+present in a page expand their guard SQL. Hidden source notices do not consume
+the100 visible-result limit. Timestamp/ID cursors preserve database microsecond
+precision and internal cursor fields never enter client responses. Malformed
+chat references and absent sources fail closed. Final planner/deadline/privacy/
+pagination checks pass123/123, no skips, in
+`/tmp/orbyn-notification-final-focused-tests.log`; workspace types pass in
+`/tmp/orbyn-notification-bounds-final-types.log`. No test/JIT/database setting was
+weakened. This repair still requires a fresh complete local and CI run.
+
+Native desktop Settings was inspected against the marked local preview database.
+Connect opened OpenAI's real account chooser. The UI subsequently displayed a
+connected account, granted plan permission and a live selected model. Screenshot:
+`docs/reviews/evidence/chatgpt-provider-routing/desktop-connected-models.png`.
+Control links now share button styling without browser-default blue/underline.
+The native tool stopped responding during plan verification; completed live
+inference, refresh/revocation, actual assistant receipts/usage and mobile/web
+connected acceptance remain unproven. No production/main promotion is claimed.
