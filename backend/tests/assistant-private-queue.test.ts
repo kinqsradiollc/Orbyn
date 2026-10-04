@@ -261,3 +261,198 @@ test("closed unreviewed night work and cancellation can be settled without wakin
   );
   await finish(expired.job);
 });
+
+test("a lease lost after claim defers only an undisclosed operation and keeps its job identity", async () => {
+  const { resolveUserAi, ChatgptDeviceDeferred } =
+    await import("../src/modules/ai/providers/user-choice.js");
+  const { deferUnassignedChatgptJob } =
+    await import("../src/modules/auth/chatgpt-inference.js");
+  const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()+interval '5 minutes' WHERE executor_id=$1",
+    [f.executor],
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET models=$2 WHERE executor_id=$1",
+    [
+      f.executor,
+      JSON.stringify([{ slug: "fixture-model", display_name: "Fixture" }]),
+    ],
+  );
+  await pool.query(
+    "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'fixture-model')",
+    [f.connection],
+  );
+  assert.equal(
+    (await claimAssistantJob("race-owner", "background"))?.id,
+    f.job,
+  );
+  const ai = await resolveUserAi(
+    f.owner,
+    f.job,
+    async () => assert.fail("no fallback notice"),
+    true,
+  );
+  assert.ok(ai?.textTransport);
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()-interval '1 second' WHERE executor_id=$1",
+    [f.executor],
+  );
+  await assert.rejects(
+    ai.textTransport(
+      [{ role: "user", content: "Fixture" }],
+      new AbortController().signal,
+      randomUUID(),
+    ),
+    (e) => e instanceof ChatgptDeviceDeferred,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM chatgpt_inference_requests WHERE job_id=$1",
+        [f.job],
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    await deferUnassignedChatgptJob(f.owner, f.job, "wrong-owner"),
+    false,
+  );
+  assert.equal(
+    await deferUnassignedChatgptJob(f.owner, f.job, "race-owner"),
+    true,
+  );
+  const row = (
+    await pool.query(
+      "SELECT state,claimed_by,resume_count FROM ai_jobs WHERE id=$1",
+      [f.job],
+    )
+  ).rows[0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.claimed_by, null);
+  assert.equal(row.resume_count, 0);
+  assert.equal(await claimAssistantJob("still-offline", "background"), null);
+  await finish(f.job);
+});
+
+test("a queued or disclosed unfinished assignment cannot be requeued as a safe admission failure", async () => {
+  const {
+    queueChatgptInference,
+    claimChatgptInference,
+    deferUnassignedChatgptJob,
+  } = await import("../src/modules/auth/chatgpt-inference.js");
+  const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()+interval '5 minutes' WHERE executor_id=$1",
+    [f.executor],
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET models=$2 WHERE executor_id=$1",
+    [
+      f.executor,
+      JSON.stringify([{ slug: "fixture-model", display_name: "Fixture" }]),
+    ],
+  );
+  await pool.query(
+    "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'fixture-model')",
+    [f.connection],
+  );
+  assert.equal(
+    (await claimAssistantJob("pending-owner", "background"))?.id,
+    f.job,
+  );
+  await queueChatgptInference(
+    f.owner,
+    f.job,
+    { connection_id: f.connection, executor_id: f.executor },
+    { instructions: "Fixture", input: [{ role: "user", content: "Fixture" }] },
+    "fixture-model",
+    1,
+    randomUUID(),
+  );
+  assert.equal(
+    await deferUnassignedChatgptJob(f.owner, f.job, "pending-owner"),
+    false,
+  );
+  assert.ok(
+    await claimChatgptInference(
+      { userId: f.owner, sessionId: f.session },
+      f.executor,
+    ),
+  );
+  assert.equal(
+    await deferUnassignedChatgptJob(f.owner, f.job, "pending-owner"),
+    false,
+  );
+  assert.equal(
+    (await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [f.job])).rows[0]
+      .state,
+    "running",
+  );
+  await finish(f.job);
+});
+
+test("the actual Background runner parks a lost device with its captured operation and budget intact", async () => {
+  const { runAssistantJob, assistantRunStateFor } =
+    await import("../src/modules/ai/agent/run.js");
+  const { withAssistantLease } =
+    await import("../src/modules/ai/agent/lease.js");
+  const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()+interval '5 minutes' WHERE executor_id=$1",
+    [f.executor],
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET models=$2 WHERE executor_id=$1",
+    [
+      f.executor,
+      JSON.stringify([{ slug: "fixture-model", display_name: "Fixture" }]),
+    ],
+  );
+  await pool.query(
+    "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'fixture-model')",
+    [f.connection],
+  );
+  assert.equal(
+    (await claimAssistantJob("actual-owner", "background"))?.id,
+    f.job,
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()-interval '1 second' WHERE executor_id=$1",
+    [f.executor],
+  );
+  const user = (await pool.query("SELECT * FROM users WHERE id=$1", [f.owner]))
+    .rows[0];
+  const saved = assistantRunStateFor(
+    (await pool.query("SELECT run_state FROM ai_jobs WHERE id=$1", [f.job]))
+      .rows[0].run_state,
+  )!;
+  await withAssistantLease(f.job, "actual-owner", () =>
+    runAssistantJob(f.job, user, saved.request, undefined, saved),
+  );
+  const row = (
+    await pool.query(
+      "SELECT state,run_state,resume_count,progress FROM ai_jobs WHERE id=$1",
+      [f.job],
+    )
+  ).rows[0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.resume_count, 0);
+  assert.equal(row.progress.label, "Waiting for your ChatGPT device");
+  const pending = row.run_state.state.loop.pending_provider;
+  assert.equal(pending.model, "fixture-model");
+  assert.equal(pending.reservation_charged, true);
+  assert.match(pending.id, /^[0-9a-f-]{36}$/);
+  assert.ok(row.run_state.state.token_estimate > 0);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM chatgpt_inference_requests WHERE job_id=$1",
+        [f.job],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await finish(f.job);
+});

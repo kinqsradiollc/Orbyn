@@ -18,6 +18,39 @@ import {
   type ChatMessage,
 } from "./adapters.js";
 
+/** Only a rolled-back, undisclosed assignment may return unattended work to its queue. */
+export class ChatgptDeviceDeferred extends ProviderError {
+  constructor() {
+    super("chatgpt_device_offline", "Waiting for your ChatGPT device.");
+  }
+}
+
+/** Fixed user recovery text only; provider response content must never be reflected. */
+export function privateProviderFailureMessage(error: unknown): string | null {
+  if (!(error instanceof ProviderError)) return null;
+  const messages: Record<string, string> = {
+    chatgpt_usage_limit:
+      "ChatGPT plan usage limit reached. Manage usage in ChatGPT.",
+    chatgpt_eligibility:
+      "ChatGPT plan usage is unavailable for this account or workspace.",
+    chatgpt_unavailable:
+      "Your ChatGPT device is unavailable. Reconnect it or review your provider choice.",
+    chatgpt_model_unavailable:
+      "Choose an available ChatGPT default model before starting a fresh request.",
+    chatgpt_timeout:
+      "ChatGPT completion is unknown. This request was not retried through another provider.",
+    chatgpt_interrupted:
+      "ChatGPT completion is unknown. This request was not retried through another provider.",
+    chatgpt_device_offline:
+      "Your device went offline while other work had an unfinished assignment. Review this run; it was not retried.",
+    provider_changed:
+      "Your provider choice or captured model changed. Review the saved work before starting a fresh request.",
+    fallback_unavailable:
+      "Orbyn's default provider is unavailable. Ask an administrator to check its configuration.",
+  };
+  return Object.hasOwn(messages, error.reason) ? messages[error.reason] : null;
+}
+
 async function wait(signal: AbortSignal) {
   await new Promise<void>((resolve) => {
     const end = () => {
@@ -38,6 +71,7 @@ export async function resolveUserAi(
   userId: string,
   jobId: string,
   notice: (message: string) => Promise<void>,
+  waitForDevice = false,
 ): Promise<ResolvedAi | null> {
   const choice = await readJobAiProviderChoice(userId, jobId);
   const unchanged = async () => {
@@ -189,6 +223,10 @@ export async function resolveUserAi(
       } catch (error) {
         // Enqueue rolled back: no device received input and no upstream request started.
         if ((error as { statusCode?: number }).statusCode !== 503) throw error;
+        if (waitForDevice && !choice.fallback_to_default) {
+          await unchanged();
+          throw new ChatgptDeviceDeferred();
+        }
         return fallback(
           messages,
           signal,

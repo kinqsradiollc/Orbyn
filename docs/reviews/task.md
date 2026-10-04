@@ -1616,3 +1616,35 @@ needs durable requeue handling without repeating unknown or already disclosed
 operations. No complete Background deferral or main promotion is claimed.
 Remaining first-party feature routing, A5, Docs, UI/platform and plugin/host
 acceptance retain the full C1-C6/M1/D1/U1 scope.
+
+### Known post-claim private admission failure — 5 October 2026 (candidate)
+
+An unattended run now distinguishes a rolled-back503 queue admission failure
+from an unknown/disclosed model completion. Without authorized managed fallback,
+that failure saves the current loop, operation ID, captured model, wire input and
+budget reservation, then requeues the same leased job. Queued wait is excluded
+from active elapsed time and does not consume a crash-resume attempt. Linked
+working tasks return to queued atomically under their owning assistant grant.
+
+The transition locks the live owner's job and rechecks captured consent/source
+visibility. Any unfinished private assignment or fallback blocks safe requeue;
+unknown charges are not repeated. Private job-live checks hold a share lock so
+queued/cancelled state cannot race prompt admission/publication. Cancellation,
+lease ownership and current choice remain fenced. Fixed private-provider recovery
+messages can appear in run failures without reflecting upstream content.
+
+Actual runner tests prove lease loss before dispatch parks the job with its
+operation/model/reservation intact and zero inference envelopes. Broker/run/error
+checks64/64 pass, no skips, in `/tmp/orbyn-private-deferral-final-tests.log`;
+Night/queue checks20/20 pass in `/tmp/orbyn-private-deferral-night-regression.log`.
+A final safe-message check passes in `/tmp/orbyn-private-provider-error-final.log`.
+Workspace types pass in `/tmp/orbyn-private-deferral-final-types.log`.
+
+The earlier898b full run ended2740/2745 pass,5fail, including a historical Night
+read connection loss/recovery and a deadline timing failure. CI37234445505 passed
+all jobs on that earlier head. These are not latest-source qualification. Night
+leftover source checks now bind paired kind/UUID arrays instead of a100-row JSON
+recordset estimate; all visibility predicates and redacted labels remain intact.
+The previously failing historical read passes in the focused Night suite. No
+assertion, timer, database or JIT setting was waived. Fresh frozen full/CI and
+remaining C1-C6/M1/D1/U1 acceptance remain required before main promotion.

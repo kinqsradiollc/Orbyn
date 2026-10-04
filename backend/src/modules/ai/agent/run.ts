@@ -41,7 +41,12 @@ import { announceTo } from "../../presence/live.js";
 import { recallMemory } from "../../memory/service.js";
 import type { UserRow } from "../../../lib/auth.js";
 import type { Proposal } from "@orbyn/core";
-import { resolveUserAi } from "../providers/user-choice.js";
+import {
+  resolveUserAi,
+  ChatgptDeviceDeferred,
+  privateProviderFailureMessage,
+} from "../providers/user-choice.js";
+import { deferUnassignedChatgptJob } from "../../auth/chatgpt-inference.js";
 import { mayChange } from "../guards.js";
 import { overview, type AgentContext } from "./tools.js";
 import type { AgentTrace, AgentTraceEvent } from "./loop.js";
@@ -1524,12 +1529,17 @@ export async function runAssistantJob(
       );
       return;
     }
-    const ai = await resolveUserAi(user.id, jobId, async (message) => {
-      await pool.query(
-        "UPDATE ai_jobs SET progress=$2 WHERE id=$1 AND user_id=$3",
-        [jobId, { label: message }, user.id],
-      );
-    });
+    const ai = await resolveUserAi(
+      user.id,
+      jobId,
+      async (message) => {
+        await pool.query(
+          "UPDATE ai_jobs SET progress=$2 WHERE id=$1 AND user_id=$3",
+          [jobId, { label: message }, user.id],
+        );
+      },
+      !!request.automation,
+    );
     if (!ai) throw new Error("The AI assistant is not set up yet.");
     principal = await principalFor(user, request, jobId);
     const recordSources = (value: unknown, targets?: string[]) =>
@@ -1824,6 +1834,32 @@ export async function runAssistantJob(
       return;
     }
     if (
+      error instanceof ChatgptDeviceDeferred &&
+      request.automation &&
+      !controller.signal.aborted
+    ) {
+      stopHeartbeat();
+      envelope.elapsed_ms =
+        (envelope.elapsed_ms ?? 0) +
+        (Date.now() - (envelope.started_at ?? Date.now()));
+      delete envelope.started_at;
+      await saveProgress(jobId, envelope, {
+        label: "Waiting for your ChatGPT device",
+        step: envelope.state.lead_steps,
+      });
+      await settleSaves(jobId);
+      const queued = await deferUnassignedChatgptJob(
+        user.id,
+        jobId,
+        assistantLeaseOwner(jobId),
+      ).catch(() => false);
+      if (queued) {
+        controller.abort();
+        return;
+      }
+      // An unfinished/disclosed sibling or changed authority cannot be retried.
+    }
+    if (
       shutdownRequested ||
       error instanceof AssistantSuspended ||
       error instanceof WaitingProjectionFailure ||
@@ -1858,7 +1894,8 @@ export async function runAssistantJob(
         request,
         error instanceof AssistantPausedError
           ? error.message
-          : "This run could not be completed. Please try again.",
+          : (privateProviderFailureMessage(error) ??
+              "This run could not be completed. Please try again."),
       );
       return;
     }

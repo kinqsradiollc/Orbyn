@@ -48,7 +48,7 @@ async function providerLive(
 /** Current job authority is mandatory before exposing any conversation or accepting output. */
 async function jobLive(db: Db, owner: string, id: string) {
   const job = await db.query(
-    `SELECT j.id FROM ai_jobs j JOIN users u ON u.id=j.user_id WHERE j.id=$2 AND j.user_id=$1 AND NOT u.disabled AND j.state='running' AND j.lease_until>clock_timestamp() AND ${assistantJobSourcesVisible("j", "$1", false)}`,
+    `SELECT j.id FROM ai_jobs j JOIN users u ON u.id=j.user_id WHERE j.id=$2 AND j.user_id=$1 AND NOT u.disabled AND j.state='running' AND j.lease_until>clock_timestamp() AND ${assistantJobSourcesVisible("j", "$1", false)} FOR SHARE OF j`,
     [owner, id],
   );
   if (!job.rowCount) fail(409, "The assistant job or its sources changed.");
@@ -350,6 +350,53 @@ export async function readChatgptOperation(
         "This operation has an unknown completion. It was not retried.",
       );
     return readChatgptInferenceLocked(db, owner, jobId, row.request_id);
+  });
+}
+
+/** Queue only work with no unfinished physical assignment; never retry an unknown charge. */
+export async function deferUnassignedChatgptJob(
+  owner: string,
+  jobId: string,
+  claimedBy: string | null,
+) {
+  return transaction(async (db) => {
+    const user = await db.query(
+      "SELECT id FROM users WHERE id=$1 AND NOT disabled FOR SHARE",
+      [owner],
+    );
+    if (!user.rowCount) return false;
+    const held = await db.query(
+      `SELECT id FROM ai_jobs WHERE id=$1 AND user_id=$2 AND state='running'
+       AND NOT cancel_requested AND lease_until>clock_timestamp()
+       AND ($3::text IS NULL OR claimed_by=$3) FOR UPDATE`,
+      [jobId, owner, claimedBy],
+    );
+    if (!held.rowCount) return false;
+    await jobLive(db, owner, jobId);
+    const choice = await assertJobAiProviderChoice(db, owner, jobId);
+    if (choice.primary !== "chatgpt" || choice.fallback_to_default)
+      return false;
+    const changed = await db.query(
+      `UPDATE ai_jobs j SET state='queued',claimed_by=NULL,lease_until=NULL,heartbeat_at=now()
+       WHERE j.id=$1 AND j.user_id=$2 AND j.state='running' AND NOT j.cancel_requested
+         AND j.lease_until>clock_timestamp() AND ($3::text IS NULL OR j.claimed_by=$3)
+         AND j.runtime_lane IN ('background','overnight')
+         AND NOT EXISTS(SELECT 1 FROM chatgpt_inference_operations operation
+           LEFT JOIN chatgpt_inference_requests received ON received.id=operation.request_id
+           WHERE operation.job_id=j.id AND operation.user_id=j.user_id
+             AND operation.fallback_result_encrypted IS NULL
+             AND (received.id IS NULL OR received.result_encrypted IS NULL))
+       RETURNING j.id`,
+      [jobId, owner, claimedBy],
+    );
+    if (changed.rowCount !== 1) return false;
+    await db.query(
+      `UPDATE items task SET agent_state='queued',agent_result=NULL,updated_at=now()
+       WHERE task.agent_job_id=$1 AND task.agent_state='working'
+         AND EXISTS(SELECT 1 FROM agent_grants owner_grant WHERE owner_grant.id=task.agent_grant_id AND owner_grant.user_id=$2)`,
+      [jobId, owner],
+    );
+    return true;
   });
 }
 
