@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   personalAgentSettingsInput,
+  automationAgentLane,
+  automationAgentIdentityInput,
   characterAppearance,
   defaultNightShift,
   nightShiftInput,
@@ -16,6 +18,7 @@ import { pool, reader, transaction } from "../../db/pool.js";
 import { authenticate, isApiKeyRequest } from "../../lib/auth.js";
 import { audit } from "../../lib/audit.js";
 import { idParam, writeRateLimit } from "../../lib/params.js";
+import { readAutomationIdentity } from "./identities.js";
 import { contextSettings, ensureProfile, setInstructions } from "./service.js";
 
 /**
@@ -173,6 +176,73 @@ export async function agentContextRoutes(app: FastifyInstance) {
       });
     },
   );
+  app.get("/me/assistant/identity/:lane", async (r, reply) => {
+    const user = await firstParty(r);
+    if (Object.keys(r.query as object).length)
+      fail(400, "This route accepts no query parameters.");
+    const lane = automationAgentLane.parse((r.params as { lane: string }).lane);
+    reply.header("Cache-Control", "private, no-store");
+    return readAutomationIdentity(pool, user.id, lane);
+  });
+  app.put("/me/assistant/identity/:lane", writeRateLimit, async (r, reply) => {
+    const user = await firstParty(r);
+    if (Object.keys(r.query as object).length)
+      fail(400, "This route accepts no query parameters.");
+    const lane = automationAgentLane.parse((r.params as { lane: string }).lane);
+    const input = automationAgentIdentityInput.parse(r.body);
+    const saved = await transaction(async (db) => {
+      const changed = await db.query(
+        `INSERT INTO automation_agent_identities(user_id,lane,name,persona,character,named_at)
+         SELECT $1,$2,$3,$4,coalesce($5::jsonb,'{}'::jsonb),now() WHERE $6::integer=0
+         ON CONFLICT(user_id,lane) DO NOTHING RETURNING revision`,
+        [
+          user.id,
+          lane,
+          input.name,
+          input.persona,
+          input.character ? JSON.stringify(input.character) : null,
+          input.expected_revision,
+        ],
+      );
+      if (!changed.rowCount) {
+        const updated = await db.query(
+          `UPDATE automation_agent_identities SET name=$3,persona=$4,
+           character=coalesce($5::jsonb,character),named_at=coalesce(named_at,now()),
+           updated_at=now(),revision=revision+1
+           WHERE user_id=$1 AND lane=$2 AND revision=$6 RETURNING revision`,
+          [
+            user.id,
+            lane,
+            input.name,
+            input.persona,
+            input.character ? JSON.stringify(input.character) : null,
+            input.expected_revision,
+          ],
+        );
+        if (!updated.rowCount)
+          fail(409, "This agent profile changed. Reload it before saving.");
+      }
+      await audit(
+        {
+          actorId: user.id,
+          action: "automation_agent_identity.set",
+          targetType: "user",
+          targetId: user.id,
+          details: {
+            lane,
+            name: input.name,
+            persona_length: input.persona.length,
+          },
+          requestId: r.id,
+        },
+        db,
+      );
+      return readAutomationIdentity(db, user.id, lane);
+    });
+    reply.header("Cache-Control", "private, no-store");
+    return saved;
+  });
+
   app.get("/me/agent", async (r): Promise<PersonalAgentSettings> => {
     const u = await firstParty(r);
     const row = (

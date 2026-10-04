@@ -1,4 +1,4 @@
-import { assistantIdentityForLane } from "@orbyn/core";
+import { readAutomationIdentity } from "../../agent-context/identities.js";
 import {
   reflectionEvidence,
   reflectionSources,
@@ -561,20 +561,15 @@ async function contextFor(
   request: PersistedChatRequest,
   recordSources: (value: unknown, targets?: string[]) => Promise<void>,
 ) {
-  const savedIdentity = (
-    await pool.query<{ name: string; persona: string }>(
-      "SELECT name, persona FROM agent_settings WHERE user_id = $1",
-      [user.id],
-    )
-  ).rows[0] ?? { name: "Orbyn", persona: "" };
-  const identity = assistantIdentityForLane(
-    savedIdentity,
-    request.automation
-      ? request.automation.kind === "night" || request.automation.night_id
-        ? "overnight"
-        : "background"
-      : "interactive",
-  );
+  const identity = request.automation
+    ? await readAutomationIdentity(
+        pool,
+        user.id,
+        request.automation.kind === "night" || request.automation.night_id
+          ? "overnight"
+          : "background",
+      )
+    : { name: "Orbyn", persona: "" };
   const keptOut = await keptOutFor(pool, user.id);
   const context: AgentContext = {
     user: { id: user.id, role: user.role },

@@ -1,0 +1,16 @@
+{
+  "environment": "verified local test database",
+  "rows": [
+    {
+      "lane": "background",
+      "name": "Orbyn",
+      "revision": 1
+    },
+    {
+      "lane": "overnight",
+      "name": "Orbyn",
+      "revision": 3
+    }
+  ],
+  "interaction": "Overnight name edited and saved; Background unchanged; Overnight persisted after switch; fixture restored"
+}

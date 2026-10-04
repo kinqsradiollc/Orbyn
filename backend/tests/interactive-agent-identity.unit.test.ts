@@ -32,3 +32,27 @@ test("both chat surfaces keep character configuration and forced naming out of c
     assert.ok(source.includes('placeholder="Ask Orbyn…"'));
   }
 });
+
+test("runtime and profile readers use independently stored automation identities", async () => {
+  const runtime = await readFile(
+    new URL("../src/modules/ai/agent/run.ts", import.meta.url),
+    "utf8",
+  );
+  assert.ok(runtime.includes("await readAutomationIdentity"));
+  assert.ok(
+    runtime.includes(
+      'request.automation.kind === "night" || request.automation.night_id',
+    ),
+  );
+  assert.ok(runtime.includes('{ name: "Orbyn", persona: "" }'));
+  for (const file of [
+    "../../desktop/src/features/settings/AgentContext.tsx",
+    "../../mobile/src/screens/AgentContext.tsx",
+  ]) {
+    const source = await readFile(new URL(file, import.meta.url), "utf8");
+    assert.ok(source.includes("updateAutomationAgentIdentity(lane"));
+    assert.ok(source.includes("expected_revision: identity.revision"));
+    assert.ok(source.includes("Reload agent profile"));
+    assert.ok(!source.includes("updateAgentSettings("));
+  }
+});

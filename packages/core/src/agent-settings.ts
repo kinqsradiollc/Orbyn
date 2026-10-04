@@ -24,6 +24,28 @@ export type PersonalAgentSettings = {
   updated_at: string;
 };
 
+/** Automation profiles are independently editable; interactive chat is not a lane here. */
+export const automationAgentLane = z.enum(["background", "overnight"]);
+export type AutomationAgentLane = z.output<typeof automationAgentLane>;
+export const automationAgentIdentityInput = personalAgentSettingsInput.extend({
+  expected_revision: z.number().int().nonnegative(),
+});
+export type AutomationAgentIdentityInput = z.input<
+  typeof automationAgentIdentityInput
+>;
+export const automationAgentIdentity = z
+  .object({
+    lane: automationAgentLane,
+    name: agentSettingsInput.shape.name,
+    persona: agentSettingsInput.shape.persona,
+    character: characterAppearanceInput,
+    named_at: z.iso.datetime().nullable(),
+    updated_at: z.iso.datetime().nullable(),
+    revision: z.number().int().nonnegative(),
+  })
+  .strict();
+export type AutomationAgentIdentity = z.output<typeof automationAgentIdentity>;
+
 /** Ordinary assistant work allowed during the person's night window. */
 export const NIGHT_SHIFT_KINDS = [
   "plan",

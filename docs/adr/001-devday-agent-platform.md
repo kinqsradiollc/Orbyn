@@ -1140,3 +1140,48 @@ new actions/composer are visible without overlap in the current portrait viewpor
 Production web build passed. Source tests are not rendered web acceptance or live model-output validation.
 Browser permission remains blocked; user-authorized manual web screenshot review
 applies. No main promotion, production deployment or full ADR completion asserted.
+
+## 2026-10-04 — independent automation identities checkpoint
+
+Background and Overnight now have distinct persisted name/persona/character
+settings. Migration224 copies each existing legacy identity into two independent
+rows once; later saves are owner/lane-bound and compare an expected revision.
+Concurrent or stale saves return409. Defaults for new accounts use lane names.
+First-party identity routes reject API keys, unknown lanes/bodies/query arguments,
+and rate-limit writes. They do not alter grants or make either worker active.
+
+Interactive chat retains Orbyn with no automation persona. Automation context
+reads the relevant lane identity. Profile snapshots and both Home companion cards
+read the separate identities. The client validates returned lane/revision metadata
+and suppresses save broadcasts after an account change. Web/mobile settings have
+Background/Overnight selection, a reload action and a compact character preview;
+detailed appearance editing opens only when requested. The original shared
+`/me/agent` interface remains for legacy integration compatibility and no longer
+controls these two runtime identities after migration.
+
+Evidence: API/migration3/3 pass in `/tmp/orbyn-lane-identities-api-final2.log`,
+including simultaneous save CAS, account separation,401/403/400/422/429 coverage,
+legacy snapshot preservation and owner-delete cascade. Client/profile/runtime
+contract8/8 checks pass in `/tmp/orbyn-lane-identities-final-units.log`.
+All workspace types and production build passed on the final source checkpoint
+(`/tmp/orbyn-lane-identities-final-source-types.log` and
+`/tmp/orbyn-lane-identities-final-source-build.log`). Final native spacing adjustment
+has its own typecheck in `/tmp/orbyn-lane-identities-final-native-types.log`.
+
+Native iOS was actually operated: switch to Overnight, edit name, save, switch to
+Background (unchanged), return to Overnight (saved name persisted), then restore
+the fixture name. Screenshot `docs/reviews/evidence/automation-identities/ios-overnight-saved.png`
+shows the compact editor. `ios-compact-identity-restored.png` shows the selected
+segmented control after fixture restoration (a final10pt gap separates it from
+Reload). `ios-restored-fixture.json` records the verified local
+test database's independent revisions and restored names. Native drag/scroll APIs
+returned noWindowsAvailable; accessibility clicks brought controls into view.
+The screenshot still includes the old planner429 LogBox. Broad native layout,
+keyboard/landscape/large-text, Android and web rendered acceptance remain open.
+Preview test database was marker-verified, migrated and owned API restarted.
+No production migration/deployment, main promotion or full ADR completion claimed.
+
+Next qualify a frozen branch head, then isolate qualified production checkpoints.
+Continue automatic grounded Home suggestions/reflections, A5 source/budget controls,
+activity/undo/page-reflection, actual device inference, external host acceptance
+and whole-app C1-C6/M1/D1/U1 requirements. Existing execution lanes remain separate.

@@ -1,3 +1,4 @@
+import { Character } from "../components/Character";
 import { CharacterEditor } from "../components/CharacterEditor";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
@@ -6,14 +7,17 @@ import {
   characterAppearance,
   CHARACTER_PERSONAS,
   type AgentContextSettings,
-  type PersonalAgentSettings,
+  type AutomationAgentIdentity,
+  type AutomationAgentLane,
   type AgentInstructions,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
+import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
 import { openAppUrl } from "../hooks/useAppLinks";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
 import { timeAgo } from "../lib/progress";
 import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
@@ -37,7 +41,12 @@ export function AgentWarmStartCards({
   run: Run;
 }) {
   const [data, setData] = useState<AgentContextSettings | null>(null);
-  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identity, setIdentity] = useState<AutomationAgentIdentity | null>(
+    null,
+  );
+  const [lane, setLane] = useState<AutomationAgentLane>("background");
+  const [editingLook, setEditingLook] = useState(false);
+  const [reload, setReload] = useState(0);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [appearance, setAppearance] = useState(() => characterAppearance({}));
@@ -49,15 +58,27 @@ export function AgentWarmStartCards({
   const load = async () => setData(await client.agentContext());
   useEffect(() => {
     void run(load);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    const token = session.token;
+    setIdentity(null);
+    setEditingLook(false);
     void run(async () => {
-      const value = await client.agentSettings();
+      const value = await client.automationAgentIdentity(lane);
+      if (!live || token !== session.token) return;
       setIdentity(value);
       setIdentityName(value.name);
       setIdentityPersona(value.persona);
       setAppearance(characterAppearance(value.character));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      live = false;
+    };
+    // run is a screen action wrapper, not a query dependency.
+  }, [lane, reload]);
 
   const openProfile = () =>
     void run(async () => {
@@ -76,13 +97,16 @@ export function AgentWarmStartCards({
   };
 
   const saveIdentity = () => {
+    if (!identity || identity.lane !== lane) return;
+    const token = session.token;
     void run(async () => {
-      const value = await client.updateAgentSettings({
+      const value = await client.updateAutomationAgentIdentity(lane, {
+        expected_revision: identity.revision,
         name: identityName.trim(),
         persona: identityPersona,
         character: appearance,
       });
-      setIdentity(value);
+      if (token === session.token) setIdentity(value);
     });
   };
 
@@ -118,12 +142,35 @@ export function AgentWarmStartCards({
       <NightShift busy={busy} run={run} />
       <ReminderNudges busy={busy} run={run} />
       <View style={shared.card}>
-        <Text style={shared.label}>Your assistant</Text>
+        <Text style={shared.label}>Agent identity</Text>
+        <View style={{ gap: 10, marginVertical: 8 }}>
+          <Segmented
+            options={["background", "overnight"] as const}
+            value={lane}
+            labels={{ background: "Background", overnight: "Overnight" }}
+            onChange={setLane}
+            disabled={busy}
+            accessibilityLabel="Agent identity profile"
+          />
+
+          <SmallAction
+            label="Reload agent profile"
+            disabled={busy}
+            onPress={() => setReload((value) => value + 1)}
+          />
+        </View>
+        {identity === null && (
+          <Text style={shared.small}>
+            Agent profile is loading or unavailable. Reload to try again.
+          </Text>
+        )}
         <Text style={[shared.small, s.gap]}>
-          The name your assistant goes by, and how it should come across.
+          {lane === "background" ? "Background" : "Overnight"} has its own name,
+          character and communication style.
         </Text>
         <Field label="Name">
           <TextInput
+            editable={!busy && identity?.lane === lane}
             value={identityName}
             onChangeText={setIdentityName}
             maxLength={40}
@@ -135,6 +182,7 @@ export function AgentWarmStartCards({
         </Field>
         <Field label="Persona (optional)">
           <TextInput
+            editable={!busy && identity?.lane === lane}
             value={identityPersona}
             onChangeText={setIdentityPersona}
             maxLength={1000}
@@ -149,21 +197,38 @@ export function AgentWarmStartCards({
             <SmallAction
               key={preset.label}
               label={preset.label}
-              disabled={busy}
+              disabled={busy || identity?.lane !== lane}
               onPress={() => setIdentityPersona(preset.persona)}
             />
           ))}
         </View>
-        <CharacterEditor
-          value={appearance}
-          onChange={setAppearance}
-          name={identityName}
-          disabled={busy}
-        />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Character appearance={appearance} name={identityName} size={48} />
+          <SmallAction
+            label={
+              editingLook ? "Close character editor" : "Customize character"
+            }
+            disabled={busy || identity?.lane !== lane}
+            onPress={() => setEditingLook((value) => !value)}
+          />
+        </View>
+        {editingLook && (
+          <CharacterEditor
+            value={appearance}
+            onChange={setAppearance}
+            name={identityName}
+            disabled={busy || identity?.lane !== lane}
+          />
+        )}
         <Button
           title="Save"
           onPress={saveIdentity}
-          disabled={busy || identity === null || !identityName.trim()}
+          disabled={
+            busy ||
+            identity === null ||
+            identity.lane !== lane ||
+            !identityName.trim()
+          }
           style={s.last}
         />
       </View>

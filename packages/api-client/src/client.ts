@@ -63,6 +63,10 @@ import {
   type ApprovalScopes,
   type AssistantIdea,
   type AgentIdentityInput,
+  automationAgentIdentity,
+  type AutomationAgentLane,
+  type AutomationAgentIdentity,
+  type AutomationAgentIdentityInput,
   type NewAgentWake,
   type ProposalStatus,
   type McpCatalog,
@@ -566,6 +570,18 @@ export class OrbynClient {
   private readonly agentSettingsListeners = new Set<
     (settings: PersonalAgentSettings) => void
   >();
+  private readonly automationIdentityListeners = new Set<
+    (identity: AutomationAgentIdentity) => void
+  >();
+  /** Observe saves in this client; results are isolated from account changes. */
+  onAutomationAgentIdentity(
+    listener: (identity: AutomationAgentIdentity) => void,
+  ) {
+    this.automationIdentityListeners.add(listener);
+    return () => {
+      this.automationIdentityListeners.delete(listener);
+    };
+  }
   /** Concurrent ordinary reads share transport, but never mutable result objects. */
   private readonly pendingReads = new Map<
     string,
@@ -3478,6 +3494,35 @@ export class OrbynClient {
   /** "About me for agents" and each space's instructions (H8). */
   agentContext() {
     return this.request<AgentContextSettings>("/me/agent-context");
+  }
+  /** Fresh, account-bound identity for one independent automation runtime. */
+  async automationAgentIdentity(lane: AutomationAgentLane) {
+    const saved = await this.request<AutomationAgentIdentity>(
+      `/me/assistant/identity/${lane}`,
+      { fresh: true },
+    );
+    const checked = automationAgentIdentity.parse(saved);
+    if (checked.lane !== lane)
+      throw new Error("Agent identity belongs to another runtime.");
+    return checked;
+  }
+  async updateAutomationAgentIdentity(
+    lane: AutomationAgentLane,
+    input: AutomationAgentIdentityInput,
+  ) {
+    const token = await this.getToken();
+    const saved = await this.request<AutomationAgentIdentity>(
+      `/me/assistant/identity/${lane}`,
+      { method: "PUT", body: input },
+    );
+    const checked = automationAgentIdentity.parse(saved);
+    if (checked.lane !== lane)
+      throw new Error("Agent identity belongs to another runtime.");
+    if (token === (await this.getToken())) {
+      for (const listener of this.automationIdentityListeners)
+        listener(structuredClone(checked));
+    }
+    return checked;
   }
   agentSettings(options?: Pick<RequestOptions, "fresh">) {
     return this.request<PersonalAgentSettings>("/me/agent", options);

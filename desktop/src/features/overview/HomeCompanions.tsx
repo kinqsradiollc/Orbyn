@@ -3,9 +3,10 @@ import {
   CHARACTER_PRESETS,
   HOME_AGENT_GUIDE,
   HOME_AGENT_IDLE_NOTE,
-  type PersonalAgentSettings,
+  type AutomationAgentIdentity,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { Character } from "../../components/Character";
 import { AssistantAgents } from "../assistant/AssistantAgents";
 
@@ -14,46 +15,47 @@ export function HomeCompanions({
   canOpen = false,
   onOpenChat = () => {},
 }: { canOpen?: boolean; onOpenChat?: (id: string) => void } = {}) {
-  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identities, setIdentities] = useState<
+    Partial<Record<"background" | "overnight", AutomationAgentIdentity>>
+  >({});
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
-    let updated = false;
-    const unsubscribe = client.onAgentSettings((value) => {
-      updated = true;
-      if (live) setIdentity(value);
+    const token = session.get();
+    const updated = new Set<string>();
+    const unsubscribe = client.onAutomationAgentIdentity((value) => {
+      updated.add(value.lane);
+      if (live && token === session.get())
+        setIdentities((old) => ({ ...old, [value.lane]: value }));
     });
-    void client.agentSettings({ fresh: true }).then(
-      (value) => live && !updated && setIdentity(value),
-      () => undefined,
-    );
+    for (const lane of ["background", "overnight"] as const) {
+      void client.automationAgentIdentity(lane).then(
+        (value) => {
+          if (live && token === session.get() && !updated.has(lane))
+            setIdentities((old) => ({ ...old, [lane]: value }));
+        },
+        () => undefined,
+      );
+    }
     return () => {
       live = false;
       unsubscribe();
     };
   }, []);
   return (
-    <section className="home-companions-card" aria-label="Your companion">
+    <section className="home-companions-card" aria-label="Your agents">
       {agentsOpen && (
         <AssistantAgents
-          identity={identity}
           canOpen={canOpen}
           onClose={() => setAgentsOpen(false)}
           onOpenChat={onOpenChat}
         />
       )}
       <div className="home-companions-heading">
-        {identity && (
-          <Character
-            appearance={identity.character}
-            name={identity.name}
-            size={40}
-          />
-        )}
         <div>
-          <h2>{identity?.name ?? "Your companion"}</h2>
+          <h2>Your agents</h2>
         </div>
         <button
           className="text-button"
@@ -80,7 +82,29 @@ export function HomeCompanions({
         <div className="home-companions-lanes">
           {HOME_AGENT_GUIDE.map((agent) => (
             <article key={agent.name}>
-              <strong>{agent.name}</strong>
+              <div className="home-agent-identity">
+                <Character
+                  appearance={
+                    identities[
+                      agent.name === "Background" ? "background" : "overnight"
+                    ]?.character
+                  }
+                  name={
+                    identities[
+                      agent.name === "Background" ? "background" : "overnight"
+                    ]?.name ?? agent.name
+                  }
+                  size={40}
+                />
+                <div>
+                  <strong>
+                    {identities[
+                      agent.name === "Background" ? "background" : "overnight"
+                    ]?.name ?? agent.name}
+                  </strong>
+                  <small>{agent.name}</small>
+                </div>
+              </div>
               <p>{agent.brief}</p>
               {guideOpen && (
                 <div className="home-companions-guide">

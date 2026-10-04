@@ -436,3 +436,23 @@
 .home-companions-steps li p {
   margin-top: 4px;
 }
+
+/* Each automation has its own identity; the lane label remains explicit. */
+.home-agent-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.home-agent-identity > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.home-agent-identity strong {
+  overflow-wrap: anywhere;
+}
+.home-agent-identity small {
+  color: var(--color-muted);
+  font-size: 12px;
+}

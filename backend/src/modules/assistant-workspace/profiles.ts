@@ -16,6 +16,7 @@ import { readTransaction, type Queryable } from "../../db/pool.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { firstParty } from "../proposals/service.js";
+import { readAutomationIdentity } from "../agent-context/identities.js";
 import { assistantNightWindow } from "../../worker/night-window.js";
 import { assistantLastActivity, assistantRecentActivity } from "./activity.js";
 
@@ -135,6 +136,7 @@ export async function readAssistantProfiles(
     ).rows;
     profiles.push({
       lane,
+      identity: await readAutomationIdentity(db, owner, lane),
       counts,
       state: assistantProfileState(
         counts,
