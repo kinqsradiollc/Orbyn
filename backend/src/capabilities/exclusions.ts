@@ -381,6 +381,8 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /me/assistant/identity/:lane": "assistant_control",
+  "PUT /me/assistant/identity/:lane": "assistant_control",
   // These configure/inspect owner-approved automation; they never expose model execution.
   "GET /docs/:id/maintenance/runs": "assistant_control",
   "POST /docs/:id/maintenance/runs/:runId/decision": "assistant_control",

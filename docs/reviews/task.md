@@ -1008,3 +1008,17 @@ frozen head is still required. Web/manual review, native wide/keyboard/large-tex
 Android, automatic Home recommendations/reflections, A5 source/budget/activity,
 reflection evidence, verified device inference and external host gates remain
 open. No main promotion or deployment is asserted.
+
+### Route inventory qualification follow-up — 4 October 2026
+
+The exact `6974d65c` route-inventory preflight found the new GET/PUT lane identity
+routes were not classified. That run was stopped on this confirmed same-head
+failure; `/tmp/orbyn-lane-identities-6974d65c-cancelled.json` is not passing evidence.
+Both endpoints now explicitly use `assistant_control`; they remain first-party
+and cannot be reached by connected agents. The complete route inventory,
+model-free import-graph/twin shield and identity API/migration checks now pass
+12/12 with no skips in `/tmp/orbyn-identities-inventory-parity-final.log`. The
+focused identity schema/runtime/client checks pass4/4 in
+`/tmp/orbyn-identities-parity-units.log`. All workspace types pass in
+`/tmp/orbyn-identities-parity-final-types.log`. A fresh exact-head full suite remains
+required before main promotion; full ADR and visual acceptance remain open.
