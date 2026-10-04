@@ -456,3 +456,78 @@ test("the actual Background runner parks a lost device with its captured operati
   );
   await finish(f.job);
 });
+
+test("dispatch waiting on the job lock rechecks queued state before creating an assignment", async () => {
+  const { queueChatgptInference } =
+    await import("../src/modules/auth/chatgpt-inference.js");
+  const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()+interval '5 minutes' WHERE executor_id=$1",
+    [f.executor],
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET models=$2 WHERE executor_id=$1",
+    [
+      f.executor,
+      JSON.stringify([{ slug: "fixture-model", display_name: "Fixture" }]),
+    ],
+  );
+  await pool.query(
+    "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'fixture-model')",
+    [f.connection],
+  );
+  assert.equal(
+    (await claimAssistantJob("dispatch-owner", "background"))?.id,
+    f.job,
+  );
+  const lock = await pool.connect();
+  await lock.query("BEGIN");
+  await lock.query("SELECT id FROM ai_jobs WHERE id=$1 FOR UPDATE", [f.job]);
+  const queued = queueChatgptInference(
+    f.owner,
+    f.job,
+    { connection_id: f.connection, executor_id: f.executor },
+    { instructions: "Fixture", input: [{ role: "user", content: "Fixture" }] },
+    "fixture-model",
+    1,
+    randomUUID(),
+  );
+  const rejected = assert.rejects(
+    queued,
+    (error: any) => error.statusCode === 409,
+  );
+  try {
+    let waiting = false;
+    for (let i = 0; i < 40; i++) {
+      waiting = !!(
+        await pool.query(
+          "SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT j.id FROM ai_jobs j JOIN users u%' LIMIT 1",
+        )
+      ).rowCount;
+      if (waiting) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    assert.ok(waiting, "dispatch reached the guarded job row");
+    await lock.query(
+      "UPDATE ai_jobs SET state='queued',claimed_by=NULL,lease_until=NULL WHERE id=$1",
+      [f.job],
+    );
+    await lock.query("COMMIT");
+  } catch (error) {
+    await lock.query("ROLLBACK");
+    throw error;
+  } finally {
+    lock.release();
+  }
+  await rejected;
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM chatgpt_inference_requests WHERE job_id=$1",
+        [f.job],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await finish(f.job);
+});

@@ -41,7 +41,7 @@ test("chat loop uses user routing; only known admission failures can change bill
     new URL("../src/modules/ai/agent/run.ts", import.meta.url),
     "utf8",
   );
-  assert.ok(run.includes("await resolveUserAi(user.id, jobId"));
+  assert.match(run, /await resolveUserAi\(\s*user\.id,\s*jobId,/);
   const protocol = await readFile(
     new URL("../src/modules/ai/agent/protocol.ts", import.meta.url),
     "utf8",

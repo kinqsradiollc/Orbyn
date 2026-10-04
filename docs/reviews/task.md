@@ -1648,3 +1648,19 @@ recordset estimate; all visibility predicates and redacted labels remain intact.
 The previously failing historical read passes in the focused Night suite. No
 assertion, timer, database or JIT setting was waived. Fresh frozen full/CI and
 remaining C1-C6/M1/D1/U1 acceptance remain required before main promotion.
+
+### Deferral state-lock verification — 5 October 2026
+
+A concurrent dispatch blocked on the job's share lock now rejects after another
+transaction queues that job; it creates no inference envelope. The queue/broker/
+runner concurrency suite passes33/33, no skips, in
+`/tmp/orbyn-private-deferral-concurrency-tests.log`.
+
+The42c70383 local full run ended2747/2748 pass,1fail. The remaining failure was a
+source-contract assertion requiring resolveUserAi's call and arguments to occupy
+one line after Prettier wrapped the new argument. Its updated whitespace-tolerant
+pattern still requires that exact resolver and owner/job arguments; no behavior,
+authority assertion or deadline was waived. Routing/error checks pass in
+`/tmp/orbyn-private-routing-contract-final.log`. Fresh full/CI qualification on
+this verification head remains required. Main82576dfa and the broader full ADR
+scope remain unchanged.
