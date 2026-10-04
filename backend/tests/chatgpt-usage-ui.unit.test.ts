@@ -144,7 +144,7 @@ for (const app of ["desktop", "mobile"] as const) {
       assert.equal(f.calls.length, 1);
       f.calls[0].resolve(summary);
       await Promise.resolve();
-        const text = content(f.render("a")).replace(/\s+/g, " ");
+      const text = content(f.render("a")).replace(/\s+/g, " ");
       assert.match(text, /9,007,199,254,740,994/);
       assert.match(text, /reported tokens/);
       assert.match(text, /1 request did not report/);
