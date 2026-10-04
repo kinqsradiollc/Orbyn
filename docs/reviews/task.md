@@ -1664,3 +1664,13 @@ authority assertion or deadline was waived. Routing/error checks pass in
 `/tmp/orbyn-private-routing-contract-final.log`. Fresh full/CI qualification on
 this verification head remains required. Main82576dfa and the broader full ADR
 scope remain unchanged.
+
+### Deferral verification updates — 5 October 2026
+
+The queue/broker/runner concurrency suite passes33/33, no skips, including an
+actual blocked dispatch rejecting queued state with zero assignments. The
+routing-contract check now accepts whitespace formatting while still requiring
+resolveUserAi with the owner/job arguments; routing/error checks pass. The
+preceding42c70383 full local result remains2747/2748 with that formatting assertion
+failure, not a passing qualification. Fresh full/CI must qualify this verification
+head before promotion. Main82576dfa and full ADR scope remain unchanged.
