@@ -22,10 +22,20 @@ export function AiProviderChoiceControls({
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
+  const owner = useRef({ userId, token: session.token });
+  owner.current = { userId, token: session.token };
   const choice =
     ownedChoice?.userId === userId && ownedChoice.token === session.token
       ? ownedChoice.value
       : null;
+  const savedSelection =
+    choice?.connection_id && choice.executor_id
+      ? { connection_id: choice.connection_id, executor_id: choice.executor_id }
+      : null;
+  const inspectedIsSaved =
+    !!savedSelection &&
+    selection?.connection_id === savedSelection.connection_id &&
+    selection?.executor_id === savedSelection.executor_id;
   const [reload, setReload] = useState(0);
   useEffect(() => {
     const abort = new AbortController(),
@@ -48,14 +58,21 @@ export function AiProviderChoiceControls({
     );
     return () => abort.abort();
   }, [userId, reload]);
-  const save = async (primary: "default" | "chatgpt", fallback: boolean) => {
+  const save = async (
+    primary: "default" | "chatgpt",
+    fallback: boolean,
+    selected = selection,
+  ) => {
     const active = lifetime.current;
     if (
       !choice ||
+      owner.current.userId !== userId ||
+      owner.current.token !== session.token ||
+      ownedChoice?.token !== session.token ||
       busy ||
       !active ||
       active.signal.aborted ||
-      (primary === "chatgpt" && !selection)
+      (primary === "chatgpt" && !selected)
     )
       return;
     const token = session.token;
@@ -71,7 +88,7 @@ export function AiProviderChoiceControls({
             }
           : {
               primary,
-              ...selection,
+              ...selected,
               fallback_to_default: fallback,
               expected_version: choice.version,
             },
@@ -101,7 +118,11 @@ export function AiProviderChoiceControls({
         />
         <SmallAction
           label={
-            choice?.primary === "chatgpt" ? "ChatGPT · selected" : "ChatGPT"
+            choice?.primary === "chatgpt" && inspectedIsSaved
+              ? "ChatGPT · selected"
+              : choice?.primary === "chatgpt" && selection
+                ? "Use this ChatGPT device"
+                : "ChatGPT"
           }
           disabled={busy || !choice || !selection}
           onPress={() =>
@@ -109,6 +130,13 @@ export function AiProviderChoiceControls({
           }
         />
       </View>
+      {choice?.primary === "chatgpt" && !inspectedIsSaved && (
+        <Text style={shared.small}>
+          {savedSelection
+            ? "Another ChatGPT device is your current provider."
+            : "Your saved ChatGPT device is unavailable."}
+        </Text>
+      )}
       {choice?.primary === "chatgpt" && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Text style={[shared.body, { flex: 1 }]}>
@@ -116,16 +144,20 @@ export function AiProviderChoiceControls({
           </Text>
           <Switch
             value={choice.fallback_to_default}
-            disabled={busy || !selection}
+            disabled={busy || !savedSelection}
             trackColor={{ true: colors.accent }}
-            onValueChange={(value) => void save("chatgpt", value)}
+            onValueChange={(value) =>
+              void save("chatgpt", value, savedSelection)
+            }
           />
         </View>
       )}
-      <Text style={shared.small}>
-        Fallback uses Orbyn's configured provider. Interrupted or unknown
-        ChatGPT results are not retried through it.
-      </Text>
+      {choice?.primary === "chatgpt" && (
+        <Text style={shared.small}>
+          Fallback uses Orbyn's configured provider. Interrupted or unknown
+          ChatGPT results are not retried through it.
+        </Text>
+      )}
       {error && (
         <Text accessibilityRole="alert" style={shared.small}>
           {error}

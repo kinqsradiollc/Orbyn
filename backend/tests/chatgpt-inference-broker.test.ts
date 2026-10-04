@@ -86,7 +86,14 @@ async function fixture() {
     selection,
     binding,
     keys,
-    receipt: (a: any) => {
+    receipt: (
+      a: any,
+      usage: {
+        input_tokens: number;
+        output_tokens: number;
+        total_tokens: number;
+      } | null = { input_tokens: 4, output_tokens: 2, total_tokens: 6 },
+    ) => {
       const receipt = {
         request_id: a.id,
         executor_id: a.executor_id,
@@ -99,7 +106,7 @@ async function fixture() {
         result: {
           status: "completed",
           text: "Private result",
-          usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 },
+          usage,
         },
       };
       return {
@@ -139,6 +146,13 @@ test("assigned input is encrypted; only one claim and signed completed output ar
   );
   const publication = f.receipt(assigned);
   await finishChatgptInference(f.binding, publication);
+  const { readCompletedChatgptUsage } =
+    await import("../src/modules/auth/chatgpt-usage.js");
+  const summary = await readCompletedChatgptUsage(f.binding);
+  assert.equal(summary.completed_requests, 1);
+  assert.equal(summary.total_tokens, "6");
+  assert.equal(summary.recent[0].model, "fixture-model");
+  assert.ok(!JSON.stringify(summary).includes("Private"));
   assert.deepEqual(
     await readChatgptInference(f.owner, f.job, request.id),
     publication.receipt.result,
@@ -148,6 +162,10 @@ test("assigned input is encrypted; only one claim and signed completed output ar
     status(409),
   );
   assert.equal(
+    (await readCompletedChatgptUsage(f.binding)).completed_requests,
+    1,
+  );
+  assert.equal(
     (
       await pool.query(
         "SELECT payload_encrypted FROM chatgpt_inference_requests WHERE id=$1",
@@ -155,6 +173,90 @@ test("assigned input is encrypted; only one claim and signed completed output ar
       )
     ).rows[0].payload_encrypted,
     "",
+  );
+});
+
+test("unreported usage stays unknown, opted-out completions are not recorded, and request cleanup keeps measurements", async () => {
+  const { readCompletedChatgptUsage } =
+    await import("../src/modules/auth/chatgpt-usage.js");
+  const f = await fixture();
+  const request = await queueChatgptInference(f.owner, f.job, f.selection, {
+    instructions: "",
+    input: [],
+  });
+  const assignment = await claimChatgptInference(
+    f.binding,
+    f.selection.executor_id,
+  );
+  assert.ok(assignment);
+  await finishChatgptInference(f.binding, f.receipt(assignment, null));
+  await pool.query("DELETE FROM chatgpt_inference_requests WHERE id=$1", [
+    request.id,
+  ]);
+  const summary = await readCompletedChatgptUsage(f.binding);
+  assert.equal(summary.completed_requests, 1);
+  assert.equal(summary.measured_requests, 0);
+  assert.equal(summary.recent[0].usage, null);
+  const other = await fixture();
+  assert.equal(
+    (await readCompletedChatgptUsage(other.binding)).completed_requests,
+    0,
+  );
+  await pool.query("UPDATE users SET analytics_opt_out=true WHERE id=$1", [
+    other.owner,
+  ]);
+  await queueChatgptInference(other.owner, other.job, other.selection, {
+    instructions: "",
+    input: [],
+  });
+  const next = await claimChatgptInference(
+    other.binding,
+    other.selection.executor_id,
+  );
+  assert.ok(next);
+  await finishChatgptInference(other.binding, other.receipt(next));
+  assert.equal(
+    (await readCompletedChatgptUsage(other.binding)).recording_enabled,
+    false,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM chatgpt_completed_usage WHERE user_id=$1",
+        [other.owner],
+      )
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("usage windows are bounded and aggregate bigint measurements without precision loss", async () => {
+  const f = await fixture();
+  const { readCompletedChatgptUsage } =
+    await import("../src/modules/auth/chatgpt-usage.js");
+  for (let n = 0; n < 12; n++)
+    await pool.query(
+      "INSERT INTO chatgpt_completed_usage(request_id,user_id,model,input_tokens,output_tokens,total_tokens) VALUES($1,$2,'fixture-model',9007199254740991,0,9007199254740991)",
+      [randomUUID(), f.owner],
+    );
+  await pool.query(
+    "INSERT INTO chatgpt_completed_usage(request_id,user_id,model,completed_at,input_tokens,output_tokens,total_tokens) VALUES($1,$2,'old-fixture',now()-interval '31 days',1,0,1)",
+    [randomUUID(), f.owner],
+  );
+  const summary = await readCompletedChatgptUsage(f.binding);
+  assert.equal(summary.completed_requests, 12);
+  assert.equal(summary.recent.length, 10);
+  assert.equal(summary.total_tokens, String(9007199254740991n * 12n));
+  await assert.rejects(
+    pool.query(
+      "INSERT INTO chatgpt_completed_usage(request_id,user_id,model,input_tokens) VALUES($1,$2,'partial-fixture',1)",
+      [randomUUID(), f.owner],
+    ),
+    (error: any) => error.code === "23514",
+  );
+  await assert.rejects(
+    readCompletedChatgptUsage({ ...f.binding, sessionId: randomUUID() }),
+    status(401),
   );
 });
 test("wrong sessions, forged output, replacement leases and inactive jobs are fenced", async () => {

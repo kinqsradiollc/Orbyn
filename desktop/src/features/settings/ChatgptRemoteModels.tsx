@@ -1,4 +1,5 @@
 import { AiProviderChoiceControls } from "./AiProviderChoice";
+import { ChatgptUsage } from "./ChatgptUsage";
 import { useEffect, useId, useRef, useState } from "react";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
@@ -99,6 +100,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
             : null
         }
       />
+      <ChatgptUsage userId={userId} />
       <div className="settings-head">
         <div>
           <h3>ChatGPT</h3>

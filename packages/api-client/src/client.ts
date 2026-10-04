@@ -40,6 +40,7 @@ import {
   chatgptConnectRequestStart,
   aiProviderChoice,
   aiProviderChoiceInput,
+  chatgptUsageSummary,
   chatgptInferenceAssignment,
   chatgptInferencePublication,
   chatgptConnectRequestState,
@@ -1389,6 +1390,15 @@ export class OrbynClient {
   async aiProviderChoice(signal?: AbortSignal) {
     return aiProviderChoice.parse(
       await this.request("/ai/provider-choice", { fresh: true, signal }),
+    );
+  }
+  /** Completed Orbyn request measurements, not account-wide ChatGPT quota. */
+  async chatgptUsage(signal?: AbortSignal) {
+    return chatgptUsageSummary.parse(
+      await this.request("/ai/connections/chatgpt/usage", {
+        fresh: true,
+        signal,
+      }),
     );
   }
   async saveAiProviderChoice(input: unknown, signal?: AbortSignal) {

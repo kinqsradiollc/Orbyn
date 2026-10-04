@@ -3,6 +3,7 @@ import {
   saveAiProviderChoice,
 } from "./ai-provider-choice.js";
 import { pool } from "../../db/pool.js";
+import { readCompletedChatgptUsage } from "./chatgpt-usage.js";
 import { z } from "zod";
 import {
   startChatgptConnectRequest,
@@ -31,6 +32,16 @@ import {
 
 /** First-party identity metadata only. Plan credentials and plugin grants stay separate. */
 export async function chatgptConnectionRoutes(app: FastifyInstance) {
+  app.get(
+    "/ai/connections/chatgpt/usage",
+    strictRateLimit,
+    async (r, reply) => {
+      const binding = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.query);
+      reply.header("Cache-Control", "no-store");
+      return readCompletedChatgptUsage(binding);
+    },
+  );
   app.get("/ai/provider-choice", async (r, reply) => {
     const b = await authenticateSessionBinding(r);
     z.object({}).strict().parse(r.query);

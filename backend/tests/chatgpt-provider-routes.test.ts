@@ -78,3 +78,50 @@ test("provider and inference routes require first-party sessions, valid bodies a
   assert.equal(own.headers["cache-control"], "no-store");
   assert.equal(own.json().primary, "default");
 });
+
+test("completed usage is owner-only, content-free, non-cacheable and rate limited", async () => {
+  const a = await h.register("usage-owner"),
+    b = await h.register("usage-other");
+  owners.push(a.id, b.id);
+  const url = "/ai/connections/chatgpt/usage";
+  await pool.query(
+    "INSERT INTO chatgpt_completed_usage(request_id,user_id,model,input_tokens,output_tokens,total_tokens) VALUES($1,$2,'fixture-model',4,2,6)",
+    [randomUUID(), a.id],
+  );
+  assert.equal((await h.call(null, "GET", url)).statusCode, 401);
+  const key = (
+    await h.call(a.token, "POST", "/me/api-keys", { name: "Usage fixture" })
+  ).json().key;
+  assert.equal((await h.call(key, "GET", url)).statusCode, 403);
+  const own = await h.call(a.token, "GET", url);
+  assert.equal(own.statusCode, 200, own.body);
+  assert.equal(own.headers["cache-control"], "no-store");
+  assert.equal(own.json().total_tokens, "6");
+  assert.equal(
+    (await h.call(b.token, "GET", url)).json().completed_requests,
+    0,
+  );
+  assert.equal(
+    (await h.call(b.token, "GET", `${url}?user_id=${a.id}`)).statusCode,
+    422,
+  );
+  for (const field of [
+    "access_token",
+    "refresh_token",
+    "text",
+    "input",
+    "instructions",
+    "binding",
+  ])
+    assert.ok(!(field in own.json()));
+  let limited = false;
+  for (let n = 0; n < 12; n++) {
+    const reply = await h.call(a.token, "GET", url);
+    if (reply.statusCode === 429) {
+      limited = true;
+      break;
+    }
+    assert.equal(reply.statusCode, 200, reply.body);
+  }
+  assert.ok(limited);
+});

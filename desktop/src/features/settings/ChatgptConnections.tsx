@@ -1,4 +1,5 @@
 import { AiProviderChoiceControls } from "./AiProviderChoice";
+import { ChatgptUsage } from "./ChatgptUsage";
 import { useId, useState } from "react";
 import { Plus, RefreshCw, Sparkles } from "lucide-react";
 import { CHATGPT_USAGE_URL, type ChatgptDesktopCommand } from "@orbyn/core";
@@ -67,6 +68,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
                 : null
             }
           />
+          <ChatgptUsage userId={userId} />
           <div className="settings-head ai-connection-heading">
             <div>
               <h3>ChatGPT</h3>

@@ -3312,6 +3312,39 @@ entitlement. The credential-owning runtime must recheck model availability
 before inference. These APIs do not start inference or use managed provider
 credentials as an automatic fallback.
 
+### Personal ChatGPT routing and completed usage
+
+These endpoints require a verified first-party app session and return `no-store`.
+Personal API keys, MCP grants and plugin credentials cannot read or change them.
+
+| Method | Path                                       | Purpose                                                                                                                                           |
+| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/ai/provider-choice`                      | Read the person's primary provider, selected device, explicit fallback and version.                                                               |
+| PUT    | `/ai/provider-choice`                      | CAS update using `expected_version`; choose `default` with fallback false, or `chatgpt` with owned connection/executor IDs and explicit fallback. |
+| POST   | `/ai/connections/chatgpt/inference/claim`  | Exact enrolled session claims one authorized runner assignment using `executor_id`.                                                               |
+| POST   | `/ai/connections/chatgpt/inference/result` | Publish the device-signed completion/failure receipt for that captured assignment.                                                                |
+| GET    | `/ai/connections/chatgpt/usage`            | Owner-only completed-request measurements from the last 30 days, with at most ten recent records. No query parameters.                            |
+
+Only the internal assistant runner queues prompt input. Assignments capture the
+current provider-choice revision, model, executor and lease generation; provider,
+session, source or device changes fence later claim/read/publication. Signed
+catalog capability `plan_inference_v1` is required before a device can act as an
+inference provider. Old catalogs remain readable without this capability.
+
+Fallback is explicit. A confirmed admission rejection may use the configured
+default provider; a partial or unknown completion cannot automatically retry
+through another provider. Changing the choice cannot recall content already sent.
+MCP and plugin grants remain separate.
+
+Usage returns `since`, `until`, `recording_enabled`, `completed_requests`,
+`measured_requests`, decimal-string `input_tokens`, `output_tokens`, `total_tokens`
+and `recent: [{request_id, model, completed_at, usage}]`. Each recent `usage` is
+either measured integer token counts or null, never guessed. Decimal totals avoid
+Number precision loss. Only accepted signed completions are counted once; failure
+or replay does not add measurements. Opted-out users get no new records. This
+history is content-free, deleted after 30 days by the central sweeper and on
+account deletion, and is not account-wide ChatGPT quota, tier or remaining usage.
+
 ### Document PDF delivery
 
 `GET /docs/:id/export?format=pdf` uses an authorized, primary-read snapshot and a

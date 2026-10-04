@@ -299,6 +299,8 @@ If you choose to connect your ChatGPT identity, Orbyn receives a short-lived ide
 
 If you select ChatGPT as your personal AI provider, Orbyn sends the authorized conversation and workspace context needed for each request to your selected Orbyn desktop device. That device calls OpenAI using the ChatGPT plan permission you granted. OpenAI handles this content under its own terms and privacy policy. Your access and refresh tokens stay encrypted on that device and are not sent to Orbyn's servers. Orbyn keeps encrypted temporary request and reply envelopes, including reported token usage; expired envelopes are removed by the hourly cleanup. Replies retained in your saved conversations follow the saved-conversation rules above.
 
+Unless you opted out of analytics in Privacy, Orbyn also keeps the model, completion time and reported token counts of accepted ChatGPT requests for 30 days so you can inspect your usage in Orbyn. This record has no prompt, reply or provider credentials. Missing token counts remain unknown. These measurements do not show your account-wide ChatGPT allowance, use in other apps or remaining quota.
+
 You choose whether to allow Orbyn's configured AI provider as a fallback. If enabled, it can receive the same request when your ChatGPT device is unavailable or OpenAI rejects the request before answering. A partial or uncertain ChatGPT completion is not automatically retried through that provider. Changing your provider choice prevents older queued requests from being claimed or their results from being accepted; it cannot recall content already sent to OpenAI. This provider choice does not grant MCP or plugin access.
 
 ## Files you import

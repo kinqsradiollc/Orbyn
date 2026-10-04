@@ -19,10 +19,20 @@ export function AiProviderChoiceControls({
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
+  const owner = useRef({ userId, token: session.get() });
+  owner.current = { userId, token: session.get() };
   const choice =
     ownedChoice?.userId === userId && ownedChoice.token === session.get()
       ? ownedChoice.value
       : null;
+  const savedSelection =
+    choice?.connection_id && choice.executor_id
+      ? { connection_id: choice.connection_id, executor_id: choice.executor_id }
+      : null;
+  const inspectedIsSaved =
+    !!savedSelection &&
+    selection?.connection_id === savedSelection.connection_id &&
+    selection?.executor_id === savedSelection.executor_id;
   const [reload, setReload] = useState(0);
   useEffect(() => {
     const abort = new AbortController(),
@@ -45,14 +55,21 @@ export function AiProviderChoiceControls({
     );
     return () => abort.abort();
   }, [userId, reload]);
-  const save = async (primary: "default" | "chatgpt", fallback: boolean) => {
+  const save = async (
+    primary: "default" | "chatgpt",
+    fallback: boolean,
+    selected = selection,
+  ) => {
     const active = lifetime.current;
     if (
       !choice ||
+      owner.current.userId !== userId ||
+      owner.current.token !== session.get() ||
+      ownedChoice?.token !== session.get() ||
       busy ||
       !active ||
       active.signal.aborted ||
-      (primary === "chatgpt" && !selection)
+      (primary === "chatgpt" && !selected)
     )
       return;
     const token = session.get();
@@ -68,7 +85,7 @@ export function AiProviderChoiceControls({
             }
           : {
               primary,
-              ...selection,
+              ...selected,
               fallback_to_default: fallback,
               expected_version: choice.version,
             },
@@ -99,30 +116,43 @@ export function AiProviderChoiceControls({
         <button
           type="button"
           className="secondary"
-          aria-pressed={choice?.primary === "chatgpt"}
+          aria-pressed={choice?.primary === "chatgpt" && inspectedIsSaved}
           disabled={busy || !choice || !selection}
           onClick={() =>
             void save("chatgpt", choice?.fallback_to_default ?? false)
           }
         >
-          ChatGPT
+          {choice?.primary === "chatgpt" && selection && !inspectedIsSaved
+            ? "Use this ChatGPT device"
+            : "ChatGPT"}
         </button>
       </div>
+      {choice?.primary === "chatgpt" && !inspectedIsSaved && (
+        <small className="field-hint">
+          {savedSelection
+            ? "Another ChatGPT device is your current provider."
+            : "Your saved ChatGPT device is unavailable."}
+        </small>
+      )}
       {choice?.primary === "chatgpt" && (
         <label className="settings-checkbox">
           <input
             type="checkbox"
             checked={choice.fallback_to_default}
-            disabled={busy || !selection}
-            onChange={(e) => void save("chatgpt", e.target.checked)}
+            disabled={busy || !savedSelection}
+            onChange={(e) =>
+              void save("chatgpt", e.target.checked, savedSelection)
+            }
           />
           Use Orbyn default if ChatGPT is unavailable
         </label>
       )}
-      <small className="field-hint">
-        Fallback uses Orbyn's configured provider. Interrupted or unknown
-        ChatGPT results are not retried through it.
-      </small>
+      {choice?.primary === "chatgpt" && (
+        <small className="field-hint">
+          Fallback uses Orbyn's configured provider. Interrupted or unknown
+          ChatGPT results are not retried through it.
+        </small>
+      )}
       {error && <p role="alert">{error}</p>}
       {error && (
         <button

@@ -26,6 +26,16 @@ provider data routing and explicit fallback are documented in the Privacy Policy
 under the shipped2026-10-04 agreement version. These later changes have focused
 coverage and require fresh full/CI qualification before a main checkpoint.
 
+Completed ChatGPT assistant-call usage now has an owner-only 30-day metadata
+store and an on-demand view on web/desktop/mobile. Accepted signed completions
+are counted once; missing token counts remain unknown, exact aggregate totals
+use decimal strings and analytics opt-out prevents recording. This is recorded
+Orbyn usage, not an account tier or remaining allowance. Temporary request cleanup
+does not remove these measurements; account deletion and central retention do.
+Current API, types and focused behavior checks are recorded in the handoff.
+Desktop sign-in and refreshed native agreement acceptance require the pending
+Computer Use confirmation before completing current connected-layout review.
+
 ## Context and scope
 
 The user authorized implementation of the revised DevDay plan with production checkpoints on main. Voice, computer use and the speculative Decisions API integration are excluded. The existing durable assistant, source visibility, approvals, receipts, Docs and managed connections remain the foundation. The governing acceptance contract is [the revised implementation review](../reviews/devday-2026-implementation-review.md), including M1, D1 and U1. No removed feature is required to finish this ADR's scope.

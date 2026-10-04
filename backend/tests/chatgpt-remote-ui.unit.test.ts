@@ -227,6 +227,7 @@ function view(app: "desktop" | "mobile", state: any) {
         return { SettingsSection: "SettingsSection" };
       if (id === "./AiProviderChoice")
         return { AiProviderChoiceControls: "AiProviderChoiceControls" };
+      if (id === "./ChatgptUsage") return { ChatgptUsage: "ChatgptUsage" };
       if (id.endsWith("/theme")) return { colors: {} };
       if (id.endsWith("/styles")) return { shared: {} };
       throw new Error(`Unexpected module ${id}`);

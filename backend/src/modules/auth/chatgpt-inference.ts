@@ -15,6 +15,7 @@ import { readChatgptCatalogLocked } from "./chatgpt-model-catalog.js";
 import { verifyChatgptExecutorProof } from "./chatgpt-executor-proof.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { readAiProviderChoice } from "./ai-provider-choice.js";
+import { recordCompletedChatgptUsage } from "./chatgpt-usage.js";
 type Session = { userId: string; sessionId: string };
 type Selection = { connection_id: string; executor_id: string };
 const digest = (value: unknown) =>
@@ -286,6 +287,14 @@ export async function finishChatgptInference(session: Session, value: unknown) {
       "UPDATE chatgpt_inference_requests SET state=$2,result_encrypted=$3,finished_at=now(),payload_encrypted='' WHERE id=$1",
       [r.request_id, r.result.status, encrypted],
     );
+    if (r.result.status === "completed")
+      await recordCompletedChatgptUsage(
+        db,
+        session.userId,
+        r.request_id,
+        r.model,
+        r.result.usage,
+      );
     return { accepted: true };
   });
 }

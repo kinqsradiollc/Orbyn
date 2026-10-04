@@ -1300,3 +1300,74 @@ Legal/provider-route/broker checks pass14/14 in
 own fresh full/CI qualification;2701 passing is the preceding checkpoint's
 evidence. Usage/provenance display, connected-state visual coverage, real-account
 acceptance and the remaining full ADR contract are still open.
+
+### Completed ChatGPT usage implementation — 4 October 2026
+
+Migration230 adds owner-only completed-call measurements without conversation
+content, identity tokens or provider credentials. Only the transaction accepting
+a verified signed completion writes them; replay, failure and rejected receipts
+do not. Analytics opt-out prevents recording. Measurements last30 days, survive
+temporary request cleanup and cascade on account deletion. The first-party usage
+route is excluded from agent/plugin access and returns no-store metadata, exact
+decimal totals and at most ten recent records. Missing usage remains null, not
+an estimate. It does not measure account-wide allowance, other apps or direct
+plan-verification requests that were not accepted through the assistant broker.
+
+Web/desktop/mobile load Usage in Orbyn only on demand. Ownership/token changes
+hide prior data before effects and abort old requests. Unit checks exercise both
+surfaces, delayed responses, exact large totals and distinct quota wording.
+The native panel was opened against the refreshed API and displayed the actual
+empty test-account result. Empty-state zeros and irrelevant fallback help were
+then removed; the latest compact view still needs its screenshot after agreeing
+to the refreshed legal version.
+
+Broker/UI checks17/17 pass in `/tmp/orbyn-chatgpt-usage-focused.log`.
+Route/catalog/inventory/neatness checks23/23 pass in
+`/tmp/orbyn-usage-contract-routes.log`. Usage/recovery/privacy/sweeper checks22/22
+pass in `/tmp/orbyn-usage-recovery-privacy-tests.log`. Final focused ledger/client/
+UI checks15/15 pass in `/tmp/orbyn-usage-ledger-final-tests.log`, including exact
+database aggregation above Number precision, retention-window exclusion, null
+measurement constraints, stale sessions and fresh-client requests. These scoped
+counts overlap; do not sum them as a full-suite count. Workspace types and build
+pass in `/tmp/orbyn-usage-final-types.log` and
+`/tmp/orbyn-usage-production-build.log`; fresh final-source checks remain needed
+after the last count conversion and document updates.
+
+An official Electron44.3.0 runtime was downloaded/verified into a task-owned
+temporary directory for independent native desktop QA. An isolated profile loads
+the built desktop app from its first-party file path and points at test API8027;
+it does not load or capture the blocked web URL or change the OS URI association.
+Its login is filled from the private disposable-account file, never printed or
+stored in repository text. Evidence: `evidence/chatgpt-provider-routing/desktop-qa-signin.png`.
+The desktop Sign in action accepts Terms/Privacy and has a pending action-time
+Computer Use confirmation. iOS now shows the2026-10-04 agreement gate too. Do not
+accept either agreement automatically or treat elapsed time as authorization.
+
+Next routing gate: provider choice is captured in the resolver closure and on
+private assignments, but not yet at job enqueue in durable job state. A runner
+restart can therefore read a changed primary choice and retarget remaining work;
+queued-before-selection changes also need durable fencing. Persist enqueue-time
+choice and test recovery before production promotion. Also verify private request
+recovery across restart/expiry so accepted or unknown calls cannot be duplicated,
+and persist actual fallback/provider provenance for the final result. Fresh
+full/CI, real-account acceptance, connected large-catalog visual checks and all
+remaining governing ADR gates stay open. The preceding2701 passing result belongs
+to01690700 and does not qualify these later changes.
+
+Usage snapshot follow-up: totals and recent records are read by one SQL statement
+so concurrent receipts cannot produce contradictory counts/history. The schema
+rejects history larger than the completion count. Fallback controls now update
+the saved device instead of silently using a different inspected device; controls
+identify that distinction and reject retained actions after account replacement.
+These two-surface action tests pass8/8 in
+`/tmp/orbyn-provider-usage-action-fences.log`.
+
+The final combined normal-settings focused run passes273/273, no skips, exit0,
+in `/tmp/orbyn-chatgpt-usage-all-focused.log`. This includes all ChatGPT suites,
+provider choice, usage client/UI, legal, sweeper, route inventory, catalog and
+neatness. Types and build pass in `/tmp/orbyn-usage-provider-fence-types.log` and
+`/tmp/orbyn-usage-checkpoint-build.log`. No full-suite/CI result for this latest
+source is claimed. Main stays unchanged until the durable recovery gaps above
+are fixed and acceptance is qualified. Native desktop QA process9478 is still
+live at the pending login; refreshing/rebuilding its file bundle must keep its
+test API8027 configuration before the next visual check.
