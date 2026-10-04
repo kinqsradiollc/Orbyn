@@ -290,7 +290,7 @@ export function PageMaintenanceSheet({
 const s = themed(() =>
   StyleSheet.create({
     content: { padding: 16, gap: 12 },
-    heading: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
+    heading: { fontFamily: fonts.semibold, fontSize: 18, color: colors.text },
     text: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
     muted: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     error: { color: colors.danger },

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import * as core from "@orbyn/core";
 import { searchSettings, settingById } from "@orbyn/core";
 
 function mount(app: "desktop" | "mobile") {
@@ -140,7 +141,8 @@ test("ChatGPT models are discoverable in both settings search indexes", () => {
 });
 
 function view(app: "desktop" | "mobile", state: any) {
-  let query = "";
+  let slot = 0;
+  const values: any[] = [];
   const saved: (string | null)[] = [];
   const selected: unknown[] = [];
   const source =
@@ -167,13 +169,41 @@ function view(app: "desktop" | "mobile", state: any) {
       if (id === "react")
         return {
           useId: () => "fixture",
-          useState: () => [
-            query,
-            (value: string) => {
-              query = value;
-            },
-          ],
+          useState: (initial: any) => {
+            const index = slot++;
+            if (!(index in values))
+              values[index] =
+                typeof initial === "function" ? initial() : initial;
+            return [
+              values[index],
+              (next: any) => {
+                values[index] =
+                  typeof next === "function" ? next(values[index]) : next;
+              },
+            ];
+          },
+          useRef: (initial: any) => {
+            const index = slot++;
+            if (!(index in values)) values[index] = { current: initial };
+            return values[index];
+          },
+          useEffect: () => {},
         };
+      if (id === "@orbyn/core") return core;
+      if (id.endsWith("/lib/api"))
+        return {
+          client: {
+            startChatgptConnectRequest: () => {
+              throw new Error("Unexpected authorization");
+            },
+          },
+        };
+      if (id.endsWith("/lib/session"))
+        return {
+          session: { get: () => "fixture-session", token: "fixture-session" },
+        };
+      if (id.endsWith("/lib/errors"))
+        return { errorText: () => "Fixture error" };
       if (id.endsWith("useChatgptRemote"))
         return {
           useChatgptRemote: () => ({
@@ -200,10 +230,12 @@ function view(app: "desktop" | "mobile", state: any) {
       throw new Error(`Unexpected module ${id}`);
     },
   });
-  const render = () =>
-    exports[app === "desktop" ? "ChatgptRemoteModels" : "ChatgptModelsSection"](
-      { userId: "person" },
-    );
+  const render = () => {
+    slot = 0;
+    return exports[
+      app === "desktop" ? "ChatgptRemoteModels" : "ChatgptModelsSection"
+    ]({ userId: "person" });
+  };
   return { render, saved, selected };
 }
 function elements(node: any): any[] {

@@ -16,7 +16,7 @@
   margin-bottom: 20px;
 }
 .app.workspace .brand {
-  font-size: 25px;
+  font-size: 24px;
   letter-spacing: -0.8px;
   gap: 8px;
   padding-left: 10px;
@@ -71,7 +71,7 @@
   border-color: var(--color-divider);
 }
 .app.workspace .today-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--color-muted);
 }
 .app.workspace .content {
@@ -86,7 +86,7 @@
   align-items: flex-start;
 }
 .app.workspace .page-heading h1 {
-  font-size: clamp(25px, 2.5vw, 32px);
+  font-size: 24px;
   letter-spacing: -0.8px;
   margin-bottom: 4px;
 }
@@ -124,7 +124,7 @@
   margin-bottom: 20px;
 }
 .app.workspace .stats strong {
-  font-size: 25px;
+  font-size: 24px;
 }
 .app.workspace .workspace-task-toolbar {
   display: grid;

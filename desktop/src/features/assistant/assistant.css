@@ -1377,7 +1377,7 @@
 
 /* Interactive chat has a quiet workspace header; characters belong to agent profiles. */
 .ai-chat-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-textSoft);
   margin-right: auto;
@@ -1395,7 +1395,7 @@
   text-align: center;
 }
 .ai-intro h2 {
-  font-size: clamp(22px, 3vw, 30px);
+  font-size: 24px;
   font-weight: 500;
   color: var(--color-text);
 }

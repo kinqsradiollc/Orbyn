@@ -1331,3 +1331,23 @@ Web/mobile can view official usage settings; no account tier, remaining allowanc
 or reset time is fabricated. Actual composer/job routing through the user's
 ChatGPT account, signed execution results and explicit default-provider fallback
 remain open before production promotion. Full C1-C6/M1/D1/U1 scope is retained.
+
+### 4905456e full qualification correction — 4 October 2026
+
+The full run was stopped on confirmed failures and is not passing evidence.
+Replay/rules failures coincide with PostgreSQL connection termination and recovery
+mode57P03. A healthy marked-database rerun of those actual suites passed37/37 in
+`/tmp/orbyn-490-replay-rules-recheck.log`; no product assertions were removed.
+Model-control fixtures lacked new core/API/session/error imports and used one
+state cell for every React hook. They now model separate state/ref slots and
+functional state updates. Existing bounded-search, disabled/offline selection
+and model/default behavior checks remain. Font styles were moved onto the shared
+11/13/15/18/24/36 scale; no checker exception was added. Neatness and model UI19/19
+checks passed in `/tmp/orbyn-490-style-ui-followup.log`.
+
+A separate attached model worktree is on `codex/chatgpt-execution` for the actual
+inference transport. Its workspace package builds are isolated; preserved preview
+files and the former dependency symlink remain intact. Runtime request/receipt
+contracts and encrypted request storage are in progress there, not delivered.
+Continue ChatGPT-primary routing and explicit Orbyn-default fallback first, while
+retaining every C1-C6/M1/D1/U1 requirement. No main or production promotion claimed.
