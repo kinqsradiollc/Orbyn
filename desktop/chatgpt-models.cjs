@@ -143,15 +143,23 @@ async function createChatgptModelRuntime({
           "Choose an available ChatGPT default model before continuing.",
         );
       // A per-turn model is immutable even if the default is changed later.
+      let usage = null;
       const result = await transport.complete(
         {
           model: chosen.model.slug,
           input: request.input,
           instructions: request.instructions,
         },
-        { signal },
+        {
+          signal,
+          onUsage: (reported) => {
+            usage = reported;
+          },
+        },
       );
       await live();
+      options.onUsage?.(usage);
+      options.onReceipt?.({ model: chosen.model.slug, usage });
       return result;
     },
     close() {

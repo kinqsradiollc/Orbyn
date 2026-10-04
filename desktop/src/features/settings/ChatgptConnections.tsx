@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { Plus, RefreshCw, Sparkles } from "lucide-react";
-import type { ChatgptDesktopCommand } from "@orbyn/core";
+import { CHATGPT_USAGE_URL, type ChatgptDesktopCommand } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { chatgptStore, useChatgptConnection } from "../../lib/chatgpt";
 import { SettingsSection } from "./SettingsSection";
@@ -48,7 +48,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
       </h2>
       <p className="muted">
         {state.status === "unsupported"
-          ? "Manage accounts connected through Orbyn desktop."
+          ? "Connect ChatGPT as a personal AI provider."
           : "Connect your ChatGPT account and choose a default model."}
       </p>
       {state.status === "unsupported" ? (
@@ -71,7 +71,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
               <Plus size={15} aria-hidden="true" />
               {connection?.connections.length
                 ? "Add account"
-                : "Connect ChatGPT"}
+                : "Connect to ChatGPT"}
             </button>
           </div>
           {state.status === "loading" && (
@@ -236,6 +236,54 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
               Cancel sign-in
             </button>
           )}
+          <div className="settings-subform" aria-label="ChatGPT plan and usage">
+            <h3>Plan and usage</h3>
+            <p>
+              {selected?.sharing_granted
+                ? "ChatGPT plan permission granted"
+                : "ChatGPT plan permission not verified"}
+            </p>
+            {connection?.verification && (
+              <p role="status">
+                Test request completed ·{" "}
+                {new Date(connection.verification.verified_at).toLocaleString()}
+              </p>
+            )}
+            {connection?.verification?.usage && (
+              <p>
+                Test request: {connection.verification.usage.input_tokens} input
+                + {connection.verification.usage.output_tokens} output ={" "}
+                {connection.verification.usage.total_tokens} tokens
+              </p>
+            )}
+            <div className="button-row start">
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  busy ||
+                  !selected?.sharing_granted ||
+                  !available ||
+                  !preference?.model
+                }
+                onClick={() => run({ action: "verify-plan" })}
+              >
+                Verify plan access
+              </button>
+              <a
+                className="secondary"
+                href={CHATGPT_USAGE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Manage ChatGPT usage
+              </a>
+            </div>
+            <small className="field-hint">
+              Verification sends a short test request using your plan. Remaining
+              allowance is shown in ChatGPT.
+            </small>
+          </div>
           {(state.error || connection?.error || catalog?.error) && (
             <p role="alert">
               {state.error || connection?.error || catalog?.error}

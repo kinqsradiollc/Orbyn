@@ -37,6 +37,8 @@ import {
   chatgptConnection,
   chatgptConnectionList,
   type ChatgptConnectionStart,
+  chatgptConnectRequestStart,
+  chatgptConnectRequestState,
   type ChatgptConnectionFinish,
   HttpError,
   type AgentGrant,
@@ -1379,6 +1381,41 @@ export class OrbynClient {
   /** Your saved chats with the assistant about a project, newest first. */
   projectChats(projectId: string) {
     return this.request<AiChatSummary[]>(`/ai/projects/${projectId}/chats`);
+  }
+  async startChatgptConnectRequest(signal?: AbortSignal) {
+    return chatgptConnectRequestStart.parse(
+      await this.request("/ai/connections/chatgpt/connect-requests", {
+        method: "POST",
+        body: {},
+        signal,
+      }),
+    );
+  }
+  async chatgptConnectRequest(id: string, signal?: AbortSignal) {
+    return chatgptConnectRequestState.parse(
+      await this.request(`/ai/connections/chatgpt/connect-requests/${id}`, {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  pendingChatgptConnectRequests(signal?: AbortSignal) {
+    return this.request<{ id: string; expires_at: string }[]>(
+      "/ai/connections/chatgpt/connect-requests/pending",
+      { fresh: true, signal },
+    );
+  }
+  claimChatgptConnectRequest(id: string) {
+    return this.request(
+      `/ai/connections/chatgpt/connect-requests/${id}/claim`,
+      { method: "POST", body: {} },
+    );
+  }
+  finishChatgptConnectRequest(id: string, connectionId: string | null) {
+    return this.request(
+      `/ai/connections/chatgpt/connect-requests/${id}/finish`,
+      { method: "POST", body: { connection_id: connectionId } },
+    );
   }
   /** Start a session-bound identity proof; plan credentials stay in the device runtime. */
   async startChatgptConnection(

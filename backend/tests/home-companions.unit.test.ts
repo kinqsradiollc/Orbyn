@@ -17,7 +17,8 @@ function fixture(mobile: boolean) {
   let mounted = false;
   let effect: (() => () => void) | undefined;
   let listener: ((value: unknown) => void) | undefined;
-  let resolve: ((value: unknown) => void) | undefined;
+  const resolves = new Map<string, (value: unknown) => void>();
+  let token = "fixture-session-a";
   let reads = 0;
   const hooks = {
     ...React,
@@ -27,7 +28,8 @@ function fixture(mobile: boolean) {
       return [
         states[slot],
         (value: unknown) => {
-          states[slot] = value;
+          states[slot] =
+            typeof value === "function" ? value(states[slot]) : value;
         },
       ];
     },
@@ -43,20 +45,26 @@ function fixture(mobile: boolean) {
     "react-native": { Text: container, View: container },
     "../../lib/api": {
       client: {
-        agentSettings(options: unknown) {
-          assert.deepEqual(JSON.parse(JSON.stringify(options)), {
-            fresh: true,
-          });
+        automationAgentIdentity(lane: string) {
+          assert.ok(["background", "overnight"].includes(lane));
           reads++;
           return new Promise((done) => {
-            resolve = done;
+            resolves.set(lane, done);
           });
         },
-        onAgentSettings(callback: (value: unknown) => void) {
+        onAutomationAgentIdentity(callback: (value: unknown) => void) {
           listener = callback;
           return () => {
             listener = undefined;
           };
+        },
+      },
+    },
+    "../../lib/session": { session: { get: () => token } },
+    "../lib/session": {
+      session: {
+        get token() {
+          return token;
         },
       },
     },
@@ -112,9 +120,13 @@ function fixture(mobile: boolean) {
     render,
     cleanup,
     reads: () => reads,
-    update: (value: unknown) => listener!(value),
-    resolve: async (value: unknown) => {
-      resolve!(value);
+    update: (value: any) => listener!({ lane: "background", ...value }),
+    switchAccount: () => {
+      token = "fixture-session-b";
+    },
+    resolve: async (value: any) => {
+      const lane = value.lane ?? "background";
+      resolves.get(lane)!({ lane, ...value });
       await Promise.resolve();
     },
   };
@@ -212,7 +224,7 @@ for (const mobile of [false, true]) {
     assert.doesNotMatch(html, /Working now|Active now|Reflection complete/);
     guideAction(view.render())!();
     assert.doesNotMatch(renderToStaticMarkup(view.render()), /Example request/);
-    assert.equal(view.reads(), 1);
+    assert.equal(view.reads(), 2);
     view.cleanup();
   });
   test(`${platform} Home exposes the separate profiles on explicit request`, () => {
@@ -220,7 +232,7 @@ for (const mobile of [false, true]) {
     assert.doesNotMatch(renderToStaticMarkup(view.first), /Profiles open/);
     profileAction(view.first)!();
     assert.match(renderToStaticMarkup(view.render()), /Profiles open/);
-    assert.equal(view.reads(), 1);
+    assert.equal(view.reads(), 2);
     view.cleanup();
   });
   test(`${platform} Home browses every preset without changing settings`, () => {
@@ -230,7 +242,7 @@ for (const mobile of [false, true]) {
     const html = renderToStaticMarkup(view.render());
     for (const preset of core.CHARACTER_PRESETS)
       assert.ok(html.includes(preset.name), preset.name);
-    assert.equal(view.reads(), 1);
+    assert.equal(view.reads(), 2);
     view.cleanup();
   });
   test(`${platform} Home keeps a live character edit over a stale initial response`, async () => {
@@ -256,5 +268,38 @@ for (const mobile of [false, true]) {
       character: core.DEFAULT_CHARACTER,
     });
     assert.doesNotMatch(renderToStaticMarkup(view.render()), /Closed account/);
+  });
+}
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? "native" : "web"} Home keeps independent lane updates and fences account changes`, async () => {
+    const view = fixture(mobile);
+    view.update({
+      lane: "overnight",
+      name: "Current night",
+      character: core.DEFAULT_CHARACTER,
+    });
+    await view.resolve({
+      lane: "background",
+      name: "Current day",
+      character: core.DEFAULT_CHARACTER,
+    });
+    await view.resolve({
+      lane: "overnight",
+      name: "Stale night",
+      character: core.DEFAULT_CHARACTER,
+    });
+    const html = renderToStaticMarkup(view.render());
+    assert.match(html, /Current day/);
+    assert.match(html, /Current night/);
+    assert.doesNotMatch(html, /Stale night/);
+    view.switchAccount();
+    view.update({
+      lane: "background",
+      name: "Cross-account",
+      character: core.DEFAULT_CHARACTER,
+    });
+    assert.doesNotMatch(renderToStaticMarkup(view.render()), /Cross-account/);
+    view.cleanup();
   });
 }

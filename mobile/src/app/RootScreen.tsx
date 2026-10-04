@@ -976,6 +976,8 @@ export function RootScreen() {
       case "view":
         setViewToOpen(link.id);
         return present({ sheet: "views" });
+      case "chatgpt":
+        return openSettingsAt("AI connections & models");
       case "agents":
         // Settings → Connected agents: each connection and what it did.
         return present({ sheet: "connections" });

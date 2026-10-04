@@ -64,9 +64,11 @@ function summaryOf(goal: Goal) {
 export function AssistantUpcoming({
   agentName,
   onClose,
+  modal = false,
 }: {
   agentName: string;
   onClose: () => void;
+  modal?: boolean;
 }) {
   const { ask } = useConfirm();
   const live = useRef(true);
@@ -533,6 +535,8 @@ export function AssistantUpcoming({
     <aside
       id="ai-upcoming"
       className="ai-upcoming"
+      role={modal ? "dialog" : undefined}
+      aria-modal={modal ? true : undefined}
       aria-labelledby="ai-upcoming-title"
     >
       <div className="ai-upcoming-head">

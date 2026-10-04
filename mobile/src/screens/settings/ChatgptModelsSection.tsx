@@ -1,16 +1,88 @@
-import React, { useState } from "react";
-import { Alert, ScrollView, Text, TextInput, View } from "react-native";
+import { CHATGPT_USAGE_URL } from "@orbyn/core";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Linking,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Pressable } from "../../motion";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 import { SmallAction } from "../../components/SmallAction";
 import { colors } from "../../theme";
 import { shared } from "../../styles";
+import { client } from "../../lib/api";
+import { session } from "../../lib/session";
+import { errorText } from "../../lib/errors";
 import { SettingsSection } from "./SettingsSection";
 
 /** Native and mobile web manage the same owned catalogs and account-bound defaults. */
 export function ChatgptModelsSection({ userId }: { userId: string }) {
   const { state, refresh, select, save } = useChatgptRemote(userId);
   const [query, setQuery] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const lifetime = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      lifetime.current?.abort();
+    },
+    [userId],
+  );
+  const connect = async () => {
+    const controller = new AbortController();
+    lifetime.current?.abort();
+    lifetime.current = controller;
+    const token = session.token;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const request = await client.startChatgptConnectRequest(
+        controller.signal,
+      );
+      while (
+        !controller.signal.aborted &&
+        token === session.token &&
+        Date.now() < Date.parse(request.expires_at)
+      ) {
+        await new Promise<void>((resolve) => {
+          const cancel = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            controller.signal.removeEventListener("abort", cancel);
+            resolve();
+          }, 3000);
+          controller.signal.addEventListener("abort", cancel, { once: true });
+          if (controller.signal.aborted) cancel();
+        });
+        if (controller.signal.aborted || token !== session.token) return;
+        const next = await client.chatgptConnectRequest(
+          request.id,
+          controller.signal,
+        );
+        if (controller.signal.aborted || token !== session.token) return;
+        if (next.state === "completed") {
+          refresh();
+          return;
+        }
+        if (next.state === "failed" || next.state === "expired")
+          throw new Error(
+            "ChatGPT sign-in did not finish. Try connecting again.",
+          );
+      }
+      if (!controller.signal.aborted && token === session.token)
+        throw new Error("ChatGPT sign-in expired. Try connecting again.");
+    } catch (error) {
+      if (!controller.signal.aborted && token === session.token)
+        setConnectError(errorText(error));
+    } finally {
+      if (lifetime.current === controller) setConnecting(false);
+    }
+  };
   const busy = state.status === "loading" || state.saving;
   const catalog = state.catalog;
   const models = catalog?.models ?? [];
@@ -25,24 +97,44 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     <SettingsSection title="AI connections & models">
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
-        Add an account on your computer, then choose its default model here.
+        Connect your ChatGPT account and choose its default model.
       </Text>
       <SmallAction
-        label="Connect on desktop"
-        disabled={!userId}
-        onPress={() =>
-          Alert.alert(
-            "Connect ChatGPT",
-            "On your computer, open Orbyn desktop and sign in to the same Orbyn account. Go to Settings → Account → AI connections & models, then choose Connect ChatGPT. Direct sign-in on mobile is not available yet.",
-            [{ text: "Done" }],
-          )
-        }
+        label={connecting ? "Waiting for ChatGPT…" : "Connect to ChatGPT"}
+        disabled={!userId || connecting}
+        onPress={() => void connect()}
       />
+      {connecting && (
+        <Text accessibilityLiveRegion="polite" style={shared.small}>
+          Finish sign-in in the browser opened by your connected Orbyn app.
+        </Text>
+      )}
+      {connectError && (
+        <Text accessibilityRole="alert" style={shared.small}>
+          {connectError}
+        </Text>
+      )}
       <SmallAction
         label="Refresh devices & models"
         disabled={busy || !userId}
         onPress={refresh}
       />
+      <SmallAction
+        label="Manage ChatGPT usage"
+        disabled={!userId}
+        onPress={() => {
+          void Linking.openURL(CHATGPT_USAGE_URL).catch(() =>
+            Alert.alert(
+              "Could not open ChatGPT",
+              "Open ChatGPT Settings → Usage in your browser.",
+            ),
+          );
+        }}
+      />
+      <Text style={shared.small}>
+        Choose the same ChatGPT account to view its current allowance and app
+        limits.
+      </Text>
       {state.status === "loading" && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>
           Loading ChatGPT devices and models…
@@ -57,7 +149,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         </Text>
       )}
       {state.status === "ready" && !state.devices.length && (
-        <Text style={shared.small}>No ChatGPT accounts connected yet.</Text>
+        <Text style={shared.small}>
+          No ChatGPT model catalog is available yet.
+        </Text>
       )}
       {!!state.devices.length && (
         <>

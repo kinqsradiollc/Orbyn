@@ -1022,3 +1022,109 @@ focused identity schema/runtime/client checks pass4/4 in
 `/tmp/orbyn-identities-parity-units.log`. All workspace types pass in
 `/tmp/orbyn-identities-parity-final-types.log`. A fresh exact-head full suite remains
 required before main promotion; full ADR and visual acceptance remain open.
+
+## 2026-10-04 — SIWC plan/usage priority and narrow-panel feedback
+
+User priority: use the official Sign in with ChatGPT flow; a pre-issued client ID
+is not needed for local dynamic registration. The pasted prototype starts with
+`dynamic_agent_client`, receives an issued ID and uses granted plan credentials.
+Existing desktop OAuth already follows that pattern with persistent installation
+host ID, PKCE/state/nonce, bounded loopback callback, retained registration,
+verified ID token and protected credentials. Do not add a partner client-ID gate
+to this local flow. The official website identity flow is distinct; a local
+127.0.0.1 callback reaches the browser's computer, not a hosted API. Direct web
+sign-in/connected-device inference is still incomplete and remains highest priority.
+
+Official sources inspected: cookbook article `sign-in-with-chatgpt`, SIWC website,
+self-hosted VMs, models-and-inference, token-reference and errors-and-recovery.
+OpenAI authentication metadata is opaque. Do not invent Plus/Pro tier claims,
+remaining quota or reset times from identity tokens or error codes. Identity,
+granted plan permission, live model discovery and completed inference are
+separate evidence states. Account and workspace registrations remain separate.
+
+A desktop `verify-plan` metadata command now sends one fixed short test through
+the selected account/default model's private runtime. It requires granted plan
+access, fresh account model discovery, nonempty output and response.completed.
+The receipt is account-bound, records the actual used model, time and only valid
+provider-reported input/output/total token counts. Missing/invalid counts stay
+unknown. Account switching/closing the runtime drops this receipt. It is a proof
+for that completed test request, not a guarantee of future quota or plan tier.
+The renderer cannot supply arbitrary test content or credentials. Quota and
+eligibility errors remain terminal and do not change billing. Errors preserve
+sanitized machine code, HTTP status and request ID; no provider body is echoed.
+
+Desktop settings expose Verify plan access (explicitly describes the small test)
+and Manage ChatGPT usage. Web/mobile expose the same official usage-settings link
+and remind the person to choose the corresponding ChatGPT account. Remote/native
+verification receipts and actual user-chat plan inference remain open; this is
+not full cross-client plan verification or remaining-allowance delivery.
+
+The narrow chat drawer uses available chat width via ResizeObserver, a single
+History/Upcoming open state, bounded overlay width, scrim, close/Escape/Tab focus
+behavior and inert conversation controls. Opening global navigation closes chat
+panels; opening a chat panel closes global navigation. Duplicate header controls
+are hidden under the overlay. Manual web layout acceptance is still pending.
+Home fixtures now use separate lane reads/subscriptions and real functional state
+updates. Account changes hide prior identities immediately. Generated MCP docs
+were regenerated after inventory changes. The stopped ee0cd5a2 full run had11
+failures (ten Home old-fixture dependency failures and the catalog mismatch),
+not four; cancellation is recorded and is not passing evidence.
+
+Evidence: plan/UI49/49 focused checks pass in
+`/tmp/orbyn-priority-plan-ui-final-tests.log`; inventory/catalog13/13 pass in
+`/tmp/orbyn-priority-plan-inventory-tests.log`, all without skips. All workspace
+types pass in `/tmp/orbyn-priority-plan-final-types.log`; production build passes
+in `/tmp/orbyn-priority-plan-final-build.log`. The owned preview API was restored
+and health returned ok after a PostgreSQL connection terminated unexpectedly.
+
+User-requested browser diagnostic: original127.0.0.1:5174/app was explicitly
+rejected by saved Block preference. An unrelated example.com page opened via the
+same Browser Use surface. Screenshot `evidence/browser-access/example-com-control.png`
+is public diagnostic evidence, not Orbyn web acceptance. No alternate port,
+Chrome, CDP or indirect blocked-preview inspection was attempted. Full frozen-head
+local/CI and actual OpenAI account authorization/inference acceptance remain
+required; no main promotion, deployment or whole ADR completion claimed.
+
+## 2026-10-04 — one-button ChatGPT provider authorization follow-up
+
+User clarification: MCP is a separate Orbyn data/tool connection. Provider
+settings must offer one Connect to ChatGPT button, start authorization directly,
+let the person finish OpenAI sign-in/consent, and return to updated connection
+state. Remove Connect on desktop and the intermediate sign-in-settings tutorial.
+ChatGPT-primary chat routing and a separately chosen Orbyn-default fallback are
+now the immediate next implementation priority. Neither is claimed delivered.
+
+Migration225 adds bounded, ten-minute, session-bound authorization handoffs.
+First-party web/mobile start a request; the signed-in credential-owning app for
+the same person claims it once and calls the existing dynamic SIWC flow directly.
+Web's opaque app link speeds up that handoff; the app also watches explicitly
+requested pending handoffs for cross-client initiation. Different accounts,
+replay, expired/revoked initiating sessions and other claimant sessions cannot
+complete a request. OpenAI codes/tokens are absent from handoff storage and app
+links. The user still finishes actual OpenAI consent. No MCP grant is minted or
+changed. Original/claiming Orbyn sessions and current verified connection are
+rechecked before completion. Hourly sweeping deletes expired handoffs.
+
+Web/mobile now show Connect to ChatGPT and bounded, cancellable status polling;
+no sign-in-settings redirect is part of the primary action. The installed,
+signed-in credential-owning app is still required for this local OAuth callback
+flow. Pure hosted-browser OAuth and native-only local callback ownership have not
+been invented or claimed. This limitation must remain visible in qualification.
+
+Focused source/API/client/UI/inventory tests pass70/70 with no skips in
+`/tmp/orbyn-one-click-full-focused.log`; all workspace types and production build
+pass in `/tmp/orbyn-one-click-final-source-types.log` and
+`/tmp/orbyn-one-click-final-source-build.log`. Current native controls were actually
+inspected in dark mode and captured at
+`evidence/chatgpt-one-click/ios-connect-usage-controls.png`, showing one provider
+Connect action, refresh and usage management without overlap. No actual OpenAI
+account consent or live plan inference was performed. The test preview was
+marker-verified and migrated through225; the helper's fixed console message still
+says224 and is not the migration-version authority.
+
+The desktop fixed verification request and measured usage receipt remain in this
+candidate; availability, permission and completed inference remain distinct.
+Web/mobile can view official usage settings; no account tier, remaining allowance
+or reset time is fabricated. Actual composer/job routing through the user's
+ChatGPT account, signed execution results and explicit default-provider fallback
+remain open before production promotion. Full C1-C6/M1/D1/U1 scope is retained.

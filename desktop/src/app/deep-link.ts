@@ -39,7 +39,8 @@ export type DeepLink =
   | { kind: "overnight"; id?: string }
   | { kind: "add"; text: string }
   | { kind: "search"; q: string }
-  | { kind: "agents" };
+  | { kind: "agents" }
+  | { kind: "chatgpt"; requestId?: string };
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const WITH_ID = new RegExp(
@@ -60,6 +61,10 @@ export function deepLinkOf(
 ): DeepLink | null {
   if (/^\/app\/(today|home|overview)\/?$/i.test(path)) return { kind: "today" };
   if (/^\/app\/agents\/?$/i.test(path)) return { kind: "agents" };
+  if (/^\/app\/chatgpt\/?$/i.test(path)) {
+    const link = parseAppLink(`orbyn://chatgpt${search}${hash}`);
+    return link?.kind === "chatgpt" ? link : null;
+  }
   if (/^\/app\/assistant\/?$/i.test(path)) return { kind: "assistant" };
   if (/^\/app\/overnight\/?$/i.test(path)) return { kind: "overnight" };
   if (/^\/app\/review\/?$/i.test(path)) return { kind: "review", id: null };
@@ -80,6 +85,10 @@ export function deepLinkOf(
 export function deepLinkPath(link: DeepLink): string {
   if (link.kind === "today") return "/app/today";
   if (link.kind === "agents") return "/app/agents";
+  if (link.kind === "chatgpt")
+    return link.requestId
+      ? `/app/chatgpt?request=${link.requestId}`
+      : "/app/chatgpt";
   if (link.kind === "assistant") return "/app/assistant";
   if (link.kind === "overnight")
     return link.id ? `/app/overnight/${link.id}` : "/app/overnight";
@@ -199,6 +208,8 @@ export function fromAppLink(link: AppLink, hash = ""): DeepLink | null {
       return { kind: "search", q: link.q };
     case "agents":
       return { kind: "agents" };
+    case "chatgpt":
+      return link;
     case "assistant":
       return { kind: "assistant" };
     case "overnight":

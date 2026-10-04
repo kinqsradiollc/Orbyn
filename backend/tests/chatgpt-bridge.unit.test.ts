@@ -52,6 +52,10 @@ async function fixture() {
       assert.equal(token, "first-party-fixture-session");
       return empty;
     },
+    verifyPlan: async () => {
+      calls.push("verify-plan");
+      return empty;
+    },
     connect: async () => {
       calls.push("connect");
       return empty;
@@ -250,4 +254,23 @@ test("desktop state enforces current account, selection and empty signed-out sta
     }).success,
     false,
   );
+});
+
+test("plan verification is a guarded metadata command, never renderer-supplied input", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.handlers.get("orbyn:chatgpt")!(f.event, {
+      action: "verify-plan",
+    });
+    assert.deepEqual(result, empty);
+    assert.ok(f.calls.includes("verify-plan"));
+    await assert.rejects(
+      f.handlers.get("orbyn:chatgpt")!(f.event, {
+        action: "verify-plan",
+        input: "Injected content",
+      }),
+    );
+  } finally {
+    f.dispose();
+  }
 });

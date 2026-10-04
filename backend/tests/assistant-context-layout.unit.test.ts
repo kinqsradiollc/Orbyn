@@ -45,3 +45,30 @@ test("chat viewport rules outrank workspace padding and obsolete character spaci
   assert.ok(css.includes("align-self: center"));
   assert.ok(css.includes("flex: 0 1 38%"));
 });
+
+test("side panels use available chat width and share one open state", async () => {
+  const view = await readFile(
+    new URL(
+      "../../desktop/src/features/assistant/AssistantView.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const css = await readFile(
+    new URL(
+      "../../desktop/src/features/assistant/assistant.css",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.ok(view.includes("new ResizeObserver(measure)"));
+  assert.ok(view.includes("node.clientWidth < 1280"));
+  assert.ok(view.includes("old === next ? null : next"));
+  assert.ok(view.includes("inert={compactPanels && !!panel}"));
+  assert.ok(view.includes("if (navigationOpen) setPanel(null)"));
+  assert.ok(view.includes('aria-label="Close chat history"'));
+  assert.ok(view.includes('className="ai-panel-backdrop"'));
+  assert.ok(css.includes(".ai-chat.is-compact.has-panel .ai-chat-head"));
+  assert.ok(css.includes("width: min(320px, 100%)"));
+  assert.ok(!css.includes("width: min(280px, calc(100vw - 56px))"));
+});

@@ -34,6 +34,10 @@ async function installChatgptBridge({ ipcMain, manager, guard, getWindow }) {
       switch (command.action) {
         case "state":
           return chatgptDesktopState.parse(await manager.snapshot());
+        case "connect-request":
+          return chatgptDesktopState.parse(
+            await manager.connectRequest(command.requestId),
+          );
         case "connect":
           return chatgptDesktopState.parse(await manager.connect());
         case "select":
@@ -51,6 +55,8 @@ async function installChatgptBridge({ ipcMain, manager, guard, getWindow }) {
           return chatgptDesktopDisconnect.parse(
             await manager.disconnect(command.registrationId),
           );
+        case "verify-plan":
+          return chatgptDesktopState.parse(await manager.verifyPlan());
         case "refresh":
           return chatgptDesktopState.parse(await manager.refresh());
         case "set-default":

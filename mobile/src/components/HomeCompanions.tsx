@@ -20,9 +20,15 @@ export function HomeCompanions({
   canOpen = false,
   onOpenChat = () => {},
 }: { canOpen?: boolean; onOpenChat?: (id: string) => void } = {}) {
-  const [identities, setIdentities] = useState<
-    Partial<Record<"background" | "overnight", AutomationAgentIdentity>>
-  >({});
+  const accountBinding = session.token;
+  const [identityState, setIdentityState] = useState<{
+    binding: string;
+    values: Partial<
+      Record<"background" | "overnight", AutomationAgentIdentity>
+    >;
+  }>({ binding: accountBinding, values: {} });
+  const identities =
+    identityState.binding === accountBinding ? identityState.values : {};
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -33,13 +39,25 @@ export function HomeCompanions({
     const unsubscribe = client.onAutomationAgentIdentity((value) => {
       updated.add(value.lane);
       if (live && token === session.token)
-        setIdentities((old) => ({ ...old, [value.lane]: value }));
+        setIdentityState((old) => ({
+          binding: token,
+          values: {
+            ...(old.binding === token ? old.values : {}),
+            [value.lane]: value,
+          },
+        }));
     });
     for (const lane of ["background", "overnight"] as const) {
       void client.automationAgentIdentity(lane).then(
         (value) => {
           if (live && token === session.token && !updated.has(lane))
-            setIdentities((old) => ({ ...old, [lane]: value }));
+            setIdentityState((old) => ({
+              binding: token,
+              values: {
+                ...(old.binding === token ? old.values : {}),
+                [lane]: value,
+              },
+            }));
         },
         () => undefined,
       );
@@ -48,7 +66,7 @@ export function HomeCompanions({
       live = false;
       unsubscribe();
     };
-  }, []);
+  }, [accountBinding]);
   return (
     <View style={[shared.card, { gap: 14 }]}>
       <AssistantAgents

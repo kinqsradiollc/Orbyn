@@ -66,6 +66,8 @@ type Props = {
   onKeptNote?: (docId: string) => void;
   /** Bumped to open Upcoming (goals and routines), as Home's panels do. */
   openUpcoming?: number;
+  navigationOpen?: boolean;
+  onOpenSidePanel?: () => void;
 };
 
 export function AssistantView({
@@ -78,6 +80,8 @@ export function AssistantView({
   onOpenSource,
   onKeptNote,
   openUpcoming = 0,
+  navigationOpen = false,
+  onOpenSidePanel,
 }: Props) {
   const {
     message,
@@ -139,7 +143,75 @@ export function AssistantView({
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [quickMenu, setQuickMenu] = useState<DOMRect | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const chatRef = useRef<HTMLElement>(null);
+  const [compactPanels, setCompactPanels] = useState(true);
+  const [panel, setPanel] = useState<"history" | "upcoming" | null>(
+    openUpcoming > 0 ? "upcoming" : null,
+  );
+  const historyOpen = panel === "history";
+  const upcomingOpen = panel === "upcoming";
+  const navigationOpenRef = useRef(navigationOpen);
+  navigationOpenRef.current = navigationOpen;
+  const panelOrigin = useRef<HTMLElement | null>(null);
+  const closePanels = () => setPanel(null);
+  const togglePanel = (next: "history" | "upcoming") => {
+    if (!panel)
+      panelOrigin.current = document.activeElement as HTMLElement | null;
+    onOpenSidePanel?.();
+    setPanel((old) => (old === next ? null : next));
+  };
+  useEffect(() => {
+    const node = chatRef.current!;
+    const measure = () => setCompactPanels(node.clientWidth < 1280);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (navigationOpen) setPanel(null);
+  }, [navigationOpen]);
+  useEffect(() => {
+    if (!compactPanels || !panel) return;
+    const previous = panelOrigin.current ?? inputRef.current;
+    const node = chatRef.current?.querySelector<HTMLElement>(
+      panel === "history" ? ".ai-history" : "#ai-upcoming",
+    );
+    const controls = () =>
+      Array.from(
+        node?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null);
+    controls()[0]?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (
+        document.querySelector(".modal-backdrop, .popover") ||
+        event.defaultPrevented
+      )
+        return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPanel(null);
+      }
+      if (event.key !== "Tab") return;
+      const fields = controls();
+      const first = fields[0],
+        last = fields.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("keydown", key);
+      if (previous?.isConnected && !navigationOpenRef.current) previous.focus();
+    };
+  }, [compactPanels, panel]);
   const [chatMenu, setChatMenu] = useState<{
     chat: AiChatSummary;
     anchor: DOMRect;
@@ -155,9 +227,11 @@ export function AssistantView({
     setRename(null);
   };
   const [personAnswer, setPersonAnswer] = useState("");
-  const [upcomingOpen, setUpcomingOpen] = useState(openUpcoming > 0);
   useEffect(() => {
-    if (openUpcoming > 0) setUpcomingOpen(true);
+    if (openUpcoming > 0) {
+      onOpenSidePanel?.();
+      setPanel("upcoming");
+    }
   }, [openUpcoming]);
   const [approveMenu, setApproveMenu] = useState<DOMRect | null>(null);
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
@@ -240,15 +314,44 @@ export function AssistantView({
   };
 
   return (
-    <section className={"ai-chat" + (empty ? " is-empty" : "")}>
+    <section
+      ref={chatRef}
+      className={
+        "ai-chat" +
+        (empty ? " is-empty" : "") +
+        (compactPanels ? " is-compact" : "") +
+        (compactPanels && panel ? " has-panel" : "")
+      }
+    >
+      {compactPanels && panel && (
+        <button
+          type="button"
+          className="ai-panel-backdrop"
+          aria-label="Close side panel"
+          tabIndex={-1}
+          onClick={closePanels}
+        />
+      )}
       <aside
         className={"ai-history" + (historyOpen ? " is-open" : "")}
+        role={compactPanels && historyOpen ? "dialog" : undefined}
+        aria-modal={compactPanels && historyOpen ? true : undefined}
         aria-label="Chat history"
       >
         <div className="ai-history-head">
           <div className="ai-history-title">
             <History size={16} aria-hidden="true" />
             <h2>Chats</h2>
+            {compactPanels && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close chat history"
+                onClick={closePanels}
+              >
+                <X size={18} />
+              </button>
+            )}
             <button
               type="button"
               className="icon-button"
@@ -256,7 +359,7 @@ export function AssistantView({
               title="New chat"
               disabled={locked}
               onClick={() => {
-                setHistoryOpen(false);
+                closePanels();
                 reset();
               }}
             >
@@ -287,7 +390,7 @@ export function AssistantView({
                 disabled={locked}
                 onClick={() => {
                   closeChatMenu();
-                  setHistoryOpen(false);
+                  closePanels();
                   void openChat(chat.id).catch(() => undefined);
                 }}
                 title={chat.title}
@@ -338,7 +441,7 @@ export function AssistantView({
           )}
         </div>
       </aside>
-      <div className="ai-main">
+      <div className="ai-main" inert={compactPanels && !!panel}>
         <div className="ai-chat-head">
           <span className="ai-chat-label">Orbyn</span>
           {/* History and New chat live in the Chats panel; on a phone the
@@ -349,7 +452,7 @@ export function AssistantView({
             aria-label={historyOpen ? "Close chat history" : "Chat history"}
             aria-expanded={historyOpen}
             title={historyOpen ? "Close chat history" : "Chat history"}
-            onClick={() => setHistoryOpen((open) => !open)}
+            onClick={() => togglePanel("history")}
           >
             <History size={18} aria-hidden="true" />
           </button>
@@ -357,7 +460,7 @@ export function AssistantView({
             type="button"
             className="icon-button ai-narrow-only"
             onClick={() => {
-              setHistoryOpen(false);
+              closePanels();
               reset();
             }}
             disabled={locked}
@@ -382,7 +485,7 @@ export function AssistantView({
             className="secondary ai-upcoming-trigger"
             aria-expanded={upcomingOpen}
             aria-controls="ai-upcoming"
-            onClick={() => setUpcomingOpen((open) => !open)}
+            onClick={() => togglePanel("upcoming")}
           >
             <CalendarClock size={15} aria-hidden="true" />
             Upcoming
@@ -910,7 +1013,8 @@ export function AssistantView({
       {upcomingOpen && (
         <AssistantUpcoming
           agentName={agentName}
-          onClose={() => setUpcomingOpen(false)}
+          modal={compactPanels}
+          onClose={() => closePanels()}
         />
       )}
     </section>

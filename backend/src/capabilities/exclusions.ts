@@ -381,6 +381,11 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /ai/connections/chatgpt/connect-requests/pending": "credentials",
+  "POST /ai/connections/chatgpt/connect-requests": "credentials",
+  "GET /ai/connections/chatgpt/connect-requests/:id": "credentials",
+  "POST /ai/connections/chatgpt/connect-requests/:id/claim": "credentials",
+  "POST /ai/connections/chatgpt/connect-requests/:id/finish": "credentials",
   "GET /me/assistant/identity/:lane": "assistant_control",
   "PUT /me/assistant/identity/:lane": "assistant_control",
   // These configure/inspect owner-approved automation; they never expose model execution.

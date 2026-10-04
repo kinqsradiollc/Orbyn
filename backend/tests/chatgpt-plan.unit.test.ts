@@ -278,3 +278,32 @@ test("missing account binding is rejected before any credential request", () => 
     /account/,
   );
 });
+
+test("only completed Responses usage is reported; missing or invalid counts remain unknown", async () => {
+  for (const usage of [
+    { input_tokens: 9, output_tokens: 3, total_tokens: 12 },
+    undefined,
+    { input_tokens: 9, output_tokens: 3, total_tokens: 99 },
+  ]) {
+    const reported: unknown[] = [];
+    await client(
+      event("response.output_text.delta", { delta: "hello" }) +
+        event("response.completed", {
+          response: { status: "completed", usage },
+        }),
+    ).complete(request, { onUsage: (value) => reported.push(value) });
+    assert.deepEqual(reported, [usage?.total_tokens === 12 ? usage : null]);
+  }
+  const rejected: unknown[] = [];
+  await assert.rejects(
+    client(
+      event("response.failed", {
+        response: {
+          error: { code: "subscription_sharing_usage_limit_exceeded" },
+        },
+      }),
+    ).complete(request, { onUsage: (value) => rejected.push(value) }),
+    /usage limit/,
+  );
+  assert.deepEqual(rejected, []);
+});

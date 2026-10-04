@@ -43,6 +43,8 @@ export type AppLink =
    * be undone (orbyn://agents, /app/agents; H7).
    */
   | { kind: "agents" }
+  /** Opens AI account settings; never starts consent or inference itself. */
+  | { kind: "chatgpt"; requestId?: string }
   | LinkTarget;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -137,6 +139,18 @@ export function parseAppLink(url: string | null | undefined): AppLink | null {
   if (id) return null;
   if (head === "today") return { kind: "today" };
   if (head === "agents") return { kind: "agents" };
+  if (head === "chatgpt" && !parsed.hash) {
+    const keys = [...parsed.searchParams.keys()];
+    if (!keys.length) return { kind: "chatgpt" };
+    const requestId = parsed.searchParams.get("request");
+    if (
+      keys.length === 1 &&
+      keys[0] === "request" &&
+      requestId &&
+      UUID.test(requestId)
+    )
+      return { kind: "chatgpt", requestId: requestId.toLowerCase() };
+  }
   if (head === "assistant" && !id) return { kind: "assistant" };
   if (head === "search")
     return { kind: "search", q: (text("q") ?? "").slice(0, 200) };

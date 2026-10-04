@@ -26,19 +26,15 @@ test("compound settings searches override focus-visible on the inner input", asy
   assert.ok(section.includes("var(--color-focus)"));
   assert.ok(section.includes(".settings-dialog"));
 });
-test("web and mobile expose truthful desktop connection actions without pretending to start web OAuth", async () => {
-  const [webRaw, mobileRaw] = await Promise.all([
-    file("../../desktop/src/features/settings/ChatgptRemoteModels.tsx"),
-    file("../../mobile/src/screens/settings/ChatgptModelsSection.tsx"),
-  ]);
-  const web = webRaw.replace(/\s+/g, " ");
-  const mobile = mobileRaw.replace(/\s+/g, " ");
-  assert.ok(web.includes("Connect on desktop"));
-  assert.ok(web.includes('href="orbyn://assistant"'));
-  assert.ok(web.includes("Direct sign-in on web is not available yet"));
-  assert.ok(mobile.includes('label="Connect on desktop"'));
-  assert.ok(mobile.includes("Direct sign-in on mobile is not available yet"));
-  assert.ok(!web.includes('action: "connect"'));
-  assert.ok(web.includes("onClick={refresh}"));
-  assert.ok(mobile.includes("onPress={refresh}"));
+test("web offers one provider authorization action separate from usage and MCP settings", async () => {
+  const web = (
+    await file("../../desktop/src/features/settings/ChatgptRemoteModels.tsx")
+  ).replace(/\s+/g, " ");
+  assert.ok(web.includes("Connect to ChatGPT"));
+  assert.ok(/startChatgptConnectRequest\(\s*controller\.signal/.test(web));
+  assert.ok(web.includes("window.location.href = request.launch_url"));
+  assert.ok(!web.includes("Connect on desktop"));
+  assert.ok(!web.includes("Open ChatGPT sign-in settings"));
+  assert.ok(!web.includes("startOAuth"));
+  assert.ok(web.includes("Manage ChatGPT usage"));
 });

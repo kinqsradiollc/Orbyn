@@ -1,3 +1,4 @@
+import { chatgptStore } from "../lib/chatgpt";
 import "./workspace.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Orbit, Settings, X, type LucideIcon } from "lucide-react";
@@ -468,7 +469,13 @@ export function App() {
     } else if (link.kind === "view") openSavedView(link.id);
     // Settings → Connected agents: what agents did, to undo (H7).
     else if (link.kind === "agents") openSetting("agents");
-    else if (link.kind === "assistant") setView("AI assistant");
+    else if (link.kind === "chatgpt") {
+      if (link.requestId)
+        void chatgptStore
+          .command({ action: "connect-request", requestId: link.requestId })
+          .catch(report);
+      else openSetting("chatgpt-models");
+    } else if (link.kind === "assistant") setView("AI assistant");
     else if (link.kind === "overnight") {
       setOvernightId(link.id);
       setView("Overnight");
@@ -2032,6 +2039,8 @@ export function App() {
                     onOpenSource={openSource}
                     onKeptNote={(docId) => openPage(docId)}
                     openUpcoming={upcomingAsked}
+                    navigationOpen={mobileNav}
+                    onOpenSidePanel={() => setMobileNav(false)}
                   />
                 )}
                 {view === "Teams" && (

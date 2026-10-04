@@ -481,6 +481,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "chatgpt_connect_requests",
+    label: "ChatGPT connection requests",
+    detail:
+      "Expired session-bound authorization handoffs; no provider credentials.",
+    table: "chatgpt_connect_requests",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "chatgpt_identity_challenges",
     label: "ChatGPT sign-in attempts",
     detail:

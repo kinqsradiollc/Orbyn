@@ -1,5 +1,7 @@
 import {
   chatgptModel,
+  chatgptPlanUsage,
+  type ChatgptPlanUsage,
   parseChatgptModels,
   type ChatgptModel,
 } from "@orbyn/core";
@@ -16,6 +18,34 @@ export type ChatgptPlanRequest = {
   instructions?: string;
   input: { role: "user" | "assistant"; content: string }[];
 };
+
+/** Sanitized provider failure with enough metadata to choose the correct recovery. */
+export class ChatgptPlanError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly providerCode: string | null,
+    public readonly requestId: string | null,
+  ) {
+    super(
+      providerCode === "subscription_sharing_usage_limit_exceeded"
+        ? "ChatGPT plan usage limit reached. Manage usage in ChatGPT."
+        : providerCode === "subscription_sharing_user_not_eligible"
+          ? "ChatGPT plan usage is unavailable for this account or workspace."
+          : providerCode === "subscription_sharing_usage_unavailable"
+            ? "ChatGPT usage availability could not be checked. Try again later."
+            : status === 401 || status === 403
+              ? "ChatGPT access expired or was declined. Reconnect before continuing."
+              : status === 429
+                ? "ChatGPT usage is limited. Manage usage in ChatGPT."
+                : "ChatGPT could not complete the request.",
+    );
+    this.name = "ChatgptPlanError";
+  }
+}
+const safeCode = (value: unknown) =>
+  typeof value === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(value)
+    ? value
+    : null;
 
 /** Fixed, credential-owning transport. Never pass this client to the shared backend. */
 export class ChatgptPlanClient {
@@ -69,14 +99,17 @@ export class ChatgptPlanClient {
         },
       },
     );
-    if (!response.ok)
-      throw new Error(
-        response.status === 401 || response.status === 403
-          ? "ChatGPT access expired or was declined. Reconnect before continuing."
-          : response.status === 429
-            ? "ChatGPT usage is limited. Try again later."
-            : "ChatGPT could not complete the request.",
+    if (!response.ok) {
+      let body: any = null;
+      try {
+        body = JSON.parse(await boundedText(response, 16_384));
+      } catch {}
+      throw new ChatgptPlanError(
+        response.status,
+        safeCode(body?.error?.code),
+        safeCode(response.headers.get("x-request-id")),
       );
+    }
     return response;
   }
 
@@ -101,6 +134,7 @@ export class ChatgptPlanClient {
     options: {
       signal?: AbortSignal;
       onText?: (text: string) => void;
+      onUsage?: (usage: ChatgptPlanUsage | null) => void;
     } = {},
   ): Promise<string> {
     const signal = options.signal ?? AbortSignal.timeout(120_000);
@@ -152,6 +186,7 @@ export class ChatgptPlanClient {
       text = "",
       bytes = 0,
       completed = false;
+    let usage: ChatgptPlanUsage | null = null;
     const consume = (frame: string) => {
       const data = frame
         .split(/\r?\n/)
@@ -184,11 +219,27 @@ export class ChatgptPlanClient {
       } else if (event.type === "response.completed") {
         if (event.response?.status !== "completed")
           throw new Error("ChatGPT did not complete the response.");
+        const reported = chatgptPlanUsage.safeParse(
+          event.response?.usage
+            ? {
+                input_tokens: event.response.usage.input_tokens,
+                output_tokens: event.response.usage.output_tokens,
+                total_tokens: event.response.usage.total_tokens,
+              }
+            : null,
+        );
+        usage = reported.success ? reported.data : null;
         completed = true;
       } else if (
         ["response.failed", "response.incomplete", "error"].includes(event.type)
       ) {
-        throw new Error("ChatGPT did not complete the response.");
+        throw new ChatgptPlanError(
+          response.status,
+          safeCode(
+            event.response?.error?.code ?? event.error?.code ?? event.code,
+          ),
+          safeCode(response.headers.get("x-request-id")),
+        );
       }
     };
     try {
@@ -209,6 +260,7 @@ export class ChatgptPlanClient {
       }
       if (!completed)
         throw new Error("ChatGPT disconnected before completing the response.");
+      options.onUsage?.(usage);
       return text;
     } finally {
       await reader.cancel().catch(() => {});
