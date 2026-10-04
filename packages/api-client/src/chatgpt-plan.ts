@@ -210,10 +210,13 @@ export class ChatgptPlanClient {
       },
       signal,
     );
-    if (
-      !response.headers.get("content-type")?.includes("text/event-stream") ||
-      !response.body
-    )
+    const mediaType = (response.headers.get("content-type") ?? "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    // Some plan responses omit Content-Type. The bounded event parser below
+    // still requires valid SSE and response.completed; no JSON fallback exists.
+    if ((mediaType && mediaType !== "text/event-stream") || !response.body)
       throw new Error("ChatGPT did not return a response stream.");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();

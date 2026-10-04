@@ -307,3 +307,59 @@ test("only completed Responses usage is reported; missing or invalid counts rema
   );
   assert.deepEqual(rejected, []);
 });
+
+test("missing media headers still require a valid completed event stream, never JSON or HTML", async () => {
+  const responseFor = (body: string, mime?: string) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      }),
+      { headers: mime ? { "Content-Type": mime } : {} },
+    );
+  const make = (body: string, mime?: string) =>
+    new ChatgptPlanClient({
+      account,
+      credential,
+      fetch: (async (url) =>
+        String(url).endsWith("/models")
+          ? Response.json(catalog)
+          : responseFor(body, mime)) as typeof fetch,
+    });
+  const usage = { input_tokens: 4, output_tokens: 2, total_tokens: 6 };
+  const stream =
+    event("response.output_text.delta", { delta: "Verified" }) +
+    event("response.completed", { response: { status: "completed", usage } });
+  const reported: unknown[] = [];
+  assert.equal(
+    await make(stream).complete(request, { onUsage: (u) => reported.push(u) }),
+    "Verified",
+  );
+  assert.deepEqual(reported, [usage]);
+  assert.equal(
+    await make(stream, "Text/Event-Stream; charset=utf-8").complete(request),
+    "Verified",
+  );
+  for (const body of [
+    '{"status":"completed"}',
+    "<html>not a stream</html>",
+    event("response.output_text.delta", { delta: "partial" }),
+  ]) {
+    await assert.rejects(
+      make(body).complete(request, {
+        onUsage: () => assert.fail("incomplete output cannot publish usage"),
+      }),
+      /disconnected/,
+    );
+  }
+  await assert.rejects(
+    make("data: invalid-json\n\n").complete(request),
+    /invalid stream/,
+  );
+  await assert.rejects(
+    make(stream, "application/json").complete(request),
+    /response stream/,
+  );
+});

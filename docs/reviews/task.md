@@ -1533,3 +1533,46 @@ absent without fallback, actual completed assistant inference/receipts/usage,
 non-chat first-party AI features that still use managed adapters, maintained-page
 private execution and the remaining full ADR/platform acceptance. Plugin/MCP
 calls retain their separate provider and grant boundaries. Main is unchanged.
+
+### Live stream header, checked-out connections and replay planning — 5 October 2026
+
+CI37204783047 passed all four jobs on195f2d22. Its local full run ended2706/2717
+pass,11fail in `/tmp/orbyn-chatgpt-admission-current-full-tests.log`, including
+recovery57P03 and timing failures. This is not a passing local gate. A focused
+replay run reproduced a proposal-family connection loss; its19/25 result includes
+recovery/setup failures. No assertion, deadline, JIT or database setting was waived.
+
+The replay query now binds reference IDs as a text array instead of a JSON
+recordset. All ownership, grant, membership and source predicates remain intact
+in the same query. A synthetic normal-settings EXPLAIN changed reference rows100
+to1 and estimated total cost70785.15 to732.43. Both synthetic plans had JIT disabled
+by their own cost estimates, not by a configuration change; this is not proof of
+a specific PostgreSQL kill cause. Evidence: `/tmp/orbyn-replay-cardinality-plans.json`.
+The reproduced proposal read lost its connection after6086ms before the change;
+three subsequent reads completed in75,168,72ms. Replay tests24/24 pass in
+`/tmp/orbyn-replay-array-cardinality-tests.log`. Combined pool/replay/rules/runner/
+assistant/process-recovery checks102/102 pass with no skips in
+`/tmp/orbyn-resilience-array-final-tests.log`.
+
+Every primary/replica pool connection now observes transport errors even while
+checked out between async transaction queries. Rollback failure cannot replace
+the original error; transactions are never retried or reported successful by this
+handler. A marked-database test terminates only its own tagged backend, proves one
+failed attempt and a healthy later pool query. The preview API remained alive
+through a subsequent database recovery.
+
+Live OpenAI diagnostics recorded an actual public Responses request with
+stream:true/store:false, HTTP200, a body and no Content-Type header. The client
+now allows an absent header and still requires bounded valid SSE plus
+response.completed. Declared JSON/HTML and incomplete/malformed streams do not
+become successful inference or usage. The live request then correctly reported
+subscription-sharing usage exhaustion. It did not complete inference, so no
+successful plan-use or remaining-allowance claim is made. Further live inference
+checks stopped; the temporary startup verification hook was removed.
+
+Runtime snapshots retain the fixed safe quota message without raw provider
+content. Plan/model runtime/manager/bridge/store checks56/56 pass, no skips, in
+`/tmp/orbyn-plan-media-runtime-final-tests.log`. Workspace types pass in
+`/tmp/orbyn-stream-resilience-final-types.log`. Fresh frozen full/CI qualification,
+actual completed inference after availability returns, remaining cross-client
+acceptance and full C1-C6/M1/D1/U1 remain open. No main promotion is claimed.

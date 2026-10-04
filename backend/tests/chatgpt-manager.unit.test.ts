@@ -773,3 +773,52 @@ test("one-click authorization claims the initiating person's request and directl
     await f.cleanup();
   }
 });
+
+test("the runtime preserves safe quota failure metadata when the provider stream omits its media header", async () => {
+  const f = await fixture();
+  f.manager.close();
+  const manager = await create({
+    ...f.options,
+    fetch: async (url: string, init: RequestInit) => {
+      if (url !== "https://api.openai.com/v1/responses")
+        return f.options.fetch(url, init);
+      const failed =
+        "data: " +
+        JSON.stringify({
+          type: "response.failed",
+          response: {
+            error: {
+              code: "subscription_sharing_usage_limit_exceeded",
+              message: "private-provider-details",
+            },
+          },
+        }) +
+        "\n\n";
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(failed));
+            controller.close();
+          },
+        }),
+      );
+    },
+  });
+  try {
+    await manager.setSession("account-a");
+    await manager.connect();
+    await manager.setDefault("fixture-model", 0);
+    await assert.rejects(manager.verifyPlan(), /usage limit/);
+    const snapshot = chatgptDesktopState.parse(await manager.snapshot());
+    assert.equal(snapshot.busy, false);
+    assert.equal(snapshot.verification, undefined);
+    assert.equal(
+      snapshot.error,
+      "ChatGPT plan usage limit reached. Manage usage in ChatGPT.",
+    );
+    assert.ok(!JSON.stringify(snapshot).includes("private-provider-details"));
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});

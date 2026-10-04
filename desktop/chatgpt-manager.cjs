@@ -27,7 +27,8 @@ async function createChatgptManager({
   schedule = setTimeout,
   cancelSchedule = clearTimeout,
 }) {
-  const { OrbynClient } = await import("@orbyn/api-client");
+  const { OrbynClient, safeChatgptActionError } =
+    await import("@orbyn/api-client");
   const { chatgptModelBinding, chatgptModelPreference } =
     await import("@orbyn/core");
   const storage = { directory, apiBaseUrl, safeStorage, platform };
@@ -103,9 +104,7 @@ async function createChatgptManager({
             return { ...result, state: { ...result.state, busy: false } };
           return result;
         } catch (error) {
-          if (ctx === context)
-            ctx.error =
-              "ChatGPT could not complete this action. Retry or reconnect this account.";
+          if (ctx === context) ctx.error = safeChatgptActionError(error);
           throw error;
         } finally {
           if (ctx === context) {
