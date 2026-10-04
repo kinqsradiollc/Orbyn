@@ -88,6 +88,10 @@ export const AI_TWINS: Record<string, AiTwin> = {
  * agents already have), and their twins.
  */
 export const AI_FEATURE_TWINS: Record<string, AiTwin> = {
+  "Maintaining selected page blocks (Background/Overnight)": {
+    tools: ["fetch", "get_history", "edit_doc"],
+    how: "An outside agent uses its own model and scheduler to read the authorized page, inspect its history and propose or make scoped block edits through edit_doc under its existing grant. Orbyn's maintenance bindings, run budgets and owner review decisions remain first-party controls; these tools do not enroll hosted work or approve its output.",
+  },
   "Search by meaning (GET /search with semantic search on)": {
     tools: ["search", "find_passages"],
     how: "Agents search by words and titles; the agent's own model does the meaning.",

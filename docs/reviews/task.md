@@ -982,3 +982,29 @@ Next qualify a frozen branch head, then isolate qualified production checkpoints
 Continue automatic grounded Home suggestions/reflections, A5 source/budget controls,
 activity/undo/page-reflection, actual device inference, external host acceptance
 and whole-app C1-C6/M1/D1/U1 requirements. Existing execution lanes remain separate.
+
+### Frozen qualification correction — independent identities / A5 capability mapping
+
+Checkpoint `deffbfc4` is committed and pushed. Its full fresh marked test-database
+run was stopped after a confirmed failure in `agent-no-ai.test.ts`: six maintained-
+page control routes were classified as hosted inference with no declared twins.
+The failed run is not passing evidence. Cancellation and exact head are recorded
+in `/tmp/orbyn-lane-identities-deffbfc4-cancelled.json`.
+
+Inspection shows these six routes configure/inspect owner-approved bindings and
+review results; they do not expose model execution to outside agents. They now
+use the existing `assistant_control` classification, preserving first-party
+restriction. The maintained-page feature has an explicit outside-agent equivalent:
+`fetch`, `get_history`, `edit_doc` under the connection's existing grant and its
+own model/scheduler. It neither enrolls hosted work nor approves hosted output.
+A dedicated contract asserts this separation while the existing import-graph
+shield still checks all capabilities for provider/hosted-run imports. The old
+unused global identity lane helper was removed so it cannot suggest that the two
+new persisted profiles still share a settings object.
+
+Focused API/migration/client/import-graph/parity7/7 checks passed in
+`/tmp/orbyn-lane-identities-parity-followup.log`. A fresh full run on the corrected
+frozen head is still required. Web/manual review, native wide/keyboard/large-text,
+Android, automatic Home recommendations/reflections, A5 source/budget/activity,
+reflection evidence, verified device inference and external host gates remain
+open. No main promotion or deployment is asserted.

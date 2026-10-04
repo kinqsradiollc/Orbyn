@@ -72,12 +72,3 @@ export type AgentRoutine = {
   created_at: string;
   updated_at: string;
 };
-
-/** Interactive chat keeps the product identity; characters belong to automation profiles. */
-export function assistantIdentityForLane(
-  identity: { name: string; persona: string } | null | undefined,
-  lane: "interactive" | "background" | "overnight",
-): { name: string; persona: string } {
-  if (lane === "interactive") return { name: "Orbyn", persona: "" };
-  return { name: identity?.name || "Orbyn", persona: identity?.persona || "" };
-}

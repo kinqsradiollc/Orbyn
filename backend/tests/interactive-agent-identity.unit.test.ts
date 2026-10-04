@@ -1,18 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { assistantIdentityForLane } from "@orbyn/core";
-test("interactive context never adopts an automation character name or persona", () => {
-  const identity = {
-    name: "Night researcher",
-    persona: "Reflect on completed work",
-  };
-  assert.deepEqual(assistantIdentityForLane(identity, "interactive"), {
-    name: "Orbyn",
-    persona: "",
-  });
-  assert.deepEqual(assistantIdentityForLane(identity, "background"), identity);
-  assert.deepEqual(assistantIdentityForLane(identity, "overnight"), identity);
+import { automationAgentLane } from "@orbyn/core";
+test("automation identity editing never includes interactive chat", () => {
+  assert.equal(automationAgentLane.safeParse("interactive").success, false);
+  assert.equal(automationAgentLane.parse("background"), "background");
+  assert.equal(automationAgentLane.parse("overnight"), "overnight");
 });
 test("both chat surfaces keep character configuration and forced naming out of conversations", async () => {
   const files = [
