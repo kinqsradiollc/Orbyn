@@ -20,7 +20,7 @@ test("private run failures expose fixed recovery messages, never raw provider te
   );
   assert.match(
     privateProviderFailureMessage(new ChatgptDeviceDeferred())!,
-    /unfinished assignment/,
+    /unfinished model calls/,
   );
   assert.equal(
     privateProviderFailureMessage(

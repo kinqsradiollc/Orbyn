@@ -42,7 +42,7 @@ export function privateProviderFailureMessage(error: unknown): string | null {
     chatgpt_interrupted:
       "ChatGPT completion is unknown. This request was not retried through another provider.",
     chatgpt_device_offline:
-      "Your device went offline while other work had an unfinished assignment. Review this run; it was not retried.",
+      "This run could not safely return to its queue. Review the saved work; unfinished model calls were not retried.",
     provider_changed:
       "Your provider choice or captured model changed. Review the saved work before starting a fresh request.",
     fallback_unavailable:
