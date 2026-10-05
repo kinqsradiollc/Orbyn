@@ -25,7 +25,7 @@ export async function recordProviderUse(
       if (
         phase === "completed" &&
         (row?.run_state?.version === 2 ||
-          (row?.run_state?.version === 4 &&
+          ([4, 5].includes(row?.run_state?.version) &&
             row.run_state.feature === "agenda_brief"))
       )
         await db.query(

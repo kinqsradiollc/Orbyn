@@ -1,4 +1,44 @@
+# Current integration — 5 October 2026
+
+Main62f5e9a0 is integrated into the scheduled Agenda candidate. The only merge
+conflicts were historical ADR/handoff notes; both sets are retained below.
+No application source conflicted. CI37286333130 previously failed three cases:
+legacy internal catalog shape and two cross-runtime fixed-clock fixtures.
+Those repairs retain the original assertions, capacities and lease duration.
+Backend typecheck passes. Exact merged-head qualification remains required.
+Plugin provider candidatePR203 is separate; its own new broker/controls await CI.
+Full ADR remains active; preserve native/visual and real-provider acceptance gaps.
+
+# Agenda CI repair and main integration — 5 October 2026
+
+Main `198e93e4` integrated into the Agenda candidate. Documentation overlaps
+were resolved by retaining current main's handoff and preserving prior candidate
+notes as history; no source conflict or user-file changes remain. CI37280711360
+failed with2,913 passes,11 failures andone existing skip. Repairs: fixture owners
+and their live recovery leases are cleaned between tests, remote UI harness
+recognizes AgendaPrivateSettings, the model catalog retains its existing strict
+response shape, and generated MCP catalog exclusions reflect both new private
+routes. Original deadlines/capacities/assertions are unchanged. Focused remote UI
+and NOWAIT cases13/13 passed; database/full qualification must run again before
+promotion. These fixes are not yet qualified for main. Plugin launch-context
+candidate c27a4a03 is separate draft PR201; pure10/10 and backend types passed,
+HTTP/database and host acceptance remain unverified.
+
 # Current implementation handoff — 5 October 2026
+
+## Scheduled catalog compatibility repair — current candidate
+
+CI37283750938 at86d850b9 ended2,925pass/2fail/1existingTesseractskip.
+The earlier fixture cleanup, UI mocks and generated catalog repairs passed;
+remaining failures required capabilities in the internal catalog and scheduled
+settings contract. Restore sanitized capability metadata internally and require
+explicit `include_capabilities=1` on `/models` to expose it. Ordinary requests
+retain the original exact response shape for older strict readers. Both Agenda
+settings hooks request the metadata; omission cannot enable bounded scheduling.
+Four focused client/schema tests and all workspace typechecks pass. Added HTTP
+opt-in and malformed query regressions remain to be run in full CI; local test
+PostgreSQL is unavailable and unchanged. Main03c605e2 was integrated without
+conflicts. This is a draft candidate, not scheduled feature delivery.
 
 ## Current main and active candidates — 5 October 2026
 
@@ -2084,3 +2124,399 @@ This includes owner consent/CAS, eleven broker/worker cases, actual managed HTTP
 transport, plugin service security and complete route inventory. Earlier failed
 log remains /tmp/orbyn-plugin-durable-local-integration.log. Exact-head full
 local/CI qualification and external host/native visual acceptance remain open.
+
+## Scheduled Agenda authority — in progress, 5 October 2026
+
+The secondary provider worktree now has uncommitted migration237, strict shared
+permission schemas, first-party owner-only GET/PUT permission endpoints and
+API-client methods. Permission is off by default and independent of morning
+emails/recent sessions. Enabling requires the reviewed provider-choice and model
+preference versions plus a current inference/output-limit-capable device catalog.
+The captured setting includes the explicit fallback choice. Provider/account/
+device/model changes, revocation/re-enable and disabled accounts invalidate old
+grants. JSONB key ordering is normalized through the shared choice schema before
+comparison. Revocation is allowed even after the selected device disappears.
+The new routes are excluded from portable MCP/plugin credential capabilities.
+
+Direct database/CAS/catalog and401/403/400/422/429 route plus mocked authority
+checks12/12 pass with no skips in /tmp/orbyn-agenda-schedule-permission-final.log.
+These include real permission-row JSONB round trips, concurrent writes, model
+preference changes and disconnect/revoke/re-enable. All workspace typechecks
+passed in /tmp/orbyn-agenda-schedule-permission-types.log; the later backend
+recheck also passed. Migration237 was applied only to the marked test database.
+Production build passed in /tmp/orbyn-agenda-schedule-permission-build.log.
+Pure permission/MCP exclusion/neatness checks17/17 passed with no skips in
+/tmp/orbyn-agenda-schedule-pure-final.log; scoped formatting and diff checks pass.
+Frozen ce4895a5 full session40694 completed2838/2838, zero failures/skips, in
+/tmp/orbyn-ce4895a5-full-tests.log. CI37263198527 remains live on ce4895a5; this
+newer work is separate and must not receive the frozen commit's qualification.
+
+This permission foundation does not yet dispatch scheduled summaries or expose a
+working scheduling toggle. Next implementation must persist one daily summary
+parent with target/date/source/permission/model snapshots and a stable operation
+ID. It must defer an undisclosed offline-device request, preserve the same pending
+operation, never retry streamed/unknown completion, and recheck permission,
+source authority and target revision before applying only the owned summary block.
+Human edits/Notes remain intact. Web and mobile need the same truthful pending/
+failure/provider/recovery state and explicit permission control, with visual/native
+verification. The existing worker's five parallel lanes and morning time window
+are not durable recovery or scheduled permission.
+
+## Authoritative qualification and scheduled runtime update — 5 October 2026
+
+CI37263198527 on ce4895a5 is terminal failure: the private Overnight resume test
+reported no assignment. Its local full suite passed2838/2838, but that does not
+waive CI. A deterministic PostgreSQL-microsecond versus JavaScript-millisecond
+retry regression failed on unchanged ce4895a5 (9/10) and passed with the repair.
+The scoped repair is458c03a8 on the secondary branch and6be9561c on PR196;
+6be9561c is pushed. Exact-head full local session35409 and CI37265979902 are
+running. Main remains82576dfa; no new merge/deployment/cleanup occurred.
+
+Scheduled permission foundation5b344d4e is committed and pushed on the secondary
+branch. Migration238 and durable daily summary runtime remain uncommitted there.
+Current clean marked DB affected suites pass31/31, zero failures/skips. Expanded
+scheduled runtime coverage passes7/7 in
+/tmp/orbyn-agenda-scheduled-recovery-expanded.log: no implicit grant, daily dedup,
+offline same-operation resume, human Note preservation, revoke, edited target,
+claimed-operation no-retry after worker expiry, morning expiry and changed model
+preference. These are controlled integration tests, not real provider completion.
+
+Next: complete cached/undisclosed recovery and source fencing checks, owner-only
+status contracts and matching permission/recovery controls on web and mobile,
+then qualify the complete scoped candidate. Real positive OpenAI completion,
+plan/limits availability and visual/native acceptance remain open. Retain all
+C1–C6/M1/D1/U1 requirements and user/character changes.
+
+Scheduled source-recovery follow-up: a task changed after device assignment
+correctly blocked output but exposed an unclassified error. The runtime now maps
+known Agenda snapshot changes to a fixed409 conflict without exposing source
+details. The unchanged409 assertion and page/usage preservation checks pass;
+expanded scheduled suite8/8, zero failures/skips, in
+/tmp/orbyn-agenda-scheduled-source-recovery-fixed.log. Earlier7/8 failure is
+retained in /tmp/orbyn-agenda-scheduled-source-recovery.log.
+
+## Scheduled Settings/status candidate — 5 October 2026
+
+Owner-only private summary metadata and matching web/desktop/mobile controls are
+now uncommitted alongside migration238/runtime. Permission remains explicit,
+versioned and independent of digest/email settings. UI operations are fenced to
+the current owner/session, cancel on unmount/account change, use reviewed versions
+and show current model/fallback plus dated durable status. API refuses keys, foreign
+owner query overrides and GET bodies; credential/source snapshots are excluded.
+Tests: status/permission7/7, shared status2/2, scheduled runtime8/8, zero skips;
+all workspace types passed. Build session25957 is running. Native/visual review,
+cached recovery and atomic source fencing remain required before completion.
+
+Exact PR196 head6be9561c local full session35409 encountered PostgreSQL recovery
+errors (57P03), including poll-presence checks and fixture cleanup. This full run
+cannot qualify promotion even if later tests pass. Retain its log; do not relax
+assertions or database settings. CI37265979902 remains independently running.
+No new main merge/deployment/cleanup. Goal retains complete ADR scope.
+
+## Cached scheduled recovery and client contracts — 5 October 2026
+
+Controlled cached recovery now passes10/10 in
+/tmp/orbyn-agenda-cached-recovery.log. A signed completion survives worker lease
+loss with the device offline: one request, one operation and one usage record;
+a human edit after completion prevents later application. A queued-envelope
+same-request recovery test has been added but awaits execution after full local
+qualification; do not count it as passed. Fresh client/status contracts3/3 pass in
+/tmp/orbyn-agenda-settings-client-status.log, including no ETag authority cache,
+strict response fields and invalid-owner input rejection before dispatch.
+
+The initial6be9561c full local run ended failure after PostgreSQL recovery:
+2828 executed,2823 pass,5 fail (not a qualified result). Its log is retained.
+A new fresh marked DB full run is confirmed live as session57229, log
+/tmp/orbyn-6be9561c-full-tests-recovery.log. CI37265979902 has passed mail/mobile/
+Docker, with backend tests still running. No test assertions, polling bounds,
+retry intervals or Docker/database settings changed. Build25957 completed exit0.
+Simulator control timed out and no native device was booted; native screenshots
+and interaction are still required. Full ADR scope remains active.
+
+Qualification update: CI37265979902 is now terminal success on6be9561c;
+all four jobs pass. The fresh local full session57229 remains the outstanding
+local gate. Log: /tmp/orbyn-6be9561c-ci-backend.log. No main merge yet.
+CI backend detail:2838 pass,0 fail,1 existing conditional skip for installed
+Tesseract scanned-page OCR. This is not full OCR acceptance; retain local OCR
+runtime evidence as a separate gate. The retry regression itself passed in CI.
+
+## Queued recovery and usage-limit follow-up — 5 October 2026
+
+Added an undisclosed queued-envelope recovery test requiring the same request,
+job and operation after worker lease loss. Added a signed usage-limit admission
+failure test requiring terminal truthful status, zero completed usage and no
+fallback operation without consent. Both await execution after serial full local
+qualification. Do not count these two new integration cases as passed yet.
+
+Scheduled ProviderError(chatgpt_usage_limit) now maps to fixed usage_limit status;
+web/native share recovery text directing the owner to ChatGPT usage management.
+The strict public status schema and API docs include this reason, never the raw
+provider body. Shared status3/3 and backend types pass. The fresh exact-head full
+session57229 remains active with no failure observed so far; CI success is retained.
+Atomic all-source fencing and native/visual acceptance remain open.
+
+## Preserved candidate history before main integration
+
+# Production migration recovery and active Agenda candidate — 5 October 2026
+
+PR198 is merged into main as `f816675b`, with the same tree as `81ffb44e`.
+Root main safely fast-forwarded; user/character changes remain preserved.
+All workspace types/build,13 pure and3 PostgreSQL cases passed locally.
+Full CI37279096979 and main CI37279497795 remain live; backend suites have not
+been reported terminal yet. The local full attempt failed on full test tmpfs;
+`orbyn-postgres-test-1` is now confirmed exited1. Do not restart Docker or claim
+local full qualification. No test fixture was removed: the cleanup attempt could
+not connect. The user's normal deploy script now receives the hotfix; production
+recovery remains unverified.
+
+Agenda candidate `84e88b86` is committed locally; main `f816675b` was integrated
+without conflicts as `2b20a074`. The isolated Study repair `06ebbf34` remains in
+this candidate. Latest page-lock change adds NOWAIT with a savepoint so a page
+edit waiting on the source advisory lock cannot create a cyclic row wait with
+final application. This is a candidate, not yet database-verified. Four new pure
+cases plus client/status cases pass10/10 in `/tmp/orbyn-agenda-nowait-pure.log`;
+backend types24095 pass. A real concurrent human edit/application regression is
+written but unexecuted because the test container is stopped. Full integrated
+workspace types44252 are in `/tmp/orbyn-agenda-integrated-types.log`.
+
+Prior source-fence/runtime/permission/catalog60/60 and final-application17/17
+results are retained below. They qualify the preceding source, not the new NOWAIT
+change. Scheduling remains unavailable for production SIWC catalogs without
+signed hard-output-limit capability. Real nonempty ChatGPT completion, whole-
+account plan/quota/reset data and client/native acceptance remain unverified.
+The full C1–C6/M1/D1/U1 ADR scope remains active. No Agenda/main promotion,
+worktree cleanup or deployment is claimed.
+
+---
+
+# Current implementation handoff — 5 October 2026
+
+## Latest qualification and top-three work
+
+**Authoritative current checkpoint:** PR #196 merged into main as
+`e0a432a542a38b92957816b1e45c57a2aaa2ea43` on 5 October 2026. Merge and frozen
+`47541c63` share tree `41df87fa5be668d19dfddb22b5536f2552cf0991`.
+Fresh full local61988 exited0: 2,842/2,842 pass, no failures/skips/cancellations,
+`/tmp/orbyn-475-full-tests-retry.log`. All four CI37273639006 jobs pass (backend
+2,841 pass and one existing Tesseract skip). Root main fast-forwarded safely;
+mobile/app.json and untracked user/character files are preserved. No deployment
+or cleanup. The historical failures below remain unexplained, not erased by the
+successful rerun.
+
+Study overview/review/quiz now resolve links through their supplied transaction.
+Baseline3333 failed all three privacy assertions on the original code;
+`/tmp/orbyn-study-transaction-links-baseline.log`. Fixed Study/Agenda cohort44983
+exited0, 36/36 pass, `/tmp/orbyn-study-agenda-fixed.log`. Backend types pass.
+The isolated repair is committed locally as `06ebbf34`; it is not yet pushed or merged.
+
+Migration239 and per-owner source advisory locks are an uncommitted concurrency
+candidate. Migration executes successfully; backend types64404 pass. The initial eighteen-table/shared-reader/independent-owner cohort passed21/21
+in `/tmp/orbyn-agenda-source-fence-db.log`. Expanded source-fence/runtime/
+permission/catalog cohort32853 passed60/60 with no skips, including earlier
+writer ordering and inserted-task phantoms, in
+`/tmp/orbyn-agenda-source-fence-runtime-db.log`. Actual final-application cohort
+52126 passed17/17 with no skips, including a new task blocked until the summary
+commits, in `/tmp/orbyn-agenda-apply-concurrency-db.log`. Backend types29217 pass.
+Row-lock deadlock behavior, broader writer effects, full candidate qualification
+and visual/native acceptance remain open. Do not claim full source acceptance.
+
+## Historical checkpoints (superseded by the current checkpoint above)
+
+CI37273639006 completed successfully on47541c63: all four jobs pass; backend
+2841 pass,0 fail,1 existing Tesseract skip (`/tmp/orbyn-475-ci.log`). Two subsequent
+original recovery cohorts13/13 each passed; failure-only diagnostics preserved
+original count polling/deadline and were removed automatically before a fresh
+full retry. Frozen tracked source is clean. Fresh full local61988 is running on
+marked `orbyn_47541c63_retry_qualification_test`, log
+`/tmp/orbyn-475-full-tests-retry.log`. Do not restart a live handle or treat a
+rerun as explaining the earlier intermittent failure. PR body now reflects
+current evidence and removes the obsolete pause request. Goal remains active.
+
+Native Simulator Computer Use observation returned timeoutReached (-10005);
+no current native Settings screenshot or interaction is claimed. The blocked
+browser permission is not bypassed through another browser/port/capture.
+
+Latest terminal results: exact47541c63 full local56612 exited1:2824 tests,
+2819 pass,5 fail,0 skips. Four agent-writes cases lost database connectivity;
+its following agents test file could not start while PostgreSQL was recovering
+(57P03). Original13 process recovery cases and the75-task bulk Review case
+passed within their unchanged bounds. This run still cannot qualify promotion.
+The prior18/19 extracted lane failure remains unresolved and separately retained.
+
+Scheduled producer/capacity/permission/signed-catalog cohort62231 exited0:
+37/37 pass,0 failures/skips, `/tmp/orbyn-agenda-producer-capacity-db.log`.
+All three new producer/capacity cases executed successfully. Native inspection,
+atomic all-source/phantom fencing and full scheduled-candidate qualification
+remain required. No new main merge or deployment has occurred.
+
+Shared web/native scheduling prerequisites now distinguish provider selection,
+offline/stale device, unavailable model and unsupported limits. Both signed
+inference and hard-limit capabilities are required; a limits-only capability
+cannot enable the toggle. Concise copy replaces the misleading blanket claim
+that every disconnected/default-provider state lacks limits. All-workspace
+checkpoint33189 types pass; eight pure client/catalog/status tests pass with
+zero skips/failures in `/tmp/orbyn-agenda-prerequisites-pure.log`. Native/visual
+inspection and the three newly written producer/capacity database tests remain
+pending. Changes are uncommitted with the scheduled candidate.
+
+Current local full run56612 has encountered PostgreSQL57P03 recovery-mode
+errors in agent-writes/agents; it cannot qualify promotion even if later tests
+pass. Keep `/tmp/orbyn-475-full-tests.log`. The separate development PostgreSQL
+container is repeatedly restarting with an empty postmaster.pid error. No Docker
+or database settings have been changed. CI mobile/Docker/mail are successful;
+backend/web remains running. These are independently reported states.
+
+Three further scheduled Agenda database regressions are written but unexecuted:
+shared Background admission without consuming interactive slots, idempotent
+producer recovery for an untouched generated page without inference, and no
+scheduled enrollment of a human-edited page. Backend types15845 pass;
+seven pure client/catalog/status tests pass in
+`/tmp/orbyn-agenda-current-pure.log`. Run the new database cases only after56612
+terminates, preserving serial database suites and their original limits.
+
+PR196 is pushed at `47541c631976b098899e237081da70a90cce3386` and remains
+unmerged. Root main is `82576dfa`; user and character changes are preserved.
+The extracted recovery/night cohort failed 1 of 19 tests: independent runtime
+recovery observed only one provider lane before its original deadline. A
+same-source diagnostic recovery rerun passed 13/13, zero skips. This is an
+unresolved intermittent failure, not proof of a repair. Diagnostics were removed
+before the fresh exact-head full suite. Keep both logs:
+`/tmp/orbyn-night-bulk-extracted-recovery.log` and
+`/tmp/orbyn-475-lanes-diagnostic.log`.
+
+All-workspace typecheck and production build passed on47541c63. Fresh full local
+suite session56612 uses marked `orbyn_47541c63_qualification_test`, log
+`/tmp/orbyn-475-full-tests.log`. CI37273639006 is still running. These results
+must reach terminal state before promotion; earlier green commits do not
+qualify this head. Earlier422a5a9b full suite terminated2841 tests,2840 pass,
+1 fail,0 skips (75-task bulk Review). The isolated bulk preflight repair retains
+75 tasks, the original review threshold, deadlines and no-persisted-items checks.
+
+The secondary scheduled Agenda/capability candidate remains uncommitted. Its
+combined recovery/night/scheduled permission/signed catalog cohort passed53/53,
+zero failures/skips, `/tmp/orbyn-top3-review-agenda-catalog.log`. Signed catalog
+capability assertions therefore ran successfully. The deterministic final-write
+expiry regression failed on the old write (`Missing expected rejection`) and
+passed on the guarded write; baseline/fixed logs are
+`/tmp/orbyn-agenda-final-deadline-baseline.log` and
+`/tmp/orbyn-agenda-final-deadline-fixed.log`. It fences lease/window expiry at
+page mutation, but does not establish atomic all-source or phantom fencing.
+Producer/capacity, native UI and full candidate qualification remain open.
+
+Official SIWC documentation was refreshed: authentication/model discovery do not
+prove plan execution; a nonempty completed request does. Account-wide allowances
+and app limits are managed in ChatGPT Settings → Usage. Orbyn exposes only
+completed-request token usage, explicit permission and observed execution/errors;
+it must not fabricate plan tier, allowance percentages or reset times. The
+connected account's prior sharing-limit failure remains the latest real inference
+evidence; no positive completion has been established. Do not automatically
+repeat chargeable probes or use private endpoints. Full ADR scope remains active.
+
+## Resumed top-three priorities — 5 October 2026
+
+Scheduled final-write deadline candidate: applyScheduledAgenda now conditions the
+page UPDATE on current parent state, owner/token, lease and morning expiry using
+clock_timestamp after the source/page/job locks. Missing RETURNING row fails409
+and rolls back page/transport completion. A new deterministic regression expires
+the parent immediately before the final page UPDATE on the same transaction,
+then requires409 plus unchanged content/version and running parent/child state.
+Backend types37053 exited0, /tmp/orbyn-agenda-final-deadline-types.log. Regression
+is not yet executed; run it and its old-source baseline after full session18748
+terminates, preserving serial DB suites. This does not complete atomic source
+fencing or native/real-provider acceptance. Changes remain uncommitted here.
+
+Qualification correction:422a5a9b has passed original372 and378 but failed374,
+the75-task Overnight bulk-review recovery test, waiting for terminal state after
+Checking the plan before applying. Full session18748 remains live and must be
+observed to terminal; this run cannot qualify promotion. Do not increase its
+8-second deadline or reduce75 tasks. Inspect the review/check/destination path
+and query/process timing. CI37272139189 remains independently live. No new main
+merge. This correction does not waive the earlier failures.
+
+Capability follow-up: combined pure catalog client/proof, scheduled client and
+summary status cohort9/9 passes,0 failures/skips, terminal0 in
+/tmp/orbyn-agenda-catalog-contract-cohort.log. Added signed-publication database
+assertions to chatgpt-executor-leases.test.ts: an older catalog exposes no implied
+capability; signed inference-only metadata round-trips without claiming limits.
+These database assertions are not yet executed: keep DB suites serial until
+full local session18748 terminates. Backend types51138 passed exit0, log
+/tmp/orbyn-agenda-catalog-backend-types.log. Candidate remains uncommitted.
+Fresh422a5a9b full run has passed the previously failed372 and378 recovery cases;
+overall full/CI are still live, so no promotion claim. Real positive OpenAI
+inference/plan usage and atomic all-source fencing/native acceptance stay open.
+
+User explicitly resumed recovery/merge, ChatGPT verification and scheduled Agenda.
+PR196 now422a5a9b, pushed. The independent lane recovery test owned an UPDATE-only
+consent fixture created by an earlier test; isolated execution had no settings row
+and Overnight failed before inference. Its own upsert/assertion now passes1/1
+isolated. Same-source recovery cohort passes13/13; the preceding corrected cohort
+still had an invite timing failure, retained without a claimed cause. See
+evidence/assistant-recovery-consent-fixture.md. No deadline/assertion was weakened.
+Fresh full local session18748 uses orbyn_422a5a9b_qualification_test and log
+/tmp/orbyn-422a5a9b-full-tests.log. CI37272139189 is live. Observe these to terminal;
+no new main merge yet. Preserve initial515e8959 failures and all source candidates.
+
+Scheduled Agenda web/native enablement now additionally requires the server's
+sanitized catalog plan_inference_limits_v1 capability. Catalog omission does not
+imply output-limit support; optional typed capability metadata preserves older
+catalog compatibility. Current SIWC production runtimes cannot enable the toggle
+merely from login/default-model selection. Candidate contracts2/2 and all workspace
+types pass, logs /tmp/orbyn-agenda-capability-client.log and
+/tmp/orbyn-agenda-capability-types.log. These changes remain uncommitted with the
+scheduled runtime; focused backend catalog integration, full qualification,
+atomic source fencing and visual/native acceptance remain open. Do not infer
+positive real OpenAI completion or account-wide plan usage from fixture tests.
+
+## Current authoritative qualification — hard output budget repair
+
+Pause checkpoint requested by the user: exact515e8959 full local session32803
+terminated exit1,2841 tests,2839 pass,2 fail,0 skips. Failures: Overnight dynamic
+outside invite staging and independent Background/Overnight process recovery in
+assistant-process-recovery.test.ts. Both timed out waiting for terminal state;
+do not weaken their8-second bounds or infer a cause from timing alone. Preserve
+/tmp/orbyn-515e8959-full-tests.log. CI37268654124 completed success; all four jobs
+pass, but CI does not erase these local failures. Build55391 exited0 and scoped
+formatting63152 exited0. PR196 remains draft/open/unmerged at515e8959; root main
+remains82576dfa with user dirt preserved. No cleanup or production deployment.
+Before promotion: reproduce these process cases, repair their cause, then obtain
+fresh exact-head full local/CI qualification. No live local test/build remains.
+
+Main remains82576dfa. PR196 is now frozen515e8959, pushed with the isolated
+hard output budget repair (source59c16fa8). Its42/42 focused tests and all workspace
+typechecks pass. Exact-head full local session32803 uses the fresh marked
+orbyn_515e8959_qualification_test database; log /tmp/orbyn-515e8959-full-tests.log.
+CI37268654124 is running. Observe these handles to terminal before promotion.
+The preceding6be9561c passed2839/2839 fresh local and all four CI jobs, but those
+results do not qualify the newer repair. The initial recovery-failed run remains
+retained; no test assertions or database settings were weakened.
+
+Official SIWC preview excludes max_output_tokens. The real desktop adapter had
+dropped the requested budget while advertising hard-limit capability. The repair
+preserves budget preflight and fails before any request; production no longer
+advertises limits it cannot enforce. Bounded private SIWC work remains ineligible
+until the route can enforce its budget. Managed fallback still requires explicit
+consent. Evidence: evidence/chatgpt-hard-output-budget.md.
+
+Scheduled Agenda runtime/Settings/status remain uncommitted here. Latest combined
+queued recovery, signed usage-limit, permission/status and route cohort passed
+25/25, zero skips/failures, /tmp/orbyn-agenda-queued-usage-runtime.log. Atomic
+all-source fencing, native/visual acceptance, producer/capacity qualification,
+real positive provider execution and full scoped qualification remain required.
+No main merge, production deployment or cleanup. Full C1–C6/M1/D1/U1 remains active.
+
+## Current checkpoint — selected provider features
+
+### 2026-10-05 — Agenda catalog compatibility and shared-clock qualification repair
+
+CI 37286333130 on 50a92aa2 failed three tests (2927 passed, one existing Tesseract skip). Preserve the legacy internal catalog response as well as the HTTP response: capabilities now require an explicit opt-in argument, and capability assertions exercise that opt-in. Preserve both cross-runtime serialization assertions: fixed schedule fixtures now place their claimed page leases on the live chat runner's wall clock using the unchanged PAGE_RUN_LEASE_MS. No production runtime capacity or lease duration changed. Backend typecheck passed (/tmp/orbyn-agenda-catalog-clock-types.log). Database cases await exact-head CI; local test PostgreSQL remains unavailable. ADR remains incomplete.
+
+### 5 October — Agenda main promotion and plugin integration
+
+PR199 merged as8dcc4bb1 after exact a6a65525 CI37291303840 passed all four
+jobs (2938 pass, zero failures, one existing Tesseract skip) and99 local focused
+passes. Native/visual and positive real-account SIWC acceptance remain open.
+Plugin1f594133 full local run passed2902, failed one generated catalog check,
+with one existing Tesseract skip. Regenerated the catalog and integrated current
+main, preserving both core exports and all historical task evidence. Combined
+route catalog is generated from both sets of credential exclusions. No policy,
+output cap or test assertion is weakened. Fresh combined qualification follows.

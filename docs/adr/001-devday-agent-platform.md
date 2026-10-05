@@ -11,10 +11,12 @@ passed all four jobs, with2868 backend passes and one existing Tesseract skip;
 PR202's CI37285248757 passed all four jobs, with2862 backend passes and that skip.
 Production deployment/recovery remains user-run and unverified.
 
-Scheduled private Agenda remains draft PR199 at `c8403ea1`. The preceding
-CI37286333130 failed three tests; catalog shape compatibility and two fixed-clock
-lease fixtures are repaired, with fresh qualification pending. Official SIWC
-accounts without hard output-limit capability cannot enable budgeted scheduling.
+Scheduled private Agenda is merged in main `8dcc4bb1` (PR199). Exact source
+`a6a65525` passed all four CI jobs in run37291303840:2938 backend passes, no
+failures and one existing Tesseract skip. The fresh local focused cohort passed
+99/99 without skips. Visual/native and real-account completion remain open.
+Official SIWC accounts without hard output-limit capability cannot enable budgeted
+scheduling.
 
 Plugin managed/BYO execution and explicit owner controls are candidate PR203.
 The standalone broker/worker, durable receipts/events, fixed provider consent,
@@ -1805,6 +1807,78 @@ recovery UI, target/body/source consistency through page application, native vis
 acceptance and real positive OpenAI inference remain required. Snapshot rereads
 on the same connection do not prove atomic fencing of all source/policy changes.
 The complete C1–C6/M1/D1/U1 scope remains active.
+
+### Scheduled private Agenda permission — 5 October 2026
+
+Morning page generation, recent app activity and digest preferences do not imply
+permission to use a private ChatGPT plan. A separate first-party setting is off
+by default. Granting it requires the current owned connection/device, available
+default model, provider-choice/model-preference versions and bounded-inference
+capabilities. Permission captures the explicit fallback choice; changing any of
+these requires a fresh review. Revocation/re-enable advances permission version
+and cannot restore an old job's authority. Portable MCP and plugin capabilities
+cannot read or write the setting.
+
+The permission API and capture/revalidation helpers are implemented and have
+direct database/CAS/catalog/authorization tests. This does not yet complete
+scheduled execution: durable daily parent jobs, stable operation identities,
+offline-device deferral, final source/target checks and matching web/mobile
+permission/status/recovery controls remain required. Do not expose a scheduling
+toggle as working before those runtime paths and native acceptance are verified.
+
+### Scheduled private Agenda controls — candidate, 5 October 2026
+
+Compatibility gate: official SIWC preview excludes max_output_tokens. Production
+ChatGPT executors must not advertise bounded inference when that route cannot
+enforce the requested hard output budget. Required limits survive adapter
+projection and fail before network dispatch; they cannot be silently discarded.
+Bounded private scheduling therefore remains ineligible on that route, with
+explicitly consented managed fallback separately subject to its own budget.
+See ../reviews/evidence/chatgpt-hard-output-budget.md for the scoped repair.
+
+Scheduled ChatGPT use requires explicit versioned permission independent of digest
+emails and interactive app requests. A durable daily parent owns the target
+summary paragraph, captured sources, provider/model choice, stable operation and
+morning deadline. An offline undisclosed operation can wait; a device-claimed or
+unknown operation is not replayed. Human Notes remain intact, while changed target
+text, source facts, account/model selection or revoked permission stop acceptance.
+
+Web/desktop and mobile Settings now have matching candidate permission/status
+controls. GET /ai/agenda/private-summary exposes only the live owner's run
+metadata, never captured facts, permission context or credentials, and is excluded
+from plugin/MCP credentials. Status includes its local date so yesterday's result
+cannot be mistaken for today's. The UI requires a reviewed selected ChatGPT model;
+stale permission needs review and revoke remains available when a device is gone.
+
+Controlled runtime8/8, status/permission routes7/7 and shared status2/2 pass with
+zero skips; all workspace types pass. The source-change regression retains its409
+assertion after correcting the previously generic error. Build, expanded recovery/
+atomic source fencing, actual positive provider completion and native/visual
+acceptance remain open. This candidate is uncommitted and not on main. Full
+C1–C6/M1/D1/U1 remains incomplete.
+
+## Preserved candidate history before main integration
+
+### Historical candidate delivery state — 5 October 2026
+
+This table supersedes historical checkpoint descriptions below; the complete
+C1–C6/M1/D1/U1 acceptance contract remains in force.
+
+| Priority                    | Current state                                                                                                                                                                                                                                                                                    | Next acceptance gate                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recovery and main promotion | PR #196 merged as `e0a432a5`. Migration recovery PR #198 is on main as `f816675b`; its full CI remains pending. Fresh full local suite: 2,842/2,842 pass. CI 37273639006: all four jobs pass; backend 2,841 pass and one existing Tesseract skip. Earlier intermittent failures remain recorded. | Qualify each subsequent candidate before promotion. User deploys main manually.                                                                                       |
+| ChatGPT execution and usage | Official connection/catalog, provider choice/fallback and measured completed-call usage are merged. Real inference previously reported a subscription-sharing usage limit.                                                                                                                       | Real nonempty completed inference and client acceptance. Account tier, quota and reset times remain unverified.                                                       |
+| Scheduled Agenda            | Separate committed runtime candidate and matching Settings controls, integrated with main without conflict. Producer/capacity/permission/catalog cohort: 37/37. Study transaction repair and Agenda cohort: 36/36. Final-write expiry regression passes.                                         | Final NOWAIT page-lock regression, full candidate qualification and native/visual inspection. Current SIWC cannot enable scheduling that requires hard output limits. |
+
+Both signed inference and hard-limit capabilities are required for scheduled
+execution. Authentication or a model list does not establish budget enforcement.
+Migration 239's eighteen-table source fencing passed the 60-case combined cohort;
+the final application cohort passed 17/17 before the later NOWAIT change. That
+change has four pure cases but its new PostgreSQL regression is unexecuted while
+the test container is stopped. It must not be treated as qualified yet.
+User/character changes and unrelated candidates remain preserved. No deployment
+or cleanup occurred. Current evidence is recorded in
+[the implementation handoff](../reviews/task.md#latest-qualification-and-top-three-work).
 
 ### Qualified October 5 checkpoints and remaining P1 execution
 

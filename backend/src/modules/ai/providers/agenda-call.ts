@@ -100,6 +100,7 @@ const stateSchema = z
   })
   .strict();
 type Session = { userId: string; sessionId: string };
+export const agendaSnapshotSchema = stateSchema.shape.snapshot;
 async function preferenceFor(db: Db, choice: AiProviderChoice) {
   if (choice.primary !== "chatgpt" || !choice.connection_id) return null;
   const row = (
@@ -124,11 +125,17 @@ export async function guardAgendaInferenceJob(
   jobId: string,
 ) {
   const row = (
-    await db.query("SELECT run_state FROM ai_jobs WHERE id=$1 AND user_id=$2", [
-      jobId,
-      owner,
-    ])
+    await db.query(
+      "SELECT run_state,agenda_summary_run_id,claimed_by FROM ai_jobs WHERE id=$1 AND user_id=$2",
+      [jobId, owner],
+    )
   ).rows[0];
+  if (row?.run_state?.version === 5 || row?.agenda_summary_run_id) {
+    const { guardScheduledAgendaJob } =
+      await import("../../docs/agenda-summary-runs.js");
+    await guardScheduledAgendaJob(db, owner, jobId, row);
+    return;
+  }
   if (row?.run_state?.version !== 4) return;
   const parsed = stateSchema.safeParse(row.run_state);
   if (!parsed.success)

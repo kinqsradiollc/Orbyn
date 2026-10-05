@@ -129,3 +129,4 @@ export * from "./chatgpt-usage.js";
 export * from "./ai-feature.js";
 
 export * from "./plugin-ai.js";
+export * from "./agenda-permission.js";

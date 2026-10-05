@@ -22,6 +22,9 @@ export async function assistantRuntimeHasRoom(
          UNION ALL
          SELECT lane FROM assistant_page_runs
            WHERE state='running' AND lease_expires_at>$2
+         UNION ALL
+         SELECT 'background' AS lane FROM agenda_summary_runs
+           WHERE state='running' AND lease_expires_at>$2
        ) occupied`,
       [lane, now],
     )

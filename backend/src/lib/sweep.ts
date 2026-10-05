@@ -35,6 +35,15 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "agenda_summary_runs",
+    label: "Completed Agenda summaries",
+    detail: "Scheduled summaries, failures and expired device waits.",
+    table: "agenda_summary_runs",
+    where: `${olderThan("updated_at")} AND (state IN ('done','failed') OR expires_at<now())`,
+    days: 30,
+    configurable: false,
+  },
+  {
     key: "assistant_page_runs",
     label: "Completed page maintenance runs",
     detail: "Completed, failed or cancelled scoped page maintenance work.",
