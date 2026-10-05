@@ -1,3 +1,4 @@
+import { PluginAiPermission } from "./PluginAiPermission";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Bot,
@@ -790,6 +791,9 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                       </button>
                     )}
                   </div>
+                  {g.resource_kind === "plugin" && (
+                    <PluginAiPermission grantId={g.id} />
+                  )}
                   {trusting?.id === g.id && (
                     <TrustEdit
                       grant={g}

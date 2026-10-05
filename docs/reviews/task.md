@@ -2029,3 +2029,31 @@ semantics; target/body/source coherence through page application; atomic policy/
 source fencing; actual positive OpenAI inference and desktop/mobile visual/native
 acceptance. A same-connection snapshot reread is not atomic all-source fencing.
 Full C1–C6/M1/D1/U1 stays active. No main merge, deployment or cleanup yet.
+
+### 2026-10-05 — Plugin durable inference candidate and qualification repairs
+
+CI37287782196 on f271dd0e failed three tests (2881 pass, one existing Tesseract
+skip): two shared-runtime fixtures used leases from a fixed schedule clock,
+and the new owner permission endpoints were absent from the route inventory.
+The clock fixtures now retain the unchanged production lease duration on the
+live chat runner's clock; the owner-only permission routes are classified as
+credential management. No shield assertions or runtime limits were removed.
+
+Candidate work adds the separate managed plugin broker/worker, atomic allowance
+reservation, grant-owned receipts/events and revocation/provider fencing, plus
+matching owner permission controls on desktop/web and mobile. Calls are never
+retried after uncertain dispatch. Expired receipt recovery is a separate
+statement so it cannot invert grant-before-job locking. Provider errors are
+sanitized. Ten new integration cases await CI; local test PostgreSQL remains
+unavailable. Pure regressions pass26/26; workspace types pass. Browser retry was
+rejected by saved permission; no visual verification claimed. Keep P1 and the
+full ADR active until qualification and host/native acceptance are complete.
+
+Owner permission component regressions pass8/8 across desktop/web and mobile
+(/tmp/orbyn-plugin-consent-ui-tests.log): no consent from merely opening settings,
+reviewed provider snapshot and bounded defaults, explicit revocation, rejection
+of invalid output limits, unavailable-provider refusal and sanitized save errors.
+These are interaction fixtures, not screenshot or native runtime acceptance.
+The initial fixture path error was fixed; its failed log was superseded by the
+successful rerun. All workspace typechecks pass in
+/tmp/orbyn-plugin-consent-ui-types.log.

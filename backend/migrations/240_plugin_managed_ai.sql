@@ -28,6 +28,7 @@ CREATE TABLE plugin_ai_runs (
   prompt text NOT NULL CHECK (length(prompt) BETWEEN 1 AND 16000),
   prompt_digest text NOT NULL,
   token_hash text NOT NULL,
+  authority_digest text NOT NULL CHECK (authority_digest ~ '^[0-9a-f]{64}$'),
   reserved_day date NOT NULL,
   state text NOT NULL DEFAULT 'queued' CHECK (state IN ('queued','running','done','failed','unknown')),
   claim_token uuid,
@@ -45,3 +46,21 @@ CREATE INDEX plugin_ai_runs_allowance ON plugin_ai_runs(grant_id, reserved_day);
 CREATE INDEX plugin_ai_runs_queue ON plugin_ai_runs(created_at, id) WHERE state='queued';
 CREATE INDEX plugin_ai_runs_expired ON plugin_ai_runs(lease_until) WHERE state='running';
 CREATE INDEX plugin_ai_runs_retention ON plugin_ai_runs(expires_at);
+
+CREATE TABLE plugin_ai_events (
+  run_id uuid NOT NULL REFERENCES plugin_ai_runs(id) ON DELETE CASCADE,
+  sequence bigint NOT NULL CHECK (sequence > 0),
+  state text NOT NULL CHECK (state IN ('queued','running','done','failed','unknown')),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY(run_id, sequence)
+);
+CREATE FUNCTION record_plugin_ai_event() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.state = OLD.state THEN RETURN NEW; END IF;
+  INSERT INTO plugin_ai_events(run_id,sequence,state)
+  SELECT NEW.id,coalesce(max(sequence),0)+1,NEW.state FROM plugin_ai_events WHERE run_id=NEW.id;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER plugin_ai_event AFTER INSERT OR UPDATE OF state ON plugin_ai_runs
+FOR EACH ROW EXECUTE FUNCTION record_plugin_ai_event();

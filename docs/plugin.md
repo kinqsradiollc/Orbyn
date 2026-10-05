@@ -103,3 +103,26 @@ old IDs cannot become dispatchable again after cleanup. The worker, atomic daily
 allowance reservation, response reads, owner controls and runtime qualification
 remain unfinished. HTTP security/CAS/provider-change tests are added but have not
 run locally because test PostgreSQL remains unavailable and user-controlled.
+
+#### Durable managed inference and owner controls — candidate
+
+`POST /plugin/inference` accepts only a recent UUIDv7 operation ID and bounded
+text. `GET /plugin/inference/:id/events` returns private ordered state events,
+a grant/resource/revision-bound reconnect cursor, and text only after accepted
+completion. Both endpoints use the plugin OAuth audience and fresh authority;
+read/write grants alone do not permit a provider call.
+
+The dedicated plugin service worker reserves a grant's UTC daily allowance and
+claims a receipt before outbound transport. Its separate persisted capacity is
+two; first-party runtime slots and personal ChatGPT tokens are excluded. Unknown
+or interrupted calls retain their reservation and are never replayed. Queued
+revocation is known undispatched and may release allowance. Current owner,
+client, token, team authority, consent and provider revision are checked before
+dispatch and acceptance. Grant-before-job locking is preserved during recovery.
+
+Connected agents exposes explicit provider/model review, output limits, daily
+allowance and revocation on web/desktop and mobile, only for plugin grants. This
+is candidate implementation: 26 isolated policy/consent/launch/cursor regressions
+pass; workspace typechecks pass. Ten database integration cases are added but
+await exact-head CI. Web inspection remains rejected by the saved Browser Use
+permission; native visual acceptance is outstanding. P1 is not complete.

@@ -1,3 +1,4 @@
+import { PluginAiPermission } from "./PluginAiPermission";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import {
@@ -792,6 +793,9 @@ export function ConnectedAgentsCard({
                       setHearing(null);
                     }}
                   />
+                )}
+                {g.resource_kind === "plugin" && (
+                  <PluginAiPermission grantId={g.id} />
                 )}
                 {trusting?.id === g.id && (
                   <TrustPanel
