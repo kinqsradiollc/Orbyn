@@ -27,6 +27,7 @@ import { keptOutFor } from "../../lib/assistant-off.js";
 import { announceDocChange } from "./live.js";
 import { LIVE_CARDS, studyOverview, VISIBLE_DOC } from "../study/service.js";
 import { COLUMNS, JOINS } from "./service.js";
+import { agendaAiStudy, type AgendaAiSource } from "./agenda-study-sources.js";
 import { visibleItems } from "../../lib/visibility.js";
 
 /**
@@ -57,6 +58,9 @@ export type Day = {
   keptOut: Set<string>;
   /** Top priorities without those, for the assistant's summary. */
   aiPriorities: string[];
+  /** Separate current AI-visible Study snapshot; normal page content keeps its own overview. */
+  aiStudy?: Day["study"];
+  aiSources?: AgendaAiSource[];
   study: {
     due: number;
     newCards: number;
@@ -65,7 +69,7 @@ export type Day = {
 };
 
 /** Cards to review today and the next exams, or null for someone with no cards. */
-async function studyFor(userId: string) {
+async function studyFor(userId: string, now: Date, timezone: string) {
   // Anyone with cards, or pages with card lines not yet read.
   const has = await pool.query(
     `SELECT 1 FROM ${LIVE_CARDS} WHERE c.user_id = $1
@@ -74,17 +78,28 @@ async function studyFor(userId: string) {
     [userId],
   );
   if (!has.rowCount) return null;
-  const s = await studyOverview(userId);
+  const s = await studyOverview(userId, now);
+  // A revoked source can invalidate the AI snapshot between reads. Keep the
+  // ordinary agenda available without substituting its unrestricted facts.
+  let ai: { study: Day["study"]; sources: AgendaAiSource[] };
+  try {
+    ai = await agendaAiStudy(userId, s, now, timezone);
+  } catch {
+    ai = { study: null, sources: [] };
+  }
   return {
-    due: s.due_today,
-    newCards: s.new_cards,
-    exams: s.exams
-      .filter((e) => e.days_left <= 14)
-      .map((e) => ({
-        title: e.title,
-        days_left: e.days_left,
-        readiness: e.readiness,
-      })),
+    ai,
+    study: {
+      due: s.due_today,
+      newCards: s.new_cards,
+      exams: s.exams
+        .filter((e) => e.days_left <= 14)
+        .map((e) => ({
+          title: e.title,
+          days_left: e.days_left,
+          readiness: e.readiness,
+        })),
+    },
   };
 }
 
@@ -135,6 +150,7 @@ async function readDay(
     now < dayEnd && !past
       ? freeSpans(workingSpans(prefs, now, dayEnd), busy)
       : [];
+  const study = extras ? await studyFor(userId, now, tz) : null;
   return {
     tz,
     items: items.rows,
@@ -166,7 +182,9 @@ async function readDay(
         start_at: new Date(f.start).toISOString(),
         end_at: new Date(f.end).toISOString(),
       })),
-    study: extras ? await studyFor(userId) : null,
+    study: study?.study ?? null,
+    aiStudy: study?.ai.study ?? null,
+    aiSources: study?.ai.sources ?? [],
     // The app's own order (the same score the assistant ranks by).
     priorities: ranked.slice(0, 3).map((i) => i.title),
     keptOut: keptOut.items,

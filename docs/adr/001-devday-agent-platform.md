@@ -1705,3 +1705,27 @@ This is committed and pushed on the implementation branch, not merged to main.
 Full exact-head/CI qualification, real positive OpenAI inference, native/mobile
 acceptance and all other C1–C6/M1/D1/U1 requirements remain open. Agenda briefs
 still need owner/source-aware routing. No deployment or cleanup is claimed.
+
+### Agenda Study source safety — 5 October 2026 candidate
+
+AI briefs consume a separate Study snapshot. Counts and upcoming exam titles
+exclude AI-disabled projects, revoked team consent, inaccessible/deleted pages
+and excluded original card sources. Exam readiness is calculated from permitted
+cards, and the stored exam association is checked even if the ordinary overview
+already omitted a deck. Original page identities/revisions are retained and
+rechecked before dispatch and acceptance. A failed snapshot leaves the ordinary
+agenda available without substituting its unrestricted Study facts.
+
+Focused Agenda/source/facts checks26/26 pass without skips; all workspace types
+and production build pass. This is a candidate checkpoint, not main delivery or
+complete private Agenda routing. Tasks, calendar events, habits and computed
+facts still need retained current authority, and durable app-session versus
+scheduled authorization remains required. Selected ChatGPT Agenda still returns
+no AI brief rather than silently invoking a managed provider.
+
+Frozen82f5f20e CI passed all jobs, but fresh full local qualification ended
+2775/2776 pass, one failure, zero skips. Its presence test's sixty-poll batch
+took about13 seconds and changed the row beyond the10-second grace interval.
+The unchanged assistant-run suite is being rechecked; no assertions, timeouts,
+database settings or production interval have been relaxed. Do not promote the
+candidate on the basis of CI alone. Whole C1–C6/M1/D1/U1 acceptance remains open.

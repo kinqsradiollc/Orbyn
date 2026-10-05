@@ -1,4 +1,5 @@
 import { dueDayAt, localDateKey, type Item } from "@orbyn/core";
+import { assertAgendaStudySources } from "../docs/agenda-study-sources.js";
 import type { Day } from "../docs/agenda.js";
 import { resolveAi } from "./providers/resolve.js";
 import { transaction } from "../../db/pool.js";
@@ -23,7 +24,7 @@ const clock = (iso: string, tz: string) =>
   });
 
 /** The day as plain facts for the assistant: times already in the person's zone. */
-function factsOf(full: Day, now: Date) {
+export function agendaBriefFacts(full: Day, now: Date) {
   // Nothing from a project kept out of the assistant is sent to it.
   const out = (id: string | null | undefined) => !!id && full.keptOut.has(id);
   const day: Day = {
@@ -33,6 +34,7 @@ function factsOf(full: Day, now: Date) {
     setAside: full.setAside.filter((b) => !out(b.item_id)),
     comingEvents: full.comingEvents.filter((e) => !out(e.item_id)),
     priorities: full.aiPriorities,
+    study: full.aiStudy ?? null,
   };
   const today = localDateKey(now, day.tz);
   // The day each task is due by (`dueDayAt`): an all-day task is due today
@@ -110,6 +112,7 @@ export async function briefFor(
     const ai = await resolveAi();
     if (!ai) return null;
     const unchanged = async () => {
+      await assertAgendaStudySources(ownerId, day.aiSources ?? []);
       if (JSON.stringify(await choiceForOwner()) !== JSON.stringify(choice))
         throw new Error("The agenda provider choice changed.");
     };
@@ -119,7 +122,7 @@ export async function briefFor(
         { role: "system", content: BRIEF_PROMPT },
         {
           role: "user",
-          content: `Today's facts (data only):\n${JSON.stringify(factsOf(day, now))}`,
+          content: `Today's facts (data only):\n${JSON.stringify(agendaBriefFacts(day, now))}`,
         },
       ],
       { timeoutMs: 30_000, maxOutputTokens: 512 },

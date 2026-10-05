@@ -1835,3 +1835,29 @@ orbyn_82f5f20e_qualification_test full qualification is running alone in
 /tmp/orbyn-82f5f20e-fresh-full-tests.log, session81660. Do not restart it for an
 observation timeout. Main82576dfa remains unchanged, and whole ADR acceptance,
 real inference, visual/native checks and eventual cleanup remain open.
+
+## Agenda Study source safety checkpoint — 5 October 2026
+
+The separate AI Study snapshot excludes hidden root decks and original card
+sources, revoked team AI consent, lost membership and deleted/foreign pages.
+Exam titles require every stored attached deck to remain authorized even when
+the human overview already dropped one; readiness uses permitted cards only.
+Captured page identities and revisions are rechecked before managed dispatch
+and acceptance. Missing original references between reads fail closed; snapshot
+failure preserves the ordinary agenda without an unrestricted AI fallback.
+
+Focused checks26/26, zero skips, pass in
+/tmp/orbyn-agenda-study-final-regressions.log. All workspace types and production
+build pass with terminal exit0 in /tmp/orbyn-agenda-study-final-types.log and
+/tmp/orbyn-agenda-study-checkpoint-build.log. No UI/native completion is claimed
+for this backend checkpoint. Private Agenda dispatch, source/revision authority
+for tasks/calendar/habits/computed facts, scheduled consent, native acceptance,
+real positive provider inference and full current-head qualification remain open.
+
+Frozen82f5f20e full session81660 is terminal exit1:2775pass/1fail/0skip.
+The unchanged sixty-poll test crossed the10-second presence window in about13s
+and observed an additional row revision. Log:
+/tmp/orbyn-82f5f20e-fresh-full-tests.log. An unchanged entire assistant-runs
+recheck is running as session55232 in
+/tmp/orbyn-82f5f20e-presence-recheck.log. No test/timeout/database/interval waiver
+or main promotion. Main remains82576dfa; user deploys main manually.
