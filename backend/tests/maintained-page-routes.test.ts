@@ -76,6 +76,48 @@ const input = (version: number) => ({
 const path = (doc: string, binding?: string) =>
   `/docs/${doc}/maintenance${binding ? "/" + binding : ""}`;
 
+test("page budget settings validate, persist and update through the owner routes", async () => {
+  const doc = await page();
+  for (const budget of [999, 20001, 1000.5, "1000"])
+    assert.equal(
+      (
+        await call("POST", path(doc.id), {
+          ...input(doc.version),
+          token_budget: budget,
+        })
+      ).statusCode,
+      422,
+    );
+  const created = await call("POST", path(doc.id), {
+    ...input(doc.version),
+    token_budget: 5000,
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const binding = created.json();
+  assert.equal(binding.token_budget, 5000);
+  const updated = await call("PUT", path(doc.id, binding.id), {
+    ...input(doc.version),
+    expected_revision: binding.revision,
+    token_budget: 10000,
+  });
+  assert.equal(updated.statusCode, 200, updated.body);
+  assert.equal(updated.json().token_budget, 10000);
+  const legacyUpdate = await call("PUT", path(doc.id, binding.id), {
+    ...input(doc.version),
+    expected_revision: updated.json().revision,
+    paused: true,
+  });
+  assert.equal(legacyUpdate.statusCode, 200, legacyUpdate.body);
+  assert.equal(legacyUpdate.json().token_budget, 10000);
+  const list = await call("GET", path(doc.id));
+  assert.equal(list.statusCode, 200, list.body);
+  assert.equal(
+    list.json().find((entry: { id: string }) => entry.id === binding.id)
+      .token_budget,
+    10000,
+  );
+});
+
 test("page maintenance routes enforce auth, owner privacy, validation and rate limits", async () => {
   const doc = await page();
   for (const method of ["GET", "POST", "PUT", "DELETE"] as const) {

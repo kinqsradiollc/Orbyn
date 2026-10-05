@@ -154,6 +154,7 @@ export class PageMaintenanceStore {
         block_ids: binding.snapshot.blocks.map((block) => block.block_id),
         expected_doc_version: binding.snapshot.doc_version,
         paused: !binding.paused,
+        token_budget: binding.token_budget,
       },
       binding,
     );

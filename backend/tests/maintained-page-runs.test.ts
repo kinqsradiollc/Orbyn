@@ -40,7 +40,7 @@ after(async () => {
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [people]);
   await pool.end();
 });
-async function fixture(rule = "FREQ=DAILY") {
+async function fixture(rule = "FREQ=DAILY", tokenBudget = 20000) {
   const id = randomUUID();
   people.push(id);
   const user = (
@@ -73,6 +73,7 @@ async function fixture(rule = "FREQ=DAILY") {
     block_ids: ["summary"],
     expected_doc_version: doc.version,
     paused: false,
+    token_budget: tokenBudget,
   };
   const binding = await transaction((db) =>
     createMaintainedPageBinding(db, user, principal, doc.id, input),
@@ -105,6 +106,42 @@ const proposal = {
   ],
 };
 const status = (code: number) => (error: any) => error.statusCode === code;
+
+test("page budgets persist across updates and bind each queued run", async () => {
+  const f = await fixture("FREQ=DAILY", 5000);
+  assert.equal(f.binding.token_budget, 5000);
+  const first = await queued(f);
+  assert.equal(first.token_budget, 5000);
+  const changed = await transaction((db) =>
+    updateMaintainedPageBinding(
+      db,
+      f.user,
+      f.principal,
+      f.doc.id,
+      f.binding.id,
+      {
+        ...f.input,
+        expected_revision: f.binding.revision,
+        token_budget: 10000,
+      },
+    ),
+  );
+  assert.equal(changed.token_budget, 10000);
+  const previous = (
+    await pool.query(
+      "SELECT token_budget,state FROM assistant_page_runs WHERE id=$1",
+      [first.id],
+    )
+  ).rows[0];
+  assert.equal(previous.token_budget, 5000);
+  assert.equal(previous.state, "cancelled");
+  const next = await transaction((db) =>
+    queueMaintainedPageRun(db, f.user, f.principal, f.binding.id, time, {
+      kind: "background",
+    }),
+  );
+  assert.equal(next?.token_budget, 10000);
+});
 
 test("concurrent due scans queue exactly once with references only and advance the schedule atomically", async () => {
   const f = await fixture();

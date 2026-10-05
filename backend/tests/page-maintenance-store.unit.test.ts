@@ -144,6 +144,7 @@ test("pause preserves the reviewed page revision and decisions send the exact sa
     timezone: "UTC",
     next_run_at: "2026-10-05T00:00:00Z",
     paused: false,
+    token_budget: 5000,
     snapshot: {
       doc_version: 5,
       blocks: [{ block_id: "summary", position: 1 }],
@@ -161,6 +162,7 @@ test("pause preserves the reviewed page revision and decisions send the exact sa
       block_ids: ["summary"],
       expected_doc_version: 5,
       paused: true,
+      token_budget: 5000,
       expected_revision: 3,
     },
   ]);

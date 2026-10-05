@@ -6,6 +6,7 @@ import {
   checkMaintainedPage,
   maintainedPageSnapshot,
   MAX_MAINTAINED_BLOCKS,
+  maintainedPageTokenBudget,
   type DocBlock,
 } from "@orbyn/core";
 const content: DocBlock[] = [
@@ -18,6 +19,12 @@ const capture = () => {
   assert.ok(snapshot.ok);
   return snapshot.value;
 };
+test("page work budgets enforce integer bounds", () => {
+  for (const value of [1000, 5000, 20000])
+    assert.equal(maintainedPageTokenBudget.parse(value), value);
+  for (const value of [0, -1, 999, 20001, 1000.5, Infinity, NaN, "1000"])
+    assert.equal(maintainedPageTokenBudget.safeParse(value).success, false);
+});
 test("maintained page snapshots preserve page order and contain no private text", () => {
   assert.deepEqual(capture(), {
     doc_version: 4,

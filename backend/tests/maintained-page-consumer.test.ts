@@ -114,7 +114,11 @@ after(async () => {
   await pool.end();
 });
 async function fixture(
-  opts: { night?: boolean; accountDefault?: boolean } = {},
+  opts: {
+    night?: boolean;
+    accountDefault?: boolean;
+    tokenBudget?: number;
+  } = {},
 ) {
   const id = randomUUID();
   people.push(id);
@@ -157,6 +161,7 @@ async function fixture(
       timezone: "UTC",
       next_run_at: time.toISOString(),
       paused: false,
+      token_budget: opts.tokenBudget,
     }),
   );
   if (opts.accountDefault) {
@@ -677,6 +682,19 @@ test("budget exhaustion and disabled Night policy prevent provider calls", async
     "failed",
   );
   assert.equal(seen.length, 0);
+});
+
+test("the selected per-page budget is captured and prevents an oversized request", async () => {
+  const f = await fixture({ tokenBudget: 1000 });
+  assert.equal(f.binding.token_budget, 1000);
+  assert.equal(f.run.token_budget, 1000);
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "failed",
+  );
+  assert.equal(seen.length, 0);
+  assert.equal((await current(f.run.id)).token_estimate, 0);
 });
 
 test("switching hosted provider identity is detected even when endpoint and model are identical", async () => {

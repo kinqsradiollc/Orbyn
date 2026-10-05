@@ -154,8 +154,8 @@ export async function createMaintainedPageBinding(
     fail(409, "A selected block already has a maintenance binding.");
   const row = (
     await db.query<BindingRow>(
-      `INSERT INTO assistant_page_bindings(doc_id,user_id,agent_grant_id,snapshot,instruction,rrule,timezone,next_run_at,paused)
-     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO assistant_page_bindings(doc_id,user_id,agent_grant_id,snapshot,instruction,rrule,timezone,next_run_at,paused,token_budget)
+     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10) RETURNING *`,
       [
         docId,
         user.id,
@@ -166,6 +166,7 @@ export async function createMaintainedPageBinding(
         input.timezone,
         input.next_run_at,
         input.paused,
+        input.token_budget,
       ],
     )
   ).rows[0];
@@ -305,7 +306,7 @@ export async function updateMaintainedPageBinding(
   const row = (
     await db.query<BindingRow>(
       `UPDATE assistant_page_bindings SET snapshot=$4::jsonb,instruction=$5,rrule=$6,timezone=$7,
-      next_run_at=$8,paused=$9,schedule_exhausted=false,revision=revision+1,updated_at=now()
+      next_run_at=$8,paused=$9,token_budget=$10,schedule_exhausted=false,revision=revision+1,updated_at=now()
      WHERE id=$1 AND doc_id=$2 AND user_id=$3 RETURNING *`,
       [
         bindingId,
@@ -317,6 +318,7 @@ export async function updateMaintainedPageBinding(
         input.timezone,
         input.next_run_at,
         input.paused,
+        input.token_budget ?? existing.token_budget,
       ],
     )
   ).rows[0];

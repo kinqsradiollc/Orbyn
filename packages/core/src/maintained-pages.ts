@@ -4,6 +4,13 @@ import type { DocBlock } from "./docs.js";
 import { agentRoutineInput } from "./assistant-workspace.js";
 
 export const MAX_MAINTAINED_BLOCKS = 100;
+export const DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET = 20_000;
+/** Conservative per-update work allowance; shared Overnight limits still apply. */
+export const maintainedPageTokenBudget = z
+  .number()
+  .int()
+  .min(1000)
+  .max(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET);
 const blockId = z.string().min(1).max(64);
 const uniqueIds = (ids: string[]) => new Set(ids).size === ids.length;
 export const maintainedBlockIds = z
@@ -42,12 +49,16 @@ export const maintainedPageBindingInput = agentRoutineInput
     block_ids: maintainedBlockIds,
     expected_doc_version: z.number().int().positive(),
     paused: z.boolean().default(true),
+    token_budget: maintainedPageTokenBudget.default(
+      DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET,
+    ),
   })
   .strict();
 /** Editing or rebinding requires both current page and binding revisions. */
 export const maintainedPageBindingUpdate = maintainedPageBindingInput
   .extend({
     expected_revision: z.number().int().positive(),
+    token_budget: maintainedPageTokenBudget.optional(),
   })
   .strict();
 export const maintainedPageBindingDelete = z
@@ -82,6 +93,7 @@ export type MaintainedPageBinding = {
   timezone: string;
   next_run_at: string;
   paused: boolean;
+  token_budget: number;
   schedule_exhausted: boolean;
   created_at: string;
   updated_at: string;

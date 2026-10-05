@@ -8,6 +8,8 @@ import {
 import { PageMaintenanceStore } from "@orbyn/api-client";
 import {
   blockText,
+  DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET,
+  maintainedPageTokenBudget,
   serializeDoc,
   type Doc,
   type MaintainedPageBinding,
@@ -47,6 +49,9 @@ export function PageMaintenanceDialog({
   const [selected, setSelected] = useState<string[]>([]);
   const [instruction, setInstruction] = useState("");
   const [frequency, setFrequency] = useState("FREQ=DAILY");
+  const [budget, setBudget] = useState(
+    String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
+  );
   const [editing, setEditing] = useState<MaintainedPageBinding>();
   useEffect(() => {
     dialog.current?.showModal();
@@ -62,6 +67,9 @@ export function PageMaintenanceDialog({
     setSelected(binding.snapshot.blocks.map((block) => block.block_id));
     setInstruction(binding.instruction);
     setFrequency(binding.rrule);
+    setBudget(
+      String(binding.token_budget ?? DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
+    );
   };
   return (
     <dialog
@@ -89,7 +97,7 @@ export function PageMaintenanceDialog({
         {!state.doc && <p className="muted">Loading…</p>}
         {!showForm && (
           <button
-            className="button"
+            className="secondary"
             disabled={state.busy}
             onClick={() => {
               setEditing(undefined);
@@ -151,7 +159,7 @@ export function PageMaintenanceDialog({
                   {["FREQ=DAILY", "FREQ=WEEKLY"].map((value) => (
                     <button
                       key={value}
-                      className="button"
+                      className="secondary"
                       aria-pressed={frequency === value}
                       onClick={() => setFrequency(value)}
                     >
@@ -159,6 +167,20 @@ export function PageMaintenanceDialog({
                     </button>
                   ))}
                 </div>
+                <label>
+                  Tokens per update
+                  <input
+                    inputMode="numeric"
+                    value={budget}
+                    maxLength={5}
+                    onChange={(event) => setBudget(event.target.value)}
+                    aria-describedby="page-update-budget-help"
+                  />
+                </label>
+                <p id="page-update-budget-help" className="muted">
+                  1,000–20,000 estimated tokens. Overnight’s shared budget also
+                  applies.
+                </p>
                 {!["FREQ=DAILY", "FREQ=WEEKLY"].includes(frequency) && (
                   <p className="muted">Current rule: {frequency}</p>
                 )}
@@ -167,12 +189,13 @@ export function PageMaintenanceDialog({
                   follow-through is enabled.
                 </p>
                 <button
-                  className="button primary"
+                  className="primary"
                   disabled={
                     !state.doc ||
                     !selected.length ||
                     selected.length > 100 ||
-                    !instruction.trim()
+                    !instruction.trim() ||
+                    !maintainedPageTokenBudget.safeParse(Number(budget)).success
                   }
                   onClick={() =>
                     void store.save(
@@ -186,6 +209,7 @@ export function PageMaintenanceDialog({
                         block_ids: selected,
                         expected_doc_version: state.doc!.version,
                         paused: false,
+                        token_budget: Number(budget),
                       },
                       editing,
                     )
@@ -195,11 +219,12 @@ export function PageMaintenanceDialog({
                 </button>
                 {editing && (
                   <button
-                    className="button"
+                    className="secondary"
                     onClick={() => {
                       setEditing(undefined);
                       setSelected([]);
                       setInstruction("");
+                      setBudget(String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET));
                     }}
                   >
                     New schedule
@@ -230,6 +255,12 @@ export function PageMaintenanceDialog({
                       {binding.snapshot.blocks.length === 1
                         ? "block"
                         : "blocks"}
+                      {" · "}
+                      {(
+                        binding.token_budget ??
+                        DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET
+                      ).toLocaleString()}{" "}
+                      tokens/update
                     </small>
                   </span>
                   <details>
@@ -257,7 +288,7 @@ export function PageMaintenanceDialog({
               <div className="section-heading">
                 <h3>Recent runs</h3>
                 <button
-                  className="button"
+                  className="secondary"
                   disabled={state.busy}
                   onClick={() => void store.refresh()}
                 >
@@ -281,14 +312,14 @@ export function PageMaintenanceDialog({
                       <pre>{serializeDoc(run.replacements)}</pre>
                       <div className="page-maintenance-actions">
                         <button
-                          className="button primary"
+                          className="primary"
                           disabled={state.busy}
                           onClick={() => void store.decide(run, true)}
                         >
                           Apply update
                         </button>
                         <button
-                          className="button"
+                          className="secondary"
                           disabled={state.busy}
                           onClick={() => void store.decide(run, false)}
                         >

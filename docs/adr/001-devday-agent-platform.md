@@ -1676,3 +1676,14 @@ resolveUserAi with the owner/job arguments; routing/error checks pass. The
 preceding42c70383 full local result remains2747/2748 with that formatting assertion
 failure, not a passing qualification. Fresh full/CI must qualify this verification
 head before promotion. Main82576dfa and full ADR scope remain unchanged.
+
+### Per-page work allowance — 5 October 2026 candidate
+
+Maintenance bindings carry a configurable integer token budget between 1,000
+and 20,000, defaulting to 20,000 for existing bindings. Each queued run captures
+its allowance; changing a binding cancels outstanding work and affects only
+fresh runs. Older update payloads preserve the existing allowance. Both clients
+expose the setting, and Overnight's aggregate budget remains an additional cap.
+Focused tests and native desktop form evidence are recorded in the review
+handoff; private page execution, complete platform acceptance and exact-commit
+qualification remain required. This does not complete C5 or U1.

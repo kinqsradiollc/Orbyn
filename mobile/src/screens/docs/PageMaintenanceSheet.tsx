@@ -9,6 +9,8 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { PageMaintenanceStore } from "@orbyn/api-client";
 import {
   blockText,
+  DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET,
+  maintainedPageTokenBudget,
   serializeDoc,
   type Doc,
   type MaintainedPageBinding,
@@ -51,6 +53,9 @@ export function PageMaintenanceSheet({
   const [selected, setSelected] = useState<string[]>([]);
   const [instruction, setInstruction] = useState("");
   const [frequency, setFrequency] = useState("FREQ=DAILY");
+  const [budget, setBudget] = useState(
+    String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
+  );
   const [editing, setEditing] = useState<MaintainedPageBinding>();
   useEffect(() => {
     void store.prepare();
@@ -62,6 +67,9 @@ export function PageMaintenanceSheet({
     setSelected(binding.snapshot.blocks.map((block) => block.block_id));
     setInstruction(binding.instruction);
     setFrequency(binding.rrule);
+    setBudget(
+      String(binding.token_budget ?? DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET),
+    );
   };
   return (
     <BottomSheet
@@ -156,6 +164,20 @@ export function PageMaintenanceSheet({
                 />
               ))}
             </View>
+            <Text style={s.heading}>Tokens per update</Text>
+            <TextInput
+              accessibilityLabel="Tokens per page update"
+              editable={!state.busy}
+              keyboardType="number-pad"
+              maxLength={5}
+              value={budget}
+              onChangeText={setBudget}
+              style={s.input}
+            />
+            <Text style={s.muted}>
+              1,000–20,000 estimated tokens. Overnight’s shared budget also
+              applies.
+            </Text>
             <Text style={s.muted}>
               Starts when enabled. Overnight handles updates when follow-through
               is enabled.
@@ -167,7 +189,8 @@ export function PageMaintenanceSheet({
                 !state.doc ||
                 !selected.length ||
                 selected.length > 100 ||
-                !instruction.trim()
+                !instruction.trim() ||
+                !maintainedPageTokenBudget.safeParse(Number(budget)).success
               }
               onPress={() =>
                 void store.save(
@@ -181,6 +204,7 @@ export function PageMaintenanceSheet({
                     block_ids: selected,
                     expected_doc_version: state.doc!.version,
                     paused: false,
+                    token_budget: Number(budget),
                   },
                   editing,
                 )
@@ -195,6 +219,7 @@ export function PageMaintenanceSheet({
                   setEditing(undefined);
                   setSelected([]);
                   setInstruction("");
+                  setBudget(String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET));
                 }}
               />
             )}
@@ -218,6 +243,12 @@ export function PageMaintenanceSheet({
                         : binding.rrule}{" "}
                     · {binding.snapshot.blocks.length}{" "}
                     {binding.snapshot.blocks.length === 1 ? "block" : "blocks"}
+                    {" · "}
+                    {(
+                      binding.token_budget ??
+                      DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET
+                    ).toLocaleString()}{" "}
+                    tokens/update
                   </Text>
                 </View>
                 <MoreMenu

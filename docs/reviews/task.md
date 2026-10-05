@@ -1693,3 +1693,22 @@ resolveUserAi with the owner/job arguments; routing/error checks pass. The
 preceding42c70383 full local result remains2747/2748 with that formatting assertion
 failure, not a passing qualification. Fresh full/CI must qualify this verification
 head before promotion. Main82576dfa and full ADR scope remain unchanged.
+
+## Page budget checkpoint — 5 October 2026
+
+Per-page schedules now expose 1,000–20,000 estimated tokens per update in both
+clients. Migration 233 defaults existing bindings to 20,000. Queueing captures
+the binding budget on the run; editing cancels outstanding work without changing
+the old run's budget. Updates from older clients that omit the field preserve
+the saved budget. Pause/resume sends the selected allowance. Shared Overnight
+limits remain in force.
+
+Focused budget/binding/run/consumer/route/store checks pass 73/73 with no skips
+and all workspace typechecks pass. Native desktop build passes; the actual
+page-update dialog was inspected and its invalid 999 / valid 5000 enable state
+verified without submitting. Bare frequency buttons were changed to the existing
+secondary controls and section paragraph margins corrected. Screenshot:
+`evidence/page-budget/native-dialog.png`. Preview API has not yet been aligned
+with migration 233; native save, narrow layout and mobile acceptance remain open.
+This is a candidate checkpoint, not a main merge or completion of C5/U1. Full
+exact-commit qualification and all remaining ADR requirements still apply.

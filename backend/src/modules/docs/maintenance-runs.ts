@@ -160,8 +160,8 @@ export async function queueMaintainedPageRun(
   const modelOrigin = await captureMaintainedPageModelOrigin(db, user.id);
   const run = (
     await db.query<PageRun>(
-      `INSERT INTO assistant_page_runs(binding_id,user_id,agent_grant_id,binding_revision,doc_version,assistant_rules_revision,lane,night_id,end_at,scheduled_for,model_origin,requires_review)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12) ON CONFLICT DO NOTHING RETURNING *`,
+      `INSERT INTO assistant_page_runs(binding_id,user_id,agent_grant_id,binding_revision,doc_version,assistant_rules_revision,lane,night_id,end_at,scheduled_for,model_origin,requires_review,token_budget)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13) ON CONFLICT DO NOTHING RETURNING *`,
       [
         bindingId,
         user.id,
@@ -175,6 +175,7 @@ export async function queueMaintainedPageRun(
         binding.next_run_at,
         JSON.stringify(modelOrigin),
         queuedNightPolicy?.waitForOk ?? false,
+        binding.token_budget,
       ],
     )
   ).rows[0];

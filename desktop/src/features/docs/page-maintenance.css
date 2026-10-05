@@ -25,6 +25,15 @@
 .page-maintenance fieldset {
   border: 0;
   padding: 0;
+  margin: 0;
+}
+.page-maintenance section > h3,
+.page-maintenance section > p,
+.page-maintenance fieldset > p {
+  margin: 0;
+}
+.page-maintenance legend {
+  padding: 0;
 }
 .page-maintenance label {
   display: grid;
