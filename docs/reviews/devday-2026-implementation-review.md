@@ -2,18 +2,28 @@
 
 ## Current delivery state — 6 October 2026
 
-Main application checkpoint is `d4cbff9d` (PR211), pushed. Reference titles and
-balanced inline-object privacy are merged after the fresh full local suite passed
-3437/0/1 on `217bc7eb`, terminal0. Final `a34ed83b` only reformats one test; an AST
-comparison confirms unchanged assertions. Application source matches main. Final
-CI37360062404 is still running; earlier integrated `e04f2c57` passed all four jobs.
-The format-only CI failure on217bc7eb is retained, not presented as success.
-PR212 actual-main integration `9f0247df` is pushed, draft:12 focused cases,
-packages/desktop types/build and formatting pass; serial full DB34 and CI are live.
-Word hyperlinks/import and reference-preview privacy remain a candidate;48 focused
-API/parser/privacy checks pass on fresh DB33. Finish full qualification before
-promotion. Browser/native visual acceptance, production deployment and the full
-C1–C6/M1/D1/U1 goal remain incomplete. User deploys manually.
+Main application checkpoint is `de29d871` (PR212), pushed. Docs rails now respond
+to the available editor width after navigation/library panels. Exact `9f0247df`
+passed12 focused cases, packages/desktop types/build/format and fresh full DB34:
+3441 passes/0 failures/1 existing skip, terminal0,739091ms. Main application source
+matches the tested candidate. CI37361223961 passed three jobs; backend failed only
+Gantt Chromium startup at `Target.createTarget` after20seconds. The retained log is
+`/tmp/orbyn-doc-container-9f0247df-ci.log`; failed-job rerun is live, with assertions
+and limits unchanged. This is not a green-CI or visual acceptance claim.
+
+PR211 reference titles and inline-object privacy are merged; final `a34ed83b`
+CI37360062404 passed all four jobs. Fresh full local source217bc7eb passed3437/0/1;
+finala34 only formats a test with identical AST assertions. Prior failures remain.
+Word/reference-preview privacy PR213 is draft at `500ace6c`, pushed, with actual
+main integrated without conflicts. Current focused DB35 cohort65/65, all workspace
+types, owned packages/backend/web builds and formatting pass. Fresh serial full
+DB36 is running: `/tmp/orbyn-channel-doc-word-main-full.log`. Source stays frozen.
+Quote continuation candidate `e958f694` is pushed; its owned change passed87 parser/
+source/HTML/Word cases and workspace types. Actual main is integrated; qualification
+with Word/privacy is next. Nested list/quote containers, code inside containers and
+image/reference-media behavior remain explicit gaps in its audit, not completion.
+Browser/native visual acceptance, production deployment and the full C1–C6/M1/D1/U1
+goal remain incomplete. User deploys manually; preserve character/user work.
 
 The current pipeline is in [ADR001](../adr/001-devday-agent-platform.md) and
 [the live handoff](task.md). Older checkpoint maps below are historical.

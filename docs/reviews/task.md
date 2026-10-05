@@ -1,22 +1,32 @@
 # Authoritative implementation pipeline — 6 October 2026
 
-Main application checkpoint is `d4cbff9d` (PR211), pushed. Reference titles and
-balanced inline-object privacy are merged after the fresh full local suite passed
-3437/0/1 on `217bc7eb`, terminal0. Final `a34ed83b` only reformats one test; an AST
-comparison confirms unchanged assertions. Application source matches main. Final
-CI37360062404 is still running; earlier integrated `e04f2c57` passed all four jobs.
-The format-only CI failure on217bc7eb is retained, not presented as success.
-PR212 actual-main integration `9f0247df` is pushed, draft:12 focused cases,
-packages/desktop types/build and formatting pass; serial full DB34 and CI are live.
-Word hyperlinks/import and reference-preview privacy remain a candidate;48 focused
-API/parser/privacy checks pass on fresh DB33. Finish full qualification before
-promotion. Browser/native visual acceptance, production deployment and the full
-C1–C6/M1/D1/U1 goal remain incomplete. User deploys manually.
+Main application checkpoint is `de29d871` (PR212), pushed. Docs rails now respond
+to the available editor width after navigation/library panels. Exact `9f0247df`
+passed12 focused cases, packages/desktop types/build/format and fresh full DB34:
+3441 passes/0 failures/1 existing skip, terminal0,739091ms. Main application source
+matches the tested candidate. CI37361223961 passed three jobs; backend failed only
+Gantt Chromium startup at `Target.createTarget` after20seconds. The retained log is
+`/tmp/orbyn-doc-container-9f0247df-ci.log`; failed-job rerun is live, with assertions
+and limits unchanged. This is not a green-CI or visual acceptance claim.
+
+PR211 reference titles and inline-object privacy are merged; final `a34ed83b`
+CI37360062404 passed all four jobs. Fresh full local source217bc7eb passed3437/0/1;
+finala34 only formats a test with identical AST assertions. Prior failures remain.
+Word/reference-preview privacy PR213 is draft at `500ace6c`, pushed, with actual
+main integrated without conflicts. Current focused DB35 cohort65/65, all workspace
+types, owned packages/backend/web builds and formatting pass. Fresh serial full
+DB36 is running: `/tmp/orbyn-channel-doc-word-main-full.log`. Source stays frozen.
+Quote continuation candidate `e958f694` is pushed; its owned change passed87 parser/
+source/HTML/Word cases and workspace types. Actual main is integrated; qualification
+with Word/privacy is next. Nested list/quote containers, code inside containers and
+image/reference-media behavior remain explicit gaps in its audit, not completion.
+Browser/native visual acceptance, production deployment and the full C1–C6/M1/D1/U1
+goal remain incomplete. User deploys manually; preserve character/user work.
 
 | Order | Work                     | State                                                                                                 | Next action                                                                                              |
 | ----- | ------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1     | Docs links and privacy   | PR211 merged; Word relationships and reference-preview repairs pass focused tests                     | Freeze combined Word source, qualify full suite/CI and merge checkpoint                                  |
-| 2     | Docs layout              | PR212 draft at9f0247df; available-width rails stack;12 focused cases pass                             | Complete full qualification, promote; retain visual acceptance gate                                      |
+| 1     | Docs links and privacy   | PR211 merged; PR213 Word/reference-preview candidate passes65 focused cases                           | Freeze combined Word source, qualify full suite/CI and merge checkpoint                                  |
+| 2     | Docs layout              | PR212 merged de29d871; local full3441/0/1; CI Chromium startup rerun pending                          | Retain CI startup diagnosis and browser/native visual acceptance gates                                   |
 | 3     | Remaining Docs D1        | Shared Markdown/Mermaid/source/export checkpoints on main                                             | Complete containers, images, footnotes/bookmarks, code/math and diagram-family round-trip matrices       |
 | 4     | Whole-app U1             | Settings modal and responsive checkpoints on main                                                     | Review each web/desktop/mobile page and narrow/collapsed/keyboard/large-text states                      |
 | 5     | Provider/agents C1-C6/M1 | Routing, catalogs, separate plugin and Background/Overnight runtimes, reflection and channels on main | Audit retained budgets/collaboration/shared-publication contract and real account/tenant/host acceptance |
@@ -26,7 +36,7 @@ Evidence: `/tmp/orbyn-channel-reference-privacy-full.log` (3437/0/1),
 `/tmp/orbyn-reference-privacy-format-ast-proof.log`,
 `/tmp/orbyn-channel-doc-reference-previews-final.log` (48/48),
 `/tmp/orbyn-doc-container-integrated-focused.log` (12/12),
-`/tmp/orbyn-channel-doc-container-integrated-full.log` (running).
+`/tmp/orbyn-channel-doc-container-integrated-full.log` (3441/0/1, terminal0).
 The Word tests exposed private reference labels in backlink/line previews because
 single-line snippets lacked page definitions. Repairs preserve source-order first
 match, current source visibility, owner/viewer distinctions and target-only privacy
