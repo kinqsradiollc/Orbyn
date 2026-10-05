@@ -2,7 +2,12 @@ import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
-import { CALLOUT_KINDS, DOC_KINDS, DOC_PARAGRAPH_MAX } from "./docs.js";
+import {
+  CALLOUT_KINDS,
+  DOC_KINDS,
+  DOC_PARAGRAPH_MAX,
+  DOC_QUOTE_MAX,
+} from "./docs.js";
 import { aliasesInput } from "./links.js";
 import { lookIconInput } from "./covers.js";
 import { PROJECT_STATUSES } from "./projects.js";
@@ -331,7 +336,11 @@ const docBlock = z.discriminatedUnion("type", [
     text: z.string().max(4000),
     done: z.boolean(),
   }),
-  z.object({ ...named, type: z.literal("quote"), text: z.string().max(4000) }),
+  z.object({
+    ...named,
+    type: z.literal("quote"),
+    text: z.string().max(DOC_QUOTE_MAX),
+  }),
   z.object({
     ...named,
     type: z.literal("code"),
