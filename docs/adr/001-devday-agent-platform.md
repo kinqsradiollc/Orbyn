@@ -4,14 +4,18 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `59d9f348` (PR210), following PR204–209.
-PR210 exact `91a3193e` passed all four CI37352661791 jobs and the fresh full local
-suite3418/0/1 (terminal0). Main application source matches that candidate; only
-intervening handoff documentation differs. Paragraph/source-break handling covers
-both clients, HTML/PDF, Word export/import and HTML paste. Deployment is user-run
-and unverified. Reference-title PR211 exact `e04f2c57` includes actual main without
-conflicts; combined types/builds/format pass and full local/CI qualification is live.
-Docs available-width rail repair remains local; visual/native acceptance is open.
+Main application checkpoint is `d4cbff9d` (PR211), pushed. Reference titles and
+balanced inline-object privacy are merged after the fresh full local suite passed
+3437/0/1 on `217bc7eb`, terminal0. Final `a34ed83b` only reformats one test; an AST
+comparison confirms unchanged assertions. Application source matches main. Final
+CI37360062404 is still running; earlier integrated `e04f2c57` passed all four jobs.
+The format-only CI failure on217bc7eb is retained, not presented as success.
+PR212 actual-main integration `9f0247df` is pushed, draft:12 focused cases,
+packages/desktop types/build and formatting pass; serial full DB34 and CI are live.
+Word hyperlinks/import and reference-preview privacy remain a candidate;48 focused
+API/parser/privacy checks pass on fresh DB33. Finish full qualification before
+promotion. Browser/native visual acceptance, production deployment and the full
+C1–C6/M1/D1/U1 goal remain incomplete. User deploys manually.
 
 | Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
