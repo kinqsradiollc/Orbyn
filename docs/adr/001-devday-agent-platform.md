@@ -2071,3 +2071,13 @@ and17 cold-pool account cases pass. Delivery remains explicitly unavailable; no
 Teams DM permission/activity endpoint or client UI is mounted. Transport, exact
 question replies, both client controls and external/native/visual gates remain
 open. This checkpoint does not complete A6 or C1–C6/M1/D1/U1.
+
+### Teams bot transport — candidate, 6 October 2026
+
+A distinct bot-application transport now uses fixed Microsoft token endpoints,
+validated public-cloud Connector destinations, bounded plain messages and
+process-local credential caches. Unknown send results cannot be replayed;429
+returns a bounded scheduling delay. Thirty-one protocol cases pass, including
+OAuth and incoming Connector authentication. The transport is unconfigured and
+unwired pending durable outbox, authority/race/restart qualification and both
+client controls. Real/native/visual acceptance and full C1–C6/M1/D1/U1 remain open.

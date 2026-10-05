@@ -169,3 +169,30 @@ All workspace typechecks, backend build and repository format check also pass:
 /tmp/orbyn-channel-teams-controls-build.log and
 /tmp/orbyn-channel-teams-controls-format.log. Combined full-suite qualification
 is still required before this candidate can be promoted to main.
+
+## Independent bot transport — candidate, 6 October 2026
+
+Teams bot transport uses separately configured single-tenant Microsoft application
+credentials. Fixed token endpoint and Connector destination validation prevent
+secrets leaving Microsoft endpoints; conversation path segments are encoded.
+Concurrent token issuance is deduplicated in a bounded process cache, expiration
+renews it and configuration digest prevents reuse across credential rotation.
+No user OAuth, private ChatGPT or MCP credential is used. Bounded plain-text sends
+return explicit sent/refused/rate-limited/unavailable/unknown outcomes. Ambiguous
+network/server/malformed-success outcomes are never automatically replayed; an
+explicit429 exposes only a bounded delay for durable scheduling.
+
+/tmp/orbyn-channel-teams-transport-qualified-pure.log passes31/31 transport and
+existing OAuth/Connector protocol cases. Backend types pass after rebuilding the
+local workspace packages (/tmp/orbyn-channel-teams-transport-types-rebuilt.log).
+The first typecheck used the reused worktree's earlier package dist and correctly
+rejected missing Teams exports; package rebuild repaired that environment state.
+No assertions were removed. This transport remains unconfigured/unwired. A
+separate Teams durable outbox candidate is being implemented and must be tested
+for source/consent/revision fencing, cold pool, ambiguity, restart and bounded
+retry before mounting or enabling delivery. Real tenant acceptance remains open.
+
+Primary contract: [Bot Connector application authentication](https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0).
+The identity checkpoint05dc8265 full local suite is still running unchanged; it
+has exposed stale generated MCP catalog documentation. Preserve the terminal
+result, regenerate the catalog, then rerun exact-source qualification.
