@@ -34,7 +34,8 @@ test("web offers one provider authorization action separate from usage and MCP s
   assert.ok(/startChatgptConnectRequest\(\s*controller\.signal/.test(web));
   assert.ok(!web.includes("window.location.href = request.launch_url"));
   assert.ok(web.includes("client.chatgptConnectRequest("));
-  assert.ok(web.includes("Keep Orbyn desktop open"));
+  assert.ok(web.includes("connectFeedback.message"));
+  assert.ok(web.includes("chatgptConnectFeedback(next.state"));
   assert.ok(!web.includes("Connect on desktop"));
   assert.ok(!web.includes("Open ChatGPT sign-in settings"));
   assert.ok(!web.includes("startOAuth"));
