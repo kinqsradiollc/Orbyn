@@ -1,3 +1,25 @@
+## Combined Docs full-regression repair — 6 October 2026
+
+Frozen5511d215 full DB53 terminated1:3563 passes,2 failures,1 existing skip,
+744869ms. Neither failure showed a new runtime exception: link-privacy's older
+export assertion required a clickable private link, while the new exported safe
+label deliberately omits its destination; mcp-catalog expected the old287 excluded
+routes instead of289 after the new editor-protocol endpoints.
+
+The privacy regression retains title redaction and authorized-owner assertions,
+adds private page/task ID absence and preserves visible destinations. The generated
+MCP catalog/docs are refreshed by npm run mcp:catalog; its equality test is unchanged.
+64 fresh DB54 privacy/content/export/inventory/catalog cases pass,0 failures,
+terminal0,23956ms. Original full failure logs are retained.
+
+Current main07a61716 documentation is integrated with both histories preserved.
+Application source is unchanged from5511d215 across backend/src, packages, desktop/
+mobile source. A corrected frozen full regression and CI are next; no main
+application promotion/deployment is claimed. Separate editor candidatebc619297
+has75 pure cases/all types/web build/format and paired renderers/source contracts;
+normal loading/selection/saving/task/CRDT integration and visual acceptance remain
+open. All C1-C6/M1/D1/U1 and original scope stay required.
+
 ## Combined structured Docs qualification — 6 October 2026
 
 | Requirement                                 | Current evidence                                                                         | Remaining gate                                |
