@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  slackQuestion,
+  slackQuestionDigest,
+  slackQuestionCard,
+  type SlackQuestion,
+} from "./question-card.js";
 import { pool, transaction, type Queryable } from "../../db/pool.js";
 import { decryptSecret } from "../../lib/secrets.js";
 import { reachableTeams } from "../../capabilities/policy.js";
@@ -63,7 +69,7 @@ const waitingQuestion = z.object({
   kind: z.literal("person"),
   question: z.string().max(1200),
 });
-const blockedTeams = `NOT EXISTS(SELECT 1 FROM teams channel_team WHERE NOT channel_team.assistant_allowed AND channel_team.id IN (
+export const channelJobTeamsAllowed = `NOT EXISTS(SELECT 1 FROM teams channel_team WHERE NOT channel_team.assistant_allowed AND channel_team.id IN (
  SELECT p.team_id FROM projects p WHERE p.id=c.project_id
  UNION SELECT d.team_id FROM assistant_job_sources s JOIN docs d ON s.source_kind='doc' AND d.id=s.source_id WHERE s.job_id=j.id
  UNION SELECT p.team_id FROM assistant_job_sources s JOIN projects p ON s.source_kind='project' AND p.id=s.source_id WHERE s.job_id=j.id
@@ -76,6 +82,8 @@ export async function deliverAgentChannelOne(
   config: SlackOAuthConfig,
   appUrl: string,
   request: typeof fetch = fetch,
+  // Enable only after the durable signed-reply consumer is wired and qualified.
+  repliesEnabled = false,
 ): Promise<boolean> {
   // Validate the configured website before claiming; no browser/request origin is trusted.
   slackAgentMessage({ event: "overnight", appUrl });
@@ -123,15 +131,27 @@ export async function deliverAgentChannelOne(
         )
       ).rowCount;
       if (!owned) return;
+      let replyQuestion: SlackQuestion | undefined;
+      let threadEnabled = false;
       const finish = async (
         state: "sent" | "failed" | "unknown" | "cancelled",
         channelId: string | null = null,
         messageTs: string | null = null,
       ) => {
         await db.query(
-          `UPDATE agent_channel_outbox SET state=$3,claim_id=NULL,lease_until=NULL,channel_id=$4,message_ts=$5,updated_at=now()
+          `UPDATE agent_channel_outbox SET state=$3,claim_id=NULL,lease_until=NULL,channel_id=$4,message_ts=$5,reply_question_digest=$6,reply_thread_enabled=$7,reply_expires_at=CASE WHEN $6::text IS NOT NULL THEN clock_timestamp()+interval '15 minutes' ELSE NULL END,updated_at=now()
           WHERE id=$1 AND claim_id=$2`,
-          [delivery.id, delivery.claim_id, state, channelId, messageTs],
+          [
+            delivery.id,
+            delivery.claim_id,
+            state,
+            channelId,
+            messageTs,
+            state === "sent" && replyQuestion
+              ? slackQuestionDigest(delivery.id, replyQuestion)
+              : null,
+            state === "sent" && !!replyQuestion && threadEnabled,
+          ],
         );
       };
       const fence = (
@@ -268,7 +288,7 @@ export async function deliverAgentChannelOne(
             `SELECT c.title,j.run_state FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
           WHERE j.id=$1 AND j.user_id=$2 AND j.state=$3 AND j.runtime_lane='background' AND j.run_origin<>'idea' AND c.origin<>'idea'
           AND ($3<>'waiting' OR j.run_state->'state'->'waiting'->>'id'=$4)
-          AND ${assistantChatVisible("c", "$2", scope)} AND ${assistantJobSourcesVisible("j", "$2", false, scope)} AND ${blockedTeams}`,
+          AND ${assistantChatVisible("c", "$2", scope)} AND ${assistantJobSourcesVisible("j", "$2", false, scope)} AND ${channelJobTeamsAllowed}`,
             [
               delivery.source_id,
               delivery.user_id,
@@ -293,6 +313,32 @@ export async function deliverAgentChannelOne(
           appUrl,
           agentName: identity.revision > 0 ? identity.name : undefined,
         });
+      }
+      // Approval always opens the complete owned review. Only fully displayed
+      // person questions gain signed, single-use reply authority.
+      if (repliesEnabled && delivery.event === "waiting") {
+        const current = (
+          await db.query<{ run_state: { state?: { waiting?: unknown } } }>(
+            "SELECT run_state FROM ai_jobs WHERE id=$1 AND user_id=$2",
+            [delivery.source_id, delivery.user_id],
+          )
+        ).rows[0];
+        const parsed = slackQuestion.safeParse(
+          current?.run_state?.state?.waiting,
+        );
+        if (parsed.success && parsed.data.id === delivery.waiting_id) {
+          const card = slackQuestionCard(
+            message,
+            delivery.id,
+            parsed.data,
+            channel.scopes.includes("im:history"),
+          );
+          if (card) {
+            message = card;
+            replyQuestion = parsed.data;
+            threadEnabled = channel.scopes.includes("im:history");
+          }
+        }
       }
       dispatched = true;
       const result = await sendSlackDm(

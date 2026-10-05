@@ -83,3 +83,17 @@ test("Fastify's actual request logs omit signed file tokens and token query valu
     stream.destroy();
   }
 });
+
+test("signed Slack interaction and event callback queries never enter request logs", () => {
+  for (const prefix of ["", "/api"])
+    for (const kind of ["interactions", "events"]) {
+      const path = `${prefix}/agent-channels/slack/${kind}`;
+      assert.equal(
+        serializeFileRequest({
+          url: `${path}?answer=private-text`,
+          headers: { "x-slack-signature": "private-signature" },
+        }).url,
+        path,
+      );
+    }
+});

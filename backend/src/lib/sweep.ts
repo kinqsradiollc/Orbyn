@@ -35,6 +35,17 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "agent_channel_reply_receipts",
+    label: "Agent channel question replies",
+    detail:
+      "Encrypted pending question replies expire with their card; terminal content-free receipts remain for 14 days.",
+    table: "agent_channel_reply_receipts",
+    where:
+      "(state IN ('queued','processing') AND expires_at<now()) OR (state IN ('accepted','refused') AND updated_at<now()-interval '14 days')",
+    days: 14,
+    configurable: false,
+  },
+  {
     key: "agent_channel_outbox",
     label: "Agent channel delivery receipts",
     detail:

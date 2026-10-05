@@ -696,6 +696,8 @@ export const PENDING: string[] = [];
 export const PUBLIC: string[] = [
   // OAuth state captures a pending install; linking requires the originating app session.
   "GET /agent-channels/slack/callback",
+  "POST /agent-channels/slack/interactions",
+  "POST /agent-channels/slack/events",
   "GET /maintenance",
   "GET /announcement",
   "POST /auth/register",

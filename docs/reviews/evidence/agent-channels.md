@@ -382,3 +382,37 @@ missing command mapping, now repaired), and one existing Tesseract skip out of
 started before final edits and is not exact-head qualification. Preserve
 /tmp/orbyn-channel-vault-full.log. A fresh full run of the committed checkpoint
 is required; no claim of all tests passing or full/CI qualification is made yet.
+
+## Immutable vault and signed-question follow-up, 6 October 2026
+
+- Immutable d9225450: `/tmp/orbyn-channel-d9225450-full.log`,3064pass/0fail/1existing skip,3065total,718357ms. Terminal session79486 exit0.
+- New signed-question source: `/tmp/orbyn-channel-reply-db-repaired.log`,26/26 DB/outbox; `/tmp/orbyn-channel-reply-protocol.log`,27/27 raw-signature/events/card/OAuth; `/tmp/orbyn-channel-reply-http-repaired.log`,2/2 mounted HTTP callback shields.
+- Backend types: `/tmp/orbyn-channel-reply-wired-types.log` passes. These focused runs do not qualify the combined source's full suite or external Slack behavior.
+- Retained failures: `/tmp/orbyn-channel-reply-db.log` has invalid grant-revoke fixture then an incompatible pool mock hang (terminated130); `/tmp/orbyn-channel-reply-http-pure.log`37pass/2fixturefail because createService modules omitted. Repairs preserve acceptance assertions; queued fixture receipts are isolated per test.
+- The reused runtime-integration worktree owns codex/agent-channel-replies. Immutable vault qualification tree remains unchanged. Root user dirt and all unrelated branches/worktrees remain preserved.
+- Pending: combined latest-source focused/full/CI, exact-card real Slack callback/choice/thread/expiry/revoke acceptance, web/mobile native/visual, Teams, all other governing ADR requirements. No main/production/full-goal completion claimed.
+
+### Combined signed-reply checkpoint qualification
+
+- `/tmp/orbyn-channel-reply-integrated-final.log`:64/64 latest-source DB cases,
+  including replies/outbox/installations/vault/HTTP ownership/rotation/retention.
+- `/tmp/orbyn-channel-reply-cold-final2.log`:12/12 reply tests with DB_POOL_MAX1,
+  empty SECRETS_KEY and the DB-backed encryption key; no nested-pool deadlock.
+- `/tmp/orbyn-channel-reply-final-pure.log`:41/41 protocol, mounted HTTP shield,
+  ordinary JSON parser isolation, gateway privacy/no-retry and log-redaction cases.
+- All workspace types `/tmp/orbyn-channel-reply-all-types.log`, latest backend
+  `/tmp/orbyn-channel-reply-latest-types.log`, backend build
+  `/tmp/orbyn-channel-reply-backend-build.log` pass. Whole format check passes.
+- Additional retained diagnostics: a one-connection wrapper incorrectly included
+  existing multi-connection fence tests and stopped130 after9passes
+  (`/tmp/orbyn-channel-reply-cold-integrated.log`); this is a runner configuration
+  error, not evidence for source acceptance. The corrected cold run isolates reply
+  tests, while the combined64case run uses the normal pool10.
+- `/tmp/orbyn-channel-reply-cold-latest.log` had11pass/1retention-fixturefail because
+  it ran the consumer after expiring the pending reply: the consumer correctly
+  erased content and retained a new terminal receipt. The fixture now expires the
+  pending answer after the completed-answer setup, testing the sweeper with Slack
+  disabled. The original deletion and retention assertions remain unchanged.
+- Full suite/CI for the combined checkpoint remains pending; canonical d922's
+  3064pass result belongs to that earlier immutable source only. No production or
+  real workspace/native/visual acceptance is claimed.

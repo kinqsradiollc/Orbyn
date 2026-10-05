@@ -4,6 +4,10 @@ import { z } from "zod";
 import { slackJson } from "./slack-response.js";
 
 export const SLACK_BOT_SCOPES = ["chat:write", "im:write"] as const;
+export const SLACK_REQUEST_SCOPES = [
+  ...SLACK_BOT_SCOPES,
+  "im:history",
+] as const;
 const identity = (prefix: string) =>
   z.string().regex(new RegExp(`^[${prefix}][A-Z0-9]{2,63}$`));
 const secret = z.string().min(1).max(8192);
@@ -99,7 +103,7 @@ export function slackAuthorizationUrl(config: SlackOAuthConfig, state: string) {
   const url = new URL("https://slack.com/oauth/v2/authorize");
   url.search = new URLSearchParams({
     client_id: current.clientId,
-    scope: SLACK_BOT_SCOPES.join(","),
+    scope: SLACK_REQUEST_SCOPES.join(","),
     redirect_uri: current.redirectUri,
     state,
   }).toString();

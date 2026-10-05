@@ -1,6 +1,11 @@
 import { runDueTemplates } from "../modules/templates/service.js";
 import { rotateSlackOne } from "../modules/agent-channels/rotation.js";
-import { configuredSlack } from "../modules/agent-channels/slack-config.js";
+import type { FastifyBaseLogger } from "fastify";
+import { consumeSlackQuestionReplyOne } from "../modules/agent-channels/question-replies.js";
+import {
+  configuredSlackSigningSecret,
+  configuredSlack,
+} from "../modules/agent-channels/slack-config.js";
 import { deliverAgentChannelOne } from "../modules/agent-channels/outbox.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
@@ -277,10 +282,25 @@ export async function runWorker() {
               const webhook = await deliverWebhookOne();
               const slack = configuredSlack();
               const rotation = slack ? await rotateSlackOne(slack) : false;
+              const signingSecret = configuredSlackSigningSecret();
+              const reply =
+                slack && signingSecret
+                  ? await consumeSlackQuestionReplyOne(
+                      slack,
+                      signingSecret,
+                      console as unknown as FastifyBaseLogger,
+                    )
+                  : false;
               const channel = slack
-                ? await deliverAgentChannelOne(slack, env.APP_URL)
+                ? await deliverAgentChannelOne(
+                    slack,
+                    env.APP_URL,
+                    fetch,
+                    !!signingSecret,
+                  )
                 : false;
-              if (!reminder && !webhook && !channel && !rotation) return false;
+              if (!reminder && !webhook && !channel && !rotation && !reply)
+                return false;
             }
             return true;
           },

@@ -226,6 +226,22 @@ ${UPSTREAM_MCP}
       proxy_pass http://api;
     }
 
+    location = /agent-channels/slack/events {
+      access_log off;
+      error_log /dev/null crit;
+      proxy_next_upstream off;
+      limit_req zone=per_client burst=40 nodelay;
+      proxy_pass http://api;
+    }
+
+    location = /agent-channels/slack/interactions {
+      access_log off;
+      error_log /dev/null crit;
+      proxy_next_upstream off;
+      limit_req zone=per_client burst=40 nodelay;
+      proxy_pass http://api;
+    }
+
     # Realtime service: the apps' event stream and live documents. Streams
     # stay open (the service closes each after 15 minutes, and the apps
     # reconnect), so nothing is buffered and the read timeout is long. For
@@ -397,6 +413,36 @@ ${UPSTREAM_MCP}
       proxy_set_header X-Orbyn-Via web;
       limit_req zone=per_client burst=100 nodelay;
       proxy_pass http://127.0.0.1:8080/agent-channels/slack/callback;
+    }
+
+    location = /api/agent-channels/slack/events {
+      access_log off;
+      error_log /dev/null crit;
+      proxy_next_upstream off;
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_set_header X-Forwarded-Prefix /api;
+      proxy_set_header X-Orbyn-Via web;
+      limit_req zone=per_client burst=100 nodelay;
+      proxy_pass http://127.0.0.1:8080/agent-channels/slack/events;
+    }
+
+    location = /api/agent-channels/slack/interactions {
+      access_log off;
+      error_log /dev/null crit;
+      proxy_next_upstream off;
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_set_header X-Forwarded-Prefix /api;
+      proxy_set_header X-Orbyn-Via web;
+      limit_req zone=per_client burst=100 nodelay;
+      proxy_pass http://127.0.0.1:8080/agent-channels/slack/interactions;
     }
 
     location /api/ {

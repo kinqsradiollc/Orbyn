@@ -61,13 +61,12 @@ export type SlackReply = {
 };
 
 /** Verify raw bytes before decoding, with Slack v0 HMAC and the five-minute window. */
-export function readSlackReply(
+export function verifySlackRequest(
   raw: Buffer,
   headers: Record<string, string | string[] | undefined>,
   secret: string,
-  expectedAppId: string,
   now = Date.now(),
-): SlackReply {
+): void {
   if (raw.byteLength > 65536) throw new SlackInteractionError(413);
   const timestamp = headers["x-slack-request-timestamp"],
     signature = headers["x-slack-signature"];
@@ -87,6 +86,17 @@ export function readSlackReply(
     .update(raw)
     .digest();
   if (!timingSafeEqual(actual, expected)) throw new SlackInteractionError(401);
+}
+
+/** Authenticate an interaction before parsing its form-encoded payload. */
+export function readSlackReply(
+  raw: Buffer,
+  headers: Record<string, string | string[] | undefined>,
+  secret: string,
+  expectedAppId: string,
+  now = Date.now(),
+): SlackReply {
+  verifySlackRequest(raw, headers, secret, now);
   const contentType = headers["content-type"];
   if (
     typeof contentType !== "string" ||

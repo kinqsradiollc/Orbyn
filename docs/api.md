@@ -3431,3 +3431,19 @@ explicit reconnect. This candidate's DMs link to in-app review; no signed reply
 endpoint is mounted yet. Current source/qualification and remaining provider,
 shared-workspace, native/visual gates are in
 [agent channel evidence](reviews/evidence/agent-channels.md).
+
+### Signed Slack question callbacks (candidate)
+
+- `POST /agent-channels/slack/interactions`: bounded raw form payload, Slack v0 HMAC,
+  five-minute timestamp window and configured app identity; minted option buttons only.
+- `POST /agent-channels/slack/events`: bounded signed JSON; URL challenge or human
+  DM-thread answer for the exact committed question card. Unrelated signed events
+  are acknowledged without storing their text.
+
+These provider-authenticated public callbacks cannot be substituted with an Orbyn
+session, API key or MCP grant. Responses are uncached and gateway retry is disabled.
+The receipt and eventual current-question answer have separate durable stages;
+consumption clears encrypted answer content and commits the receipt with the job
+and chat history in one transaction. One sent card accepts at most one decision.
+Permission changes, source loss, question edits, expiry and configuration rotation
+refuse queued answers. No callback grants standing approval.

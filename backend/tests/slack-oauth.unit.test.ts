@@ -58,7 +58,7 @@ test("Slack installation uses fixed authorization endpoint, exact callback and m
   assert.equal(url.pathname, "/oauth/v2/authorize");
   assert.equal(url.searchParams.get("redirect_uri"), config.redirectUri);
   assert.equal(url.searchParams.get("state"), state);
-  assert.equal(url.searchParams.get("scope"), "chat:write,im:write");
+  assert.equal(url.searchParams.get("scope"), "chat:write,im:write,im:history");
   for (const field of [
     "client_secret",
     "user_scope",

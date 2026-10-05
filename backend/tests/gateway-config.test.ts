@@ -62,6 +62,10 @@ test("Slack OAuth callbacks suppress query logs and proxy retry on both gateway 
   for (const [port, path] of [
     ["8080", "/agent-channels/slack/callback"],
     ["8081", "/api/agent-channels/slack/callback"],
+    ["8080", "/agent-channels/slack/interactions"],
+    ["8081", "/api/agent-channels/slack/interactions"],
+    ["8080", "/agent-channels/slack/events"],
+    ["8081", "/api/agent-channels/slack/events"],
   ]) {
     const block = serverBlock(conf, port);
     const start = block.indexOf(`location = ${path} {`);

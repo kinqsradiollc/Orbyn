@@ -17,3 +17,9 @@ export function configuredSlack(): SlackOAuthConfig | undefined {
     return undefined;
   }
 }
+
+/** Interactivity stays unavailable without an administrator-owned signing secret. */
+export function configuredSlackSigningSecret(): string | undefined {
+  const value = env.SLACK_SIGNING_SECRET;
+  return value.length >= 16 && value.length <= 512 ? value : undefined;
+}

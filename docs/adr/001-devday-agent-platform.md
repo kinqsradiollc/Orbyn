@@ -1984,3 +1984,37 @@ Steps1–6 are now implemented in the canonical-vault candidate. Step7 has
 137 latest-source integrated passing checks; full/CI qualification and external/native/visual acceptance remains open. Continue durable
 exact-card signed replies and Teams. This checkpoint does not complete A6 or
 the full ADR; prior owner-pair evidence remains historical only.
+
+### Signed question replies — candidate, 6 October 2026
+
+Canonical vault checkpoint d9225450 completed its immutable full local suite:
+3064 passes, zero failures, one existing Tesseract skip. It is pushed separately;
+no channel source is promoted to main yet.
+
+Slack question cards bind all displayed question/choice contents, the exact sent
+message and waiting ID, reviewed owner/connection revision and a 15-minute expiry.
+Options use signed button callbacks; free text uses the exact message thread and
+requires reviewed im:history scope. Unsupported message input blocks are not used.
+Unrelated/bot/edited/deleted/unthreaded messages cannot answer a question. Approvals
+continue through the full owned Orbyn review; this is not standing permission.
+
+A bounded provider acknowledgement follows encrypted durable receipt capture.
+The notifier rechecks current source/grant/owner/consent/configuration and commits
+the answer, chat history and accepted receipt together. Lost claim recovery cannot
+replay a committed answer. Consumed/refused answer content is cleared; expired
+pending content is swept even with Slack disabled, and terminal receipts last14days.
+
+Focused qualification passes26 database/outbox cases and27 protocol cases; the
+new HTTP fixture initially omitted createService's module list (2 failures), then
+passed2/2 after repair without weakening assertions. Earlier DB diagnostics tried
+to revoke the nonrevocable assistant grant and hung on an incompatible pool mock;
+these were replaced with legal suspension and an actual test-DB rollback trigger.
+Combined qualification, CI, real workspace callbacks, native/visual controls,
+Teams and the full C1–C6/M1/D1/U1 contract remain open. Deployment remains user-run.
+
+Latest combined focused qualification passes64/64 integrated database cases,
+12/12 single-connection reply cases, and41/41 protocol/HTTP/gateway/privacy cases.
+All workspace types, backend build and whole format check pass. Full/CI and
+external/native/visual acceptance still precede production promotion; earlier
+diagnostic failures are retained in evidence/agent-channels.md. The complete
+ADR goal remains active.

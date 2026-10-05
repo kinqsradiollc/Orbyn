@@ -371,9 +371,9 @@ administrator-owned values; blank values leave installation unavailable.
 | `SLACK_CLIENT_SECRET`  | API, notifier | OAuth client secret; retain only in server configuration                                                                                       |
 | `SLACK_APP_ID`         | API, notifier | Exact Slack application ID                                                                                                                     |
 | `SLACK_REDIRECT_URI`   | API           | Registered public HTTPS callback ending in `/api/agent-channels/slack/callback` (or `/agent-channels/slack/callback` without a gateway prefix) |
-| `SLACK_SIGNING_SECRET` | API           | Reserved for signed interaction callbacks; the current candidate has no mounted reply handler                                                  |
+| `SLACK_SIGNING_SECRET` | API, notifier | App-specific signature secret for signed callbacks and configuration-bound question consumption                                                |
 
-The OAuth app requests bot scopes `chat:write` and `im:write`. Register the
+The OAuth app requests bot scopes `chat:write`, `im:write` and `im:history`. Register the
 exact callback in Slack; neither request headers nor clients can override it.
 Settings → Connections → Agent channels starts authorization. After Slack
 returns, review the workspace, installer account and actual granted scopes in
@@ -395,8 +395,21 @@ it does not replay the refresh token. Declared rate-limit refusals use bounded
 provider delays and a three-attempt limit. Unknown credentials are cleared and
 DM permission is turned off. Long-lived tokens with no expiry are not refreshed.
 
-Current messages open decisions in Orbyn. Signed reply consumption, Teams,
-exact-head qualification and real authorized workspace/UI acceptance remain
+Register Interactivity at `/api/agent-channels/slack/interactions` and Events API
+at `/api/agent-channels/slack/events` on the public HTTPS app origin (omit `/api`
+only on an unprefixed gateway). Subscribe to bot event `message.im`. The API
+verifies the raw request HMAC and timestamp before parsing and durably captures
+one encrypted reply before its bounded acknowledgement. The notifier consumes
+it under current owner, consent and source guards. Option buttons support existing
+reviewed two-scope connections; free-text replies in the exact question's thread
+require explicitly reviewed `im:history`. Reconnect to review that additional
+scope. This scope can deliver other DMs to the callback; unrelated, bot, edited,
+deleted and unthreaded messages are discarded without storing their content.
+Questions expire after 15 minutes. Approvals still open the full Orbyn review.
+A successful callback acknowledgement means received, not that work completed.
+Both services need the same signing secret; rotation refuses old queued replies.
+
+Teams, exact-head qualification and real authorized workspace/UI acceptance remain
 implementation gates; do not treat mock-provider qualification
 as a completed production installation. The notifier and API need the same app
 configuration and encryption key. The Compose backend environment already reads
