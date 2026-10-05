@@ -4,28 +4,34 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `de29d871` (PR212), pushed. Docs rails now respond
-to the available editor width after navigation/library panels. Exact `9f0247df`
-passed12 focused cases, packages/desktop types/build/format and fresh full DB34:
-3441 passes/0 failures/1 existing skip, terminal0,739091ms. Main application source
-matches the tested candidate. CI37361223961 passed three jobs; backend failed only
-Gantt Chromium startup at `Target.createTarget` after20seconds. The retained log is
-`/tmp/orbyn-doc-container-9f0247df-ci.log`; failed-job rerun is live, with assertions
-and limits unchanged. This is not a green-CI or visual acceptance claim.
+Main application checkpoint is `de29d871` (PR212), pushed. Docs rails respond to
+available editor width after navigation/library panels. Exact9f0247df passed12
+focused cases and fresh full DB34:3441/0/1, terminal0,739091ms. CI37361223961
+attempt2 now passed all four jobs. Attempt1 Gantt Chromium startup failure remains
+recorded in `/tmp/orbyn-doc-container-9f0247df-ci.log`; no assertions or limits
+changed. Automated qualification does not establish visual/native acceptance.
 
-PR211 reference titles and inline-object privacy are merged; final `a34ed83b`
-CI37360062404 passed all four jobs. Fresh full local source217bc7eb passed3437/0/1;
-finala34 only formats a test with identical AST assertions. Prior failures remain.
-Word/reference-preview privacy PR213 is draft at `500ace6c`, pushed, with actual
-main integrated without conflicts. Current focused DB35 cohort65/65, all workspace
-types, owned packages/backend/web builds and formatting pass. Fresh serial full
-DB36 is running: `/tmp/orbyn-channel-doc-word-main-full.log`. Source stays frozen.
-Quote continuation candidate `e958f694` is pushed; its owned change passed87 parser/
-source/HTML/Word cases and workspace types. Actual main is integrated; qualification
-with Word/privacy is next. Nested list/quote containers, code inside containers and
-image/reference-media behavior remain explicit gaps in its audit, not completion.
-Browser/native visual acceptance, production deployment and the full C1–C6/M1/D1/U1
-goal remain incomplete. User deploys manually; preserve character/user work.
+PR211 reference titles and inline-object privacy are merged; finala34ed83b passed
+all four CI37360062404 jobs. Its full application suite passed3437/0/1.
+Word/reference-preview privacy PR213 is draft atad83a3d8, pushed and mergeable.
+Fresh DB36 full ended3453pass/7fail/1existing skip: all failures were the actual
+export-route VM fixture missing the new linkPrivacy dependency. The repaired mock
+retains primary/revision/privacy assertions;50 focused cases and backend types/
+format pass. Repaired immutable full DB37 is running:
+`/tmp/orbyn-channel-doc-word-repaired-full.log`. CI37364955550 is queued.
+
+Quote continuation and Word quote import candidate53ec9913 is pushed; prior88-case
+cohort passed, latest literal-anchor/source cohort58/58 and all workspace types/
+format pass. Actual Word/main integration and full combined qualification are next.
+Footnote continuation/Word importer candidate is local:88 source/parser/HTML/Word
+cases pass, workspace types/backend/web builds/format pass. Upload/conversion/
+storage/source-export ownership regression is added but awaits the serial database
+slot. Candidate preserves IDs, markers, links and hard breaks, rejects malformed
+archive relationships/IDs and retains existing size limits. It is not on main.
+Nested containers, media and bookmarks remain explicit D1 gaps. Browser/native
+visual acceptance, real provider/tenant acceptance, production deployment and full
+C1-C6/M1/D1/U1 remain incomplete. User deploys manually; character/user work is
+preserved. No Docker restart, cleanup or production deployment occurred.
 
 | Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
