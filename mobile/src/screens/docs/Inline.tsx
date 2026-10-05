@@ -134,6 +134,7 @@ export function Inline({
               key={i}
               href={run.link}
               label={run.text}
+              hint={run.linkTitle}
               style={formatting}
             />
           );

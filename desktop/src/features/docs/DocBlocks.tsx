@@ -152,6 +152,7 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
                 href={run.link}
                 label={run.text}
                 start={run.start}
+                hint={run.linkTitle}
               />
             );
           if (run.link) {

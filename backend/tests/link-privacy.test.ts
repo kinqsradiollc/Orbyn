@@ -529,7 +529,10 @@ test("section references use only the authorized source page, including definiti
         "definition-private",
       ),
       para(`[open]: orbyn://doc/${openId}`, "definition-open"),
-      para("[guide]: https://example.test/guide", "definition-guide"),
+      para(
+        '[guide]: https://example.test/guide "Read <guide> & notes"',
+        "definition-guide",
+      ),
       { type: "heading", level: 2, text: "Summary", id: "summary" },
       para(
         "Read [Budget 2027 private], [Lab][open] and [Guide][guide].",
@@ -547,10 +550,20 @@ test("section references use only the authorized source page, including definiti
   assert.equal(section.json().blocks.length, 2);
   const refs = new Map<string, string>(section.json().references);
   assert.equal(refs.get("guide"), "https://example.test/guide");
+  assert.deepEqual(
+    section.json().references.find(([label]: [string]) => label === "guide"),
+    ["guide", "https://example.test/guide", "Read <guide> & notes"],
+  );
   assert.equal(refs.get("open"), `orbyn://doc/${openId}`);
   assert.ok(![...refs.values()].includes(`orbyn://doc/${personalId}`));
   const owner = await call(ana, "GET", `/docs/${id}/section?block=summary`);
   assert.match(owner.body, /Budget 2027 private/);
+  assert.deepEqual(
+    owner
+      .json()
+      .references.find(([label]: [string]) => label === "budget 2027 private"),
+    ["budget 2027 private", `orbyn://doc/${personalId}`, "Budget 2027 private"],
+  );
   assert.equal(
     new Map<string, string>(owner.json().references).get("budget 2027 private"),
     `orbyn://doc/${personalId}`,

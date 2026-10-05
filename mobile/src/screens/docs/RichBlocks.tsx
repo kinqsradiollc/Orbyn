@@ -31,6 +31,7 @@ import {
   colourable,
   docObjectLinks,
   docReferenceLinks,
+  docReferenceMap,
   footnoteNumbers,
   fileSize,
   isAudio,
@@ -995,7 +996,7 @@ function SectionBody({
 }: {
   docId: string;
   blocks: DocBlock[];
-  references?: [string, string][];
+  references?: [string, string, string?][];
 }) {
   const parentNavigation = useContext(DocNavigationContext);
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -1008,7 +1009,9 @@ function SectionBody({
           .filter((b) => b.type === "footnote")
           .map((b) => [b.label, b.text]),
       ),
-      references: references ? new Map(references) : docReferenceLinks(blocks),
+      references: references
+        ? docReferenceMap(references)
+        : docReferenceLinks(blocks),
     }),
     [blocks, references],
   );

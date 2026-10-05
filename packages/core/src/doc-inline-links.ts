@@ -70,8 +70,10 @@ export function docInlineLinks(
         cursor < masked.length &&
         masked[cursor] !== closing &&
         budget-- > 0
-      )
-        cursor++;
+      ) {
+        if (masked[cursor] === "\\" && cursor + 1 < masked.length) cursor += 2;
+        else cursor++;
+      }
       if (masked[cursor] !== closing) continue;
       const raw = source.slice(titleStart, cursor);
       if (raw.includes("\n\n") || raw.length > 1000) continue;
