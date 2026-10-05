@@ -35,6 +35,26 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "agent_channel_oauth_pending",
+    label: "Agent channel connection attempts",
+    detail:
+      "Expired session-bound installations and unconfirmed encrypted Slack credentials.",
+    table: "agent_channel_oauth_pending",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_disconnected",
+    label: "Disconnected agent channels",
+    detail:
+      "Disconnected workspace/actor mappings; credentials are erased immediately on unlink.",
+    table: "agent_channel_installations",
+    where: olderThan("disconnected_at"),
+    days: 30,
+    configurable: false,
+  },
+  {
     key: "agenda_summary_runs",
     label: "Completed Agenda summaries",
     detail: "Scheduled summaries, failures and expired device waits.",

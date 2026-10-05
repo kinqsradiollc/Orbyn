@@ -4,6 +4,24 @@ import { PassThrough } from "node:stream";
 import Fastify from "fastify";
 import { serializeFileRequest } from "../src/lib/file-request-log.js";
 
+test("Slack OAuth codes and state never enter the request URL serializer", () => {
+  for (const prefix of ["", "/api"]) {
+    const path = `${prefix}/agent-channels/slack/callback`;
+    assert.equal(
+      serializeFileRequest({
+        url: `${path}?code=synthetic-private-code&state=synthetic-private-state`,
+      }).url,
+      path,
+    );
+    assert.equal(
+      serializeFileRequest({
+        url: `${path}?error=access_denied&state=synthetic-private-state`,
+      }).url,
+      path,
+    );
+  }
+});
+
 test("signed file paths and query tails are redacted while ordinary routes retain their fields", () => {
   for (const kind of ["u", "p", "r"]) {
     assert.equal(

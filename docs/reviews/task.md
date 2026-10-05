@@ -2502,3 +2502,19 @@ the isolated marked Agenda test database. Logs:/tmp/orbyn-agenda-resumption-0.lo
 through /tmp/orbyn-agenda-resumption-5.log. Docs pure cohort108/108 is recorded in
 [evidence](evidence/markdown-parity-current.md). Full combined plugin qualification
 must be repeated before its main promotion; visual/native acceptance remains open.
+
+### Slack installation candidate — 5 October 2026
+
+Added migration241, strict shared actor/confirmation/consent contracts and
+session-bound installation services. Capture is encrypted and cannot link or
+send DM without exact-origin review. Atomic single-use exchange, revision/actor
+checks, owner/actor isolation, logout/configuration/expiry refusal, explicit DM
+opt-in and credential-clearing unlink are implemented. Ten isolated database
+cases pass at DB_POOL_MAX=1;17 pure OAuth/reply and10 logging/gateway cases pass.
+Environment, Privacy/version and hourly retention definitions accompany source.
+
+The module remains unmounted and unmerged. Mount HTTP shields/status/callback,
+finish both client controls, rotating tokens, durable outbox/current waiting-card
+reply consumption, then Teams. External workspace, gateway runtime and native/
+visual acceptance remain open. Full ADR remains active. PluginPR203 is now
+qualified and merged as0faf19dc, with2975 local/CI passes and one existing skip.

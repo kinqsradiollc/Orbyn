@@ -89,6 +89,12 @@ const schema = z.object({
    * so a link there would open the mobile bundler instead of the app.
    */
   APP_URL: z.string().default("http://localhost:8080"),
+  /** Slack agent-channel installation is disabled until the app and HTTPS callback are configured. */
+  SLACK_CLIENT_ID: z.string().default(""),
+  SLACK_CLIENT_SECRET: z.string().default(""),
+  SLACK_APP_ID: z.string().default(""),
+  SLACK_SIGNING_SECRET: z.string().default(""),
+  SLACK_REDIRECT_URI: z.string().default(""),
   /**
    * Opening the web app's links in the phone app: the Apple developer team
    * that signs the iOS app, and the SHA-256 fingerprints (comma separated) of

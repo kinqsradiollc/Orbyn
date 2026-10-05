@@ -10,10 +10,12 @@ export function serializeFileRequest(request: {
   const version = request.headers?.["accept-version"];
   return {
     method: request.method,
-    url: request.url?.replace(
-      /^\/files\/([upr])(?:\/|%2f).*$/i,
-      "/files/$1/:token",
-    ),
+    url: request.url
+      ?.replace(/^\/files\/([upr])(?:\/|%2f).*$/i, "/files/$1/:token")
+      .replace(
+        /^(\/(?:api\/)?agent-channels\/slack\/callback\/?)(?:\?.*)?$/i,
+        "$1",
+      ),
     version: typeof version === "string" ? version : undefined,
     host: request.host,
     remoteAddress: request.ip,

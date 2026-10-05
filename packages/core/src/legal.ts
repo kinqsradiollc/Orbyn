@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-10-04";
+export const DEFAULT_LEGAL_VERSION = "2026-10-05-channels";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -302,6 +302,12 @@ If you select ChatGPT as your personal AI provider, Orbyn sends the authorized c
 Unless you opted out of analytics in Privacy, Orbyn also keeps the model, completion time and reported token counts of accepted ChatGPT requests for 30 days so you can inspect your usage in Orbyn. This record has no prompt, reply or provider credentials. Missing token counts remain unknown. These measurements do not show your account-wide ChatGPT allowance, use in other apps or remaining quota.
 
 You choose whether to allow Orbyn's configured AI provider as a fallback. If enabled, it can receive the same request when your ChatGPT device is unavailable or OpenAI rejects the request before answering. A partial or uncertain ChatGPT completion is not automatically retried through that provider. Changing your provider choice prevents older queued requests from being claimed or their results from being accepted; it cannot recall content already sent to OpenAI. This provider choice does not grant MCP or plugin access.
+
+## Agent channels
+
+If this service enables Slack connections and you choose to connect, Slack receives our app's requested bot permissions and returns its workspace, installing user and bot identifiers and bot credentials. Orbyn binds the connection to your initiating Orbyn session, asks you to review the returned workspace and user, and stores bot credentials encrypted. It does not use Slack to sign you into Orbyn or link an account by email. Unconfirmed credentials expire with the ten-minute connection attempt and are removed by the hourly sweeper; failed or confirmed attempts contain no pending credentials.
+
+Direct messages require your explicit opt-in for that connection. Turning them off changes its revision so queued work cannot rely on old permission. Disconnecting clears the local credentials immediately and stops Orbyn from using that mapping; it does not uninstall a bot shared by other people in the Slack workspace. The disconnected mapping is removed after 30 days, or when you delete your Orbyn account. This connection has no access to personal ChatGPT plan tokens or the portable MCP sign-in.
 
 ## Files you import
 

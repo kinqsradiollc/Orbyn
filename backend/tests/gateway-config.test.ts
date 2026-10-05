@@ -57,6 +57,25 @@ function serverBlock(conf: string, port: string): string {
   throw new Error(`server block on ${port} never closes`);
 }
 
+test("Slack OAuth callbacks suppress query logs and proxy retry on both gateway ports", () => {
+  const conf = render();
+  for (const [port, path] of [
+    ["8080", "/agent-channels/slack/callback"],
+    ["8081", "/api/agent-channels/slack/callback"],
+  ]) {
+    const block = serverBlock(conf, port);
+    const start = block.indexOf(`location = ${path} {`);
+    assert.ok(start >= 0);
+    const location = block.slice(start, block.indexOf("}", start));
+    assert.match(location, /access_log off;/);
+    assert.match(location, /error_log \/dev\/null crit;/);
+    assert.match(location, /proxy_next_upstream off;/);
+    assert.match(location, /limit_req zone=per_client/);
+    if (port === "8081")
+      assert.match(location, /proxy_set_header X-Orbyn-Via web;/);
+  }
+});
+
 test("the web port marks what it forwards, and the marker empties every zone key", () => {
   const conf = render();
   const web = serverBlock(conf, "8081");

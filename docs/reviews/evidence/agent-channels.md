@@ -48,3 +48,40 @@ Queueing, estimated costs and message acceptance are distinct from confirmed
 remote delivery. Raw external errors and private Slack payloads are not stored
 in public receipts or shown in recovery text. Retention, Privacy Policy and API
 route inventory changes are required when persistent channel paths are mounted.
+
+## Session-bound Slack installation candidate — 5 October 2026
+
+Migration241 adds one local mapping per owner/provider and bounded pending
+OAuth state. Only a state digest is stored; a callback atomically claims it
+once before an external code exchange. The fixed Slack endpoint, minimum bot
+scopes and exact administrator HTTPS callback are validated. App/workspace/
+installing-user/bot identity and grants are checked; personal Slack user tokens
+are ignored. Bot credentials and optional rotation metadata are encrypted.
+
+A callback only captures a pending installation. Review/confirmation requires
+the exact initiating Orbyn session, current app configuration, reviewed actor
+and connection revision. Logout/account disable/config changes/expired requests
+refuse installation. Duplicate callbacks cannot dispatch another exchange;
+unknown failures stay final. Duplicate confirmation cannot enable messages.
+A live Slack actor cannot be mapped to two Orbyn owners. DM opt-in/disable and
+local unlink advance the connection revision; unlink clears credentials rather
+than uninstalling a bot shared by a workspace. Expired pending records join the
+hourly sweep, disconnected mappings retain no credentials and expire after30
+days. Privacy disclosure/version and optional environment definitions are added.
+
+Crypto happens outside transaction ownership locks, then the exact encrypted
+snapshot is fenced inside them, so a one-connection pool works. Ten fresh local
+database cases pass with DB_POOL_MAX=1 and a database-backed encryption key in
+/tmp/orbyn-slack-install-local-db.log. Seventeen pure protocol/reply checks pass
+in /tmp/orbyn-slack-install-pure.log. Ten request-log/gateway checks pass in
+/tmp/orbyn-slack-install-gateway-tests.log. Callback query codes/state are removed
+from backend request serialization; both gateway callback hops suppress query
+logs and automatic proxy retries. This is source/contract verification, not a
+live gateway or authorized Slack workspace installation.
+
+The service is not yet mounted: HTTP shields, public callback/status endpoints,
+both client connection controls, rotating-token runtime, durable outbox and
+transactional waiting-card replies still need implementation and qualification.
+No Slack messages were sent. Official source contracts:
+[OAuth installation](https://docs.slack.dev/authentication/installing-with-oauth/),
+[oauth.v2.access](https://docs.slack.dev/reference/methods/oauth.v2.access/).
