@@ -4,7 +4,7 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 5 October 2026
 
-Main `0faf19dc` includes selected-provider routing, migration deadlock recovery,
+Main baseline `8b6748c5` includes selected-provider routing, migration deadlock recovery,
 web/mobile-to-desktop ChatGPT connection handoff, separate plugin launch context,
 Docs source-dialog focus recovery and scoped scheduled Agenda summaries (PR199).
 PR199 exact source `a6a65525` passed all four CI jobs in37291303840:2938 backend
@@ -22,16 +22,25 @@ typechecks pass. External plugin host, real provider and native/visual acceptanc
 remain open. Personal ChatGPT credentials stay excluded; portable MCP remains
 independent. This checkpoint does not prove the entire P1 or ADR acceptance.
 
-Slack installation and signed replies remain separate candidates. The session-
-bound installation service, encrypted pending state, exact actor confirmation,
-versioned opt-in/unlink and reply boundary exist, with10 fresh database cases
-and17 pure cases passing. No callback routes/client installation UI, durable
-outbox or external delivery are mounted or proven yet. Teams remains open.
+Slack candidate `dc71351c` is committed and pushed on
+`codex/agent-channel-delivery`, integrated with main8b6748c5. Session-bound
+installation, encrypted pending credentials, exact actor/scopes confirmation,
+versioned opt-in/unlink, bounded callback/status endpoints and shared client
+methods exist.34 pure checks and17 real database/route-inventory checks pass;
+all workspace types and formatting pass. The OAuth callback is correctly
+classified as public; linking still requires the originating app session.
+The broader local suite was stopped to repair that inventory classification;
+no complete-suite pass is claimed. Client screens, durable DM outbox, token
+rotation, mounted current-card replies, Teams and real workspace/native
+acceptance remain open. This candidate has not been promoted to main.
 
 The settings grid cascade/theme patch removes a late three-column override and
 uses existing theme tokens.15 focused tests, backend/desktop typechecks and web
 production build pass. Preview inspection still reports a saved browser Block;
-Simulator inspection times out -10005. No visual or native acceptance is claimed.
+Simulator inspection times out -10005. The5174 preview checkout was found39
+commits behind main and fast-forwarded to8b6748c5; package builds pass and
+untracked preview files remain preserved. This is a process/source correction,
+not visual or native acceptance.
 
 Full C1–C6/M1/D1/U1 remains active and incomplete. The current pipeline is in
 [implementation handoff](../reviews/task.md). Checkpoints below are historical
