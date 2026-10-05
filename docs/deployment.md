@@ -484,6 +484,31 @@ docker compose up -d --build --wait
 Never run `docker compose down --volumes` on a server: it deletes the database and the mail
 server's signing key along with the containers.
 
+### Migration deadlocks during an update
+
+The migration runner holds one transaction for the pending batch. A PostgreSQL
+`40P01` deadlock aborts that batch; its schema changes and migration records roll
+back together. The runner retries the complete transaction at most three times,
+reports `migration_deadlock_retry` with the migration filename, and still fails
+deployment if contention persists. Syntax, constraint and connection errors are
+not retried. Pending SQL that references `ai_jobs` acquires its exclusive schema
+lock before the batch applies changes, allowing existing assistant claims to
+finish before migration starts taking weaker locks on that table.
+
+If an older deployment fails at migration 231 while assistant workers are
+claiming jobs, stop only those workers and rerun the deploy script:
+
+```sh
+docker compose stop assistant-background assistant-overnight
+bash scripts/deploy.sh --no-pull
+```
+
+The normal rollout starts their replacements after successful migration. Keep
+PostgreSQL running. If migration still fails, retain the failing filename and
+`docker compose logs --since 15m postgres --tail 150`; identify the conflicting
+SQL before stopping additional services. A successful local regression does not
+establish that production has recovered.
+
 ### Backing up and restoring the database
 
 Dump inside the container and copy the file out. This avoids shell redirection, which in Windows

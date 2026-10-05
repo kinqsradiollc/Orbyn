@@ -1,3 +1,29 @@
+# Production migration deadlock checkpoint — 5 October 2026
+
+Production at `e0a432a5` failed migration231 while an assistant claim attempted
+its read-to-write table-lock upgrade. Server log identifies `ALTER TABLE ai_jobs
+ADD COLUMN provider_choice_snapshot` versus the queued-job CTE/UPDATE. The full
+pending migration batch is transactional. Candidate on
+`codex/migration-deadlock-recovery` prelocks existing ai_jobs before any pending
+batch SQL referencing it, retries only complete rolled-back40P01 transactions
+(maximum3 attempts;250/500ms delays), and attaches the failing migration name.
+No application run/provider operation is retried by this helper.
+
+Local focused PostgreSQL regression:3/3 pass, including worker/prelock ordering,
+real deadlock with DDL rollback/retry, and migration-order preservation:
+`/tmp/orbyn-migration-prelock-db.log`. Pure cases13/13 pass:
+`/tmp/orbyn-migration-prelock-unit.log`. All workspace types pass:
+`/tmp/orbyn-migration-prelock-types.log`. Full local attempt failed because test
+PostgreSQL's1.9GiB tmpfs was full (53100); test container then exited. Retain
+`/tmp/orbyn-migration-prelock-full.log` and aborted retry log. No Docker/database
+settings changed; attempted fixture cleanup could not connect and removed no
+fixture. Build and CI/full clean-database qualification remain pending. User
+requests qualified merge to main, then their normal deploy script alone.
+Production recovery is not yet verified. Broader Agenda/ADR goal remains active;
+its source-fence candidate is not part of this hotfix.
+
+---
+
 # Current implementation handoff — 5 October 2026
 
 ## Current checkpoint — selected provider features
