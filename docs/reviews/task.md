@@ -15,6 +15,20 @@ HTTP/database and host acceptance remain unverified.
 
 # Current implementation handoff — 5 October 2026
 
+## Scheduled catalog compatibility repair — current candidate
+
+CI37283750938 at86d850b9 ended2,925pass/2fail/1existingTesseractskip.
+The earlier fixture cleanup, UI mocks and generated catalog repairs passed;
+remaining failures required capabilities in the internal catalog and scheduled
+settings contract. Restore sanitized capability metadata internally and require
+explicit `include_capabilities=1` on `/models` to expose it. Ordinary requests
+retain the original exact response shape for older strict readers. Both Agenda
+settings hooks request the metadata; omission cannot enable bounded scheduling.
+Four focused client/schema tests and all workspace typechecks pass. Added HTTP
+opt-in and malformed query regressions remain to be run in full CI; local test
+PostgreSQL is unavailable and unchanged. Main03c605e2 was integrated without
+conflicts. This is a draft candidate, not scheduled feature delivery.
+
 ## Automatic desktop request watcher checkpoint
 
 The desktop checks pending web/mobile ChatGPT requests on a zero-delay first
