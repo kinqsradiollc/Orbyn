@@ -341,6 +341,7 @@ async function assignmentFixture(error: any = null) {
         signature: "A".repeat(86),
       }),
     },
+    supportsOutputTokenLimit: true,
     completeAssigned: async (model: string, value: any) => {
       calls++;
       assert.equal(model, task.model);
@@ -401,5 +402,25 @@ test("changed input hash fails before inference; quota failure cannot become com
   } finally {
     limited.runtime.close();
     limited.f.runtime.close();
+  }
+});
+
+test("the default desktop executor never advertises unsupported hard output limits", async () => {
+  const f = await fixture();
+  const runtime = await create({
+    ...f.options,
+    client: {
+      ...f.options.client,
+      claimChatgptInference: async () => null,
+      finishChatgptInference: async () => {},
+    },
+    completeAssigned: async () => ({ text: "Not called", usage: null }),
+  });
+  try {
+    await runtime.start();
+    assert.deepEqual(f.published.at(-1).capabilities, ["plan_inference_v1"]);
+  } finally {
+    runtime.close();
+    f.runtime.close();
   }
 });

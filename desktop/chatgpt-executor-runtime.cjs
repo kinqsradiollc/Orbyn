@@ -6,6 +6,7 @@ async function createChatgptExecutorRuntime({
   models,
   complete,
   completeAssigned,
+  supportsOutputTokenLimit = false,
   requireLiveConnection,
 }) {
   const {
@@ -73,7 +74,14 @@ async function createChatgptExecutorRuntime({
       ...(typeof completeAssigned === "function" &&
       typeof client.claimChatgptInference === "function" &&
       typeof client.finishChatgptInference === "function"
-        ? { capabilities: ["plan_inference_v1", "plan_inference_limits_v1"] }
+        ? {
+            capabilities: [
+              "plan_inference_v1",
+              ...(supportsOutputTokenLimit === true
+                ? ["plan_inference_limits_v1"]
+                : []),
+            ],
+          }
         : {}),
     });
     const signed = await signer.signCatalog(catalog);
@@ -280,7 +288,8 @@ async function createChatgptExecutorRuntime({
                 ? "eligibility"
                 : code === "subscription_sharing_usage_limit_exceeded"
                   ? "usage_limit"
-                  : code === "subscription_sharing_usage_unavailable"
+                  : code === "subscription_sharing_usage_unavailable" ||
+                      code === "orbyn_output_limit_unavailable"
                     ? "unavailable"
                     : status === 401 || status === 403
                       ? "permission"

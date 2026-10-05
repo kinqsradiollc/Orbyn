@@ -149,6 +149,9 @@ async function createChatgptModelRuntime({
           model: chosen.model.slug,
           input: request.input,
           instructions: request.instructions,
+          ...(request.max_output_tokens === undefined
+            ? {}
+            : { max_output_tokens: request.max_output_tokens }),
         },
         {
           signal,
@@ -178,6 +181,9 @@ async function createChatgptModelRuntime({
           model: slug,
           input: request.input,
           instructions: request.instructions,
+          ...(request.max_output_tokens === undefined
+            ? {}
+            : { max_output_tokens: request.max_output_tokens }),
         },
         {
           signal,
