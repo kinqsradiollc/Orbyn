@@ -218,6 +218,83 @@ test("titled and formatted inline object links redact through reads, exports and
   assert.equal(original.json().content[0].text, storedText + " Added.");
 });
 
+test("Word hyperlink relationships contain only readable object targets and authored hints", async () => {
+  const { readZip } = await import("../src/modules/imports/docx.js");
+  const made = await call(ana, "POST", "/docs", {
+    title: "Word relationship privacy",
+    team_id: lab,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const id = made.json().id;
+  const content = [
+    para(
+      `[Budget 2027 private](orbyn://doc/${personalId} "Budget 2027 private hint") and [Guide][guide] and [Budget 2027 private][budget].`,
+      "word-links",
+    ),
+    para(`[guide]: orbyn://doc/${openId} "Public guide hint"`, "word-guide"),
+    para(
+      `   [budget]: orbyn://doc/${personalId} "Budget 2027 private reference hint"`,
+      "word-budget",
+    ),
+    para(
+      `[guide]: orbyn://doc/${personalId} "Budget 2027 private duplicate hint"`,
+      "word-duplicate",
+    ),
+    para(`[This line](orbyn://doc/${id}#word-links)`, "word-self"),
+  ];
+  const saved = await call(ana, "PUT", `/docs/${id}`, { version: 1, content });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const pill = await call(
+    ben,
+    "GET",
+    `/links/resolve?refs=${encodeURIComponent(`doc:${id}#word-links`)}`,
+  );
+  assert.equal(pill.statusCode, 200, pill.body);
+  noSecrets(pill.body, "Reference line pill");
+  assert.match(pill.body, /Private page/);
+  assert.match(pill.body, /Guide/);
+  const ownPill = await call(
+    ana,
+    "GET",
+    `/links/resolve?refs=${encodeURIComponent(`doc:${id}#word-links`)}`,
+  );
+  assert.equal(ownPill.statusCode, 200, ownPill.body);
+  assert.match(ownPill.body, /Budget 2027 private/);
+  const denied = await call(null, "GET", `/docs/${id}/export?format=docx`);
+  assert.equal(denied.statusCode, 401);
+  assert.equal(
+    (await call(stranger, "GET", `/docs/${id}/export?format=docx`)).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call(ben, "GET", `/docs/${id}/export?format=invalid`)).statusCode,
+    422,
+  );
+  const viewer = await call(ben, "GET", `/docs/${id}/export?format=docx`);
+  assert.equal(viewer.statusCode, 200, viewer.body);
+  const files = readZip(viewer.rawPayload);
+  const document = files.get("word/document.xml")!().toString("utf8");
+  const rels = files.get("word/_rels/document.xml.rels")!().toString("utf8");
+  noSecrets(document + rels, "Word relationship export");
+  assert.ok(!document.includes(personalId) && !rels.includes(personalId));
+  assert.match(document, /Private page/);
+  assert.match(document, /w:tooltip="Public guide hint"/);
+  assert.ok(rels.includes(openId));
+  assert.ok(!document.includes("orbyn://") && !rels.includes("orbyn://"));
+  const owner = await call(ana, "GET", `/docs/${id}/export?format=docx`);
+  assert.equal(owner.statusCode, 200, owner.body);
+  const ownFiles = readZip(owner.rawPayload);
+  assert.ok(
+    ownFiles.get("word/_rels/document.xml.rels")!()
+      .toString("utf8")
+      .includes(personalId),
+  );
+  assert.match(
+    ownFiles.get("word/document.xml")!().toString("utf8"),
+    /Budget 2027 private hint/,
+  );
+});
+
 test("exports keep no private titles", async () => {
   for (const format of ["md", "txt", "html"]) {
     const res = await call(

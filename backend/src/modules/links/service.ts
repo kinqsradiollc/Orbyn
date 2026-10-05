@@ -1,5 +1,6 @@
 import {
   blockText,
+  docReferenceLinks,
   dateTitle,
   fail,
   plainText,
@@ -112,12 +113,38 @@ export async function linksHere(
   const shown = rows.slice(0, HERE_LIMIT);
   // The line around each link names other things too: only those this
   // reader may open keep their words (D3aF).
+  // Indexed context is one line; its reference definitions live elsewhere in the
+  // readable source page. Load definitions only for the bounded visible result set.
+  const sourceIds = [
+    ...new Set(
+      shown
+        .filter((row) => row.source_kind === "doc")
+        .map((row) => row.source_id),
+    ),
+  ];
+  const definitions = sourceIds.length
+    ? (
+        await db.query<{ id: string; definitions: DocBlock[] }>(
+          `SELECT d.id, coalesce((SELECT jsonb_agg(line ORDER BY ordinal) FROM jsonb_array_elements(coalesce(d.content, '[]'::jsonb)) WITH ORDINALITY AS entries(line, ordinal)
+       WHERE line->>'type'='paragraph' AND strpos(line->>'text', ']:')>0), '[]'::jsonb) AS definitions
+       FROM docs d WHERE d.id=ANY($2::uuid[]) AND ${docVisibleTo("$1")}`,
+          [userId, sourceIds],
+        )
+      ).rows
+    : [];
+  const sourceDefinitions = new Map(
+    definitions.map((row) => [row.id, row.definitions]),
+  );
+  const visibleShown = shown.filter(
+    (row) => row.source_kind !== "doc" || sourceDefinitions.has(row.source_id),
+  );
   const links = await linkPrivacy(
     db,
     userId,
-    shown.map((r) => r.context),
+    visibleShown.map((row) => row.context),
+    definitions.map((row) => row.definitions),
   );
-  const items: LinkedHere[] = shown.map((r) => ({
+  const items: LinkedHere[] = visibleShown.map((r) => ({
     kind: r.source_kind,
     id: r.source_id,
     title: r.title || "Untitled",
@@ -130,11 +157,16 @@ export async function linksHere(
         ? r.source_block
         : null,
     context: linkContext(
-      links.line(r.context ?? "").text,
+      links.line(
+        r.context ?? "",
+        docReferenceLinks(sourceDefinitions.get(r.source_id) ?? []),
+      ).text,
       r.link_kind === "link" ? target : null,
+      140,
+      docReferenceLinks(links.value(sourceDefinitions.get(r.source_id) ?? [])),
     ),
   }));
-  return { count: rows.length, items };
+  return { count: rows.length - (shown.length - visibleShown.length), items };
 }
 
 /**
@@ -229,7 +261,12 @@ export async function resolveLinks(
         lineWords.set(`${r.id.toLowerCase()}#${r.block}`, blockText(line));
     }
   const lineLinks = lineWords.size
-    ? await linkPrivacy(db, userId, [...lineWords.values()])
+    ? await linkPrivacy(
+        db,
+        userId,
+        [...lineWords.values()],
+        [...docMap.values()].map((d) => d.content ?? []),
+      )
     : null;
   const missing = (r: ObjectRef): LinkPill => ({
     kind: r.kind,
@@ -276,7 +313,17 @@ export async function resolveLinks(
           block: r.block,
           block_title:
             line !== undefined
-              ? plainText(lineLinks ? lineLinks.value(line) : line)
+              ? plainText(
+                  lineLinks
+                    ? lineLinks.line(line, docReferenceLinks(d.content ?? []))
+                        .text
+                    : line,
+                  docReferenceLinks(
+                    lineLinks
+                      ? lineLinks.value(d.content ?? [])
+                      : (d.content ?? []),
+                  ),
+                )
                   .replace(/\s+/g, " ")
                   .trim()
                   .slice(0, 120) || "Untitled line"

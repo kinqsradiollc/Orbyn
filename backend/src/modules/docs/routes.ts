@@ -43,6 +43,8 @@ import {
   type Item,
   blocksWithWebLinks,
   keepLinkLabels,
+  refFromUrl,
+  parseObjectHref,
 } from "@orbyn/core";
 import { env } from "../../config/env.js";
 import {
@@ -323,14 +325,9 @@ export async function docRoutes(app: FastifyInstance) {
     const title = doc.title || "Untitled";
     // Ticks as the tasks stand, the same as the page reads, and links to
     // pages, tasks and projects as web links anyone with access can open.
-    const blocks = blocksWithWebLinks(
-      await readableLinks(
-        pool,
-        u.id,
-        await withTaskState(pool, id, doc.content ?? []),
-      ),
-      env.APP_URL,
-    );
+    const stateBlocks = await withTaskState(pool, id, doc.content ?? []);
+    const privacy = await linkPrivacy(pool, u.id, stateBlocks);
+    const blocks = blocksWithWebLinks(privacy.value(stateBlocks), env.APP_URL);
     const imageFormat = format === "pdf" || format === "html";
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -365,7 +362,22 @@ export async function docRoutes(app: FastifyInstance) {
         fail(413, "This document is too large to export.");
       const body =
         format === "docx"
-          ? docToDocx(title, blocks)
+          ? docToDocx(title, blocks, undefined, {
+              linkUrl: (href) => {
+                const ref = refFromUrl(href);
+                if (ref && ref.kind !== "date" && privacy.hidden(ref))
+                  return undefined;
+                const native = parseObjectHref(href);
+                if (!native)
+                  return href.startsWith("/")
+                    ? new URL(href, env.APP_URL).href
+                    : href;
+                if (native.kind === "person" || native.kind === "date")
+                  return undefined;
+                const kind = native.kind === "event" ? "task" : native.kind;
+                return `${env.APP_URL.replace(/\/+$/, "")}/app/${kind}/${native.id}${native.block ? `#${native.block}` : ""}`;
+              },
+            })
           : format === "pdf"
             ? await exportRenderedPdf(html!, r, reply)
             : format === "html"
