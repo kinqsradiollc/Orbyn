@@ -338,12 +338,9 @@ test("an offline device defers without a physical call and resumes the same boun
     "UPDATE agenda_summary_runs SET next_attempt_at=now() WHERE id=$1",
     [id],
   );
-  const { run } = await start(id);
-  const a = await assignment(f);
-  assert.equal(a.job_id, job.id);
-  assert.equal(a.payload.max_output_tokens, 512);
-  assert.ok(!JSON.stringify(a.payload).includes(f.page.doc.id));
-  // An unrelated human Note is preserved; only the authorized paragraph changes.
+  // Preserve an existing unrelated human note on resumption. Commit it before
+  // the worker starts: a concurrent editor lock is deliberately fail-closed
+  // under NOWAIT and is exercised by the separate conflicting-edit regression.
   const current = (
     await pool.query("SELECT content FROM docs WHERE id=$1", [f.page.doc.id])
   ).rows[0].content;
@@ -356,6 +353,11 @@ test("an offline device defers without a physical call and resumes the same boun
     "UPDATE docs SET content=$2::jsonb,version=version+1 WHERE id=$1",
     [f.page.doc.id, JSON.stringify(current)],
   );
+  const { run } = await start(id);
+  const a = await assignment(f);
+  assert.equal(a.job_id, job.id);
+  assert.equal(a.payload.max_output_tokens, 512);
+  assert.ok(!JSON.stringify(a.payload).includes(f.page.doc.id));
   await publish(f, a);
   await run;
   const done = (

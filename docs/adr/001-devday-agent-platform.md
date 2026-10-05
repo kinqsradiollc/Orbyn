@@ -15,8 +15,10 @@ catalogs without hard output limits cannot enable budgeted private scheduling.
 
 Plugin managed/BYO inference is candidate PR203, now integrated with this main.
 Its earlier full local run had2902 passes, one catalog failure and one existing
-skip. The generated catalog repair passes4/4; fresh combined full qualification
-is running. External plugin-host and native/visual acceptance remain open.
+skip. The generated catalog repair passes4/4; combined full qualification ended2971 pass/1 timing-sensitive fixture failure/1
+existing skip. The positive resumption fixture is repaired without changing
+production guards;18 scheduled-runtime cases and five independent repeats pass.
+Fresh combined qualification is required. External plugin-host and native/visual acceptance remain open.
 Personal ChatGPT credentials stay excluded from plugin calls; portable MCP is
 independent. Slack replies have a separate pure boundary candidate, with no
 OAuth installation, mounted callback or delivery yet.

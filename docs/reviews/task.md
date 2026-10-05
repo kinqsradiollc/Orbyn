@@ -1,15 +1,15 @@
 # Current checkpoint and implementation pipeline — 5 October 2026
 
-| Work                        | Confirmed state                                                                                                      | Next implementation or acceptance                                                                                                |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| ChatGPT provider connection | Handoff/status fixes on main; selected-provider routing on main                                                      | Real web request to same-account desktop authorization and successful Responses completion; truthful plan/usage checks           |
-| Scheduled Agenda            | PR199 merged as8dcc4bb1; all four CI jobs pass,2938 tests pass and one existing skip;99 focused local passes         | Cross-client/native controls and real-provider acceptance; keep unsupported hard-limit catalogs ineligible                       |
-| Plugin inference            | PR203 broker, consent, private receipts and worker implemented; integrated current main; fresh full local/CI running | Inspect terminal results, promote qualified source, exercise external host and both client controls                              |
-| Settings layout             | Late grid override removed; themed inputs/secrets;15 focused passes, backend/web types and web build pass            | Browser/native visual acceptance; whole-app responsive layout audit remains open                                                 |
-| Slack/Teams channels        | Slack signed-payload/current-card pure boundary committed separately;7 tests pass                                    | Session-bound OAuth installation, encrypted credentials, durable outbox, callback/reply transaction, client controls; then Teams |
-| Docs parity                 | Several source/editor/Mermaid/math fixes on main                                                                     | Requirement-by-requirement D1 editor, export, import and native visual matrix                                                    |
-| Agents and maintained pages | Runtime/identity and prior maintained-page checkpoints on main                                                       | Complete governing collaboration/reflection/publication requirements and external/runtime acceptance                             |
-| Deployment and cleanup      | User deploys main; root dirt and related worktrees preserved                                                         | Confirm production recovery; cleanup only after remaining work is integrated and preserved                                       |
+| Work                        | Confirmed state                                                                                                                                                                                      | Next implementation or acceptance                                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT provider connection | Handoff/status fixes on main; selected-provider routing on main                                                                                                                                      | Real web request to same-account desktop authorization and successful Responses completion; truthful plan/usage checks           |
+| Scheduled Agenda            | PR199 merged as8dcc4bb1; all four CI jobs pass,2938 tests pass and one existing skip;99 focused local passes                                                                                         | Cross-client/native controls and real-provider acceptance; keep unsupported hard-limit catalogs ineligible                       |
+| Plugin inference            | PR203 broker, consent, private receipts and worker implemented; integrated current main; full local run ended2971 pass/1 timing-sensitive fixture fail/1 existing skip; repair qualification follows | Inspect terminal results, promote qualified source, exercise external host and both client controls                              |
+| Settings layout             | Late grid override removed; themed inputs/secrets;15 focused passes, backend/web types and web build pass                                                                                            | Browser/native visual acceptance; whole-app responsive layout audit remains open                                                 |
+| Slack/Teams channels        | Slack signed-payload/current-card pure boundary committed separately;7 tests pass                                                                                                                    | Session-bound OAuth installation, encrypted credentials, durable outbox, callback/reply transaction, client controls; then Teams |
+| Docs parity                 | Several source/editor/Mermaid/math fixes on main                                                                                                                                                     | Requirement-by-requirement D1 editor, export, import and native visual matrix                                                    |
+| Agents and maintained pages | Runtime/identity and prior maintained-page checkpoints on main                                                                                                                                       | Complete governing collaboration/reflection/publication requirements and external/runtime acceptance                             |
+| Deployment and cleanup      | User deploys main; root dirt and related worktrees preserved                                                                                                                                         | Confirm production recovery; cleanup only after remaining work is integrated and preserved                                       |
 
 The full ADR goal remains active. Browser review again rejected5174 due to saved
 Block, without workaround. Native Simulator review returned timeout -10005.
@@ -2472,3 +2472,20 @@ No main merge, production deployment or cleanup. Full C1–C6/M1/D1/U1 remains a
 ### 2026-10-05 — Agenda catalog compatibility and shared-clock qualification repair
 
 CI 37286333130 on 50a92aa2 failed three tests (2927 passed, one existing Tesseract skip). Preserve the legacy internal catalog response as well as the HTTP response: capabilities now require an explicit opt-in argument, and capability assertions exercise that opt-in. Preserve both cross-runtime serialization assertions: fixed schedule fixtures now place their claimed page leases on the live chat runner's wall clock using the unchanged PAGE_RUN_LEASE_MS. No production runtime capacity or lease duration changed. Backend typecheck passed (/tmp/orbyn-agenda-catalog-clock-types.log). Database cases await exact-head CI; local test PostgreSQL remains unavailable. ADR remains incomplete.
+
+### Scheduled Agenda resumption fixture — 5 October 2026
+
+Combined plugin source4454ea0f full local test completed2971 passes, one failure
+and one existing Tesseract skip. The resumption positive fixture committed a
+human note while the live worker could acquire a NOWAIT page guard, correctly
+causing fail-closed refusal. Commit the unrelated note before resumption instead;
+retain operation identity,512 output cap, and exact note-preservation assertions.
+The separate actual conflicting-edit/NOWAIT regression remains unchanged.
+Production guards, leases, capacities and billing limits are unchanged.
+
+Repaired scheduled-runtime suite18/18 passes without skips, followed by five
+independent subprocess repeats of the offline/resumption case, all passing on
+the isolated marked Agenda test database. Logs:/tmp/orbyn-agenda-resumption-0.log
+through /tmp/orbyn-agenda-resumption-5.log. Docs pure cohort108/108 is recorded in
+[evidence](evidence/markdown-parity-current.md). Full combined plugin qualification
+must be repeated before its main promotion; visual/native acceptance remains open.
