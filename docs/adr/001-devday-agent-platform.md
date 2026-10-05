@@ -2081,3 +2081,13 @@ returns a bounded scheduling delay. Thirty-one protocol cases pass, including
 OAuth and incoming Connector authentication. The transport is unconfigured and
 unwired pending durable outbox, authority/race/restart qualification and both
 client controls. Real/native/visual acceptance and full C1–C6/M1/D1/U1 remain open.
+
+### Teams durable delivery — candidate, 6 October 2026
+
+A separate revision-bound Teams outbox now rechecks current owner/source/grant
+authority through dispatch and preserves unknown outcomes without replay.
+Background-only transitions and one generic morning Overnight result stay
+separate; fixed receipt retention is defined. Seven cold-pool database cases pass.
+Transition/worker hooks, explicit DM opt-in, lifecycle events, commit/race gates,
+question replies and client controls remain unmounted. Complete A6 and broader
+C1–C6/M1/D1/U1 acceptance remains open.

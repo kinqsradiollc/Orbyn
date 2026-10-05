@@ -196,3 +196,32 @@ Primary contract: [Bot Connector application authentication](https://learn.micro
 The identity checkpoint05dc8265 full local suite is still running unchanged; it
 has exposed stale generated MCP catalog documentation. Preserve the terminal
 result, regenerate the catalog, then rerun exact-source qualification.
+
+## Durable Teams outbox — candidate, 6 October 2026
+
+Migration249 gives Teams a distinct delivery namespace tied to its reviewed
+conversation mapping and revision. Job intents queue only Background/nonidea
+transitions; Overnight queues only the generic morning summary after its window.
+Dispatch decrypts outside transactions, then rechecks owner, grant, exact
+conversation/configuration/revision, project/team/source visibility and waiting
+ID under the existing source advisory fence. Provider acceptance and outcome
+commit are separate boundaries; expired claims become unknown, not queued.
+Explicit429 and pre-send credential unavailability retry at most three attempts.
+Fixed fourteen-day retention covers terminal/expired content-free receipts.
+
+/tmp/orbyn-channel-teams-outbox-cold-initial.log passes7/7 on a separately marked
+test database with pool1, empty SECRETS_KEY and mocked transport. Covered cases:
+dedup/owned recipient/agent identity, hidden idea and per-night-job exclusion,
+consent/owner/project/grant/configuration/conversation revocation, unknown and
+expired-claim recovery, bounded rate-limit attempts, stale waiting IDs and one
+generic morning message. Backend types/build pass in
+/tmp/orbyn-channel-teams-outbox-qualified-types.log,
+/tmp/orbyn-channel-teams-outbox-qualified-build.log and the later sweep-rule
+/tmp/orbyn-channel-teams-outbox-latest-types.log. Retention database acceptance
+remains open; the rule is fixed in the hourly sweeper.
+
+This is not wired into transition hooks or worker delivery. DM opt-in, lifecycle
+callbacks, shared-source races, post-acceptance commit ambiguity, reply cards,
+HTTP shields, both clients and real tenant acceptance remain required before
+Teams messaging is enabled. The source of PR205 is separately immutable while
+its repaired full suite runs; no local DB suites overlap. Full ADR remains open.

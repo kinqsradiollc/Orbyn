@@ -80,6 +80,19 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "agent_channel_teams_outbox",
+    label: "Teams agent delivery receipts",
+    detail:
+      "Content-free delivery identities, timestamps and outcomes; messages remain at the connected provider.",
+    table: "agent_channel_teams_outbox",
+    where: `updated_at < now() - interval '14 days' AND (
+      state IN ('sent','failed','unknown','cancelled')
+      OR (state='queued' AND expires_at < now())
+      OR (state='dispatching' AND lease_until < now()))`,
+    days: 14,
+    configurable: false,
+  },
+  {
     key: "agent_channel_oauth_pending",
     label: "Agent channel connection attempts",
     detail:
