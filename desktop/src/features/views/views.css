@@ -512,7 +512,7 @@
 /* The gallery (DATA-05). */
 .view-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
   gap: 12px;
 }
 .view-gallery-card {
@@ -819,4 +819,43 @@
   .view-calendar-chip {
     padding: 2px 4px;
   }
+}
+
+/* The page can be narrower than the window when app panels are open. */
+.views-screen.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+}
+.views-screen.is-compact .views-rail {
+  position: static;
+  max-height: none;
+  overflow-y: visible;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.views-screen.is-compact .views-rail-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.views-screen.is-compact .views-rail-group .nav-label {
+  width: 100%;
+}
+.views-screen.is-small :is(.views-toolbar, .views-body) {
+  padding-left: 17px;
+  padding-right: 17px;
+}
+.views-screen.is-small .views-toolbar .segmented {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.views-screen.is-small .view-calendar-day {
+  min-height: 64px;
+  padding: 4px;
+}
+.views-screen.is-small .view-calendar-chip {
+  padding: 2px 4px;
 }

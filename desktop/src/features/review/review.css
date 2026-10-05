@@ -111,6 +111,7 @@
 }
 .review-rows {
   width: 100%;
+  table-layout: fixed;
   margin-top: 8px;
   border-collapse: collapse;
   font-size: 13px;
@@ -153,6 +154,7 @@
 }
 .review-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 16px;
@@ -177,4 +179,28 @@
   .review-rows th {
     width: 84px;
   }
+}
+
+.review-view.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+}
+.review-list {
+  min-width: 0;
+}
+.review-card-text small {
+  overflow-wrap: anywhere;
+}
+.review-note {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.review-view.is-small .review-detail {
+  padding: 14px;
+}
+.review-view.is-small .review-actions > * {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.review-view.is-small .review-rows th {
+  width: 84px;
 }

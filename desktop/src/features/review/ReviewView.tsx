@@ -1,3 +1,4 @@
+import { useElementWidth } from "../../hooks/useElementWidth";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -52,6 +53,7 @@ const STATUS: Record<ReviewItem["status"], string> = {
  * until you approve, and only you, signed in here, can.
  */
 export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
+  const { ref: pageRef, width: pageWidth } = useElementWidth();
   const { ask } = useConfirm();
   const [inbox, setInbox] = useState<ReviewInbox | null>(null);
   const [openId, setOpenId] = useState<string | null>(focusId ?? null);
@@ -186,7 +188,14 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
     open?.changes.some((c) => c.stale && chosen.has(c.index)) ?? false;
 
   return (
-    <div className="review-view">
+    <div
+      ref={pageRef}
+      className={
+        "review-view" +
+        (pageWidth < 900 ? " is-compact" : "") +
+        (pageWidth < 520 ? " is-small" : "")
+      }
+    >
       <section className="review-list" aria-label="Waiting for you">
         {inbox.pending.length ? (
           <ul>{inbox.pending.map(card)}</ul>

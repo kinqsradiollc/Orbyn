@@ -4,18 +4,36 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `d4cbff9d` (PR211), pushed. Reference titles and
-balanced inline-object privacy are merged after the fresh full local suite passed
-3437/0/1 on `217bc7eb`, terminal0. Final `a34ed83b` only reformats one test; an AST
-comparison confirms unchanged assertions. Application source matches main. Final
-CI37360062404 is still running; earlier integrated `e04f2c57` passed all four jobs.
-The format-only CI failure on217bc7eb is retained, not presented as success.
-PR212 actual-main integration `9f0247df` is pushed, draft:12 focused cases,
-packages/desktop types/build and formatting pass; serial full DB34 and CI are live.
-Word hyperlinks/import and reference-preview privacy remain a candidate;48 focused
-API/parser/privacy checks pass on fresh DB33. Finish full qualification before
-promotion. Browser/native visual acceptance, production deployment and the full
-C1–C6/M1/D1/U1 goal remain incomplete. User deploys manually.
+Main application checkpoint is `de29d871` (PR212), pushed. Docs rails respond to
+available editor width after navigation/library panels. Exact9f0247df passed12
+focused cases and fresh full DB34:3441/0/1, terminal0,739091ms. CI37361223961
+attempt2 now passed all four jobs. Attempt1 Gantt Chromium startup failure remains
+recorded in `/tmp/orbyn-doc-container-9f0247df-ci.log`; no assertions or limits
+changed. Automated qualification does not establish visual/native acceptance.
+
+PR211 reference titles and inline-object privacy are merged; finala34ed83b passed
+all four CI37360062404 jobs. Its full application suite passed3437/0/1.
+Word/reference-preview privacy PR213 is draft atad83a3d8, pushed and mergeable.
+Fresh DB36 full ended3453pass/7fail/1existing skip: all failures were the actual
+export-route VM fixture missing the new linkPrivacy dependency. The repaired mock
+retains primary/revision/privacy assertions;50 focused cases and backend types/
+format pass. Repaired immutable full DB37 is running:
+`/tmp/orbyn-channel-doc-word-repaired-full.log`. CI37364955550 is queued.
+
+Quote continuation and Word quote import candidate53ec9913 is pushed; prior88-case
+cohort passed, latest literal-anchor/source cohort58/58 and all workspace types/
+format pass. Actual Word/main integration and full combined qualification are next.
+Footnote/quote/Word combined candidate83a08307 is pushed:120 parser/source/HTML/Word
+and export-primary fixture cases pass, workspace types/backend/web builds/format
+pass. Word fixturead83a3d8 and quote53ec9913 are integrated; source conflicts were
+resolved retaining both features. Upload/conversion/
+storage/source-export ownership regression is added but awaits the serial database
+slot. Candidate preserves IDs, markers, links and hard breaks, rejects malformed
+archive relationships/IDs and retains existing size limits. It is not on main.
+Nested containers, media and bookmarks remain explicit D1 gaps. Browser/native
+visual acceptance, real provider/tenant acceptance, production deployment and full
+C1-C6/M1/D1/U1 remain incomplete. User deploys manually; character/user work is
+preserved. No Docker restart, cleanup or production deployment occurred.
 
 | Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
