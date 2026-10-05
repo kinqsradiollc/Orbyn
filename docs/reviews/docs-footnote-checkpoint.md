@@ -1,6 +1,6 @@
 # Footnote continuation and Word import — 6 October 2026
 
-Status: implementation candidate; not merged or visually accepted.
+Status: merged as PR215 (`8e792ecb`); visual/native acceptance remains open. Earlier qualification notes below describe their named candidate sources.
 Word/privacy fixture repairad83a3d8 and quote continuation53ec9913 are now
 integrated. Overlaps in core constants, standalone anchors and importer imports
 were resolved by retaining both changes; no conflict markers remain.
@@ -53,3 +53,16 @@ Combined workspace types/backend/web builds/full formatting pass; evidence is
 recorded under `/tmp/orbyn-doc-footnote-quote-*.log`. Mounted import ownership
 regression and full database suite remain required; PR213's immutable repaired
 suite still owns the serial database slot. Source acceptance is incomplete.
+
+## Merged combined qualification
+
+Exact `5f5a1833` includes main PR213/214 without application conflicts.131 focused
+and29 mounted cases pass, including uploaded Word footnote conversion, stored
+markers/text, source export, cross-owner refusal and uploaded-file cleanup.
+All workspace types, backend/web builds and full formatting pass. Fresh full DB39
+completed3498 passes/0 failures/1 existing skip, terminal0,733948ms:
+`/tmp/orbyn-channel-doc-footnote-main-full.log`.
+PR215 merged `8e792ecb`; application diff versus tested head is empty.
+CI37366986451 passed mail/mobile/Docker, but backend/web was cancelled without a
+failing step and was rerun. No all-green CI or browser/native proof is claimed.
+Remaining structured containers and full D1/U1 acceptance stay in scope.

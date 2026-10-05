@@ -1,56 +1,62 @@
 # Authoritative implementation pipeline — 6 October 2026
 
-Main application checkpoint is `de29d871` (PR212), pushed. Docs rails respond to
-available editor width after navigation/library panels. Exact9f0247df passed12
-focused cases and fresh full DB34:3441/0/1, terminal0,739091ms. CI37361223961
-attempt2 now passed all four jobs. Attempt1 Gantt Chromium startup failure remains
-recorded in `/tmp/orbyn-doc-container-9f0247df-ci.log`; no assertions or limits
-changed. Automated qualification does not establish visual/native acceptance.
+Main application checkpoint is `8e792ecb` (PR215), pushed. The combined
+quote/footnote candidate `5f5a1833` completed fresh full DB39:3498 passes,
+zero failures and one existing skip, terminal0,733948ms. Its application source
+matches merged main.131 parser/source/HTML/Word/export/layout cases and29 mounted
+import/privacy cases pass; packages, all workspace types, backend/web builds and
+full formatting pass. Evidence: `/tmp/orbyn-channel-doc-footnote-main-full.log`,
+`/tmp/orbyn-doc-footnote-main-focused.log` and
+`/tmp/orbyn-channel-doc-footnote-main-mounted.log`.
 
-PR211 reference titles and inline-object privacy are merged; finala34ed83b passed
-all four CI37360062404 jobs. Its full application suite passed3437/0/1.
-Word/reference-preview privacy PR213 is draft atad83a3d8, pushed and mergeable.
-Fresh DB36 full ended3453pass/7fail/1existing skip: all failures were the actual
-export-route VM fixture missing the new linkPrivacy dependency. The repaired mock
-retains primary/revision/privacy assertions;50 focused cases and backend types/
-format pass. Repaired immutable full DB37 is running:
-`/tmp/orbyn-channel-doc-word-repaired-full.log`. CI37364955550 is queued.
+Word/reference privacy PR213 is merged `bb9c10f5`, repaired full3460/0/1.
+CI37364955550 passed backend/web and Docker; cancelled mail/mobile jobs had no
+executed steps. Attempt2 is queued. Views/Review available-width and native
+wrapping PR214 merged `773f1441`, with18 focused passes and types/build/format.
+CI37366765411 ended with all jobs cancelled; failed jobs were rerun. PR215
+CI37366986451 passed mail/mobile/Docker; backend/web was cancelled, and was
+rerun. No failing step was reported in these cancellations; no all-green claim.
+PR212 attempt2 and PR211 final CI passed all four jobs.
 
-Quote continuation and Word quote import candidate53ec9913 is pushed; prior88-case
-cohort passed, latest literal-anchor/source cohort58/58 and all workspace types/
-format pass. Actual Word/main integration and full combined qualification are next.
-Footnote/quote/Word combined candidate83a08307 is pushed:120 parser/source/HTML/Word
-and export-primary fixture cases pass, workspace types/backend/web builds/format
-pass. Word fixturead83a3d8 and quote53ec9913 are integrated; source conflicts were
-resolved retaining both features. Upload/conversion/
-storage/source-export ownership regression is added but awaits the serial database
-slot. Candidate preserves IDs, markers, links and hard breaks, rejects malformed
-archive relationships/IDs and retains existing size limits. It is not on main.
-Nested containers, media and bookmarks remain explicit D1 gaps. Browser/native
-visual acceptance, real provider/tenant acceptance, production deployment and full
-C1-C6/M1/D1/U1 remain incomplete. User deploys manually; character/user work is
-preserved. No Docker restart, cleanup or production deployment occurred.
+The pushed, unmerged `codex/docs-structured-containers` candidate `20752130` preserves nested
+quote/list typed children, IDs/source ranges and whole-page reference/footnote
+context.94 focused and11 fresh mounted library-hierarchy cases pass; types and
+backend/web builds and full formatting pass. Fresh immutable full DB41 is running
+(`/tmp/orbyn-channel-container-20752130-full.log`); keep source frozen.
+Storage/API versioning, CRDT and both editors/export
+integration remain required. See [container integration gates](docs-container-audit.md#structured-container-candidate--6-october-2026).
+This source candidate is not a shipped D1 feature.
 
-| Order | Work                     | State                                                                                                 | Next action                                                                                              |
-| ----- | ------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 1     | Docs links and privacy   | PR211 merged; PR213 Word/reference-preview candidate passes65 focused cases                           | Freeze combined Word source, qualify full suite/CI and merge checkpoint                                  |
-| 2     | Docs layout              | PR212 merged de29d871; local full3441/0/1; CI Chromium startup rerun pending                          | Retain CI startup diagnosis and browser/native visual acceptance gates                                   |
-| 3     | Remaining Docs D1        | Shared Markdown/Mermaid/source/export checkpoints on main                                             | Complete containers, images, footnotes/bookmarks, code/math and diagram-family round-trip matrices       |
-| 4     | Whole-app U1             | Settings modal and responsive checkpoints on main                                                     | Review each web/desktop/mobile page and narrow/collapsed/keyboard/large-text states                      |
-| 5     | Provider/agents C1-C6/M1 | Routing, catalogs, separate plugin and Background/Overnight runtimes, reflection and channels on main | Audit retained budgets/collaboration/shared-publication contract and real account/tenant/host acceptance |
-| 6     | Deployment/cleanup       | User deploys main; character/user work preserved                                                      | Final equivalence audit and cleanup after relevant integration                                           |
+Versioned content/source contract `04da502e` is pushed separately on
+`codex/docs-container-storage-contract`.108 focused cases, all workspace types,
+backend/web builds and whole formatting pass. It rejects unsupported formats,
+unknown fields, duplicate/cyclic identity and lossy source/downgrade conversion.
+The Docs API, database migration, revisions/history, CRDT and both editors still
+need adoption; no new stored format is enabled. The serial full DB41 remains
+frozen on20752130; this follow-up has no full combined qualification yet.
+A fresh native Simulator selection again timed out -10005. No visual/native
+proof or full-goal completion is claimed.
 
-Evidence: `/tmp/orbyn-channel-reference-privacy-full.log` (3437/0/1),
-`/tmp/orbyn-reference-privacy-format-ast-proof.log`,
-`/tmp/orbyn-channel-doc-reference-previews-final.log` (48/48),
-`/tmp/orbyn-doc-container-integrated-focused.log` (12/12),
-`/tmp/orbyn-channel-doc-container-integrated-full.log` (3441/0/1, terminal0).
-The Word tests exposed private reference labels in backlink/line previews because
-single-line snippets lacked page definitions. Repairs preserve source-order first
-match, current source visibility, owner/viewer distinctions and target-only privacy
-checks for self-links. Prior failures remain in their logs. Browser5174 saved Block
-and Simulator timeout -10005 remain recorded; no new screenshots are claimed.
-No Docker mutation, production deployment or cleanup occurred.
+ChatGPT web handoff, feedback and selected-provider routing are already on main.
+Web creates an opaque same-account request for desktop official authorization;
+it does not launch an unregistered `orbyn://` scheme automatically. Real handoff,
+successful eligible inference and whole-account plan/usage acceptance remain open.
+Prior actual inference was refused for sharing quota exhaustion. No new chargeable
+probe or invented quota was used. Unsupported hard-limit catalogs remain ineligible
+for budgeted scheduling.
+
+Browser5174 remains blocked by the tool's saved permission, and Simulator
+inspection timed out -10005; no new visual/native acceptance is claimed.
+Full C1-C6/M1/D1/U1 remains active and incomplete. Character/user files are
+preserved, Docker is unchanged, user deploys manually, and cleanup remains later.
+
+| Order | Work                        | Confirmed state                                                                            | Next implementation or acceptance                                                     |
+| ----- | --------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 1     | Docs quote/footnote/privacy | PR213/215 merged; repaired full3460/0/1 and3498/0/1                                        | Inspect rerun CI; actual editor/import/export acceptance                              |
+| 2     | Structured Docs D1          | Experimental parser/source/HTML candidate;94+11 tests pass                                 | Stored/API compatibility, privacy adapters, CRDT and both editors; PDF/Word matrices  |
+| 3     | Whole-app U1                | Responsive Views/Review, native wrapping and earlier settings/assistant checkpoints merged | Every page, narrow/collapsed/panel/large-text states and actual visual/native review  |
+| 4     | Providers/agents C1-C6/M1   | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged            | Governing budget/collaboration/publication audit; real account/tenant/host acceptance |
+| 5     | Production and cleanup      | Main checkpoints pushed; user files/worktrees preserved                                    | User deployment confirmation; final relevant integration and cleanup audit            |
 
 # Historical implementation pipeline — earlier 6 October 2026
 
