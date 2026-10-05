@@ -31,6 +31,16 @@ Storage/API versioning, CRDT and both editors/export
 integration remain required. See [container integration gates](../reviews/docs-container-audit.md#structured-container-candidate--6-october-2026).
 This source candidate is not a shipped D1 feature.
 
+Versioned content/source contract `04da502e` is pushed separately on
+`codex/docs-container-storage-contract`.108 focused cases, all workspace types,
+backend/web builds and whole formatting pass. It rejects unsupported formats,
+unknown fields, duplicate/cyclic identity and lossy source/downgrade conversion.
+The Docs API, database migration, revisions/history, CRDT and both editors still
+need adoption; no new stored format is enabled. The serial full DB41 remains
+frozen on20752130; this follow-up has no full combined qualification yet.
+A fresh native Simulator selection again timed out -10005. No visual/native
+proof or full-goal completion is claimed.
+
 ChatGPT web handoff, feedback and selected-provider routing are already on main.
 Web creates an opaque same-account request for desktop official authorization;
 it does not launch an unregistered `orbyn://` scheme automatically. Real handoff,
