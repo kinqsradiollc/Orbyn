@@ -113,3 +113,22 @@ This candidate has no client connection screens, durable DM outbox, rotating
 token worker or mounted reply handler. No external message or authorized live
 installation was performed. Keep source qualification, real Slack/native UI
 acceptance, Teams and the whole ADR goal open. This source is not on main.
+
+## Callback inventory correction and final focused rerun
+
+The full7fbce27e run was stopped deliberately after review found the public OAuth
+callback incorrectly listed among session-only exclusions. No complete-suite
+pass is claimed from /tmp/orbyn-channel-7fbce27e-full.log. Classify that callback
+as PUBLIC and retain every authenticated installation endpoint in EXCLUDED.
+The unchanged route inventory/audience assertions now pass with both installation
+and mounted endpoint suites:17/17 in /tmp/orbyn-channel-route-inventory-db.log.
+Final pure rerun34/34 passes in /tmp/orbyn-channel-mounted-pure-final.log.
+Workspace types and formatting pass in /tmp/orbyn-channel-mounted-types-final.log
+and /tmp/orbyn-channel-mounted-format-final.log. Full local/CI qualification
+remains open before promotion. No shield assertion was weakened.
+
+The existing5174 preview process was found serving7f60b352,39 commits behind
+main. Its clean tracked checkout was fast-forwarded to8b6748c5 and package
+builds passed; both untracked connection-preview files were preserved. The
+listener is still running. This metadata check is not a browser screenshot
+or a visual acceptance claim.
