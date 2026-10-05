@@ -1799,3 +1799,18 @@ recovery UI, target/body/source consistency through page application, native vis
 acceptance and real positive OpenAI inference remain required. Snapshot rereads
 on the same connection do not prove atomic fencing of all source/policy changes.
 The complete C1–C6/M1/D1/U1 scope remains active.
+
+### Qualified October 5 checkpoints and remaining P1 execution
+
+Main2f4108d7 now contains the source-dialog focus fix (PR202) and bounded,
+independently authenticated plugin launch context (PR201), each qualified by all
+four CI jobs. Their component/HTTP evidence does not establish browser/native
+visual acceptance or external host delivery. Main03c605e2 earlier improved the
+automatic desktop handoff for web/mobile ChatGPT connection requests.
+
+Managed plugin inference remains a candidate: explicit owner consent must bind
+provider revision/model and both allowances; durable receipts retain dispatched
+unknown outcomes without retry, and personal ChatGPT credentials/transports remain
+excluded. The implemented consent/storage foundation is not an enabled inference
+feature. Complete the broker, both client controls and runtime/security acceptance
+before promoting it. The full C1-C6/M1/D1/U1 contract remains unchanged and open.
