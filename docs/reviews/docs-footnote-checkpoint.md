@@ -1,8 +1,9 @@
 # Footnote continuation and Word import — 6 October 2026
 
 Status: implementation candidate; not merged or visually accepted.
-Based on Word/privacy integration500ace6c. The repaired export-route test fixture
-ad83a3d8 must be integrated before combined qualification.
+Word/privacy fixture repairad83a3d8 and quote continuation53ec9913 are now
+integrated. Overlaps in core constants, standalone anchors and importer imports
+were resolved by retaining both changes; no conflict markers remain.
 
 ## Changes
 
@@ -42,3 +43,13 @@ Full combined database qualification, mounted import acceptance, main integratio
 and browser/native interaction remain required. Complex nested block content in
 footnotes, endnotes, bookmarks and arbitrary Word media are not completed here.
 The full C1-C6/M1/D1/U1 ADR goal remains open. No deployment or cleanup occurred.
+
+## Combined source checkpoint
+
+Integrated8e2f57ed passes120/120 parser/source/HTML/Word and export-route primary
+fixture cases, zero failures/skips:
+`/tmp/orbyn-doc-footnote-quote-integrated-focused.log`. Packages build passes.
+Combined workspace types/backend/web builds/full formatting pass; evidence is
+recorded under `/tmp/orbyn-doc-footnote-quote-*.log`. Mounted import ownership
+regression and full database suite remain required; PR213's immutable repaired
+suite still owns the serial database slot. Source acceptance is incomplete.
