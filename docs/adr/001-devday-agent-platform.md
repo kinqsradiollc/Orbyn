@@ -146,6 +146,34 @@ preserved, Docker is unchanged, user deploys manually, and cleanup remains later
 
 ## Main checkpoint notes retained during integration
 
+## Updated main handoff retained during integration
+
+## Current combined Docs checkpoint — 6 October 2026
+
+| Work                           | Verified state                                                            | Next gate                                                             |
+| ------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Structured storage/API/history | PR216 head5511d215, pushed;117 fresh DB52 mounted cases pass              | Full fresh DB53 running, session98110                                 |
+| Container exports              | Markdown/HTML/PDF/Word/plain text adapters implemented;72 pure cases pass | Complete structured rendering/import/visual matrices                  |
+| Build checks                   | Packages/all workspace types/backend/web builds/full formatting pass      | Frozen combined full regression and CI37376039791                     |
+| Earlier API full               | 357b58cd DB51:3554 pass,1 fail,1 skip; terminal1                          | Inventory omission corrected without changing assertions; DB52 passes |
+| Main                           | Application e7232e11, docs516db089; user work preserved                   | Promote qualified combined checkpoint                                 |
+
+[PR216](https://github.com/kinqsradiollc/Orbyn/pull/216) remains draft, now contains
+storage, capability-negotiated API, private-label limits, legacy restore protection
+and ownership-preserving exports. Full log:
+`/tmp/orbyn-channel-structured-combined-5511d215-full.log`.
+Do not run another DB suite or mutate its frozen checkout while session98110 lives.
+CI mail has passed; the other three jobs were in progress at this update.
+No full-pass/merge/deployment claim is made.
+
+The previous temporary Word/plain-text409 boundary is replaced by typed adapters.
+Word archive checks establish XML/numbering/content order, not a rendered layout or
+Word import round-trip. Both editors/CRDT/task mapping/typed agent integration,
+complete source/import/render matrices, real ChatGPT authorization/inference and
+truthful account plan/usage acceptance, whole-app UI and remaining C1-C6/M1/D1/U1
+stay in scope. Character/user files remain preserved; no cleanup yet. Historical
+sections retain original point-in-time results.
+
 ## Current continuation — 6 October 2026
 
 | Checkpoint             | State                                                                    | Next gate                                                                                       |
