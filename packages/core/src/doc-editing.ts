@@ -9,6 +9,7 @@ import {
   parseDocInline,
   type DocBlock,
   type DocInline,
+  type DocStyleRange,
   type DocKind,
   type DocVersion,
   type HighlightTint,
@@ -44,11 +45,6 @@ const hasStyle = (run: DocInline, style: InlineStyle) =>
           ? !!run.strike
           : !!run.highlight;
 
-/** How long a run's opening marker is: `==`, or `=={green}` for a tint. */
-const openLength = (run: DocInline, style: InlineStyle) =>
-  STYLE_MARKERS[style].length +
-  (style === "highlight" && run.tint ? run.tint.length + 2 : 0);
-
 /** Characters a style's words cannot hold, since they would end it early. */
 const FORBIDDEN: Record<InlineStyle, string> = {
   bold: "*",
@@ -60,8 +56,7 @@ const FORBIDDEN: Record<InlineStyle, string> = {
 
 /**
  * True when every character of the stretch is plain text: no markers, and
- * nothing already styled. A line's styles don't nest yet, so only plain
- * words can take a new one.
+ * nothing already styled. Inline objects remain atomic; this helper is for link insertion.
  */
 function allPlain(text: string, start: number, end: number): boolean {
   let covered = 0;
@@ -93,8 +88,8 @@ function hug(text: string, start: number, end: number) {
  * Markdown still reads. With nothing selected, the two markers go in with
  * the caret between them, ready to type into.
  *
- * Returns null when the words can't take the style: a stretch that crosses
- * words styled another way, or words holding the style's own marker.
+ * Returns null for atomic inline objects, marker-crossing selections or words
+ * holding the requested style's delimiter.
  */
 export function styleRange(
   text: string,
@@ -104,24 +99,38 @@ export function styleRange(
 ): Restyled | null {
   if (end < start) [start, end] = [end, start];
   const m = STYLE_MARKERS[style];
-  const runs = parseDocInline(text);
-  for (const run of runs) {
-    if (!hasStyle(run, style)) continue;
-    const runEnd = run.start + run.text.length;
-    const lead = openLength(run, style);
-    const open = run.start - lead;
-    const unwrapped =
-      text.slice(0, open) + run.text + text.slice(runEnd + m.length);
-    // The words with their markers selected: the style comes off them.
-    if (start === open && end === runEnd + m.length)
-      return { text: unwrapped, start: open, end: open + run.text.length };
-    if (start >= run.start && end <= runEnd)
-      return { text: unwrapped, start: start - lead, end: end - lead };
+  const ranges: DocStyleRange[] = [];
+  const runs = parseDocInline(text, undefined, (range) => ranges.push(range));
+  const existing = ranges
+    .filter(
+      (range) =>
+        range.kind === style &&
+        ((start >= range.openEnd && end <= range.closeStart) ||
+          (start === range.openStart && end === range.closeEnd)),
+    )
+    .sort((a, b) => a.closeEnd - a.openStart - (b.closeEnd - b.openStart))[0];
+  if (existing) {
+    const { openStart, openEnd, closeStart, closeEnd } = existing;
+    const translate = (at: number) =>
+      at -
+      Math.max(0, Math.min(at, openEnd) - openStart) -
+      Math.max(0, Math.min(at, closeEnd) - closeStart);
+    return {
+      text:
+        text.slice(0, openStart) +
+        text.slice(openEnd, closeStart) +
+        text.slice(closeEnd),
+      start: translate(start),
+      end: translate(end),
+    };
   }
   if (start === end) {
     // A caret inside words styled some other way can't start a new style.
     const inside = runs.some(
-      (r) => isStyled(r) && start > r.start && start < r.start + r.text.length,
+      (r) =>
+        (r.code || r.math || r.link || r.source || r.footnote) &&
+        start > r.start &&
+        start < r.start + r.text.length,
     );
     if (inside) return null;
     return {
@@ -130,7 +139,16 @@ export function styleRange(
       end: start + m.length,
     };
   }
-  if (!allPlain(text, start, end)) return null;
+  let covered = 0;
+  for (const run of runs) {
+    const from = Math.max(start, run.start),
+      to = Math.min(end, run.start + run.text.length);
+    if (to <= from) continue;
+    if (run.code || run.math || run.link || run.source || run.footnote)
+      return null;
+    covered += to - from;
+  }
+  if (covered !== end - start) return null;
   const { s, e } = hug(text, start, end);
   if (s === e) return null;
   const inner = text.slice(s, e);
@@ -157,16 +175,28 @@ export function tintRange(
 ): Restyled | null {
   if (end < start) [start, end] = [end, start];
   const prefix = tint === "amber" ? "" : `{${tint}}`;
-  for (const run of parseDocInline(text)) {
-    if (!run.highlight) continue;
-    const runEnd = run.start + run.text.length;
-    const lead = openLength(run, "highlight");
-    const open = run.start - lead;
-    // Inside words already highlighted: only their colour changes.
-    if (start < open || end > runEnd + 2) continue;
-    const next = text.slice(0, open) + "==" + prefix + text.slice(run.start);
-    const shift = 2 + prefix.length - lead;
-    return { text: next, start: run.start + shift, end: runEnd + shift };
+  const ranges: DocStyleRange[] = [];
+  parseDocInline(text, undefined, (range) => ranges.push(range));
+  const existing = ranges
+    .filter(
+      (range) =>
+        range.kind === "highlight" &&
+        start >= range.openStart &&
+        end <= range.closeEnd,
+    )
+    .sort((a, b) => a.closeEnd - a.openStart - (b.closeEnd - b.openStart))[0];
+  if (existing) {
+    const opening = "==" + prefix;
+    const next =
+      text.slice(0, existing.openStart) +
+      opening +
+      text.slice(existing.openEnd);
+    const shift = opening.length - (existing.openEnd - existing.openStart);
+    return {
+      text: next,
+      start: existing.openEnd + shift,
+      end: existing.closeStart + shift,
+    };
   }
   if (start === end) return null;
   const plain = styleRange(text, start, end, "highlight");

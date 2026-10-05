@@ -114,10 +114,13 @@ export function pdfBrowserPipe(
       );
       if (message.length > MAX_MESSAGE_BYTES) return Promise.reject(error());
       return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(
-          () => stop(new Error("Document PDF rendering timed out.")),
-          timeoutMs,
-        );
+        const timer = setTimeout(() => {
+          const stage =
+            /^(?:Browser|Target|Page|Runtime|Fetch)\.[A-Za-z]+$/.test(method)
+              ? ` (${method})`
+              : "";
+          stop(new Error(`Document PDF rendering timed out${stage}.`));
+        }, timeoutMs);
         pending.set(id, {
           resolve: (value) => resolve(value as T),
           reject,
