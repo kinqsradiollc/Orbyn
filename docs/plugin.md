@@ -3,6 +3,27 @@
 The plugin service authenticates its own OAuth recipient independently of browser
 sessions and the portable MCP recipient. It reuses authorized domain capabilities.
 
+### Host launch context
+
+Send `POST /plugin/launch` with a plugin OAuth bearer token and a bounded body:
+
+```json
+{
+  "version": 1,
+  "presentation": { "theme": "system", "locale": "en-AU" }
+}
+```
+
+`presentation` and `resource_uri` are optional. Choose a resource identifier from
+`GET /plugin/resources` when selecting a card.
+The response identifies the authenticated account, grant and OAuth client, lists
+its currently allowed UI resources, and confirms the selected resource when
+provided. Theme/locale are presentation hints only. It does not issue a session,
+invoke a provider, fetch a URL or authorize a tool call. Resource reads and tool
+calls continue to recheck current authority independently. Unknown fields,
+host-supplied credentials/account/provider identifiers and query parameters are
+rejected. UI selection requires the existing UI opt-in and current tool scope.
+
 ### Plugin import progress resources
 
 The independently authenticated plugin recipient returns an `Import progress`
