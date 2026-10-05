@@ -207,17 +207,71 @@ test("titled and formatted inline object links redact through reads, exports and
   assert.match(exported.body, /Public guide hint/);
   const edited = await call(ben, "PUT", `/docs/${id}`, {
     version: shown.json().version,
-    content: shown
-      .json()
-      .content.map((block: { text: string }) => ({
-        ...block,
-        text: block.text + " Added.",
-      })),
+    content: shown.json().content.map((block: { text: string }) => ({
+      ...block,
+      text: block.text + " Added.",
+    })),
   });
   assert.equal(edited.statusCode, 200, edited.body);
   noSecrets(edited.body, "titled inline save response");
   const original = await call(ana, "GET", `/docs/${id}`);
   assert.equal(original.json().content[0].text, storedText + " Added.");
+});
+
+test("Word hyperlink relationships contain only readable object targets and authored hints", async () => {
+  const { readZip } = await import("../src/modules/imports/docx.js");
+  const made = await call(ana, "POST", "/docs", {
+    title: "Word relationship privacy",
+    team_id: lab,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const id = made.json().id;
+  const content = [
+    para(
+      `[Budget 2027 private](orbyn://doc/${personalId} "Budget 2027 private hint") and [Guide][guide] and [Budget 2027 private][budget].`,
+      "word-links",
+    ),
+    para(`[guide]: orbyn://doc/${openId} "Public guide hint"`, "word-guide"),
+    para(
+      `[budget]: orbyn://doc/${personalId} "Budget 2027 private reference hint"`,
+      "word-budget",
+    ),
+  ];
+  const saved = await call(ana, "PUT", `/docs/${id}`, { version: 1, content });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const denied = await call(null, "GET", `/docs/${id}/export?format=docx`);
+  assert.equal(denied.statusCode, 401);
+  assert.equal(
+    (await call(stranger, "GET", `/docs/${id}/export?format=docx`)).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call(ben, "GET", `/docs/${id}/export?format=invalid`)).statusCode,
+    400,
+  );
+  const viewer = await call(ben, "GET", `/docs/${id}/export?format=docx`);
+  assert.equal(viewer.statusCode, 200, viewer.body);
+  const files = readZip(viewer.rawPayload);
+  const document = files.get("word/document.xml")!().toString("utf8");
+  const rels = files.get("word/_rels/document.xml.rels")!().toString("utf8");
+  noSecrets(document + rels, "Word relationship export");
+  assert.ok(!document.includes(personalId) && !rels.includes(personalId));
+  assert.match(document, /Private page/);
+  assert.match(document, /w:tooltip="Public guide hint"/);
+  assert.ok(rels.includes(openId));
+  assert.ok(!document.includes("orbyn://") && !rels.includes("orbyn://"));
+  const owner = await call(ana, "GET", `/docs/${id}/export?format=docx`);
+  assert.equal(owner.statusCode, 200, owner.body);
+  const ownFiles = readZip(owner.rawPayload);
+  assert.ok(
+    ownFiles.get("word/_rels/document.xml.rels")!()
+      .toString("utf8")
+      .includes(personalId),
+  );
+  assert.match(
+    ownFiles.get("word/document.xml")!().toString("utf8"),
+    /Budget 2027 private hint/,
+  );
 });
 
 test("exports keep no private titles", async () => {

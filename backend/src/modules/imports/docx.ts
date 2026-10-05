@@ -1,5 +1,10 @@
 import { inflateRawSync } from "node:zlib";
-import { ommlXmlToLatex, rowsToTable, type DocHeadingLevel } from "@orbyn/core";
+import {
+  isDocLinkSafe,
+  ommlXmlToLatex,
+  rowsToTable,
+  type DocHeadingLevel,
+} from "@orbyn/core";
 
 /**
  * Reading a Word document (.docx) into Markdown for an Orbyn page.
@@ -87,6 +92,60 @@ const on = (rPr: string, tag: string) => {
 
 type Style = { heading?: DocHeadingLevel; quote?: boolean; code?: boolean };
 
+/** Attribute values are decoded once; malformed or duplicate relationship IDs fail closed. */
+const xmlAttr = (attributes: string, name: string): string | undefined => {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(
+    `(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"<>]*)"|'([^'<>]*)')`,
+  ).exec(attributes);
+  return match ? decode(match[1] ?? match[2]) : undefined;
+};
+
+/** Only local metadata is read: remote targets are never fetched during conversion. */
+function readHyperlinks(xml: string): Map<string, string> {
+  const links = new Map<string, string>();
+  const seen = new Set<string>();
+  for (const match of xml.matchAll(/<Relationship\b([^<>]*?)\/?\s*>/g)) {
+    const id = xmlAttr(match[1], "Id");
+    if (!id) continue;
+    if (seen.has(id)) {
+      links.delete(id);
+      continue;
+    }
+    seen.add(id);
+    const target = xmlAttr(match[1], "Target");
+    const type = xmlAttr(match[1], "Type");
+    if (
+      type ===
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" &&
+      xmlAttr(match[1], "TargetMode") === "External" &&
+      target &&
+      isDocLinkSafe(target) &&
+      /^(https?:\/\/|mailto:)/i.test(target)
+    ) {
+      links.set(id, target);
+    }
+  }
+  return links;
+}
+
+/** Preserve the formatted label, a safe destination and the authored tooltip as Markdown. */
+function hyperlinkMarkdown(
+  label: string,
+  href: string,
+  title?: string,
+): string {
+  const destination = href.replace(/</g, "%3C").replace(/>/g, "%3E");
+  const hint =
+    title === undefined
+      ? ""
+      : ` "${title
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/[\r\n]+/g, " ")}"`;
+  return `[${label}](<${destination}>${hint})`;
+}
+
 /** Paragraph styles by id: which are headings, quotes or code. */
 function readStyles(xml: string): Map<string, Style> {
   const styles = new Map<string, Style>();
@@ -128,18 +187,35 @@ function readNumbering(xml: string): Map<string, boolean> {
 }
 
 /** A paragraph's text as Markdown, with bold, italic and equations. */
-function runsText(p: string): { text: string; figures: number } {
+function runsText(
+  p: string,
+  links: ReadonlyMap<string, string> = new Map(),
+  insideLink = false,
+): { text: string; figures: number } {
   let figures = 0;
   let out = "";
-  const pieces =
-    /<w:r\b[^>]*>([\s\S]*?)<\/w:r>|<m:oMath\b[^>]*>([\s\S]*?)<\/m:oMath>/g;
+  const pieces = insideLink
+    ? /<w:r\b[^>]*>([\s\S]*?)<\/w:r>|<m:oMath\b[^>]*>([\s\S]*?)<\/m:oMath>/g
+    : /<w:hyperlink\b([^>]*)>([\s\S]*?)<\/w:hyperlink>|<w:r\b[^>]*>([\s\S]*?)<\/w:r>|<m:oMath\b[^>]*>([\s\S]*?)<\/m:oMath>/g;
   for (const m of p.matchAll(pieces)) {
-    if (m[2] !== undefined) {
+    if (!insideLink && m[1] !== undefined) {
+      const content = runsText(m[2], links, true);
+      figures += content.figures;
+      const id = xmlAttr(m[1], "r:id");
+      const href = id ? links.get(id) : undefined;
+      out +=
+        href && content.text
+          ? hyperlinkMarkdown(content.text, href, xmlAttr(m[1], "w:tooltip"))
+          : content.text;
+      continue;
+    }
+    const math = insideLink ? m[2] : m[4];
+    if (math !== undefined) {
       const tex = ommlXmlToLatex(m[0]);
       if (tex) out += ` $${tex}$ `;
       continue;
     }
-    const run = m[1];
+    const run = insideLink ? m[1] : m[3];
     if (/<w:drawing\b|<w:pict\b|<w:object\b/.test(run)) figures++;
     const rPr = /<w:rPr>([\s\S]*?)<\/w:rPr>/.exec(run)?.[1] ?? "";
     let text = "";
@@ -148,7 +224,9 @@ function runsText(p: string): { text: string; figures: number } {
     ))
       text +=
         piece[1] !== undefined
-          ? decode(piece[1])
+          ? insideLink
+            ? decode(piece[1]).replace(/([\\`*_\[\]{}<>$~!|])/g, "\\$1")
+            : decode(piece[1])
           : piece[2] === "tab"
             ? " "
             : piece[2]
@@ -178,10 +256,10 @@ function runsText(p: string): { text: string; figures: number } {
   };
 }
 
-const cellsOf = (row: string) =>
+const cellsOf = (row: string, links: ReadonlyMap<string, string>) =>
   [...row.matchAll(/<w:tc\b[^>]*>([\s\S]*?)<\/w:tc>/g)].map((tc) =>
     [...tc[1].matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g)]
-      .map((p) => runsText(p[1]).text.replace(/\*+/g, ""))
+      .map((p) => runsText(p[1], links).text)
       .filter(Boolean)
       .join(" "),
   );
@@ -200,6 +278,9 @@ export function docxToMarkdown(buf: Buffer): {
   const document = zip.get("word/document.xml");
   if (!document) throw new NotAWordFile("No word/document.xml");
   const xml = document().toString("utf8");
+  const links = readHyperlinks(
+    zip.get("word/_rels/document.xml.rels")?.().toString("utf8") ?? "",
+  );
   const styles = readStyles(
     zip.get("word/styles.xml")?.().toString("utf8") ?? "",
   );
@@ -223,7 +304,7 @@ export function docxToMarkdown(buf: Buffer): {
       flushCode();
       tables++;
       const rows = [...block.matchAll(/<w:tr\b[^>]*>([\s\S]*?)<\/w:tr>/g)].map(
-        (tr) => cellsOf(tr[1]),
+        (tr) => cellsOf(tr[1], links),
       );
       lines.push("", ...rowsToTable(rows), "");
       continue;
@@ -232,6 +313,7 @@ export function docxToMarkdown(buf: Buffer): {
     if (/<m:oMathPara\b/.test(block)) {
       const outside = runsText(
         block.replace(/<m:oMathPara\b[\s\S]*?<\/m:oMathPara>/g, ""),
+        links,
       ).text;
       if (!outside.trim()) {
         flushCode();
@@ -249,7 +331,7 @@ export function docxToMarkdown(buf: Buffer): {
     }
     const pPr = /<w:pPr>([\s\S]*?)<\/w:pPr>/.exec(block)?.[1] ?? "";
     const style = styles.get(attr(pPr, "w:pStyle") ?? "") ?? {};
-    const { text, figures: pictures } = runsText(block);
+    const { text, figures: pictures } = runsText(block, links);
     equations += (text.match(/\$[^$]+\$/g) ?? []).length;
     if (pictures) {
       figures += pictures;

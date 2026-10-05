@@ -2,6 +2,10 @@ import {
   blockText,
   CALLOUT_LABELS,
   footnoteNumbers,
+  docReferenceLinks,
+  docReferenceDefinition,
+  isDocLinkSafe,
+  type DocReferences,
   isEmbed,
   isLiveList,
   listLayout,
@@ -33,20 +37,24 @@ const esc = (text: string) =>
 /** The highlighter's colours as fills (the light theme's tints). */
 const TINT_FILL = { amber: "FBF1DC", green: "E7F0EA", rose: "FBEFEA" };
 
-/**
- * The page's footnotes while it is written out: the number each marker
- * shows, which is also its id in footnotes.xml (Word's own footnotes).
- */
-let notes: Map<string, number> = new Map();
+/** Current-reader target projection; an omitted destination renders as ordinary text. */
+export type DocxOptions = { linkUrl?: (href: string) => string | undefined };
+
+type WordContext = {
+  notes: Map<string, number>;
+  references: DocReferences;
+  links: Map<string, string>;
+  linkUrl?: DocxOptions["linkUrl"];
+};
 
 /** One styled run. Word wants the styling before the text, in that order. */
-function run(piece: DocInline): string {
+function run(piece: DocInline, context: WordContext): string {
   if (piece.break)
     return piece.break === "hard"
       ? "<w:r><w:br/></w:r>"
       : '<w:r><w:t xml:space="preserve"> </w:t></w:r>';
   if (piece.footnote) {
-    const n = notes.get(piece.footnote);
+    const n = context.notes.get(piece.footnote);
     if (n)
       return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="${n}"/></w:r>`;
   }
@@ -75,49 +83,123 @@ const para = (style: string | null, runs: string, extra = "") =>
       : ""
   }${runs}</w:p>`;
 
-const runsFor = (text: string) => parseDocInline(text).map(run).join("");
+/** Group one link's differently styled runs under the same Word hyperlink. */
+function runsFor(text: string, context: WordContext, bold = false): string {
+  const pieces = parseDocInline(text, context.references).map((piece) =>
+    bold ? { ...piece, bold: true } : piece,
+  );
+  let out = "";
+  for (let i = 0; i < pieces.length;) {
+    const piece = pieces[i];
+    const href =
+      piece.link &&
+      (context.linkUrl ? context.linkUrl(piece.link) : piece.link);
+    if (
+      !href ||
+      !isDocLinkSafe(href) ||
+      !/^(https?:\/\/|mailto:)/i.test(href)
+    ) {
+      out += run({ ...piece, link: undefined, linkTitle: undefined }, context);
+      i++;
+      continue;
+    }
+    let id = context.links.get(href);
+    if (!id) {
+      id = `rId${context.links.size + 4}`;
+      context.links.set(href, id);
+    }
+    let body = "";
+    let end = i;
+    while (
+      end < pieces.length &&
+      pieces[end].link === piece.link &&
+      pieces[end].linkTitle === piece.linkTitle
+    ) {
+      body += run(pieces[end++], context);
+    }
+    const title =
+      piece.linkTitle === undefined
+        ? ""
+        : ` w:tooltip="${esc(piece.linkTitle.slice(0, 260))}"`;
+    out += `<w:hyperlink r:id="${id}"${title}>${body}</w:hyperlink>`;
+    i = end;
+  }
+  return out;
+}
+
+/** Hyperlinks belong to the part containing their runs; no target is fetched. */
+function linkRelationships(context: WordContext): string {
+  return [...context.links]
+    .map(
+      ([href, id]) =>
+        `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(href)}" TargetMode="External"/>`,
+    )
+    .join("");
+}
 
 /** A list paragraph's place in a numbering: which list, and how deep. */
 const listPr = (numId: number, depth: number) =>
   `<w:numPr><w:ilvl w:val="${depth}"/><w:numId w:val="${numId}"/></w:numPr>`;
 
-function blockXml(block: DocBlock, depth = 0, numId = 2): string {
+function blockXml(
+  block: DocBlock,
+  context: WordContext,
+  depth = 0,
+  numId = 2,
+): string {
   switch (block.type) {
+    case "paragraph":
+      return docReferenceDefinition(block.text)
+        ? ""
+        : para(null, runsFor(block.text, context));
     case "heading":
-      return para(`Heading${block.level}`, runsFor(block.text));
+      return para(`Heading${block.level}`, runsFor(block.text, context));
     case "bullet":
-      return para("ListParagraph", runsFor(block.text), listPr(1, depth));
+      return para(
+        "ListParagraph",
+        runsFor(block.text, context),
+        listPr(1, depth),
+      );
     case "numbered":
-      return para("ListParagraph", runsFor(block.text), listPr(numId, depth));
+      return para(
+        "ListParagraph",
+        runsFor(block.text, context),
+        listPr(numId, depth),
+      );
     case "todo":
       return para(
         "ListParagraph",
-        runsFor(`${block.done ? "☑" : "☐"} ${block.text}`),
+        runsFor(`${block.done ? "☑" : "☐"} ${block.text}`, context),
         listPr(1, depth),
       );
     case "quote":
-      return para("Quote", runsFor(block.text));
+      return para("Quote", runsFor(block.text, context));
     case "callout":
       return para(
         "Callout",
-        run({ text: `${CALLOUT_LABELS[block.kind]}  `, start: 0, bold: true }) +
-          runsFor(block.text),
+        run(
+          { text: `${CALLOUT_LABELS[block.kind]}  `, start: 0, bold: true },
+          context,
+        ) + runsFor(block.text, context),
       );
     case "table":
-      return tableXml(block.text);
+      return tableXml(block.text, context);
     case "image":
       return para(
         "Quote",
-        run({
-          text: `Picture${block.text ? `: ${block.text}` : ""}`,
-          start: 0,
-          italic: true,
-        }),
+        run(
+          {
+            text: `Picture${block.text ? `: ${block.text}` : ""}`,
+            start: 0,
+            italic: true,
+          },
+          context,
+        ),
       );
     case "file":
       return para(
         null,
-        run({ text: `File: ${block.text}`, start: 0, italic: true }),
+        run({ text: `File: ${block.text}`, start: 0, italic: true }, context),
       );
     case "footnote":
       // Written as Word's own footnotes (footnotes.xml).
@@ -128,30 +210,31 @@ function blockXml(block: DocBlock, depth = 0, numId = 2): string {
       // Each line of a code block is its own paragraph; Word has no <pre>.
       return block.text
         .split("\n")
-        .map((line) => para("Code", run({ text: line, start: 0, code: true })))
+        .map((line) =>
+          para("Code", run({ text: line, start: 0, code: true }, context)),
+        )
         .join("");
     case "math":
-      return para("Quote", run({ text: block.text, start: 0, math: true }));
+      return para(
+        "Quote",
+        run({ text: block.text, start: 0, math: true }, context),
+      );
     case "divider":
       return `<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="CCCCCC"/></w:pBdr></w:pPr></w:p>`;
     default:
-      return para(null, runsFor(blockText(block)));
+      return para(null, runsFor(blockText(block), context));
   }
 }
 
 /** A table, its first row as the header, with thin borders. */
-function tableXml(text: string): string {
+function tableXml(text: string, context: WordContext): string {
   const { rows, align } = parseTable(text);
   const border = (side: string) =>
     `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="CCCCCC"/>`;
   const cell = (c: string, i: number, head: boolean) =>
     `<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>${para(
       null,
-      head
-        ? parseDocInline(c)
-            .map((p) => run({ ...p, bold: true }))
-            .join("")
-        : runsFor(c),
+      runsFor(c, context, head),
       align[i]
         ? `<w:jc w:val="${align[i] === "center" ? "center" : align[i] === "right" ? "right" : "left"}"/>`
         : "",
@@ -173,21 +256,21 @@ function tableXml(text: string): string {
 }
 
 /** Word's footnotes: the two separators it needs, then the page's notes. */
-function footnotesXml(blocks: DocBlock[]): string {
+function footnotesXml(blocks: DocBlock[], context: WordContext): string {
   const list = blocks
     .filter(
       (b): b is Extract<DocBlock, { type: "footnote" }> =>
-        b.type === "footnote" && notes.has(b.label),
+        b.type === "footnote" && context.notes.has(b.label),
     )
-    .sort((a, b) => notes.get(a.label)! - notes.get(b.label)!);
+    .sort((a, b) => context.notes.get(a.label)! - context.notes.get(b.label)!);
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>
 <w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>
 ${list
   .map(
     (f) =>
-      `<w:footnote w:id="${notes.get(f.label)}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>${runsFor(f.text)}</w:p></w:footnote>`,
+      `<w:footnote w:id="${context.notes.get(f.label)}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>${runsFor(f.text, context)}</w:p></w:footnote>`,
   )
   .join("\n")}
 </w:footnotes>`;
@@ -270,9 +353,15 @@ export function docToDocx(
   title: string,
   blocks: DocBlock[],
   at = new Date(),
+  options: DocxOptions = {},
 ): Buffer {
   const layout = listLayout(blocks);
-  notes = footnoteNumbers(blocks);
+  const context: WordContext = {
+    notes: footnoteNumbers(blocks),
+    references: docReferenceLinks(blocks),
+    links: new Map(),
+    linkUrl: options.linkUrl,
+  };
   // Each numbered list gets a numbering of its own (see `numbering`).
   const numbered: { numId: number; depth: number; start: number }[] = [];
   let lists: (number | null)[] = [];
@@ -285,13 +374,13 @@ export function docToDocx(
       block.type !== "todo"
     ) {
       lists = [];
-      return blockXml(block);
+      return blockXml(block, context);
     }
     lists = lists.slice(0, depth + 1);
     while (lists.length < depth + 1) lists.push(null);
     if (block.type !== "numbered") {
       lists[depth] = null;
-      return blockXml(block, depth);
+      return blockXml(block, context, depth);
     }
     if (lists[depth] === null) {
       // The first list counting from 1 uses the numbering as it stands;
@@ -305,25 +394,41 @@ export function docToDocx(
       }
       first = false;
     }
-    return blockXml(block, depth, lists[depth]!);
+    return blockXml(block, context, depth, lists[depth]!);
   });
   const document = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <w:body>
-${para("Title", run({ text: title, start: 0 }))}
+${para("Title", run({ text: title, start: 0 }, context))}
 ${body.join("\n")}
 <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
 </w:body>
 </w:document>`;
+  const footnotes = footnotesXml(blocks, context);
+  const relationships = linkRelationships(context);
   return zip(
     [
       { name: "[Content_Types].xml", body: CONTENT_TYPES },
       { name: "_rels/.rels", body: RELS },
-      { name: "word/_rels/document.xml.rels", body: DOC_RELS },
+      {
+        name: "word/_rels/document.xml.rels",
+        body: DOC_RELS.replace(
+          "</Relationships>",
+          relationships + "</Relationships>",
+        ),
+      },
       { name: "word/document.xml", body: document },
       { name: "word/styles.xml", body: STYLES },
       { name: "word/numbering.xml", body: numbering(numbered) },
-      { name: "word/footnotes.xml", body: footnotesXml(blocks) },
+      { name: "word/footnotes.xml", body: footnotes },
+      ...(relationships
+        ? [
+            {
+              name: "word/_rels/footnotes.xml.rels",
+              body: `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships}</Relationships>`,
+            },
+          ]
+        : []),
     ],
     at,
   );
