@@ -101,19 +101,25 @@ export function TeamsChannelSettings() {
                 : "Link your personal chat"}
           </Text>
           {connection.state === "linked" && (
-            <View style={s.row}>
-              <Text style={[shared.body, s.wrap]}>Send agent DMs to me</Text>
-              <Switch
-                accessibilityLabel="Send Teams agent DMs to me"
-                value={connection.dm_enabled}
-                disabled={
-                  state.busy ||
-                  (!state.status?.delivery_available && !connection.dm_enabled)
-                }
-                trackColor={{ true: colors.accent }}
-                onValueChange={(enabled) => void store.permission(enabled)}
-              />
-            </View>
+            <>
+              <View style={s.row}>
+                <Text style={[shared.body, s.wrap]}>Send agent DMs to me</Text>
+                <Switch
+                  accessibilityLabel="Send Teams agent DMs to me"
+                  value={connection.dm_enabled}
+                  disabled={
+                    state.busy ||
+                    (!state.status?.delivery_available &&
+                      !connection.dm_enabled)
+                  }
+                  trackColor={{ true: colors.accent }}
+                  onValueChange={(enabled) => void store.permission(enabled)}
+                />
+              </View>
+              <Text style={shared.small}>
+                Background updates, questions and morning Overnight results.
+              </Text>
+            </>
           )}
           {state.status && !state.status.delivery_available && (
             <Text style={shared.small}>

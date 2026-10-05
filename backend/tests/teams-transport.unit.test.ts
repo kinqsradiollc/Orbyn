@@ -238,3 +238,44 @@ test("failed credential acquisition releases the claim and emits no provider bod
   assert.equal(await token(config), "fixture.bot.token");
   assert.equal(calls, 2);
 });
+
+test("complete question card is delivered as one bounded attachment with the original owned route", async () => {
+  const { teamsQuestionCard } =
+    await import("../src/modules/agent-channels/teams-question-card.js");
+  const card = teamsQuestionCard(randomUUID(), {
+    kind: "person",
+    id: randomUUID(),
+    question: "Choose a source?",
+    choices: ["First", "Second"],
+  })!;
+  let requests = 0;
+  const send = createTeamsTransport(async (_url, options) => {
+    requests++;
+    if (requests === 1) return credential();
+    const body = JSON.parse(options?.body as string);
+    assert.equal(body.text, "Owned update");
+    assert.deepEqual(body.attachments, [card.attachment]);
+    assert.equal(body.conversation.id, target.conversationId);
+    assert.equal(body.recipient.id, target.userId);
+    return Response.json({ id: "card-message" });
+  });
+  assert.deepEqual(await send(config, target, "Owned update", card), {
+    state: "sent",
+    activityId: "card-message",
+  });
+  assert.equal(requests, 2);
+});
+test("oversized card payload is refused before bot token acquisition or dispatch", async () => {
+  const send = createTeamsTransport(async () => {
+    assert.fail("No network for oversized card");
+  });
+  const forged = {
+    attachment: {
+      contentType: "application/vnd.microsoft.card.adaptive",
+      content: { body: ["a".repeat(24577)] },
+    },
+  };
+  assert.deepEqual(await send(config, target, "Owned update", forged as any), {
+    state: "refused",
+  });
+});

@@ -4,20 +4,20 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `34bcaaca` (PR206), following `cf119497` (PR205)
-and Slack main `690f6246` (PR204). Deployment remains user-run and unverified.
-Main and exact delivery candidate `5bc0bc9d` have identical file tree
-`40c84049d2b659b6227e9f84b73573e9f1cf698a`.
+Main application checkpoint is `9cc2dad0` (PR207), following PR205/206 and
+Slack PR204. Deployment remains user-run and unverified. Main and exact
+reply candidate `c18f405b` have identical file tree
+`4c3f19f1f7a8f70a6c1d431eda2401ad59b35496`.
 
-| Area                 | Implemented on main                                                                                                                                                                                                                          | Remaining acceptance or implementation                                                                                                                                            |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ChatGPT / M1         | One-button device authorization handoff, selected-provider routing, owned model catalog and defaults, provider provenance and explicit fallback policy                                                                                       | Successful eligible real-account inference and handoff; truthful whole-account plan/usage proof. Unsupported hard-limit catalogs stay ineligible for budgeted private scheduling. |
-| Plugin / P1          | Separate backend and worker, provider-bound consent, managed/BYO inference receipts and both client controls                                                                                                                                 | External plugin host/provider and native interaction acceptance; private ChatGPT credentials and MCP remain separate.                                                             |
-| Agent channels / C6  | Slack installation, canonical bot vault, rotation, delivery and signed exact-question replies. Teams reviewed account/personal-conversation linking, uninstall/relink handling, bounded Background/morning delivery and both client controls | Teams exact-question reply receipts/consumption; real Slack/Teams tenant and cross-client visual/native acceptance. Optional unconfigured integrations remain disabled.           |
-| Agents / C4–C5       | Independent Background/Overnight runtimes and identities, source ownership, reflection and maintained-page checkpoints                                                                                                                       | Audit governing collaboration, budgets, shared/public pages and publication requirements against current source; finish unresolved runtime/client acceptance.                     |
-| Docs / D1            | Shared Markdown, source/preview, Mermaid and authorized export checkpoints                                                                                                                                                                   | Complete native editor/render/export/import matrix for all required Markdown/diagram families and interaction states.                                                             |
-| Whole-app UI / U1    | Settings modal/search, responsive assistant/settings and shared client checkpoints                                                                                                                                                           | Page-by-page web/desktop/mobile layout and interaction review, including sidebar collapse, simultaneous panels, narrow widths, large text and stale state.                        |
-| Production / cleanup | Qualified checkpoints pushed; user/character files and worktrees preserved                                                                                                                                                                   | User deployment confirmation, then final relevant-worktree/branch audit and cleanup after integration.                                                                            |
+| Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT / M1         | One-button device authorization handoff, selected-provider routing, owned model catalog and defaults, provider provenance and explicit fallback policy                                                                                                                                                               | Successful eligible real-account inference and handoff; truthful whole-account plan/usage proof. Unsupported hard-limit catalogs stay ineligible for budgeted private scheduling. |
+| Plugin / P1          | Separate backend and worker, provider-bound consent, managed/BYO inference receipts and both client controls                                                                                                                                                                                                         | External plugin host/provider and native interaction acceptance; private ChatGPT credentials and MCP remain separate.                                                             |
+| Agent channels / C6  | Slack installation, canonical bot vault, rotation, delivery and signed exact-question replies. Teams reviewed account/personal-conversation linking, uninstall/relink handling, bounded Background/morning delivery, sent-card proofs and atomic exact-question reply receipts/consumption, and both client controls | Real Slack/Teams tenant and cross-client visual/native acceptance. Optional unconfigured integrations remain disabled.                                                            |
+| Agents / C4–C5       | Independent Background/Overnight runtimes and identities, source ownership, reflection and maintained-page checkpoints                                                                                                                                                                                               | Audit governing collaboration, budgets, shared/public pages and publication requirements against current source; finish unresolved runtime/client acceptance.                     |
+| Docs / D1            | Shared Markdown, source/preview, Mermaid and authorized export checkpoints                                                                                                                                                                                                                                           | Complete native editor/render/export/import matrix for all required Markdown/diagram families and interaction states.                                                             |
+| Whole-app UI / U1    | Settings modal/search, responsive assistant/settings and shared client checkpoints                                                                                                                                                                                                                                   | Page-by-page web/desktop/mobile layout and interaction review, including sidebar collapse, simultaneous panels, narrow widths, large text and stale state.                        |
+| Production / cleanup | Qualified checkpoints pushed; user/character files and worktrees preserved                                                                                                                                                                                                                                           | User deployment confirmation, then final relevant-worktree/branch audit and cleanup after integration.                                                                            |
 
 Qualification: PR205 exact `d926b03c`, CI37334932950 all four jobs passed,
 3130 backend passes/0 failures/1 existing skip. PR206 exact `5bc0bc9d`,
@@ -30,10 +30,16 @@ Workspace types, backend/web builds, formatting and native exports passed for
 the delivery candidate. Exports do not prove native interaction or appearance.
 Browser5174 remains blocked; Simulator inspection returned timeout -10005.
 
-Next: finish Teams exact-card durable replies, then D1 and U1 matrices and the
-remaining governing agent/provider acceptance audit. The reply branch contains
-only unmounted card/parser foundations (`c483a323`, 16 pure tests and focused
-TypeScript passing); it is not delivered Teams reply behavior.
+PR207 exact `c18f405b`: CI37341791063 all four jobs passed; fresh full local
+suite 3211 passes/0 failures/1 existing skip in 714527ms. The mounted replies
+verify signed actor/conversation, current consent/grant/source and the exact
+sent question, then atomically consume an encrypted receipt and answer.
+Approvals remain in Orbyn. Cold pool-one sweep/reply coverage also passes.
+
+Next: D1 and U1 matrices and the remaining governing agent/provider acceptance
+audit. A separate local Docs checkpoint now repairs nested inline formatting
+across the shared parser, web rendering and HTML exports, with mobile label
+styling and Word regression coverage; it is not yet merged or visually accepted.
 Full C1–C6/M1/D1/U1 remains active and incomplete. See the
 [implementation pipeline](../reviews/task.md#authoritative-implementation-pipeline--6-october-2026)
 and [Teams evidence](../reviews/evidence/teams-agent-channels.md).
@@ -2148,3 +2154,15 @@ migration/retention, full/CI and real tenant/native/visual qualification remain
 required. Teams current-card replies remain unimplemented. Identity PR205's
 CI fixture repair is being qualified; this delivery/UI candidate is not on main.
 The complete C1–C6/M1/D1/U1 scope remains open and deployment remains user-run.
+
+### Durable Teams question replies — candidate, 6 October 2026
+
+Exact-card replies now have a sent-card nonce/digest/expiry, encrypted durable
+capture, independently rechecked current authority, and an atomic answer/chat/
+receipt consumer on the candidate branch. Automatic or unrelated activity does
+not answer; approval remains in Orbyn. Fixed expiry is independent of transport
+configuration. Cold testing also repairs the sweeper to reuse its held advisory
+lock connection instead of requiring a second pool checkout. Current focused
+channel/sweep/cold cases pass; full immutable qualification, CI and promotion
+remain required. See [Teams evidence](../reviews/evidence/teams-agent-channels.md).
+This does not close C6, D1, U1 or the full ADR scope.

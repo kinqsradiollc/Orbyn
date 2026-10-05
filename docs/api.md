@@ -3475,3 +3475,17 @@ separate versioned permission. Background and morning intents recheck live sourc
 owner, grant, conversation proof and revision at dispatch. Accepted-but-uncertain
 sends are terminal, with no automatic replay. Teams question replies are not yet
 implemented; decisions open Orbyn.
+
+### Teams exact-question card replies
+
+The signed raw `POST /agent-channels/teams/activities` callback also handles
+manual `adaptiveCard/action` Execute and the named Submit fallback from sent
+Orbyn question cards. Connector authentication precedes parsing. Invoke results
+use HTTP200 with a typed provider status; receipt acknowledgement means captured
+pending current-authority verification, not approved or already applied.
+Automatic refresh and unrelated activities never become answers. Complete
+questions expire after15minutes and bind the sent delivery, nonce, waiting UUID
+and full question/choice digest. Encrypted receipts are consumed with current
+owner/conversation/consent/grant/source checks; answer/chat/receipt commit
+atomically. Approval cards retain their full owned Orbyn review. The existing
+raw64KiB limit, strict query and120/min callback rate limit remain in place.

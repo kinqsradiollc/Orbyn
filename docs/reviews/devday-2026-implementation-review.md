@@ -2,16 +2,15 @@
 
 ## Current delivery state — 6 October 2026
 
-Main application checkpoint `34bcaaca` includes Teams account linking (PR205),
-consented delivery/lifecycle and both client controls (PR206), after Slack PR204.
-PR206 exact `5bc0bc9d` and main have identical tested file tree; four CI jobs and
-the fresh full local suite pass (3180 passes,0 failures,1 existing skip).
-The complete current state and implementation pipeline are maintained in
+Main application checkpoint `9cc2dad0` includes Teams linking, consented
+delivery/lifecycle and signed exact-question durable replies (PR205–207), after
+Slack PR204. PR207 exact `c18f405b` and main have identical tested file tree;
+all four CI jobs and the fresh full local suite pass (3211 passes,0 failures,
+1 existing skip). The complete current state and implementation pipeline are in
 [ADR001](../adr/001-devday-agent-platform.md#authoritative-checkpoint--6-october-2026)
 and [the live handoff](task.md#authoritative-implementation-pipeline--6-october-2026).
-Teams replies remain unmounted foundations on a separate branch. D1, U1,
-agent/provider acceptance, real-account/tenant/host checks and final cleanup remain
-open. User deploys manually. The full retained contract below is unchanged;
+D1, U1, agent/provider acceptance, real-account/tenant/host checks and final cleanup
+remain open. User deploys manually. The retained contract below is unchanged;
 older checkpoint maps are historical.
 
 ## Completed draft result qualification — 2 October 2026
