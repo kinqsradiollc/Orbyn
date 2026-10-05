@@ -557,7 +557,7 @@ export async function studyOverview(
         ),
       };
     }),
-    weak: (await readableLinks(pool, userId, weak.rows)).map(
+    weak: (await readableLinks(db, userId, weak.rows)).map(
       ({ source_doc_id, source_block_id, source_title, ...w }) => ({
         ...w,
         doc_title: w.doc_title || "Untitled",
@@ -622,7 +622,7 @@ export async function reviewQueue(
       : [];
   // Cards are copied from page lines when synced; the words of links this
   // person can't open (now) read "Private page" (D3aF).
-  return (await readableLinks(pool, userId, [...due, ...fresh])).map((r) =>
+  return (await readableLinks(db, userId, [...due, ...fresh])).map((r) =>
     cardOf(r, now),
   );
 }
@@ -964,7 +964,7 @@ export async function quizQueue(
     ...preferStyle(interleave(fresh.rows.slice(0, room)), style),
   ];
   const picked = order.slice(0, options.limit);
-  const cards = (await readableLinks(pool, userId, picked)).map((r) =>
+  const cards = (await readableLinks(db, userId, picked)).map((r) =>
     cardOf(r, now),
   );
   return {
