@@ -441,3 +441,15 @@ deadlines are unchanged. The complete assistant-runs cohort passes41/41 in
 `/tmp/orbyn-channel-teams-ci-recovery-focused.log`. Updated full/CI qualification
 is still required. The original CI failure is retained in
 `/tmp/orbyn-channel-teams-ci-job.log`; other three CI jobs passed.
+
+### Recovery fixture isolation completed for both runtime lanes
+
+Follow-up source review found the interactive app also sweeps all stale rows,
+so stopping only the Background process did not fully isolate recovery. The
+test now closes the app before creating stale fixtures, then rebuilds it for
+the original HTTP assertions and restores the Background process in cleanup.
+All original41 assistant-runs cases pass in
+`/tmp/orbyn-channel-teams-ci-both-runtimes-focused.log` (28422ms). Production
+recovery, assertions, leases and deadlines are unchanged. Prior6bda01e9 full
+qualification remains evidence for that source, not this follow-up test source.
+Updated full/CI qualification remains required before promotion.

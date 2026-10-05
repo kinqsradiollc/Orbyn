@@ -78,7 +78,7 @@ const { scanAssistantRoutines } =
   await import("../src/worker/assistant-routines.js");
 const { assistantRunLimits, failStaleAssistantJobs, startAssistantAutomation } =
   await import("../src/modules/ai/agent/run.js");
-const app = await buildApp();
+let app = await buildApp();
 const users: string[] = [];
 let stopBackground: (() => Promise<void>) | undefined;
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -2647,14 +2647,23 @@ test("a paused assistant refuses to run, and new grants leave booking out", asyn
 });
 
 test("stale running jobs and week-old cards fail and free their automations", async (t) => {
-  // This test owns recovery: the separate runner otherwise races the explicit
-  // sweep and can consume these fixtures before its returned IDs are asserted.
+  // This test owns recovery: both runtime lanes sweep the same stale rows.
+  // Stop the Background process and the app's interactive runner before setup.
   await stopBackground?.();
   stopBackground = undefined;
+  const user = await register();
+  await app.close();
+  let restored = false;
+  const restoreApp = async () => {
+    if (!restored) {
+      app = await buildApp();
+      restored = true;
+    }
+  };
   t.after(async () => {
+    await restoreApp();
     stopBackground = await startTestAssistantRuntime("background");
   });
-  const user = await register();
   const legacyChat = randomUUID();
   await pool.query(
     "INSERT INTO ai_chats(id,user_id,title) VALUES($1,$2,'Legacy job')",
@@ -2728,6 +2737,7 @@ test("stale running jobs and week-old cards fail and free their automations", as
     ).rows[0].status,
     "failed",
   );
+  await restoreApp();
   const polled = await app.inject({
     url: `/ai/chat/${crashed}`,
     remoteAddress: nextAddress(),
