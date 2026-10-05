@@ -3515,7 +3515,8 @@ visual or complete structured editor acceptance.
 Structured format2 exports preserve container ownership in Markdown and HTML/PDF.
 The `/markdown` alias uses the same complete-page link authorization. Exported
 private references become safe labels without private destination/definition IDs.
-Word and plain-text exports of format2 pages currently return409 rather than a
-flattened result; those adapters remain required work. Format1 exports retain their
-existing formats. HTML/PDF continue to recheck current visibility/revision after
+Word and plain-text exports of format2 pages render typed ownership, including
+quote boundaries, ordered starts, task checks and item-owned continuation blocks.
+Word validates the authorized tree against its exact flat projection. Format1
+exports retain their existing formats. HTML/PDF continue to recheck current visibility/revision after
 rendering and revalidate image access before returning a file.

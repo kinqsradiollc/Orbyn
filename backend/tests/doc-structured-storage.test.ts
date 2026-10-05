@@ -622,7 +622,7 @@ test("legacy history restore cannot flatten a structured version after a flat do
   assert.deepEqual(stored, { version: 3, content_format: 1 });
 });
 
-test("Markdown export routes retain nested ownership and refuse unsupported lossy formats", async () => {
+test("Export routes retain nested ownership and private-label projections", async () => {
   const privateId = await page(stranger);
   const id = await page();
   const nodes = parseDocContainers(
@@ -644,18 +644,28 @@ test("Markdown export routes retain nested ownership and refuse unsupported loss
     assert.ok(!result.body.includes(privateId));
     assert.doesNotMatch(result.body, /Secret|Hidden hint/);
   }
-  for (const format of ["docx", "txt"]) {
-    assert.equal(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/docs/${id}/export?format=${format}&version=2`,
-          headers,
-        })
-      ).statusCode,
-      409,
-    );
-  }
+  const text = await app.inject({
+    method: "GET",
+    url: `/docs/${id}/export?format=txt&version=2`,
+    headers,
+  });
+  assert.equal(text.statusCode, 200);
+  assert.match(text.body, /> • Private page/);
+  assert.ok(!text.body.includes(privateId));
+  const word = await app.inject({
+    method: "GET",
+    url: `/docs/${id}/export?format=docx&version=2`,
+    headers,
+  });
+  assert.equal(word.statusCode, 200);
+  const { readZip } = await import("../src/modules/imports/docx.js");
+  const xml =
+    readZip(word.rawPayload).get("word/document.xml")?.().toString("utf8") ??
+    "";
+  assert.match(xml, /Private page/);
+  assert.match(xml, /Continuation/);
+  assert.match(xml, /w:pBdr/);
+  assert.ok(!xml.includes(privateId));
   assert.equal(
     (
       await app.inject({

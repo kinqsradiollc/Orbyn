@@ -7,13 +7,14 @@ import {
   CALLOUT_LABELS,
   footnoteNumbers,
   docReferenceLinks,
+  docReferenceDefinition,
 } from "./docs.js";
 import {
   parseDocContentLeaves,
   DOC_PROJECTED_TOTAL_MAX,
   type DocContentValidationOptions,
 } from "./doc-content-leaves.js";
-import { blocksHtml, type HtmlOptions } from "./export.js";
+import { blocksHtml, docToText, type HtmlOptions } from "./export.js";
 import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
 
 /** A structured Markdown candidate. Leaves keep the existing editor/comment identity. */
@@ -688,4 +689,55 @@ export function docContainersHtml(
       htmlOptions,
     )
   );
+}
+
+/** Plain text keeps quote/list ownership and resolves page-wide reference labels. */
+export function docContainersText(
+  title: string,
+  nodes: readonly DocContainerNode[],
+  options: DocContentValidationOptions = {},
+): string {
+  const blocks = docContainerBlocks(nodes, options);
+  const references = docReferenceLinks(blocks);
+  const notes = footnoteNumbers(blocks);
+  const leaf = (block: DocBlock): string => {
+    if (block.type === "paragraph" && docReferenceDefinition(block.text))
+      return "";
+    return docToText("", [block], { references, notes }).slice(2, -1);
+  };
+  const prefix = (text: string, first: string, continuation: string) =>
+    text
+      .split("\n")
+      .map((line, index) => (index ? continuation : first) + line)
+      .join("\n");
+  const write = (children: readonly DocContainerNode[]): string =>
+    children
+      .map((node) => {
+        if (node.kind === "block") return leaf(node.block);
+        if (node.kind === "quote")
+          return prefix(
+            (node.callout ? `${CALLOUT_LABELS[node.callout.tone]}:\n` : "") +
+              write(node.children),
+            "> ",
+            "> ",
+          );
+        return node.items
+          .map((item, index) => {
+            const marker =
+              (node.ordered ? `${node.start + index}${node.delimiter}` : "•") +
+              " " +
+              (item.checked === undefined
+                ? ""
+                : `[${item.checked ? "x" : " "}] `);
+            return prefix(
+              write(item.children),
+              marker,
+              " ".repeat(marker.length),
+            );
+          })
+          .join("\n");
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  return `${title}\n\n${write(nodes)}\n`;
 }

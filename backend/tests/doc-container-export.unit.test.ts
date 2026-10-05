@@ -8,6 +8,7 @@ import {
   serializeDocContainers,
   docContainersHtml,
   docHtmlPage,
+  docContainersText,
 } from "@orbyn/core";
 const privateId = "00000000-0000-4000-8000-000000000001";
 const source = `> # Nested\n>\n> - [Secret title][secret]\n>\n>   code context\n\n[secret]: orbyn://doc/${privateId} "Secret hint"`;
@@ -69,4 +70,25 @@ test("private inline links lose their destinations but literal code remains auth
     blocks[1].type === "code" && blocks[1].text,
     `orbyn://doc/${privateId}`,
   );
+});
+
+test("plain text keeps ordered tasks, continuation paragraphs and nested quote boundaries", () => {
+  const nodes = parseDocContainers(
+    "> 7. [x] First\n>\n>    Next paragraph\n>\n>    - Child\n>\n>      ```ts\n>      a();\n>      ```",
+  );
+  const text = docContainersText("Title", nodes);
+  assert.match(text, /> 7\. \[x\] First/);
+  assert.match(text, /Next paragraph/);
+  assert.match(text, /• Child/);
+  assert.match(text, /a\(\);/);
+});
+
+test("plain text resolves global references once and preserves escaped literal styling", () => {
+  const nodes = parseDocContainers(
+    "> \\*\\*literal\\*\\* and [Guide][ref] [^note]\n\n[ref]: https://example.test\n\n[^note]: Footnote",
+  );
+  const text = docContainersText("Title", nodes);
+  assert.match(text, /> \*\*literal\*\* and Guide \[1\]/);
+  assert.match(text, /\[1\] Footnote/);
+  assert.doesNotMatch(text, /\[ref\]:|\[Guide\]/);
 });

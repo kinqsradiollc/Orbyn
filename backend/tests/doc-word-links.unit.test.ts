@@ -260,3 +260,30 @@ test("Word hyperlink labels preserve generated inline OMML math rather than esca
       .every((run) => run.link === "https://example.test/guide"),
   );
 });
+
+test("structured Word export retains ordered item ownership, quotes and continuation styles", async () => {
+  const { parseDocContainers, docContainerBlocks } =
+    await import("@orbyn/core");
+  const nodes = parseDocContainers(
+    "> 7. [x] First\n>\n>    Next paragraph\n>\n>    - Child\n>\n>      ```ts\n>      a();\n>      ```",
+  );
+  const blocks = docContainerBlocks(nodes);
+  const files = readZip(
+    docToDocx("Title", blocks, undefined, { containers: nodes }),
+  );
+  const body = xml(files, "word/document.xml");
+  assert.match(body, /☑ First/);
+  assert.match(body, /Next paragraph/);
+  assert.match(body, /Child/);
+  assert.match(body, /a\(\);/);
+  assert.match(body, /w:pBdr/);
+  assert.match(body, /w:pStyle w:val="Code"/);
+  assert.match(xml(files, "word/numbering.xml"), /w:startOverride w:val="7"/);
+  assert.ok(body.indexOf("First") < body.indexOf("Next paragraph"));
+  assert.ok(body.indexOf("Next paragraph") < body.indexOf("Child"));
+  assert.ok(body.indexOf("Child") < body.indexOf("a();"));
+  assert.throws(
+    () => docToDocx("Title", [], undefined, { containers: nodes }),
+    /authorized leaf projection/,
+  );
+});

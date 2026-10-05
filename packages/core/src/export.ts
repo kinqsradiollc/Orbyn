@@ -13,6 +13,7 @@ import {
   parseTable,
   serializeDoc,
   type DocBlock,
+  type DocReferences,
   type DocInline,
 } from "./docs.js";
 import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
@@ -399,12 +400,19 @@ ${body}
 }
 
 /** A page as plain words: the title, a blank line, then each line. */
-export function docToText(title: string, blocks: DocBlock[]): string {
+export function docToText(
+  title: string,
+  blocks: DocBlock[],
+  options: {
+    references?: DocReferences;
+    notes?: ReadonlyMap<string, number>;
+  } = {},
+): string {
   const layout = listLayout(blocks);
-  const notes = footnoteNumbers(blocks);
+  const notes = options.notes ?? footnoteNumbers(blocks);
   const lines = blocks.map((b, i) => {
     if (b.type === "divider") return "---";
-    const text = plainRuns(blockText(b));
+    const text = plainRuns(blockText(b), options.references, notes);
     const indent = "    ".repeat(layout[i].depth);
     if (b.type === "heading") return text.toUpperCase();
     if (b.type === "bullet") return `${indent}• ${text}`;
@@ -414,7 +422,11 @@ export function docToText(title: string, blocks: DocBlock[]): string {
     if (b.type === "callout") return `${CALLOUT_LABELS[b.kind]}: ${text}`;
     if (b.type === "table")
       return parseTable(b.text)
-        .rows.map((r) => r.map(plainRuns).join(" | "))
+        .rows.map((r) =>
+          r
+            .map((cell) => plainRuns(cell, options.references, notes))
+            .join(" | "),
+        )
         .join("\n");
     if (b.type === "image") return `[Picture${text ? `: ${text}` : ""}]`;
     if (b.type === "file") return `[File: ${text}]`;
@@ -427,11 +439,15 @@ export function docToText(title: string, blocks: DocBlock[]): string {
 }
 
 /** One line with its Markdown markers taken off, maths read as symbols. */
-const plainRuns = (text: string) =>
-  parseDocInline(text)
+const plainRuns = (
+  text: string,
+  references?: DocReferences,
+  notes?: ReadonlyMap<string, number>,
+) =>
+  parseDocInline(text, references)
     .map((r) =>
       r.footnote
-        ? `[${r.footnote}]`
+        ? `[${notes?.get(r.footnote) ?? r.footnote}]`
         : r.source
           ? `[${r.text}]`
           : r.math

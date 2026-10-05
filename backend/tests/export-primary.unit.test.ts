@@ -9,6 +9,7 @@ import {
   blocksWithExportLinks,
   docHtmlPage,
   docContainersHtml,
+  docContainersText,
   parseVersionedDocContent,
   projectDocContainers,
   serializeDocContainers,
@@ -128,6 +129,7 @@ function fixture({
       blocksWithExportLinks,
       docHtmlPage,
       docContainersHtml,
+      docContainersText,
       parseVersionedDocContent,
       projectDocContainers,
       serializeDocContainers,
@@ -258,9 +260,12 @@ test("structured HTML and PDF routes retain quote ownership in the renderer inpu
   }
 });
 
-test("structured Markdown route retains quotes and refuses lossy Word/plain text", async () => {
+test("structured Markdown and plain text retain quotes; Word receives full ownership", async () => {
   const page = fixture({ structured: true });
   assert.match(String(await page.run({ format: "md", version: 8 })), /\n> /);
-  for (const format of ["docx", "txt"])
-    await assert.rejects(page.run({ format, version: 8 }), { statusCode: 409 });
+  assert.match(String(await page.run({ format: "txt", version: 8 })), /\n> /);
+  assert.equal(
+    await page.run({ format: "docx", version: 8 }),
+    "Current exported content",
+  );
 });

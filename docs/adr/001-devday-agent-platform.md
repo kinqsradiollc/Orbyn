@@ -1,3 +1,25 @@
+## Plain-text and Word container exporters — 6 October 2026
+
+The candidate now renders typed containers in plain text and Word, replacing the
+previous temporary409 boundary. Quotes, callout headings, ordered starts, checked
+items, continuation paragraphs and child code stay in content order. Word list
+instances keep separate numbering; depths beyond Word's nine numbering levels
+retain explicit text markers. The Word adapter checks exact authorized leaf/tree
+projection equality before rendering, and uses the existing page-wide references,
+footnotes and hyperlink authorization. Plain text resolves references once, keeps
+escaped literal styling and uses global footnote numbers.
+
+72 pure cases pass, including actual Word archive XML/numbering and real HTML/PDF
+route inputs with stubbed renderers. All workspace types and backend/web builds
+pass. The first backend typecheck caught lost narrowing of a paragraph leaf; an
+explicit type guard repaired it. A mistaken pure cohort included export.test.ts;
+its setup refused before DB access because TEST_DATABASE_URL was absent. It is
+queued for the serial mounted cohort, and is not passing evidence.
+
+Mounted DB52/full combined qualification, actual rendered/native visual checks,
+Word import round-trip, complete editor/CRDT/source/import/export matrices and all
+remaining C1-C6/M1/D1/U1 stay open. No application promotion or deployment yet.
+
 ## Structured export integration candidate — 6 October 2026
 
 The legacy restore guard is committeddd2a06af. Markdown and HTML/PDF route adapters

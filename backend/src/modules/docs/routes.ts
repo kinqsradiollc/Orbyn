@@ -11,6 +11,7 @@ import {
   docToHtml,
   docHtmlPage,
   docContainersHtml,
+  docContainersText,
   parseVersionedDocContent,
   projectDocContainers,
   serializeDocContainers,
@@ -331,11 +332,6 @@ export async function docRoutes(app: FastifyInstance) {
     if (expectedVersion !== undefined && doc.version !== expectedVersion)
       fail(409, "This page changed. Refresh it before exporting.");
     const title = doc.title || "Untitled";
-    if (doc.content_format === 2 && (format === "docx" || format === "txt"))
-      fail(
-        409,
-        "This format does not yet preserve nested document content. Export Markdown, HTML or PDF.",
-      );
     const structure =
       doc.content_format === 2
         ? parseVersionedDocContent({ format: 2, nodes: doc.content_nodes })
@@ -400,6 +396,7 @@ export async function docRoutes(app: FastifyInstance) {
       const body =
         format === "docx"
           ? docToDocx(title, blocks, undefined, {
+              ...(nodes ? { containers: nodes } : {}),
               linkUrl: (href) => {
                 const ref = refFromUrl(href);
                 if (ref && ref.kind !== "date" && privacy.hidden(ref))
@@ -420,7 +417,9 @@ export async function docRoutes(app: FastifyInstance) {
             : format === "html"
               ? await exportRenderedHtml(html!, r, reply)
               : format === "txt"
-                ? docToText(title, blocks)
+                ? nodes
+                  ? docContainersText(title, nodes, { projected: true })
+                  : docToText(title, blocks)
                 : nodes
                   ? `# ${title}\n\n${serializeDocContainers(nodes, { projected: true })}\n`
                   : docToMarkdown(title, blocks);
