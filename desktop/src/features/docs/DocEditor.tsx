@@ -1,6 +1,7 @@
 import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
+import { docRailLayout, observeDocLayout } from "./doc-layout";
 import {
   Fragment,
   useCallback,
@@ -268,9 +269,6 @@ function blocksFromSource(source: string): DocBlock[] {
   const parsed = parseDoc(source);
   return parsed.length ? parsed : [{ type: "paragraph", text: "" }];
 }
-
-/** How wide the page area must be for the contents rail beside it. */
-const OUTLINE_ROOM = 1060;
 
 /** How much room the button over a selection needs above the words. */
 const BAR_HEIGHT = 44;
@@ -2530,17 +2528,14 @@ export function DocEditor({
    * library open on a laptop there isn't, and the Info panel lists them.
    */
   const layoutRef = useRef<HTMLDivElement>(null);
-  const [roomy, setRoomy] = useState(false);
+  const [layoutWidth, setLayoutWidth] = useState(0);
   useEffect(() => {
     const el = layoutRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const watch = new ResizeObserver(([entry]) =>
-      setRoomy(entry.contentRect.width >= OUTLINE_ROOM),
-    );
-    watch.observe(el);
-    return () => watch.disconnect();
+    if (!el) return;
+    return observeDocLayout(el, setLayoutWidth);
   }, []);
-  const longPage = showsOutline(outline) && roomy;
+  const railLayout = docRailLayout(layoutWidth);
+  const longPage = showsOutline(outline) && railLayout.outline;
   /** Each line's element on the page, in order (one per block). */
   const lineEls = () =>
     [...(bodyRef.current?.children ?? [])].filter((el) =>
@@ -3569,6 +3564,7 @@ export function DocEditor({
           ref={layoutRef}
           className={
             "doc-layout" +
+            (railLayout.narrow ? " is-narrow" : "") +
             (showHistory
               ? " has-history"
               : showInfo
