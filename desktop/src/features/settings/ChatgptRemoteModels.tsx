@@ -34,7 +34,8 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
         controller.signal,
       );
       if (controller.signal.aborted || token !== session.get()) return;
-      window.location.href = request.launch_url;
+      // The signed-in desktop runtime picks up this owned request. Browsers
+      // cannot reliably detect an installed custom-protocol handler.
       while (
         !controller.signal.aborted &&
         Date.now() < Date.parse(request.expires_at)
@@ -129,8 +130,8 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
       </div>
       {connecting && (
         <p role="status">
-          Finish ChatGPT sign-in and consent in the browser opened by your Orbyn
-          runtime.
+          Keep Orbyn desktop open and signed in to this account. It will open
+          ChatGPT sign-in automatically.
         </p>
       )}
       {connectError && <p role="alert">{connectError}</p>}

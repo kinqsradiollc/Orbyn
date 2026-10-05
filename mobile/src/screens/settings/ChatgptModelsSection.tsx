@@ -120,7 +120,8 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       />
       {connecting && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>
-          Finish sign-in in the browser opened by your connected Orbyn app.
+          Keep Orbyn desktop open and signed in to this account. It will open
+          ChatGPT sign-in automatically.
         </Text>
       )}
       {connectError && (
