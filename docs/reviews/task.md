@@ -31,6 +31,18 @@ Browser5174 saved Block and Simulator timeout -10005 remain recorded;
 no visual/native completion claim follows. Earlier qualification logs are retained.
 The historical checkpoints below do not supersede this table.
 
+PR210 paragraph/break checkpoint exact `91a3193e` is pushed and tracked-clean.
+Final focused editing/source/reference/Study/component/export cohort379/379
+passes; all workspace types, packages/backend/web builds and full formatting
+pass. Frozen-head full local suite session6765 is running against fresh marked
+DB22; CI37352661791 is running. Neither is a passing result yet.
+Log: `/tmp/orbyn-channel-docs-breaks-91a3193e-full.log`.
+Actual mobile Inline function is tested with mocked Text primitives; native
+interaction and appearance remain unverified. Preserve container continuation,
+reference-title/image, diagram-family and whole-app layout requirements.
+Next independent read-only audit is in `codex/docs-reference-title-completion`;
+PR210 checkout must remain unchanged during qualification.
+
 # Historical implementation pipeline — earlier 6 October 2026
 
 Main baseline is `690f6246`, pushed; Slack PR204 merged after all four CI37321894816 jobs passed. User deploys manually; production recovery is not
