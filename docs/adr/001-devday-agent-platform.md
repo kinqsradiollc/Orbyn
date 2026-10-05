@@ -4,10 +4,14 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `14415dcb` (PR209), following PR205–208 and
-Slack PR204. Deployment remains user-run and unverified. Main and exact
-link candidate `4c3dffb4` have identical application source; main additionally
-contains the documentation checkpoint `fd055b70`.
+Main application checkpoint is `59d9f348` (PR210), following PR204–209.
+PR210 exact `91a3193e` passed all four CI37352661791 jobs and the fresh full local
+suite3418/0/1 (terminal0). Main application source matches that candidate; only
+intervening handoff documentation differs. Paragraph/source-break handling covers
+both clients, HTML/PDF, Word export/import and HTML paste. Deployment is user-run
+and unverified. Reference-title PR211 exact `e04f2c57` includes actual main without
+conflicts; combined types/builds/format pass and full local/CI qualification is live.
+Docs available-width rail repair remains local; visual/native acceptance is open.
 
 | Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

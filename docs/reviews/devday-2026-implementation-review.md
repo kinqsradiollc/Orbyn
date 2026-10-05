@@ -2,12 +2,14 @@
 
 ## Current delivery state — 6 October 2026
 
-Main application checkpoint `14415dcb` includes balanced links after Docs nested formatting and
-exact delimiter editing (PR208), following Teams PR205–207 and Slack PR204.
-PR208 exact `4c9edf00` and main have identical tested file tree; all four
-CI37346372738 jobs and the fresh full local suite pass (3383 passes,0 failures,
-1 existing skip). Balanced-link PR209 exact `4c3dffb4` is merged after all four CI37348529721 jobs
-and fresh local full suite3403/0/1 passed. The complete current state and implementation pipeline are in
+Main application checkpoint `59d9f348` includes paragraph/break handling PR210,
+balanced links PR209 and nested formatting PR208, following Teams PR205–207 and
+Slack PR204. PR210 exact `91a3193e` passed all four CI37352661791 jobs and fresh
+full local tests3418/0/1, terminal0; application source matches the merged main.
+Reference-title PR211 exact `e04f2c57` incorporates actual main without conflicts;
+combined types/builds/format pass, full local/CI qualification is running.
+Docs available-width layout repair remains local; visual/native acceptance is open.
+The complete current state and implementation pipeline are in
 [ADR001](../adr/001-devday-agent-platform.md#authoritative-checkpoint--6-october-2026)
 and [the live handoff](task.md#authoritative-implementation-pipeline--6-october-2026).
 D1, U1, agent/provider acceptance, real-account/tenant/host checks and final cleanup
