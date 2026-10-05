@@ -768,6 +768,12 @@ test("page claims and chat claims share background capacity without consuming in
     ),
   );
   assert.equal(claimedPages.filter(Boolean).length, 2);
+  // These fixture claims use a fixed schedule clock; the chat runner uses wall
+  // time. Keep their leases live for the same duration on the runner's clock.
+  await pool.query(
+    "UPDATE assistant_page_runs SET lease_expires_at=clock_timestamp()+($2 * interval '1 millisecond') WHERE id=ANY($1::uuid[]) AND state='running'",
+    [runs.map((run) => run.id), PAGE_RUN_LEASE_MS],
+  );
   const { initialAssistantRun } =
     await import("../src/modules/ai/agent/run.js");
   const { claimAssistantJob } =

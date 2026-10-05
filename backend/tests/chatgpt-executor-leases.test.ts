@@ -375,8 +375,9 @@ test("owned cross-device catalog reads expose explicit state and one account-bou
   );
   await f.claim();
   await publishChatgptExecutorCatalog(f.session, f.publication(1));
-  const ready = await readChatgptModelCatalog(reader, selection);
+  const ready = await readChatgptModelCatalog(reader, selection, true);
   assert.equal(ready.status, "ready");
+  assert.deepEqual(ready.capabilities, []);
   assert.deepEqual(
     ready.models.map((m) => m.slug),
     ["model-b", "model-a"],
@@ -392,9 +393,16 @@ test("owned cross-device catalog reads expose explicit state and one account-bou
   );
   const changed = f.publication(1, 2);
   changed.catalog.models = [changed.catalog.models[1]];
-  changed.signature = f.signature(chatgptCatalogProofMessage(changed.catalog));
-  await publishChatgptExecutorCatalog(f.session, changed);
-  const removed = await readChatgptModelCatalog(reader, selection);
+  const capabilityPublication = {
+    ...changed,
+    catalog: { ...changed.catalog, capabilities: ["plan_inference_v1"] },
+  };
+  capabilityPublication.signature = f.signature(
+    chatgptCatalogProofMessage(capabilityPublication.catalog),
+  );
+  await publishChatgptExecutorCatalog(f.session, capabilityPublication);
+  const removed = await readChatgptModelCatalog(reader, selection, true);
+  assert.deepEqual(removed.capabilities, ["plan_inference_v1"]);
   assert.equal(
     removed.preference.model,
     "model-b",
@@ -541,7 +549,26 @@ test("first-party models and executor routes reject other principals, malformed 
       remoteAddress: ip ?? `10.78.0.${address++}`,
     });
   const url = `/models?connection_id=${selection.connection_id}&executor_id=${selection.executor_id}`;
+
   try {
+    const withCapabilities = await call(
+      "GET",
+      `${url}&include_capabilities=1`,
+      f.session.token,
+    );
+    assert.equal(withCapabilities.statusCode, 200);
+    assert.deepEqual(withCapabilities.json().capabilities, []);
+    assert.equal(
+      (
+        await call(
+          "GET",
+          `${url}&include_capabilities=invalid`,
+          f.session.token,
+        )
+      ).statusCode,
+      422,
+    );
+
     assert.equal((await call("GET", url)).statusCode, 401);
     assert.equal((await call("GET", url, "oat_fixture")).statusCode, 401);
     const apiKey = `ok_${randomUUID()}`;

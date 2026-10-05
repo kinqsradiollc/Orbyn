@@ -151,6 +151,7 @@ export async function readChatgptCatalogLocked(
           ? "stale"
           : "ready",
     models: snapshot?.models ?? [],
+    capabilities: snapshot?.capabilities ?? [],
     preference: {
       binding,
       model: preference?.model ?? null,
@@ -162,16 +163,21 @@ export async function readChatgptCatalogLocked(
   });
 }
 
-/** A reader's own session can inspect another owned device's sanitized catalog. */
+/**
+ * A reader's own session can inspect another owned device's sanitized catalog.
+ * Capability metadata is opt-in so strict legacy consumers retain their shape.
+ */
 export async function readChatgptModelCatalog(
   session: Session,
   value: unknown,
+  includeCapabilities = false,
 ) {
   const selection = chatgptCatalogSelection.parse(value);
   return transaction(async (db) => {
     await requireLiveSession(db, session);
     const result = await readChatgptCatalogLocked(db, session, selection);
     await requireLiveSession(db, session);
+    if (!includeCapabilities) delete result.capabilities;
     return result;
   });
 }
