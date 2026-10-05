@@ -118,6 +118,84 @@ preserved, Docker is unchanged, user deploys manually, and cleanup remains later
 | 4     | Providers/agents C1-C6/M1   | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged            | Governing budget/collaboration/publication audit; real account/tenant/host acceptance |
 | 5     | Production and cleanup      | Main checkpoints pushed; user files/worktrees preserved                                    | User deployment confirmation; final relevant integration and cleanup audit            |
 
+## Main checkpoint notes retained during integration
+
+## Current continuation — 6 October 2026
+
+| Checkpoint             | State                                                                    | Next gate                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Main application       | e7232e11; structured parser/source foundation delivered                  | Full editor adoption remains open                                                               |
+| Storage PR216          | Frozen4f45e904 full DB49:3548 pass,0 fail,1 skip, terminal0              | Integrate privacy/API follow-up; CI Docker success, other three cancelled                       |
+| Structured API         | Pushed357b58cd;46 pure and88 mounted tests, all types/builds/format pass | Frozen full DB51 running; session81935, log /tmp/orbyn-channel-structured-api-357b58cd-full.log |
+| Legacy history restore | Local committeddd2a06af; backend types pass                              | New current/past structured-version refusal regression awaits serial DB52 after DB51            |
+| ChatGPT                | Handoff/routing/catalog/defaults on main                                 | Real authorization/inference and truthful account plan/usage acceptance remain open             |
+
+No structured API/storage promotion yet. A legacy restore could flatten a past
+structured version after a flat downgrade; dd2a06af refuses both current and past
+structured content before tick/history changes. Both editors, collaboration,
+task-item mapping, imports/exports, whole-app layout acceptance and remaining
+C1-C6/M1/D1/U1 are still required. Preserve character/user work; no deploy/cleanup.
+Historical sections below retain their original point-in-time evidence.
+
+# Authoritative implementation pipeline — 6 October 2026
+
+Main application checkpoint is `e7232e11`, pushed: the shared structured
+container parser/source/HTML foundation passed frozen fresh full DB41:3521 passes,
+zero failures and one existing skip, terminal0,736272ms. Its application source
+matches tested20752130.94 focused and11 mounted existing library-hierarchy cases,
+all workspace types, packages/backend/web builds and whole formatting pass.
+This is an internal foundation checkpoint; nested storage/editing is not enabled.
+
+PR215 quote/footnotes remains merged8e792ecb, full3498/0/1. Its final CI
+37366986451 attempt2 passed all four jobs. PR213 Word/privacy full3460/0/1 is
+merged; CI37364955550 attempt2 passed backend/web and Docker, but mail/mobile were
+cancelled without failing steps. PR214 Views/Review wrapping is merged; attempt2
+CI37366765411 passed Docker, while other jobs were cancelled without failing steps.
+These cancellations are retained, rather than reported as all-green qualification.
+
+Storage follow-up [draft PR216](https://github.com/kinqsradiollc/Orbyn/pull/216)
+is frozen4f45e904 oncodex/docs-container-storage-contract, pushed with current
+main application integrated.54 pure and86 mounted storage/Docs/editing/deadlock
+cases pass; packages, all workspace types, backend/web builds and formatting pass.
+Fresh immutable full DB49 is live:
+`/tmp/orbyn-channel-structured-storage-4f45e904-full.log`; CI37372176301 is queued.
+Do not mutate this candidate during qualification. Main integration needed only
+documentation conflict resolution; application source did not conflict.
+
+The candidate stores ownership separately from the exact flat ACL/search/Study
+projection, preserves structured history and blocks legacy content/collaboration
+writes on format2 pages. Its internal atomic writer checks current ownership,
+permissions, revision, capabilities, private labels, linked-task state and file
+ACLs. Real concurrent migration/save locking and401/403/400/422/429 boundaries are
+covered. Legacy format1 IDs retain the current contract; format2 requires valid,
+unique IDs. Copied unreadable files stay unlinked and return404, matching the
+existing ACL contract. Earlier fixture failures remain recorded.
+
+No public structured editing API or normal format2 creation is enabled. Capability
+headers, both editors, task-item mapping, CRDT, imports and HTML/PDF/Word export
+adoption remain required. See [container storage gates](docs-container-audit.md#backend-storage-adoption-candidate).
+All D1/U1 and governing provider/agent/page requirements remain in scope.
+
+ChatGPT handoff/routing/catalog/defaults are already on main. Real web-to-desktop
+authorization, successful eligible inference and whole-account plan/usage evidence
+remain open; previous inference was refused for sharing quota exhaustion. No new
+chargeable probe or invented quota was used. Unsupported hard-limit catalogs remain
+ineligible for budgeted private schedules. Plugin/MCP and plan credentials stay separate.
+
+Browser5174 remains blocked by the tool's saved permission; a fresh Simulator
+selection again timed out -10005. No visual/native proof or whole-app completion
+is claimed. Full C1-C6/M1/D1/U1 remains active and incomplete. Character/user files
+are preserved, Docker is unchanged, user deploys manually, cleanup remains later.
+
+| Order | Work                      | Confirmed state                                                                 | Next implementation or acceptance                                                       |
+| ----- | ------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 1     | Structured Docs backend   | Foundation on main; PR21654 pure+86 mounted pass; full/CI live                  | Inspect terminal qualification and integrate ready source                               |
+| 2     | Structured Docs clients   | Versioned storage/source contract and internal writer candidate                 | Public capability API, CRDT and both editors; task-item mapping and all imports/exports |
+| 3     | Remaining Docs D1         | Markdown/Mermaid/privacy/Word/footnotes checkpoints merged                      | Media/bookmarks/endnotes and complete render/edit/import/export family matrices         |
+| 4     | Whole-app U1              | Settings/assistant and responsive Views/Review checkpoints merged               | Every page, narrow/collapsed/panel/large-text states and actual visual/native review    |
+| 5     | Providers/agents C1-C6/M1 | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged | Governing budget/collaboration/publication audit; real account/tenant/host acceptance   |
+| 6     | Production and cleanup    | Qualified main checkpoints pushed; user work preserved                          | User deployment confirmation; final integration and relevant cleanup audit              |
+
 # Historical implementation pipeline — earlier 6 October 2026
 
 Main baseline is `690f6246`, pushed; Slack PR204 merged after all four CI37321894816 jobs passed. User deploys manually; production recovery is not
