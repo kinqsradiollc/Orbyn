@@ -1,6 +1,6 @@
 # Authoritative implementation pipeline — 6 October 2026
 
-Main application checkpoint: `14415dcb`, pushed (Docs links PR209).
+Main application checkpoint: `59d9f348`, pushed (Docs paragraphs/breaks PR210).
 PR205 account linking, PR206 delivery and PR204 Slack are also merged.
 User deploys main manually; production deployment is unverified.
 Full ADR goal remains active and incomplete.
@@ -8,7 +8,7 @@ Full ADR goal remains active and incomplete.
 | Order | Work                        | Current state                                                                                                                                               | Next implementation / acceptance                                                                                                                                                                                                                                |
 | ----- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | Teams question replies      | PR207 merged: signed bounded cards, sent-card proofs, encrypted durable receipts, current authority checks and atomic exact-question answers.               | Real tenant and native/web interaction acceptance; approvals stay in Orbyn.                                                                                                                                                                                     |
-| 2     | Docs D1                     | Nested formatting, delimiter editing and safe autolinks merged in PR208; balanced inline links and titles merged in PR209.                                  | Qualify the local paragraph/break repair across editing, paste and exports, preserving block IDs and comment source ranges. Complete the remaining D1 matrices.                                                                                                 |
+| 2     | Docs D1                     | Nested formatting, delimiter editing and safe autolinks merged in PR208; balanced inline links and titles merged in PR209.                                  | Reference-link titles PR211 are in immutable-head full local/CI qualification. Complete remaining container/image/diagram/import/export D1 matrices.                                                                                                            |
 | 3     | Whole-app U1                | Modal settings and shared layout checkpoints on main                                                                                                        | Review and adjust public/signed-in Home, assistant/agent panels, Docs, tasks/views, calendar, projects/teams, lists/study, settings/admin, booking and overlays. Preserve palette and mobile feature parity; prove narrow/collapsed/large-text/keyboard states. |
 | 4     | Agent and provider contract | Independent Background/Overnight runtimes, reflection/ownership, maintained pages, ChatGPT models/defaults and separate plugin execution checkpoints merged | Audit every retained C1–C6/M1/D1/U1 requirement against source/evidence; finish budgets/collaboration/publication and remaining client/runtime gaps. Real-account/tenant/host acceptance stays open until observed.                                             |
 | 5     | Deployment and cleanup      | Qualified checkpoints pushed; root user dirt and related worktrees preserved                                                                                | User deploys. After all relevant work is integrated, audit patch equivalence/unmerged changes and clean only expendable worktrees/branches.                                                                                                                     |
@@ -31,23 +31,30 @@ Browser5174 saved Block and Simulator timeout -10005 remain recorded;
 no visual/native completion claim follows. Earlier qualification logs are retained.
 The historical checkpoints below do not supersede this table.
 
-PR210 paragraph/break checkpoint exact `91a3193e` is pushed and tracked-clean.
-Final focused editing/source/reference/Study/component/export cohort379/379
-passes; all workspace types, packages/backend/web builds and full formatting
-pass. Frozen-head full local suite session6765 ended exit0 against fresh marked
-DB22:3418 passes/0 failures/1 existing skip in733605ms. CI37352661791
-remains running; three jobs have passed and backend/web tests remain live.
-Log: `/tmp/orbyn-channel-docs-breaks-91a3193e-full.log`.
+PR210 paragraph/break checkpoint exact `91a3193e` is merged in `59d9f348`.
+All four CI37352661791 jobs passed. Final focused cohort379/379, workspace types,
+owned builds and formatting pass; fresh full local DB22 suite3418/0/1 ended exit0
+in733605ms. Main application source matches the tested candidate; only intervening
+handoff documentation differs. Logs: `/tmp/orbyn-channel-docs-breaks-91a3193e-full.log`
+and `/tmp/orbyn-docs-breaks-91a3193e-ci.log`.
 Actual mobile Inline function is tested with mocked Text primitives; native
-interaction and appearance remain unverified. Preserve container continuation,
-reference-title/image, diagram-family and whole-app layout requirements.
-Reference-title checkpoint `ee7975e4` is committed/pushed on
-`codex/docs-reference-title-completion`:308 serial API/editing/privacy/component
-cases and206 pure cases pass, all workspace types and owned builds/full-format
-pass. It is not merged or fully qualified. Integrate actual PR210 main before
-qualifying the combined source; PR210 checkout stays frozen until terminal CI.
-Simulator inspection was retried this turn and returned timeout -10005;
-no native interaction/appearance acceptance is claimed.
+interaction and appearance remain unverified.
+
+Reference-title PR211 is draft, attached and pushed at `e04f2c57`, incorporating
+actual PR210 main without conflicts. Previous qualification308 serial API/editing/
+privacy/component cases and206 pure cases passed. Combined-head workspace types,
+owned packages/backend/web builds and formatting passed. Fresh DB24 full suite
+and CI37355677316 are running; no merge/full completion claim follows yet.
+Logs: `/tmp/orbyn-channel-reference-integrated-full.log` and
+`/tmp/orbyn-reference-integrated-*.log`.
+
+Docs available-width layout repair is local in `codex/ui-layout-completion`:
+comments/history/Info stack when app/library panels leave a narrow page; outline
+responds to actual page width. Observer mount/resize/disconnect/fallback and CSS
+wiring are covered by unit tests. This is not browser/native visual acceptance.
+Preserve reference/image/container continuations, diagram families and whole-app
+layout requirements. Simulator inspection returned timeout -10005; Browser5174
+saved Block remains recorded. User/character files and worktrees are preserved.
 
 # Historical implementation pipeline — earlier 6 October 2026
 
