@@ -241,9 +241,10 @@ export async function failMaintainedPageRun(
 export async function claimMaintainedPageRun(
   db: Db,
   lane: PageRun["lane"],
-  now = new Date(),
+  suppliedNow?: Date,
   runId?: string,
 ): Promise<PageRun | null> {
+  const now = suppliedNow ?? new Date();
   if (!(await assistantRuntimeHasRoom(db, lane, now))) return null;
   await expireMaintainedPageRuns(db, lane, now);
   // Exhausted leases terminate instead of repeatedly charging a stalled provider.
@@ -257,7 +258,7 @@ export async function claimMaintainedPageRun(
     await db.query<PageRun>(
       `SELECT r.* FROM assistant_page_runs r JOIN assistant_page_bindings b ON b.id=r.binding_id
      WHERE r.lane=$1 AND r.attempts<5 AND ($3::uuid IS NULL OR r.id=$3)
-       AND (r.retry_after IS NULL OR r.retry_after<=$2) AND (r.state='queued' OR (r.state='running' AND r.lease_expires_at<=$2))
+       AND (r.retry_after IS NULL OR r.retry_after<=CASE WHEN $4::boolean THEN $2::timestamptz ELSE clock_timestamp() END) AND (r.state='queued' OR (r.state='running' AND r.lease_expires_at<=$2))
        AND NOT b.paused AND b.revision=r.binding_revision AND b.snapshot->>'doc_version'=r.doc_version::text
        AND (r.end_at IS NULL OR r.end_at>$2)
        AND (r.lane<>'overnight' OR (
@@ -268,7 +269,7 @@ export async function claimMaintainedPageRun(
            AND busy.id<>r.id AND busy.lane='overnight' AND busy.state='running'
            AND busy.lease_expires_at>$2)))
      ORDER BY r.created_at,r.id LIMIT 1 FOR UPDATE OF r SKIP LOCKED`,
-      [lane, now, runId ?? null],
+      [lane, now, runId ?? null, suppliedNow !== undefined],
     )
   ).rows[0];
   if (!row) return null;
