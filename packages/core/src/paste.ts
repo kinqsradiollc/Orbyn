@@ -150,7 +150,7 @@ type Style = {
   highlight?: boolean;
   link?: string;
 };
-type Run = Style & { text: string };
+type Run = Style & { text: string; break?: boolean };
 
 /** Elements that sit inside a line, where a background is a highlighter's. */
 const INLINE = new Set([
@@ -341,6 +341,8 @@ function runsToMarkdown(runs: Run[]): string {
     const last = merged[merged.length - 1];
     if (
       last &&
+      !last.break &&
+      !r.break &&
       !!last.bold === !!r.bold &&
       !!last.italic === !!r.italic &&
       !!last.code === !!r.code &&
@@ -352,10 +354,11 @@ function runsToMarkdown(runs: Run[]): string {
   }
   return merged
     .map((r) => {
+      if (r.break) return "\\\n";
       const lead = /^\s*/.exec(r.text)![0];
       const trail = /\s*$/.exec(r.text.slice(lead.length))![0];
       const core = r.text.slice(lead.length, r.text.length - trail.length);
-      if (!core) return r.text;
+      if (!core) return r.text.replace(/\s+/g, " ");
       let body = core;
       // Styles don't nest in a page line, so the strongest one is kept.
       if (r.link && /^(https?:|mailto:)/i.test(r.link))
@@ -367,10 +370,10 @@ function runsToMarkdown(runs: Run[]): string {
       else if (r.bold && !core.includes("*")) body = `**${core}**`;
       else if (r.italic && !core.includes("*")) body = `*${core}*`;
       else if (r.highlight && !core.includes("=")) body = `==${core}==`;
-      return lead + body + trail;
+      return (lead + body + trail).replace(/\s+/g, " ");
     })
     .join("")
-    .replace(/\s+/g, " ")
+    .replace(/(?:\\\n)+$/, "")
     .trim();
 }
 
@@ -438,16 +441,14 @@ export function htmlToBlocks(html: string): DocBlock[] {
     }
     switch (tag) {
       case "br":
-        // A page line can't hold a line break: the words after it are a
-        // line of their own, of the same kind.
-        {
+        if (pending && pending.type !== "paragraph") {
+          // Container continuation syntax is handled separately. Preserve the
+          // existing heading/list/quote paste contract until its round trip is supported.
           const kind = pending;
           flush();
           pending =
-            kind && kind.type !== "heading" && kind.type !== "divider"
-              ? kind
-              : null;
-        }
+            kind.type !== "heading" && kind.type !== "divider" ? kind : null;
+        } else runs.push({ text: "", break: true });
         return;
       case "hr":
         flush();
