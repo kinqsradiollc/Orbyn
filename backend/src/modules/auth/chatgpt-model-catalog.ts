@@ -167,12 +167,14 @@ export async function readChatgptCatalogLocked(
 export async function readChatgptModelCatalog(
   session: Session,
   value: unknown,
+  includeCapabilities = false,
 ) {
   const selection = chatgptCatalogSelection.parse(value);
   return transaction(async (db) => {
     await requireLiveSession(db, session);
     const result = await readChatgptCatalogLocked(db, session, selection);
     await requireLiveSession(db, session);
+    if (!includeCapabilities) delete result.capabilities;
     return result;
   });
 }

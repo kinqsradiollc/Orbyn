@@ -25,7 +25,11 @@ export async function chatgptModelRoutes(app: FastifyInstance) {
       .strict()
       .parse(r.query);
     const result = chatgptCatalogRead.parse(
-      await readChatgptModelCatalog(session, selection),
+      await readChatgptModelCatalog(
+        session,
+        selection,
+        include_capabilities === "1",
+      ),
     );
     // Older clients validate an exact response shape. Extra capability metadata
     // is explicit opt-in, and omission never grants inference authority.

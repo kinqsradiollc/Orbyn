@@ -2403,3 +2403,7 @@ real positive provider execution and full scoped qualification remain required.
 No main merge, production deployment or cleanup. Full C1–C6/M1/D1/U1 remains active.
 
 ## Current checkpoint — selected provider features
+
+### 2026-10-05 — Agenda catalog compatibility and shared-clock qualification repair
+
+CI 37286333130 on 50a92aa2 failed three tests (2927 passed, one existing Tesseract skip). Preserve the legacy internal catalog response as well as the HTTP response: capabilities now require an explicit opt-in argument, and capability assertions exercise that opt-in. Preserve both cross-runtime serialization assertions: fixed schedule fixtures now place their claimed page leases on the live chat runner's wall clock using the unchanged PAGE_RUN_LEASE_MS. No production runtime capacity or lease duration changed. Backend typecheck passed (/tmp/orbyn-agenda-catalog-clock-types.log). Database cases await exact-head CI; local test PostgreSQL remains unavailable. ADR remains incomplete.

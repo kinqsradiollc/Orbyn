@@ -871,6 +871,12 @@ test("page and chat jobs serialize Overnight work for the same person", async ()
     claimMaintainedPageRun(db, "overnight", time, f.run.id),
   );
   assert.ok(page?.lease_token);
+  // The page fixture uses a fixed schedule clock, while the chat runner uses
+  // wall time. Preserve the production lease duration on the runner's clock.
+  await pool.query(
+    "UPDATE assistant_page_runs SET lease_expires_at=clock_timestamp()+($2 * interval '1 millisecond') WHERE id=$1",
+    [page.id, PAGE_RUN_LEASE_MS],
+  );
   const chat = (
     await pool.query(
       "INSERT INTO ai_chats(id,user_id,title) VALUES(gen_random_uuid(),$1,'Serial Night') RETURNING id",
