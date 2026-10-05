@@ -1814,3 +1814,22 @@ unknown outcomes without retry, and personal ChatGPT credentials/transports rema
 excluded. The implemented consent/storage foundation is not an enabled inference
 feature. Complete the broker, both client controls and runtime/security acceptance
 before promoting it. The full C1-C6/M1/D1/U1 contract remains unchanged and open.
+
+### P1 managed plugin inference candidate — 5 October 2026
+
+Committed bdefc9cf (PR203) implements the separate plugin worker and provider
+broker, default-off owner consent, provider/model revision pinning, per-call
+output and UTC daily limits, durable operation receipts, private reconnect events,
+and matching web/desktop/mobile permission controls. Personal ChatGPT transports
+and first-party runtime slots are excluded. Unknown/interrupted provider outcomes
+retain their allowance reservation and never replay; queued revocation is recorded
+as known undispatched. Current OAuth audience, owner/client/token/team authority,
+consent and provider revision are fenced at dispatch and result acceptance.
+
+Policy/consent/launch/cursor checks26/26 and component interactions8/8 pass;
+workspace types pass. Ten new database broker cases await exact-head CI.
+The preceding f271dd0e CI failed on two fixed-clock runtime fixtures and missing
+route inventory entries; repairs preserve all capacity/shield assertions.
+Browser inspection remains rejected by the saved site permission; native visual
+acceptance and external host delivery remain outstanding. This is candidate
+implementation, not P1 or full ADR completion. Merge only after qualification.
