@@ -172,3 +172,14 @@ backend/web builds and whole formatting pass, recorded under
 foundation20752130's immutable full DB41. A fresh Simulator selection again
 returned Computer Use timeout -10005; no native screenshot or interaction proof
 is available. The contract is not yet a runtime storage migration or editor feature.
+
+## Qualified shared foundation
+
+Frozen `20752130` completed fresh full DB41:3521 passes, zero failures and one
+existing skip, terminal0, recorded in
+`/tmp/orbyn-channel-container-20752130-full.log`.94 focused and11 mounted existing
+library-hierarchy cases passed; packages, all workspace types, backend/web builds
+and whole formatting passed. This shared parser/source/HTML foundation is being
+integrated into main as an internal checkpoint. It does not enable stored nested
+pages or claim editor/export/UI completion. The follow-up versioned contract and
+storage migration remain separate candidates.
