@@ -822,3 +822,101 @@ test("the runtime preserves safe quota failure metadata when the provider stream
     await f.cleanup();
   }
 });
+
+test("desktop automatically claims the same person's web request on its first session pulse", async () => {
+  const f = await fixture();
+  f.manager.close();
+  const scheduled: { run: () => Promise<void>; ms: number }[] = [];
+  let polls = 0;
+  const manager = await create({
+    ...f.options,
+    createClient: async (token: string) => ({
+      ...(await f.options.createClient(token)),
+      pendingChatgptConnectRequests: async () => {
+        polls++;
+        const userId = token === "account-a" ? f.userA : f.userB;
+        return [...f.requests.entries()]
+          .filter(
+            ([, request]) =>
+              request.userId === userId && request.state === "pending",
+          )
+          .map(([id]) => ({ id }));
+      },
+    }),
+    schedule: (run: () => Promise<void>, ms: number) => {
+      scheduled.push({ run, ms });
+      return scheduled.length;
+    },
+    cancelSchedule: () => {},
+  });
+  const own = randomUUID(),
+    other = randomUUID();
+  f.requests.set(other, { userId: f.userB, state: "pending" });
+  f.requests.set(own, { userId: f.userA, state: "pending" });
+  try {
+    await manager.setSession("account-a");
+    assert.equal(polls, 0);
+    assert.equal(scheduled[0].ms, 0);
+    await scheduled[0].run();
+    assert.equal(polls, 1);
+    assert.equal(f.requests.get(own).state, "completed");
+    assert.equal(f.requests.get(other).state, "pending");
+    assert.equal((await manager.snapshot()).connections.length, 1);
+    const next = scheduled.findLast((pulse) => pulse.ms === 15000);
+    assert.ok(next);
+    const calls = f.calls();
+    await next.run();
+    assert.equal(polls, 2);
+    assert.equal(
+      f.calls(),
+      calls,
+      "a completed request must not start another sign-in or catalog call",
+    );
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});
+
+test("desktop request watcher recovers from a poll failure and stops after logout", async () => {
+  const f = await fixture();
+  f.manager.close();
+  const scheduled: { run: () => Promise<void>; ms: number }[] = [];
+  let polls = 0;
+  const manager = await create({
+    ...f.options,
+    createClient: async (token: string) => ({
+      ...(await f.options.createClient(token)),
+      pendingChatgptConnectRequests: async () => {
+        polls++;
+        if (polls === 1) throw new Error("temporary network failure");
+        return [];
+      },
+    }),
+    schedule: (run: () => Promise<void>, ms: number) => {
+      scheduled.push({ run, ms });
+      return scheduled.length;
+    },
+    cancelSchedule: () => {},
+  });
+  try {
+    await manager.setSession("account-a");
+    await scheduled[0].run();
+    assert.equal(scheduled[1].ms, 15000);
+    await scheduled[1].run();
+    assert.equal(polls, 2);
+    assert.equal(scheduled[2].ms, 15000);
+    await manager.setSession(null);
+    await scheduled[2].run();
+    assert.equal(
+      polls,
+      2,
+      "a stale timer must not poll under a signed-out session",
+    );
+    assert.equal(scheduled.length, 3);
+    assert.equal(f.calls(), 0);
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});
