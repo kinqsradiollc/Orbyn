@@ -21,6 +21,28 @@ selection and every existing block widget. PR216 full DB53 session98110 and
 CI37376039791 remain independent; no second DB suite while the full run is live.
 All C1-C6/M1/D1/U1 and manual visual/runtime/import acceptance stay required.
 
+## Qualified main checkpoint — 6 October 2026
+
+PR216 is merged as `93a30807`. Application source and migration252 match the tested
+frozen `e9a93e98` exactly. Corrected fresh DB55 full suite passed:3,565 passes,
+0 failures,1 existing skip, terminal0,749289ms. Prior DB53 failures3563/2/1 remain
+recorded below; the repaired privacy/catalog cohort passed64/64 on fresh DB54.
+CI37377748532 currently has mobile/Docker/mail success; backend/web is still in
+progress. This is a qualified local full result, not a claim that all CI or actual
+production deployment has completed. The user deploys main manually.
+
+Shared source mapping, paired container renderers and the revision-aware editor
+owner are committed/pushed on `codex/docs-structured-editor-contract` (application
+checkpoint3a55777a). Its store/source/format cohort passed29/29, all workspace
+types and formatting passed. Those changes are not in main or activated in the
+normal editors. Both editor integrations, comments/task-item identity, CRDT,
+legacy writer adapters, full import/render matrices and actual web/native visual
+acceptance remain required. Full C1-C6/M1/D1/U1 stays active; no final cleanup.
+
+Next implementation: full-format normal editor loading and selection on both
+apps, then ownership-preserving saves, comments/tasks and collaboration. Existing
+block widgets must be preserved; a reduced source-only editor is insufficient.
+
 ## Combined Docs full-regression repair — 6 October 2026
 
 Frozen5511d215 full DB53 terminated1:3563 passes,2 failures,1 existing skip,
