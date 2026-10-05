@@ -2,7 +2,43 @@
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
 
-### Authoritative checkpoint — 5 October 2026
+### Authoritative checkpoint — 6 October 2026
+
+Main application checkpoint is `34bcaaca` (PR206), following `cf119497` (PR205)
+and Slack main `690f6246` (PR204). Deployment remains user-run and unverified.
+Main and exact delivery candidate `5bc0bc9d` have identical file tree
+`40c84049d2b659b6227e9f84b73573e9f1cf698a`.
+
+| Area                 | Implemented on main                                                                                                                                                                                                                          | Remaining acceptance or implementation                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT / M1         | One-button device authorization handoff, selected-provider routing, owned model catalog and defaults, provider provenance and explicit fallback policy                                                                                       | Successful eligible real-account inference and handoff; truthful whole-account plan/usage proof. Unsupported hard-limit catalogs stay ineligible for budgeted private scheduling. |
+| Plugin / P1          | Separate backend and worker, provider-bound consent, managed/BYO inference receipts and both client controls                                                                                                                                 | External plugin host/provider and native interaction acceptance; private ChatGPT credentials and MCP remain separate.                                                             |
+| Agent channels / C6  | Slack installation, canonical bot vault, rotation, delivery and signed exact-question replies. Teams reviewed account/personal-conversation linking, uninstall/relink handling, bounded Background/morning delivery and both client controls | Teams exact-question reply receipts/consumption; real Slack/Teams tenant and cross-client visual/native acceptance. Optional unconfigured integrations remain disabled.           |
+| Agents / C4–C5       | Independent Background/Overnight runtimes and identities, source ownership, reflection and maintained-page checkpoints                                                                                                                       | Audit governing collaboration, budgets, shared/public pages and publication requirements against current source; finish unresolved runtime/client acceptance.                     |
+| Docs / D1            | Shared Markdown, source/preview, Mermaid and authorized export checkpoints                                                                                                                                                                   | Complete native editor/render/export/import matrix for all required Markdown/diagram families and interaction states.                                                             |
+| Whole-app UI / U1    | Settings modal/search, responsive assistant/settings and shared client checkpoints                                                                                                                                                           | Page-by-page web/desktop/mobile layout and interaction review, including sidebar collapse, simultaneous panels, narrow widths, large text and stale state.                        |
+| Production / cleanup | Qualified checkpoints pushed; user/character files and worktrees preserved                                                                                                                                                                   | User deployment confirmation, then final relevant-worktree/branch audit and cleanup after integration.                                                                            |
+
+Qualification: PR205 exact `d926b03c`, CI37334932950 all four jobs passed,
+3130 backend passes/0 failures/1 existing skip. PR206 exact `5bc0bc9d`,
+CI37335334670 all four jobs passed, 3180 backend passes/0 failures/1 existing skip.
+The fresh isolated local full suite also passed 3180/0/1 in 707974ms.
+The earlier reused-database full result (3171/9/1) is retained: interrupted-run
+queued fixtures contaminated later global queue assertions; unchanged source
+passed in a fresh marked database. No assertions or runtime limits were weakened.
+Workspace types, backend/web builds, formatting and native exports passed for
+the delivery candidate. Exports do not prove native interaction or appearance.
+Browser5174 remains blocked; Simulator inspection returned timeout -10005.
+
+Next: finish Teams exact-card durable replies, then D1 and U1 matrices and the
+remaining governing agent/provider acceptance audit. The reply branch contains
+only unmounted card/parser foundations (`c483a323`, 16 pure tests and focused
+TypeScript passing); it is not delivered Teams reply behavior.
+Full C1–C6/M1/D1/U1 remains active and incomplete. See the
+[implementation pipeline](../reviews/task.md#authoritative-implementation-pipeline--6-october-2026)
+and [Teams evidence](../reviews/evidence/teams-agent-channels.md).
+
+### Historical checkpoint — 5 October 2026
 
 Main baseline `429f2de2` includes selected-provider routing, migration deadlock recovery,
 web/mobile-to-desktop ChatGPT connection handoff, separate plugin launch context,

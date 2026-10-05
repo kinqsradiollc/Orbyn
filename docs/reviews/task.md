@@ -1,5 +1,32 @@
 # Authoritative implementation pipeline — 6 October 2026
 
+Main application checkpoint: `34bcaaca`, pushed (Teams delivery PR206). PR205
+account linking and PR204 Slack are also merged. User deploys main manually;
+production deployment is unverified. Full ADR goal remains active and incomplete.
+
+| Order | Work                        | Current state                                                                                                                                                                               | Next implementation / acceptance                                                                                                                                                                                                                                       |
+| ----- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Teams question replies      | Reviewed linking, consent, lifecycle, delivery and both client settings merged. Reply cards/parser committed and pushed separately as `c483a323`; 16 pure tests and focused TypeScript pass | Persist sent-card nonce/digest/expiry and encrypted receipts; recheck owner, conversation, consent, grant, source and exact waiting question; consume answer and receipt atomically; prove restart/retry/stale/refusal cases before mounting. Approvals stay in Orbyn. |
+| 2     | Docs D1                     | Markdown, Mermaid, source/preview and export checkpoints on main                                                                                                                            | Run the complete editor/render/import/export and diagram-family matrix on web/desktop/mobile; repair missing behavior and layout.                                                                                                                                      |
+| 3     | Whole-app U1                | Modal settings and shared layout checkpoints on main                                                                                                                                        | Review and adjust public/signed-in Home, assistant/agent panels, Docs, tasks/views, calendar, projects/teams, lists/study, settings/admin, booking and overlays. Preserve palette and mobile feature parity; prove narrow/collapsed/large-text/keyboard states.        |
+| 4     | Agent and provider contract | Independent Background/Overnight runtimes, reflection/ownership, maintained pages, ChatGPT models/defaults and separate plugin execution checkpoints merged                                 | Audit every retained C1–C6/M1/D1/U1 requirement against source/evidence; finish budgets/collaboration/publication and remaining client/runtime gaps. Real-account/tenant/host acceptance stays open until observed.                                                    |
+| 5     | Deployment and cleanup      | Qualified checkpoints pushed; root user dirt and related worktrees preserved                                                                                                                | User deploys. After all relevant work is integrated, audit patch equivalence/unmerged changes and clean only expendable worktrees/branches.                                                                                                                            |
+
+PR205 exact `d926b03c`: four CI jobs passed,3130 backend passes/0 failures/1
+existing skip. PR206 exact `5bc0bc9d`: four CI jobs passed and fresh isolated local
+full suite3180 passes/0 failures/1 existing skip. Main has identical tested tree
+`40c84049d2b659b6227e9f84b73573e9f1cf698a`. Candidate workspace types,
+backend/web builds, formatting and native exports pass. Native exports do not
+prove interaction. Browser5174 saved Block and Simulator timeout -10005 remain
+recorded; no visual/native completion claim follows.
+
+Fresh full log:`/tmp/orbyn-channel-teams-delivery-5bc0bc9d-fresh-full.log`.
+CI log:`/tmp/orbyn-channel-teams-delivery-5bc0bc9d-ci.log`. Earlier reused-database
+3171/9/1 full result remains retained; fresh unchanged-source rerun passed.
+The historical checkpoints below do not supersede this table.
+
+# Authoritative implementation pipeline — 6 October 2026
+
 Main baseline is `690f6246`, pushed; Slack PR204 merged after all four CI37321894816 jobs passed. User deploys manually; production recovery is not
 verified here. The full ADR goal remains active and incomplete.
 
