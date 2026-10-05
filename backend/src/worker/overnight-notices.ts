@@ -1,3 +1,4 @@
+import { queueTeamsNightUpdate } from "../modules/agent-channels/teams-outbox.js";
 import { addDays } from "@orbyn/core";
 import { queueAgentNightUpdate } from "../modules/agent-channels/outbox.js";
 import { transaction } from "../db/pool.js";
@@ -60,6 +61,7 @@ export async function queueOvernightNotices(
       }
       if (section) {
         await queueAgentNightUpdate(db, night.id, night.user_id);
+        await queueTeamsNightUpdate(db, night.id, night.user_id);
         await db.query(
           `INSERT INTO notifications(user_id, item_version, channel, destination, title, body, state, kind, ref)
            SELECT u.id, 0, delivery.channel, delivery.destination, $2, CASE WHEN delivery.channel='push' AND $5 THEN 'Your night shift is ready to review. Some work is still settling; open Overnight for the latest results.' ELSE $3 END,

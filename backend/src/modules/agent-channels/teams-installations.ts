@@ -265,7 +265,7 @@ export async function confirmTeamsInstallation(
       VALUES($1,$2,$3,$4,$5,$6,$7,clock_timestamp()+interval '10 minutes')
       ON CONFLICT(user_id) DO UPDATE SET bot_app_id=EXCLUDED.bot_app_id,tenant_id=EXCLUDED.tenant_id,object_id=EXCLUDED.object_id,display_name=EXCLUDED.display_name,
       config_hash=EXCLUDED.config_hash,link_nonce_hash=EXCLUDED.link_nonce_hash,link_expires_at=EXCLUDED.link_expires_at,
-      conversation_encrypted=NULL,conversation_hash=NULL,disconnected_at=NULL,dm_enabled=false,version=agent_channel_teams_installations.version+1,updated_at=now()
+      conversation_encrypted=NULL,conversation_hash=NULL,conversation_route_hash=NULL,conversation_bound_at=NULL,disconnected_at=NULL,dm_enabled=false,version=agent_channel_teams_installations.version+1,updated_at=now()
       RETURNING id,version,link_expires_at`,
         [
           binding.userId,
@@ -306,7 +306,7 @@ export async function readTeamsChannel(
     await live(db, binding);
     const row = (
       await db.query(
-        "SELECT id,display_name,tenant_id,object_id,version,dm_enabled,disconnected_at,config_hash,conversation_hash,link_expires_at FROM agent_channel_teams_installations WHERE user_id=$1",
+        "SELECT id,display_name,tenant_id,object_id,version,dm_enabled,disconnected_at,config_hash,conversation_hash,conversation_route_hash,link_expires_at FROM agent_channel_teams_installations WHERE user_id=$1",
         [binding.userId],
       )
     ).rows[0];
@@ -322,7 +322,7 @@ export async function readTeamsChannel(
         ? ("disconnected" as const)
         : row.config_hash !== configHash
           ? ("reconnect" as const)
-          : row.conversation_hash
+          : row.conversation_hash && row.conversation_route_hash
             ? ("linked" as const)
             : row.link_expires_at && row.link_expires_at.getTime() > Date.now()
               ? ("awaiting_conversation" as const)
@@ -339,7 +339,7 @@ export async function disconnectTeamsInstallation(
   return transaction(async (db) => {
     await live(db, binding);
     const result = await db.query(
-      `UPDATE agent_channel_teams_installations SET dm_enabled=false,conversation_encrypted=NULL,conversation_hash=NULL,
+      `UPDATE agent_channel_teams_installations SET dm_enabled=false,conversation_encrypted=NULL,conversation_hash=NULL,conversation_route_hash=NULL,conversation_bound_at=NULL,
        link_nonce_hash=NULL,link_expires_at=NULL,disconnected_at=now(),updated_at=now(),version=version+1
        WHERE user_id=$1 AND version=$2 RETURNING id,display_name,tenant_id,object_id,version,dm_enabled`,
       [binding.userId, expectedVersion],
@@ -351,5 +351,95 @@ export async function disconnectTeamsInstallation(
       [binding.userId],
     );
     return { ...result.rows[0], state: "disconnected" as const };
+  });
+}
+
+/** Versioned DM consent is distinct from OAuth and personal linking; disabling needs no provider setup. */
+export async function setTeamsDmPermission(
+  binding: Binding,
+  value: unknown,
+  config?: TeamsOAuthConfig,
+  bot?: import("./teams-transport.js").TeamsBotConfig,
+) {
+  const input = z
+    .object({
+      expected_version: z.number().int().positive(),
+      dm_enabled: z.boolean(),
+    })
+    .strict()
+    .parse(value);
+  let configHash: string | null = null;
+  if (input.dm_enabled) {
+    if (!config || !bot || bot.appId !== config.botAppId)
+      fail(503, "Teams messaging is not configured.");
+    configHash = teamsOAuthConfigDigest(config);
+    const { validateTeamsBotConfig } = await import("./teams-transport.js");
+    validateTeamsBotConfig(bot);
+  }
+  return transaction(async (db) => {
+    await live(db, binding);
+    const row = (
+      await db.query(
+        `UPDATE agent_channel_teams_installations SET dm_enabled=$3,version=version+1,updated_at=now()
+      WHERE user_id=$1 AND version=$2 AND (NOT $3 OR (disconnected_at IS NULL AND config_hash=$4 AND bot_app_id=$5
+        AND conversation_encrypted IS NOT NULL AND conversation_route_hash IS NOT NULL AND conversation_bound_at IS NOT NULL))
+      RETURNING id,display_name,tenant_id,object_id,version,dm_enabled,disconnected_at,conversation_route_hash,link_expires_at,config_hash`,
+        [
+          binding.userId,
+          input.expected_version,
+          input.dm_enabled,
+          configHash,
+          config?.botAppId ?? null,
+        ],
+      )
+    ).rows[0];
+    if (!row) fail(409, "This Teams connection changed or needs reconnection.");
+    return {
+      id: row.id,
+      display_name: row.display_name,
+      tenant_id: row.tenant_id,
+      object_id: row.object_id,
+      version: row.version,
+      dm_enabled: row.dm_enabled,
+      state: row.disconnected_at
+        ? ("disconnected" as const)
+        : row.conversation_route_hash
+          ? ("linked" as const)
+          : ("reconnect" as const),
+    };
+  });
+}
+
+/** Recover a lost/expired challenge only for the already reviewed live owner mapping.
+ * Relinking clears old conversation/DM authority and fences queued deliveries before returning a new secret.
+ */
+export async function restartTeamsConversationLink(
+  binding: Binding,
+  expectedVersion: number,
+  config: TeamsOAuthConfig,
+) {
+  z.number().int().positive().parse(expectedVersion);
+  const hash = teamsOAuthConfigDigest(config),
+    nonce = randomBytes(32).toString("base64url");
+  return transaction(async (db) => {
+    await live(db, binding);
+    const row = (
+      await db.query<{ id: string; version: number; link_expires_at: Date }>(
+        `UPDATE agent_channel_teams_installations SET
+      conversation_encrypted=NULL,conversation_hash=NULL,conversation_route_hash=NULL,conversation_bound_at=NULL,
+      dm_enabled=false,link_nonce_hash=$4,link_expires_at=clock_timestamp()+interval '10 minutes',version=version+1,updated_at=now()
+      WHERE user_id=$1 AND version=$2 AND config_hash=$3 AND bot_app_id=$5 AND disconnected_at IS NULL RETURNING id,version,link_expires_at`,
+        [binding.userId, expectedVersion, hash, digest(nonce), config.botAppId],
+      )
+    ).rows[0];
+    if (!row)
+      fail(409, "This Teams account changed. Reconnect before linking.");
+    return {
+      id: row.id,
+      version: row.version,
+      link_token: nonce,
+      link_expires_at: row.link_expires_at.toISOString(),
+      dm_enabled: false as const,
+    };
   });
 }

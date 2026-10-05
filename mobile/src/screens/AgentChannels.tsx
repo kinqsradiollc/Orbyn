@@ -17,6 +17,7 @@ import { MoreMenu } from "../components/MoreMenu";
 import { SmallAction } from "../components/SmallAction";
 import { shared } from "../styles";
 import { colors, radii, themed } from "../theme";
+import { TeamsChannelSettings } from "./TeamsChannel";
 /** Private agent DMs; provider and MCP permissions remain separate settings. */
 export function AgentChannelsCard() {
   const token = session.token;
@@ -212,6 +213,7 @@ export function AgentChannelsCard() {
           />
         )}
       </View>
+      <TeamsChannelSettings />
       {state.error && (
         <Text
           accessibilityRole="alert"

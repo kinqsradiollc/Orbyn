@@ -48,3 +48,5 @@ export * from "./page-maintenance-store.js";
 
 export { SlackChannelStore } from "./slack-channel-store.js";
 export type { SlackChannelState } from "./slack-channel-store.js";
+
+export { TeamsChannelStore } from "./teams-channel-store.js";

@@ -100,6 +100,8 @@ const schema = z.object({
   TEAMS_CLIENT_SECRET: z.string().default(""),
   TEAMS_BOT_APP_ID: z.string().default(""),
   TEAMS_REDIRECT_URI: z.string().default(""),
+  TEAMS_BOT_TENANT_ID: z.string().default(""),
+  TEAMS_BOT_CLIENT_SECRET: z.string().default(""),
   /**
    * Opening the web app's links in the phone app: the Apple developer team
    * that signs the iOS app, and the SHA-256 fingerprints (comma separated) of

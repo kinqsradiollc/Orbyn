@@ -91,6 +91,20 @@ test("Teams HTTP boundary requires app sessions, strict input and bounded reques
         dm_enabled: false as const,
       };
     },
+    restartTeamsConversationLink: async (b) => {
+      binding(b);
+      return {
+        id,
+        version: 2,
+        link_token: "x".repeat(43),
+        link_expires_at: new Date().toISOString(),
+        dm_enabled: false as const,
+      };
+    },
+    setTeamsDmPermission: async (b) => {
+      binding(b);
+      return connection;
+    },
     disconnectTeamsInstallation: async (b) => {
       binding(b);
       return { ...connection, state: "disconnected" as const, version: 2 };
@@ -139,6 +153,16 @@ test("Teams HTTP boundary requires app sessions, strict input and bounded reques
       ["POST", "/agent-channels/teams/installations", {}],
       ["POST", `/agent-channels/teams/installations/${id}/confirm`, confirm],
       ["POST", "/agent-channels/teams/disconnect", { expected_version: 1 }],
+      [
+        "POST",
+        "/agent-channels/teams/conversation-link",
+        { expected_version: 1 },
+      ],
+      [
+        "PUT",
+        "/agent-channels/teams/permission",
+        { expected_version: 1, dm_enabled: false },
+      ],
     ] as const) {
       assert.equal(
         (await call(method, url, undefined, payload)).statusCode,

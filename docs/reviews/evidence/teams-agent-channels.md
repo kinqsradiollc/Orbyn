@@ -170,6 +170,115 @@ All workspace typechecks, backend build and repository format check also pass:
 /tmp/orbyn-channel-teams-controls-format.log. Combined full-suite qualification
 is still required before this candidate can be promoted to main.
 
+## Independent bot transport — candidate, 6 October 2026
+
+Teams bot transport uses separately configured single-tenant Microsoft application
+credentials. Fixed token endpoint and Connector destination validation prevent
+secrets leaving Microsoft endpoints; conversation path segments are encoded.
+Concurrent token issuance is deduplicated in a bounded process cache, expiration
+renews it and configuration digest prevents reuse across credential rotation.
+No user OAuth, private ChatGPT or MCP credential is used. Bounded plain-text sends
+return explicit sent/refused/rate-limited/unavailable/unknown outcomes. Ambiguous
+network/server/malformed-success outcomes are never automatically replayed; an
+explicit429 exposes only a bounded delay for durable scheduling.
+
+/tmp/orbyn-channel-teams-transport-qualified-pure.log passes31/31 transport and
+existing OAuth/Connector protocol cases. Backend types pass after rebuilding the
+local workspace packages (/tmp/orbyn-channel-teams-transport-types-rebuilt.log).
+The first typecheck used the reused worktree's earlier package dist and correctly
+rejected missing Teams exports; package rebuild repaired that environment state.
+No assertions were removed. This transport remains unconfigured/unwired. A
+separate Teams durable outbox candidate is being implemented and must be tested
+for source/consent/revision fencing, cold pool, ambiguity, restart and bounded
+retry before mounting or enabling delivery. Real tenant acceptance remains open.
+
+Primary contract: [Bot Connector application authentication](https://learn.microsoft.com/en-us/azure/bot-service/rest-api/bot-framework-rest-connector-authentication?view=azure-bot-service-4.0).
+The identity checkpoint05dc8265 full local suite is still running unchanged; it
+has exposed stale generated MCP catalog documentation. Preserve the terminal
+result, regenerate the catalog, then rerun exact-source qualification.
+
+## Durable Teams outbox — candidate, 6 October 2026
+
+Migration249 gives Teams a distinct delivery namespace tied to its reviewed
+conversation mapping and revision. Job intents queue only Background/nonidea
+transitions; Overnight queues only the generic morning summary after its window.
+Dispatch decrypts outside transactions, then rechecks owner, grant, exact
+conversation/configuration/revision, project/team/source visibility and waiting
+ID under the existing source advisory fence. Provider acceptance and outcome
+commit are separate boundaries; expired claims become unknown, not queued.
+Explicit429 and pre-send credential unavailability retry at most three attempts.
+Fixed fourteen-day retention covers terminal/expired content-free receipts.
+
+/tmp/orbyn-channel-teams-outbox-cold-initial.log passes7/7 on a separately marked
+test database with pool1, empty SECRETS_KEY and mocked transport. Covered cases:
+dedup/owned recipient/agent identity, hidden idea and per-night-job exclusion,
+consent/owner/project/grant/configuration/conversation revocation, unknown and
+expired-claim recovery, bounded rate-limit attempts, stale waiting IDs and one
+generic morning message. Backend types/build pass in
+/tmp/orbyn-channel-teams-outbox-qualified-types.log,
+/tmp/orbyn-channel-teams-outbox-qualified-build.log and the later sweep-rule
+/tmp/orbyn-channel-teams-outbox-latest-types.log. Retention database acceptance
+remains open; the rule is fixed in the hourly sweeper.
+
+This is not wired into transition hooks or worker delivery. DM opt-in, lifecycle
+callbacks, shared-source races, post-acceptance commit ambiguity, reply cards,
+HTTP shields, both clients and real tenant acceptance remain required before
+Teams messaging is enabled. The source of PR205 is separately immutable while
+its repaired full suite runs; no local DB suites overlap. Full ADR remains open.
+
+## Lifecycle, delivery hooks and matching client controls — candidate
+
+Migration250 adds a unique bot/tenant/conversation route hash and authenticated
+link timestamp. Existing references lose DM permission without invented proof.
+Connector-signed personal removal events clear exact current mappings; unrelated
+installation actors, group events, other conversation/member events and old
+timestamps cannot change ownership. The activity endpoint is mounted with a
+64KiB raw parser isolated from ordinary JSON routes. Gateway replay/query logs
+are disabled on both ports. Unknown text is acknowledged without persistence.
+
+Independent bot credentials enable bounded Background and morning outbox
+delivery, with current source/permission/revision fences. DM enablement and lost
+challenge renewal have session-only strict versioned HTTP routes. Blank identity
+or bot configuration cannot enable delivery. Settings on both clients uses a
+shared abortable session-bound store; only a pending UUID is persisted, never
+a challenge command, provider credential or callback code.
+
+Evidence:22 cold installation cases and56 integrated protocol/HTTP/database
+cases passed before additional migration/retention cases. Current pure shared
+store, actual client JSX handlers and gateway cases pass21/21 in
+`/tmp/orbyn-channel-teams-controls-pure-final.log`. All workspace types and
+backend/web builds passed. New migration/retention acceptance and native export
+are pending; no real tenant/native interaction, screenshots or visual acceptance
+are claimed. Teams question replies remain required.
+
+One initial store package build exposed an accidentally copied Slack method
+name; it was corrected to the Teams method, with the failure retained in
+`/tmp/orbyn-channel-teams-store-build.log` and passing repair in
+`/tmp/orbyn-channel-teams-store-build-repaired.log`. Initial mobile types exposed
+a missing required disabled property on SmallAction; the final workspace
+typecheck passes without changing its contract.
+
+### Current qualification result
+
+The complete transport/lifecycle/controls cohort passes112/112, zero failures
+and no skips (`/tmp/orbyn-channel-teams-controls-integrated-final.log`). This
+includes real signed activity fixtures, actual migration250 against legacy
+references, fixed receipt/private-capture retention, consent/revision races,
+current-source delivery, post-acceptance commit rollback, HTTP shields, current
+MCP inventory and actual web/native JSX action handlers. Cold-process pool1
+installation/migration cases pass24/24 (`/tmp/orbyn-channel-teams-current-cold.log`).
+All workspace types, whole formatting, backend/web builds and both native
+exports pass; exports do not establish native interaction or screenshots. The
+Expo export reports the existing missing ios.appleTeamId setting; no signing
+configuration was changed. No provider credentials were used or printed.
+
+The separate identity recovery head6bda01e9 passed its immutable full local run
+with3130 passes, zero failures and one existing Tesseract skip
+(`/tmp/orbyn-channel-teams-identity-recovery-full.log`). Its CI backend job is
+still pending at recording time. Current delivery/controls source still needs
+immutable full/CI qualification before main promotion. Teams replies, real
+tenant, visual/native acceptance and the remaining full ADR scope stay open.
+
 ## Full identity checkpoint qualification and catalog repair
 
 Immutable05dc8265 ended its full local run with3129 passes, one failure and one
@@ -181,3 +290,14 @@ docs/mcp-catalog.json. Four catalog consistency cases pass after regeneration
 (/tmp/orbyn-channel-teams-catalog-repaired.log). No application, migration or test
 assertion changes are needed. Exact repaired-source full/CI qualification remains
 required; preserve the earlier failing terminal result. Full ADR remains active.
+
+### Recovery integration and full qualification restart
+
+The immutable delivery full run7bda2185 was deliberately stopped to integrate
+the complete recovery fixture isolationd926b03c (both runtime lanes), not treated
+as a full pass. The merged candidate175529be is tracked-clean with the original
+assertions intact. Regenerated credential exclusions287 resolve the catalog
+merge; both evidence histories are retained. No unresolved conflict remains.
+The integrated source now starts a fresh immutable full run.41 recovery cases
+passed before this integration;112 delivery/controls cases and24 cold cases
+remain focused evidence. Teams replies and whole ADR acceptance remain open.

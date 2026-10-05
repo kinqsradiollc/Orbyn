@@ -436,8 +436,24 @@ data expires after ten minutes; abandoned/disconnected mappings are swept after
 thirty days. Disconnect remains available without provider configuration and
 erases local conversation/challenge authority plus unfinished OAuth attempts.
 
-This is an identity-link checkpoint. Its status returns `delivery_available:false`.
-The personal-message proof service is tested but not mounted; bot application
-transport, Teams delivery/replies and client UI remain under implementation. Do
-not enable or advertise Teams messaging from this checkpoint. These OAuth client
-credentials do not supply bot transport credentials, private ChatGPT or MCP access.
+The delivery candidate also requires independent server-only `TEAMS_BOT_TENANT_ID`
+and `TEAMS_BOT_CLIENT_SECRET` for the configured bot app. This adapter supports
+single-tenant public Azure bot credentials. These credentials are separate from
+identity OAuth, private ChatGPT and MCP access. Configure the Azure bot's Teams
+channel and HTTPS messaging endpoint `/api/agent-channels/teams/activities` (or
+its unprefixed API path), and distribute its Teams app with personal-chat scope.
+The bot app ID is not a Teams app manifest ID; Orbyn does not invent an install link.
+
+Settings → Agent channels on both clients reviews the organizational account,
+then displays a one-use command to send in the Orbyn bot's personal Teams chat.
+The command expires after ten minutes and stays only in memory. If lost, Get
+linking command renews it without reusing an OAuth code. Linking leaves DMs off;
+only the separate switch enables Background updates and one Overnight morning
+notice. Status reports delivery available only when both identity and bot
+credentials are configured. Uninstall events revoke the currently proved route;
+older events cannot revoke a later proof. Disconnect clears local authority
+without uninstalling the bot for other owners. Unknown sends are not replayed.
+
+This remains an unmerged implementation candidate until its qualification gates
+pass. Teams question replies, real tenant delivery and client visual/native
+acceptance remain open. Decisions currently open the owned Orbyn review.

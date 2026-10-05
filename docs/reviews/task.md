@@ -3,16 +3,16 @@
 Main baseline is `690f6246`, pushed; Slack PR204 merged after all four CI37321894816 jobs passed. User deploys manually; production recovery is not
 verified here. The full ADR goal remains active and incomplete.
 
-| Work                        | Confirmed state                                                                                                                                                            | Next implementation or acceptance                                                                                                                                               |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ChatGPT and model defaults  | Selected-provider routing, owned `/models`, defaults and web/mobile-to-desktop connection handoff on main                                                                  | Successful real-account Responses completion, real handoff and truthful whole-account plan/usage acceptance                                                                     |
-| Scheduled Agenda            | PR199 merged;2938 CI passes plus99 local focused passes. Resumption fixture repair passed18 cases and five independent repeats                                             | Native/web controls and positive real-provider acceptance; unsupported hard-limit catalogs remain ineligible                                                                    |
-| Plugin provider integration | PR203 merged0faf19dc; exactff3c88ef all four CI jobs and full local suite pass:2975 pass/0 fail/1 existing skip                                                            | External host/provider delivery and both client/native visual acceptance                                                                                                        |
-| Agent channels              | Canonical vault d922 full suite:3064 pass/0 fail/1 existing skip; signed-reply3d163bcd full suite:3089 pass/0 fail/1 existing skip;64 integrated,12 cold and41 pure checks | Slack is merged; Teams identity/API/disconnect candidate passes58 integrated and17 cold cases; finish Teams transport/replies/client controls and real/native/visual acceptance |
-| Docs                        | Source, Mermaid and earlier editor fixes on main; current pure matrix108/108 passes                                                                                        | D1 native/editor/preview, PDF/Word/import/export and accessible rendering matrix                                                                                                |
-| Whole-app UI                | Settings modal/search, assistant panels and narrow settings grid/theme checkpoints on main;15 grid/settings tests and web build pass                                       | Full page-by-page desktop/web/mobile layout and interaction review, including narrow/overlay states                                                                             |
-| Agents/pages/publication    | Prior runtime isolation, identity, ownership and maintained-page checkpoints on main                                                                                       | Governing collaboration/reflection/publication requirement audit and external/runtime acceptance                                                                                |
-| Production and cleanup      | Main checkpoints pushed; root user files and related worktrees preserved                                                                                                   | User deployment confirmation; final cleanup after all relevant work is integrated and preserved                                                                                 |
+| Work                        | Confirmed state                                                                                                                                                                                                                                       | Next implementation or acceptance                                                                                                                                        |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ChatGPT and model defaults  | Selected-provider routing, owned `/models`, defaults and web/mobile-to-desktop connection handoff on main                                                                                                                                             | Successful real-account Responses completion, real handoff and truthful whole-account plan/usage acceptance                                                              |
+| Scheduled Agenda            | PR199 merged;2938 CI passes plus99 local focused passes. Resumption fixture repair passed18 cases and five independent repeats                                                                                                                        | Native/web controls and positive real-provider acceptance; unsupported hard-limit catalogs remain ineligible                                                             |
+| Plugin provider integration | PR203 merged0faf19dc; exactff3c88ef all four CI jobs and full local suite pass:2975 pass/0 fail/1 existing skip                                                                                                                                       | External host/provider delivery and both client/native visual acceptance                                                                                                 |
+| Agent channels              | Slack is qualified and merged. Teams identity PR205 passed its previous full local suite (3130/0/1); its CI recovery fixture repair6bda01e9 is being qualified. Transport/lifecycle and both client controls are implemented in a separate candidate. | Finish current full/CI; qualify migration, consent, delivery, retention and client controls; implement Teams current-card replies; real tenant/native/visual acceptance. |
+| Docs                        | Source, Mermaid and earlier editor fixes on main; current pure matrix108/108 passes                                                                                                                                                                   | D1 native/editor/preview, PDF/Word/import/export and accessible rendering matrix                                                                                         |
+| Whole-app UI                | Settings modal/search, assistant panels and narrow settings grid/theme checkpoints on main;15 grid/settings tests and web build pass                                                                                                                  | Full page-by-page desktop/web/mobile layout and interaction review, including narrow/overlay states                                                                      |
+| Agents/pages/publication    | Prior runtime isolation, identity, ownership and maintained-page checkpoints on main                                                                                                                                                                  | Governing collaboration/reflection/publication requirement audit and external/runtime acceptance                                                                         |
+| Production and cleanup      | Main checkpoints pushed; root user files and related worktrees preserved                                                                                                                                                                              | User deployment confirmation; final cleanup after all relevant work is integrated and preserved                                                                          |
 
 Plugin automated qualification logs:/tmp/orbyn-plugin-ff3c88ef-full-local.log,
 /tmp/orbyn-plugin-integrated-types.log and /tmp/orbyn-plugin-integrated-format.log.
@@ -2700,3 +2700,47 @@ exact-head full/CI and authorized external/native/visual acceptance. No channel
 runtime/UI source is on main. Main429f2de2 all four CI jobs passed in37308099452
 (2976 backend passes, zero failures, one existing skip); deployment is user-run.
 Full C1–C6/M1/D1/U1 remains active. See evidence/agent-channels.md.
+
+### Teams transport, lifecycle and matching controls — current candidate
+
+Independent bot credentials, bounded fixed Microsoft transport, durable outbox
+claims and current owner/source/permission/conversation fences are implemented.
+Background transitions and the single morning notice enqueue Teams intents;
+accepted-but-uncertain sends never replay. Authenticated personal uninstall
+events clear only the current proved route; stale events cannot revoke a later
+proof. Migration250 refuses legacy conversation authority without inventing
+an authenticated timestamp. Lost linking challenges can be renewed separately
+from identity OAuth. DM permission defaults off and requires explicit review.
+
+Both clients use the same session-bound Teams store, persist only a pending
+request UUID, and keep linking commands only in memory until expiry/proof.
+Expired commands erase locally without network retry loops. Review, personal
+chat linking and consent are separate compact controls. Workspace typechecks,
+backend/web builds and21 current store/client/gateway cases pass. The preceding
+lifecycle/API/source cohort passed56/56; added migration/retention cases still
+require execution after the serial identity full suite. Native export is running;
+no screenshots or real tenant/native/visual acceptance are claimed.
+
+Identity CI37328563056 failed only the stale recovery test because its live
+runner consumed fixtures before the explicit sweep. Repair6bda01e9 stops that
+runner for this test and restarts it in cleanup; all41 assertions pass, unchanged.
+The immutable repaired full run and CI37332522843 are ongoing. Main690f6246
+still contains the qualified Slack checkpoint. Teams source remains unmerged.
+Next: qualify and promote checkpoints, exact-card Teams replies, then remaining
+whole-app UI, Docs and agent/page requirements. Full ADR remains active.
+
+Current transport/lifecycle/UI cohort now passes112/112; cold installation and
+legacy-migration cases pass24/24. All workspace types, whole format, backend/web
+builds and iOS/Android exports pass. Identity repair6bda01e9 completed its
+immutable full local suite:3130 passes, zero failures and one existing skip; CI
+backend remains pending. Delivery/UI full/CI qualification is next.
+
+Latest recovery fixtured926b03c now stops both Background and interactive
+recovery sweepers during fixture setup, and restores both for subsequent tests.
+Its41-case assistant-runs cohort passes. Earlier6bda full/CI results apply to
+that prior test source. The first delivery full run at7bda2185 was deliberately
+stopped to incorporate complete fixture isolation; it is not passing full
+evidence. Application source integrates without conflicts; the previous merge's
+generated catalog conflicts were regenerated to287 exclusions and evidence
+notes were combined, preserving both histories. No unresolved merge remains.
+Current delivery controls need immutable combined full/CI qualification next.

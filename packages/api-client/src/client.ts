@@ -1,6 +1,7 @@
 import {
   teamsInstallationId,
   teamsChannelStatus,
+  teamsChannelPermission,
   teamsInstallationStart,
   teamsInstallationRequest,
   teamsInstallationConfirm,
@@ -1511,6 +1512,24 @@ export class OrbynClient {
         `/agent-channels/teams/installations/${requestId}/confirm`,
         { method: "POST", body: teamsInstallationConfirm.parse(input), signal },
       ),
+    );
+  }
+  async restartTeamsConversationLink(input: unknown, signal?: AbortSignal) {
+    return teamsConversationChallenge.parse(
+      await this.request("/agent-channels/teams/conversation-link", {
+        method: "POST",
+        body: teamsChannelDisconnect.parse(input),
+        signal,
+      }),
+    );
+  }
+  async setTeamsDmPermission(input: unknown, signal?: AbortSignal) {
+    return teamsChannelConnection.parse(
+      await this.request("/agent-channels/teams/permission", {
+        method: "PUT",
+        body: teamsChannelPermission.parse(input),
+        signal,
+      }),
     );
   }
   async disconnectTeams(input: unknown, signal?: AbortSignal) {

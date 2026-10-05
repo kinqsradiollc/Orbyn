@@ -443,6 +443,7 @@ async function preparedLink() {
   const activity = {
     type: "message",
     id: randomUUID(),
+    timestamp: new Date().toISOString(),
     channelId: "msteams",
     serviceUrl: "https://smba.trafficmanager.net/teams/",
     from: { id: "29:reviewed-human", aadObjectId: f.identity.objectId },
@@ -607,5 +608,280 @@ test("owned connection status hides secrets, reports configuration drift and dis
   await assert.rejects(
     disconnectTeamsInstallation(other.binding, result.version),
     refusal(409),
+  );
+});
+
+const { setTeamsDmPermission } =
+  await import("../src/modules/agent-channels/teams-installations.js");
+const { receiveTeamsActivity } =
+  await import("../src/modules/agent-channels/teams-activity.js");
+const botConfig = {
+  appId: config.botAppId,
+  tenantId: randomUUID(),
+  clientSecret: "fixture-bot-credential",
+};
+async function eventMessage(activity: unknown) {
+  const token = await new SignJWT({
+    serviceUrl: "https://smba.trafficmanager.net/teams/",
+  })
+    .setProtectedHeader({ alg: "RS256", kid: "personal-link" })
+    .setIssuer("https://api.botframework.com")
+    .setAudience(config.botAppId)
+    .setNotBefore(Math.floor(Date.now() / 1000) - 10)
+    .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+    .sign(pair.privateKey);
+  return receiveTeamsActivity(
+    Buffer.from(JSON.stringify(activity)),
+    { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    config,
+    async () => [signingKey],
+  );
+}
+test("OAuth review and proved conversation require a separate versioned DM opt-in with configured bot credentials", async () => {
+  const { f, link, activity } = await preparedLink();
+  await assert.rejects(
+    setTeamsDmPermission(
+      f.binding,
+      { expected_version: link.version, dm_enabled: true },
+      config,
+      botConfig,
+    ),
+    refusal(409),
+  );
+  await connectionMessage(activity);
+  const linked = (await readTeamsChannel(f.binding, config))!;
+  await assert.rejects(
+    setTeamsDmPermission(
+      f.binding,
+      { expected_version: linked.version, dm_enabled: true },
+      config,
+    ),
+    refusal(503),
+  );
+  await assert.rejects(
+    setTeamsDmPermission(
+      f.binding,
+      { expected_version: linked.version - 1, dm_enabled: true },
+      config,
+      botConfig,
+    ),
+    refusal(409),
+  );
+  const enabled = await setTeamsDmPermission(
+    f.binding,
+    { expected_version: linked.version, dm_enabled: true },
+    config,
+    botConfig,
+  );
+  assert.equal(enabled.dm_enabled, true);
+  assert.equal(enabled.version, linked.version + 1);
+  const disabled = await setTeamsDmPermission(f.binding, {
+    expected_version: enabled.version,
+    dm_enabled: false,
+  });
+  assert.equal(disabled.dm_enabled, false);
+  assert.equal(disabled.version, enabled.version + 1);
+});
+test("provider-authenticated current personal uninstall revokes only its proved route, independent of installer identity", async () => {
+  const first = await preparedLink(),
+    other = await preparedLink();
+  await connectionMessage(first.activity);
+  await connectionMessage(other.activity);
+  const removal = {
+    ...first.activity,
+    type: "installationUpdate",
+    action: "remove",
+    timestamp: new Date().toISOString(),
+    from: { id: "29:admin-installer", aadObjectId: randomUUID() },
+  };
+  assert.deepEqual(await eventMessage(removal), { received: true });
+  assert.equal(
+    (await readTeamsChannel(first.f.binding, config))?.state,
+    "disconnected",
+  );
+  assert.equal(
+    (await readTeamsChannel(other.f.binding, config))?.state,
+    "linked",
+  );
+  const once = (await readTeamsChannel(first.f.binding, config))?.version;
+  await eventMessage(removal);
+  assert.equal(
+    (await readTeamsChannel(first.f.binding, config))?.version,
+    once,
+  );
+  const stored = (
+    await pool.query(
+      "SELECT * FROM agent_channel_teams_installations WHERE id=$1",
+      [first.link.id],
+    )
+  ).rows[0];
+  assert.equal(stored.conversation_encrypted, null);
+  assert.equal(stored.conversation_route_hash, null);
+  assert.equal(stored.conversation_bound_at, null);
+});
+test("older removal events, another conversation, group uninstall and unrelated member removals cannot revoke a current personal proof", async () => {
+  const { f, activity } = await preparedLink();
+  await connectionMessage(activity);
+  const removal = {
+    ...activity,
+    type: "installationUpdate",
+    action: "remove",
+    timestamp: new Date().toISOString(),
+  };
+  await eventMessage({
+    ...removal,
+    timestamp: new Date(Date.parse(activity.timestamp) - 1000).toISOString(),
+  });
+  await eventMessage({
+    ...removal,
+    conversation: { ...activity.conversation, id: "different-conversation" },
+  });
+  await eventMessage({
+    ...removal,
+    conversation: { ...activity.conversation, conversationType: "groupChat" },
+  });
+  await eventMessage({
+    ...activity,
+    type: "conversationUpdate",
+    membersRemoved: [{ id: "29:other-member" }],
+  });
+  assert.equal((await readTeamsChannel(f.binding, config))?.state, "linked");
+  await eventMessage({
+    ...activity,
+    type: "conversationUpdate",
+    timestamp: new Date().toISOString(),
+    membersRemoved: [{ id: `28:${config.botAppId}` }],
+  });
+  assert.equal(
+    (await readTeamsChannel(f.binding, config))?.state,
+    "disconnected",
+  );
+});
+test("the activity dispatcher ignores unrelated messages and cannot treat installation as account linking", async () => {
+  const { f, activity } = await preparedLink();
+  assert.deepEqual(
+    await eventMessage({ ...activity, text: "Unrelated personal text" }),
+    { received: true },
+  );
+  assert.deepEqual(
+    await eventMessage({
+      ...activity,
+      type: "installationUpdate",
+      action: "add",
+    }),
+    { received: true },
+  );
+  assert.equal(
+    (await readTeamsChannel(f.binding, config))?.state,
+    "awaiting_conversation",
+  );
+  assert.deepEqual(
+    await eventMessage({
+      ...activity,
+      attachments: [
+        { contentType: "text/html", content: "duplicate representation" },
+      ],
+    }),
+    { received: true, linked: true },
+  );
+  assert.equal((await readTeamsChannel(f.binding, config))?.dm_enabled, false);
+});
+
+const { restartTeamsConversationLink } =
+  await import("../src/modules/agent-channels/teams-installations.js");
+test("a lost challenge can be renewed by its reviewed owner without replaying OAuth, while old conversation authority is cleared", async () => {
+  const { f, activity } = await preparedLink();
+  await connectionMessage(activity);
+  const current = (await readTeamsChannel(f.binding, config))!;
+  const replacement = await restartTeamsConversationLink(
+    f.binding,
+    current.version,
+    config,
+  );
+  assert.equal(replacement.version, current.version + 1);
+  assert.equal(replacement.dm_enabled, false);
+  assert.equal(
+    (await readTeamsChannel(f.binding, config))?.state,
+    "awaiting_conversation",
+  );
+  await assert.rejects(connectionMessage(activity), refusal(409));
+  await assert.rejects(
+    restartTeamsConversationLink(f.binding, current.version, config),
+    refusal(409),
+  );
+  const updated = {
+    ...activity,
+    timestamp: new Date().toISOString(),
+    text: `/orbyn connect ${replacement.link_token}`,
+  };
+  await connectionMessage(updated);
+  assert.equal((await readTeamsChannel(f.binding, config))?.state, "linked");
+  const other = await fixture();
+  await assert.rejects(
+    restartTeamsConversationLink(other.binding, replacement.version, config),
+    refusal(409),
+  );
+  const linked = (await readTeamsChannel(f.binding, config))!;
+  await disconnectTeamsInstallation(f.binding, linked.version);
+  await assert.rejects(
+    restartTeamsConversationLink(f.binding, linked.version + 1, config),
+    refusal(409),
+  );
+});
+test("Teams retention erases expired private captures and only old abandoned mappings", async () => {
+  const { SWEEP_RULES } = await import("../src/lib/sweep.js");
+  const expired = await fixture(),
+    live = await fixture();
+  await pool.query(
+    "UPDATE agent_channel_teams_oauth_pending SET expires_at=now()-interval '1 minute' WHERE id=$1",
+    [expired.start.id],
+  );
+  const pendingRule = SWEEP_RULES.find(
+    (rule) => rule.key === "agent_channel_teams_oauth_pending",
+  )!;
+  await pool.query(
+    `DELETE FROM ${pendingRule.table} WHERE ${pendingRule.where}`,
+  );
+  assert.equal(await pending(expired.start.id), undefined);
+  assert.ok(await pending(live.start.id));
+  await captureTeamsInstallation(
+    config,
+    { state: live.state, code: "fixture" },
+    live.redeem,
+  );
+  await confirmTeamsInstallation(
+    live.binding,
+    live.start.id,
+    config,
+    live.review,
+  );
+  await pool.query(
+    "UPDATE agent_channel_teams_installations SET updated_at=now()-interval '31 days',link_expires_at=now()-interval '1 minute' WHERE user_id=$1",
+    [live.binding.userId],
+  );
+  const recent = await preparedLink();
+  const mappingRule = SWEEP_RULES.find(
+    (rule) => rule.key === "agent_channel_teams_disconnected",
+  )!;
+  await pool.query(
+    `DELETE FROM ${mappingRule.table} WHERE ${mappingRule.where}`,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM agent_channel_teams_installations WHERE user_id=$1",
+        [live.binding.userId],
+      )
+    ).rowCount,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT id FROM agent_channel_teams_installations WHERE user_id=$1",
+        [recent.f.binding.userId],
+      )
+    ).rowCount,
+    1,
   );
 });

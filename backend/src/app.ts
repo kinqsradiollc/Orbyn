@@ -1,3 +1,4 @@
+import { createTeamsActivityRoutes } from "./modules/agent-channels/teams-activity-routes.js";
 import { pluginRoutes } from "./modules/plugin/routes.js";
 import { createSlackReplyRoutes } from "./modules/agent-channels/reply-routes.js";
 import { teamsChannelRoutes } from "./modules/agent-channels/teams-routes.js";
@@ -102,6 +103,7 @@ export const serviceModules: Record<
   api: [
     agentChannelRoutes,
     teamsChannelRoutes,
+    createTeamsActivityRoutes(),
     createSlackReplyRoutes(),
     chatgptModelRoutes,
     systemRoutes,

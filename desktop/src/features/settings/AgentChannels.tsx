@@ -5,6 +5,7 @@ import { client } from "../../lib/api";
 import { session, onSessionChange } from "../../lib/session";
 import { SettingsSection } from "./SettingsSection";
 import "./agent-channels.css";
+import { TeamsChannelSettings } from "./TeamsChannel";
 const KEY = "orbyn-slack-installation";
 function remember(id: string | null) {
   try {
@@ -228,6 +229,7 @@ export function AgentChannels() {
         </div>
         {state.error && <p role="alert">{state.error}</p>}
       </div>
+      <TeamsChannelSettings />
     </SettingsSection>
   );
 }
