@@ -1,5 +1,14 @@
 # Current implementation handoff — 5 October 2026
 
+## Docs source dialog focus checkpoint
+
+Source validation no longer closes and reopens the desktop/web source preview
+dialog. Escape reads current validation state, so invalid edits still block
+dismissal; cleanup restores focus only when the dialog unmounts. The captured
+dialog is closed even if React has already cleared its ref. Cross-client source
+and preview checks31/31 and desktop typecheck passed. This is component/source
+evidence, not visual acceptance; full D1/U1 and native/runtime checks remain open.
+
 ## Automatic desktop request watcher checkpoint
 
 The desktop checks pending web/mobile ChatGPT requests on a zero-delay first

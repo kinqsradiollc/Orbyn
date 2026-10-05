@@ -12,12 +12,26 @@ function fixture(native: boolean, editable = false) {
   let at = 0,
     refAt = 0;
   const refs: { current: any }[] = [];
+  const dialogEffects: { run: () => any; deps: unknown[] | undefined }[] = [];
+  const listeners = new Map<string, (event: any) => void>();
+  let focused = 0;
+  const document = {
+    activeElement: {
+      focus: () => {
+        focused++;
+      },
+    },
+    addEventListener: (name: string, listener: (event: any) => void) =>
+      listeners.set(name, listener),
+    removeEventListener: (name: string) => listeners.delete(name),
+  };
   const hooks = {
     ...React,
     useEffect: (fn: () => void, deps?: unknown[]) => {
       // Execute the actual source reconciliation effect, excluding the DOM
       // dialog lifecycle. A second render observes its state update.
       if (deps?.length === 2) fn();
+      else dialogEffects.push({ run: fn, deps });
     },
     useId: () => "source-title",
     useMemo: (fn: () => unknown) => fn(),
@@ -92,6 +106,7 @@ function fixture(native: boolean, editable = false) {
       exports,
       React,
       getComputedStyle: () => ({ lineHeight: "20px" }),
+      document,
       require: (name: string) => {
         assert.ok(name in modules, name);
         return modules[name];
@@ -127,6 +142,9 @@ function fixture(native: boolean, editable = false) {
   };
   return Object.assign(render, {
     refs,
+    dialogEffects,
+    listeners,
+    focused: () => focused,
     states,
     edits,
     opened,
@@ -557,4 +575,75 @@ test("native invalid-source recovery is first in the bounded controls", () => {
     (first.props as any).children,
   )[0] as React.ReactElement;
   assert.equal((firstChild.props as any).title, "Restore current document");
+});
+
+test("web source errors keep the dialog mounted and Escape observes the latest validation state", () => {
+  const render = fixture(false, true);
+  const blocks = core.parseDoc("Safe ^one", { anchors: true });
+  const first = render(blocks);
+  const lifecycle = render.dialogEffects[0];
+  assert.deepEqual(Array.from(lifecycle.deps ?? []), []);
+  let opened = 0,
+    closed = 0;
+  const modal = {
+    showModal: () => {
+      opened++;
+    },
+    close: () => {
+      closed++;
+    },
+  };
+  render.refs[0].current = modal;
+  const cleanup = lifecycle.run();
+  const input = find(
+    first,
+    (props) => props["aria-label"] === "Markdown source",
+  )!;
+  input.onChange({ currentTarget: { value: "First ^one\n\nSecond ^one" } });
+  render(blocks);
+  const afterError = render.dialogEffects.at(-1)!;
+  assert.deepEqual(
+    Array.from(afterError.deps ?? []),
+    [],
+    "parser errors must not restart modal lifetime",
+  );
+  const escape = () =>
+    render.listeners.get("keydown")!({
+      key: "Escape",
+      preventDefault() {},
+      stopImmediatePropagation() {},
+    });
+  escape();
+  assert.equal(
+    render.closed(),
+    0,
+    "invalid source must still prevent dismissal",
+  );
+  assert.equal(opened, 1);
+  assert.equal(closed, 0);
+  assert.equal(
+    render.focused(),
+    0,
+    "validation must not focus the page behind the dialog",
+  );
+  const invalid = render(blocks);
+  find(invalid, (props) =>
+    React.Children.toArray(props.children).includes("Restore current document"),
+  )!.onClick();
+  render(blocks);
+  escape();
+  assert.equal(
+    render.closed(),
+    1,
+    "Escape can close after explicit restoration",
+  );
+  render.refs[0].current = null;
+  cleanup();
+  assert.equal(
+    closed,
+    1,
+    "cleanup closes the captured dialog even after its React ref is cleared",
+  );
+  assert.equal(render.focused(), 1);
+  assert.equal(render.listeners.has("keydown"), false);
 });
