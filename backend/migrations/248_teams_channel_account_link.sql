@@ -1,0 +1,40 @@
+-- An ID token identifies a tenant/user. It never authorizes a conversation or DM.
+CREATE TABLE agent_channel_teams_oauth_pending (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ session_id uuid NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ state_hash text NOT NULL UNIQUE CHECK(length(state_hash)=64),
+ config_hash text NOT NULL CHECK(length(config_hash)=64),
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','exchanging','ready','confirmed','failed')),
+ pkce_encrypted text,
+ identity_encrypted text,
+ exchange_claim uuid,
+ expires_at timestamptz NOT NULL DEFAULT now()+interval '10 minutes',
+ created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK((state='exchanging')=(exchange_claim IS NOT NULL)),
+ CHECK((state IN ('pending','exchanging'))=(pkce_encrypted IS NOT NULL)),
+ CHECK((state='ready')=(identity_encrypted IS NOT NULL))
+);
+CREATE TABLE agent_channel_teams_installations (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ user_id uuid NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+ bot_app_id uuid NOT NULL,
+ tenant_id uuid NOT NULL,
+ object_id uuid NOT NULL,
+ display_name text NOT NULL CHECK(length(display_name) BETWEEN 1 AND 200),
+ config_hash text NOT NULL CHECK(length(config_hash)=64),
+ version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ dm_enabled boolean NOT NULL DEFAULT false,
+ conversation_encrypted text,
+ conversation_hash text,
+ link_nonce_hash text CHECK(link_nonce_hash IS NULL OR length(link_nonce_hash)=64),
+ link_expires_at timestamptz,
+ disconnected_at timestamptz,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(bot_app_id,tenant_id,object_id),
+ CHECK((conversation_encrypted IS NULL)=(conversation_hash IS NULL)),
+ CHECK(conversation_hash IS NULL OR length(conversation_hash)=64),
+ CHECK((link_nonce_hash IS NULL)=(link_expires_at IS NULL)),
+ CHECK(NOT dm_enabled OR (conversation_encrypted IS NOT NULL AND disconnected_at IS NULL))
+);

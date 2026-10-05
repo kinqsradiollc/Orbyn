@@ -35,6 +35,27 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "agent_channel_teams_oauth_pending",
+    label: "Teams account review attempts",
+    detail:
+      "Expired encrypted PKCE and identity captures; final attempts retain no private capture.",
+    table: "agent_channel_teams_oauth_pending",
+    where: "expires_at<now()",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_teams_disconnected",
+    label: "Unlinked Teams account mappings",
+    detail:
+      "Disconnected or abandoned conversation-link mappings, without active messaging authority.",
+    table: "agent_channel_teams_installations",
+    where:
+      "updated_at<now()-interval '30 days' AND (disconnected_at IS NOT NULL OR (conversation_encrypted IS NULL AND link_expires_at<now()))",
+    days: 30,
+    configurable: false,
+  },
+  {
     key: "agent_channel_reply_receipts",
     label: "Agent channel question replies",
     detail:

@@ -2031,3 +2031,17 @@ See evidence/teams-agent-channels.md for primary contracts, retained diagnostics
 and the full installation/delivery/reply/client/retention acceptance pipeline.
 The Slack3d163bcd source remains immutable during full-suite qualification.
 All A6 and broader C1–C6/M1/D1/U1 requirements remain active.
+
+### Teams identity capture and review — candidate, 6 October 2026
+
+Session-bound organizational OAuth and encrypted ten-minute capture now have
+strict verified tenant/object identity, one-redemption claims, original-session
+review, revision/configuration fencing and cross-owner uniqueness. Review creates
+a one-use personal-conversation challenge and leaves DMs off. Fixed sweeps and
+Privacy text cover the new temporary identity data. Pure protocol cases21/21,
+integrated database cases37/37 and latest cold-pool account cases12/12 pass.
+No public route, conversation binding, bot credential transport, Teams delivery
+or client controls are mounted. The complete implementation and external/native
+acceptance pipeline remains in evidence/teams-agent-channels.md. SlackPR204 is
+merged on main690f6246 after all four CI jobs passed; deployment is user-run.
+All C1–C6/M1/D1/U1 requirements remain active and the full goal is incomplete.

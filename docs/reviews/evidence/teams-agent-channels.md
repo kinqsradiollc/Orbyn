@@ -80,3 +80,42 @@ endorsed keys while retaining no certificate metadata. This proves key discovery
 not a live Teams installation, user identity, callback or message delivery.
 The earlier11/12 intermediate catalog run is retained as the key-count failure;
 the1..1024 array bound and metadata stripping were then corrected.
+
+## Session-bound account link — candidate, 6 October 2026
+
+Identity-only Microsoft organizational OAuth now uses session-bound state, PKCE
+and nonce, strict issuer/audience/tenant/object-ID claims and fixed Microsoft key
+and token endpoints. Callback redemption commits a unique claim before remote
+exchange; an uncertain result clears private temporary data and requires a new
+attempt. Captured identity is encrypted for ten minutes and reviewed only by the
+original live Orbyn session. Crypto runs outside transactions for cold pool-one
+operation. Identity reads recheck ownership and expiry after decryption.
+
+Explicit review binds tenant/object ID, current connection revision and OAuth
+configuration. Concurrent owners cannot claim the same bot/tenant/user identity.
+Review returns one ten-minute personal-conversation challenge and leaves DMs off.
+No Microsoft access/refresh token is retained. A provider-authenticated personal
+message must prove the reviewed recipient before conversation binding; an admin's
+installation event alone must not choose the recipient. This handshake, mounted
+routes, bot credentials, delivery, replies and both client controls remain open.
+Migration248 and fixed sweeps cover expired private captures and thirty-day
+disconnected/abandoned links; Privacy text describes this candidate collection.
+
+Evidence:
+
+- /tmp/orbyn-channel-teams-oauth-pure.log:21/21 OAuth and connector protocol cases.
+- /tmp/orbyn-channel-teams-account-integrated.log:37/37 Teams account-link, Slack
+  installation/vault and retention database cases.
+- /tmp/orbyn-channel-teams-account-cold-final.log:12/12 latest account-link cases
+  with DB_POOL_MAX1 and empty SECRETS_KEY; includes review, ownership, revocation,
+  replay, cross-owner race, pending bounds and fixed retention.
+- /tmp/orbyn-channel-teams-account-qualified-types.log and
+  /tmp/orbyn-channel-teams-account-qualified-build.log: backend types/build pass.
+
+Retained /tmp/orbyn-channel-teams-install-db.log initially failed8/9 because the
+claim UPDATE incorrectly included FOR UPDATE. The query was repaired while
+retaining the unique-redemption assertions; the repaired run passed9/9 before
+adding three race/retention/bounds cases. No provider or native/visual acceptance
+is claimed. Main690f6246 now includes PR204: exact head853d4682 passed all four
+CI37321894816 jobs; source3d163bcd full local suite passed3089 with0 failures and
+one existing Tesseract skip. User deployment remains manual. Full ADR is active.
