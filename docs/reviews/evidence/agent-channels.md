@@ -85,3 +85,31 @@ transactional waiting-card replies still need implementation and qualification.
 No Slack messages were sent. Official source contracts:
 [OAuth installation](https://docs.slack.dev/authentication/installing-with-oauth/),
 [oauth.v2.access](https://docs.slack.dev/reference/methods/oauth.v2.access/).
+
+## Mounted installation endpoint candidate — 5 October 2026
+
+Current main8b6748c5 is integrated. Session-only status/start/review/confirm,
+versioned permission and local unlink endpoints are registered in the API.
+The public callback captures credentials by single-use state; it cannot link
+an account or enable messages. Its static response sets no-store, no-referrer
+and restrictive CSP. Callback query logs are redacted; gateway callback paths
+disable logging and upstream replay. Live nginx verification remains open.
+
+Confirmed identity includes actual granted bot scopes and explicit same-session
+review. Installation/permission endpoints bypass response idempotency caching,
+so every change rechecks live authority. They are excluded from MCP/plugin
+capabilities. Shared client methods reject contract drift, forged authorization
+hosts, credentials in replies and invalid request IDs. Reads are fresh.
+
+Evidence:34/34 pure HTTP/client/protocol/gateway/catalog checks pass in
+/tmp/orbyn-channel-mounted-pure-2.log.11/11 real database/registered endpoint
+checks pass in /tmp/orbyn-channel-mounted-db.log; installation tests use a
+one-connection pool with the database-backed encryption key, demonstrating
+that encryption does not deadlock the ownership transaction. All workspace
+typechecks pass in /tmp/orbyn-channel-mounted-types.log. Earlier failed local
+checks are retained; these results correspond to the repaired candidate.
+
+This candidate has no client connection screens, durable DM outbox, rotating
+token worker or mounted reply handler. No external message or authorized live
+installation was performed. Keep source qualification, real Slack/native UI
+acceptance, Teams and the whole ADR goal open. This source is not on main.

@@ -381,6 +381,13 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /agent-channels/slack": "credentials",
+  "POST /agent-channels/slack/installations": "credentials",
+  "GET /agent-channels/slack/installations/:id": "credentials",
+  "POST /agent-channels/slack/installations/:id/confirm": "credentials",
+  "PUT /agent-channels/slack/permission": "credentials",
+  "POST /agent-channels/slack/disconnect": "credentials",
+  "GET /agent-channels/slack/callback": "credentials",
   "GET /ai/provider-choice": "credentials",
   "GET /ai/agenda/private-permission": "credentials",
   "GET /ai/agenda/private-summary": "credentials",

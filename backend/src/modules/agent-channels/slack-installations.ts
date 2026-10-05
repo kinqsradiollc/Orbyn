@@ -199,9 +199,9 @@ export async function captureSlackInstallation(
 export async function readSlackInstallationRequest(
   binding: Binding,
   id: string,
-  config: SlackOAuthConfig,
+  config?: SlackOAuthConfig,
 ) {
-  const configHash = slackOAuthConfigDigest(config);
+  const configHash = config ? slackOAuthConfigDigest(config) : null;
   const row = await transaction(async (db) => {
     await live(db, binding, false);
     const row = (

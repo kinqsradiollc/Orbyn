@@ -3,6 +3,7 @@ import { z } from "zod";
 const workspaceId = z.string().regex(/^T[A-Z0-9]{2,63}$/);
 const slackUserId = z.string().regex(/^[UW][A-Z0-9]{2,63}$/);
 const botScopes = z.array(z.string().min(1).max(100)).min(1).max(100);
+export const slackInstallationId = z.uuid();
 export const slackChannelConnection = z
   .object({
     id: z.uuid(),

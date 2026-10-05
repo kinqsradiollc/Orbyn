@@ -30,6 +30,7 @@ export function idempotency(app: FastifyInstance) {
     // recheck its live session. A cached reply must not bypass those checks.
     if (
       request.routeOptions.url === "/models/default" ||
+      /^\/agent-channels(?:\/|$)/.test(request.routeOptions.url ?? "") ||
       /^\/ai\/connections\/chatgpt(?:\/|$)/.test(request.routeOptions.url ?? "")
     )
       return;
