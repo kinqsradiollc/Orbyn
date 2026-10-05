@@ -23,6 +23,7 @@ import { trackPluginImport, readPluginImportEvents } from "./import-jobs.js";
 import { pluginJobCursorKey } from "./job-cursor.js";
 import { pluginJobUri } from "./job-resource.js";
 import type { ToolResult } from "../../capabilities/execute.js";
+import { pluginLaunch, pluginLaunchInput } from "./launch.js";
 
 const jobQuery = z
   .object({ cursor: z.string().min(1).max(512).optional() })
@@ -187,6 +188,52 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
         return { ...describe(cap), ...(ui ? { _meta: ui } : {}) };
       }),
     };
+  });
+  app.post("/plugin/launch", { bodyLimit: 2048 }, async (request, reply) => {
+    const input = pluginLaunchInput.safeParse(request.body);
+    if (!input.success || Object.keys(request.query as object).length)
+      return reply.code(400).send({
+        error: "INVALID",
+        message:
+          "Send a versioned plugin launch context with presentation hints only.",
+      });
+    const live = await settings();
+    const principal = request.pluginCaller!.principal;
+    const slot = await limiter.take(
+      principal.grant_id!,
+      principal.user.id,
+      "call",
+      live.agents.agent_limits,
+    );
+    if (!slot.ok) {
+      recorder.count(principal.grant_id!, "limited");
+      return reply
+        .header("Retry-After", String(slot.retryAfter))
+        .code(429)
+        .send({
+          error: "LIMITED",
+          message: slot.reason,
+        });
+    }
+    try {
+      return await pluginRead(
+        principal,
+        request.headers,
+        live,
+        resources,
+        async () =>
+          pluginLaunch(
+            principal,
+            input.data,
+            registry.for(principal).map((cap) => cap.name),
+            live.agents.mcp_apps_enabled,
+          ),
+      );
+    } catch (error) {
+      return jobRefusal(error, reply);
+    } finally {
+      slot.release();
+    }
   });
   app.post(
     "/plugin/jobs/imports",
