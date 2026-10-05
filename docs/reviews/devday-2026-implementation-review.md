@@ -2,36 +2,34 @@
 
 ## Current delivery state — 6 October 2026
 
-Main application checkpoint is `de29d871` (PR212), pushed. Docs rails respond to
-available editor width after navigation/library panels. Exact9f0247df passed12
-focused cases and fresh full DB34:3441/0/1, terminal0,739091ms. CI37361223961
-attempt2 now passed all four jobs. Attempt1 Gantt Chromium startup failure remains
-recorded in `/tmp/orbyn-doc-container-9f0247df-ci.log`; no assertions or limits
-changed. Automated qualification does not establish visual/native acceptance.
+Main application checkpoint is `773f1441` (PR214), pushed. Word/reference-preview
+privacy PR213 is merged asbb9c10f5. Exactad83a3d8 passed the repaired fresh full
+DB37:3460passes/0failures/1existing skip, terminal0,755914ms. Main backend/core/API
+source matches that tested candidate. DB36's seven export-route VM dependency
+failures remain recorded; the mock repair preserved its original assertions.
+CI37364955550 is still running backend tests; mail/mobile jobs were cancelled with
+no executed steps and no logs available, so no all-green CI claim is made.
 
-PR211 reference titles and inline-object privacy are merged; finala34ed83b passed
-all four CI37360062404 jobs. Its full application suite passed3437/0/1.
-Word/reference-preview privacy PR213 is draft atad83a3d8, pushed and mergeable.
-Fresh DB36 full ended3453pass/7fail/1existing skip: all failures were the actual
-export-route VM fixture missing the new linkPrivacy dependency. The repaired mock
-retains primary/revision/privacy assertions;50 focused cases and backend types/
-format pass. Repaired immutable full DB37 is running:
-`/tmp/orbyn-channel-doc-word-repaired-full.log`. CI37364955550 is queued.
+Views/Review available-width repair PR214 merged773f1441 under the user's permission
+for small fixes without waiting for CI. Both web/desktop pages follow available
+page width after panels; native Review actions and headers wrap.18 focused cases,
+all workspace types, web build and formatting pass. CI37366765411 is pending.
+Browser preview again rejected5174 due to saved permission, explicitly prohibiting
+workarounds; Simulator selection again timed out -10005. No visual/native proof.
+PR212 layout CI37361223961 attempt2 passed all four jobs; earlier startup failure
+is retained. PR211 finala34ed83b passed all four CI37360062404 jobs.
 
-Quote continuation and Word quote import candidate53ec9913 is pushed; prior88-case
-cohort passed, latest literal-anchor/source cohort58/58 and all workspace types/
-format pass. Actual Word/main integration and full combined qualification are next.
-Footnote/quote/Word combined candidate83a08307 is pushed:120 parser/source/HTML/Word
-and export-primary fixture cases pass, workspace types/backend/web builds/format
-pass. Word fixturead83a3d8 and quote53ec9913 are integrated; source conflicts were
-resolved retaining both features. Upload/conversion/
-storage/source-export ownership regression is added but awaits the serial database
-slot. Candidate preserves IDs, markers, links and hard breaks, rejects malformed
-archive relationships/IDs and retains existing size limits. It is not on main.
-Nested containers, media and bookmarks remain explicit D1 gaps. Browser/native
-visual acceptance, real provider/tenant acceptance, production deployment and full
-C1-C6/M1/D1/U1 remain incomplete. User deploys manually; character/user work is
-preserved. No Docker restart, cleanup or production deployment occurred.
+Quote/footnote combined PR215 is draft at5f5a1833, pushed with actual main773f1441
+integrated without conflicts.131 parser/source/HTML/Word/primary-fixture/layout
+cases and29 mounted import/privacy cases pass, zero failures/skips. The uploaded
+Word footnote test verifies conversion, stored markers/text, source export,
+cross-owner refusal and uploaded-file cleanup. Final types/build/format are
+running. Immutable fresh full DB39 is live:
+`/tmp/orbyn-channel-doc-footnote-main-full.log`. Keep candidate source frozen.
+Nested quote/list containers, media, bookmarks/endnotes and full D1 matrices remain
+open. Whole-app U1, governing agents/pages/provider contract and real-account/
+tenant/host acceptance remain incomplete. User deploys manually; production and
+cleanup are unverified. Character/user work remains preserved; Docker is unchanged.
 
 The current pipeline is in [ADR001](../adr/001-devday-agent-platform.md) and
 [the live handoff](task.md). Older checkpoint maps below are historical.
