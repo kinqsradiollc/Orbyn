@@ -101,6 +101,10 @@ function fixture({
         dependencies.push(db);
         return blocks;
       },
+      linkPrivacy: async (db: unknown, _id: string, _blocks: DocBlock[]) => {
+        dependencies.push(db);
+        return { value: (blocks: DocBlock[]) => blocks, hidden: () => false };
+      },
       blocksWithWebLinks: (blocks: DocBlock[]) => blocks,
       env: { APP_URL: "https://fixture.invalid" },
       docToDocx: render,
