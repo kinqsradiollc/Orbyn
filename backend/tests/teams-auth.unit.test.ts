@@ -218,7 +218,7 @@ test("fixed key fetches are bounded, cached, deduplicated and refreshed with a c
 });
 test("oversized, malformed, refused or redirected key documents never become trust anchors", async () => {
   for (const respond of [
-    () => new Response("x".repeat(65537)),
+    () => new Response("x".repeat(2 * 1024 * 1024 + 1)),
     () => Response.json({ keys: [] }),
     () => Response.json({ keys: [{ ...key, kty: "oct" }] }),
     () => new Response("", { status: 500 }),
@@ -261,4 +261,17 @@ test("an audience list cannot substitute for the exact bot application audience"
     ),
     refuse(401),
   );
+});
+
+test("the key document supports Microsoft current catalog size without trusting certificate metadata", async () => {
+  const catalog = Array.from({ length: 233 }, (_, i) => ({
+    ...key,
+    kid: `fixture-${i}`,
+    x5c: ["x".repeat(3000)],
+  }));
+  const payload = JSON.stringify({ keys: catalog });
+  assert.ok(Buffer.byteLength(payload) > 65536);
+  assert.ok(Buffer.byteLength(payload) < 2 * 1024 * 1024);
+  const keys = createTeamsSigningKeyCache(async () => new Response(payload));
+  assert.equal((await keys()).length, 233);
 });

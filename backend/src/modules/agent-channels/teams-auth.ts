@@ -81,7 +81,7 @@ export function createTeamsSigningKeyCache(
           const chunk = await reader.read();
           if (chunk.done) break;
           size += chunk.value.byteLength;
-          if (size > 65536) throw new TeamsAuthenticationError(503);
+          if (size > 2 * 1024 * 1024) throw new TeamsAuthenticationError(503);
           chunks.push(chunk.value);
         }
         const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -89,23 +89,21 @@ export function createTeamsSigningKeyCache(
           .object({
             keys: z
               .array(
-                z
-                  .object({
-                    kty: z.literal("RSA"),
-                    kid: z.string().min(1).max(200),
-                    n: z.string().min(1).max(8192),
-                    e: z.string().min(1).max(20),
-                    alg: z.literal("RS256").optional(),
-                    use: z.literal("sig").optional(),
-                    endorsements: z
-                      .array(z.string().max(100))
-                      .max(100)
-                      .optional(),
-                  })
-                  .passthrough(),
+                z.object({
+                  kty: z.literal("RSA"),
+                  kid: z.string().min(1).max(200),
+                  n: z.string().min(1).max(8192),
+                  e: z.string().min(1).max(20),
+                  alg: z.literal("RS256").optional(),
+                  use: z.literal("sig").optional(),
+                  endorsements: z
+                    .array(z.string().max(100))
+                    .max(100)
+                    .optional(),
+                }),
               )
               .min(1)
-              .max(100),
+              .max(1024),
           })
           .parse(value);
         cached = {

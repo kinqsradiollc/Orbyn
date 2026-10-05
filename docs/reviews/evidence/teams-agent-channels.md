@@ -64,3 +64,19 @@ external/provider/native/visual acceptance gate.
 
 All C1–C6/M1/D1/U1 requirements remain active. No main promotion, deployment or
 full-goal completion is claimed by this foundation.
+
+## Live key catalog correction
+
+Microsoft's fixed public endpoint was read without any user or bot credential.
+Its document measured814616bytes with233RSAkeys,72endorsed for Teams. The
+initial64KiB/100key cap would reject this current document. The loader now uses
+an explicit2MiB/1024key document budget, strips unused certificate metadata, and
+retains the64KiB incoming-activity limit. The oversize assertion moves to the new
+key-document boundary; no signature, audience, endorsement or destination rule
+is weakened. A233key fixture proves the actual-size catalog is accepted.
+`/tmp/orbyn-channel-teams-live-catalog-final.log` passes12/12; latest backend types
+pass. A live call through the production key loader accepts233keys and72Teams
+endorsed keys while retaining no certificate metadata. This proves key discovery,
+not a live Teams installation, user identity, callback or message delivery.
+The earlier11/12 intermediate catalog run is retained as the key-count failure;
+the1..1024 array bound and metadata stripping were then corrected.
