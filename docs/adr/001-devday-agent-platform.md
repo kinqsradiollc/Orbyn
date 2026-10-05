@@ -2050,3 +2050,13 @@ or client controls are mounted. The complete implementation and external/native
 acceptance pipeline remains in evidence/teams-agent-channels.md. SlackPR204 is
 merged on main690f6246 after all four CI jobs passed; deployment is user-run.
 All C1–C6/M1/D1/U1 requirements remain active and the full goal is incomplete.
+
+### Teams personal conversation proof — candidate, 6 October 2026
+
+A Connector-authenticated personal message can now consume the reviewed
+tenant/user's one-use linking challenge. Encrypted conversation storage and
+revision advancement are atomic; current owner/configuration/expiry/disconnect
+checks refuse stale or wrong recipients. Linking leaves DMs off. Sixteen cold-pool
+database cases pass, including real signed activities and concurrent replay.
+This service remains unmounted; transport, delivery, replies, client controls and
+external/native/visual acceptance remain open. Full ADR goal remains active.

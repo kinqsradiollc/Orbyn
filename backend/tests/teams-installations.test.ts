@@ -417,3 +417,150 @@ test("active attempts are bounded per owner instead of creating unlimited privat
     "5",
   );
 });
+
+const { SignJWT, exportJWK, generateKeyPair } = await import("jose");
+const { bindTeamsPersonalConversation } =
+  await import("../src/modules/agent-channels/teams-conversations.js");
+const pair = await generateKeyPair("RS256", { modulusLength: 2048 });
+const signingKey = {
+  ...(await exportJWK(pair.publicKey)),
+  kid: "personal-link",
+  endorsements: ["msteams"],
+};
+async function preparedLink() {
+  const f = await fixture();
+  await captureTeamsInstallation(
+    config,
+    { state: f.state, code: "fixture" },
+    f.redeem,
+  );
+  const link = await confirmTeamsInstallation(
+    f.binding,
+    f.start.id,
+    config,
+    f.review,
+  );
+  const activity = {
+    type: "message",
+    id: randomUUID(),
+    channelId: "msteams",
+    serviceUrl: "https://smba.trafficmanager.net/teams/",
+    from: { id: "29:reviewed-human", aadObjectId: f.identity.objectId },
+    recipient: { id: `28:${config.botAppId}` },
+    conversation: {
+      id: "personal-fixture",
+      conversationType: "personal",
+      tenantId: f.identity.tenantId,
+    },
+    channelData: { tenant: { id: f.identity.tenantId } },
+    textFormat: "plain",
+    text: `/orbyn connect ${link.link_token}`,
+  };
+  return { f, link, activity };
+}
+async function connectionMessage(activity: unknown, valid = true) {
+  const token = await new SignJWT({
+    serviceUrl: "https://smba.trafficmanager.net/teams/",
+  })
+    .setProtectedHeader({ alg: "RS256", kid: "personal-link" })
+    .setIssuer("https://api.botframework.com")
+    .setAudience(valid ? config.botAppId : randomUUID())
+    .setNotBefore(Math.floor(Date.now() / 1000) - 10)
+    .setExpirationTime(Math.floor(Date.now() / 1000) + 600)
+    .sign(pair.privateKey);
+  return bindTeamsPersonalConversation(
+    Buffer.from(JSON.stringify(activity)),
+    {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    config,
+    async () => [signingKey],
+  );
+}
+test("signed personal conversation consumes the reviewed challenge once, encrypts reference and leaves DMs off", async () => {
+  const { f, link, activity } = await preparedLink();
+  const result = await connectionMessage(activity);
+  assert.equal(result.id, link.id);
+  assert.equal(result.version, link.version + 1);
+  assert.equal(result.dm_enabled, false);
+  const stored = (
+    await pool.query(
+      "SELECT * FROM agent_channel_teams_installations WHERE user_id=$1",
+      [f.binding.userId],
+    )
+  ).rows[0];
+  assert.equal(stored.link_nonce_hash, null);
+  assert.equal(stored.link_expires_at, null);
+  assert.ok(stored.conversation_encrypted);
+  assert.ok(!stored.conversation_encrypted.includes(activity.conversation.id));
+  await assert.rejects(connectionMessage(activity), refusal(409));
+});
+test("provider JWT, reviewed human, tenant and personal context are all required for linking", async () => {
+  const { activity } = await preparedLink();
+  await assert.rejects(
+    connectionMessage(activity, false),
+    (e: unknown) => (e as { status?: number }).status === 401,
+  );
+  await assert.rejects(
+    connectionMessage({
+      ...activity,
+      from: { ...activity.from, aadObjectId: randomUUID() },
+    }),
+    refusal(409),
+  );
+  await assert.rejects(
+    connectionMessage({
+      ...activity,
+      channelData: { tenant: { id: randomUUID() } },
+    }),
+    refusal(403),
+  );
+  await assert.rejects(
+    connectionMessage({
+      ...activity,
+      conversation: { ...activity.conversation, conversationType: "groupChat" },
+    }),
+    refusal(400),
+  );
+  await assert.rejects(
+    connectionMessage({ ...activity, type: "conversationUpdate" }),
+    refusal(400),
+  );
+  await assert.rejects(
+    connectionMessage({ ...activity, text: "/orbyn connect invalid" }),
+    refusal(400),
+  );
+});
+test("concurrent signed link messages bind one conversation and cannot replay the challenge", async () => {
+  const { activity } = await preparedLink();
+  const outcomes = await Promise.allSettled([
+    connectionMessage(activity),
+    connectionMessage(activity),
+  ]);
+  assert.equal(outcomes.filter((x) => x.status === "fulfilled").length, 1);
+  assert.equal(
+    outcomes.filter((x) => x.status === "rejected" && refusal(409)(x.reason))
+      .length,
+    1,
+  );
+});
+test("disabled owner, expired challenge and disconnect prevent personal linking", async () => {
+  const first = await preparedLink();
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [
+    first.f.binding.userId,
+  ]);
+  await assert.rejects(connectionMessage(first.activity), refusal(403));
+  const expired = await preparedLink();
+  await pool.query(
+    "UPDATE agent_channel_teams_installations SET link_expires_at=now()-interval '1 second' WHERE id=$1",
+    [expired.link.id],
+  );
+  await assert.rejects(connectionMessage(expired.activity), refusal(409));
+  const disconnected = await preparedLink();
+  await pool.query(
+    "UPDATE agent_channel_teams_installations SET disconnected_at=now() WHERE id=$1",
+    [disconnected.link.id],
+  );
+  await assert.rejects(connectionMessage(disconnected.activity), refusal(409));
+});

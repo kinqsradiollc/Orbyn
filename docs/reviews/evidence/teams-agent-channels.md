@@ -119,3 +119,24 @@ adding three race/retention/bounds cases. No provider or native/visual acceptanc
 is claimed. Main690f6246 now includes PR204: exact head853d4682 passed all four
 CI37321894816 jobs; source3d163bcd full local suite passed3089 with0 failures and
 one existing Tesseract skip. User deployment remains manual. Full ADR is active.
+
+## Personal conversation proof — candidate, 6 October 2026
+
+The linking service verifies the Connector JWT before parsing a bounded personal
+message. Only the exact reviewed bot/tenant/AAD sender can consume the one-use
+`/orbyn connect` challenge. Both tenant fields must agree; group conversations,
+installation events, malformed challenges and wrong audiences cannot link. The
+reference is encrypted outside transactions, then current owner/configuration,
+challenge expiry and disconnect are rechecked under owner locks. Concurrent
+messages consume the challenge once, advance the connection revision and leave
+DM consent false. No external send occurs. This service is not yet mounted.
+
+/tmp/orbyn-channel-teams-personal-link-cold.log passes16/16 database cases with
+pool1 and no environment secrets key, including real RSA-signed activity fixtures
+and ownership/replay/expiry/disconnect refusal. It extends the account-link tests;
+no assertions or authority checks were removed. Backend typecheck/build are
+confirmed by /tmp/orbyn-channel-teams-personal-link-types.log and
+/tmp/orbyn-channel-teams-personal-link-build.log (both pass). Microsoft's personal-message shape is grounded in
+[the official message activity contract](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/build-conversational-capability).
+Actual installation/user interaction, bot transport, delivery, question replies,
+client controls, HTTP shields and native/visual acceptance remain outstanding.
