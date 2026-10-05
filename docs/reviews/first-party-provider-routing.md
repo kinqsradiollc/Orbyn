@@ -290,3 +290,21 @@ require inspection before delivery. No real
 ChatGPT completed inference, full current-source qualification or main merge
 is claimed by this candidate. Agenda and maintained-page private execution
 remain open, together with the full ADR contract.
+
+### Private maintained-page execution — 5 October 2026 candidate
+
+Candidate e277bcf8 adds a genuine page-owned private inference transport, tied to
+its parent lease and captured source/provider/model revisions. It retains separate
+Background/Overnight lanes and requires a signed output-limit capability for
+budgeted ChatGPT assignments. Confirmed undispatched device loss restores the
+reservation and requeues the same durable operation; an existing inference
+operation prevents refund/retry. Parent cancellation and stale source/model/choice
+reject signed output. Overnight charges only its parent reservation.
+
+Direct private-page checks8/8 and combined checks81/81 pass with no skips;
+all workspace types and production build pass. Lock-order and terminal-state
+defects discovered by direct tests are corrected, with regressions retained.
+This is committed and pushed on the implementation branch, not merged to main.
+Full exact-head/CI qualification, real positive OpenAI inference, native/mobile
+acceptance and all other C1–C6/M1/D1/U1 requirements remain open. Agenda briefs
+still need owner/source-aware routing. No deployment or cleanup is claimed.
