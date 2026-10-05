@@ -2734,3 +2734,13 @@ legacy-migration cases pass24/24. All workspace types, whole format, backend/web
 builds and iOS/Android exports pass. Identity repair6bda01e9 completed its
 immutable full local suite:3130 passes, zero failures and one existing skip; CI
 backend remains pending. Delivery/UI full/CI qualification is next.
+
+Latest recovery fixtured926b03c now stops both Background and interactive
+recovery sweepers during fixture setup, and restores both for subsequent tests.
+Its41-case assistant-runs cohort passes. Earlier6bda full/CI results apply to
+that prior test source. The first delivery full run at7bda2185 was deliberately
+stopped to incorporate complete fixture isolation; it is not passing full
+evidence. Application source integrates without conflicts; the previous merge's
+generated catalog conflicts were regenerated to287 exclusions and evidence
+notes were combined, preserving both histories. No unresolved merge remains.
+Current delivery controls need immutable combined full/CI qualification next.

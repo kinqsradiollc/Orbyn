@@ -290,3 +290,14 @@ docs/mcp-catalog.json. Four catalog consistency cases pass after regeneration
 (/tmp/orbyn-channel-teams-catalog-repaired.log). No application, migration or test
 assertion changes are needed. Exact repaired-source full/CI qualification remains
 required; preserve the earlier failing terminal result. Full ADR remains active.
+
+### Recovery integration and full qualification restart
+
+The immutable delivery full run7bda2185 was deliberately stopped to integrate
+the complete recovery fixture isolationd926b03c (both runtime lanes), not treated
+as a full pass. The merged candidate175529be is tracked-clean with the original
+assertions intact. Regenerated credential exclusions287 resolve the catalog
+merge; both evidence histories are retained. No unresolved conflict remains.
+The integrated source now starts a fresh immutable full run.41 recovery cases
+passed before this integration;112 delivery/controls cases and24 cold cases
+remain focused evidence. Teams replies and whole ADR acceptance remain open.
