@@ -23,8 +23,10 @@ format pass. Repaired immutable full DB37 is running:
 Quote continuation and Word quote import candidate53ec9913 is pushed; prior88-case
 cohort passed, latest literal-anchor/source cohort58/58 and all workspace types/
 format pass. Actual Word/main integration and full combined qualification are next.
-Footnote continuation/Word importer candidate is local:88 source/parser/HTML/Word
-cases pass, workspace types/backend/web builds/format pass. Upload/conversion/
+Footnote/quote/Word combined candidate83a08307 is pushed:120 parser/source/HTML/Word
+and export-primary fixture cases pass, workspace types/backend/web builds/format
+pass. Word fixturead83a3d8 and quote53ec9913 are integrated; source conflicts were
+resolved retaining both features. Upload/conversion/
 storage/source-export ownership regression is added but awaits the serial database
 slot. Candidate preserves IDs, markers, links and hard breaks, rejects malformed
 archive relationships/IDs and retains existing size limits. It is not on main.
