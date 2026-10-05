@@ -4,7 +4,7 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 5 October 2026
 
-Main `8dcc4bb1` includes selected-provider routing, migration deadlock recovery,
+Main `0faf19dc` includes selected-provider routing, migration deadlock recovery,
 web/mobile-to-desktop ChatGPT connection handoff, separate plugin launch context,
 Docs source-dialog focus recovery and scoped scheduled Agenda summaries (PR199).
 PR199 exact source `a6a65525` passed all four CI jobs in37291303840:2938 backend
@@ -13,15 +13,20 @@ Production deployment remains user-run and unverified. Real successful SIWC
 inference and truthful whole-account plan/quota acceptance remain open; official
 catalogs without hard output limits cannot enable budgeted private scheduling.
 
-Plugin managed/BYO inference is candidate PR203, now integrated with this main.
-Its earlier full local run had2902 passes, one catalog failure and one existing
-skip. The generated catalog repair passes4/4; combined full qualification ended2971 pass/1 timing-sensitive fixture failure/1
-existing skip. The positive resumption fixture is repaired without changing
-production guards;18 scheduled-runtime cases and five independent repeats pass.
-Fresh combined qualification is required. External plugin-host and native/visual acceptance remain open.
-Personal ChatGPT credentials stay excluded from plugin calls; portable MCP is
-independent. Slack replies have a separate pure boundary candidate, with no
-OAuth installation, mounted callback or delivery yet.
+Plugin managed/BYO inference is merged in main `0faf19dc` (PR203), with its
+independent worker, versioned owner consent, pinned provider/model/allowances,
+durable receipts and both client controls. Exact source `ff3c88ef` passed all
+four jobs in CI37295933770 and the fresh isolated local full suite:2975 passes,
+zero failures and one existing Tesseract skip. Formatting and all workspace
+typechecks pass. External plugin host, real provider and native/visual acceptance
+remain open. Personal ChatGPT credentials stay excluded; portable MCP remains
+independent. This checkpoint does not prove the entire P1 or ADR acceptance.
+
+Slack installation and signed replies remain separate candidates. The session-
+bound installation service, encrypted pending state, exact actor confirmation,
+versioned opt-in/unlink and reply boundary exist, with10 fresh database cases
+and17 pure cases passing. No callback routes/client installation UI, durable
+outbox or external delivery are mounted or proven yet. Teams remains open.
 
 The settings grid cascade/theme patch removes a late three-column override and
 uses existing theme tokens.15 focused tests, backend/desktop typechecks and web
@@ -1895,3 +1900,22 @@ unknown outcomes without retry, and personal ChatGPT credentials/transports rema
 excluded. The implemented consent/storage foundation is not an enabled inference
 feature. Complete the broker, both client controls and runtime/security acceptance
 before promoting it. The full C1-C6/M1/D1/U1 contract remains unchanged and open.
+
+### P1 managed plugin inference candidate — 5 October 2026
+
+Committed bdefc9cf (PR203) implements the separate plugin worker and provider
+broker, default-off owner consent, provider/model revision pinning, per-call
+output and UTC daily limits, durable operation receipts, private reconnect events,
+and matching web/desktop/mobile permission controls. Personal ChatGPT transports
+and first-party runtime slots are excluded. Unknown/interrupted provider outcomes
+retain their allowance reservation and never replay; queued revocation is recorded
+as known undispatched. Current OAuth audience, owner/client/token/team authority,
+consent and provider revision are fenced at dispatch and result acceptance.
+
+Policy/consent/launch/cursor checks26/26 and component interactions8/8 pass;
+workspace types pass. Ten new database broker cases await exact-head CI.
+The preceding f271dd0e CI failed on two fixed-clock runtime fixtures and missing
+route inventory entries; repairs preserve all capacity/shield assertions.
+Browser inspection remains rejected by the saved site permission; native visual
+acceptance and external host delivery remain outstanding. This is candidate
+implementation, not P1 or full ADR completion. Merge only after qualification.

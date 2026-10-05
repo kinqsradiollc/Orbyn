@@ -43,6 +43,7 @@ export const MAX_GRANTS = 50;
 type GrantRow = {
   id: string;
   kind: AgentGrantKind;
+  resource_kind: string;
   name: string;
   client_name: string;
   access: AgentAccess;
@@ -61,7 +62,7 @@ type GrantRow = {
   created_at: Date;
 };
 
-const GRANT_COLUMNS = `g.id, g.kind, g.name, g.client_name, g.access, g.trust,
+const GRANT_COLUMNS = `g.id, g.kind, g.resource_kind, g.name, g.client_name, g.access, g.trust,
   g.space_trust, g.acts_alone, g.personal,
   g.team_ids, g.toolsets, g.flags, g.expires_at, g.last_used_at, g.suspended_at,
   g.created_at,
@@ -87,6 +88,7 @@ async function teamNames(
 const view = (g: GrantRow, names: Map<string, string>): AgentGrant => ({
   id: g.id,
   kind: g.kind,
+  ...(g.resource_kind === "plugin" ? { resource_kind: "plugin" as const } : {}),
   name: g.name,
   client_name: g.client_name,
   access: g.access,
