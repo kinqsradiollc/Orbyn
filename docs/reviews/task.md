@@ -2057,3 +2057,14 @@ These are interaction fixtures, not screenshot or native runtime acceptance.
 The initial fixture path error was fixed; its failed log was superseded by the
 successful rerun. All workspace typechecks pass in
 /tmp/orbyn-plugin-consent-ui-types.log.
+
+### Plugin managed HTTP qualification follow-up
+
+Added an eleventh integration case using the production managed HTTP adapter
+against a dedicated mock server: exact model/max_tokens512, expected text,
+accepted private result and no second dispatch. It tests more than the injected
+send seam. Backend typecheck passes; database execution still awaits CI. The
+previous goal turn was progress: committed/pushed broker and owner controls,
+34 focused passes, and repaired catalog/lease qualification failures. Current
+0f6f222e CI37290712062 is live; PR199 c8403ea1 has no reported checks yet.
+Native Simulator inspection again timed out -10005. No visual proof claimed.

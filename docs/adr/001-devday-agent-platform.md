@@ -4,20 +4,26 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 5 October 2026
 
-Main `9c5bb744` contains PR196 selected-provider routing, PR198 migration deadlock
-recovery and PR200 web ChatGPT handoff correction. The small PR200 merge did not
-wait for CI, as explicitly authorized by the user. PR198's CI37279096979 completed
-successfully in all four jobs, including 2,856 backend passes, zero failures and
-one existing Tesseract skip. Production deployment/recovery remains user-run and
-unverified.
+Main `62f5e9a0` contains qualified selected-provider routing, migration deadlock
+recovery, the web-to-desktop ChatGPT handoff fixes, plugin launch context (PR201)
+and Docs source-dialog focus recovery (PR202). PR201's exact-head CI37285386062
+passed all four jobs, with2868 backend passes and one existing Tesseract skip;
+PR202's CI37285248757 passed all four jobs, with2862 backend passes and that skip.
+Production deployment/recovery remains user-run and unverified.
 
-Scheduled private Agenda remains draft PR199 at `a2d30b88`; CI37280711360 is still
-running. Successful source checks do not establish native acceptance or enable
-budgeted scheduling for official SIWC accounts lacking hard-limit support.
-Separate plugin OAuth/UI/import-job implementations are present on main; managed/
-BYO plugin provider execution, launch context and external host acceptance remain
-unfinished. Full C1–C6/M1/D1/U1 remains active. See the current table in
-[implementation handoff](../reviews/task.md) and the refreshed P1 table in
+Scheduled private Agenda remains draft PR199 at `c8403ea1`. The preceding
+CI37286333130 failed three tests; catalog shape compatibility and two fixed-clock
+lease fixtures are repaired, with fresh qualification pending. Official SIWC
+accounts without hard output-limit capability cannot enable budgeted scheduling.
+
+Plugin managed/BYO execution and explicit owner controls are candidate PR203.
+The standalone broker/worker, durable receipts/events, fixed provider consent,
+bounded transport and both client controls exist; database, external host and
+visual/native acceptance remain pending. Main's launch context alone does not
+provide inference permission. Personal ChatGPT tokens remain excluded.
+
+Full C1–C6/M1/D1/U1 remains active. See the current table in
+[implementation handoff](../reviews/task.md) and the full acceptance contract in
 [implementation review](../reviews/devday-2026-implementation-review.md).
 
 All checkpoint entries below are historical evidence for the named source;

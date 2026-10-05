@@ -123,6 +123,11 @@ dispatch and acceptance. Grant-before-job locking is preserved during recovery.
 Connected agents exposes explicit provider/model review, output limits, daily
 allowance and revocation on web/desktop and mobile, only for plugin grants. This
 is candidate implementation: 26 isolated policy/consent/launch/cursor regressions
-pass; workspace typechecks pass. Ten database integration cases are added but
+pass; workspace typechecks pass. Eleven database integration cases are added but
 await exact-head CI. Web inspection remains rejected by the saved Browser Use
 permission; native visual acceptance is outstanding. P1 is not complete.
+
+The newest integration fixture also sends through the production managed HTTP
+adapter to a local mock upstream, checking the wire model/output cap, private
+completion and absence of repeat dispatch. This is added coverage awaiting CI,
+not a successful live external-provider or host acceptance claim.

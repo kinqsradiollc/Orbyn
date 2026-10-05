@@ -1,6 +1,7 @@
 import { test, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import "./setup.js";
 import { helpers, type Person } from "./mcp-helpers.js";
 const { buildApp, buildPluginService } = await import("../src/app.js");
@@ -27,6 +28,27 @@ const token = `oat_${randomUUID()}`,
 let app: Awaited<ReturnType<typeof buildApp>>,
   service: Awaited<ReturnType<typeof buildPluginService>>;
 let owner: Person, grant: string, provider: any, prior: any;
+const wireCalls: { url: string; body: any }[] = [];
+const upstream = createServer((request, response) => {
+  let body = "";
+  request.on("data", (chunk) => {
+    body += chunk;
+  });
+  request.on("end", () => {
+    wireCalls.push({ url: request.url ?? "", body: JSON.parse(body) });
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(
+      JSON.stringify({
+        choices: [
+          {
+            message: { role: "assistant", content: "Managed wire answer" },
+            finish_reason: "stop",
+          },
+        ],
+      }),
+    );
+  });
+});
 function operationId() {
   const time = Date.now().toString(16).padStart(12, "0"),
     id = randomUUID();
@@ -65,6 +87,11 @@ before(async () => {
   app = await buildApp();
   service = await buildPluginService();
   owner = await helpers(app).register("plugin-inference-owner", "Owner");
+  await new Promise<void>((resolve) =>
+    upstream.listen(0, "127.0.0.1", resolve),
+  );
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
   await pool.query(
     "INSERT INTO oauth_clients(id,kind,name,host,redirect_uris) VALUES($1,'dcr','Fixture','fixture.example.test',ARRAY['https://fixture.example.test/callback'])",
     [clientId],
@@ -83,8 +110,8 @@ before(async () => {
     await pool.query("SELECT provider_id,model FROM ai_settings WHERE id")
   ).rows[0];
   await pool.query(
-    "INSERT INTO ai_providers(id,kind,name) VALUES($1,'openai','Workspace AI')",
-    [providerId],
+    "INSERT INTO ai_providers(id,kind,name,base_url) VALUES($1,'openai','Workspace AI',$2)",
+    [providerId, `http://127.0.0.1:${address.port}/v1`],
   );
   await pool.query(
     "UPDATE ai_settings SET provider_id=$1,model='fixture-model' WHERE id",
@@ -121,6 +148,9 @@ after(async () => {
   await pool.query("DELETE FROM ai_providers WHERE id=$1", [providerId]);
   await app.close();
   await service.close();
+  await new Promise<void>((resolve, reject) =>
+    upstream.close((error) => (error ? reject(error) : resolve())),
+  );
   await pool.end();
 });
 
@@ -440,4 +470,29 @@ test("parallel plugin claims respect the separate persisted capacity", async () 
   assert.equal(states.find((row) => row.state === "running")?.n, 2);
   assert.equal(states.find((row) => row.state === "queued")?.n, 1);
   assert.equal(await claimPluginAi(resources), null);
+});
+
+test("managed plugin dispatch uses the actual bounded HTTP adapter and private receipt", async () => {
+  await enable();
+  const run = await enqueue();
+  const before = wireCalls.length;
+  assert.equal(await processPluginAi(resources), true);
+  assert.equal(wireCalls.length, before + 1);
+  const request = wireCalls.at(-1)!;
+  assert.equal(request.url, "/v1/chat/completions");
+  assert.equal(request.body.model, "fixture-model");
+  assert.equal(request.body.max_tokens, 512);
+  assert.deepEqual(request.body.messages, [
+    { role: "user", content: "Host text" },
+  ]);
+  const result = await service.inject({
+    method: "GET",
+    url: `/plugin/inference/${run.id}/events`,
+    headers,
+  });
+  assert.equal(result.statusCode, 200, result.body);
+  assert.equal(result.json().state, "done");
+  assert.equal(result.json().text, "Managed wire answer");
+  assert.equal(await processPluginAi(resources), false);
+  assert.equal(wireCalls.length, before + 1);
 });
