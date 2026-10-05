@@ -7,6 +7,7 @@ import { chatgptExecutorFinish } from "./chatgpt-executors.js";
 export const chatgptInferenceInput = z
   .object({
     instructions: z.string().max(1_000_000),
+    max_output_tokens: z.number().int().min(1).max(65536).optional(),
     input: z
       .array(
         z

@@ -91,6 +91,7 @@ test("plan requests use the fixed endpoint, supported fields and observed comple
   );
   assert.deepEqual(JSON.parse(calls[1].init!.body as string), {
     ...request,
+    max_output_tokens: 20,
     store: false,
     stream: true,
   });
@@ -362,4 +363,19 @@ test("missing media headers still require a valid completed event stream, never 
     make(stream, "application/json").complete(request),
     /response stream/,
   );
+});
+
+test("private Responses wire preserves a validated output-token limit", async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  await client(done, calls).complete({ ...request, max_output_tokens: 321 });
+  const body = JSON.parse(String(calls.at(-1)!.init!.body));
+  assert.equal(body.max_output_tokens, 321);
+  assert.equal(body.store, false);
+  assert.equal(body.stream, true);
+  const before = calls.length;
+  for (const value of [0, -1, 1.5, 65537, NaN])
+    await assert.rejects(
+      client(done, calls).complete({ ...request, max_output_tokens: value }),
+    );
+  assert.equal(calls.length, before);
 });

@@ -16,6 +16,7 @@ export type ChatgptCredential = ChatgptAccount & { accessToken: string };
 export type ChatgptPlanRequest = {
   model: string;
   instructions?: string;
+  max_output_tokens?: number;
   input: { role: "user" | "assistant"; content: string }[];
 };
 
@@ -174,6 +175,14 @@ export class ChatgptPlanClient {
   ): Promise<string> {
     const signal = options.signal ?? AbortSignal.timeout(120_000);
     const model = chatgptModel.shape.slug.parse(request.model);
+    const maxOutputTokens = request.max_output_tokens;
+    if (
+      maxOutputTokens !== undefined &&
+      (!Number.isSafeInteger(maxOutputTokens) ||
+        maxOutputTokens < 1 ||
+        maxOutputTokens > 65536)
+    )
+      throw new Error("Use a supported output-token limit.");
     if (
       request.input.length > 1000 ||
       request.input.some(
@@ -206,6 +215,9 @@ export class ChatgptPlanClient {
           stream: true,
           ...(instructions ? { instructions } : {}),
           input,
+          ...(maxOutputTokens === undefined
+            ? {}
+            : { max_output_tokens: maxOutputTokens }),
         }),
       },
       signal,

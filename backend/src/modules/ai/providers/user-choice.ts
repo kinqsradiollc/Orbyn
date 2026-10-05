@@ -141,6 +141,7 @@ export async function resolveUserAi(
     signal: AbortSignal,
     operationId: string,
     reason: string,
+    maxOutputTokens?: number,
   ) => {
     const cached = await readCachedChatgptFallback(userId, jobId, operationId);
     if (cached) return cached.text;
@@ -156,7 +157,7 @@ export async function resolveUserAi(
       operationId,
     );
     const { complete } = await import("./adapters.js");
-    const text = await complete(managed, messages, { signal });
+    const text = await complete(managed, messages, { signal, maxOutputTokens });
     await finishChatgptFallback(
       userId,
       jobId,
@@ -185,6 +186,7 @@ export async function resolveUserAi(
       messages: ChatMessage[],
       signal: AbortSignal,
       operationId?: string,
+      maxOutputTokens?: number,
     ) => {
       await unchanged();
       signal.throwIfAborted();
@@ -195,6 +197,7 @@ export async function resolveUserAi(
           signal,
           operationId,
           "Your ChatGPT connection is unavailable.",
+          maxOutputTokens,
         );
       const instructions = messages
         .filter((m) => m.role === "system")
@@ -215,7 +218,13 @@ export async function resolveUserAi(
             connection_id: choice.connection_id!,
             executor_id: choice.executor_id!,
           },
-          { instructions, input },
+          {
+            instructions,
+            input,
+            ...(maxOutputTokens === undefined
+              ? {}
+              : { max_output_tokens: maxOutputTokens }),
+          },
           model,
           choice.version,
           operationId,
@@ -232,6 +241,7 @@ export async function resolveUserAi(
           signal,
           operationId,
           "Your ChatGPT device is unavailable.",
+          maxOutputTokens,
         );
       }
       try {
@@ -258,6 +268,7 @@ export async function resolveUserAi(
                 signal,
                 operationId,
                 `ChatGPT ${result.reason}.`,
+                maxOutputTokens,
               );
             }
             throw new ProviderError(

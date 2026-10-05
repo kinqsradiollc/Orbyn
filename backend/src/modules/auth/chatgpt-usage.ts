@@ -38,7 +38,9 @@ export async function readCompletedChatgptUsage(session: {
       )
     ).rows[0];
     const window = (
-      await db.query("SELECT now() AS until,now()-interval '30 days' AS since")
+      await db.query(
+        "SELECT now() AS until,now()-interval '30 days' AS since,now()::text AS until_sql,(now()-interval '30 days')::text AS since_sql",
+      )
     ).rows[0];
     const enabled = !owner.analytics_opt_out;
     const totals = (
@@ -52,7 +54,7 @@ export async function readCompletedChatgptUsage(session: {
           coalesce(sum(total_tokens),0)::text AS total_tokens,
           coalesce((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.completed_at DESC,r.request_id DESC) FROM recent r),'[]'::jsonb) AS recent
         FROM eligible`,
-        [session.userId, window.since, window.until, enabled],
+        [session.userId, window.since_sql, window.until_sql, enabled],
       )
     ).rows[0];
     const recent = (totals.recent as Array<Record<string, unknown>>).map(

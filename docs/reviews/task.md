@@ -1742,3 +1742,65 @@ The separate corrected e1866399 checkpoint is under full qualification in
 session 33414. CI run 37256031469 targets that exact commit. Earlier e8c10979
 CI was cancelled by the newer push; it was not a completed green run. Main
 remains 82576dfa. All C1–C6/M1/D1/U1 scope and eventual cleanup remain active.
+
+## Private page transport in progress — 5 October 2026
+
+Uncommitted private maintained-page transport uses a version-3 companion job
+linked to its page parent (migration 234), checks the parent lease and captured
+provider/model/source authority at broker boundaries, and settles companion
+state with its parent. Overnight admission excludes that run's own companion.
+This is incomplete: direct signed private-page execution, safe undisclosed
+reservation rollback/deferral, recovery, and native/mobile acceptance still
+require implementation and tests. Do not merge this work as complete.
+
+Output limits now propagate through the private transport, hashed assignment,
+public Responses request, and explicit managed fallback. Migration 235 permits
+plan_inference_limits_v1; bounded queue/claim requires that current capability,
+while older devices remain eligible for ordinary calls. Unit checks32/32 and
+broker/page-consumer checks40/40 passed without skips. The new broker regression
+covers pre-dispatch rejection, unchanged queued state on capability downgrade,
+limit immutability on replay, and signed completion after capability restoration.
+Logs: /tmp/orbyn-private-output-unit-final.log and
+/tmp/orbyn-page-private-capability-final.log. These existing page-consumer tests
+do not prove direct private-page execution. Latest workspace types passed with terminal exit0 in
+/tmp/orbyn-page-private-current-types.log (session19260).
+
+Separate frozen candidate82f5f20e corrects usage cutoff microsecond truncation
+following e1866399 local2775/2775 and CI37256031469's usage count failure.
+Corrected broker/precision16/16 passes. Full session82103/log
+/tmp/orbyn-82f5f20e-full-tests.log and CI37257405383 are live. All workspace types passed with terminal exit0 (session28996). Main82576dfa remains unchanged;
+no deployment, cleanup, or full ADR completion is claimed.
+
+## Direct private page execution checkpoint — 5 October 2026
+
+Private maintained-page execution now has direct signed broker coverage. The
+consumer sends only selected blocks, carries an output-token limit and applies
+one bounded replacement under the parent lease. A genuine unique companion job
+tracks that lease and runtime lane; source, provider-choice and preference
+revision changes reject late output without recording accepted usage. Parent
+cancellation invalidates the transport and preserves the page.
+
+The first direct test exposed a lock inversion: device claim/finish locked the
+physical envelope before parent/source authority, while worker polling used the
+reverse order. Claim and signed acceptance now check parent/job authority before
+locking the envelope. No deadlock retry or relaxed timeout was added. Recovery
+also exposed an invalid transport cancellation state; page terminal transitions
+use ai_jobs' existing failed state. Migration236 replaces the trigger function
+for databases that already exercised the initial234 checkpoint.
+
+Confirmed device loss before enqueue can restore only an undispatched page's
+reservation, clear its model key, and requeue without consuming a retry. Any
+operation envelope prevents restoration. The companion and durable operation
+identity are reused on resume. Overnight direct coverage proves the shared night
+reservation returns to zero before transmission, its own queued companion does
+not block reclaim, and successful execution charges only the parent once.
+
+Direct private page checks8/8 pass without skips in
+/tmp/orbyn-private-page-night-direct.log. Source/provider/model/cancellation,
+old-device capability, undispatched resume and already-dispatched reservation
+retention are covered. Combined current checks pass81/81 without skips; all-workspace types and production
+build pass with terminal exit0. Evidence: /tmp/orbyn-private-page-final-focused.log,
+/tmp/orbyn-private-page-checkpoint-types.log and
+/tmp/orbyn-private-page-checkpoint-build.log. Native/mobile interaction,
+real positive OpenAI inference, full exact-head tests/CI, and remaining ADR
+requirements are still open. This checkpoint does not complete the full goal.

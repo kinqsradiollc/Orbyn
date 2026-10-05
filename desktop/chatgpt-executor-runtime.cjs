@@ -73,7 +73,7 @@ async function createChatgptExecutorRuntime({
       ...(typeof completeAssigned === "function" &&
       typeof client.claimChatgptInference === "function" &&
       typeof client.finishChatgptInference === "function"
-        ? { capabilities: ["plan_inference_v1"] }
+        ? { capabilities: ["plan_inference_v1", "plan_inference_limits_v1"] }
         : {}),
     });
     const signed = await signer.signCatalog(catalog);

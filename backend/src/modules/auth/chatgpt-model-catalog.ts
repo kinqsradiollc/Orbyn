@@ -42,6 +42,7 @@ export async function readChatgptCatalogLocked(
   selection: Selection,
   write = false,
   requireInference = false,
+  requireOutputLimits = false,
 ) {
   // Lock the device session before its cascading children, matching sign-out.
   const device = (
@@ -101,6 +102,14 @@ export async function readChatgptCatalogLocked(
     fail(
       503,
       "Update the Orbyn desktop app and refresh its ChatGPT connection before using it as a provider.",
+    );
+  if (
+    requireOutputLimits &&
+    !snapshot?.capabilities.includes("plan_inference_limits_v1")
+  )
+    fail(
+      503,
+      "Update the Orbyn desktop app before running budgeted ChatGPT work.",
     );
   // Evaluate freshness after every row lock, with the database's current clock.
   const fresh = (

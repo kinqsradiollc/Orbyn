@@ -358,7 +358,10 @@ async function assignmentFixture(error: any = null) {
 test("device consumes only the captured assignment and publishes one completed usage receipt", async () => {
   const f = await assignmentFixture();
   try {
-    assert.deepEqual(f.f.published.at(-1).capabilities, ["plan_inference_v1"]);
+    assert.deepEqual(f.f.published.at(-1).capabilities, [
+      "plan_inference_v1",
+      "plan_inference_limits_v1",
+    ]);
     assert.deepEqual(await f.runtime.executeNext(), { processed: true });
     assert.equal(f.calls(), 1);
     assert.equal(f.results[0].receipt.result.status, "completed");

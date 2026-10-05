@@ -1075,3 +1075,92 @@ test("ChatGPT-selected chat admission and capabilities work without a workspace 
     );
   }
 });
+
+test("bounded private calls require current output-limit capability before queue and claim", async () => {
+  const f = await fixture();
+  const operation = randomUUID();
+  const input = {
+    instructions: "bounded neutral fixture",
+    input: [],
+    max_output_tokens: 321,
+  };
+  await assert.rejects(
+    queueChatgptInference(
+      f.owner,
+      f.job,
+      f.selection,
+      input,
+      "fixture-model",
+      1,
+      operation,
+    ),
+    status(503),
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM chatgpt_inference_requests WHERE job_id=$1",
+        [f.job],
+      )
+    ).rows[0].n,
+    0,
+  );
+  const capabilities = ["plan_inference_v1", "plan_inference_limits_v1"];
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET capabilities=$2 WHERE executor_id=$1",
+    [f.selection.executor_id, JSON.stringify(capabilities)],
+  );
+  const queued = await queueChatgptInference(
+    f.owner,
+    f.job,
+    f.selection,
+    input,
+    "fixture-model",
+    1,
+    operation,
+  );
+  await assert.rejects(
+    queueChatgptInference(
+      f.owner,
+      f.job,
+      f.selection,
+      { ...input, max_output_tokens: 322 },
+      "fixture-model",
+      1,
+      operation,
+    ),
+    status(409),
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET capabilities='[\"plan_inference_v1\"]' WHERE executor_id=$1",
+    [f.selection.executor_id],
+  );
+  await assert.rejects(
+    claimChatgptInference(f.binding, f.selection.executor_id),
+    status(503),
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT state FROM chatgpt_inference_requests WHERE id=$1",
+        [queued.id],
+      )
+    ).rows[0].state,
+    "queued",
+  );
+  await pool.query(
+    "UPDATE chatgpt_executor_catalogs SET capabilities=$2 WHERE executor_id=$1",
+    [f.selection.executor_id, JSON.stringify(capabilities)],
+  );
+  const claimed = await claimChatgptInference(
+    f.binding,
+    f.selection.executor_id,
+  );
+  assert.ok(claimed);
+  assert.equal(claimed.payload.max_output_tokens, 321);
+  await finishChatgptInference(f.binding, f.receipt(claimed));
+  assert.equal(
+    (await readChatgptInference(f.owner, f.job, queued.id)).status,
+    "completed",
+  );
+});

@@ -55,9 +55,15 @@ export async function captureMaintainedPageModelOrigin(
 export async function resolveMaintainedPageModel(
   userId: string,
   saved?: MaintainedPageModelOrigin,
+  parent?: import("./maintenance-inference.js").PageInferenceContext,
 ): Promise<PageModel> {
   const origin =
     saved ?? (await captureMaintainedPageModelOrigin(pool, userId));
+  if (origin.kind === "chatgpt" && parent) {
+    const { resolvePrivatePageModel } =
+      await import("./maintenance-inference.js");
+    return resolvePrivatePageModel(userId, origin, parent);
+  }
   if (origin.kind !== "hosted")
     throw new PageModelUnavailable("chatgpt_device_required");
   // A newly chosen account also cannot silently replace the job's original hosted intent.

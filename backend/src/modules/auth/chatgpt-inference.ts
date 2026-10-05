@@ -47,9 +47,12 @@ async function providerLive(
 
 /** Current job authority is mandatory before exposing any conversation or accepting output. */
 async function jobLive(db: Db, owner: string, id: string) {
+  const { guardPageInferenceJob } =
+    await import("../docs/maintenance-inference.js");
+  await guardPageInferenceJob(db, owner, id);
   const job = await db.query(
     `SELECT j.id FROM ai_jobs j JOIN users u ON u.id=j.user_id WHERE j.id=$2 AND j.user_id=$1 AND NOT u.disabled AND j.state='running' AND j.lease_until>clock_timestamp() AND ${assistantJobSourcesVisible("j", "$1", false)}
-      AND (coalesce(j.run_state->>'version','')<>'2' OR (
+      AND (coalesce(j.run_state->>'version','') NOT IN ('2','3') OR (
         jsonb_typeof(j.run_state->'sources')='array'
         AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(j.run_state->'sources') feature_source
           LEFT JOIN docs feature_doc ON feature_doc.id=(feature_source->>'id')::uuid
@@ -71,7 +74,12 @@ async function jobLive(db: Db, owner: string, id: string) {
 export async function assertChatgptJobAccess(owner: string, jobId: string) {
   return transaction((db) => jobLive(db, owner, jobId));
 }
-async function device(db: Db, owner: string, selection: Selection) {
+async function device(
+  db: Db,
+  owner: string,
+  selection: Selection,
+  requireOutputLimits = false,
+) {
   const row = (
     await db.query(
       "SELECT e.session_id,e.epoch,e.public_key,l.epoch AS lease_epoch FROM chatgpt_executor_enrollments e JOIN chatgpt_executor_leases l ON l.executor_id=e.id WHERE e.id=$1 AND e.connection_id=$2",
@@ -87,6 +95,7 @@ async function device(db: Db, owner: string, selection: Selection) {
     selection,
     false,
     true,
+    requireOutputLimits,
   );
   if (catalog.status !== "ready")
     fail(503, "The ChatGPT device or its model catalog is unavailable.");
@@ -183,7 +192,12 @@ export async function queueChatgptInference(
         expires_at: existing.expires_at.toISOString() as string,
       };
     }
-    const { row, catalog } = await device(db, owner, selection);
+    const { row, catalog } = await device(
+      db,
+      owner,
+      selection,
+      payload.max_output_tokens !== undefined,
+    );
     const model = catalog.preference.model;
     if (expectedModel !== undefined && model !== expectedModel)
       fail(409, "The selected ChatGPT default model changed.");
@@ -436,10 +450,19 @@ export async function claimChatgptInference(
       executor_id: executorId,
       connection_id: enrollment.connection_id,
     });
-    const request = (
+    let request = (
       await db.query(
-        "SELECT * FROM chatgpt_inference_requests WHERE executor_id=$1 AND user_id=$2 AND state='queued' AND expires_at>clock_timestamp() ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1",
+        "SELECT * FROM chatgpt_inference_requests WHERE executor_id=$1 AND user_id=$2 AND state='queued' AND expires_at>clock_timestamp() ORDER BY created_at,id LIMIT 1",
         [executorId, session.userId],
+      )
+    ).rows[0];
+    if (!request) return null;
+    // Parent/source/job authority always precedes the physical envelope lock.
+    await jobLive(db, session.userId, request.job_id);
+    request = (
+      await db.query(
+        "SELECT * FROM chatgpt_inference_requests WHERE id=$1 AND executor_id=$2 AND user_id=$3 AND state='queued' AND expires_at>clock_timestamp() FOR UPDATE SKIP LOCKED",
+        [request.id, executorId, session.userId],
       )
     ).rows[0];
     if (!request) return null;
@@ -472,6 +495,19 @@ export async function claimChatgptInference(
       }) !== request.request_hash
     )
       fail(409, "The ChatGPT request changed.");
+    if (payload.max_output_tokens !== undefined) {
+      await readChatgptCatalogLocked(
+        db,
+        session,
+        {
+          executor_id: executorId,
+          connection_id: enrollment.connection_id,
+        },
+        false,
+        true,
+        true,
+      );
+    }
     if (!selected.catalog.models.some((m) => m.slug === request.model))
       fail(409, "The assigned ChatGPT model is unavailable.");
     const claimed = await db.query(
@@ -518,6 +554,14 @@ export async function finishChatgptInference(session: Session, value: unknown) {
       JSON.stringify(selected.catalog.binding) !== JSON.stringify(r.binding)
     )
       fail(404, "This ChatGPT executor is unavailable.");
+    const candidate = (
+      await db.query(
+        "SELECT job_id FROM chatgpt_inference_requests WHERE id=$1 AND user_id=$2 AND executor_id=$3",
+        [r.request_id, session.userId, r.executor_id],
+      )
+    ).rows[0];
+    if (!candidate) fail(404, "This ChatGPT request is unavailable.");
+    await jobLive(db, session.userId, candidate.job_id);
     const request = (
       await db.query(
         "SELECT * FROM chatgpt_inference_requests WHERE id=$1 AND user_id=$2 AND executor_id=$3 FOR UPDATE",

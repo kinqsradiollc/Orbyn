@@ -1,3 +1,5 @@
+import { ChatgptDeviceDeferred } from "../modules/ai/providers/user-choice.js";
+import { deferUndispatchedPrivatePage } from "../modules/docs/maintenance-inference.js";
 import { refuseSecrets } from "../capabilities/write.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import type { FastifyBaseLogger } from "fastify";
@@ -41,6 +43,7 @@ export async function processMaintainedPageRun(
     resolveModel?: (
       userId: string,
       origin: MaintainedPageModelOrigin,
+      parent?: import("../modules/docs/maintenance-inference.js").PageInferenceContext,
     ) => Promise<PageModel>;
     request?: typeof complete;
     heartbeatMs?: number;
@@ -89,6 +92,7 @@ export async function processMaintainedPageRun(
       model = await (options.resolveModel ?? resolveMaintainedPageModel)(
         context.user.id,
         context.run.model_origin,
+        { runId: run.id, leaseToken: token, now: now() },
       );
     } catch (error) {
       if (!(error instanceof PageModelUnavailable)) throw error;
@@ -129,6 +133,7 @@ export async function processMaintainedPageRun(
           await (options.resolveModel ?? resolveMaintainedPageModel)(
             context.user.id,
             context.run.model_origin,
+            { runId: run.id, leaseToken: token, now: now() },
           )
         ).key !== model.key
       )
@@ -172,6 +177,7 @@ export async function processMaintainedPageRun(
           await (options.resolveModel ?? resolveMaintainedPageModel)(
             context.user.id,
             context.run.model_origin,
+            { runId: run.id, leaseToken: token, now: now() },
           )
         ).key !== model.key
       )
@@ -196,6 +202,15 @@ export async function processMaintainedPageRun(
       return { state: "waiting" as const, runId: run.id };
     }
   } catch (error) {
+    if (
+      error instanceof ChatgptDeviceDeferred &&
+      (await deferUndispatchedPrivatePage(run.user_id, {
+        runId: run.id,
+        leaseToken: token,
+        now: now(),
+      }).catch(() => false))
+    )
+      return { state: "deferred" as const, runId: run.id };
     if (
       options.signal?.aborted &&
       (await transaction((db) =>

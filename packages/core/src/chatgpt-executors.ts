@@ -38,7 +38,10 @@ export const chatgptExecutorCatalog = z
     sequence: z.number().int().positive(),
     models: z.array(chatgptModel.strict()).max(1000),
     // Omission preserves the canonical signature of older catalog-only runtimes.
-    capabilities: z.array(z.literal("plan_inference_v1")).max(1).optional(),
+    capabilities: z
+      .array(z.enum(["plan_inference_v1", "plan_inference_limits_v1"]))
+      .max(2)
+      .optional(),
   })
   .strict()
   .superRefine((value, context) => {

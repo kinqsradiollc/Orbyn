@@ -262,7 +262,8 @@ export async function claimMaintainedPageRun(
        AND (r.end_at IS NULL OR r.end_at>$2)
        AND (r.lane<>'overnight' OR (
          NOT EXISTS(SELECT 1 FROM ai_jobs busy WHERE busy.user_id=r.user_id
-           AND busy.runtime_lane='overnight' AND busy.state IN ('queued','running'))
+           AND busy.runtime_lane='overnight' AND busy.state IN ('queued','running')
+           AND busy.maintenance_run_id IS DISTINCT FROM r.id)
          AND NOT EXISTS(SELECT 1 FROM assistant_page_runs busy WHERE busy.user_id=r.user_id
            AND busy.id<>r.id AND busy.lane='overnight' AND busy.state='running'
            AND busy.lease_expires_at>$2)))
@@ -405,6 +406,10 @@ export async function renewMaintainedPageRun(
     "UPDATE assistant_page_runs SET lease_expires_at=$2,updated_at=$3 WHERE id=$1",
     [runId, new Date(now.getTime() + PAGE_RUN_LEASE_MS), now],
   );
+  await db.query(
+    "UPDATE ai_jobs SET lease_until=$3,heartbeat_at=$4 WHERE maintenance_run_id=$1 AND claimed_by=$2 AND state='running'",
+    [runId, leaseToken, new Date(now.getTime() + PAGE_RUN_LEASE_MS), now],
+  );
 }
 
 /** Stage bounded generated replacements, never a caller-selected full-page snapshot. */
@@ -470,6 +475,10 @@ export async function stageMaintainedPageRun(
   await db.query(
     "UPDATE assistant_page_runs SET proposal=$2::jsonb,token_estimate=token_estimate-reserved_tokens+$3,reserved_tokens=0,updated_at=$4 WHERE id=$1",
     [runId, serialized, tokens, now],
+  );
+  await db.query(
+    "UPDATE ai_jobs SET state='done',lease_until=NULL,claimed_by=NULL,heartbeat_at=$3 WHERE maintenance_run_id=$1 AND claimed_by=$2 AND state='running'",
+    [runId, leaseToken, now],
   );
 }
 

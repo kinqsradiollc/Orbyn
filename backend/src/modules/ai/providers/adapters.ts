@@ -19,6 +19,7 @@ export type ResolvedAi = {
     messages: ChatMessage[],
     signal: AbortSignal,
     operationId?: string,
+    maxOutputTokens?: number,
   ) => Promise<string>;
   format: AiRequestFormat;
   baseUrl: string;
@@ -277,7 +278,12 @@ export async function complete(
   await ai.assertAuthority?.();
   signal.throwIfAborted();
   if (ai.textTransport)
-    return ai.textTransport(messages, signal, ai.operationId);
+    return ai.textTransport(
+      messages,
+      signal,
+      ai.operationId,
+      options.maxOutputTokens,
+    );
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => m.content)
