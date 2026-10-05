@@ -24,17 +24,19 @@ independent. This checkpoint does not prove the entire P1 or ADR acceptance.
 
 Slack candidate includes session-bound installation, both client review/DM
 controls, durable Background and independently named Overnight morning delivery,
-and owner-pair rotating-token claims.126 integrated and31 pure checks pass;
-workspace types/format, web build and iOS/Android exports pass. Uncertain refresh
-redemption clears credentials and DMs instead of replaying a token. Successful
-rotation preserves the owner mapping and DM consent revision.
+and one canonical encrypted bot vault per app/workspace/bot. Owner-local verified
+actors, reviewed scopes and DM permissions remain separate.137 latest-source
+integration checks and31 pure checks pass; the full/CI rerun remains required.
+Uncertain canonical refresh clears the pair and DM permissions without replay;
+unchanged scopes/rotation preserve each consent revision. Last-owner unlink or
+account deletion erases the pair without uninstalling the shared workspace app.
 
-Canonical workspace-bot credential coordination remains required before
-production promotion: multiple owners of the same Slack workspace cannot rotate
-the bot independently against Slack's active-token limit. Durable exact-card
-replies, Teams, exact-head full/CI and authorized workspace/native/visual
-acceptance remain open. Channel runtime/UI is not on main. Current source and
-retained failures: [agent channels](../reviews/evidence/agent-channels.md).
+Migrations244–246 require explicit reconnect for legacy candidate pairs/pending
+exchanges. Stale captured OAuth results cannot overwrite a later canonical
+refresh or reviewed reconnect. Signed exact-card replies, Teams, exact-head
+full/CI and authorized
+workspace/native/visual acceptance remain open. Channel runtime/UI is not on main.
+Current source and retained failures: [agent channels](../reviews/evidence/agent-channels.md).
 
 Main429f2de2 passed all four jobs in CI37308099452:2976 backend passes, zero
 failures and one existing Tesseract skip. This qualifies the retention/docs
@@ -1944,7 +1946,7 @@ rotation/reply/Teams work and exact-head/native/real acceptance remain separate.
 See evidence/agent-channels.md for retained failures and current evidence.
 Full C1–C6/M1/D1/U1 remains active; deployment remains user-run.
 
-### Next channel implementation: canonical Slack bot ownership
+### Canonical Slack bot ownership — implemented candidate, 6 October 2026
 
 A Slack bot credential belongs to its app/workspace/bot installation. Orbyn
 owner mappings bind a verified Slack actor and independently reviewed scope/DM
@@ -1978,5 +1980,7 @@ Implementation order:
    cross-owner metadata/refusals and cold pool1 operation. Then implement
    durable exact-card signed replies and Teams using the same authority model.
 
-These are active implementation requirements before channel promotion. Existing
-owner-pair rotation tests do not prove the canonical workspace behavior or A6.
+Steps1–6 are now implemented in the canonical-vault candidate. Step7 has
+137 latest-source integrated passing checks; full/CI qualification and external/native/visual acceptance remains open. Continue durable
+exact-card signed replies and Teams. This checkpoint does not complete A6 or
+the full ADR; prior owner-pair evidence remains historical only.

@@ -58,12 +58,11 @@ async function fixture() {
     scopes: ["chat:write", "im:write"],
   };
   const encrypted = await encryptSecret(JSON.stringify(previous));
-  const connection = (
+  const vault = (
     await pool.query(
-      `INSERT INTO agent_channel_installations(user_id,provider,app_id,workspace_id,workspace_name,external_user_id,bot_user_id,scopes,credentials_encrypted,token_expires_at,dm_enabled)
-  VALUES($1,'slack',$2,$3,'Fixture',$4,'UBOT',ARRAY['chat:write','im:write'],$5,$6,true) RETURNING id`,
+      `INSERT INTO agent_channel_bot_vaults(provider,app_id,workspace_id,bot_user_id,installer_external_user_id,scopes,credentials_encrypted,token_expires_at)
+   VALUES('slack',$1,$2,'UBOT',$3,ARRAY['chat:write','im:write'],$4,$5) RETURNING id`,
       [
-        userId,
         config.appId,
         previous.workspaceId,
         previous.userId,
@@ -72,13 +71,28 @@ async function fixture() {
       ],
     )
   ).rows[0].id as string;
-  return { userId, connection, previous, binding: { userId, sessionId } };
+  const connection = (
+    await pool.query(
+      `INSERT INTO agent_channel_installations(user_id,provider,app_id,workspace_id,workspace_name,external_user_id,bot_user_id,scopes,bot_vault_id,dm_enabled)
+   VALUES($1,'slack',$2,$3,'Fixture',$4,'UBOT',ARRAY['chat:write','im:write'],$5,true) RETURNING id`,
+      [userId, config.appId, previous.workspaceId, previous.userId, vault],
+    )
+  ).rows[0].id as string;
+  return {
+    userId,
+    connection,
+    vault,
+    previous,
+    binding: { userId, sessionId },
+  };
 }
+
 async function row(f: Awaited<ReturnType<typeof fixture>>) {
   return (
-    await pool.query("SELECT * FROM agent_channel_installations WHERE id=$1", [
-      f.connection,
-    ])
+    await pool.query(
+      "SELECT c.*,v.credentials_encrypted,v.token_expires_at,v.refresh_state,v.refresh_claim,v.refresh_attempts,v.refresh_available_at FROM agent_channel_installations c JOIN agent_channel_bot_vaults v ON v.id=c.bot_vault_id WHERE c.id=$1",
+      [f.connection],
+    )
   ).rows[0];
 }
 function sender(response: () => Response = () => Response.json(fresh())) {
@@ -131,8 +145,8 @@ test("transport ambiguity and expired dispatch claims clear credentials and neve
   assert.equal(calls, 1);
   const abandoned = await fixture();
   await pool.query(
-    "UPDATE agent_channel_installations SET refresh_state='refreshing',refresh_claim=gen_random_uuid(),refresh_lease_until=now()-interval '1 second',refresh_config_hash='fixture' WHERE id=$1",
-    [abandoned.connection],
+    "UPDATE agent_channel_bot_vaults SET refresh_state='refreshing',refresh_claim=gen_random_uuid(),refresh_lease_until=now()-interval '1 second',refresh_config_hash='fixture' WHERE id=$1",
+    [abandoned.vault],
   );
   await rotateSlackOne(config, request);
   assert.equal((await row(abandoned)).refresh_state, "unknown");
@@ -172,8 +186,8 @@ test("rate-limit retry respects availability and stops after three declared refu
       assert.ok(current.refresh_available_at.getTime() > Date.now() + 15000);
       assert.equal(await rotateSlackOne(config, s.request), false);
       await pool.query(
-        "UPDATE agent_channel_installations SET refresh_available_at=now()-interval '1 second' WHERE id=$1",
-        [f.connection],
+        "UPDATE agent_channel_bot_vaults SET refresh_available_at=now()-interval '1 second' WHERE id=$1",
+        [f.vault],
       );
     } else {
       assert.equal(current.refresh_state, "reconnect");
@@ -204,8 +218,8 @@ test("revoked owner, account mapping, app and non-rotating credentials cannot be
       );
     if (kind === "nonrotating")
       await pool.query(
-        "UPDATE agent_channel_installations SET token_expires_at=NULL WHERE id=$1",
-        [f.connection],
+        "UPDATE agent_channel_bot_vaults SET token_expires_at=NULL WHERE id=$1",
+        [f.vault],
       );
     await rotateSlackOne(config, s.request);
     assert.equal(s.calls.length, 0);
@@ -294,8 +308,8 @@ test("delivery defers a rotating token and resumes with the new credential witho
   ).rows[0].id;
   await queueAgentJobUpdate(pool, job, "done");
   await pool.query(
-    "UPDATE agent_channel_installations SET refresh_state='refreshing',refresh_claim=gen_random_uuid(),refresh_lease_until=now()+interval '1 minute',refresh_config_hash='fixture' WHERE id=$1",
-    [f.connection],
+    "UPDATE agent_channel_bot_vaults SET refresh_state='refreshing',refresh_claim=gen_random_uuid(),refresh_lease_until=now()+interval '1 minute',refresh_config_hash='fixture' WHERE id=$1",
+    [f.vault],
   );
   let calls = 0;
   const request: typeof fetch = async (url, init) => {
@@ -322,8 +336,8 @@ test("delivery defers a rotating token and resumes with the new credential witho
   assert.equal(queued.state, "queued");
   assert.equal(queued.attempts, 0);
   await pool.query(
-    "UPDATE agent_channel_installations SET refresh_state='ready',refresh_claim=NULL,refresh_lease_until=NULL,refresh_config_hash=NULL WHERE id=$1",
-    [f.connection],
+    "UPDATE agent_channel_bot_vaults SET refresh_state='ready',refresh_claim=NULL,refresh_lease_until=NULL,refresh_config_hash=NULL WHERE id=$1",
+    [f.vault],
   );
   await rotateSlackOne(config, sender().request);
   await pool.query(
@@ -360,8 +374,8 @@ test("a busy owner fence defers before HTTP without spending a refresh attempt",
     holder.release();
   }
   await pool.query(
-    "UPDATE agent_channel_installations SET refresh_available_at=now() WHERE id=$1",
-    [f.connection],
+    "UPDATE agent_channel_bot_vaults SET refresh_available_at=now() WHERE id=$1",
+    [f.vault],
   );
   await rotateSlackOne(config, s.request);
   assert.equal(s.calls.length, 1);

@@ -102,7 +102,7 @@ export async function deliverAgentChannelOne(
   try {
     encrypted = (
       await pool.query<{ credentials_encrypted: string }>(
-        "SELECT credentials_encrypted FROM agent_channel_installations WHERE id=$1 AND user_id=$2",
+        "SELECT v.credentials_encrypted FROM agent_channel_installations c JOIN agent_channel_bot_vaults v ON v.id=c.bot_vault_id WHERE c.id=$1 AND c.user_id=$2",
         [delivery.connection_id, delivery.user_id],
       )
     ).rows[0]?.credentials_encrypted;
@@ -156,6 +156,7 @@ export async function deliverAgentChannelOne(
       const channel = (
         await db.query<{
           external_user_id: string;
+          installer_external_user_id: string;
           workspace_id: string;
           bot_user_id: string;
           scopes: string[];
@@ -163,9 +164,11 @@ export async function deliverAgentChannelOne(
           refresh_state: "ready" | "refreshing" | "unknown" | "reconnect";
           token_expires_at: Date | null;
         }>(
-          `SELECT external_user_id,workspace_id,bot_user_id,scopes,credentials_encrypted,refresh_state,token_expires_at FROM agent_channel_installations
-        WHERE id=$1 AND user_id=$2 AND provider='slack' AND version=$3 AND dm_enabled AND disconnected_at IS NULL
-        AND app_id=$4 FOR SHARE NOWAIT`,
+          `SELECT c.external_user_id,v.installer_external_user_id,c.workspace_id,c.bot_user_id,c.scopes,v.credentials_encrypted,v.refresh_state,v.token_expires_at
+        FROM agent_channel_installations c JOIN agent_channel_bot_vaults v ON v.id=c.bot_vault_id
+        WHERE c.id=$1 AND c.user_id=$2 AND c.provider='slack' AND c.version=$3 AND c.dm_enabled AND c.disconnected_at IS NULL
+        AND c.app_id=$4 AND v.app_id=c.app_id AND v.workspace_id=c.workspace_id AND v.bot_user_id=c.bot_user_id AND v.scopes=c.scopes
+        FOR SHARE OF c,v NOWAIT`,
           [
             delivery.connection_id,
             delivery.user_id,
@@ -212,7 +215,7 @@ export async function deliverAgentChannelOne(
           : Date.parse(installation.expiresAt)) !==
           (channel.token_expires_at?.getTime() ?? null) ||
         installation.appId !== config.appId ||
-        installation.userId !== channel.external_user_id ||
+        installation.userId !== channel.installer_external_user_id ||
         installation.workspaceId !== channel.workspace_id ||
         installation.botUserId !== channel.bot_user_id ||
         JSON.stringify(installation.scopes) !==

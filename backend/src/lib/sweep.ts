@@ -68,6 +68,17 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "agent_channel_bot_vaults",
+    label: "Unused agent channel bots",
+    detail:
+      "Empty workspace bot records after the last owner disconnects; no provider uninstall.",
+    table: "agent_channel_bot_vaults",
+    where:
+      "updated_at < now() - interval '30 days' AND credentials_encrypted IS NULL AND NOT EXISTS(SELECT 1 FROM agent_channel_installations c WHERE c.bot_vault_id=agent_channel_bot_vaults.id)",
+    days: 30,
+    configurable: false,
+  },
+  {
     key: "agenda_summary_runs",
     label: "Completed Agenda summaries",
     detail: "Scheduled summaries, failures and expired device waits.",

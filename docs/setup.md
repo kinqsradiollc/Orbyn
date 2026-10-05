@@ -380,16 +380,24 @@ returns, review the workspace, installer account and actual granted scopes in
 the same Orbyn session. DMs are a separate opt-in, initially off. Reconnecting
 requires another explicit review; it does not silently grant DM permission.
 
-The notifier candidate refreshes rotating bot credentials before expiry,
-replacing the encrypted access/refresh pair. A durable claim prevents concurrent
-redemption of one stored token. Transport/commit ambiguity requires reconnect;
+The notifier candidate refreshes one canonical rotating bot credential per
+app/workspace/bot before expiry. Owner mappings retain separate reviewed actors,
+scopes and DM permissions, without their own credential copies. A durable claim
+prevents concurrent redemption of the shared token. Unlinking one owner preserves
+other connected owners; the last mapping unlink or account deletion erases the
+shared pair without uninstalling the workspace app. Changed scopes require each
+affected owner to review again. Migrations244–246 invalidate legacy candidate
+pairs and pending exchanges, requiring an explicit reconnect rather than guessing
+which competing refresh token is live. Captured OAuth results are fenced to the
+canonical credential generation, so an older review cannot overwrite a later
+refresh or reconnect. Transport/commit ambiguity requires reconnect;
 it does not replay the refresh token. Declared rate-limit refusals use bounded
 provider delays and a three-attempt limit. Unknown credentials are cleared and
 DM permission is turned off. Long-lived tokens with no expiry are not refreshed.
 
 Current messages open decisions in Orbyn. Signed reply consumption, Teams,
-shared-workspace bot credential coordination and real authorized workspace/UI
-acceptance remain implementation gates; do not treat mock-provider qualification
+exact-head qualification and real authorized workspace/UI acceptance remain
+implementation gates; do not treat mock-provider qualification
 as a completed production installation. The notifier and API need the same app
 configuration and encryption key. The Compose backend environment already reads
 `.env`. Configure a test workspace and complete acceptance before enabling the

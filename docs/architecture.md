@@ -740,3 +740,22 @@ The mobile app shares its look with the web app so both read as one product:
   under the home indicator, and each applies safe-area insets itself. Landscape and iPad
   multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large
   screens. The item editor is a native page sheet on iOS and a full-screen modal on Android.
+
+### Agent channel credential ownership (candidate)
+
+Slack uses one encrypted bot vault per provider/app/workspace/bot, separately
+from each owner's verified Slack actor, reviewed scopes and DM consent revision.
+The vault retains installer provenance; sends use only the live owner's recipient
+mapping and current assistant/source permissions. Credentials never reach
+client status responses, personal ChatGPT devices or portable MCP grants.
+
+A captured OAuth result is tied to the canonical credential generation and
+cannot overwrite a later refresh or reviewed reconnect. One durable canonical
+refresh claim is committed before provider HTTP. Unknown
+redemption is not replayed; all affected DM permissions are disabled. Rotation
+preserves unchanged owner consent. Unlinking one owner preserves other linked
+owners, while the last unlink/account deletion erases the shared credential
+without uninstalling the provider app. Empty unreferenced vault metadata expires
+after30 days. Legacy candidate pairs/pending exchanges require explicit reconnect
+on upgrade. Signed exact-card replies and Teams remain separate implementation
+requirements; the channel candidate is not yet promoted to main.

@@ -197,6 +197,7 @@ export const COMMAND_TOOLS: Record<string, CommandPlace> = {
     args: { changes: [{ do: "create_tag", name: "biology" }] },
   },
   "settings.agents": { reason: why.credentials },
+  "settings.agent-channels": { reason: why.credentials },
   "settings.api-keys": { reason: why.credentials },
   "settings.webhooks": { reason: why.credentials },
   "settings.calendar-feed": { reason: why.credentials },

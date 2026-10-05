@@ -127,7 +127,7 @@ export function readSlackInstallation(
         .map((scope) => scope.trim())
         .filter(Boolean),
     ),
-  ];
+  ].sort();
   if (
     SLACK_BOT_SCOPES.some((scope) => !scopes.includes(scope)) ||
     !!data.refresh_token !== !!data.expires_in

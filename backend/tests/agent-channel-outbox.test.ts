@@ -89,15 +89,23 @@ async function fixture(kind = "goal", state = "done") {
       scopes: ["chat:write", "im:write"],
     }),
   );
-  const connection = (
+  const vault = (
     await pool.query(
-      `INSERT INTO agent_channel_installations(user_id,provider,app_id,workspace_id,workspace_name,external_user_id,bot_user_id,scopes,credentials_encrypted,dm_enabled)
-    VALUES($1,'slack',$2,$3,'Fixture',$4,'UBOT',ARRAY['chat:write','im:write'],$5,true) RETURNING id`,
-      [owner, config.appId, workspace, actor, credentials],
+      `INSERT INTO agent_channel_bot_vaults(provider,app_id,workspace_id,bot_user_id,installer_external_user_id,scopes,credentials_encrypted)
+   VALUES('slack',$1,$2,'UBOT',$3,ARRAY['chat:write','im:write'],$4) RETURNING id`,
+      [config.appId, workspace, actor, credentials],
     )
   ).rows[0].id as string;
-  return { owner, job, chat, connection, project, waitingId };
+  const connection = (
+    await pool.query(
+      `INSERT INTO agent_channel_installations(user_id,provider,app_id,workspace_id,workspace_name,external_user_id,bot_user_id,scopes,bot_vault_id,dm_enabled)
+   VALUES($1,'slack',$2,$3,'Fixture',$4,'UBOT',ARRAY['chat:write','im:write'],$5,true) RETURNING id`,
+      [owner, config.appId, workspace, actor, vault],
+    )
+  ).rows[0].id as string;
+  return { owner, job, chat, connection, vault, project, waitingId };
 }
+
 async function intent(
   f: Awaited<ReturnType<typeof fixture>>,
   event: "done" | "failed" | "waiting" = "done",
@@ -241,8 +249,8 @@ test("Revoked consent, changed account, disabled owner, expired token and absent
       pool.query("UPDATE users SET disabled=true WHERE id=$1", [f.owner]),
     async (f: Awaited<ReturnType<typeof fixture>>) =>
       pool.query(
-        "UPDATE agent_channel_installations SET token_expires_at=now()-interval '1 second' WHERE id=$1",
-        [f.connection],
+        "UPDATE agent_channel_bot_vaults SET token_expires_at=now()-interval '1 second' WHERE id=$1",
+        [f.vault],
       ),
     async (f: Awaited<ReturnType<typeof fixture>>) =>
       pool.query(

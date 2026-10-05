@@ -20,6 +20,7 @@ import {
 type Binding = { userId: string; sessionId: string };
 type Channel = {
   id: string;
+  bot_vault_id: string | null;
   user_id: string;
   app_id: string;
   workspace_id: string;
@@ -40,8 +41,24 @@ type Pending = {
   state: "pending" | "exchanging" | "ready" | "done" | "failed";
   installation_encrypted: string | null;
   connection_id: string | null;
+  bot_vault_id: string | null;
+  bot_credential_generation: string | null;
   expires_at: Date;
 };
+// The vault is authority for credentials; owner rows contain identity and consent only.
+const channelSelect = `SELECT c.*,v.token_expires_at AS token_expires_at,
+ CASE WHEN v.id IS NULL OR v.app_id<>c.app_id OR v.workspace_id<>c.workspace_id
+ OR v.bot_user_id<>c.bot_user_id OR v.scopes<>c.scopes THEN 'reconnect'
+ ELSE v.refresh_state END AS refresh_state
+ FROM agent_channel_installations c LEFT JOIN agent_channel_bot_vaults v ON v.id=c.bot_vault_id`;
+async function channel(db: Db, userId: string) {
+  return (
+    await db.query<Channel>(
+      `${channelSelect} WHERE c.user_id=$1 AND c.provider='slack'`,
+      [userId],
+    )
+  ).rows[0];
+}
 const view = (row: Channel) => ({
   id: row.id,
   workspace_id: row.workspace_id,
@@ -173,10 +190,34 @@ export async function captureSlackInstallation(
         userId: captured.user_id,
         sessionId: captured.session_id,
       });
+      const bot = (
+        await db.query<{
+          id: string;
+          credential_generation: string;
+          refresh_state: string;
+        }>(
+          `SELECT id,credential_generation,refresh_state FROM agent_channel_bot_vaults
+         WHERE provider='slack' AND app_id=$1 AND workspace_id=$2 AND bot_user_id=$3 FOR SHARE`,
+          [
+            installation.appId,
+            installation.workspaceId,
+            installation.botUserId,
+          ],
+        )
+      ).rows[0];
+      if (bot?.refresh_state === "refreshing")
+        fail(409, "Slack credentials changed. Start a new connection.");
       const changed = await db.query(
-        `UPDATE agent_channel_oauth_pending SET state='ready',exchange_claim=NULL,installation_encrypted=$3
+        `UPDATE agent_channel_oauth_pending SET state='ready',exchange_claim=NULL,installation_encrypted=$3,bot_vault_id=$5,bot_credential_generation=$6
          WHERE id=$1 AND state='exchanging' AND exchange_claim=$2 AND config_hash=$4 AND expires_at>clock_timestamp()`,
-        [captured.id, captured.exchange_claim, encrypted, configHash],
+        [
+          captured.id,
+          captured.exchange_claim,
+          encrypted,
+          configHash,
+          bot?.id ?? null,
+          bot?.credential_generation ?? "0",
+        ],
       );
       if (!changed.rowCount)
         fail(409, "This Slack connection request expired or changed.");
@@ -269,7 +310,7 @@ export async function confirmSlackInstallation(
     ? await decodeInstallation(candidate.installation_encrypted)
     : null;
   try {
-    return await transaction(async (db) => {
+    const result = await transaction(async (db) => {
       await live(db, binding);
       const row = (
         await db.query<Pending>(
@@ -285,7 +326,7 @@ export async function confirmSlackInstallation(
         )
       ).rows[0];
       if (row.state === "done" && current?.id === row.connection_id)
-        return view(current);
+        return view((await channel(db, binding.userId))!);
       if (
         row.state !== "ready" ||
         !row.installation_encrypted ||
@@ -305,14 +346,66 @@ export async function confirmSlackInstallation(
           JSON.stringify(input.expected_bot_scopes)
       )
         fail(409, "The reviewed Slack identity changed.");
-      const credentials = row.installation_encrypted;
+      const stale = async () => {
+        await db.query(
+          "UPDATE agent_channel_oauth_pending SET state='failed',installation_encrypted=NULL,exchange_claim=NULL WHERE id=$1",
+          [id],
+        );
+        return null;
+      };
+      if (
+        row.bot_credential_generation === null ||
+        (row.bot_vault_id === null && row.bot_credential_generation !== "0")
+      )
+        return stale();
+      if (
+        row.bot_vault_id &&
+        !(
+          await db.query(
+            "SELECT id FROM agent_channel_bot_vaults WHERE id=$1",
+            [row.bot_vault_id],
+          )
+        ).rowCount
+      )
+        return stale();
+      const vault = (
+        await db.query<{ id: string }>(
+          `INSERT INTO agent_channel_bot_vaults(provider,app_id,workspace_id,bot_user_id,installer_external_user_id,scopes,credentials_encrypted,token_expires_at)
+         VALUES('slack',$1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT(provider,app_id,workspace_id,bot_user_id) DO UPDATE SET
+         installer_external_user_id=excluded.installer_external_user_id,scopes=excluded.scopes,
+         credentials_encrypted=excluded.credentials_encrypted,token_expires_at=excluded.token_expires_at,
+         refresh_state='ready',refresh_claim=NULL,refresh_lease_until=NULL,refresh_config_hash=NULL,
+         refresh_attempts=0,refresh_available_at=now(),updated_at=now()
+         WHERE agent_channel_bot_vaults.refresh_state<>'refreshing' AND agent_channel_bot_vaults.id=$8 AND agent_channel_bot_vaults.credential_generation=$9 RETURNING id`,
+          [
+            installation.appId,
+            installation.workspaceId,
+            installation.botUserId,
+            installation.userId,
+            installation.scopes,
+            row.installation_encrypted,
+            installation.expiresAt,
+            row.bot_vault_id,
+            row.bot_credential_generation,
+          ],
+        )
+      ).rows[0];
+      if (!vault) return stale();
+      // Changed bot scopes require each other owner to review again. Never grant
+      // the new installer's additional permissions to existing DM recipients.
+      await db.query(
+        `UPDATE agent_channel_installations SET dm_enabled=false,version=version+1,updated_at=now()
+       WHERE bot_vault_id=$1 AND user_id<>$2 AND disconnected_at IS NULL AND scopes<>$3 AND dm_enabled`,
+        [vault.id, binding.userId, installation.scopes],
+      );
       const connected = (
         await db.query<Channel>(
-          `INSERT INTO agent_channel_installations(user_id,provider,app_id,workspace_id,workspace_name,external_user_id,bot_user_id,scopes,credentials_encrypted,token_expires_at,dm_enabled)
-         VALUES($1,'slack',$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          `INSERT INTO agent_channel_installations(user_id,provider,app_id,workspace_id,workspace_name,external_user_id,bot_user_id,scopes,bot_vault_id,dm_enabled)
+         VALUES($1,'slack',$2,$3,$4,$5,$6,$7,$8,$9)
          ON CONFLICT(user_id,provider) DO UPDATE SET app_id=excluded.app_id,workspace_id=excluded.workspace_id,workspace_name=excluded.workspace_name,
-         external_user_id=excluded.external_user_id,bot_user_id=excluded.bot_user_id,scopes=excluded.scopes,credentials_encrypted=excluded.credentials_encrypted,
-         token_expires_at=excluded.token_expires_at,dm_enabled=excluded.dm_enabled,disconnected_at=NULL,refresh_state='ready',refresh_claim=NULL,refresh_lease_until=NULL,refresh_config_hash=NULL,refresh_attempts=0,refresh_available_at=now(),version=agent_channel_installations.version+1,updated_at=now() RETURNING *`,
+         external_user_id=excluded.external_user_id,bot_user_id=excluded.bot_user_id,scopes=excluded.scopes,bot_vault_id=excluded.bot_vault_id,
+         dm_enabled=excluded.dm_enabled,disconnected_at=NULL,refresh_state='ready',version=agent_channel_installations.version+1,updated_at=now() RETURNING *`,
           [
             binding.userId,
             installation.appId,
@@ -321,8 +414,7 @@ export async function confirmSlackInstallation(
             installation.userId,
             installation.botUserId,
             installation.scopes,
-            credentials,
-            installation.expiresAt,
+            vault.id,
             input.dm_enabled,
           ],
         )
@@ -331,8 +423,11 @@ export async function confirmSlackInstallation(
         "UPDATE agent_channel_oauth_pending SET state='done',installation_encrypted=NULL,connection_id=$2 WHERE id=$1",
         [id, connected.id],
       );
-      return view(connected);
+      return view((await channel(db, binding.userId))!);
     });
+    if (!result)
+      fail(409, "Slack credentials changed. Start a new connection.");
+    return result;
   } catch (error) {
     if ((error as { code?: string })?.code === "23505")
       fail(409, "This Slack identity is already connected.");
@@ -357,7 +452,7 @@ export async function disconnectSlackInstallation(
     ).rows[0];
     if (!row)
       fail(409, "The Slack connection changed. Refresh and review it again.");
-    return view(row);
+    return view((await channel(db, binding.userId))!);
   });
 }
 
@@ -365,12 +460,7 @@ export async function disconnectSlackInstallation(
 export async function readSlackChannel(binding: Binding) {
   return transaction(async (db) => {
     await live(db, binding, false);
-    const row = (
-      await db.query<Channel>(
-        "SELECT * FROM agent_channel_installations WHERE user_id=$1 AND provider='slack'",
-        [binding.userId],
-      )
-    ).rows[0];
+    const row = await channel(db, binding.userId);
     return row ? view(row) : null;
   });
 }
@@ -391,7 +481,7 @@ export async function setSlackDmPermission(
       await db.query<Channel>(
         `UPDATE agent_channel_installations SET dm_enabled=$3,version=version+1,updated_at=now()
        WHERE user_id=$1 AND provider='slack' AND version=$2 AND
-       (NOT $3 OR (disconnected_at IS NULL AND credentials_encrypted IS NOT NULL AND app_id=$4 AND refresh_state='ready')) RETURNING *`,
+       (NOT $3 OR (disconnected_at IS NULL AND app_id=$4 AND EXISTS(SELECT 1 FROM agent_channel_bot_vaults v WHERE v.id=agent_channel_installations.bot_vault_id AND v.app_id=agent_channel_installations.app_id AND v.workspace_id=agent_channel_installations.workspace_id AND v.bot_user_id=agent_channel_installations.bot_user_id AND v.scopes=agent_channel_installations.scopes AND v.credentials_encrypted IS NOT NULL AND v.refresh_state='ready'))) RETURNING *`,
         [
           binding.userId,
           input.expected_version,
@@ -401,6 +491,6 @@ export async function setSlackDmPermission(
       )
     ).rows[0];
     if (!row) fail(409, "The Slack connection changed or needs reconnection.");
-    return view(row);
+    return view((await channel(db, binding.userId))!);
   });
 }

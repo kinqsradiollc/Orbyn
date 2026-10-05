@@ -290,3 +290,95 @@ Main429f2de2 passed all four CI jobs in37308099452:2976 backend passes, zero
 failures and one existing Tesseract skip. Production Deploy runs were skipped;
 the user deploys manually. This proves the main retention/docs checkpoint's CI,
 not this unmerged channel source or whole ADR completion.
+
+## Canonical workspace bot vault — 6 October 2026 candidate
+
+Supersedes the owner-pair runtime described above. Checkpoint35ec3c69 preserves
+that earlier tested design; this candidate replaces it with one encrypted bot
+vault per provider/app/workspace/bot and separate owner-local verified actor,
+reviewed scopes and DM consent revision. Installer provenance is checked against
+the vault; delivery selects the recipient only from the live owner mapping.
+Owner rows are constrained to contain no credential or expiry copy. Equivalent
+returned scope order is normalized; changed scope sets disable affected owners'
+DM consent and require their own review. No status response reveals another
+owner or the shared vault/installer/credentials.
+
+Concurrent workers claim/redemption/publication use the canonical pair. HTTP is
+fenced by live reviewed mappings and the exact claimed encrypted snapshot.
+Uncertainty/expired claims clear the pair and disable recipient permissions,
+without replay. Bounded post-redemption publication can wait for a concurrent
+local consent write and preserves its newer revision/disabled state. Unlinking
+one owner, including the original OAuth installer, preserves others; last unlink
+or account deletion erases the pair without provider uninstall. Empty unreferenced
+vault metadata receives a fixed30-day sweeper rule.
+
+Migrations244/245 discard candidate-era competing credentials and invalidate
+unconfirmed exchanges rather than infer which single-use token survives. Owners
+must explicitly reconnect. A temporary-schema upgrade regression applies the
+actual241/243/244/245 SQL to populated legacy rows, including an in-flight claim,
+and proves erasure, consent invalidation and the prohibition on owner secrets.
+
+Current integrated run133/133 passes, zero failures/skips:
+/tmp/orbyn-channel-vault-integrated-final.log. Pure31/31 passes:
+/tmp/orbyn-channel-vault-pure-final.log. Two further shared-owner regressions
+(scope-order stability and concurrent final-owner deletion) join the full
+qualification run; its terminal result must be recorded before promotion.
+All workspace typechecks and backend build passed before those two test-only
+additions; latest legal/package rebuild and all workspace types are rerunning.
+
+Retained failed runs:/tmp/orbyn-channel-vault-db.log (35/36),
+/tmp/orbyn-channel-vault-db-final.log (36/42),
+/tmp/orbyn-channel-vault-db-repaired.log (41/42),
+/tmp/orbyn-channel-vault-integrated.log (131/132). Fixes retain assertions: use
+PostgreSQL's5s timeout syntax, address the mapping UUID for the permission writer,
+and review the provider's normalized actual scopes. The shared-vault regressions
+cover three owners, one concurrent redemption, canonical-token/owner-recipient
+DM isolation, installer unlink, final-owner credential cleanup, scope drift,
+unknown-token refusal, deletion during publication and populated upgrades.
+
+Signed exact-card reply consumption, Teams, authorized live Slack delivery,
+current desktop/narrow/native screenshots and full/CI qualification remain open.
+No real provider request/message or Docker engine operation occurred. Channel
+runtime/UI remains on its candidate branch, not main. Full ADR remains active.
+
+### Stale OAuth confirmation fence
+
+Migration246 adds a database-maintained canonical credential generation and
+records that generation/namespace in the encrypted pending capture. Confirmation
+may replace only that exact canonical revision; an older review cannot overwrite
+a newer rotation or another owner's freshly confirmed connection. Unknown or
+deleted vault references require a fresh connection. Claim/state/credential
+changes advance the generation through a database trigger, including last-owner
+cleanup. Two additional regressions exercise stale captured pairs after rotation
+and after another owner connects.
+
+The broader diagnostic run /tmp/orbyn-channel-vault-full.log started before this
+final fence and command-map repair, and cannot qualify the exact latest source.
+It found the missing settings.agent-channels credentials-only reason; the
+original three command registry assertions pass after adding that reason in
+/tmp/orbyn-channel-vault-command-map.log. Keep its failures and terminal result;
+run latest source serially again before claiming full qualification.
+
+Updated legal/package build and all workspace typechecks pass:
+/tmp/orbyn-channel-vault-final-types.log. Web build, iOS/Android exports and whole
+format check pass:/tmp/orbyn-channel-vault-web-build.log,
+/tmp/orbyn-channel-vault-native-export.log and /tmp/orbyn-channel-vault-format.log.
+These do not establish native/browser visual acceptance. Latest fence-only
+backend types are in /tmp/orbyn-channel-vault-generation-types.log.
+
+### Latest-source focused qualification
+
+After the generation fence and terminal stale-capture cleanup, all137 integrated
+cases pass with zero failures/skips in
+/tmp/orbyn-channel-vault-generation-integrated.log. Backend types pass in
+/tmp/orbyn-channel-vault-generation-final-types.log and whole format check passes
+in /tmp/orbyn-channel-vault-generation-format.log. The command mapping repair
+passes its original3/3 assertions. Stale confirmation commits a failed pending
+request with no encrypted pair before returning409, allowing a fresh connection.
+
+The earlier broader diagnostic run is terminal:3062 passes, two failures (both
+missing command mapping, now repaired), and one existing Tesseract skip out of
+3065 tests;718096ms. It contains passing canonical/stale-generation cases but
+started before final edits and is not exact-head qualification. Preserve
+/tmp/orbyn-channel-vault-full.log. A fresh full run of the committed checkpoint
+is required; no claim of all tests passing or full/CI qualification is made yet.
