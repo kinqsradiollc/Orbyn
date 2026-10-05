@@ -331,3 +331,27 @@ Execute invokes use manual vs automatic triggers. Submit fallback supplies
 merged form/action data. Invoke acknowledgements use HTTP200 with a typed body;
 capture is described as pending validation, while stale/refused cards use a
 generic supported400 error body, without exposing another question.
+
+## Main promotion and clean qualification — 6 October 2026
+
+PR205 merged as `cf119497`, exact `d926b03c`, all four CI37334932950 jobs pass
+(3130 backend passes,0 failures,1 existing skip). PR206 merged as `34bcaaca`, exact
+`5bc0bc9d`, all four CI37335334670 jobs pass (3180 backend passes,0 failures,1
+existing skip). Main and candidate share file tree
+`40c84049d2b659b6227e9f84b73573e9f1cf698a`.
+
+Fresh marked database `orbyn_channel_replies_20261006_6_test` completed unchanged
+source qualification:3180 pass/0 fail/1 existing skip,707974ms, terminal exit0.
+Log:`/tmp/orbyn-channel-teams-delivery-5bc0bc9d-fresh-full.log`.
+CI logs:`/tmp/orbyn-channel-teams-identity-d926-ci.log` and
+`/tmp/orbyn-channel-teams-delivery-5bc0bc9d-ci.log`.
+Earlier reused-database log remains `/tmp/orbyn-channel-teams-delivery-5bc0bc9d-full.log`
+(3171 pass/9 fail/1 skip). Interrupted-run queued fixture jobs interfered with
+global claim/recovery expectations; fresh unchanged-source qualification passed.
+No runtime/test deadlines, assertion budgets or isolation guarantees were weakened.
+Docker was not restarted or reconfigured. Root user dirt remains preserved.
+
+Deployment, real-tenant acceptance and native/browser visual interaction remain
+unverified. Teams question cards/parser live separately at `c483a323`;16 pure
+checks and focused TypeScript pass, but no receipt/consumer/card integration is
+mounted. These checkpoints do not close C6 or the full ADR goal.
