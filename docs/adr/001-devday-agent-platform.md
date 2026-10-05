@@ -4,32 +4,33 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 5 October 2026
 
-Main `62f5e9a0` contains qualified selected-provider routing, migration deadlock
-recovery, the web-to-desktop ChatGPT handoff fixes, plugin launch context (PR201)
-and Docs source-dialog focus recovery (PR202). PR201's exact-head CI37285386062
-passed all four jobs, with2868 backend passes and one existing Tesseract skip;
-PR202's CI37285248757 passed all four jobs, with2862 backend passes and that skip.
-Production deployment/recovery remains user-run and unverified.
+Main `7504be66` includes selected-provider routing, migration deadlock recovery,
+web/mobile-to-desktop ChatGPT connection handoff, separate plugin launch context,
+Docs source-dialog focus recovery and scoped scheduled Agenda summaries (PR199).
+PR199 exact source `a6a65525` passed all four CI jobs in37291303840:2938 backend
+passes, no failures and one existing Tesseract skip.99 focused local cases passed.
+Production deployment remains user-run and unverified. Real successful SIWC
+inference and truthful whole-account plan/quota acceptance remain open; official
+catalogs without hard output limits cannot enable budgeted private scheduling.
 
-Scheduled private Agenda is merged in main `8dcc4bb1` (PR199). Exact source
-`a6a65525` passed all four CI jobs in run37291303840:2938 backend passes, no
-failures and one existing Tesseract skip. The fresh local focused cohort passed
-99/99 without skips. Visual/native and real-account completion remain open.
-Official SIWC accounts without hard output-limit capability cannot enable budgeted
-scheduling.
+Plugin managed/BYO inference is candidate PR203, now integrated with this main.
+Its earlier full local run had2902 passes, one catalog failure and one existing
+skip. The generated catalog repair passes4/4; combined full qualification ended2971 pass/1 timing-sensitive fixture failure/1
+existing skip. The positive resumption fixture is repaired without changing
+production guards;18 scheduled-runtime cases and five independent repeats pass.
+Fresh combined qualification is required. External plugin-host and native/visual acceptance remain open.
+Personal ChatGPT credentials stay excluded from plugin calls; portable MCP is
+independent. Slack replies have a separate pure boundary candidate, with no
+OAuth installation, mounted callback or delivery yet.
 
-Plugin managed/BYO execution and explicit owner controls are candidate PR203.
-The standalone broker/worker, durable receipts/events, fixed provider consent,
-bounded transport and both client controls exist; database, external host and
-visual/native acceptance remain pending. Main's launch context alone does not
-provide inference permission. Personal ChatGPT tokens remain excluded.
+The settings grid cascade/theme patch removes a late three-column override and
+uses existing theme tokens.15 focused tests, backend/desktop typechecks and web
+production build pass. Preview inspection still reports a saved browser Block;
+Simulator inspection times out -10005. No visual or native acceptance is claimed.
 
-Full C1–C6/M1/D1/U1 remains active. See the current table in
-[implementation handoff](../reviews/task.md) and the full acceptance contract in
-[implementation review](../reviews/devday-2026-implementation-review.md).
-
-All checkpoint entries below are historical evidence for the named source;
-they do not supersede this current state or prove the full ADR complete.
+Full C1–C6/M1/D1/U1 remains active and incomplete. The current pipeline is in
+[implementation handoff](../reviews/task.md). Checkpoints below are historical
+evidence for their named source and do not supersede this current state.
 
 ### Historical combined candidate verification — 5 October 2026
 
