@@ -1,3 +1,24 @@
+## 6 October — structured content API follow-up
+
+Storage candidate4f45e904 completed fresh full DB49:3548 passes, zero failures,
+one existing skip, terminal0,729911ms. CI37372176301 passed Docker; backend/web,
+mobile and mail were cancelled. This is not an all-green CI result.
+
+The API follow-up adds authenticated capability-negotiated content GET/PUT and
+shared client identity/revision checks. Read projections have separately bounded
+text limits; hidden labels are restored before exact stored limits are enforced.
+Expanded private references now read/save without relaxing new-text storage limits.
+88 fresh DB50 mounted cases and46 pure cases pass. All workspace types, packages,
+backend/web builds and full formatting pass. Earlier pure fixture failures are
+retained: leaf errors preserve the existing format-error contract; cancellation is
+verified by propagated abort/reason rather than signal object identity.
+
+Both editor/CRDT/task-item integrations, imports and export adoption remain open.
+Projected HTML/source helpers are not proof of full editor source round-trip:
+source switching still rejects trees that exceed stored/source bounds. No web or
+native visual acceptance, production deployment, real-account ChatGPT inference,
+whole-account quota verification or cleanup is claimed. Full ADR goal remains active.
+
 # DevDay 2026 → Orbyn: researched implementation proposal
 
 ## Current delivery state — 6 October 2026

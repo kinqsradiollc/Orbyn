@@ -14,6 +14,7 @@ const { closeLive } = await import("../src/modules/docs/live.js");
 const app = await buildApp();
 let owner: UserRow, stranger: UserRow;
 let token: string;
+let strangerToken: string;
 const users: string[] = [];
 const teams: string[] = [];
 async function register(name: string) {
@@ -45,7 +46,9 @@ before(async () => {
   const registered = await register("Owner");
   owner = registered.row;
   token = registered.token;
-  stranger = (await register("Stranger")).row;
+  const other = await register("Stranger");
+  stranger = other.row;
+  strangerToken = other.token;
 });
 after(async () => {
   await closeLive();
@@ -308,20 +311,20 @@ test("REST authentication, validation, team permissions and rate limits remain e
   const id = await page();
   const unauthenticated = await app.inject({
     method: "PUT",
-    url: `/docs/${id}`,
-    payload: { version: 1, content: [] },
+    url: `/docs/${id}/content`,
+    payload: { version: 1, document: { format: 1, blocks: [] } },
   });
   assert.equal(unauthenticated.statusCode, 401);
   const invalid = await app.inject({
     method: "PUT",
-    url: `/docs/${id}`,
+    url: `/docs/${id}/content`,
     headers: { authorization: `Bearer ${token}` },
-    payload: { version: "bad", content: [] },
+    payload: { version: "bad", document: { format: 1, blocks: [] } },
   });
   assert.equal(invalid.statusCode, 422);
   const malformed = await app.inject({
     method: "PUT",
-    url: `/docs/${id}`,
+    url: `/docs/${id}/content`,
     headers: {
       authorization: `Bearer ${token}`,
       "content-type": "application/json",
@@ -347,6 +350,16 @@ test("REST authentication, validation, team permissions and rate limits remain e
     ),
     refuses(403),
   );
+  const viewer = await app.inject({
+    method: "PUT",
+    url: `/docs/${id}/content`,
+    headers: {
+      authorization: `Bearer ${strangerToken}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+    payload: { version: 1, document: { format: 2, nodes: [] } },
+  });
+  assert.equal(viewer.statusCode, 403);
   const { settings, cachedSettings } = await import("../src/lib/settings.js");
   const { freshRateLimitSession } = await import("./rate-limit-session.js");
   const fresh = await freshRateLimitSession(token);
@@ -358,7 +371,7 @@ test("REST authentication, validation, team permissions and rate limits remain e
     const read = () =>
       app.inject({
         method: "GET",
-        url: `/docs/${id}`,
+        url: `/docs/${id}/content`,
         headers: { authorization: `Bearer ${fresh}` },
         remoteAddress: "10.88.44.1",
       });
@@ -451,4 +464,119 @@ test("capable flat downgrade is explicit; unreadable files cannot grant access t
   ).rows[0];
   assert.equal(ownership.user_id, stranger.id);
   assert.equal(ownership.doc_id, privatePage);
+});
+
+test("capability REST reads and writes complete ownership with fresh cache policy", async () => {
+  const id = await page();
+  const headers = {
+    authorization: `Bearer ${token}`,
+    "x-orbyn-doc-formats": "1,2",
+  };
+  const nodes = parseDocContainers("> Nested\n>\n> - Item");
+  const saved = await app.inject({
+    method: "PUT",
+    url: `/docs/${id}/content`,
+    headers,
+    payload: { version: 1, document: { format: 2, nodes } },
+  });
+  assert.equal(saved.statusCode, 200);
+  assert.deepEqual(saved.json().document, { format: 2, nodes });
+  const read = await app.inject({
+    method: "GET",
+    url: `/docs/${id}/content`,
+    headers,
+  });
+  assert.equal(read.statusCode, 200);
+  assert.equal(read.headers["cache-control"], "no-store");
+  assert.equal(read.json().version, 2);
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url: `/docs/${id}/content`,
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url: `/docs/${id}/content`,
+        headers: { ...headers, "x-orbyn-doc-formats": "3" },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (await app.inject({ method: "GET", url: `/docs/${id}/content` }))
+      .statusCode,
+    401,
+  );
+  const stale = await app.inject({
+    method: "PUT",
+    url: `/docs/${id}/content`,
+    headers,
+    payload: { version: 1, document: { format: 2, nodes: [] } },
+  });
+  assert.equal(stale.statusCode, 409);
+  assert.equal(
+    (
+      await app.inject({
+        method: "PUT",
+        url: `/docs/${id}/content`,
+        headers,
+        payload: { version: "bad", document: { format: 2, nodes } },
+      })
+    ).statusCode,
+    422,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "PUT",
+        url: `/docs/${id}/content`,
+        headers: { ...headers, "content-type": "application/json" },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+});
+
+test("expanded private labels round-trip through API without widening stored limits", async () => {
+  const privateId = await page(stranger);
+  const text = "[x][ref] ".repeat(1000);
+  const id = await page();
+  const nodes = parseDocContainers(
+    `> ${text}\n\n[ref]: orbyn://doc/${privateId}`,
+  );
+  const headers = {
+    authorization: `Bearer ${token}`,
+    "x-orbyn-doc-formats": "1,2",
+  };
+  const save = (version: number, document: unknown) =>
+    app.inject({
+      method: "PUT",
+      url: `/docs/${id}/content`,
+      headers,
+      payload: { version, document },
+    });
+  const saved = await save(1, { format: 2, nodes });
+  assert.equal(saved.statusCode, 200);
+  const projected = saved.json().document;
+  assert.ok(projected.nodes[0].children[0].block.text.length > 10000);
+  assert.equal((await save(2, projected)).statusCode, 200);
+  const stored = (
+    await pool.query("SELECT content_nodes FROM docs WHERE id=$1", [id])
+  ).rows[0].content_nodes;
+  assert.equal(stored[0].children[0].block.text, text.trim());
+  projected.nodes[0].children[0].block.text = "x".repeat(10001);
+  assert.equal((await save(3, projected)).statusCode, 400);
+  assert.equal(
+    (await pool.query("SELECT version FROM docs WHERE id=$1", [id])).rows[0]
+      .version,
+    3,
+  );
 });

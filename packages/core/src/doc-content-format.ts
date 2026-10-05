@@ -1,4 +1,8 @@
-import { docContent } from "./schemas.js";
+import { z } from "zod";
+import {
+  parseDocContentLeaves,
+  type DocContentValidationOptions,
+} from "./doc-content-leaves.js";
 import {
   parseDoc,
   serializeDoc,
@@ -9,6 +13,7 @@ import {
   validateDocContainers,
   parseDocContainers,
   serializeDocContainers,
+  DocContainerError,
   type DocContainerNode,
   type DocContainerItem,
 } from "./doc-containers.js";
@@ -33,15 +38,15 @@ function keys(
   if (Object.keys(value).some((key) => !allowed.includes(key)))
     throw new DocContentFormatError("Unknown document content field.");
 }
-function leaves(value: unknown): DocBlock[] {
-  const parsed = docContent.safeParse(value);
-  if (!parsed.success)
+function leaves(
+  value: unknown,
+  options: DocContentValidationOptions,
+): DocBlock[] {
+  try {
+    return parseDocContentLeaves(value, options);
+  } catch {
     throw new DocContentFormatError("Invalid document blocks.");
-  const originals = value as unknown[];
-  parsed.data.forEach((block, index) =>
-    keys(record(originals[index]), Object.keys(block)),
-  );
-  return parsed.data as DocBlock[];
+  }
 }
 function identity(value: unknown): string | undefined {
   if (value === undefined) return undefined;
@@ -51,24 +56,36 @@ function identity(value: unknown): string | undefined {
 }
 
 /** Read the experimental format without discarding unrecognized fields or taking shared references. */
-export function parseVersionedDocContent(value: unknown): VersionedDocContent {
+export function parseVersionedDocContent(
+  value: unknown,
+  options: DocContentValidationOptions = {},
+): VersionedDocContent {
   const content = record(value);
   if (content.format === 1) {
     keys(content, ["format", "blocks"]);
-    const blocks = leaves(content.blocks);
+    const blocks = leaves(content.blocks, options);
     return { format: 1, blocks };
   }
   if (content.format !== 2)
     throw new DocContentFormatError("Unsupported document content format.");
   keys(content, ["format", "nodes"]);
   // Validate bounded traversal and cycles before walking attacker-controlled recursive objects.
-  validateDocContainers(content.nodes as DocContainerNode[]);
+  try {
+    validateDocContainers(content.nodes as DocContainerNode[], options);
+  } catch (error) {
+    if (
+      error instanceof DocContainerError &&
+      error.message === "Invalid typed document leaf."
+    )
+      throw new DocContentFormatError("Invalid document blocks.");
+    throw error;
+  }
   const read = (input: readonly unknown[]): DocContainerNode[] =>
     input.map((raw) => {
       const node = record(raw);
       if (node.kind === "block") {
         keys(node, ["kind", "block"]);
-        return { kind: "block", block: leaves([node.block])[0] };
+        return { kind: "block", block: leaves([node.block], options)[0] };
       }
       const id = identity(node.id);
       if (node.kind === "quote") {
@@ -218,3 +235,29 @@ export function versionedDocSource(value: unknown): string {
     );
   return source;
 }
+
+const validatedDocument = z.unknown().transform((value, context) => {
+  try {
+    return parseVersionedDocContent(value, { projected: true });
+  } catch {
+    context.addIssue({ code: "custom", message: "Invalid document content." });
+    return z.NEVER;
+  }
+});
+/** Content-only save keeps the optimistic revision separate from the content format. */
+export const versionedDocSave = z
+  .object({
+    version: z.number().int().positive(),
+    document: validatedDocument,
+  })
+  .strict();
+/** Bounded structured editor read, shared by web/desktop and mobile. */
+export const versionedDocRead = z
+  .object({
+    id: z.uuid(),
+    title: z.string().max(200),
+    version: z.number().int().positive(),
+    document: validatedDocument,
+  })
+  .strict();
+export type VersionedDocRead = z.infer<typeof versionedDocRead>;

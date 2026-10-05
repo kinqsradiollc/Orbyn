@@ -8,7 +8,11 @@ import {
   footnoteNumbers,
   docReferenceLinks,
 } from "./docs.js";
-import { docContent } from "./schemas.js";
+import {
+  parseDocContentLeaves,
+  DOC_PROJECTED_TOTAL_MAX,
+  type DocContentValidationOptions,
+} from "./doc-content-leaves.js";
 import { blocksHtml, type HtmlOptions } from "./export.js";
 import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
 
@@ -430,11 +434,26 @@ export function visitDocContainers(
 /** Validate tree budgets and global IDs before a recursive consumer touches it. */
 export function validateDocContainers(
   nodes: readonly DocContainerNode[],
+  options: DocContentValidationOptions = {},
 ): void {
   const ids = new Set<string>();
+  let textSize = 0;
   visitDocContainers(nodes, (node) => {
-    if (node.kind === "block" && !docContent.safeParse([node.block]).success)
-      throw new DocContainerError("Invalid typed document leaf.");
+    if (node.kind === "block") {
+      try {
+        parseDocContentLeaves([node.block], options);
+      } catch {
+        throw new DocContainerError("Invalid typed document leaf.");
+      }
+      if ("text" in node.block) textSize += node.block.text.length;
+      if (
+        textSize >
+        (options.projected
+          ? DOC_PROJECTED_TOTAL_MAX
+          : DOC_CONTAINER_LIMITS.source)
+      )
+        throw new DocContainerError("Document text is too large.");
+    }
     if (
       node.kind === "quote" &&
       node.callout &&
@@ -469,9 +488,10 @@ export function validateDocContainers(
 /** All typed leaves, in document order, for references, permissions and search. */
 export function docContainerBlocks(
   nodes: readonly DocContainerNode[],
+  options: DocContentValidationOptions = {},
 ): DocBlock[] {
   const blocks: DocBlock[] = [];
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   visitDocContainers(nodes, (node) => {
     if (node.kind === "block") blocks.push(node.block);
   });
@@ -482,8 +502,9 @@ export function docContainerBlocks(
 export function mapDocContainerBlocks(
   nodes: readonly DocContainerNode[],
   map: (block: DocBlock, index: number) => DocBlock,
+  options: DocContentValidationOptions = {},
 ): DocContainerNode[] {
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   let index = 0;
   const walk = (current: readonly DocContainerNode[]): DocContainerNode[] =>
     current.map((node) =>
@@ -500,16 +521,16 @@ export function mapDocContainerBlocks(
             },
     );
   const result = walk(nodes);
-  validateDocContainers(result);
+  validateDocContainers(result, options);
   return result;
 }
 
 /** Serialize typed children with their ownership indentation, rather than lifting them to the page. */
 export function serializeDocContainers(
   nodes: readonly DocContainerNode[],
-  options: { anchors?: boolean } = {},
+  options: { anchors?: boolean } & DocContentValidationOptions = {},
 ): string {
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   const write = (
     current: readonly DocContainerNode[],
     separator = "\n\n",
@@ -585,8 +606,9 @@ export function serializeDocContainers(
 export function projectDocContainers(
   nodes: readonly DocContainerNode[],
   project: (blocks: DocBlock[]) => DocBlock[],
+  options: DocContentValidationOptions = {},
 ): DocContainerNode[] {
-  const blocks = docContainerBlocks(nodes);
+  const blocks = docContainerBlocks(nodes, options);
   const projected = project(blocks);
   if (
     projected.length !== blocks.length ||
@@ -595,15 +617,19 @@ export function projectDocContainers(
     throw new DocContainerError(
       "Document projection changed its structure or identity.",
     );
-  return mapDocContainerBlocks(nodes, (_block, index) => projected[index]);
+  return mapDocContainerBlocks(
+    nodes,
+    (_block, index) => projected[index],
+    options,
+  );
 }
 
 /** Render authorized typed children with shared inline/file/math policies and page-wide references. */
 export function docContainersHtml(
   nodes: readonly DocContainerNode[],
-  options: HtmlOptions = {},
+  options: HtmlOptions & DocContentValidationOptions = {},
 ): string {
-  const blocks = docContainerBlocks(nodes);
+  const blocks = docContainerBlocks(nodes, options);
   const notes = options.notes ?? footnoteNumbers(blocks);
   const references = options.references ?? docReferenceLinks(blocks);
   const positions = new Map<DocContainerNode, number>();

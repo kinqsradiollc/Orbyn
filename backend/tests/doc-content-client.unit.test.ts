@@ -1,0 +1,136 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { OrbynClient } from "@orbyn/api-client";
+import {
+  parseVersionedDocContent,
+  versionedDocRead,
+  versionedDocSave,
+} from "@orbyn/core";
+const id = "00000000-0000-4000-8000-000000000001";
+const document = { format: 1 as const, blocks: [] };
+
+test("content client declares capabilities and reads fresh revisions", async () => {
+  let calls = 0;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async (url, init) => {
+      assert.equal(new URL(String(url)).pathname, `/docs/${id}/content`);
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("x-orbyn-doc-formats"), "1,2");
+      assert.equal(headers.has("if-none-match"), false);
+      return Response.json(
+        { id, title: "Page", version: ++calls, document },
+        { headers: { etag: "fixture" } },
+      );
+    },
+  });
+  assert.equal((await client.getDocContent(id)).version, 1);
+  assert.equal((await client.getDocContent(id)).version, 2);
+});
+
+test("content client rejects wrong identity and saved revision", async () => {
+  let result = {
+    id: "00000000-0000-4000-8000-000000000002",
+    title: "Page",
+    version: 2,
+    document,
+  };
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async () => Response.json(result),
+  });
+  await assert.rejects(client.getDocContent(id), /identity/);
+  result = { ...result, id, version: 1 };
+  await assert.rejects(client.updateDocContent(id, 1, document), /revision/);
+  result.version = 2;
+  assert.equal((await client.updateDocContent(id, 1, document)).version, 2);
+  await assert.rejects(client.getDocContent("../another-page"));
+});
+
+test("unsupported structure never causes an automatic flat save", async () => {
+  let calls = 0;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async () => {
+      calls++;
+      return Response.json({ message: "Unsupported format" }, { status: 409 });
+    },
+  });
+  await assert.rejects(
+    client.updateDocContent(id, 1, { format: 2, nodes: [] }),
+    { statusCode: 409 },
+  );
+  assert.equal(calls, 1);
+});
+
+test("privacy projections allow expanded text but stored validation stays strict", () => {
+  const text = "Private page ".repeat(1000);
+  const expanded = {
+    format: 2 as const,
+    nodes: [
+      {
+        kind: "quote" as const,
+        children: [
+          {
+            kind: "block" as const,
+            block: { type: "paragraph" as const, id: "words", text },
+          },
+        ],
+      },
+    ],
+  };
+  assert.throws(() => parseVersionedDocContent(expanded));
+  assert.deepEqual(
+    parseVersionedDocContent(expanded, { projected: true }),
+    expanded,
+  );
+  assert.equal(
+    versionedDocRead.parse({
+      id,
+      title: "Page",
+      version: 1,
+      document: expanded,
+    }).document.format,
+    2,
+  );
+  assert.equal(
+    versionedDocSave.parse({ version: 1, document: expanded }).document.format,
+    2,
+  );
+  assert.throws(() =>
+    parseVersionedDocContent(
+      { format: 1, blocks: [{ type: "paragraph", text, unknown: true }] },
+      { projected: true },
+    ),
+  );
+  assert.throws(() =>
+    parseVersionedDocContent(
+      { format: 1, blocks: [{ type: "paragraph", text: "x".repeat(480001) }] },
+      { projected: true },
+    ),
+  );
+});
+
+test("content client forwards cancellation and rejects unexpected response fields", async () => {
+  const controller = new AbortController();
+  let seen: AbortSignal | null | undefined;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async (_url, init) => {
+      seen = init?.signal;
+      return Response.json({
+        id,
+        title: "Page",
+        version: 1,
+        document,
+        unknown: true,
+      });
+    },
+  });
+  await assert.rejects(client.getDocContent(id, { signal: controller.signal }));
+  assert.ok(seen);
+  assert.equal(seen.aborted, false);
+  controller.abort("fixture cancelled");
+  assert.equal(seen.aborted, true);
+  assert.equal(seen.reason, "fixture cancelled");
+});
