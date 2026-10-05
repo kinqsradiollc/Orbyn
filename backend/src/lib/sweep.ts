@@ -834,7 +834,7 @@ export async function runSweep(): Promise<SweepResult | null> {
       const removed: Record<string, number> = {};
       const errors: Record<string, string> = {};
       for (const rule of SWEEP_RULES) {
-        const keep = rule.configurable ? days[rule.key] : 0;
+        const keep = rule.configurable ? days[rule.key] : rule.days;
         if (rule.configurable && !(keep > 0)) continue;
         let total = 0;
         try {
