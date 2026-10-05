@@ -549,7 +549,26 @@ test("first-party models and executor routes reject other principals, malformed 
       remoteAddress: ip ?? `10.78.0.${address++}`,
     });
   const url = `/models?connection_id=${selection.connection_id}&executor_id=${selection.executor_id}`;
+
   try {
+    const withCapabilities = await call(
+      "GET",
+      `${url}&include_capabilities=1`,
+      f.session.token,
+    );
+    assert.equal(withCapabilities.statusCode, 200);
+    assert.deepEqual(withCapabilities.json().capabilities, []);
+    assert.equal(
+      (
+        await call(
+          "GET",
+          `${url}&include_capabilities=invalid`,
+          f.session.token,
+        )
+      ).statusCode,
+      422,
+    );
+
     assert.equal((await call("GET", url)).statusCode, 401);
     assert.equal((await call("GET", url, "oat_fixture")).statusCode, 401);
     const apiKey = `ok_${randomUUID()}`;

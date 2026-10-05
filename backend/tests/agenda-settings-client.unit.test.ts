@@ -158,3 +158,51 @@ test("both clients explain missing scheduling prerequisites and require both sig
     );
   }
 });
+
+test("scheduled catalog capability reads explicitly opt in while ordinary model reads retain their query contract", async () => {
+  const connection_id = randomUUID(),
+    executor_id = randomUUID();
+  const binding = {
+    user_id: randomUUID(),
+    connection_id,
+    issuer: "https://auth.openai.com",
+    subject: "fixture",
+    client_id: "oaiapp_fixture",
+  };
+  const calls: URL[] = [];
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    getToken: () => "app-session",
+    fetch: async (url) => {
+      const query = new URL(String(url));
+      calls.push(query);
+      return Response.json({
+        executor_id,
+        binding,
+        status: "ready",
+        models: [],
+        preference: { binding, model: null, version: 0 },
+        published_at: null,
+        expires_at: null,
+        sequence: 0,
+        ...(query.searchParams.has("include_capabilities")
+          ? { capabilities: ["plan_inference_v1"] }
+          : {}),
+      });
+    },
+  });
+  const ordinary = await client.chatgptModels({ connection_id, executor_id });
+  const scheduled = await client.chatgptModels(
+    { connection_id, executor_id },
+    undefined,
+    true,
+  );
+  assert.equal(calls[0].searchParams.has("include_capabilities"), false);
+  assert.equal(calls[1].searchParams.get("include_capabilities"), "1");
+  assert.equal(ordinary.capabilities, undefined);
+  assert.deepEqual(scheduled.capabilities, ["plan_inference_v1"]);
+  assert.equal(
+    scheduled.capabilities?.includes("plan_inference_limits_v1"),
+    false,
+  );
+});

@@ -1598,9 +1598,14 @@ export class OrbynClient {
     );
   }
   /** Always refresh executor presence; a cached list cannot authorize a default. */
-  async chatgptModels(input: ChatgptCatalogSelection, signal?: AbortSignal) {
+  async chatgptModels(
+    input: ChatgptCatalogSelection,
+    signal?: AbortSignal,
+    includeCapabilities = false,
+  ) {
     const selection = chatgptCatalogSelection.parse(input);
     const query = new URLSearchParams(selection);
+    if (includeCapabilities) query.set("include_capabilities", "1");
     const result = chatgptCatalogRead.parse(
       await this.request<unknown>(`/models?${query}`, { fresh: true, signal }),
     );

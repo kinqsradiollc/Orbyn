@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import {
   chatgptCatalogSelection,
   chatgptCatalogRead,
@@ -17,12 +18,19 @@ export async function chatgptModelRoutes(app: FastifyInstance) {
   app.get("/models", async (r, reply) => {
     reply.header("Cache-Control", "no-store");
     const session = await authenticateSessionBinding(r);
-    return chatgptCatalogRead.parse(
-      await readChatgptModelCatalog(
-        session,
-        chatgptCatalogSelection.parse(r.query),
-      ),
+    const { include_capabilities, ...selection } = chatgptCatalogSelection
+      .extend({
+        include_capabilities: z.literal("1").optional(),
+      })
+      .strict()
+      .parse(r.query);
+    const result = chatgptCatalogRead.parse(
+      await readChatgptModelCatalog(session, selection),
     );
+    // Older clients validate an exact response shape. Extra capability metadata
+    // is explicit opt-in, and omission never grants inference authority.
+    if (!include_capabilities) delete result.capabilities;
+    return result;
   });
   app.put("/models/default", strictRateLimit, async (r, reply) => {
     reply.header("Cache-Control", "no-store");

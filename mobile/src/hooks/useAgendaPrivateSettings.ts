@@ -56,6 +56,7 @@ export function useAgendaPrivateSettings(userId: string) {
                 executor_id: choice.executor_id,
               },
               abort.signal,
+              true,
             );
           } catch {
             /* Revocation stays available when the selected device cannot be inspected. */
