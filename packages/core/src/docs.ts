@@ -80,6 +80,9 @@ type Nested = { depth?: number };
 /** The deepest a list line can be tucked in. */
 export const MAX_DEPTH = 3;
 
+/** Existing stored paragraph limit; continuation grouping cannot create an unsavable block. */
+export const DOC_PARAGRAPH_MAX = 10000;
+
 /** Markdown heading depth, independent of list nesting. */
 export type DocHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -732,6 +735,8 @@ export const emptyDoc = (): DocBlock[] => [empty()];
 /** A run of inline text. `math` holds LaTeX source without its `$` fences. */
 export type DocInline = {
   text: string;
+  /** Markdown break source, retained for selection offsets; render as newline or space. */
+  break?: "hard" | "soft";
   /**
    * Where `text` starts in the line's Markdown source. Styling markers sit
    * outside it, so `**bold**` gives a run whose `start` is past the stars and
@@ -905,7 +910,9 @@ export function parseDocInline(
     for (const literal of literals) {
       masked.push(
         text.slice(at, literal.start),
-        "\uE000".repeat(literal.end - literal.start),
+        (literal.run.break ? " " : "\uE000").repeat(
+          literal.end - literal.start,
+        ),
       );
       at = literal.end;
     }
@@ -1268,8 +1275,8 @@ const UUID_SHAPE_EARLY =
 
 /**
  * How Markdown is read and written for agents (H3): the exact form, where
- * every line carries its id as an anchor (` ^b3f9a2` at a line's end, or
- * `^b3f9a2` on its own line under a code block, maths, a table or a
+ * every block carries its id as an anchor (` ^b3f9a2` at a line's end, or
+ * `^b3f9a2` on its own line under a multiline paragraph, code block, maths, table or
  * divider), an empty line is written `\`, and a maths line's check mark is
  * `$$ % check`. `parseDoc(serializeDoc(blocks, o), o)` then gives back
  * every block exactly: its kind, settings, words and id. Left off, Markdown
@@ -1291,6 +1298,7 @@ const WRITABLE_ID = new RegExp(`^${ANCHOR_ID}$`);
 
 /** Kinds whose anchor goes on a line of its own, under them. */
 const ownLineAnchor = (b: DocBlock) =>
+  (b.type === "paragraph" && b.text.includes("\n")) ||
   b.type === "code" ||
   b.type === "math" ||
   b.type === "table" ||
@@ -1744,6 +1752,51 @@ export function parseDoc(
   }
 
   finishSourceRanges();
+  // Ordinary continuation lines belong to one paragraph. Explicit inline
+  // anchors keep separate editor blocks separate; a standalone anchor may
+  // name the whole multiline paragraph immediately above it.
+  const boundaries = new Set(
+    out.filter(
+      (block) =>
+        block.type === "paragraph" &&
+        (docReferenceDefinition(block.text) ||
+          /^.+?\s+:::{0,1}\s+.+$|\{\{.+?\}\}/.test(block.text)),
+    ),
+  );
+  let kept = 0;
+  for (let n = 0; n < out.length; n++) {
+    const previous = out[kept - 1];
+    const current = out[n];
+    const before = sourceRanges[kept - 1];
+    const range = sourceRanges[n];
+    const ownId =
+      current.id && OWN_ANCHOR.test(lines[range.end - 1]?.trim() ?? "");
+    const hardSpaces =
+      before && / {2,}$/.test(lines[before.end - 1]) ? "  " : "";
+    if (
+      previous?.type === "paragraph" &&
+      current.type === "paragraph" &&
+      !boundaries.has(previous) &&
+      !boundaries.has(current) &&
+      !previous.id &&
+      (!current.id || ownId) &&
+      before.end + 1 === range.start &&
+      previous.text.length + hardSpaces.length + 1 + current.text.length <=
+        DOC_PARAGRAPH_MAX
+    ) {
+      out[kept - 1] = {
+        ...previous,
+        ...(current.id ? { id: current.id } : {}),
+        text: previous.text + hardSpaces + "\n" + current.text,
+      };
+      before.end = range.end;
+    } else {
+      out[kept] = current;
+      sourceRanges[kept++] = range;
+    }
+  }
+  out.length = kept;
+  sourceRanges.length = kept;
   sourceRanges.forEach((range, index) =>
     opts.onSourceRange?.(index, range.start, range.end),
   );
@@ -1793,6 +1846,16 @@ function blockMarkdown(
     case "heading":
       return `${"#".repeat(b.level)} ${headingSource(b.text)}`;
     case "paragraph":
+      if (b.text.includes("\n"))
+        return b.text
+          .split("\n")
+          .map((words) => {
+            const line = paragraphNeedsEscape(words, anchors)
+              ? `\\${words}`
+              : words;
+            return anchors ? line.replace(ANCHOR_LIKE, "$1\\$2") : line;
+          })
+          .join("\n");
       return paragraphNeedsEscape(b.text, anchors) ? `\\${b.text}` : b.text;
     case "bullet":
       return `- ${TICK_LIKE.test(b.text) ? "\\" : ""}${b.text}`;
@@ -2967,7 +3030,15 @@ export const plainText = (
 ): string =>
   parseDocInline(text, references)
     .map((run) =>
-      run.footnote ? "" : run.math ? mathToText(run.text) : run.text,
+      run.break
+        ? run.break === "hard"
+          ? "\n"
+          : " "
+        : run.footnote
+          ? ""
+          : run.math
+            ? mathToText(run.text)
+            : run.text,
     )
     .join("");
 

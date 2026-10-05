@@ -146,7 +146,14 @@ function runsText(p: string): { text: string; figures: number } {
     for (const piece of run.matchAll(
       /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:t\/>|<w:(tab|br|cr)\b[^>]*\/>/g,
     ))
-      text += piece[1] !== undefined ? decode(piece[1]) : piece[2] ? " " : "";
+      text +=
+        piece[1] !== undefined
+          ? decode(piece[1])
+          : piece[2] === "tab"
+            ? " "
+            : piece[2]
+              ? "\\\n"
+              : "";
     if (!text) continue;
     const bold = on(rPr, "b");
     const italic = on(rPr, "i");
@@ -162,7 +169,13 @@ function runsText(p: string): { text: string; figures: number } {
   }
   // Adjacent runs with the same styling: **a****b** → **ab**.
   out = out.replace(/\*{4}/g, "");
-  return { text: out.replace(/\s+/g, " ").trim(), figures };
+  return {
+    text: out
+      .replace(/[ \t\r\f\v]+/g, " ")
+      .replace(/(?:\\\n)+$/, "")
+      .trim(),
+    figures,
+  };
 }
 
 const cellsOf = (row: string) =>
