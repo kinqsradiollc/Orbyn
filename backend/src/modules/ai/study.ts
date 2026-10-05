@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   cardsInBlocks,
   fail,
+  HttpError,
   quizGradeInput,
   serializeDoc,
   type DocBlock,
@@ -14,8 +15,8 @@ import { readableLinks } from "../links/privacy.js";
 import { authenticate } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { cardById } from "../study/service.js";
-import { complete, ProviderError } from "./providers/adapters.js";
-import { resolveAi } from "./providers/resolve.js";
+import { completePageFeature } from "./providers/feature-call.js";
+import { privateProviderFailureMessage } from "./providers/user-choice.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
 import { readableDocs } from "../../lib/visibility.js";
 
@@ -37,10 +38,11 @@ const pageOf = async (userId: string, docId: string) => {
     await pool.query<{
       id: string;
       title: string;
+      version: number;
       content: DocBlock[];
       team_id: string | null;
     }>(
-      `SELECT d.id, d.title, d.content, d.team_id FROM docs d WHERE d.id = $2
+      `SELECT d.id, d.title, d.version, d.content, d.team_id FROM docs d WHERE d.id = $2
          AND d.deleted_at IS NULL
          AND ${readableDocs("d")}`,
       [userId, docId],
@@ -58,12 +60,6 @@ const pageOf = async (userId: string, docId: string) => {
     text: serializeDoc(content).slice(0, PAGE_CHARS),
   };
 };
-
-const noAi = () =>
-  fail(
-    503,
-    "Study's assistant needs an AI provider. An admin can connect one in Admin → AI; reviewing cards works without it.",
-  );
 
 /** The JSON object in a reply, tolerating fences and thinking. */
 function readJson(content: string): unknown {
@@ -111,8 +107,6 @@ export async function aiStudyRoutes(app: FastifyInstance) {
       .object({ max: z.number().int().min(1).max(15).default(15) })
       .catch({ max: 15 })
       .parse(r.body ?? {}).max;
-    const ai = await resolveAi();
-    if (!ai) noAi();
     if (!page.text.trim())
       fail(422, "This page is empty. Write some notes first.");
     const existing = new Set(
@@ -122,8 +116,10 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     );
     let content: string;
     try {
-      content = await complete(
-        ai!,
+      content = await completePageFeature(
+        u.id,
+        "study_cards",
+        [{ id: page.id, version: page.version }],
         [
           {
             role: "system",
@@ -160,11 +156,11 @@ export async function aiStudyRoutes(app: FastifyInstance) {
         },
       );
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       fail(
         502,
-        error instanceof ProviderError
-          ? `The AI provider could not answer: ${error.message}`
-          : "The AI provider could not answer. Please try again.",
+        privateProviderFailureMessage(error) ??
+          "The AI provider could not answer. Please try again.",
       );
     }
     let cards: SuggestedCard[];
@@ -197,13 +193,13 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     const d = quizGradeInput.parse(r.body ?? {});
     const card = await cardById(pool, u.id, d.card_id);
     if (!card) fail(404, "Card not found");
-    const ai = await resolveAi();
-    if (!ai) noAi();
     const page = await pageOf(u.id, card.doc_id);
     try {
       const reply = readJson(
-        await complete(
-          ai!,
+        await completePageFeature(
+          u.id,
+          "study_grade",
+          [{ id: page.id, version: page.version }],
           [
             { role: "system", content: GRADE_PROMPT },
             {
@@ -244,11 +240,11 @@ export async function aiStudyRoutes(app: FastifyInstance) {
               : "again",
       };
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       fail(
         502,
-        error instanceof ProviderError
-          ? `The AI provider could not answer: ${error.message}`
-          : "The answer couldn't be graded. Rate it yourself this time.",
+        privateProviderFailureMessage(error) ??
+          "The answer couldn't be graded. Rate it yourself this time.",
       );
     }
   });
@@ -258,13 +254,13 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const card = await cardById(pool, u.id, idParam(r));
     if (!card) fail(404, "Card not found");
-    const ai = await resolveAi();
-    if (!ai) noAi();
     const page = await pageOf(u.id, card.doc_id);
     try {
       const reply = readJson(
-        await complete(
-          ai!,
+        await completePageFeature(
+          u.id,
+          "study_explain",
+          [{ id: page.id, version: page.version }],
           [
             { role: "system", content: EXPLAIN_PROMPT },
             {
@@ -292,11 +288,11 @@ export async function aiStudyRoutes(app: FastifyInstance) {
         })
         .parse(reply);
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       fail(
         502,
-        error instanceof ProviderError
-          ? `The AI provider could not answer: ${error.message}`
-          : "No explanation this time. Please try again.",
+        privateProviderFailureMessage(error) ??
+          "No explanation this time. Please try again.",
       );
     }
   });
