@@ -3,6 +3,7 @@ import { checkPlan, type PlanStep } from "../../../capabilities/plan-run.js";
 import { policy, type Principal } from "../../../capabilities/policy.js";
 import type { Queryable } from "../../../db/pool.js";
 import { keptOutFor } from "../../../lib/assistant-off.js";
+import { AGENT_BULK_LIMIT } from "@orbyn/core";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const UUID_VALUE =
@@ -128,6 +129,24 @@ export async function checkMergedPlan(
 
 /** Changes that require a morning Review regardless of the night trust level. */
 export function nightPlanNeedsReview(steps: PlanStep[]): boolean {
+  // Plain titled additions have a known count before execution. Quick-add lines
+  // may resolve to habits or skips, so their final count remains a runtime check.
+  const knownAdditions = steps.reduce((count, step) => {
+    if (step.tool !== "create_tasks" || !Array.isArray(step.args.tasks))
+      return count;
+    return (
+      count +
+      step.args.tasks.filter(
+        (task) =>
+          task &&
+          typeof task === "object" &&
+          typeof task.title === "string" &&
+          task.title.trim() &&
+          !task.line,
+      ).length
+    );
+  }, 0);
+  if (knownAdditions > AGENT_BULK_LIMIT) return true;
   return steps.some((step) => {
     const cap = registry.get(step.tool);
     if (
