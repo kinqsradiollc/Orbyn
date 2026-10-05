@@ -1,3 +1,25 @@
+## Combined structured Docs qualification — 6 October 2026
+
+| Requirement                                 | Current evidence                                                                         | Remaining gate                                |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Storage/API/history/private-label saves     | 117 fresh DB52 mounted cases pass,0 fail, terminal0,26059ms                              | Frozen combined full regression               |
+| Markdown/HTML/PDF/Word/plain-text ownership | 72 pure cases; mounted Markdown/Word/text routes; existing renderer exports pass         | Full structured render/visual/import matrices |
+| Restore and capability inventory            | Current/past structured restore409; explicit editor transport exclusion passes inventory | Typed agent/CRDT/editor adoption              |
+| Types/build/format                          | All workspace types, packages/backend/web builds and formatting pass                     | Final frozen head full/CI                     |
+
+Earlier API357b58cd full DB51 terminated1:3554 passes,1 failure,1 existing skip.
+The sole failure was unlisted GET/PUT /docs/:id/content in the capability inventory.
+These interactive, negotiated editor-protocol routes are now excluded explicitly
+as editor_sync; agents keep typed capability calls. The inventory assertions remain
+unchanged and pass in the117-case DB52 cohort. This classification does not claim
+structured agent-tool support, which remains part of adoption.
+
+Main application stayse7232e11; main documentation516db089 is integrated into this
+candidate, with both documentation histories preserved and no application conflict.
+No application promotion/deployment, visual/native completion or whole ADR completion
+is claimed. Both editors, task-item identities/status, CRDT, complete import/source/
+render matrices, ChatGPT real acceptance and remaining C1-C6/M1/D1/U1 remain required.
+
 ## Plain-text and Word container exporters — 6 October 2026
 
 The candidate now renders typed containers in plain text and Word, replacing the
