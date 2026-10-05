@@ -72,3 +72,62 @@ and formatting pass (`/tmp/orbyn-doc-quote-anchor-*-types.log`,
 retained. Actual Word/privacy checkpoint integration, full combined qualification
 and visual/native acceptance remain required before promotion. This does not
 complete nested quote/list containers, media or the full D1 goal.
+
+## Structured container candidate — 6 October 2026
+
+Local branch `codex/docs-structured-containers`, based on tested PR215 source
+`5f5a1833`, implements an experimental shared parser, serializer, traversal,
+whole-page privacy projection and HTML renderer. This is not connected to stored
+pages or either editor and is not a delivered D1 feature.
+
+The candidate preserves quote/list ownership of paragraphs, headings, fenced and
+indented code, tables, math, nested quotes/lists, callouts and ordered/unordered
+tasks. Marker-relative indentation, explicit start numbers, tight/loose lists,
+literal task/callout prefixes, parent/child anchors and physical source ranges
+have focused coverage. Page-wide reference and footnote context is retained.
+Depth is bounded at12, source at2,000,000 characters and aggregate nodes/items
+at2000. Invalid/cyclic input and duplicate IDs fail explicitly. Existing typed
+leaf limits are reused. The existing page-library `doc-tree.ts` is unchanged.
+
+Container ownership and marker rules are guided by the primary
+[CommonMark container specification](https://spec.commonmark.org/0.31.2/#container-blocks),
+[block quote rules](https://spec.commonmark.org/0.31.2/#block-quotes) and
+[list item rules](https://spec.commonmark.org/0.31.2/#list-items).
+This candidate does not claim complete CommonMark conformance.
+
+Rendering requires both whole-page label/hint projection and the existing
+visibility-aware `linkUrl` authorizer. Generic `redactValue` deliberately retains
+internal destinations; it cannot authorize links by itself. Tests retain the
+private-ID refusal assertion while passing the actual authorizer boundary, and
+verify that visible authorized links keep labels and titles.
+
+### Qualification
+
+- Current parser/source/dialect/inline/layout cohort:94/94, zero failures/skips,
+  `/tmp/orbyn-container-combined-focused.log`.
+- Existing mounted page-library hierarchy:11/11 on fresh marked DB40, terminal0,
+  `/tmp/orbyn-channel-container-hierarchy.log`.
+- Packages build, all three workspace typechecks and backend/web builds pass,
+  `/tmp/orbyn-container-final-*.log`.
+- Earlier HTML tests failed on an incorrect footnote class expectation and a
+  missing link authorizer; retained `/tmp/orbyn-doc-containers-html-focused.log`.
+  Literal-prefix test initially retained an undefined parent ID in expected data;
+  the expectation now removes absent IDs without changing text/identity checks.
+
+### Required integration gates
+
+| Order | Implementation                                                         | Acceptance                                                                                    |
+| ----- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 1     | Define stored/API content version and client capability contract       | Older clients cannot flatten or overwrite unsupported structure; existing pages round-trip    |
+| 2     | Extend validation, privacy/search/backlinks, AI/import/export adapters | Whole-page reference visibility and source ownership remain enforced; no child is omitted     |
+| 3     | Extend block identity and CRDT operations                              | Stable child selection/comments; concurrent insert/move/delete and undo preserve ownership    |
+| 4     | Update web/desktop and native editor/renderers together                | Typing, paste, source switching, nesting, keyboard and accessible interaction on both clients |
+| 5     | Integrate HTML/PDF/Word import/export                                  | Nested container matrices preserve content and numbering with private destination checks      |
+| 6     | Qualify combined source and merge                                      | Focused/mounted/full suites, types/build/format and honest visual/native acceptance           |
+
+Before integration, define normalization or explicit refusal for constructed
+structures that Markdown cannot distinguish, including adjacent compatible lists
+and adjacent paragraph children in a tight list. Empty callouts, blank-line and
+lazy-continuation edge cases require further fixtures. Source-only parsing is
+not proof of storage, editing, CRDT or PDF/Word container delivery. No deployment,
+cleanup or full-goal completion is claimed.

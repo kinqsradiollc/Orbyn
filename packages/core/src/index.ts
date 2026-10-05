@@ -20,6 +20,7 @@ export * from "./offline.js";
 export * from "./quickcapture.js";
 export * from "./glance.js";
 export * from "./docs.js";
+export * from "./doc-containers.js";
 export * from "./doc-crdt.js";
 export * from "./doc-editing.js";
 export * from "./paste.js";
