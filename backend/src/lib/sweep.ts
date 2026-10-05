@@ -1,5 +1,5 @@
 import { TRASH_DAYS } from "@orbyn/core";
-import { pool } from "../db/pool.js";
+import { pool, type Queryable } from "../db/pool.js";
 
 /**
  * The sweeper: what Orbyn keeps, for how long, and the job that clears the
@@ -53,6 +53,17 @@ export const SWEEP_RULES: SweepRule[] = [
     where:
       "updated_at<now()-interval '30 days' AND (disconnected_at IS NOT NULL OR (conversation_encrypted IS NULL AND link_expires_at<now()))",
     days: 30,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_teams_reply_receipts",
+    label: "Teams question replies",
+    detail:
+      "Encrypted pending replies expire with their exact card; content-free terminal receipts remain for 14 days.",
+    table: "agent_channel_teams_reply_receipts",
+    where:
+      "(state IN ('queued','processing') AND expires_at<now()) OR (state IN ('accepted','refused') AND updated_at<now()-interval '14 days')",
+    days: 14,
     configurable: false,
   },
   {
@@ -855,9 +866,9 @@ export type SweepResult = {
 };
 
 /** Days kept for each configurable rule: the admin's choice, else the default. */
-export async function retention(): Promise<Retention> {
+export async function retention(db: Queryable = pool): Promise<Retention> {
   const saved = (
-    await pool.query<{ value: Retention }>(
+    await db.query<{ value: Retention }>(
       "SELECT value FROM system_settings WHERE key = 'retention'",
     )
   ).rows[0]?.value;
@@ -885,8 +896,8 @@ export async function lastSweep(): Promise<SweepResult | null> {
 }
 
 /** Resolve stable row identities, including composite keys, for the current schema. */
-async function sweepPrimaryKeys(): Promise<Map<string, string[]>> {
-  const result = await pool.query<{ table: string; columns: string[] }>(
+async function sweepPrimaryKeys(db: Queryable): Promise<Map<string, string[]>> {
+  const result = await db.query<{ table: string; columns: string[] }>(
     `SELECT wanted.name AS "table",
        coalesce(array_agg(a.attname::text ORDER BY k.ordinality)
          FILTER (WHERE a.attname IS NOT NULL), '{}'::text[]) AS columns
@@ -918,8 +929,8 @@ export async function runSweep(): Promise<SweepResult | null> {
     if (!got) return null;
     try {
       const started = Date.now();
-      const days = await retention();
-      const primaryKeys = await sweepPrimaryKeys();
+      const days = await retention(lock);
+      const primaryKeys = await sweepPrimaryKeys(lock);
       const removed: Record<string, number> = {};
       const errors: Record<string, string> = {};
       for (const rule of SWEEP_RULES) {
@@ -936,7 +947,7 @@ export async function runSweep(): Promise<SweepResult | null> {
             .map((column) => '"' + column.replaceAll('"', '""') + '"')
             .join(",");
           for (let i = 0; i < MAX_SLICES; i++) {
-            const res = await pool.query(
+            const res = await lock.query(
               `DELETE FROM ${rule.table} WHERE (${identity}) IN (
                  SELECT ${identity} FROM ${rule.table} WHERE ${rule.where} LIMIT ${SLICE})
                  AND (${rule.where})`,
@@ -958,7 +969,7 @@ export async function runSweep(): Promise<SweepResult | null> {
         removed,
         errors,
       };
-      await pool.query(
+      await lock.query(
         `INSERT INTO system_settings (key, value, updated_at)
            VALUES ('sweep_last', $1, now())
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,

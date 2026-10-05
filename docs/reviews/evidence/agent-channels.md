@@ -453,3 +453,25 @@ All original41 assistant-runs cases pass in
 recovery, assertions, leases and deadlines are unchanged. Prior6bda01e9 full
 qualification remains evidence for that source, not this follow-up test source.
 Updated full/CI qualification remains required before promotion.
+
+### Teams question card foundation (2026-10-06, reply branch)
+
+Added a pure Adaptive Card builder for complete bounded `person` questions only.
+Every delivery carries the exact waiting UUID, full question/choice digest and a
+fresh nonce; the caller receives only its SHA-256 hash for later persistence.
+Choice buttons use numbered labels with full choices displayed above them. Free
+questions collect a bounded answer. Both Action.Execute and legacy Submit carry
+identical binding, and approval payloads never receive controls. Markdown is
+escaped and payloads above 24 KiB are refused without truncation.
+
+Current card plus signed reply parser: 16 tests pass, zero failures, in
+`/tmp/orbyn-channel-teams-card-reply-current-pure.log`; focused module TypeScript
+passes in `/tmp/orbyn-channel-teams-card-reply-current-types.log`. The first card
+suite had one incorrectly sized over-limit fixture (its emoji payload remained
+below the threshold); the corrected fixture exercises JSON escaping expansion
+and preserves the original refusal assertion. Initial failure retained in
+`/tmp/orbyn-channel-teams-card-reply-pure.log`.
+
+Neither card nor reply parser is mounted. Durable receipt, current authority,
+sent-card/nonce binding and atomic exact-question consumption remain required.
+This is a committed foundation, not delivered Teams replies or C6 completion.

@@ -1,3 +1,4 @@
+import { teamsQuestionCard } from "./teams-question-card.js";
 import { createHash } from "node:crypto";
 import { pool, transaction, type Queryable } from "../../db/pool.js";
 import { decryptSecret } from "../../lib/secrets.js";
@@ -122,10 +123,18 @@ export async function deliverTeamsChannelOne(
       const finish = async (
         state: "sent" | "failed" | "unknown" | "cancelled",
         activityId: string | null = null,
+        card?: NonNullable<ReturnType<typeof teamsQuestionCard>>,
       ) => {
         await db.query(
-          "UPDATE agent_channel_teams_outbox SET state=$3,activity_id=$4,claim_id=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 AND claim_id=$2",
-          [delivery.id, delivery.claim_id, state, activityId],
+          "UPDATE agent_channel_teams_outbox SET state=$3,activity_id=$4,reply_question_digest=$5,reply_nonce_hash=$6,reply_expires_at=CASE WHEN $5::text IS NOT NULL THEN clock_timestamp()+interval '15 minutes' ELSE NULL END,claim_id=NULL,lease_until=NULL,updated_at=now() WHERE id=$1 AND claim_id=$2",
+          [
+            delivery.id,
+            delivery.claim_id,
+            state,
+            activityId,
+            state === "sent" ? (card?.questionDigest ?? null) : null,
+            state === "sent" ? (card?.cardNonceHash ?? null) : null,
+          ],
         );
       };
       const retry = async (seconds: number, restoreAttempt = false) => {
@@ -187,7 +196,7 @@ export async function deliverTeamsChannelOne(
         delivery.user_id,
         delivery.source_kind === "night" ? "overnight" : "background",
       );
-      let title: string | undefined;
+      let title: string | undefined, waiting: unknown;
       if (delivery.source_kind === "night") {
         if (
           !(
@@ -211,8 +220,8 @@ export async function deliverTeamsChannelOne(
         ).map((team) => team.id);
         const scope = { user: "$2", teams: "$5", personal: "$6" };
         const job = (
-          await db.query<{ title: string }>(
-            `SELECT c.title FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
+          await db.query<{ title: string; waiting: unknown }>(
+            `SELECT c.title,j.run_state->'state'->'waiting' AS waiting FROM ai_jobs j JOIN ai_chats c ON c.id=j.chat_id
           WHERE j.id=$1 AND j.user_id=$2 AND j.state=$3 AND j.runtime_lane='background' AND j.run_origin<>'idea' AND c.origin<>'idea'
           AND ($3<>'waiting' OR j.run_state->'state'->'waiting'->>'id'=$4)
           AND ${assistantChatVisible("c", "$2", scope)} AND ${assistantJobSourcesVisible("j", "$2", false, scope)} AND ${channelJobTeamsAllowed}`,
@@ -231,6 +240,7 @@ export async function deliverTeamsChannelOne(
           return;
         }
         title = job.title;
+        waiting = job.waiting;
       }
       const text =
         slackAgentMessage({
@@ -241,8 +251,12 @@ export async function deliverTeamsChannelOne(
         }).text +
         "\n" +
         new URL("/app", appUrl).href;
+      const card =
+        delivery.event === "waiting"
+          ? (teamsQuestionCard(delivery.id, waiting) ?? undefined)
+          : undefined;
       dispatched = true;
-      const result = await send(bot, target, text);
+      const result = await send(bot, target, text, card);
       if (
         (result.state === "rate_limited" || result.state === "unavailable") &&
         delivery.attempts < 3
@@ -259,6 +273,7 @@ export async function deliverTeamsChannelOne(
             ? "unknown"
             : "failed",
         result.state === "sent" ? result.activityId : null,
+        card,
       );
     });
   } catch (error) {

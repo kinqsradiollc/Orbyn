@@ -302,6 +302,36 @@ The integrated source now starts a fresh immutable full run.41 recovery cases
 passed before this integration;112 delivery/controls cases and24 cold cases
 remain focused evidence. Teams replies and whole ADR acceptance remain open.
 
+## Teams exact-card reply boundary — separate candidate
+
+Reused the merged plugin checkout oncodex/agent-teams-replies, based on the
+frozen delivery candidate5bc0bc9d. Existing untracked dependency symlink and
+character checkout remain unchanged. A pure authenticated boundary supports
+manual `adaptiveCard/action` Execute submissions and a named Submit fallback,
+ignores automatic refresh/unrelated activities, requires signed personal actor
+and consistent tenant/conversation, and bounds event time and input. Exactly
+one option or text answer is accepted; standing-approval/extra fields refuse.
+Delivery/waiting IDs, complete-question digest and transient card nonce remain
+claims requiring server receipt validation, not authority by themselves.
+Canonical retry digests ignore provider retry metadata while binding input.
+
+Eleven real-RSA protocol/security cases pass in
+`/tmp/orbyn-channel-teams-reply-fallback-pure.log`; focused module/dependency
+typecheck passes in`/tmp/orbyn-channel-teams-reply-fallback-types.log`. The
+boundary is unmounted. It cannot currently accept or apply a question answer.
+Still required: complete bounded card rendering and sent-card identity; encrypted
+durable callback receipts/dedup and bounded acknowledgement; live source/owner/
+conversation/revision/expiry fencing; exact current waiting ID/digest and atomic
+answer/chat/receipt transaction; fixed retention; restart/stale/replay/privacy
+DB/HTTP cases and real tenant/client acceptance. Approval opens Orbyn review.
+
+Primary contracts: [Microsoft Universal Action Model](https://learn.microsoft.com/en-us/adaptive-cards/authoring-cards/universal-action-model)
+and [Teams card actions](https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/cards/cards-actions).
+Execute invokes use manual vs automatic triggers. Submit fallback supplies
+merged form/action data. Invoke acknowledgements use HTTP200 with a typed body;
+capture is described as pending validation, while stale/refused cards use a
+generic supported400 error body, without exposing another question.
+
 ## Main promotion and clean qualification — 6 October 2026
 
 PR205 merged as `cf119497`, exact `d926b03c`, all four CI37334932950 jobs pass
@@ -325,3 +355,67 @@ Deployment, real-tenant acceptance and native/browser visual interaction remain
 unverified. Teams question cards/parser live separately at `c483a323`;16 pure
 checks and focused TypeScript pass, but no receipt/consumer/card integration is
 mounted. These checkpoints do not close C6 or the full ADR goal.
+
+## Durable exact-question reply candidate — 6 October 2026
+
+The reply branch now mounts manual Execute and named legacy Submit through the
+existing signed raw activity endpoint. Complete question cards acquire nonce
+hash/digest/15-minute authority only when their owned outbox commits sent.
+Migration251 adds one encrypted durable receipt per sent card; capture and
+consumption independently recheck current owner, reviewed actor/conversation,
+DM consent/revision/configuration, assistant grant, project/source access and
+complete current waiting question. Automatic refresh does not capture answers.
+Answer, chat turn and accepted receipt commit together; terminal receipts erase
+answer content. Approval payloads have no channel answer controls. The notifier
+consumes receipts separately from model execution. Both client permission rows
+briefly describe updates/questions/morning results. Privacy version advances to
+`2026-10-06-teams-replies`; retention remains fixed and works when unconfigured.
+
+Tests:132 integrated channel cases pass in
+`/tmp/orbyn-channel-teams-replies-integrated-current.log`;20 actual sweeper/reply
+cases pass after the sweeper repair in
+`/tmp/orbyn-channel-teams-replies-sweep-integrated.log`;9 selected cold pool1
+cases pass on fresh marked database9 in
+`/tmp/orbyn-channel-teams-replies-cold-current.log`. These prove stale/forged
+bindings, revocation after capture, expiry, source contention, restart recovery,
+chat-write rollback, lost commit acknowledgement, fixed retention, real signed
+HTTP401/403/400/422/413/429 and typed invocation acknowledgements. Existing Slack
+reply cases are included. Initial fixture and HTTP expectation failures remain
+in the first/second/current-focused logs; no required refusal assertion was
+removed. Invalid query follows the existing422 contract; malformed signed JSON
+separately verifies400. All three workspace typechecks, backend/web builds and
+whole formatting passed before final freeze; full immutable qualification is next.
+
+Cold testing exposed existing `runSweep` pool starvation: a session advisory
+lock occupied the sole connection while retention/catalog/deletion requested
+another. The sweep now runs its autocommit slices and settings queries through
+that held client. The stalled owned test process was terminated; its partial
+8-case log is retained as `/tmp/orbyn-channel-teams-replies-cold-pool.log`, not a
+passing result. Original sweep concurrency/composite-key/retention assertions
+pass. No Docker restart, configuration or production pool change occurred.
+
+The reused checkout's old dependency symlink pointed at the character checkout's
+stale package builds. Its original link is preserved at
+`/tmp/orbyn-teams-replies-original-node_modules-link`; this branch now owns its
+workspace-package links/builds and reuses immutable external dependency links.
+Character source/builds were not changed. Early type diagnostics from stale
+packages/incorrect direct TypeScript options are retained; a real workspace
+check subsequently caught and repaired the worker logger reference.
+
+[Microsoft's bot message size guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/build-conversational-capability)
+distinguishes bot messages from incoming webhooks and recommends an80KB
+message budget. The transport bounds complete serialized UTF16 messages before
+any token acquisition/send; card content itself remains bounded at24KB.
+
+Simulator inspection retried and again returned -10005 timeoutReached. No
+native/browser visual or real Teams tenant acceptance is claimed. Candidate
+reply behavior is not on main until full qualification and promotion complete.
+Full C1–C6/M1/D1/U1 remains active; Docs and whole-app layout matrices follow.
+
+Compatibility follow-up: verified the primary Universal Action Model contract
+again. Its older-client example uses card version1.2 and wraps Execute/fallback
+in ActionSet. The builder now uses that baseline and a visible free-answer label
+plus the supported input placeholder; server-side bounds remain mandatory.
+Using top-level version1.4 would prevent some older clients from reaching the
+Submit fallback. A regression assertion covers the compatible card version.
+No automatic refresh or approval action is introduced.

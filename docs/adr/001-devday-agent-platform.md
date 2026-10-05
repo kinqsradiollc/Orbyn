@@ -2148,3 +2148,15 @@ migration/retention, full/CI and real tenant/native/visual qualification remain
 required. Teams current-card replies remain unimplemented. Identity PR205's
 CI fixture repair is being qualified; this delivery/UI candidate is not on main.
 The complete C1–C6/M1/D1/U1 scope remains open and deployment remains user-run.
+
+### Durable Teams question replies — candidate, 6 October 2026
+
+Exact-card replies now have a sent-card nonce/digest/expiry, encrypted durable
+capture, independently rechecked current authority, and an atomic answer/chat/
+receipt consumer on the candidate branch. Automatic or unrelated activity does
+not answer; approval remains in Orbyn. Fixed expiry is independent of transport
+configuration. Cold testing also repairs the sweeper to reuse its held advisory
+lock connection instead of requiring a second pool checkout. Current focused
+channel/sweep/cold cases pass; full immutable qualification, CI and promotion
+remain required. See [Teams evidence](../reviews/evidence/teams-agent-channels.md).
+This does not close C6, D1, U1 or the full ADR scope.

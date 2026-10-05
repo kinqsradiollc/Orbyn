@@ -1,3 +1,11 @@
+import { configuredTeamsBot } from "./teams-config.js";
+import type { TeamsBotConfig } from "./teams-transport.js";
+import { captureTeamsQuestionReply } from "./teams-question-receipts.js";
+import {
+  readTeamsQuestionReply,
+  TeamsQuestionReplyError,
+  teamsQuestionInvokeAck,
+} from "./teams-question-reply.js";
 import { z } from "zod";
 import { fail } from "@orbyn/core";
 import { transaction } from "../../db/pool.js";
@@ -36,6 +44,7 @@ export async function receiveTeamsActivity(
   headers: Record<string, string | string[] | undefined>,
   config: TeamsOAuthConfig,
   keys?: (refresh?: boolean) => Promise<TeamsSigningKey[]>,
+  bot: TeamsBotConfig | undefined = configuredTeamsBot(),
 ) {
   const activity = await authenticateTeamsActivity(
     raw,
@@ -43,6 +52,33 @@ export async function receiveTeamsActivity(
     { appId: config.botAppId },
     keys,
   );
+  const cardInvoke =
+    activity.type === "invoke" && activity.name === "adaptiveCard/action";
+  const cardSubmit =
+    activity.type === "message" &&
+    (activity.value as { orbyn_action?: unknown } | undefined)?.orbyn_action ===
+      "orbyn.answer-question";
+  if (cardInvoke || cardSubmit) {
+    let captured = false;
+    try {
+      const submitted = await readTeamsQuestionReply(
+        raw,
+        headers,
+        { appId: config.botAppId },
+        keys,
+      );
+      if (submitted) {
+        if (!bot) fail(503, "Teams reply delivery is not configured.");
+        await captureTeamsQuestionReply(submitted, config, bot);
+        captured = true;
+      }
+    } catch (error) {
+      if (!(error instanceof TeamsQuestionReplyError)) throw error;
+    }
+    return cardInvoke
+      ? teamsQuestionInvokeAck(captured)
+      : { received: captured };
+  }
   if (
     activity.type === "message" &&
     typeof activity.text === "string" &&

@@ -2771,3 +2771,29 @@ evidence. Application source integrates without conflicts; the previous merge's
 generated catalog conflicts were regenerated to287 exclusions and evidence
 notes were combined, preserving both histories. No unresolved merge remains.
 Current delivery controls need immutable combined full/CI qualification next.
+
+Teams replies now have a separate unmounted authenticated protocol foundation
+oncodex/agent-teams-replies:11 real-RSA cases and focused types pass. Delivery
+PR206 remains frozen5bc0bc9d for full/CI; identity PR205 is d926b03c. Simulator
+inspection retried and still returns timeout-10005, without screenshot evidence.
+Continue receipt/card/transaction implementation after the current serial full
+run; do not claim replies, native or visual acceptance from protocol checks.
+
+Teams reply branch continues with complete bounded cards and signed parsers.
+16 pure tests and focused TypeScript pass. Still unmounted until nonce/card
+receipt persistence and atomic current-question authority checks are complete.
+Delivery candidate remains frozen during fresh isolated full qualification;
+previous reused-database full result (3171 pass, 9 fail, 1 skip) is retained.
+Several failures claimed unrelated queued fixtures left by an interrupted run;
+unchanged source is being qualified in a fresh marked test database. No main
+promotion or whole ADR completion is claimed from this rerun before it ends.
+
+### Current Teams reply candidate — 6 October 2026
+
+Durable cards, signed callback capture, exact-question receipt consumer, expiry
+and both-client messaging disclosure are implemented locally on
+codex/agent-teams-replies.132 integrated channel checks,20 sweep/reply checks,
+9 cold pool1 checks, workspace types/builds/format pass. Migration251 and the
+existing sweep connection reuse repair are included. Full immutable suite/CI
+remain next; real tenant and native/browser acceptance remain open. Main remains
+28059ed1. No production deployment or cleanup is claimed.
