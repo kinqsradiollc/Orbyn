@@ -183,6 +183,17 @@ export class ChatgptPlanClient {
         maxOutputTokens > 65536)
     )
       throw new Error("Use a supported output-token limit.");
+    if (maxOutputTokens !== undefined) {
+      // SIWC preview rejects max_output_tokens. Never silently discard a caller's hard budget.
+      const error = new Error(
+        "ChatGPT cannot enforce this hard output-token limit.",
+      );
+      Object.assign(error, {
+        status: 503,
+        providerCode: "orbyn_output_limit_unavailable",
+      });
+      throw error;
+    }
     if (
       request.input.length > 1000 ||
       request.input.some(
@@ -215,9 +226,6 @@ export class ChatgptPlanClient {
           stream: true,
           ...(instructions ? { instructions } : {}),
           input,
-          ...(maxOutputTokens === undefined
-            ? {}
-            : { max_output_tokens: maxOutputTokens }),
         }),
       },
       signal,

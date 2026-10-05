@@ -80,7 +80,7 @@ test("plan requests use the fixed endpoint, supported fields and observed comple
     event("response.output_text.delta", { delta: "Hi" }) + done,
     calls,
   ).complete(
-    { ...request, ...{ max_output_tokens: 20, background: true } },
+    { ...request, ...{ background: true } },
     { onText: (x) => deltas.push(x) },
   );
   assert.equal(result, "Hi");
@@ -91,7 +91,6 @@ test("plan requests use the fixed endpoint, supported fields and observed comple
   );
   assert.deepEqual(JSON.parse(calls[1].init!.body as string), {
     ...request,
-    max_output_tokens: 20,
     store: false,
     stream: true,
   });
@@ -365,17 +364,34 @@ test("missing media headers still require a valid completed event stream, never 
   );
 });
 
-test("private Responses wire preserves a validated output-token limit", async () => {
+test("private Responses wire refuses an unenforceable output-token limit", async () => {
   const calls: { url: string; init?: RequestInit }[] = [];
-  await client(done, calls).complete({ ...request, max_output_tokens: 321 });
-  const body = JSON.parse(String(calls.at(-1)!.init!.body));
-  assert.equal(body.max_output_tokens, 321);
-  assert.equal(body.store, false);
-  assert.equal(body.stream, true);
+  await assert.rejects(
+    client(done, calls).complete({ ...request, max_output_tokens: 321 }),
+    /hard output-token limit/,
+  );
+  assert.equal(
+    calls.length,
+    0,
+    "A required budget is never dropped or dispatched as unsupported input.",
+  );
   const before = calls.length;
   for (const value of [0, -1, 1.5, 65537, NaN])
     await assert.rejects(
       client(done, calls).complete({ ...request, max_output_tokens: value }),
     );
   assert.equal(calls.length, before);
+});
+
+test("a required hard output budget is rejected before any public ChatGPT request when the route cannot enforce it", async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  await assert.rejects(
+    client(done, calls).complete({ ...request, max_output_tokens: 512 }),
+    /hard output-token limit/,
+  );
+  assert.equal(
+    calls.length,
+    0,
+    "No model lookup or inference is dispatched without budget enforcement",
+  );
 });
