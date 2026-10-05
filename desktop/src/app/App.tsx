@@ -1746,7 +1746,9 @@ export function App() {
                     onNewItem={() => newItem()}
                   />
                 ) : (
-                  view !== "AI assistant" && (
+                  !["AI assistant", "Docs", "Memory", "Agent notes"].includes(
+                    view,
+                  ) && (
                     <PageHeading
                       view={view}
                       user={user}

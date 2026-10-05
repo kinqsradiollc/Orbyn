@@ -33,7 +33,6 @@ import {
   Plus,
   Sparkles,
   Strikethrough,
-  Trash2,
   Users,
 } from "lucide-react";
 import type { DragEvent } from "react";
@@ -3065,16 +3064,6 @@ export function DocEditor({
                 </ul>
               )}
             </span>
-            {!reading && doc.kind !== "memory" && (
-              <button
-                className="icon-button"
-                onClick={() => void remove()}
-                aria-label="Move to Trash"
-                title="Move to Trash"
-              >
-                <Trash2 size={15} />
-              </button>
-            )}
             {/* Rarer page actions live behind ⋯. */}
             <span className="doc-download">
               <button
@@ -3260,6 +3249,19 @@ export function DocEditor({
                         }}
                       >
                         Save as template
+                      </button>
+                    </li>
+                  )}
+                  {!reading && doc.kind !== "memory" && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          void remove();
+                        }}
+                      >
+                        Move to Trash
                       </button>
                     </li>
                   )}

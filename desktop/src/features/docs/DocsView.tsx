@@ -1258,7 +1258,7 @@ export function DocsView({
         {editor ?? (
           <div className="docs-view">
             <div className="docs-head">
-              <h2 className="docs-count">{location}</h2>
+              <h1 className="docs-count docs-library-title">{location}</h1>
               <div className="docs-head-actions">
                 {openFolder && (
                   <button

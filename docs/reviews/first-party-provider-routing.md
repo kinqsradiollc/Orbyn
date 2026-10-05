@@ -223,3 +223,29 @@ zero failures/skips, in `/tmp/orbyn-page-choice-final-tests.log`; all workspace
 types passed in `/tmp/orbyn-page-choice-types.log` and subsequent backend types
 in `/tmp/orbyn-page-choice-final-types.log`. No production main promotion is
 claimed from these focused results.
+
+### Docs workspace layout inspection
+
+The native first-party desktop build was rebuilt against the marked local preview
+API8027 and inspected with the disposable Preview Admin fixture. Docs, Memory
+and Agent notes no longer repeat the workspace introduction above their own
+library/editor. Library listings retain a heading, and page Trash now lives in
+More, matching the existing mobile page action menu. Existing page modes, source
+preview, updates, exports and publishing remain accessible.
+
+Native screenshots in `evidence/docs-workspace-layout/` record before, after and
+collapsed global/library navigation. The page and comments remain visibly separate
+in these wide fixtures. Actual menu inspection confirmed Move to Trash; no page
+was deleted. The initial native reload became blank, and restarting only the owned
+QA process restored the updated renderer. The cause is not established. Narrow,
+mobile and whole-app acceptance remain open. Simulator Computer Use timed out.
+Desktop types, native build and26/26 existing source-view/edit checks passed in
+`/tmp/orbyn-doc-layout-types.log`, `/tmp/orbyn-doc-layout-native-build.log` and
+`/tmp/orbyn-doc-layout-focused.log`. These unit checks do not prove layout bounds.
+
+Fresh full4bed2f5a qualification encountered checkpointer PID2291 killed bysignal9
+at2026-10-05 01:59:20 UTC, database reinitialization and recovery. The poll burst
+returned500 instead of200 and the test-file teardown also failed during recovery.
+The process remains live at the latest observation; no full success is claimed,
+and no timer/assertion/database setting was relaxed. Original evidence remains
+in `/tmp/orbyn-4bed-full-tests.log`.

@@ -25,6 +25,10 @@
 .docs-count {
   font-size: 13px;
 }
+.docs-library-title {
+  font-size: 20px;
+  margin-bottom: 0;
+}
 
 .docs-list {
   list-style: none;
