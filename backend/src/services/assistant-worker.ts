@@ -1,5 +1,6 @@
 import { scanMaintainedPages } from "../worker/maintained-page-scan.js";
 import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
+import { claimScheduledAgendaWork } from "../worker/agenda-summaries.js";
 import { pool } from "../db/pool.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
 import { createService } from "./http.js";
@@ -12,6 +13,7 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
   let lastTick = 0;
   let lastHeartbeat = 0;
   let lastPageScan = 0;
+  let preferAgenda = true;
   app.get("/ready", async (_request, reply) => {
     if (!lastTick || Date.now() - lastTick > 30_000)
       return reply.code(503).send({ ok: false });
@@ -21,7 +23,16 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
   app.addHook("onReady", async () => {
     stop = startAssistantRunner(app.log, {
       lane,
-      claimScopedWork: () => claimMaintainedPageWork(app.log, lane),
+      claimScopedWork: async () => {
+        if (lane !== "background")
+          return claimMaintainedPageWork(app.log, lane);
+        preferAgenda = !preferAgenda;
+        return preferAgenda
+          ? ((await claimScheduledAgendaWork(app.log)) ??
+              (await claimMaintainedPageWork(app.log, lane)))
+          : ((await claimMaintainedPageWork(app.log, lane)) ??
+              (await claimScheduledAgendaWork(app.log)));
+      },
       onTick: async () => {
         const now = Date.now();
         if (now - lastHeartbeat >= 10_000) {

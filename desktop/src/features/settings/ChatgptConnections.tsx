@@ -1,3 +1,4 @@
+import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
 import { useId, useState } from "react";
@@ -322,6 +323,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
           AI. Their API keys stay on the server.
         </p>
       </div>
+      <AgendaPrivateSettings userId={userId} />
     </SettingsSection>
   );
 }

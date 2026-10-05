@@ -1,4 +1,8 @@
 import {
+  agendaPrivatePermission,
+  agendaPrivatePermissionInput,
+  agendaPrivateSummary,
+  type AgendaPrivatePermissionInput,
   type AgendaBriefOutcome,
   type MaintainedPageBinding,
   type MaintainedPageRunSummary,
@@ -1205,6 +1209,34 @@ export class OrbynClient {
       body: timezone ? { timezone } : {},
     });
   }
+  /** Read explicit scheduled-plan permission, independently of email/digest preferences. */
+  async agendaPrivatePermission(signal?: AbortSignal) {
+    return agendaPrivatePermission.parse(
+      await this.request("/ai/agenda/private-permission", {
+        signal,
+        fresh: true,
+      }),
+    );
+  }
+  /** Grant/revoke only the reviewed current account/device/model selection. */
+  async setAgendaPrivatePermission(
+    input: AgendaPrivatePermissionInput,
+    signal?: AbortSignal,
+  ) {
+    return agendaPrivatePermission.parse(
+      await this.request("/ai/agenda/private-permission", {
+        method: "PUT",
+        signal,
+        body: agendaPrivatePermissionInput.parse(input),
+      }),
+    );
+  }
+  /** Read private scheduled summary status without exposing execution context. */
+  async agendaPrivateSummary(signal?: AbortSignal) {
+    return agendaPrivateSummary.parse(
+      await this.request("/ai/agenda/private-summary", { signal, fresh: true }),
+    );
+  }
   /**
    * Today's agenda document, written on first ask each day (a POST: asking
    * writes it). `timezone` is the device's, adopted when you haven't picked
@@ -1566,9 +1598,14 @@ export class OrbynClient {
     );
   }
   /** Always refresh executor presence; a cached list cannot authorize a default. */
-  async chatgptModels(input: ChatgptCatalogSelection, signal?: AbortSignal) {
+  async chatgptModels(
+    input: ChatgptCatalogSelection,
+    signal?: AbortSignal,
+    includeCapabilities = false,
+  ) {
     const selection = chatgptCatalogSelection.parse(input);
     const query = new URLSearchParams(selection);
+    if (includeCapabilities) query.set("include_capabilities", "1");
     const result = chatgptCatalogRead.parse(
       await this.request<unknown>(`/models?${query}`, { fresh: true, signal }),
     );

@@ -1,3 +1,4 @@
+import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
 import { CHATGPT_USAGE_URL, chatgptConnectFeedback } from "@orbyn/core";
@@ -120,6 +121,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         }
       />
       <ChatgptUsage userId={userId} />
+      <AgendaPrivateSettings userId={userId} />
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
         Requires Orbyn desktop open and signed into the same Orbyn account.

@@ -1,7 +1,8 @@
 import { dayTime, localDateKey } from "@orbyn/core";
 import { pool } from "../db/pool.js";
-import { todaysAgenda } from "../modules/docs/agenda.js";
+import { writeTodaysAgenda } from "../modules/docs/agenda.js";
 import { briefFor } from "../modules/ai/agenda-brief.js";
+import { enqueueScheduledAgenda } from "../modules/docs/agenda-summary-runs.js";
 
 /** Local hour past midnight in `tz`. */
 const localHour = (now: Date, tz: string) =>
@@ -55,17 +56,39 @@ export async function scanMorningAgendas(
       // exception is a page written ahead of its day (from tomorrow's
       // agenda, say) that nobody has touched since: it is still as the
       // calendar was then, so it is written again now, with the summary.
-      const has = await pool.query(
-        `SELECT 1 FROM docs WHERE user_id = $1 AND kind = 'agenda'
+      const has = await pool.query<{
+        id: string;
+        version: number;
+        deleted_at: Date | null;
+      }>(
+        `SELECT id,version,deleted_at FROM docs WHERE user_id = $1 AND kind = 'agenda'
            AND agenda_date = $2::date
            AND NOT (deleted_at IS NULL AND version = 1
                     AND created_at < $3::timestamptz)
          LIMIT 1`,
         [p.id, today, dayTime(today, 0, p.tz)],
       );
-      if (has.rowCount) continue;
+      if (has.rowCount) {
+        if (has.rows[0].version === 1 && !has.rows[0].deleted_at)
+          await enqueueScheduledAgenda(
+            p.id,
+            has.rows[0].id,
+            now,
+            p.tz,
+            1,
+          ).catch(() => {});
+        continue;
+      }
       try {
-        await todaysAgenda(p.id, { brief: briefFor, now });
+        const page = await writeTodaysAgenda(p.id, { brief: briefFor, now });
+        if (page.generatedVersion)
+          await enqueueScheduledAgenda(
+            p.id,
+            page.doc.id,
+            now,
+            p.tz,
+            page.generatedVersion,
+          );
         written++;
       } catch {
         // One person's page failing must not stop everyone else's.

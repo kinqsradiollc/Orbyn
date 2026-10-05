@@ -435,7 +435,7 @@ export async function todaysAgenda(
 export async function writeTodaysAgenda(
   userId: string,
   options: { brief?: BriefWriter; now?: Date } = {},
-): Promise<{ doc: Doc; created: boolean }> {
+): Promise<{ doc: Doc; created: boolean; generatedVersion?: number }> {
   const now = options.now ?? new Date();
   const tz = await zoneOf(userId);
   const date = localDateKey(now, tz);
@@ -456,10 +456,18 @@ export async function writeTodaysAgenda(
       await announceDocChange(pool, found.id, version, "agenda").catch(
         () => {},
       );
-    return { doc: await readDoc(found.id), created: false };
+    return {
+      doc: await readDoc(found.id),
+      created: false,
+      ...(version ? { generatedVersion: version } : {}),
+    };
   }
   const made = await writeDay(userId, date, content);
-  return { doc: await readDoc(made.id), created: made.created };
+  return {
+    doc: await readDoc(made.id),
+    created: made.created,
+    ...(made.created ? { generatedVersion: 1 } : {}),
+  };
 }
 
 /**

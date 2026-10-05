@@ -95,6 +95,10 @@ export const chatgptCatalogRead = z
     published_at: z.iso.datetime().nullable(),
     expires_at: z.iso.datetime().nullable(),
     sequence: z.number().int().nonnegative(),
+    capabilities: z
+      .array(z.enum(["plan_inference_v1", "plan_inference_limits_v1"]))
+      .max(2)
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {

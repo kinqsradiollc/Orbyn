@@ -228,6 +228,8 @@ function view(app: "desktop" | "mobile", state: any) {
       if (id === "./AiProviderChoice")
         return { AiProviderChoiceControls: "AiProviderChoiceControls" };
       if (id === "./ChatgptUsage") return { ChatgptUsage: "ChatgptUsage" };
+      if (id === "./AgendaPrivateSettings")
+        return { AgendaPrivateSettings: "AgendaPrivateSettings" };
       if (id.endsWith("/theme")) return { colors: {} };
       if (id.endsWith("/styles")) return { shared: {} };
       throw new Error(`Unexpected module ${id}`);
